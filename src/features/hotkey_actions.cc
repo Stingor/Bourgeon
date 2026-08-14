@@ -58,6 +58,12 @@ const Action kActions[] = {
 
 constexpr int kActionCount = static_cast<int>(sizeof(kActions) / sizeof(kActions[0]));
 
+// Liaisons du joueur, indexées comme `kActions`. Volontairement PARALLÈLE au
+// catalogue plutôt que rangée dedans : le catalogue est const, et l'index n'est
+// jamais la clé de persistance (c'est `id`), donc réordonner les actions ne
+// déplace aucun raccourci.
+Binding g_bindings[kActionCount];
+
 }  // namespace
 
 int ActionCount() { return kActionCount; }
@@ -68,10 +74,28 @@ const Action& ActionAt(int index) {
 }
 
 const Action* FindAction(const char* id) {
-  if (!id || !*id) return nullptr;
-  for (const Action& action : kActions)
-    if (std::strcmp(action.id, id) == 0) return &action;
-  return nullptr;
+  const int index = IndexOf(id);
+  return index < 0 ? nullptr : &kActions[index];
+}
+
+int IndexOf(const char* id) {
+  if (!id || !*id) return -1;
+  for (int i = 0; i < kActionCount; ++i)
+    if (std::strcmp(kActions[i].id, id) == 0) return i;
+  return -1;
+}
+
+const Binding& BindingAt(int index) {
+  // Hors bornes : « aucune touche », et surtout PAS `g_bindings[0]` — ce serait
+  // attribuer à un index inconnu le raccourci de la première action.
+  static const Binding kNone;
+  if (index < 0 || index >= kActionCount) return kNone;
+  return g_bindings[index];
+}
+
+void SetBinding(int index, const Binding& binding) {
+  if (index < 0 || index >= kActionCount) return;
+  g_bindings[index] = binding;
 }
 
 bool Invoke(const char* id) {

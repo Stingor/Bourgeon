@@ -59,6 +59,35 @@ int           ActionCount();
 const Action& ActionAt(int index);
 // nullptr si l'identifiant est inconnu (raccourci d'une version antérieure).
 const Action* FindAction(const char* id);
+// Position dans le catalogue, -1 si l'identifiant est inconnu.
+int           IndexOf(const char* id);
+
+// ── Liaisons ─────────────────────────────────────────────────────────────────
+// Ce que le joueur a choisi, par-dessus le catalogue. `vk == 0` = aucune touche.
+// Persistées dans bourgeon_settings.yaml sous « bourgeon_hotkeys » (paire
+// Read/WriteBourgeonHotkeys de settings_containers).
+//
+// 🔴 AUCUN AMORÇAGE DEPUIS `UserKeys.lua`, ET C'EST UNE DÉCISION. Recopier ici la
+// touche que le client donne déjà à « Inventory » (Alt+E…) DOUBLERAIT l'action :
+// le raccourci natif appelle `MakeWindow`, que nos hooks interceptent déjà pour
+// ouvrir le panneau moderne. La même frappe ouvrirait donc par le chemin natif et
+// basculerait par le nôtre — soit un aller-retour, c'est-à-dire un raccourci qui
+// ne fait RIEN, sans rien pour l'expliquer. Nos liaisons ne servent qu'à ce que
+// le client ne sait pas déclencher.
+struct Binding {
+  int  vk    = 0;
+  bool ctrl  = false;
+  bool alt   = false;
+  bool shift = false;
+
+  bool Matches(int other_vk, bool other_ctrl, bool other_alt, bool other_shift) const {
+    return vk != 0 && vk == other_vk && ctrl == other_ctrl && alt == other_alt &&
+           shift == other_shift;
+  }
+};
+
+const Binding& BindingAt(int index);
+void           SetBinding(int index, const Binding& binding);
 
 // Exécute l'action. Renvoie false si l'identifiant est inconnu ou si le module
 // concerné est absent.

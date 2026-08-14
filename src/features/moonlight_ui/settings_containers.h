@@ -36,6 +36,18 @@ void WriteInventoryLayout(YAML::Emitter& out);
 void ReadBlockedNpcs(const YAML::Node& ui);
 void WriteBlockedNpcs(YAML::Emitter& out);
 
+// Raccourcis des actions BOURGEON : séquence d'objets { id, vk, ctrl, alt, shift }.
+// La clé est l'identifiant STABLE de l'action (features/hotkey_actions.h), jamais
+// son index — réordonner le catalogue ne doit déplacer aucun raccourci. Seules
+// les actions RÉELLEMENT liées sont écrites, et une entrée dont l'identifiant est
+// inconnu est ignorée (action retirée depuis).
+//
+// ⚠ Ne couvre PAS les raccourcis du JEU : ceux-là vivent dans `UserKeys.lua`, que
+// le client téléverse lui-même par compte (cf. project_external_settings_re). Les
+// deux mondes se rejoignent à l'ÉCRAN, pas dans le stockage.
+void ReadBourgeonHotkeys(const YAML::Node& ui);
+void WriteBourgeonHotkeys(YAML::Emitter& out);
+
 // Favoris d'entrepôt : une séquence d'ids d'items (client seul).
 void ReadStorageFavorites(const YAML::Node& ui);
 void WriteStorageFavorites(YAML::Emitter& out);

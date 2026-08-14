@@ -8,8 +8,9 @@
 #include <vector>
 
 #include "bourgeon.h"
-#include "ragnarok/globals.h"  // rag::kStdStringDtorAddr
-#include "ragnarok/uiwnd.h"    // uiwnd::kUIWindowMgrAddr (focus d'une saisie native)
+#include "ragnarok/uiwnd.h"        // uiwnd::kUIWindowMgrAddr (focus d'une saisie native)
+#include "ragnarok/user_hotkey.h"  // raccourcis du CLIENT (les quatre catégories)
+#include "features/hotkey_actions.h"            // actions Bourgeon liables
 #include "features/windows/character_sheet.h"  // EquipPreset (presets d'équipement)
 #include "features/gameplay/player_jump.h"      // touche de saut
 #include "features/fx/zone_recorder.h"          // touche d'enregistrement de zone
@@ -19,45 +20,11 @@ namespace hotkeys {
 namespace {
 
 // ── Constantes RE (client 20250716, no-ASLR : addr Ghidra == live) ───────────
-constexpr uintptr_t kGetHotKey  = 0x00d80950;  // GetHotKey(out, category, slot) __stdcall RET 0xc
-constexpr uintptr_t kOwnCharId  = 0x015fb9a8;  // g_Own_CharId (cf. project_own_session_globals)
-using GetHotKey_t = void* (__stdcall*)(void*, int, int);
-using StrFree_t   = void (__fastcall*)(void*);
-
-// Catégories de la barre d'action interrogées : onglet 1 = 0, onglet 2 = 3,
-// 36 slots chacune (cf. project_shortcut_bar_re).
-constexpr int kNativeCats[2]  = {0, 3};
-constexpr int kNativeSlots    = 36;
+constexpr uintptr_t kOwnCharId = 0x015fb9a8;  // g_Own_CharId (cf. project_own_session_globals)
 
 int ReadInt(uintptr_t addr) {
   __try { return *reinterpret_cast<const int*>(addr); }
   __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
-}
-
-// Lit le raccourci natif d'un slot de la barre (via GetHotKey Lua, donc à jour
-// des rebinds du joueur) : touche principale + VK du modificateur (0 si aucun).
-// SEH (on touche Lua, et il faut libérer les 2 std::string du wrapper).
-bool ReadNativeHotkey(int category, int slot, int* main_vk, int* mod_vk) {
-  *main_vk = 0;
-  *mod_vk  = 0;
-  bool ok = false;
-  __try {
-    alignas(4) uint8_t buf[0x40];
-    std::memset(buf, 0, sizeof(buf));
-    reinterpret_cast<GetHotKey_t>(kGetHotKey)(buf, category, slot);
-    const int key_code1 = *reinterpret_cast<int*>(buf + 0x00);
-    const int key_code2 = *reinterpret_cast<int*>(buf + 0x04);
-    reinterpret_cast<StrFree_t>(rag::kStdStringDtorAddr)(buf + 0x08);
-    reinterpret_cast<StrFree_t>(rag::kStdStringDtorAddr)(buf + 0x20);
-    auto is_modifier = [](int k) {
-      return k == VK_CONTROL || k == VK_SHIFT || k == VK_MENU;
-    };
-    if (is_modifier(key_code1))      { *mod_vk = key_code1; *main_vk = key_code2; }
-    else if (is_modifier(key_code2)) { *mod_vk = key_code2; *main_vk = key_code1; }
-    else                             { *main_vk = key_code1; }
-    ok = (*main_vk != 0);
-  } __except (EXCEPTION_EXECUTE_HANDLER) { ok = false; }
-  return ok;
 }
 
 // Frame ImGui du dernier PingCapture ; très négatif = aucune capture connue.
@@ -174,19 +141,46 @@ bool Conflict(int vkey, bool ctrl, bool alt, bool shift, Owner self, int self_in
     }
   }
 
-  // d) Un raccourci natif de la barre de skills/items.
-  for (int category : kNativeCats)
-    for (int slot = 0; slot < kNativeSlots; ++slot) {
-      int main_vk, mod_vk;
-      if (!ReadNativeHotkey(category, slot, &main_vk, &mod_vk) || main_vk != vkey) continue;
-      const bool native_ctrl  = (mod_vk == VK_CONTROL);
-      const bool native_alt   = (mod_vk == VK_MENU);
-      const bool native_shift = (mod_vk == VK_SHIFT);
-      if (native_ctrl == ctrl && native_alt == alt && native_shift == shift) {
-        std::snprintf(what, cap, i18n::Tr("un raccourci natif (barre de skills)"));
-        return true;
-      }
+  // d) Une action Bourgeon (la sienne exclue). Contrôlée AVANT les raccourcis
+  // natifs parce que c'est la seule qu'on sache nommer précisément au joueur.
+  for (int i = 0; i < ActionCount(); ++i) {
+    if (self == Owner::kAction && i == self_index) continue;
+    if (!BindingAt(i).Matches(vkey, ctrl, alt, shift)) continue;
+    std::snprintf(what, cap, i18n::Tr("l'action « %s »"), i18n::Tr(ActionAt(i).label_fr));
+    return true;
+  }
+
+  // e) Un raccourci du CLIENT — les QUATRE catégories, pas seulement les deux
+  // barres de raccourcis.
+  //
+  // 🔴 CE CONTRÔLE TRAVERSE LES DEUX MONDES, et il le doit. Les commandes
+  // d'interface du client (Alt+E, Alt+Q…) partent par le même chemin clavier que
+  // nos raccourcis : n'inspecter que les barres de skills laissait poser une
+  // touche déjà prise par une commande du jeu, ce qui donnait deux actions sur
+  // une frappe sans que rien ne l'annonce. Coût : une passe Lua sur ~200 lignes,
+  // payée UNE fois, au moment où le joueur presse la touche à affecter.
+  for (int category = 0; category < userhotkey::kCategoryCount; ++category) {
+    const int row_count = userhotkey::RowCount(category);
+    for (int row = 0; row < row_count; ++row) {
+      userhotkey::Binding binding;
+      if (!userhotkey::ReadBinding(category, row, &binding) || !binding.assigned) continue;
+      auto is_modifier = [](int key_code) {
+        return key_code == VK_CONTROL || key_code == VK_SHIFT || key_code == VK_MENU;
+      };
+      int main_vk = binding.key_code1, mod_vk = 0;
+      if (is_modifier(binding.key_code1)) { mod_vk = binding.key_code1; main_vk = binding.key_code2; }
+      else if (is_modifier(binding.key_code2)) { mod_vk = binding.key_code2; }
+      if (main_vk != vkey) continue;
+      if ((mod_vk == VK_CONTROL) != ctrl || (mod_vk == VK_MENU) != alt ||
+          (mod_vk == VK_SHIFT) != shift)
+        continue;
+      // Le libellé du client est déjà en UTF-8 et layout-aware : on le rend tel
+      // quel plutôt qu'un vague « un raccourci natif », pour que le joueur sache
+      // QUOI aller changer.
+      std::snprintf(what, cap, i18n::Tr("le raccourci du jeu « %s »"), binding.label);
+      return true;
     }
+  }
   return false;
 }
 

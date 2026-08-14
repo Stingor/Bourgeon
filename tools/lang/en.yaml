@@ -1234,7 +1234,8 @@
 "le preset « %s »": "the « %s » preset"
 "le saut": "the jump"
 "l'enregistrement de zone": "the area recording"
-"un raccourci natif (barre de skills)": "a native shortcut (skill bar)"
+"l'action « %s »": "the « %s » action"
+"le raccourci du jeu « %s »": "the game shortcut « %s »"
 "Aperçu non chargé : %s n'est pas dans vos sites": "Preview not loaded: %s is not among your"
 "autorisés. Clic droit pour l'afficher.": "allowed sites. Right click to show it."
 "Chargement de l'aperçu...": "Loading the preview..."
@@ -2763,3 +2764,15 @@
 "Onglet": "Tab"
 "Mode combat": "Battle Mode"
 "Entrée ouvre la saisie du chat au lieu de la laisser toujours ouverte : les touches de raccourci restent actives pendant le combat.": "Enter opens the chat input instead of leaving it always open: hotkeys stay active during combat."
+
+# ── Bourgeon action catalogue (static table, hotkey_actions.cc) ───────────────
+# Invisible to the static extractor for the same reason as the block above: the
+# code calls i18n::Tr(ActionAt(i).label_fr). Only the labels missing elsewhere in
+# this file are listed - the others already have their entry.
+"Fiche : caractéristiques": "Sheet: stats"
+"Fiche : équipement": "Sheet: equipment"
+"Fiche : compétences": "Sheet: skills"
+"Courrier": "Mail"
+"Journal de quêtes": "Quest journal"
+"Carte du monde": "World map"
+"Menu du jeu": "Game menu"

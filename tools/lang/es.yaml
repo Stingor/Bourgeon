@@ -1216,7 +1216,8 @@
 "le preset « %s »": "el preset « %s »"
 "le saut": "el salto"
 "l'enregistrement de zone": "la grabación de zona"
-"un raccourci natif (barre de skills)": "un atajo nativo (barra de habilidades)"
+"l'action « %s »": "la acción « %s »"
+"le raccourci du jeu « %s »": "el atajo del juego « %s »"
 "Aperçu non chargé : %s n'est pas dans vos sites": "Vista previa no cargada: %s no está entre tus"
 "autorisés. Clic droit pour l'afficher.": "sitios permitidos. Clic derecho para mostrarla."
 "Chargement de l'aperçu...": "Cargando la vista previa..."
@@ -2719,3 +2720,15 @@
 "Onglet": "Pestaña"
 "Mode combat": "Modo combate"
 "Entrée ouvre la saisie du chat au lieu de la laisser toujours ouverte : les touches de raccourci restent actives pendant le combat.": "Intro abre la entrada del chat en vez de dejarla siempre abierta: los atajos siguen activos durante el combate."
+
+# ── Catalogo de acciones de Bourgeon (tabla estatica, hotkey_actions.cc) ──────
+# Invisible para el extractor estatico por la misma razon que el bloque anterior:
+# el codigo llama a i18n::Tr(ActionAt(i).label_fr). Solo se listan las etiquetas
+# que faltaban en este archivo; las demas ya tienen su entrada.
+"Fiche : caractéristiques": "Ficha: características"
+"Fiche : équipement": "Ficha: equipo"
+"Fiche : compétences": "Ficha: habilidades"
+"Courrier": "Correo"
+"Journal de quêtes": "Diario de misiones"
+"Carte du monde": "Mapa del mundo"
+"Menu du jeu": "Menú del juego"

@@ -3,13 +3,18 @@
 #include "imgui.h"
 
 // ── hotkey_util : les raccourcis clavier de Bourgeon, décrits au même endroit ─
-// Deux fonctionnalités laissent le joueur choisir sa touche : les presets
-// d'équipement de la fiche de personnage et le saut. Elles partagent ici la
-// capture du combo, son libellé et — le point qui compte — le CONTRÔLE DE
-// CONFLIT : un combo déjà pris par un autre preset, par le saut ou par un
-// raccourci natif de la barre de skills est refusé en nommant son propriétaire.
-// Sans ce contrôle la même touche déclencherait deux actions à la fois, sans
-// que rien ne l'explique au joueur.
+// Plusieurs fonctionnalités laissent le joueur choisir sa touche : les presets
+// d'équipement de la fiche de personnage, le saut, l'enregistreur de zone et les
+// actions du catalogue (hotkey_actions). Elles partagent ici la capture du combo,
+// son libellé et — le point qui compte — le CONTRÔLE DE CONFLIT : un combo déjà
+// pris est refusé en nommant son propriétaire. Sans ce contrôle la même touche
+// déclencherait deux actions à la fois, sans que rien ne l'explique au joueur.
+//
+// 🔴 LE CONTRÔLE TRAVERSE LES DEUX MONDES. Il inspecte aussi les raccourcis du
+// CLIENT, et les QUATRE catégories de `UserKeys.lua` — pas seulement les deux
+// barres de raccourcis. Les commandes d'interface du jeu (Alt+E, Alt+Q…) partent
+// par le même chemin clavier que les nôtres : les ignorer laissait poser une
+// touche déjà prise, donc deux actions sur une frappe.
 //
 // Touches capturables : lettres, chiffres, F1..F12 et Espace. Rien d'autre,
 // volontairement : ce sont celles dont on SAIT que le natif les route vers
@@ -24,6 +29,7 @@ enum class Owner {
   kEquipPreset,   // preset d'équipement ; self_index = son index dans equip_presets()
   kJump,          // touche de saut (PlayerJump)
   kZoneRecorder,  // touches de l'enregistreur de zone ; self_index = kZoneRecKey*
+  kAction,        // action Bourgeon ; self_index = son index dans hotkey_actions
 };
 
 // L'enregistreur de zone porte DEUX touches distinctes, qui se contrôlent l'une

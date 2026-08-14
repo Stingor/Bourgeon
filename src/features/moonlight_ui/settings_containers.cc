@@ -14,6 +14,7 @@
 #include "features/patches/chat.h"
 #include "features/windows/character_sheet.h"
 #include "features/windows/entity_context_menu.h"
+#include "features/hotkey_actions.h"
 #include "features/patches/equip_tweaks.h"
 #include "features/windows/inventory_viewer.h"
 #include "features/overlays/menu_icons.h"
@@ -177,6 +178,43 @@ void WriteBlockedNpcs(YAML::Emitter& out) {
       out << YAML::Key << "name" << YAML::Value << entry.second;
       out << YAML::EndMap;
     }
+  }
+  out << YAML::EndSeq;
+}
+
+void ReadBourgeonHotkeys(const YAML::Node& ui) {
+  // Repart d'une table vierge : une action absente du fichier n'a AUCUN raccourci
+  // (le catalogue n'en propose aucun par défaut).
+  for (int i = 0; i < hotkeys::ActionCount(); ++i)
+    hotkeys::SetBinding(i, hotkeys::Binding());
+  const YAML::Node bindings = ui["bourgeon_hotkeys"];
+  if (!bindings) return;
+  for (const YAML::Node& entry : bindings) {
+    const int index = hotkeys::IndexOf(entry["id"].as<std::string>("").c_str());
+    if (index < 0) continue;  // action retirée depuis : l'entrée est jetée
+    hotkeys::Binding binding;
+    binding.vk    = entry["vk"].as<int>(0);
+    binding.ctrl  = entry["ctrl"].as<bool>(false);
+    binding.alt   = entry["alt"].as<bool>(false);
+    binding.shift = entry["shift"].as<bool>(false);
+    if (binding.vk != 0) hotkeys::SetBinding(index, binding);
+  }
+}
+
+void WriteBourgeonHotkeys(YAML::Emitter& out) {
+  // L'ordre du catalogue fait un fichier stable d'une sauvegarde à l'autre, sans
+  // tri : il ne dépend pas de l'ordre dans lequel le joueur a réglé ses touches.
+  out << YAML::Key << "bourgeon_hotkeys" << YAML::Value << YAML::BeginSeq;
+  for (int i = 0; i < hotkeys::ActionCount(); ++i) {
+    const hotkeys::Binding& binding = hotkeys::BindingAt(i);
+    if (binding.vk == 0) continue;
+    out << YAML::Flow << YAML::BeginMap;
+    out << YAML::Key << "id"    << YAML::Value << hotkeys::ActionAt(i).id;
+    out << YAML::Key << "vk"    << YAML::Value << binding.vk;
+    out << YAML::Key << "ctrl"  << YAML::Value << binding.ctrl;
+    out << YAML::Key << "alt"   << YAML::Value << binding.alt;
+    out << YAML::Key << "shift" << YAML::Value << binding.shift;
+    out << YAML::EndMap;
   }
   out << YAML::EndSeq;
 }

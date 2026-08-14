@@ -28,8 +28,9 @@ namespace {
 // Ligne « Touche : Espace [Redéfinir] » du saut, avec capture du nouveau combo.
 // Le combo passe par le contrôle de conflit PARTAGÉ (hotkeys::Conflict) : il est
 // refusé, en nommant son propriétaire, s'il appartient déjà à un preset
-// d'équipement, à un raccourci natif de la barre de skills ou à Alt+F — même
-// contrôle que les raccourcis de preset de la fiche de personnage.
+// d'équipement, à une action Bourgeon, à un raccourci du CLIENT (les quatre
+// catégories) ou à Alt+F — même contrôle que les raccourcis de preset de la
+// fiche de personnage.
 // Renvoie true quand la touche a changé (l'appelant persiste).
 bool DrawJumpKeyBinding(PlayerJump* player_jump) {
   bool changed = false;
