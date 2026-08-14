@@ -90,6 +90,89 @@ constexpr int kCmdBgmToggled = 90;
 // ses boutons dessus (0x009F0910) et son reset y remet NORMAL (0x009ED9C0).
 constexpr uintptr_t kPriorityClassAddr = 0x0160232c;
 
+// ── Réglages graphiques (docs §3.10) ────────────────────────────────────────
+
+// Le bloc de configuration. Relevé EN DIRECT sur le client, pas seulement lu au
+// désassemblage.
+constexpr uintptr_t kCfgFullscreenAddr   = 0x01602610;
+constexpr uintptr_t kCfgWidthAddr        = 0x01602614;
+constexpr uintptr_t kCfgHeightAddr       = 0x01602618;
+constexpr uintptr_t kCfgBppAddr          = 0x0160261c;
+constexpr uintptr_t kCfgSpriteDetailAddr = 0x01602630;
+constexpr uintptr_t kCfgTextureDetailAddr= 0x01602634;
+constexpr uintptr_t kCfgTrilinearAddr    = 0x01602638;
+constexpr uintptr_t kCfgRenderSystemAddr = 0x01602640;
+constexpr uintptr_t kCfgDx9AdapterGuid   = 0x01602644;  // 16 o.
+constexpr uintptr_t kCfgDx9DeviceName    = 0x01602654;  // 32 o.
+constexpr uintptr_t kCfgDx7DeviceGuid    = 0x016025c8;  // 16 o.
+constexpr uintptr_t kCfgDx7DriverGuid    = 0x016025d8;  // 16 o.
+constexpr uintptr_t kCfgDx7AdapterName   = 0x016025e8;  // 40 o.
+
+// Deux compagnons du niveau de détail des sprites, écrits par le natif en même
+// temps que lui. Leur rôle exact n'est pas établi ; ils sont reproduits parce
+// que le natif les écrit, pas parce qu'on saurait s'en passer.
+constexpr uintptr_t kSpriteDetailFlagA = 0x01602b60;
+constexpr uintptr_t kSpriteDetailFlagB = 0x01602b64;
+
+// Diviseur de textures dérivé du niveau : 0 -> 4, 1 -> 2, 2 -> 1.
+constexpr uintptr_t kTextureDownscaleAddr = 0x0122b3d8;
+
+// Drapeau relu par `WinMainCRTStartup_Run` à la sortie de sa boucle : à 1, le
+// client se ré-exécute.
+constexpr uintptr_t kRestartRequestedAddr = 0x01602a8c;
+
+// La fabrique de sprites et son cache — à notifier quand le filtrage ou la
+// finesse des textures changent, sinon les textures déjà chargées gardent
+// l'ancien réglage.
+using SpriteTexFactoryGet_t = void*(__cdecl*)();
+constexpr uintptr_t kSpriteTexFactoryGetAddr = 0x00554070;
+using SpriteTexFactoryApply_t = void(__thiscall*)(void*);
+constexpr uintptr_t kSpriteTexFactoryApplyAddr = 0x00560f80;
+using CacheFlush_t = void(__cdecl*)(void*);
+constexpr uintptr_t kSpriteTexCacheFlushAddr = 0x00568b30;
+constexpr uintptr_t kSpriteTexCacheAddr      = 0x0125161c;
+
+// Un `std::vector` du client : trois pointeurs, rien de plus.
+struct ClientVector {
+  uint8_t* begin = nullptr;
+  uint8_t* end   = nullptr;
+  uint8_t* cap   = nullptr;
+};
+
+using EnumAdapters_t = void(__cdecl*)(ClientVector*, int);
+constexpr uintptr_t kEnumAdaptersAddr = 0x00560fb0;
+constexpr int kAdapterRecordSize = 104;
+constexpr int kAdapterRecIndex   = 0x04;
+constexpr int kAdapterRecDesc    = 0x08;  // std::string
+constexpr int kAdapterRecDx7Drv  = 0x20;  // 16 o.
+constexpr int kAdapterRecDx7Dev  = 0x30;  // 16 o.
+constexpr int kAdapterRecDx9Guid = 0x40;  // 16 o.
+constexpr int kAdapterRecDx9Name = 0x50;  // std::string
+
+using EnumModes_t = void(__cdecl*)(ClientVector*, int, int);
+constexpr uintptr_t kEnumModesAddr = 0x00561550;
+constexpr int kModeRecordSize = 36;
+constexpr int kModeRecLabel   = 0x0c;  // std::string
+
+using GetCurrentAdapter_t = void*(__cdecl*)(void*);
+constexpr uintptr_t kGetCurrentAdapterAddr = 0x005610b0;
+
+// La déconnexion propre, puis l'arrêt du mode courant : les deux derniers gestes
+// du bouton [Apply] natif avant que le processus ne se relance.
+using ConnGetInstance_t = void*(__cdecl*)();
+constexpr uintptr_t kConnGetInstanceAddr = 0x00c14d60;
+using ConnDisconnect_t = void(__thiscall*)(void*);
+constexpr uintptr_t kConnDisconnectAddr = 0x00c14320;
+constexpr int kCmdShutdown = 2;
+
+// ⚠ Le mode que le natif interroge dans son [Apply] est ce GLOBAL, pas celui que
+// rend le gestionnaire de modes. Les deux peuvent différer, et on suit le natif.
+constexpr uintptr_t kCurrentModePtrAddr = 0x0121333c;
+
+// `this` en ecx ; le client appelle indifféremment en __thiscall ou __fastcall.
+using StrDtor_t = void(__thiscall*)(void*);
+using OperatorDelete_t = void(__cdecl*)(void*);
+
 // Gestionnaire de skins. `this[7]` = index courant, `this[11]/this[12]` = le
 // vecteur de noms (des `std::string`, 24 octets pièce).
 constexpr uintptr_t kSkinMgrAddr       = 0x011fe3a8;
@@ -150,6 +233,27 @@ void CopyClientString(const uint8_t* field, char* out, size_t out_size) {
     if (!utf8) return;
     std::strncpy(out, utf8, out_size - 1);
     out[out_size - 1] = '\0';
+  } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
+}
+
+// La même chaîne, mais SANS conversion : telle que le client l'a écrite.
+//
+// 🔴 À utiliser quand la destination est un tampon DU CLIENT. Repasser par l'UTF-8
+// y écrirait un texte que lui ne sait pas relire — et il s'agit ici du nom
+// d'adaptateur qu'il comparera au démarrage.
+void CopyClientStringRaw(const uint8_t* field, char* out, size_t out_size) {
+  out[0] = '\0';
+  __try {
+    const uint32_t capacity = *reinterpret_cast<const uint32_t*>(field + 0x14);
+    const uint32_t size     = *reinterpret_cast<const uint32_t*>(field + 0x10);
+    if (size == 0 || size > 0x4000) return;
+    const char* data = (capacity >= 16)
+                           ? *reinterpret_cast<const char* const*>(field)
+                           : reinterpret_cast<const char*>(field);
+    if (!data) return;
+    const size_t take = (size < out_size - 1) ? size : out_size - 1;
+    std::memcpy(out, data, take);
+    out[take] = '\0';
   } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
 }
 
@@ -436,5 +540,257 @@ void SetSkin(int index) {
         reinterpret_cast<void*>(kSkinMgrAddr), index);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
+
+// ── Réglages graphiques ─────────────────────────────────────────────────────
+
+namespace graphics {
+namespace {
+
+int ReadInt(uintptr_t address, int fallback) {
+  __try {
+    return *reinterpret_cast<const int32_t*>(address);
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return fallback; }
+}
+
+void WriteInt(uintptr_t address, int value) {
+  __try {
+    *reinterpret_cast<int32_t*>(address) = value;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
+int ClampDetail(int level) {
+  if (level < 0) return 0;
+  if (level > kDetailMax) return kDetailMax;
+  return level;
+}
+
+// Le cache de la fabrique de sprites, vidé quand la finesse ou le filtrage
+// changent. Sans lui, les textures déjà chargées gardent l'ancien réglage.
+void FlushSpriteTextures() {
+  __try {
+    reinterpret_cast<CacheFlush_t>(kSpriteTexCacheFlushAddr)(
+        reinterpret_cast<void*>(kSpriteTexCacheAddr));
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
+// Libère un vecteur rendu par un énumérateur du client, exactement comme il le
+// fait lui-même.
+//
+// 🔴 Deux devoirs, et en oublier un ne se voit pas tout de suite. D'abord chaque
+// `std::string` des enregistrements est détruite une par une — sinon chaque
+// ouverture du panneau fuit un texte par adaptateur et par mode. Ensuite, un bloc
+// de 4096 octets ou plus est SUR-ALLOUÉ par MSVC et son vrai pointeur est rangé
+// juste avant : libérer l'adresse apparente corromprait le tas. Le natif fait ce
+// test, et 4096 octets ne font que 114 modes d'affichage — c'est atteignable.
+void FreeVector(ClientVector* vec, int record_size, const int* string_offsets,
+                int string_count) {
+  if (!vec || !vec->begin) return;
+  __try {
+    for (uint8_t* rec = vec->begin; rec != vec->end; rec += record_size) {
+      for (int i = 0; i < string_count; ++i) {
+        reinterpret_cast<StrDtor_t>(rag::kStdStringDtorAddr)(rec + string_offsets[i]);
+      }
+    }
+    void* block = vec->begin;
+    const size_t bytes = static_cast<size_t>(vec->end - vec->begin);
+    if (bytes >= 0x1000) {
+      block = *(reinterpret_cast<void* const*>(vec->begin) - 1);
+    }
+    reinterpret_cast<OperatorDelete_t>(rag::kGameOperatorDeleteAddr)(block);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+  vec->begin = vec->end = vec->cap = nullptr;
+}
+
+}  // namespace
+
+// ── ⚡ À chaud ──────────────────────────────────────────────────────────────
+
+int SpriteDetail() { return ClampDetail(ReadInt(kCfgSpriteDetailAddr, kDetailMax)); }
+
+void SetSpriteDetail(int level) {
+  const int value = ClampDetail(level);
+  if (value == SpriteDetail()) return;
+  WriteInt(kCfgSpriteDetailAddr, value);
+  // Les deux compagnons, écrits comme le natif les écrit : (1,1) au niveau 0,
+  // (0,1) au niveau 1, (0,0) au niveau 2.
+  WriteInt(kSpriteDetailFlagA, value == 0 ? 1 : 0);
+  WriteInt(kSpriteDetailFlagB, value <= 1 ? 1 : 0);
+}
+
+int TextureDetail() { return ClampDetail(ReadInt(kCfgTextureDetailAddr, kDetailMax)); }
+
+void SetTextureDetail(int level) {
+  const int value = ClampDetail(level);
+  if (value == TextureDetail()) return;
+  WriteInt(kCfgTextureDetailAddr, value);
+  // 0 -> 4, 1 -> 2, 2 -> 1 : le diviseur appliqué aux textures.
+  const int factor = (value == 0) ? 4 : (value == 1) ? 2 : 1;
+  if (factor == ReadInt(kTextureDownscaleAddr, factor)) return;
+  WriteInt(kTextureDownscaleAddr, factor);
+  FlushSpriteTextures();
+}
+
+bool Trilinear() { return ReadInt(kCfgTrilinearAddr, 0) != 0; }
+
+void SetTrilinear(bool on) {
+  if (on == Trilinear()) return;
+  WriteInt(kCfgTrilinearAddr, on ? 1 : 0);
+  __try {
+    void* factory = reinterpret_cast<SpriteTexFactoryGet_t>(kSpriteTexFactoryGetAddr)();
+    if (factory)
+      reinterpret_cast<SpriteTexFactoryApply_t>(kSpriteTexFactoryApplyAddr)(factory);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+  FlushSpriteTextures();
+}
+
+// ── 🔁 Structurels ─────────────────────────────────────────────────────────
+
+int  System()       { return ReadInt(kCfgRenderSystemAddr, kRenderDx9); }
+bool Fullscreen()   { return ReadInt(kCfgFullscreenAddr, 0) != 0; }
+int  Width()        { return ReadInt(kCfgWidthAddr, 0); }
+int  Height()       { return ReadInt(kCfgHeightAddr, 0); }
+int  BitsPerPixel() { return ReadInt(kCfgBppAddr, 32); }
+
+bool EnumerateAdapters(int system, Adapter* out, int max_count, int* out_count) {
+  if (out_count) *out_count = 0;
+  if (!out || max_count <= 0) return false;
+  if (system != kRenderDx7 && system != kRenderDx9) return false;
+
+  ClientVector vec;
+  __try {
+    reinterpret_cast<EnumAdapters_t>(kEnumAdaptersAddr)(&vec, system);
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+
+  int count = 0;
+  if (vec.begin && vec.end > vec.begin) {
+    const int total = static_cast<int>((vec.end - vec.begin) / kAdapterRecordSize);
+    for (int i = 0; i < total && count < max_count; ++i) {
+      const uint8_t* rec = vec.begin + static_cast<ptrdiff_t>(i) * kAdapterRecordSize;
+      Adapter& adapter = out[count];
+      adapter.index = *reinterpret_cast<const int32_t*>(rec + kAdapterRecIndex);
+      CopyClientString(rec + kAdapterRecDesc, adapter.name, sizeof(adapter.name));
+      ++count;
+    }
+  }
+  const int kStrings[] = {kAdapterRecDesc, kAdapterRecDx9Name};
+  FreeVector(&vec, kAdapterRecordSize, kStrings, 2);
+  if (out_count) *out_count = count;
+  return true;
+}
+
+bool EnumerateModes(int system, int adapter_index, Mode* out, int max_count,
+                    int* out_count) {
+  if (out_count) *out_count = 0;
+  if (!out || max_count <= 0) return false;
+  if (system != kRenderDx7 && system != kRenderDx9) return false;
+
+  ClientVector vec;
+  __try {
+    reinterpret_cast<EnumModes_t>(kEnumModesAddr)(&vec, system, adapter_index);
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+
+  int count = 0;
+  if (vec.begin && vec.end > vec.begin) {
+    const int total = static_cast<int>((vec.end - vec.begin) / kModeRecordSize);
+    for (int i = 0; i < total && count < max_count; ++i) {
+      const uint8_t* rec = vec.begin + static_cast<ptrdiff_t>(i) * kModeRecordSize;
+      Mode& mode = out[count];
+      mode.width  = *reinterpret_cast<const int32_t*>(rec + 0);
+      mode.height = *reinterpret_cast<const int32_t*>(rec + 4);
+      mode.bpp    = *reinterpret_cast<const int32_t*>(rec + 8);
+      CopyClientString(rec + kModeRecLabel, mode.label, sizeof(mode.label));
+      ++count;
+    }
+  }
+  const int kStrings[] = {kModeRecLabel};
+  FreeVector(&vec, kModeRecordSize, kStrings, 1);
+  if (out_count) *out_count = count;
+  return true;
+}
+
+int CurrentAdapterIndex() {
+  // L'enregistrement rebâti par le client depuis sa configuration : 104 octets,
+  // dont deux `std::string` qu'il construit — donc à détruire.
+  alignas(4) uint8_t record[kAdapterRecordSize] = {0};
+  int index = -1;
+  __try {
+    reinterpret_cast<GetCurrentAdapter_t>(kGetCurrentAdapterAddr)(record);
+    index = *reinterpret_cast<const int32_t*>(record + kAdapterRecIndex);
+    reinterpret_cast<StrDtor_t>(rag::kStdStringDtorAddr)(record + kAdapterRecDesc);
+    reinterpret_cast<StrDtor_t>(rag::kStdStringDtorAddr)(record + kAdapterRecDx9Name);
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return -1; }
+  return index;
+}
+
+bool ApplyAndRestart(int system, int adapter_index, int width, int height,
+                     int bpp, bool fullscreen) {
+  if (system != kRenderDx7 && system != kRenderDx9) return false;
+  if (width <= 0 || height <= 0 || bpp <= 0) return false;
+
+  // 🔴 Les GUID de l'adaptateur ne se devinent pas : ils ne vivent que dans
+  // l'énumération. On la refait donc ICI, et on écrit la configuration TANT QUE
+  // l'enregistrement est vivant — recopier ses chaînes pour s'en servir plus tard
+  // laisserait des pointeurs morts.
+  ClientVector vec;
+  __try {
+    reinterpret_cast<EnumAdapters_t>(kEnumAdaptersAddr)(&vec, system);
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+
+  bool written = false;
+  if (vec.begin && vec.end > vec.begin) {
+    const int total = static_cast<int>((vec.end - vec.begin) / kAdapterRecordSize);
+    __try {
+      for (int i = 0; i < total; ++i) {
+        const uint8_t* rec = vec.begin + static_cast<ptrdiff_t>(i) * kAdapterRecordSize;
+        if (*reinterpret_cast<const int32_t*>(rec + kAdapterRecIndex) != adapter_index)
+          continue;
+        if (system == kRenderDx9) {
+          std::memcpy(reinterpret_cast<void*>(kCfgDx9AdapterGuid),
+                      rec + kAdapterRecDx9Guid, 16);
+          char device[64] = {0};
+          CopyClientStringRaw(rec + kAdapterRecDx9Name, device, sizeof(device));
+          std::memset(reinterpret_cast<void*>(kCfgDx9DeviceName), 0, 32);
+          std::strncpy(reinterpret_cast<char*>(kCfgDx9DeviceName), device, 31);
+        } else {
+          std::memcpy(reinterpret_cast<void*>(kCfgDx7DriverGuid),
+                      rec + kAdapterRecDx7Drv, 16);
+          std::memcpy(reinterpret_cast<void*>(kCfgDx7DeviceGuid),
+                      rec + kAdapterRecDx7Dev, 16);
+          char name[64] = {0};
+          CopyClientStringRaw(rec + kAdapterRecDesc, name, sizeof(name));
+          std::memset(reinterpret_cast<void*>(kCfgDx7AdapterName), 0, 40);
+          std::strncpy(reinterpret_cast<char*>(kCfgDx7AdapterName), name, 39);
+        }
+        written = true;
+        break;
+      }
+    } __except (EXCEPTION_EXECUTE_HANDLER) { written = false; }
+  }
+  const int kStrings[] = {kAdapterRecDesc, kAdapterRecDx9Name};
+  FreeVector(&vec, kAdapterRecordSize, kStrings, 2);
+
+  // L'adaptateur demandé n'existe pas : ne RIEN écrire. Une configuration à
+  // moitié valide est le seul échec dont on ne se relève pas depuis le jeu — le
+  // client ne redémarrerait plus.
+  if (!written) return false;
+
+  WriteInt(kCfgRenderSystemAddr, system);
+  WriteInt(kCfgWidthAddr, width);
+  WriteInt(kCfgHeightAddr, height);
+  WriteInt(kCfgBppAddr, bpp);
+  WriteInt(kCfgFullscreenAddr, fullscreen ? 1 : 0);
+
+  __try {
+    *reinterpret_cast<uint8_t*>(kRestartRequestedAddr) = 1;
+    void* connection = reinterpret_cast<ConnGetInstance_t>(kConnGetInstanceAddr)();
+    if (connection)
+      reinterpret_cast<ConnDisconnect_t>(kConnDisconnectAddr)(connection);
+    void* mode = *reinterpret_cast<void**>(kCurrentModePtrAddr);
+    if (mode) uiwnd::Vf<DispCmd_t>(mode, kVfDispCmd)(mode, kCmdShutdown, 0, 0, 0, 0);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+  return true;
+}
+
+}  // namespace graphics
 
 }  // namespace gamesettings

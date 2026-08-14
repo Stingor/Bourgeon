@@ -14,14 +14,20 @@
 // ── CE QUI EST PORTÉ, ET CE QUI RESTE AU NATIF ──────────────────────────────
 // Portés : **Effets**, **Contrôles**, **Divers** — les trois onglets que le
 // client construit à partir d'une TABLE (62 lignes lues dans `GameSettings.lub`),
-// donc les seuls qui se rejouent sans rien figer — et **Basique** : son groupe
-// Audio, ses deux bascules `TALKTYPE`, puis le **skin** et la **priorité du
-// processus**, qu'il a fallu RE séparément parce qu'aucun ne passe par la table
-// d'options (docs §3.9).
+// donc les seuls qui se rejouent sans rien figer — **Basique** (groupe Audio,
+// les deux bascules `TALKTYPE`, le skin et la priorité du processus, docs §3.9)
+// et **Graphismes** (docs §3.10).
 //
-// Reste au natif, derrière un bouton : **Graphismes** seulement (résolution,
-// carte, filtrage). C'est un reset de device qu'on ne sait pas déclencher depuis
-// l'extérieur, et que `Setup.exe` couvre déjà.
+// ⛔ **LA FENÊTRE NATIVE N'EST PLUS JAMAIS OUVERTE.** Le panneau ne la fabrique
+// nulle part ; elle n'apparaît que si le joueur a remis le menu Échap du client,
+// et elle est alors masquée puis détruite.
+//
+// ⚠ L'onglet Graphismes sépare ce qui s'applique AU CLIC (finesse des sprites et
+// des textures, filtrage) de ce qui exige de **relancer le client** (API,
+// adaptateur, résolution, plein écran). Ce n'est pas notre choix : le [Apply] du
+// client ne fait aucun reset de device, il écrit sa configuration et se
+// ré-exécute. Les quatre réglages structurels restent donc un brouillon jusqu'à
+// ce que le joueur accepte la relance, avertissement du client à l'appui.
 //
 // ⛔ Le groupe **Courrier (RODEX)** du natif n'est PAS repris : il est mort sur
 // Moonlight, le serveur ne mappant pas le paquet que le client émet. Détail et
@@ -88,8 +94,9 @@ class GameSettings : public Plugin {
   // ni contiguë ni bornée (EFFECT=1, CONTROL=2, GRAPHIC=3, ETC=4 — un client plus
   // récent peut en ajouter). `kTabBasic` valait 4 et est entré en collision avec
   // `ETC` le jour où celui-ci a été lu correctement.
-  static constexpr int kTabAll   = -1;
-  static constexpr int kTabBasic = -2;
+  static constexpr int kTabAll      = -1;
+  static constexpr int kTabBasic    = -2;
+  static constexpr int kTabGraphics = -3;
 
   // ── Settings PERSISTANTS (bourgeon_settings.yaml, via MoonlightUi) ──────────
   bool imgui_enabled_ = true;
@@ -97,10 +104,15 @@ class GameSettings : public Plugin {
  private:
   void Close();
   void RefreshRows();
-  void OpenNativeForGraphics();
 
   void DrawBasicTab();
+  void DrawGraphicsTab();
   void DrawListTab(int tab);
+
+  // Relit les listes d'adaptateurs et de modes auprès du client. Coûteux —
+  // l'énumération DX9 crée un `IDirect3D9Ex` — donc AU TICK et sur évènement
+  // (ouverture de l'onglet, changement d'API ou d'adaptateur), jamais par frame.
+  void RefreshGraphicsLists();
 
   bool open_ = false;
   bool need_pos_ = false;
@@ -110,19 +122,9 @@ class GameSettings : public Plugin {
   // Même piège que le menu Échap, docs/game_option_re.md §5.6 point 10.
   int esc_grace_frames_ = 0;
 
-  // Vrai pendant qu'on fabrique la native nous-mêmes : le hook de création doit
-  // alors l'ignorer au lieu de basculer le panneau.
-  bool routing_ = false;
-
-  // 🔴 La native est VIVANTE et c'est voulu : le joueur règle ses graphismes.
-  // `OnTick` ne la détruit pas tant que ce drapeau tient, et le baisse quand elle
-  // disparaît.
-  bool native_open_ = false;
-
-  // Demande d'ouverture de la native, posée au rendu et consommée au TICK :
-  // fabriquer une fenêtre native pendant une frame ImGui gèle le client sans un
-  // mot (feedback_no_native_cmd_during_imgui_frame).
-  bool pending_open_native_ = false;
+  // ⛔ Plus aucun drapeau de routage vers la native : nous ne la fabriquons plus
+  // JAMAIS. Elle n'apparaît que si le joueur a remis le menu Échap du client, et
+  // le hook la masque puis `OnTick` la détruit, sans exception.
 
   // Écritures différées pour la même raison : `SetOption` traverse le handler
   // natif de l'option, qui peut recréer des fenêtres et repeindre le monde.
@@ -168,6 +170,42 @@ class GameSettings : public Plugin {
   // (feedback_texture_release_defer_frame).
   static constexpr int kNoPendingSkin = -2;  // ≠ kSkinDefault, qui vaut -1
   int pending_skin_ = kNoPendingSkin;
+
+  // ── Onglet Graphismes ──────────────────────────────────────────────────────
+  //
+  // 🔴 SES QUATRE RÉGLAGES STRUCTURELS SONT UN BROUILLON. Système de rendu,
+  // adaptateur, résolution et plein écran ne s'appliquent PAS à chaud : le client
+  // les écrit puis SE RELANCE (docs §3.10). Les garder localement jusqu'à ce que
+  // le joueur accepte la relance est la seule façon honnête de les présenter —
+  // écrire au clic donnerait une fenêtre dont les valeurs mentent jusqu'au
+  // prochain démarrage.
+  //
+  // Les trois autres — détail des sprites, détail des textures, filtrage — ne
+  // sont PAS ici : ils s'appliquent au clic et se relisent chez le client, comme
+  // le reste du panneau.
+  struct GraphicsDraft {
+    int  system = 0;
+    int  adapter = 0;
+    int  mode = -1;  // index dans `modes_`, -1 tant que rien ne correspond
+    bool fullscreen = false;
+  };
+  GraphicsDraft draft_;
+
+  // Listes rendues par le CLIENT, jamais reconstruites de notre côté : une
+  // énumération Direct3D à nous pourrait proposer un mode qu'il refusera au
+  // démarrage, et l'échec serait alors hors de portée du joueur.
+  // Bornes de sécurité, pas des vérités du client : elles ne servent qu'à ne pas
+  // laisser une énumération inattendue dicter la taille d'un tampon.
+  static constexpr int kMaxAdapters = 16;
+  static constexpr int kMaxModes    = 256;
+
+  std::vector<gamesettings::graphics::Adapter> adapters_;
+  std::vector<gamesettings::graphics::Mode>    modes_;
+
+  bool graphics_ready_   = false;  // les listes ont été chargées au moins une fois
+  bool pending_graphics_refresh_ = false;
+  bool confirm_restart_  = false;
+  bool pending_restart_  = false;
 
   // Une ligne affichée. On RECOPIE la description du client au lieu de pointer
   // dedans : le vecteur source peut être réalloué, et une infobulle qui survit à

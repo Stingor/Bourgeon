@@ -229,4 +229,98 @@ int CurrentSkin();
 // appeler ceci au milieu d'une frame ImGui.
 void SetSkin(int index);
 
+// ── Réglages graphiques (docs/game_option_re.md §3.10) ──────────────────────
+//
+// 🔴 LA SEULE CHOSE À SAVOIR AVANT DE TOUCHER À CE GROUPE : ses six réglages ne
+// coûtent pas le même prix. Trois s'appliquent À CHAUD ; les trois autres ne
+// s'appliquent PAS DU TOUT sans **relancer le client**.
+//
+// Ce n'est pas un choix de Bourgeon, c'est celui du client : son bouton [Apply]
+// ne fait aucun reset de device. Quand l'API, l'adaptateur, la résolution ou le
+// mode plein écran changent, il écrit sa configuration, pose un drapeau,
+// déconnecte, et le processus se ré-exécute. Un panneau de remplacement qui
+// prétendrait appliquer ces réglages sans relance mentirait.
+
+namespace graphics {
+
+// ── ⚡ À CHAUD ──────────────────────────────────────────────────────────────
+
+// Niveau de détail, 0 (le plus grossier) à 2. Le client ne connaît pas d'autre
+// valeur : ses combos en ont trois, et ses lecteurs bornent à 2.
+constexpr int kDetailMax = 2;
+
+int  SpriteDetail();
+void SetSpriteDetail(int level);
+
+int  TextureDetail();
+// ⚠ Ne se résume pas à écrire le niveau : le client en dérive un DIVISEUR de
+// textures (0→4, 1→2, 2→1) et, quand celui-ci change, vide le cache de la
+// fabrique de sprites. Sans ce vidage, les textures déjà chargées gardent
+// l'ancienne finesse jusqu'au changement de carte.
+void SetTextureDetail(int level);
+
+bool Trilinear();
+// ⚠ Même remarque : la fabrique de sprites est notifiée et son cache vidé.
+void SetTrilinear(bool on);
+
+// ── 🔁 STRUCTURELS — n'ont d'effet qu'après relance ─────────────────────────
+
+enum RenderSystem {
+  kRenderDx7 = 1,
+  kRenderDx9 = 2,
+};
+
+int  System();      // kRenderDx7 / kRenderDx9
+bool Fullscreen();
+int  Width();
+int  Height();
+int  BitsPerPixel();
+
+// Un adaptateur, tel que le client l'énumère. `index` est le sien : c'est lui
+// qu'attend `EnumerateModes`, et lui que reprend `ApplyAndRestart`.
+struct Adapter {
+  int  index = 0;
+  char name[128] = {0};
+};
+
+// Un mode d'affichage. Le client ne compare QUE les trois entiers ; le libellé
+// n'est là que pour l'affichage.
+struct Mode {
+  int  width = 0;
+  int  height = 0;
+  int  bpp = 0;
+  char label[64] = {0};
+};
+
+// Énumère les adaptateurs du système de rendu donné, et les modes d'un
+// adaptateur. Les deux passent par les énumérateurs du CLIENT : reproduire une
+// énumération Direct3D de notre côté donnerait une liste qui pourrait différer
+// de celle qu'il acceptera au démarrage.
+//
+// ⚠ COÛTEUX : l'énumération DX9 crée un `IDirect3D9Ex` le temps de l'appel.
+// À faire à l'ouverture du panneau et au changement d'API, jamais par frame.
+bool EnumerateAdapters(int system, Adapter* out, int max_count, int* out_count);
+bool EnumerateModes(int system, int adapter_index, Mode* out, int max_count,
+                    int* out_count);
+
+// L'adaptateur COURANT, tel que le client le rebâtit depuis sa configuration.
+// -1 si indéterminable.
+int CurrentAdapterIndex();
+
+// 🔴 ÉCRIT LA CONFIGURATION **PUIS RELANCE LE CLIENT**. C'est le geste du bouton
+// [Apply] natif, branche structurelle, reproduit tel quel : configuration en
+// mémoire, drapeau de relance, déconnexion propre, message d'arrêt au mode
+// courant. L'appelant DOIT avoir prévenu le joueur — il va perdre sa session.
+//
+// `adapter_index` vient de `EnumerateAdapters` ; les GUID de l'adaptateur sont
+// recopiés depuis l'énumération, seule source qui les connaisse.
+//
+// Rend false sans rien faire si l'adaptateur demandé n'est pas dans la liste :
+// écrire une configuration à moitié valide rendrait le client incapable de
+// redémarrer, et c'est le seul échec dont on ne se relève pas depuis le jeu.
+bool ApplyAndRestart(int system, int adapter_index, int width, int height,
+                     int bpp, bool fullscreen);
+
+}  // namespace graphics
+
 }  // namespace gamesettings
