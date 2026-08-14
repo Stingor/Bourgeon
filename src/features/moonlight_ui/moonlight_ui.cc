@@ -493,18 +493,33 @@ const moonlight_ui::SettingDesc kBankSettings[] = {
      MLUI_LITERAL(bool, false)},
 };
 
-// Menu Échap (« Game Options », id 155). « gamemenu_imgui » est basculé en GROUPE
-// par SetModernInterface : défaut OFF, comme tous les membres du groupe.
+// ── Le menu Échap et ses sous-fenêtres : ON PAR DÉFAUT, HORS du groupe ───────
+//
+// 🔴 CES TROIS-LÀ NE SUIVENT PAS « Interface moderne », ET C'EST VOULU. Elles ne
+// remplacent pas un morceau de HUD : elles remplacent un MENU, et un menu qui se
+// retrouve enterré sous une fenêtre du jeu est un menu cassé. Le natif est une
+// `UIWindow` ordinaire, donc soumise au z-order ; le nôtre est dessiné au-dessus
+// de tout, toujours. Ce gain vaut aussi pour qui joue en interface native, et
+// c'est pour ça qu'ils sortent du groupe.
+//
+// Rien ici n'exige l'interface moderne pour fonctionner : le menu route ses
+// commandes par le `OnMsg` du client, et la table des raccourcis écrit par ses
+// ponts Lua. Les deux marchent donc à l'identique dans les deux modes.
+//
+// ⚠ CLÉS RENOMMÉES SANS MIGRATION, exprès. Les anciennes (`gamemenu_imgui`,
+// `hotkeys_imgui`) étaient écrites en GROUPE : un `false` n'y exprimait aucun
+// choix du joueur sur CES fenêtres — juste le fait qu'il n'avait pas activé
+// l'interface moderne. Recopier ces valeurs priverait du nouveau défaut tous ceux
+// qui ont déjà un yaml, c'est-à-dire tout le monde. Les nouvelles clés partent
+// donc de zéro ; la case reste dans le panneau pour qui veut revenir au natif.
 const moonlight_ui::SettingDesc kGameMenuSettings[] = {
-    {"gamemenu_imgui", SType::kBool, MLUI_FIELD(game_menu, imgui_enabled_),
-     MLUI_LITERAL(bool, false)},
+    {"escmenu_imgui", SType::kBool, MLUI_FIELD(game_menu, imgui_enabled_),
+     MLUI_LITERAL(bool, true)},
 };
 
-// Table des raccourcis (« Shortcut Settings », id 156), en lecture seule.
-// « hotkeys_imgui » est basculé en GROUPE par SetModernInterface : défaut OFF.
 const moonlight_ui::SettingDesc kHotkeySettings[] = {
-    {"hotkeys_imgui", SType::kBool, MLUI_FIELD(hotkey_settings, imgui_enabled_),
-     MLUI_LITERAL(bool, false)},
+    {"hotkeywnd_imgui", SType::kBool, MLUI_FIELD(hotkey_settings, imgui_enabled_),
+     MLUI_LITERAL(bool, true)},
 };
 
 // Refine d'arme Whitesmith (fenêtre « Upgradeable weapons », id 111).
@@ -1257,21 +1272,17 @@ void SetModernInterface(bool on) {
   // une fenêtre que rien ne détruit plus. Cf. docs/pet_re.md §12.
   if (auto* pet_window = Bourgeon::Instance().pet_window())
     pet_window->imgui_enabled_ = on;
-  // Le MENU ÉCHAP rejoint le groupe, et il en est même la porte d'entrée : c'est
-  // son bouton 458 qui est le SEUL chemin d'ouverture de Game Settings (0x271E) et
-  // son bouton 370 le seul de Shortcut Settings (0x9C) — vérifié par recherche
-  // d'octets sur toute l'image. Un menu moderne qui ouvrirait des sous-fenêtres
-  // natives (ou un menu natif au-dessus d'une interface moderne) serait exactement
-  // le mixe que ce groupe supprime. Cf. docs/game_option_re.md §5.2.
-  if (auto* game_menu = Bourgeon::Instance().game_menu())
-    game_menu->imgui_enabled_ = on;
-  // La table des raccourcis suit : le menu Échap ci-dessus est son SEUL chemin
-  // d'ouverture. L'activer seule donnerait un panneau que rien n'ouvre ; la
-  // laisser seule éteinte ferait ouvrir par un menu moderne une fenêtre native
-  // que plus rien ne détruit — et une native de raccourcis vivante CONFISQUE tout
-  // le clavier (UIWindowMgr_OnKeyDown @0x00A47201).
-  if (auto* hotkey_settings = Bourgeon::Instance().hotkey_settings())
-    hotkey_settings->imgui_enabled_ = on;
+  // 🔴 LE MENU ÉCHAP ET SA TABLE DES RACCOURCIS NE SONT PAS DANS CE GROUPE, et ce
+  // n'est pas un oubli : ils sont ON PAR DÉFAUT pour tout le monde (cf. leurs
+  // descripteurs). Un menu enterré sous une fenêtre du jeu est un menu cassé, et
+  // le natif y est soumis alors que le nôtre est toujours au-dessus — un gain qui
+  // n'a rien à voir avec le choix d'interface. Ils deviendront en plus la porte
+  // d'entrée des réglages de Bourgeon eux-mêmes (« Moonlight Settings »), qui doit
+  // donc exister dans les deux modes.
+  //
+  // Ce que le groupe garantissait et qui reste vrai autrement : ces fenêtres ne
+  // dépendent d'AUCUN autre morceau moderne — le menu route ses commandes par le
+  // `OnMsg` du client, la table écrit par ses ponts Lua.
 }
 
 bool ModernInterfaceEnabled() {

@@ -86,8 +86,12 @@ class HotkeySettings : public Plugin {
   static constexpr int kTabBourgeon = userhotkey::kCategoryCount + 1;  // = 5
 
   // ── Settings PERSISTANTS (bourgeon_settings.yaml, via MoonlightUi) ──────────
-  // « hotkeys_imgui » : basculé en GROUPE par SetModernInterface. Défaut OFF.
-  bool imgui_enabled_ = false;
+  // 🔴 « hotkeywnd_imgui » : ON PAR DÉFAUT, et HORS du groupe « Interface
+  // moderne », comme le menu Échap qui l'ouvre. Elle n'a besoin de rien de
+  // moderne : elle lit et écrit par les ponts Lua du CLIENT, donc elle rend le
+  // même service dans les deux modes — avec en plus la recherche, les deux
+  // colonnes de touches et les actions de Bourgeon.
+  bool imgui_enabled_ = true;
 
  private:
   void Close();

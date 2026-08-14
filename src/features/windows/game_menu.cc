@@ -1,5 +1,6 @@
 #include "features/windows/game_menu.h"
 
+#include "features/windows/chat_window.h"  // QueueCommand (@load)
 #include "features/windows/hotkey_settings.h"
 
 #include <Windows.h>
@@ -23,6 +24,23 @@ namespace {
 // valent rien ailleurs.
 
 constexpr int kEscMenuWndId = 155;  // UIEscOptionWnd, vtable 0x010384A0, objet 0xD8
+// Les deux sous-fenêtres que ce menu est le SEUL à ouvrir (vérifié par recherche
+// d'octets : rien d'autre dans l'image ne les fabrique).
+constexpr int kHotkeyWndId       = 156;     // 0x9C   « Shortcut Settings »
+constexpr int kGameSettingsWndId = 0x271E;  // 10014  « Game Settings »
+
+// La fenêtre des macros — celle d'Alt+M.
+//
+// 🔴 IDENTIFIANT REMONTÉ, PAS DEVINÉ. Le client fabrique ses fenêtres par une
+// table à deux étages : `0x00A42CA8[id]` donne un numéro de cas, et
+// `0x00A42904[cas]` l'adresse du bloc qui construit la fenêtre. En partant du
+// bloc qui installe la vtable portant `EmotionHotkey_SaveFromEditBoxes` — les
+// champs de saisie des macros — on retombe sur l'id **86**. C'est aussi celui
+// qu'ouvre la commande de raccourci 114 dans `UIWindowMgr_DispatchHotkeyBehavior`,
+// ce qui le confirme par un second chemin.
+// ⚠ NE PAS confondre avec `UIMacroRegisterWnd` (id 0x11E), qu'AUCUN raccourci
+// n'ouvre : c'est une autre fenêtre, malgré son nom.
+constexpr int kMacroWndId = 86;  // 0x56
 
 // Les trois fenêtres que le branchement « Character Select » ferme. On ne les
 // ferme pas nous-mêmes (le natif le fait), elles sont ici pour le REPLI.
@@ -280,6 +298,21 @@ void GameMenu::RunPendingAction() {
       SendModeCmd(kCmdRequestDisconnect, 0);
       break;
 
+    case Action::kOpenMacros:
+      Close();
+      uiwnd::MakeWindow(kMacroWndId);
+      break;
+
+    case Action::kOpenGameSettings:
+      Close();
+      uiwnd::MakeWindow(kGameSettingsWndId);
+      break;
+
+    case Action::kOpenHotkeyNative:
+      Close();
+      uiwnd::MakeWindow(kHotkeyWndId);
+      break;
+
     case Action::kNone:
       break;
   }
@@ -314,6 +347,12 @@ void GameMenu::OnRenderUI() {
   const char* label_return      = i18n::Tr("Retour au jeu");
   const char* label_savepoint   = i18n::Tr("Retour au point de sauvegarde");
   const char* label_resurrect   = i18n::Tr("Résurrection");
+  // ⚠ Deux libellés PROCHES pour deux gestes différents : `label_savepoint` est la
+  // réapparition APRÈS LA MORT (menu de mort, CZ_RESTART), `label_load` est la
+  // téléportation d'un personnage VIVANT (commande serveur @load). Le possessif
+  // « mon » les distingue à la lecture, et ils ne s'affichent jamais ensemble.
+  const char* label_load        = i18n::Tr("Retour à mon point de sauvegarde");
+  const char* label_macros      = i18n::Tr("Ouvrir les macros");
 
   // Largeur MESURÉE sur le plus long libellé, jamais en dur : la police ET la
   // langue sont des réglages (feedback_ui_width_measured_not_hardcoded), et une
@@ -322,7 +361,8 @@ void GameMenu::OnRenderUI() {
   const float button_w = ro::MaxButtonWidth({label_char_select, label_settings,
                                              label_shortcuts, label_exit,
                                              label_return, label_savepoint,
-                                             label_resurrect});
+                                             label_resurrect, label_load,
+                                             label_macros});
   ImGui::SetNextWindowSize(
       ImVec2(button_w + ImGui::GetStyle().WindowPadding.x * 2.0f, 0.0f),
       ImGuiCond_Always);
@@ -348,8 +388,27 @@ void GameMenu::OnRenderUI() {
   }
   if (!begun) { ro::EndRoWindow(); return; }
 
-  // Les boutons, dans l'ORDRE du natif pour chaque disposition (docs §2.4).
+  // Les boutons, dans l'ORDRE du natif pour chaque disposition (docs §2.4), avec
+  // NOS ajouts en tête.
   if (layout_ == Layout::kAlive) {
+    // ── Retour au point de sauvegarde (@load) ──────────────────────────────
+    // 🔴 CE N'EST PAS le « Return to save point » du menu de MORT : celui-là est
+    // `CZ_RESTART` type 0, c'est-à-dire la réapparition après un décès. Ici le
+    // personnage est VIVANT, et rien dans le protocole ne permet de se téléporter
+    // — c'est une commande du SERVEUR. On l'envoie donc telle qu'un joueur la
+    // taperait, par le pipeline complet du client, ce qui a l'avantage de faire
+    // revenir son refus éventuel dans le chat, à sa place.
+    if (ro::RoButton(label_load, button_w)) {
+      Close();
+      // `QueueCommand` ARME la commande ; c'est `FlushPending`, hors frame ImGui,
+      // qui l'envoie. Appelée sans condition depuis `OnProcessInput`, elle part
+      // donc aussi quand la chatbox ImGui est éteinte.
+      if (auto* chat = Bourgeon::Instance().chat_window()) chat->QueueCommand("@load");
+    }
+    // La commande EXACTE en infobulle : le joueur voit ce qui part, et peut la
+    // retaper lui-même. On ne traduit pas — c'est un nom de commande serveur.
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("@load");
+
     if (ro::RoButton(label_char_select, button_w)) pending_ = Action::kCharSelect;
     if (ro::RoButton(label_settings, button_w)) {
       // ⏳ INTERIM : la fenêtre Game Settings ImGui n'existe pas encore, on ouvre
@@ -357,16 +416,22 @@ void GameMenu::OnRenderUI() {
       // dès que game_settings.{h,cc} atterrit — c'est l'étape suivante du chantier
       // décrit dans docs/game_option_re.md §5.7. Un bouton mort serait pire : le
       // joueur perdrait l'accès à ses réglages.
-      Close();
-      uiwnd::MakeWindow(0x271E);
+      pending_ = Action::kOpenGameSettings;
     }
     if (ro::RoButton(label_shortcuts, button_w)) {
-      // La table des raccourcis Bourgeon (lecture seule ; son propre bouton
-      // « Modifier les touches » rouvre la native pour le remappage).
       Close();
-      if (auto* hotkeys = Bourgeon::Instance().hotkey_settings())
-        hotkeys->OpenFromMenu();
+      // ⚠ CE BOUTON NE DOIT JAMAIS ÊTRE MORT. Notre table est ON par défaut, mais
+      // le joueur peut la désactiver seule dans le panneau — et notre panneau
+      // refuse alors de s'ouvrir. On retombe donc sur la fenêtre du client, que
+      // son hook de création laissera vivre puisqu'il est éteint lui aussi.
+      auto* hotkeys = Bourgeon::Instance().hotkey_settings();
+      if (hotkeys && hotkeys->imgui_enabled_) hotkeys->OpenFromMenu();
+      else                                    pending_ = Action::kOpenHotkeyNative;
     }
+    // Les macros n'ont AUCUN chemin d'ouverture dans le menu du client : elles ne
+    // s'atteignent qu'au raccourci (Alt+M par défaut). Un joueur qui l'a remappé,
+    // ou qui ne l'a jamais su, n'y accédait donc plus du tout.
+    if (ro::RoButton(label_macros, button_w)) pending_ = Action::kOpenMacros;
     if (ro::RoButton(label_exit, button_w)) pending_ = Action::kExitToWindows;
     if (ro::RoButton(label_return, button_w)) Close();
   } else {

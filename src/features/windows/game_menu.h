@@ -79,9 +79,13 @@ class GameMenu : public Plugin {
   bool IsOpen() const { return open_; }
 
   // ── Settings PERSISTANTS (bourgeon_settings.yaml, via MoonlightUi) ──────────
-  // « gamemenu_imgui » : basculé en GROUPE par SetModernInterface, jamais
-  // isolément. Défaut OFF, comme tout le groupe.
-  bool imgui_enabled_ = false;
+  // 🔴 « escmenu_imgui » : ON PAR DÉFAUT, et HORS du groupe « Interface moderne ».
+  // Ce menu ne remplace pas un morceau de HUD, il remplace un MENU — et le natif,
+  // simple `UIWindow`, se retrouve enterré sous les fenêtres du jeu. Le nôtre est
+  // dessiné au-dessus de tout, ce qui vaut aussi pour qui joue en interface
+  // native. Il ne dépend d'ailleurs d'aucun autre morceau moderne : toutes ses
+  // commandes partent par le `OnMsg` du client.
+  bool imgui_enabled_ = true;
 
  private:
   // Ce que le joueur a cliqué, à exécuter au TICK. Les valeurs ne sont PAS les ids
@@ -94,6 +98,12 @@ class GameMenu : public Plugin {
     kSavePoint,      // -> CMode::SendMsg(25, 0) = CZ_RESTART type 0
     kResurrect,      // -> CMode::SendMsg(250)   = CZ_STANDING_RESURRECTION 0x0292
     kExitToWindows,  // -> CMode::SendMsg(88)    -> 128 = CZ_REQ_DISCONNECT 0x018A
+    // Ouvertures de fenêtres NATIVES. Elles passent par la file d'actions et non
+    // par un `MakeWindow` en pleine frame : fabriquer une native pendant le rendu
+    // ImGui gèle le client sans un mot (feedback_no_native_cmd_during_imgui_frame).
+    kOpenMacros,        // fenêtre 86 — celle d'Alt+M
+    kOpenGameSettings,  // fenêtre 0x271E, en attendant notre panneau
+    kOpenHotkeyNative,  // fenêtre 156, quand notre table est désactivée seule
   };
 
   // La disposition, telle que le ctor natif la calcule (docs §2.4).
