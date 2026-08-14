@@ -3,6 +3,7 @@
 #include <windows.h>
 
 #include <cctype>
+#include <cstring>
 
 #include "ui/ro_imgui.h"  // ro::Cp949ToUtf8
 
@@ -26,6 +27,15 @@ const char* Utf8(int id) {
   // que lui ferait dire à nos fenêtres autre chose qu'aux siennes.
   // LocalToUtf8 accepte la chaîne vide et rend « » : pas de cas particulier.
   return ro::LocalToUtf8(Cp949(id));
+}
+
+const char* Utf8Or(int id, const char* fallback) {
+  const char* raw = Cp949(id);
+  // Les deux sentinelles du client, plus la table pas encore chargée. Le test
+  // porte sur le PRÉFIXE : la seconde forme finit par l'id (« NO MSG : 4240 »).
+  if (!raw || !*raw || std::strncmp(raw, "NO MSG", 6) == 0)
+    return fallback ? fallback : "";
+  return ro::LocalToUtf8(raw);
 }
 
 const char* Flatten(const char* src) {

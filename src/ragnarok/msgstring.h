@@ -37,6 +37,26 @@ const char* Cp949(int id);
 // doit survivre à la frame.
 const char* Utf8(int id);
 
+// 🔴 Le même, mais qui retombe sur `fallback` quand le client N'A PAS le libellé.
+//
+// Constaté en jeu le 2026-08-14 sur Moonlight : les onglets « Other » et
+// « Login Notification » de Game Settings s'affichaient **« NO MSG »**. Cause —
+// le client charge `data\msgstringtable.txt`, qui n'a que **4023 entrées** ici,
+// alors que le `.csv` du même GRF en a 4361. Tout id ≥ 4023 est donc absent, et
+// c'est INVISIBLE au RE : la table qu'on lit pour trouver un id n'est pas celle
+// que le client charge.
+//
+// `MsgStringTable_GetById` (0x00A9ED30) a deux sentinelles, toutes deux prises
+// en charge ici :
+//   - id connu de la table mais sans texte  -> exactement « NO MSG » ;
+//   - id ≥ 4355 (hors bornes dures)         -> « NO MSG : <id> ».
+//
+// ⚠ À PRÉFÉRER À `Utf8` pour tout libellé d'une fenêtre qu'on remplace : sans ce
+// repli, l'échec est MUET et sort tel quel à l'écran. La règle du projet — dire
+// le texte EXACT du client — vaut quand ce texte existe ; quand il n'existe pas,
+// la question ne se pose plus et notre traduction est le seul choix honnête.
+const char* Utf8Or(int id, const char* fallback);
+
 // ── Deux mises en forme que TOUTE fenêtre ImGui doit à ces libellés ─────────
 // Elles vivaient dans l'anonyme de character_sheet.cc, qui les a découvertes en
 // premier ; la fiche de pet en a exactement le même besoin. Une seule

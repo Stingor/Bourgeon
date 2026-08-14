@@ -658,7 +658,30 @@ Utile pour un portage : ce sont les textes exacts à réafficher.
 | 4216 | `LOGINOUT` | Login Notification |
 | 4220 / 4221 | `EMBLEM_ON/_OFF` | Guild Emblem On / Off |
 | 1483 | `MSI_ESC_OPTIONWND` | Game Options |
-| 4240 | `MSI_OPTION_ESC` | Options (ESC) |
+| **4241** | `MSI_OPTION_ESC` | Options (ESC) |
+
+⚠ **Correction (2026-08-14) : `MSI_OPTION_ESC` est à 4241, pas 4240.** 4240 est
+`MSI_EXPANSION_MINIMAP` (« Expanded Minimap »). Calibré sur `msgstringtable.csv`
+avec deux témoins sûrs — 1483 = « Game Options », 1548 = la confirmation de
+retour au point de sauvegarde.
+
+#### 🔴 Certains de ces ids rendent « NO MSG » EN JEU (constaté le 2026-08-14)
+
+Sur Moonlight, **4216** (`LOGINOUT`) et **4217** (`TAB_ETC`) sortent
+**« NO MSG »** à l'écran, alors que 4142-4146 — juste à côté — répondent
+correctement et que les deux textes sont bel et bien dans `msgstringtable.csv`.
+
+Cause **non établie** : le `.txt` du GRF n'a que **4024** entrées, le `.csv` en a
+**4361**, les deux fichiers sont identiques entre disque et GRF, et il n'a pas été
+possible de lire la table en mémoire du client pour trancher lequel il charge
+(le processus n'était pas lancé). Ce qui est sûr, c'est la **sentinelle** :
+`MsgStringTable_GetById` (0x00A9ED30) rend exactement `"NO MSG"` pour un id connu
+mais sans texte, et `"NO MSG : <id>"` au-delà de 4355.
+
+➡ **Conséquence pour tout portage** : ne jamais afficher `msgstr::Utf8(id)` nu
+pour un libellé de fenêtre. Utiliser **`msgstr::Utf8Or(id, repli)`**, qui détecte
+les deux sentinelles. Sans lui l'échec est MUET — le client ne se plaint pas, et
+« NO MSG » part à l'écran comme s'il s'agissait d'un vrai libellé.
 
 ---
 

@@ -32,12 +32,25 @@ constexpr int kGameSettingsWndId = 0x271E;  // 10014
 //
 // ⚠ Le cinquième id n'est PAS contigu aux quatre autres : 4146 est déjà
 // « Emblem Border ». Une boucle `base + i` afficherait ce libellé comme onglet.
+//
+// 🔴 TOUS PASSENT PAR `Utf8Or`, JAMAIS PAR `Utf8`. Constaté en jeu le 2026-08-14 :
+// sur Moonlight, **4216 et 4217 rendent « NO MSG »** alors que 4142-4146, juste
+// à côté, répondent correctement — et que les deux textes sont bel et bien
+// présents dans `data\msgstringtable.csv` (calibré : 1483 = « Game Options »,
+// 1548 = la confirmation de retour au point de sauvegarde). La cause exacte n'est
+// PAS établie : le `.txt` du GRF s'arrête à 4024 entrées, le `.csv` en a 4361, et
+// je n'ai pas pu lire la table en mémoire du client pour trancher lequel il
+// charge vraiment. Le repli, lui, ne dépend pas de la réponse.
 constexpr int kMsgTabBasic    = 4142;
 constexpr int kMsgTabEffect   = 4143;
 constexpr int kMsgTabControl  = 4144;
-constexpr int kMsgTabGraphics = 4145;
 constexpr int kMsgTabEtc      = 4217;
-constexpr int kMsgWindowTitle = 4240;  // MSI_OPTION_ESC « Options (ESC) »
+constexpr int kMsgEmblemFrame = 4146;  // MSI_GAME_SETTINGS_EMBLEM_FRAME
+constexpr int kMsgLoginNotify = 4216;  // MSI_GAME_SETTINGS_LOGINOUT
+// ⚠ `MSI_OPTION_ESC` est à **4241**, pas 4240 : 4240 est `MSI_EXPANSION_MINIMAP`
+// (« Expanded Minimap »). Le §3.8 du doc portait la mauvaise valeur, et sans le
+// repli la fenêtre se serait intitulée « Expanded Minimap ».
+constexpr int kMsgWindowTitle = 4241;
 // « Set Basic Settings? » — la confirmation que le natif pose sur son [Reset].
 constexpr int kMsgResetConfirm = 3166;
 
@@ -59,10 +72,14 @@ const ImVec4 kChangedText(0.65f, 0.30f, 0.10f, 1.0f);
 
 const char* TabLabel(int tab) {
   switch (tab) {
-    case gamesettings::kTabEffect:  return msgstr::Utf8(kMsgTabEffect);
-    case gamesettings::kTabControl: return msgstr::Utf8(kMsgTabControl);
-    case gamesettings::kTabEtc:     return msgstr::Utf8(kMsgTabEtc);
-    default:                        return "";
+    case gamesettings::kTabEffect:
+      return msgstr::Utf8Or(kMsgTabEffect, i18n::Tr("Effets"));
+    case gamesettings::kTabControl:
+      return msgstr::Utf8Or(kMsgTabControl, i18n::Tr("Contrôles"));
+    case gamesettings::kTabEtc:
+      return msgstr::Utf8Or(kMsgTabEtc, i18n::Tr("Divers"));
+    default:
+      return "";
   }
 }
 
@@ -225,10 +242,8 @@ void GameSettings::OnRenderUI() {
   // Titre du CLIENT, suffixe ### figé : la fenêtre garde position et taille d'une
   // langue à l'autre.
   char title[128];
-  const char* native_title = msgstr::Utf8(kMsgWindowTitle);
   std::snprintf(title, sizeof(title), "%s###bourgeon_game_settings",
-                (native_title && *native_title) ? native_title
-                                                : i18n::Tr("Réglages du jeu"));
+                msgstr::Utf8Or(kMsgWindowTitle, i18n::Tr("Réglages du jeu")));
 
   const bool begun = ro::BeginRoWindow(title, &show_panel_);
   if (!show_panel_) { Close(); show_panel_ = true; }
@@ -253,9 +268,10 @@ void GameSettings::OnRenderUI() {
                            gamesettings::kTabControl, gamesettings::kTabEtc};
   if (ro::RoBeginTabBar("gs_tabs")) {
     for (int tab : tab_order) {
-      const char* label = (tab == kTabAll)     ? i18n::Tr("Tout")
-                          : (tab == kTabBasic) ? msgstr::Utf8(kMsgTabBasic)
-                                               : TabLabel(tab);
+      const char* label =
+          (tab == kTabAll)     ? i18n::Tr("Tout")
+          : (tab == kTabBasic) ? msgstr::Utf8Or(kMsgTabBasic, i18n::Tr("Basique"))
+                               : TabLabel(tab);
       // Identifiant TECHNIQUE et stable : le libellé vient du client et change
       // avec sa langue, ce qui recréerait l'onglet à chaque bascule.
       char tab_id[96];
@@ -328,9 +344,8 @@ void GameSettings::OnRenderUI() {
     // la confirmation ET le panneau derrière (docs §5.6 point 10).
     ro::SuppressEscapeStack();
 
-    const char* question = msgstr::Utf8(kMsgResetConfirm);
-    ImGui::TextUnformatted((question && *question) ? question
-                                                   : i18n::Tr("Rétablir les réglages par défaut ?"));
+    ImGui::TextUnformatted(msgstr::Utf8Or(
+        kMsgResetConfirm, i18n::Tr("Rétablir les réglages par défaut ?")));
     ImGui::Spacing();
     const float w = ro::MaxButtonWidth({i18n::Tr("Réinitialiser"), i18n::Tr("Annuler")});
     if (ro::RoButton(i18n::Tr("Réinitialiser"), w)) {
@@ -382,7 +397,8 @@ void GameSettings::DrawBasicTab() {
   mui::SeparatorText(i18n::Tr("Affichage"));
 
   bool emblem = gamesettings::IsOn(kTtEmblemFrame);
-  if (ro::RoCheckbox(msgstr::Utf8(4146), &emblem)) {  // « Emblem Border »
+  if (ro::RoCheckbox(
+          msgstr::Utf8Or(kMsgEmblemFrame, i18n::Tr("Bordure d'emblème")), &emblem)) {
     pending_write_.valid = true;
     pending_write_.id = kTtEmblemFrame;
     pending_write_.on = emblem;
@@ -391,7 +407,9 @@ void GameSettings::DrawBasicTab() {
   mui::HelpMarker(i18n::Tr("Encadre l'emblème de guilde affiché à côté des noms."));
 
   bool login = gamesettings::IsOn(kTtLoginNotify);
-  if (ro::RoCheckbox(msgstr::Utf8(4216), &login)) {  // « Login Notification »
+  if (ro::RoCheckbox(
+          msgstr::Utf8Or(kMsgLoginNotify, i18n::Tr("Notification de connexion")),
+          &login)) {
     pending_write_.valid = true;
     pending_write_.id = kTtLoginNotify;
     pending_write_.on = login;
@@ -420,8 +438,9 @@ void GameSettings::DrawListTab(int tab) {
                             ImGuiTableFlags_Resizable)) {
     // Largeurs MESURÉES sur le contenu réel, jamais figées : la police et la
     // langue sont des réglages (feedback_ui_width_measured_not_hardcoded).
-    const float tab_col_w = ImGui::CalcTextSize(msgstr::Utf8(kMsgTabControl)).x +
-                            ImGui::GetStyle().CellPadding.x * 4.0f;
+    const float tab_col_w =
+        ImGui::CalcTextSize(TabLabel(gamesettings::kTabControl)).x +
+        ImGui::GetStyle().CellPadding.x * 4.0f;
     const float cmd_col_w = ImGui::CalcTextSize("/notalkmsg2").x +
                             ImGui::GetStyle().CellPadding.x * 4.0f;
 
