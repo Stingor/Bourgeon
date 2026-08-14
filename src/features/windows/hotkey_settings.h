@@ -16,9 +16,15 @@
 //     colonnes de 18, boutons Prev/Next) : tout tient dans une liste défilante ;
 //   - une RECHERCHE, que le natif n'a pas — trouver « Hotkey 3-7 » ou la commande
 //     liée à une touche donnée demandait de feuilleter les pages ;
-//   - les lignes non affectées sont visibles d'un coup d'œil ;
 //   - un onglet « Bourgeon » et une vue « Tout » qui réunissent les commandes du
-//     JEU et les actions de l'interface moderne, que le client ne connaît pas.
+//     JEU et les actions de l'interface moderne, que le client ne connaît pas ;
+//   - 🔴 DEUX colonnes de touches, « d'origine » et « choisie », là où le natif
+//     n'en montre qu'une. Ce n'est pas du confort : `UserKeys.lua` ne porte que
+//     des SURCHARGES au-dessus d'une table d'origine que le client ne sait pas
+//     effacer. Le natif, qui n'affiche que la surcharge, écrit donc
+//     « Not Assigned » sur des lignes dont la touche fonctionne — et sur un compte
+//     neuf, c'est la MAJORITÉ d'entre elles. Les séparer rend le mécanisme
+//     lisible : la colonne « choisie » reste presque vide, et c'est l'état normal.
 //
 // ── L'ÉCRITURE ──────────────────────────────────────────────────────────────
 // Elle passe par `userhotkey::WriteBinding` + `Save` pour les commandes du
@@ -124,17 +130,20 @@ class HotkeySettings : public Plugin {
   // remplit `binding.label` / `binding.key_name` comme le ferait le client. Une
   // seule boucle de dessin, un seul chemin de recherche.
   struct Row {
+    // Ce que le JOUEUR a choisi : la surcharge de `UserKeys.lua` pour une
+    // commande du client, notre liaison pour une action Bourgeon. Souvent vide,
+    // et c'est normal — un compte neuf n'a presque aucune surcharge.
     userhotkey::Binding binding;
+    // 🔴 La touche D'ORIGINE, celle que le client donne et qu'il ne sait pas
+    // effacer (`GetOriginalHotKeyInfo`). Elle agit tant qu'aucune surcharge ne la
+    // remplace, et reste là quoi que fasse le joueur : d'où sa colonne à elle
+    // plutôt qu'un marqueur collé à la précédente.
+    userhotkey::Binding fallback;
     int tab = 0;
     // Commande du CLIENT : sa catégorie Lua. -1 pour une action Bourgeon.
     int category = -1;
     // Action BOURGEON : son index dans hotkey_actions. -1 pour le client.
     int action_index = -1;
-    // La touche affichée vient de la table par DÉFAUT du client, faute de
-    // surcharge dans `UserKeys.lua` — cas le plus courant, le fichier ne portant
-    // que les surcharges. Elle agit exactement comme une autre : le marquer sert
-    // à dire au joueur qu'il n'a rien choisi là, pas que la ligne est inerte.
-    bool from_default = false;
   };
 
   // Lignes de l'onglet courant — tout quand « Tout » est actif. Relues à
@@ -153,10 +162,9 @@ class HotkeySettings : public Plugin {
   int  capture_action_   = -1;  // action Bourgeon
   char capture_error_[224] = {0};
 
-  // Menu contextuel de la cellule des touches : effacer, ou remettre la touche
-  // que le client donne par défaut à CETTE commande — le [Reset] pris ligne à
-  // ligne, là où le natif ne sait que réinitialiser les quatre catégories.
-  // Renvoie true si une écriture a été demandée.
+  // Menu contextuel de la colonne « touche choisie » : retirer la surcharge, une
+  // ligne à la fois, là où le natif ne sait que réinitialiser les quatre
+  // catégories d'un coup. Renvoie true si une écriture a été demandée.
   bool DrawRowMenu(const Row& row);
 
   bool IsCapturing(const Row& row) const;
