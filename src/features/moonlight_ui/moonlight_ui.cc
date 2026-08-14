@@ -39,6 +39,7 @@
 #include "features/windows/bank_window.h"
 #include "features/windows/game_menu.h"
 #include "features/windows/staff_tools.h"
+#include "features/windows/game_settings.h"
 #include "features/windows/hotkey_settings.h"
 #include "features/windows/cart_viewer.h"
 #include "features/windows/cashshop_window.h"
@@ -515,6 +516,16 @@ const moonlight_ui::SettingDesc kGameMenuSettings[] = {
 
 const moonlight_ui::SettingDesc kHotkeySettings[] = {
     {"hotkeywnd_imgui", SType::kBool, MLUI_FIELD(hotkey_settings, imgui_enabled_),
+     MLUI_LITERAL(bool, true)},
+};
+
+// Réglages du jeu (« Game Settings », id 0x271E). Même statut que les deux
+// ci-dessus, et pour les mêmes raisons : hors du groupe, ON par défaut. Ce panneau
+// lit et écrit par le manager d'options du CLIENT, donc il rend le même service
+// dans les deux modes — avec en plus la recherche, la description en infobulle et
+// la commande slash de chaque réglage.
+const moonlight_ui::SettingDesc kGameSettingsSettings[] = {
+    {"gamesettings_imgui", SType::kBool, MLUI_FIELD(game_settings, imgui_enabled_),
      MLUI_LITERAL(bool, true)},
 };
 
@@ -1412,6 +1423,7 @@ void MoonlightUi::LoadSettings() {
     moonlight_ui::ReadSettings(ui, kBankSettings);
     moonlight_ui::ReadSettings(ui, kGameMenuSettings);
     moonlight_ui::ReadSettings(ui, kHotkeySettings);
+    moonlight_ui::ReadSettings(ui, kGameSettingsSettings);
     moonlight_ui::ReadBourgeonHotkeys(ui);
     moonlight_ui::ReadSettings(ui, kRefineSettings);
     moonlight_ui::ReadSettings(ui, kMakeItemSettings);
@@ -1562,6 +1574,7 @@ void MoonlightUi::WriteSettingsFile() {
   moonlight_ui::WriteSettings(out, kBankSettings);
   moonlight_ui::WriteSettings(out, kGameMenuSettings);
   moonlight_ui::WriteSettings(out, kHotkeySettings);
+  moonlight_ui::WriteSettings(out, kGameSettingsSettings);
   moonlight_ui::WriteBourgeonHotkeys(out);
   moonlight_ui::WriteSettings(out, kRefineSettings);
   moonlight_ui::WriteSettings(out, kMakeItemSettings);

@@ -17,6 +17,7 @@
 #include "features/windows/character_sheet.h"  // hide-native-at-creation (grimoire 0x25)
 #include "features/windows/pet_window.h"  // hide-native-at-creation (fiche pet 88 / menu 260)
 #include "features/windows/game_menu.h"  // hide-native-at-creation (menu Échap 155)
+#include "features/windows/game_settings.h"    // hide-native-at-creation (réglages 0x271E)
 #include "features/windows/hotkey_settings.h"  // hide-native-at-creation (raccourcis 156)
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
@@ -199,6 +200,17 @@ void* __fastcall MakeWindowHook(void* mgr, void* edx, int windowID) {
     if (windowID == 156) {
       if (auto* hs = Bourgeon::Instance().hotkey_settings())
         hs->HandleNativeCreation(win);
+    }
+    // Les réglages du jeu (CUIGameSettingsUI id 0x271E). FILET DE SÉCURITÉ, et
+    // rien de plus : notre menu Échap ouvre directement le panneau ImGui sans
+    // passer par la fabrique. Ce hook ne sert donc que si le joueur a remis le
+    // menu Échap natif tout en gardant nos réglages — son bouton « game settings »
+    // fabrique alors la native, qu'on masque ici et que OnTick détruit.
+    // ⚠ GameSettings la rouvre LUI-MÊME pour l'onglet Graphismes (reset de device,
+    // non porté) : il neutralise ce hook le temps de la créer.
+    if (windowID == 0x271E) {
+      if (auto* gs = Bourgeon::Instance().game_settings())
+        gs->HandleNativeCreation(win);
     }
     // Le PET : la fiche (UIPetInfoWnd id 88), le menu de commandes qu'elle
     // ouvrait (UIMenuWnd id 260) et la fenêtre d'évolution (UIPetEvolutionWnd

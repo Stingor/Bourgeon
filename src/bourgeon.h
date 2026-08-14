@@ -30,6 +30,7 @@ class BankWindow;
 class GameMenu;
 class StaffTools;
 class HotkeySettings;
+class GameSettings;
 class CashShopWindow;
 class NpcShopWindow;
 class VendingWindow;
@@ -93,6 +94,7 @@ class Bourgeon {
   GameMenu* game_menu();
   StaffTools* staff_tools();
   HotkeySettings* hotkey_settings();
+  GameSettings* game_settings();
   CashShopWindow* cashshop_window();
   NpcShopWindow* npc_shop_window();
   VendingWindow* vending_window();
@@ -272,6 +274,7 @@ class Bourgeon {
   GameMenu* game_menu_ = nullptr;              // non-owning, lifetime tied to plugins_
   StaffTools* staff_tools_ = nullptr;          // non-owning, lifetime tied to plugins_
   HotkeySettings* hotkey_settings_ = nullptr;  // non-owning, lifetime tied to plugins_
+  GameSettings* game_settings_ = nullptr;      // non-owning, lifetime tied to plugins_
   CashShopWindow* cashshop_window_ = nullptr;  // non-owning, lifetime tied to plugins_
   NpcShopWindow* npc_shop_window_ = nullptr;          // non-owning, lifetime tied to plugins_
   VendingWindow* vending_window_ = nullptr;    // non-owning, lifetime tied to plugins_

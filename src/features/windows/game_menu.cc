@@ -4,6 +4,7 @@
 #include "features/staff_gate.h"                 // IsStaff (bouton Staff Tools)
 #include "features/windows/staff_tools.h"
 #include "features/windows/chat_window.h"        // QueueCommand (@load)
+#include "features/windows/game_settings.h"
 #include "features/windows/hotkey_settings.h"
 
 #include <Windows.h>
@@ -430,12 +431,14 @@ void GameMenu::OnRenderUI() {
     }
 
     if (ro::RoButton(label_settings, button_w)) {
-      // ⏳ INTERIM : la fenêtre Game Settings ImGui n'existe pas encore, on ouvre
-      // donc la native (id 0x271E). À remplacer par l'ouverture de notre panneau
-      // dès que game_settings.{h,cc} atterrit — c'est l'étape suivante du chantier
-      // décrit dans docs/game_option_re.md §5.7. Un bouton mort serait pire : le
-      // joueur perdrait l'accès à ses réglages.
-      pending_ = Action::kOpenGameSettings;
+      Close();
+      // ⚠ Même règle que le bouton des raccourcis ci-dessous : JAMAIS MORT. Notre
+      // panneau est ON par défaut, mais le joueur peut l'éteindre seul — on
+      // retombe alors sur la fenêtre du client (id 0x271E), que son hook de
+      // création laissera vivre puisqu'il est éteint lui aussi.
+      auto* settings = Bourgeon::Instance().game_settings();
+      if (settings && settings->imgui_enabled_) settings->OpenFromMenu();
+      else                                      pending_ = Action::kOpenGameSettings;
     }
 
     if (ro::RoButton(label_shortcuts, button_w)) {

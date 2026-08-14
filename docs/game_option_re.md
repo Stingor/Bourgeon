@@ -410,10 +410,19 @@ Les trois pages partagent `CUIListPage` (vtable **`0x01047014`**, `OnCreate`
   défilement. Chaque ligne reçoit deux `std::function` posées par `AddNewItem`.
 
 **Le modèle de ligne vient du Lua.** `TT_LoadGameSettingsLua` (0x0068ECA0) lit la
-table globale **`OptionTbl`** (fichier **`GameSettingsUI.lub`** — c'est le titre
-des `MessageBox` d'erreur, pas `GameSettings.lub`) et remplit un vecteur à
-`session+0x0C..0x10`. **L'enregistrement fait 100 (0x64) octets** — la mémoire
-disait `0x19`, c'est faux :
+table globale **`OptionTbl`** et remplit un vecteur à **`mgr+0x0C..0x10`**.
+**L'enregistrement fait 100 (0x64) octets** — la mémoire disait `0x19`, c'est faux :
+
+🔴 **Deux corrections à la première lecture** (2026-08-14) :
+
+- le vecteur est dans le **`CGameSettingsMgr`**, pas dans la session. Confusion
+  facile : `CGameSettingsMgr_LoadTableFromLua` reçoit le manager en `param_1` et
+  `CSession_ctor` l'appelle juste après l'avoir créé, si bien que le décompilé
+  ressemble à du code de session. C'est bien `mgr+0x0C` que relisent
+  `SetOption`, `ExecOption` et `ResetAllToDefault` ;
+- le fichier est **`LuaFiles514\Lua Files\OptionInfo\GameSettings.lub`**.
+  `GameSettingsUI.lub` est seulement le **titre des `MessageBox` d'erreur**, et
+  s'y fier envoie chercher un fichier qui n'existe pas.
 
 | offset | champ Lua | type | requis |
 |---|---|---|---|
@@ -439,13 +448,123 @@ l'`unordered_map` **`0x012515FC`** (valeur à `+0x0C` de l'entrée, clé = `ID`)
 les options dont le sens interne est l'inverse du libellé. Recopier `Default`
 tel quel pour ces cinq ids inverse le réglage.
 
-Le **contenu** de `OptionTbl` vit dans `GameSettingsUI.lub`, **à l'intérieur du
-GRF** (`moonlight.grf` puis `data.grf`, cf. `DATA.INI`) : il n'est ni dans l'exe
-ni sur le disque. Ce que `msgstringtable` laisse voir des lignes réellement
-présentes (§3.8) : *Show Aura*, *Aura Display*, *Damage Display*, *Map Display on
-movement*, *Fog Effect*, *Footprint Effect* (Effects) ; *Mouse Snap*
-(Monster/Skill/Pickup Item), *No Ctrl*, *No Shift*, zoom, *Mouse Exclusive*
-(Controls) ; *Window Mode*, *Trilinear Filtering* (Graphics).
+#### ✅ Le contenu de `OptionTbl` — EXTRAIT, et lisible (2026-08-14)
+
+`GameSettings.lub` est dans **`moonlight.grf`** (`data.grf` est chiffré « Event
+Horizon » et illisible, mais il n'a pas le dernier mot : `DATA.INI` met
+`moonlight.grf` en premier). Extrait avec `tools/grf_reader.py`, le fichier est du
+**Lua SOURCE en clair**, pas du bytecode — en-tête « Original translation works of
+zackdreaver / llchrisll », 14 943 octets, **62 entrées** :
+
+| onglet | bascules | commandes | total |
+|---|---|---|---|
+| `EFFECT` (1) | 11 | — | 11 |
+| `CONTROL` (2) | 11 | — | 11 |
+| `ETC` (3) | 21 | 19 | 40 |
+
+📌 **`Tooltip` n'est PAS une infobulle** : le champ contient la **commande slash
+équivalente** (`/aura2`, `/noctrl\n/nc`, parfois deux séparées par un saut de
+ligne), et le natif ne l'affiche nulle part. C'est une information gratuite pour
+un panneau de remplacement.
+
+📌 **`MSGs` contient des CLÉS, pas des ids** (`"MSI_AURA_EFFECT_ON"`) ; le
+chargeur les résout en ids par `sub_A9E640` avant de les ranger en `+0x5C`/`+0x60`.
+
+**Les 296 noms d'options sont dans l'exe.** `CGameSettingsMgr_LoadTableFromLua`
+pousse d'abord comme globales Lua les constantes `EFFECT=1 CONTROL=2 ETC=3` et
+`ONOFF=0 EXE=1`, puis **les 296 chaînes de `off_1008120`, index = valeur** :
+c'est l'énumération **`TALKTYPE`** complète, celle-là même qui sert d'`ID`. Elle
+recoupe exactement la liste des cinq options inversées — `TT_FULL_AURA_ON_OFF`,
+`TT_HIDE_AURA_ON_OFF`, `TT_BOLD_NAME_TYPE_ON_OFF`, `TT_BLOCK_CALL_ON_OFF`,
+`TT_HIDE_FOOTPRINT_ON_OFF` : ce sont **les options dont le nom interne dit *hide*
+là où le libellé dit *show*.** L'inversion n'est donc pas une bizarrerie, c'est
+la trace d'un renommage de libellés sans renommage des drapeaux.
+(`src/ragnarok/talktype.h` n'en connaît qu'environ 140, aux noms parfois
+différents — `TT_MAP_POS` vs `TT_EX_MAP_POS`. À compléter depuis cette table le
+jour où l'énumération servira vraiment.)
+
+#### 🔴 Le vecteur est rempli à l'ENTRÉE EN JEU, pas à l'ouverture de la fenêtre
+
+`CGameSettingsMgr_LoadTableFromLua` (0x0068E510) n'a **qu'un seul appelant** :
+`CSession_ctor` @ `0x00D578A2`, qui crée d'abord le manager dans `0x0131EE7C`
+(`new(0x58)` + ctor) puis charge la table, et enchaîne sur
+`OptionInfo_LoadAndApplyAll`.
+
+C'est **le feu vert du portage** : les données existent même si la fenêtre
+`0x271E` n'est jamais créée. Sans cette vérification, un panneau de remplacement
+aurait pu s'afficher vide chez tout le monde — le contraire (table chargée par la
+fenêtre) était l'hypothèse la plus naturelle.
+
+### 3.5.1 ✅ Lire et écrire une option — le chemin complet (RE du 2026-08-14)
+
+C'était le trou n°1 du §5.8. Il est comblé, et c'est plus simple que prévu : tout
+passe par le manager `CGameSettingsMgr` (`0x0131EE7C`), et une seule fonction
+suffit pour écrire.
+
+| fonction | adresse | signature |
+|---|---|---|
+| `GameSettings_GetFlag` | `0x0068EA70` | `char __cdecl(unsigned tt)` — drapeau INTERNE |
+| `GameSettings_SetFlagRaw` | `0x0068FD50` | `char __cdecl(unsigned tt, char v)` — écriture BRUTE |
+| `GameSettings_IsInvertedOption` | `0x0068EAF0` | `char __cdecl(int tt)` — les 5 ids retournés |
+| `CGameSettingsMgr::SetOption` | `0x0068DFD0` | `__thiscall(int tt, char v, char annonce)` |
+| `CGameSettingsMgr::ToggleOption` | `0x0068FAA0` | `__thiscall(int tt)` |
+| `CGameSettingsMgr::ExecOption` | `0x0068E160` | `__thiscall(int tt)` — lignes `EXE` |
+| `CGameSettingsMgr::ResetAllToDefault` | `0x0068F8E0` | `__thiscall()` |
+
+**Lecture** — la valeur est dans l'`unordered_map` `0x012515FC` (hash FNV-1a sur
+les quatre octets de l'id, valeur à `node+12`), et l'affichage vaut
+`GetFlag(tt) ^ IsInvertedOption(tt)`. C'est exactement ce que fait
+`GameSettingsUI_ListPage_RefreshValues` (0x009F0DA0) ligne par ligne.
+
+**Écriture** — `SetOption` cherche le record dans le vecteur, puis un **HANDLER**
+dans la table de hachage du manager. S'il en trouve un, **c'est le handler qui
+applique l'effet** ; sinon on retombe sur
+`GameSettings_ApplyFlagDefaultHandler` (0x00691540), qui ne fait que ranger la
+valeur et, si `annonce`, écrire au chat.
+
+🔴 **Écrire le drapeau brut ne suffit donc PAS** pour la plupart des options :
+`/fog` éteint garderait son brouillard. Passer par `SetOption` est la seule
+façon de rejouer le geste du client sans réimplémenter chaque effet.
+
+📌 **Le paramètre `annonce` distingue deux chemins du même client** : la case à
+cocher de la fenêtre passe **0** (`GameSettingsUI_OptionItem_OnCheck` 0x009ECC10),
+la commande slash passe **1** (`ToggleOption`), et c'est elle seule qui écrit
+« … is On » au chat. Un panneau qui remplace la FENÊTRE suit la fenêtre.
+
+### 3.5.2 ✅ Le groupe Audio de l'onglet Basique
+
+Trou n°2 du §5.8, comblé pour le seul groupe qui vaille le détour — les autres
+(skin, priorité, RODEX) restent au natif, cf. §5.4.
+
+`CUIGroupSound` (vtable `0x010471E8`, `OnCreate` `0x009DD840`) : deux
+`CUIHScrollBar` de **plage 128** et deux cases « Off ». Ses quatre lambdas :
+
+| contrôle | applique |
+|---|---|
+| curseur BGM | `Sound_SetBgmVolume(g_SoundMgr, v)` **puis** `Sound_SetEffectVolume(g_SoundMgr, volumeBgm)` |
+| case BGM *Off* | `SetFlagRaw(TT_MUSIC_ON_OFF=7, on)` **et, si la valeur CHANGE, `CMode::SendMsg(90)`** |
+| curseur Effets | `Sound_SetMaster2DVolume(v)` + `Sound_Set3DVolume(v)` |
+| case Effets *Off* | `SetFlagRaw(TT_EFFECT_SOUND_ON_OFF=0xB, on)` |
+
+Champs du gestionnaire (`g_SoundMgr` = `0x01253D0C`, clamp `[0, 0x7F]`) :
+`+0xE0` effets, `+0xE4` BGM, `+0xE8` maître 2D, `+0x134` 3D.
+
+⚠ **Deux pièges dans ces quatre lignes.**
+
+1. Le curseur « Effets » écrit `+0xE8` (**maître 2D**) et **pas** `+0xE0`, malgré
+   le nom de ce dernier. Lire `+0xE0` pour l'afficher donnerait un curseur qui ne
+   suit pas ce que le joueur vient de régler.
+2. Le curseur BGM aligne **ensuite** `+0xE0` sur le volume BGM. Le geste
+   surprend et ressemble à un bug du client ; il est reproduit tel quel dans
+   Bourgeon, parce que s'en écarter ferait diverger notre curseur du sien sur un
+   champ dont le rôle exact n'est pas établi.
+3. `SendMsg(90)` est un **devoir caché** : sans lui, couper la musique laisse le
+   morceau en cours aller au bout, et la rallumer ne relance rien.
+
+Les deux autres bascules de la page Basique sont, elles, de simples `TALKTYPE`
+écrits en dur par le client (`0x009EEF50`, `0x009EF000`) :
+**`TT_EMBLEM_FRAME_ON_OFF` (0xF3)** = bordure d'emblème,
+**`TT_LOGINOUT_ON_OFF` (0xA5)** = notification de connexion.
 
 ### 3.6 Le bouton [Reset]
 
@@ -1028,7 +1147,9 @@ ET VALEUR**, supprimer les déclarations avant de substituer les noms.
 | écrire un réglage | le setter natif du groupe puis `OptionInfo_SaveToFile` | écrire le `.lua` à la main : `LoadAndApplyAll` ne serait pas rejoué |
 | défaut d'une option | l'`unordered_map` `0x012515FC` (clé = `ID`) | recoder une table de défauts (et surtout : ne pas oublier le XOR des 5 ids) |
 | libellés / infobulles | `MsgStringTable_GetById` | figer l'anglais en dur — le client a un réglage de langue |
-| liste des lignes d'un onglet | le vecteur `OptionTbl` (`session+0x0C..0x10`, pas de 100 o) | reconstruire une liste : `GameSettingsUI.lub` est dans le GRF et peut changer |
+| liste des lignes d'un onglet | le vecteur `OptionTbl` (`mgr+0x0C..0x10`, pas de 100 o) | reconstruire une liste : `GameSettings.lub` est dans le GRF et peut changer |
+| valeur d'une bascule | `GameSettings_GetFlag ^ IsInvertedOption` (§3.5.1) | lire le drapeau sans le XOR : cinq options s'afficheraient à l'envers |
+| écrire une bascule | `CGameSettingsMgr::SetOption` | `SetFlagRaw` : le handler de l'option ne serait pas appelé, donc l'effet pas appliqué |
 | touche d'une commande | `UserHotkey_Lua_GetHotKey` | table de touches en dur (déjà refusé une fois : c'est **layout-aware**, AZERTY/QWERTY) |
 | nom lisible d'un combo | global Lua **`GetKeyDes(kc1, kc2)`** (fmt `"dd>s"`) | fabriquer « Ctrl+F1 » soi-même : le natif s'en sert pour écrire dans `UserKeys.lua`, les deux doivent coïncider |
 | remapper | Lua `ChangeUserHotKey` + `SaveUserHotKeys2` | écrire `UserKeys.lua` : le serveur ne serait pas informé |
@@ -1157,18 +1278,45 @@ entre 2 et 3 boutons. Un joueur mort qui verrait « Character Select » et pas
    piloté par `OptionTbl` pour ne rien figer.
 5. **Onglet Graphics** en dernier, ou jamais (§5.4).
 
-### 5.8 Ce qui reste à RE avant l'étape 4
+### 5.8 ✅ Ce qui restait à RE avant l'étape 4 — soldé (2026-08-14)
 
-- les **setters** de chaque `CUIGroup*` de la page Basic (on connaît les ctors,
-  pas les écritures) ;
-- `sub_68F8E0` (`0x0131EE7C`) : la remise à zéro globale des options, et les
-  vfuncs `+0xD8`/`+0xDC` des groupes qu'elle encadre ;
-- le rendu et la bascule d'un `CUIOptionItem` (`ctor 0x009EA480`) : c'est là que
-  se lit/s'écrit la valeur d'une ligne booléenne, et donc le lien exact entre un
-  `OptionTbl.ID` et sa clé `CmdOnOffList` / `OptionInfoList` ;
-- comment la page-liste connaît **son** `Tab` (le ctor n'en prend pas) ;
-- le contenu de `OptionTbl` — nécessite d'extraire `GameSettingsUI.lub` du GRF
-  (cf. `reference_grf_act_spr_reference_impl` : GRFEditor/ActEditor d'abord).
+- ✅ **le lien `OptionTbl.ID` → valeur** : c'est `GameSettings_GetFlag` /
+  `CGameSettingsMgr::SetOption`, §3.5.1. Il n'y a pas de « clé `CmdOnOffList` »
+  à retrouver par option — l'id EST la clé, et la persistance vers
+  `OptionInfo.lua` se fait en aval, dans le handler ;
+- ✅ **la bascule d'un `CUIOptionItem`** : `OnCheck` (0x009ECC10) →
+  `SetOption(id, coché ^ inversé, annonce=0)`, §3.5.1 ;
+- ✅ **la remise à zéro globale** : `CGameSettingsMgr::ResetAllToDefault`
+  (0x0068F8E0) parcourt le vecteur et rejoue chaque `Default` ;
+- ✅ **les setters de la page Basic** : faits pour le groupe **Audio** et les deux
+  bascules `TALKTYPE` (§3.5.2). Skin, priorité et RODEX restent **délibérément**
+  au natif : ils n'écrivent pas dans la table d'options (RODEX est même un
+  réglage serveur), et chacun demanderait son propre RE pour un gain nul —
+  le bouton « Réglages natifs… » du panneau y mène en un clic ;
+- ✅ **le contenu de `OptionTbl`** : extrait, en clair, 62 entrées (§3.5) ;
+- ⏳ **comment la page-liste connaît son `Tab`** : toujours pas localisé, et c'est
+  désormais **sans objet** — le panneau ImGui filtre lui-même sur le champ `Tab`
+  du record, qu'il lit directement.
+
+✅ **Soldé** : le contrôle de collision (`MsgString(1489)`) est
+`UIHotKeyWnd_ValidateKeyCombo` `0x008DC890` — §4.9. Le remappage est porté :
+`HotkeySettings` écrit par `userhotkey::WriteBinding` + `Save`, contrôle la
+collision en C++ (`hotkeys::Conflict`, exemption 0↔3 comprise) et refuse au lieu
+de voler la touche. Ne reste au natif que son **[Reset]**, faute d'équivalent à
+`GetOriginalHotKeyInfo` de notre côté.
+
+### 5.9 État du portage (2026-08-14)
+
+| fenêtre | état | fichiers |
+|---|---|---|
+| Game Options 155 | ✅ portée | `features/windows/game_menu.{h,cc}` |
+| Shortcut Settings 156 | ✅ portée, écriture comprise | `features/windows/hotkey_settings.{h,cc}`, `ragnarok/user_hotkey.{h,cc}` |
+| Game Settings 0x271E | ✅ portée **sauf** Graphics / skin / priorité / RODEX | `features/windows/game_settings.{h,cc}`, `ragnarok/game_settings.{h,cc}` |
+
+Les trois sont **ON par défaut et HORS du groupe « Interface moderne »** : ce sont
+des écrans de réglages, pas des morceaux de HUD, et aucun n'a besoin du reste de
+l'interface moderne — tout passe par les ponts du client. Clés yaml :
+`escmenu_imgui`, `hotkeywnd_imgui`, `gamesettings_imgui`.
 
 ✅ **Soldé** : le contrôle de collision (`MsgString(1489)`) est
 `UIHotKeyWnd_ValidateKeyCombo` `0x008DC890` — §4.9. Le remappage est porté :
