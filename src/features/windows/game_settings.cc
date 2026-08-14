@@ -513,22 +513,11 @@ void GameSettings::DrawBasicTab() {
   // ⚠ Il ne vaut que FENÊTRE AU PREMIER PLAN : le client se rabat de force sur
   // « Low » dès qu'il perd le focus (docs §3.9). Le dire, sinon le joueur croira
   // que le réglage n'a pas pris.
+  // ⚠ PAS de `SameLine` après un `SeparatorText` : son trait occupe toute la
+  // largeur restante, et le marqueur atterrit au bout de la ligne, détaché de son
+  // titre. Le (?) va donc après le DERNIER bouton radio, comme les cases
+  // au-dessus. Constaté en jeu.
   mui::SeparatorText(msgstr::Utf8Or(kMsgPriority, i18n::Tr("Priorité du jeu")));
-  ImGui::SameLine();
-  // Ce que le natif ne dit nulle part, et qui décide si le réglage sert à
-  // quelque chose : c'est du temps CPU, pas du GPU, et seulement au premier plan.
-  mui::HelpMarker(
-      i18n::Tr("Règle la part de temps PROCESSEUR que Windows accorde au jeu "
-               "face aux autres programmes.\n\n"
-               "Haute : le jeu passe avant le reste. Utile seulement si la "
-               "machine est déjà chargée ; sur un PC au repos, aucun gain.\n"
-               "Normale : à égalité avec les autres programmes. C'est le défaut.\n"
-               "Basse : le jeu ne tourne que quand rien d'autre ne réclame le "
-               "processeur — à réserver aux calculs de fond, il devient vite "
-               "saccadé.\n\n"
-               "Sans effet sur la carte graphique : des ralentissements dus au "
-               "GPU ne bougeront pas d'un cran.\n"
-               "Conservé d'une session à l'autre."));
 
   struct PriorityChoice {
     int value;
@@ -562,9 +551,23 @@ void GameSettings::DrawBasicTab() {
       if (tip && *tip) ImGui::SetTooltip("%s", tip);
     }
   }
-  ImGui::TextColored(kSecondaryText, "%s",
-                     i18n::Tr("Ne vaut que fenêtre active : en arrière-plan, le "
-                              "client se met de lui-même en priorité basse."));
+  // Ce que le natif ne dit nulle part, et qui décide si le réglage sert à
+  // quelque chose : c'est du temps CPU, pas du GPU, et seulement au premier plan.
+  ImGui::SameLine();
+  mui::HelpMarker(
+      i18n::Tr("Règle la part de temps PROCESSEUR que Windows accorde au jeu "
+               "face aux autres programmes.\n\n"
+               "Haute : le jeu passe avant le reste. Utile seulement si la "
+               "machine est déjà chargée ; sur un PC au repos, aucun gain.\n"
+               "Normale : à égalité avec les autres programmes. C'est le défaut.\n"
+               "Basse : le jeu ne tourne que quand rien d'autre ne réclame le "
+               "processeur — à réserver aux calculs de fond, il devient vite "
+               "saccadé.\n\n"
+               "Sans effet sur la carte graphique : des ralentissements dus au "
+               "GPU ne bougeront pas d'un cran.\n"
+               "Le réglage ne vaut que fenêtre active — en arrière-plan, le "
+               "client se met de lui-même en priorité basse.\n"
+               "Conservé d'une session à l'autre."));
 
   // ── Skin de l'interface ────────────────────────────────────────────────────
   mui::SeparatorText(msgstr::Utf8Or(kMsgSkin, i18n::Tr("Skin")));

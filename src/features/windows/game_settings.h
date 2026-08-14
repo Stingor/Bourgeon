@@ -79,8 +79,13 @@ class GameSettings : public Plugin {
   // Onglet supplémentaire, que le client n'a pas : les trois listes réunies.
   // C'est lui qui donne son sens à la recherche — on cherche un réglage sans
   // savoir dans quel onglet le client l'a rangé.
-  static constexpr int kTabAll   = 0;
-  static constexpr int kTabBasic = 4;  // ni EFFECT(1), ni CONTROL(2), ni ETC(3)
+  // 🔴 NÉGATIFS, et c'est une correction de bug. Ces deux-là sont NOS onglets, pas
+  // ceux du client : ils doivent être hors de la numérotation du Lua, qui n'est
+  // ni contiguë ni bornée (EFFECT=1, CONTROL=2, GRAPHIC=3, ETC=4 — un client plus
+  // récent peut en ajouter). `kTabBasic` valait 4 et est entré en collision avec
+  // `ETC` le jour où celui-ci a été lu correctement.
+  static constexpr int kTabAll   = -1;
+  static constexpr int kTabBasic = -2;
 
   // ── Settings PERSISTANTS (bourgeon_settings.yaml, via MoonlightUi) ──────────
   bool imgui_enabled_ = true;

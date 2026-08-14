@@ -39,13 +39,22 @@
 namespace gamesettings {
 
 // Les trois onglets pilotés par données, tels que le Lua les numérote (constantes
-// globales `EFFECT` / `CONTROL` / `ETC` poussées par le chargeur).
+// globales `EFFECT` / `CONTROL` / `ETC` poussées dans l'état Lua par le chargeur,
+// `0x0068E520` — ce sont des DOUBLES, lus à `0x00FD4420`, `0x0100A0A8`,
+// `0x01006BE8`).
+//
+// 🔴 **`ETC` VAUT 4, PAS 3.** La numérotation n'est pas contiguë : 3 est
+// `GRAPHIC`, un onglet qui n'a aucune ligne dans la table (sa page est câblée en
+// dur). Supposer la suite 1/2/3 rendait l'onglet « Divers » VIDE — ses 40 lignes
+// s'affichaient pourtant dans la vue « Tout », qui ne filtre rien. Constaté en
+// jeu ; les valeurs ci-dessous sont désormais LUES dans l'exe.
+//
 // ⚠ Il n'y a PAS de valeur pour l'onglet Basic : ses six groupes sont câblés en
 // dur dans la fenêtre native et ne passent pas par cette table.
 enum Tab {
   kTabEffect  = 1,
   kTabControl = 2,
-  kTabEtc     = 3,
+  kTabEtc     = 4,
 };
 
 // `ONOFF` / `EXE` côté Lua.
