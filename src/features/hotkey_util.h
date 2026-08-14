@@ -30,7 +30,15 @@ enum class Owner {
   kJump,          // touche de saut (PlayerJump)
   kZoneRecorder,  // touches de l'enregistreur de zone ; self_index = kZoneRecKey*
   kAction,        // action Bourgeon ; self_index = son index dans hotkey_actions
+  kClientCommand, // commande du CLIENT ; self_index = ClientSelf(cat, cmdIdx)
 };
+
+// Encodage du `self_index` d'une commande du client : elle a besoin de DEUX
+// nombres (catégorie et index de commande) là où la signature n'en passe qu'un.
+inline constexpr int kClientSelfScale = 1000;  // > tout index de commande (max ~70)
+inline constexpr int ClientSelf(int category, int command_index) {
+  return category * kClientSelfScale + command_index;
+}
 
 // L'enregistreur de zone porte DEUX touches distinctes, qui se contrôlent l'une
 // contre l'autre comme n'importe quelle autre paire : elles se passent en

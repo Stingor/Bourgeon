@@ -8,11 +8,15 @@
 #include <cstring>
 
 #include "bourgeon.h"
+#include "features/hotkey_actions.h"
+#include "features/hotkey_util.h"
+#include "features/moonlight_ui/moonlight_ui.h"
 #include "imgui.h"
 #include "ragnarok/msgstring.h"
 #include "ragnarok/uiwnd.h"
 #include "ui/ro_imgui.h"
 #include "utils/i18n.h"
+#include "utils/log_console.h"
 
 namespace {
 
@@ -64,10 +68,51 @@ const int kTabMsgIds[userhotkey::kCategoryCount] = {
 const char* kTabFallback[userhotkey::kCategoryCount] = {
     "Skill Bar", "Hotkey Bar 2", "Interface", "Macros"};
 
+// L'onglet des actions Bourgeon porte le nom du projet : ce n'est pas un mot à
+// traduire, et c'est ce qui le distingue au premier coup d'œil des quatre
+// onglets du client.
+constexpr const char* kBourgeonTabLabel = "Bourgeon";
+
 const char* TabLabel(int tab) {
+  if (tab == HotkeySettings::kTabBourgeon) return kBourgeonTabLabel;
   if (tab < 0 || tab >= userhotkey::kCategoryCount) return "";
   const char* s = msgstr::Utf8(kTabMsgIds[tab]);
   return (s && *s) ? s : kTabFallback[tab];
+}
+
+// Décompose un couple (touche, modificateur) du client en booléens de
+// modificateurs. Le client range le modificateur en `key_code2`… la plupart du
+// temps : les deux ordres existent dans UserKeys.lua, d'où la lecture des deux
+// champs plutôt que la confiance en une position.
+void SplitClientKeys(const userhotkey::Binding& binding, int* main_vk, bool* ctrl,
+                     bool* alt, bool* shift) {
+  auto is_modifier = [](int key_code) {
+    return key_code == VK_CONTROL || key_code == VK_SHIFT || key_code == VK_MENU;
+  };
+  int mod_vk = 0;
+  *main_vk = binding.key_code1;
+  if (is_modifier(binding.key_code1)) {
+    mod_vk = binding.key_code1;
+    *main_vk = binding.key_code2;
+  } else if (is_modifier(binding.key_code2)) {
+    mod_vk = binding.key_code2;
+  }
+  *ctrl  = (mod_vk == VK_CONTROL);
+  *alt   = (mod_vk == VK_MENU);
+  *shift = (mod_vk == VK_SHIFT);
+}
+
+// VK du modificateur d'un combo, 0 s'il n'y en a pas — la forme qu'attend le
+// client, qui n'en retient qu'UN.
+int ModifierVk(bool ctrl, bool alt, bool shift) {
+  if (ctrl)  return VK_CONTROL;
+  if (alt)   return VK_MENU;
+  if (shift) return VK_SHIFT;
+  return 0;
+}
+
+int ModifierCount(bool ctrl, bool alt, bool shift) {
+  return (ctrl ? 1 : 0) + (alt ? 1 : 0) + (shift ? 1 : 0);
 }
 
 // Recherche insensible à la casse, sur l'ASCII seulement — suffisant : ces deux
@@ -117,6 +162,10 @@ void HotkeySettings::OpenFromMenu() {
 
 void HotkeySettings::Close() {
   open_ = false;
+  // Une capture laissée en cours gèlerait les raccourcis de Bourgeon sur une
+  // fenêtre fermée… jusqu'au prochain PingCapture, qui n'aurait jamais lieu.
+  CancelCapture();
+  capture_error_[0] = '\0';
 }
 
 void HotkeySettings::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
@@ -144,6 +193,25 @@ void HotkeySettings::OnTick() {
     const bool on = (pending_battle_mode_ != 0);
     pending_battle_mode_ = -1;
     DriveBattleMode(on);
+    return;
+  }
+
+  // Écriture d'une commande du client, posée par la capture au rendu.
+  if (pending_write_.valid) {
+    const PendingWrite write = pending_write_;
+    pending_write_ = PendingWrite();
+    if (userhotkey::WriteBinding(write.category, write.command_index, write.key1,
+                                 write.key2, write.label)) {
+      // 🔴 Le fichier n'est PAS le seul destinataire : `UserHotkey_SaveToTable`
+      // (0x0059EEF0) rebâtit la charge `/userconfig/save` DEPUIS LE LUA à la
+      // sortie propre. Écrire par ce pont suffit donc à se retrouver dans la
+      // synchro par compte — aucun drapeau « modifié » à lever.
+      userhotkey::Save();
+    } else {
+      LogDiag("HotkeySettings: ecriture refusee (cat={} cmd={})", write.category,
+              write.command_index);
+    }
+    rows_dirty_ = true;
     return;
   }
 
@@ -181,19 +249,145 @@ void HotkeySettings::RefreshRows() {
   rows_.clear();
   rows_dirty_ = false;
 
-  const int first = (tab_ == kTabAll) ? 0 : tab_;
-  const int last  = (tab_ == kTabAll) ? userhotkey::kCategoryCount - 1 : tab_;
-
-  for (int tab = first; tab <= last; ++tab) {
-    const int category = userhotkey::CategoryForTab(tab);
-    const int count = userhotkey::RowCount(category);
-    for (int row = 0; row < count; ++row) {
-      Row entry;
-      entry.tab = tab;
-      if (userhotkey::ReadBinding(category, row, &entry.binding))
-        rows_.push_back(entry);
+  const bool all = (tab_ == kTabAll);
+  if (all || tab_ != kTabBourgeon) {
+    const int first = all ? 0 : tab_;
+    const int last  = all ? userhotkey::kCategoryCount - 1 : tab_;
+    for (int tab = first; tab <= last; ++tab) {
+      const int category = userhotkey::CategoryForTab(tab);
+      const int count = userhotkey::RowCount(category);
+      for (int row = 0; row < count; ++row) {
+        Row entry;
+        entry.tab = tab;
+        entry.category = category;
+        if (userhotkey::ReadBinding(category, row, &entry.binding))
+          rows_.push_back(entry);
+      }
     }
   }
+
+  if (!all && tab_ != kTabBourgeon) return;
+
+  // Les actions de Bourgeon, rendues dans la MÊME struct que les commandes du
+  // client : le libellé traduit prend la place du champ EXE, le libellé de combo
+  // celle du nom de touche. Le dessin et la recherche n'ont donc qu'un chemin.
+  for (int i = 0; i < hotkeys::ActionCount(); ++i) {
+    Row entry;
+    entry.tab = kTabBourgeon;
+    entry.action_index = i;
+    entry.binding.command_index = i;
+    std::snprintf(entry.binding.label, sizeof(entry.binding.label), "%s",
+                  i18n::Tr(hotkeys::ActionAt(i).label_fr));
+    const hotkeys::Binding& binding = hotkeys::BindingAt(i);
+    entry.binding.key_code1 = binding.vk;
+    entry.binding.key_code2 = ModifierVk(binding.ctrl, binding.alt, binding.shift);
+    entry.binding.assigned = (binding.vk != 0);
+    if (entry.binding.assigned) {
+      hotkeys::Label(binding.vk, binding.ctrl, binding.alt, binding.shift,
+                     entry.binding.key_name, sizeof(entry.binding.key_name));
+    }
+    rows_.push_back(entry);
+  }
+}
+
+// ── Capture ──────────────────────────────────────────────────────────────────
+
+bool HotkeySettings::IsCapturing(const Row& row) const {
+  if (!capturing_) return false;
+  if (row.action_index >= 0) return capture_action_ == row.action_index;
+  return capture_category_ == row.category &&
+         capture_command_ == row.binding.command_index;
+}
+
+void HotkeySettings::BeginCapture(const Row& row) {
+  capturing_ = true;
+  capture_error_[0] = '\0';
+  capture_action_   = row.action_index;
+  capture_category_ = (row.action_index >= 0) ? -1 : row.category;
+  capture_command_  = (row.action_index >= 0) ? -1 : row.binding.command_index;
+}
+
+void HotkeySettings::CancelCapture() {
+  capturing_ = false;
+  capture_action_   = -1;
+  capture_category_ = -1;
+  capture_command_  = -1;
+}
+
+bool HotkeySettings::RunCapture(const Row& row) {
+  // Gèle TOUS les raccourcis de Bourgeon le temps du choix : la touche pressée
+  // doit remapper, pas déclencher l'action qu'elle porte encore.
+  hotkeys::PingCapture();
+  // Et retient la pile Échap, sinon la touche d'annulation refermerait aussi la
+  // fenêtre (même piège que l'ouverture, docs §5.6 point 10).
+  ro::SuppressEscapeStack();
+
+  // 🔴 ÉCHAP N'EST JAMAIS AFFECTABLE, et c'est la première chose testée. Elle a
+  // déjà deux rôles qu'aucun raccourci ne doit pouvoir lui prendre : annuler la
+  // capture ici, et ouvrir le menu du jeu partout ailleurs. Le verrou tient à
+  // deux endroits — ce test, qui la consomme avant tout le reste, et
+  // `hotkeys::CaptureMainVk` qui ne rend que lettres, chiffres, F1-F12 et Espace.
+  if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+    CancelCapture();
+    return false;
+  }
+
+  const bool clear = ImGui::IsKeyPressed(ImGuiKey_Delete, false) ||
+                     ImGui::IsKeyPressed(ImGuiKey_Backspace, false);
+  int vkey = clear ? 0 : hotkeys::CaptureMainVk();
+  if (!clear && vkey == 0) return false;
+
+  ImGuiIO& io = ImGui::GetIO();
+  const bool ctrl = !clear && io.KeyCtrl;
+  const bool alt = !clear && io.KeyAlt;
+  const bool shift = !clear && io.KeyShift;
+
+  // ⚠ Le client ne retient qu'UN modificateur (`key2`) : lui en passer deux en
+  // perdrait un en silence, et la touche affectée ne serait pas celle affichée.
+  // Nos propres actions, elles, en acceptent autant qu'on veut.
+  if (!clear && row.action_index < 0 && ModifierCount(ctrl, alt, shift) > 1) {
+    std::snprintf(capture_error_, sizeof(capture_error_), "%s",
+                  i18n::Tr("Le jeu ne retient qu'un seul modificateur (Ctrl, Alt "
+                           "ou Maj) par raccourci."));
+    return false;
+  }
+
+  if (!clear) {
+    char what[96];
+    const hotkeys::Owner owner = (row.action_index >= 0) ? hotkeys::Owner::kAction
+                                                         : hotkeys::Owner::kClientCommand;
+    const int self_index = (row.action_index >= 0)
+                               ? row.action_index
+                               : hotkeys::ClientSelf(row.category, row.binding.command_index);
+    if (hotkeys::Conflict(vkey, ctrl, alt, shift, owner, self_index, what, sizeof(what))) {
+      std::snprintf(capture_error_, sizeof(capture_error_),
+                    i18n::Tr("Déjà utilisé par %s — choisis une autre touche."), what);
+      return false;
+    }
+  }
+
+  if (row.action_index >= 0) {
+    hotkeys::Binding binding;
+    binding.vk = vkey;
+    binding.ctrl = ctrl;
+    binding.alt = alt;
+    binding.shift = shift;
+    hotkeys::SetBinding(row.action_index, binding);
+    if (auto* ui = Bourgeon::Instance().moonlight_ui()) ui->SaveSettings();
+  } else {
+    // Différée au tick : ces deux ponts appellent le Lua du client.
+    pending_write_.valid = true;
+    pending_write_.category = row.category;
+    pending_write_.command_index = row.binding.command_index;
+    pending_write_.key1 = vkey;
+    pending_write_.key2 = ModifierVk(ctrl, alt, shift);
+    std::snprintf(pending_write_.label, sizeof(pending_write_.label), "%s",
+                  row.binding.label);
+  }
+
+  CancelCapture();
+  rows_dirty_ = true;
+  return true;
 }
 
 void HotkeySettings::DriveBattleMode(bool on) {
@@ -224,8 +418,11 @@ void HotkeySettings::DriveBattleMode(bool on) {
 }
 
 void HotkeySettings::OpenNativeForEditing() {
-  // Interim : le remappage reste au natif tant que les ponts Lua d'écriture ne
-  // sont pas RE'd. Appelé depuis OnRenderUI, donc on DIFFÈRE l'ouverture au tick.
+  // Le remappage se fait chez nous ; la native ne sert plus qu'au [Reset], qui
+  // relit les défauts du client (`GetOriginalHotKeyInfo`) et n'a pas d'équivalent
+  // de notre côté. Appelée depuis OnRenderUI, donc l'ouverture est DIFFÉRÉE au
+  // tick (feedback_no_native_cmd_during_imgui_frame).
+  CancelCapture();
   pending_open_native_ = true;
   Close();
 }
@@ -273,7 +470,7 @@ void HotkeySettings::OnRenderUI() {
   // liste — vue que le natif n'a pas, et qui prend tout son sens avec la
   // recherche : chercher une touche sans savoir dans quelle catégorie elle vit.
   // « Tout » en TÊTE, puis les quatre onglets du client dans leur ordre à eux.
-  const int tab_order[] = {kTabAll, 0, 1, 2, 3};
+  const int tab_order[] = {kTabAll, 0, 1, 2, 3, kTabBourgeon};
   if (ro::RoBeginTabBar("hotkey_tabs")) {
     for (int tab : tab_order) {
       // Identifiant d'onglet TECHNIQUE et stable : le libellé vient du client et
@@ -284,6 +481,10 @@ void HotkeySettings::OnRenderUI() {
       if (ImGui::BeginTabItem(tab_id)) {
         if (tab_ != tab) {
           tab_ = tab;
+          // Changer d'onglet en pleine capture laisserait une ligne invisible en
+          // attente d'une touche, et le premier appui la lui donnerait.
+          CancelCapture();
+          capture_error_[0] = '\0';
           RefreshRows();
         }
         ImGui::EndTabItem();
@@ -318,7 +519,7 @@ void HotkeySettings::OnRenderUI() {
         ImGui::CalcTextSize(msgstr::Utf8(kMsgUnspecified)).x +
         ImGui::GetFontSize() * 2.0f;
     if (all_mode) {
-      float tab_col_w = 0.0f;
+      float tab_col_w = ImGui::CalcTextSize(TabLabel(kTabBourgeon)).x;
       for (int tab = 0; tab < userhotkey::kCategoryCount; ++tab)
         tab_col_w = (std::max)(tab_col_w, ImGui::CalcTextSize(TabLabel(tab)).x);
       ImGui::TableSetupColumn(i18n::Tr("Onglet"), ImGuiTableColumnFlags_WidthFixed,
@@ -330,13 +531,18 @@ void HotkeySettings::OnRenderUI() {
     ImGui::TableSetupScrollFreeze(0, 1);
     ImGui::TableHeadersRow();
 
-    for (const Row& entry : rows_) {
+    // ⚠ La table est reconstruite dès qu'une écriture aboutit : on parcourt par
+    // INDEX et on sort de la boucle sitôt `rows_` invalidé, sinon la référence
+    // `entry` pendrait sur un vecteur réalloué.
+    for (int i = 0; i < static_cast<int>(rows_.size()); ++i) {
+      const Row& entry = rows_[i];
       const userhotkey::Binding& binding = entry.binding;
       if (!Contains(binding.label, filter_) &&
           !Contains(binding.key_name, filter_))
         continue;
       ++shown;
 
+      ImGui::PushID(i);
       ImGui::TableNextRow();
       int column = 0;
       if (all_mode) {
@@ -347,23 +553,48 @@ void HotkeySettings::OnRenderUI() {
       ImGui::TextUnformatted(binding.label);
 
       ImGui::TableSetColumnIndex(column);
-      if (binding.assigned) {
-        ImGui::TextUnformatted(binding.key_name);
+      bool wrote = false;
+      if (IsCapturing(entry)) {
+        ImGui::TextColored(ImVec4(0.65f, 0.30f, 0.10f, 1.0f), "%s",
+                           i18n::Tr("appuie sur une touche…"));
+        wrote = RunCapture(entry);
       } else {
-        // Le natif distingue les deux cas, et c'est une vraie information : un
-        // code de touche présent sans nom veut dire « touche que le client ne
-        // sait pas nommer », pas « aucune touche ».
-        const int msg_id =
-            (binding.key_code1 != 0) ? kMsgUnspecified : kMsgNotAssigned;
-        const char* text = msgstr::Utf8(msg_id);
-        ImGui::TextColored(kSecondaryText, "%s", (text && *text) ? text : "-");
+        // Cellule cliquable plutôt que bouton : toute la colonne est une cible,
+        // et la ligne garde l'aspect d'un tableau.
+        char cell[80];
+        if (binding.assigned) {
+          std::snprintf(cell, sizeof(cell), "%s", binding.key_name);
+        } else {
+          // Le natif distingue les deux cas, et c'est une vraie information : un
+          // code de touche présent sans nom veut dire « touche que le client ne
+          // sait pas nommer », pas « aucune touche ».
+          const int msg_id =
+              (binding.key_code1 != 0) ? kMsgUnspecified : kMsgNotAssigned;
+          const char* text = msgstr::Utf8(msg_id);
+          std::snprintf(cell, sizeof(cell), "%s", (text && *text) ? text : "-");
+        }
+        if (!binding.assigned) ImGui::PushStyleColor(ImGuiCol_Text, kSecondaryText);
+        if (ImGui::Selectable(cell, false, ImGuiSelectableFlags_AllowDoubleClick))
+          BeginCapture(entry);
+        if (!binding.assigned) ImGui::PopStyleColor();
+        if (ImGui::IsItemHovered()) {
+          ImGui::SetTooltip("%s",
+                            i18n::Tr("Clic : choisir une touche.  Pendant la "
+                                     "capture, Suppr efface et Échap annule."));
+        }
       }
+      ImGui::PopID();
+      if (wrote) break;  // `rows_` sera relu : ne pas continuer sur l'ancien
     }
     ImGui::EndTable();
   }
 
   // ── Pied ───────────────────────────────────────────────────────────────────
-  if (rows_.empty()) {
+  // Le refus de la dernière capture passe AVANT le décompte : c'est la seule
+  // réponse à une action du joueur, elle ne doit pas se lire en second.
+  if (capture_error_[0]) {
+    ImGui::TextColored(ImVec4(0.75f, 0.10f, 0.10f, 1.0f), "%s", capture_error_);
+  } else if (rows_.empty()) {
     ImGui::TextColored(kSecondaryText, "%s",
                        i18n::Tr("Aucun raccourci dans cet onglet."));
   } else if (shown == 0) {
@@ -394,12 +625,13 @@ void HotkeySettings::OnRenderUI() {
   }
 
   ImGui::SameLine();
-  if (ro::RoButton(i18n::Tr("Modifier les touches..."))) OpenNativeForEditing();
+  if (ro::RoButton(i18n::Tr("Fenêtre du jeu..."))) OpenNativeForEditing();
   if (ImGui::IsItemHovered()) {
     ImGui::SetTooltip("%s",
-                      i18n::Tr("Ouvre la fenêtre de raccourcis du jeu, la seule "
-                               "qui sache encore écrire les touches. Cette "
-                               "vue-ci se met à jour dès que tu la refermes."));
+                      i18n::Tr("Ouvre la fenêtre de raccourcis du client : elle "
+                               "seule sait remettre les touches par défaut "
+                               "(bouton Reset, puis OK). Cette vue-ci se met à "
+                               "jour dès que tu la refermes."));
   }
 
   ro::EndRoWindow();

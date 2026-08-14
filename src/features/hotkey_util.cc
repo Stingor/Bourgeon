@@ -159,11 +159,29 @@ bool Conflict(int vkey, bool ctrl, bool alt, bool shift, Owner self, int self_in
   // touche déjà prise par une commande du jeu, ce qui donnait deux actions sur
   // une frappe sans que rien ne l'annonce. Coût : une passe Lua sur ~200 lignes,
   // payée UNE fois, au moment où le joueur presse la touche à affecter.
+  //
+  // 🔴 UNE EXEMPTION, CELLE DU NATIF : les catégories 0 et 3 sont les deux PAGES
+  // de la même barre de raccourcis, permutées par une option — elles ont le droit
+  // de partager une touche, et `UIHotKeyWnd_ValidateKeyCombo` (0x008DC890) les
+  // saute explicitement l'une pour l'autre. La refuser ici rendrait impossible ce
+  // que la fenêtre du jeu autorise (docs/game_option_re.md §4.9).
+  const int self_category =
+      (self == Owner::kClientCommand) ? self_index / kClientSelfScale : -1;
+  const int self_command =
+      (self == Owner::kClientCommand) ? self_index % kClientSelfScale : -1;
+  auto is_skill_bar = [](int category) {
+    return category == userhotkey::kSkillBar1 || category == userhotkey::kSkillBar2;
+  };
+
   for (int category = 0; category < userhotkey::kCategoryCount; ++category) {
+    if (self_category >= 0 && category != self_category && is_skill_bar(self_category) &&
+        is_skill_bar(category))
+      continue;
     const int row_count = userhotkey::RowCount(category);
     for (int row = 0; row < row_count; ++row) {
       userhotkey::Binding binding;
       if (!userhotkey::ReadBinding(category, row, &binding) || !binding.assigned) continue;
+      if (category == self_category && binding.command_index == self_command) continue;
       auto is_modifier = [](int key_code) {
         return key_code == VK_CONTROL || key_code == VK_SHIFT || key_code == VK_MENU;
       };

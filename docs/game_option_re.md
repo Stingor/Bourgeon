@@ -871,6 +871,26 @@ du handler clavier et ouvre une modale bloquante. Un panneau ImGui tient déjà
 données, avec sa propre popup — en rejouant les deux règles ci-dessus (exemption
 0↔3, et effacement de l'ancienne affectation avant d'écrire la nouvelle).
 
+#### ✅ Écrire par `ChangeUserHotKey` SUFFIT à la synchro web (vérifié 2026-08-14)
+
+Question posée par le `++*(g_UserHotkeyMgr+8)` du bouton OK : faut-il lever un
+drapeau pour que le raccourci parte au serveur ? **Non.** `UserHotkey_SaveToTable`
+(`0x0059EEF0`, le sérialiseur de la charge `/userconfig/save`) commence par
+`UserHotkey_RebuildOverrideListFromLua` (`0x005D5150`), qui **vide puis reconstruit**
+la liste des surcharges en interrogeant le Lua ligne par ligne
+(`GetUserHotKeyInfo(cat+1, cmdIdx)`, fmt `"dd>ddss"`) et ne garde que celles dont le
+nom de touche est non vide. La charge est donc **rebâtie depuis le Lua à chaque
+sauvegarde** : ce que `ChangeUserHotKey` a écrit s'y retrouve, sans état
+intermédiaire à entretenir. (L'ordre de parcours y est celui des ONGLETS — 0, 3, 1,
+2 — d'où les clés `SkillBar_1Tab`, `SkillBar_2Tab`, `InterfaceTab`, `EmotionTab`.)
+
+⚠ **Un devoir caché, tout de même** : `CommitPendingBindings` appelle
+`UIWindowMgr_RefreshGameSettingsHotkeyLabels` (`0x00A4CCD0`) après chaque écriture
+**de la catégorie 1 (Interface) seulement** — elle rafraîchit les libellés de
+touches affichés par Game Settings (`FindWindow(10014)` puis `sub_9F0E20`). En
+interface moderne la native `0x271E` n'est jamais ouverte : c'est un no-op. À
+rejouer uniquement si l'on garde la fenêtre d'options native.
+
 ---
 
 ## 5. Blueprint : remplacement en ImGui
@@ -1110,11 +1130,14 @@ entre 2 et 3 boutons. Un joueur mort qui verrait « Character Select » et pas
   `OptionTbl.ID` et sa clé `CmdOnOffList` / `OptionInfoList` ;
 - comment la page-liste connaît **son** `Tab` (le ctor n'en prend pas) ;
 - le contenu de `OptionTbl` — nécessite d'extraire `GameSettingsUI.lub` du GRF
-  (cf. `reference_grf_act_spr_reference_impl` : GRFEditor/ActEditor d'abord) ;
-- le **contrôle de collision** entre deux commandes (`MsgString(1489)`, *« This key
-  is already registered to [[%s]] »*) : il n'est pas sur le chemin de
-  `UIHotKeyWnd_AssignKeyToSelectedRow` ; à trouver avant de porter le remappage,
-  sinon deux commandes pourront partager une touche sans avertissement.
+  (cf. `reference_grf_act_spr_reference_impl` : GRFEditor/ActEditor d'abord).
+
+✅ **Soldé** : le contrôle de collision (`MsgString(1489)`) est
+`UIHotKeyWnd_ValidateKeyCombo` `0x008DC890` — §4.9. Le remappage est porté :
+`HotkeySettings` écrit par `userhotkey::WriteBinding` + `Save`, contrôle la
+collision en C++ (`hotkeys::Conflict`, exemption 0↔3 comprise) et refuse au lieu
+de voler la touche. Ne reste au natif que son **[Reset]**, faute d'équivalent à
+`GetOriginalHotKeyInfo` de notre côté.
 
 ---
 
