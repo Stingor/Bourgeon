@@ -150,6 +150,12 @@ struct Entry {
 std::mutex g_mutex;
 std::map<uint32_t, Entry> g_recipes;
 
+// Les GID pour lesquels on a déjà signalé « chemin demandé, aucune recette ».
+// Le rendu repasse par le détour à chaque frame : sans ce garde, un corps noir
+// écrirait des milliers de lignes par seconde. Remis à zéro par `SetRecipe`,
+// pour qu'une PERTE ULTÉRIEURE soit de nouveau signalée.
+std::map<uint32_t, bool> g_miss_signale;
+
 // Ce que le NATIF avait choisi, par acteur : son chemin de palette et sa
 // couleur de vêtement. Séparés des recettes, car ils doivent survivre à un
 // ClearRecipe — c'est tout ce qui permet de rendre au joueur son apparence
@@ -384,15 +390,38 @@ void* __fastcall Hooked_FindCachedRes(void* mgr, void* edx, int type,
   if (type == kPaletteTypeIndex) {
     const uint32_t gid = GidFromPath(path);
     if (gid != 0) {
-      std::lock_guard<std::mutex> lock(g_mutex);
-      auto it = g_recipes.find(gid);
-      if (it != g_recipes.end() && it->second.block.size() == kPaletteResSize)
-        return it->second.block.data();
+      bool manque = false;
+      {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        auto it = g_recipes.find(gid);
+        if (it != g_recipes.end() && it->second.block.size() == kPaletteResSize)
+          return it->second.block.data();
+        manque = true;
+      }
       // Recette disparue entre l'écriture du chemin et le rendu : surtout PAS
       // nullptr — les appelants font `add eax, 0x510` sans tester, et 0x510
       // serait déréférencé au blit. On laisse le natif répondre : il ne
       // trouvera pas le fichier, mais c'est SON chemin d'erreur, pas un crash
       // que nous aurions fabriqué.
+      //
+      // 🔴 Et on le DIT. C'est ici, et nulle part ailleurs, que se voit le
+      // corps noir : notre chemin est demandé, personne ne répond, le natif
+      // cherche un fichier qui n'existe pas et rend une palette vide. Une
+      // palette vide EST un corps noir. Sans cette ligne, le defaut ne laisse
+      // aucune trace — l'acteur porte le bon chemin, les détours sont en place,
+      // et tout paraît normal (mesuré au débogueur le 2026-08-13).
+      if (manque) {
+        // Le rendu repasse ici à chaque frame : une ligne par PERTE, remise à
+        // zéro dès qu'une recette réapparaît pour ce GID (cf. SetRecipe).
+        bool dire = false;
+        {
+          std::lock_guard<std::mutex> lock(g_mutex);
+          if (!g_miss_signale[gid]) { g_miss_signale[gid] = true; dire = true; }
+        }
+        if (dire)
+          LogDiag("[palette] gid={} : chemin demandé mais AUCUNE recette — le "
+                  "natif va rendre une palette vide (corps noir)", gid);
+      }
     }
   }
   if (!g_orig_find) return nullptr;  // ne peut pas arriver : voir EnsureInstalled
@@ -560,6 +589,8 @@ bool SetRecipe(uint32_t gid, const uint8_t* base, const ro::PaletteRamp* ramps,
     if (!e.block.empty()) Retire(std::move(e.block));
     e.block = std::move(block);
     e.rgba.assign(teinte, teinte + 1024);
+    // Cet acteur a de nouveau une recette : une perte future doit être signalée.
+    g_miss_signale.erase(gid);
   }
 
   // 🔴 Poser le chemin TOUT DE SUITE, sans quoi rien ne changerait à l'écran.
@@ -773,6 +804,10 @@ int ReassertPaths() {
     }
   }
   return reposes;
+}
+
+bool ActorAlive(uint32_t gid) {
+  return gid != 0 && KnownActor(gid) != nullptr;
 }
 
 bool HasRecipe(uint32_t gid) {

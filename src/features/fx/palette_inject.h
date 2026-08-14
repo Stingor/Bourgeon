@@ -137,6 +137,13 @@ bool ActorBodySpritePath(uint32_t gid, char* out, size_t out_size);
 // ⚠ À appeler depuis le FIL DE RENDU : on écrit dans un acteur.
 int ReassertPaths();
 
+// L'acteur de ce GID existe-t-il encore ? Le pointeur mémorisé par le détour est
+// revalidé (GID relu, sous SEH), donc un acteur détruit rend false.
+//
+// 🔴 C'est la question à poser avant toute purge : « le monde a-t-il disparu ? »
+// ne se déduit PAS d'un compteur de temps. Voir `ForgetActor`.
+bool ActorAlive(uint32_t gid);
+
 // Cet acteur a-t-il une recette active ?
 bool HasRecipe(uint32_t gid);
 

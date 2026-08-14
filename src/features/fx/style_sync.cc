@@ -606,6 +606,27 @@ void StyleSync::ForgetPreviousCharacter() {
 void StyleSync::ForgetLocalActor() {
   const uint32_t gid = OwnGid();
   if (gid == 0) return;
+  // 🔴🔴 L'ACTEUR EXISTE-T-IL ENCORE ? Cette fonction n'est appelée que sur le
+  // chemin « hors du monde », et ce chemin se décide sur `IsGameActive()`, qui
+  // n'est qu'un battement de fraîcheur d'UNE SECONDE. Or un battement périmé ne
+  // dit pas « le joueur a quitté le monde » : il dit « aucune frame n'a été
+  // rendue depuis une seconde ». Une pause au débogueur, une longue mise en
+  // veille de la fenêtre, un gel quelconque suffisent.
+  //
+  // Sans cette garde, la première frame après la reprise passait par ici et
+  // oubliait la recette d'un acteur BIEN VIVANT. Comme `ForgetActor` ne touche
+  // pas à l'acteur — c'est sa raison d'être — celui-ci gardait notre chemin de
+  // palette, pour lequel plus personne ne répondait : le natif cherchait alors
+  // `palette\bourgeon\<gid>.pal`, ne le trouvait pas, et rendait une table vide.
+  // Une palette vide, c'est un CORPS ENTIÈREMENT NOIR — la tête, elle, ne bouge
+  // pas, sa palette étant un vrai fichier. Mesuré au débogueur le 2026-08-13 :
+  // chemin intact dans l'acteur, détours en place, et pourtant noir.
+  //
+  // ⚠ Et le vrai char-select reste couvert : l'acteur y est bel et bien
+  // détruit, et cette fonction est rappelée à CHAQUE frame passée hors du
+  // monde. Même si la mémoire libérée gardait un instant un GID plausible, les
+  // frames suivantes verront l'acteur disparu et la purge se fera.
+  if (fx::palette_inject::ActorAlive(gid)) return;
   if (!fx::palette_inject::HasRecipe(gid) && g_session_cid == 0) return;
   fx::palette_inject::ForgetActor(gid);
   g_remote.erase(gid);
