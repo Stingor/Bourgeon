@@ -83,6 +83,7 @@
 #include "utils/hooking/hook_manager.h"
 #include "features/staff_gate.h"  // IsStaff() — gate de la fenêtre de logs
 #include "utils/log_console.h"
+#include "ragnarok/msgstring_override.h"
 #include "utils/i18n.h"
 #include "utils/startup_settings.h"  // police de l'interface, lue avant le login
 
@@ -204,6 +205,13 @@ bool Bourgeon::Initialize() {
   // toujours en français, quel que soit le réglage — les deux écrans que voit
   // d'abord le joueur à qui la traduction s'adresse.
   i18n::LoadLanguageSetting();
+
+  // Et dans la foulée, la table de messages du CLIENT — ses 4360 textes, dont
+  // les 4300 que Bourgeon n'affiche pas lui-même mais que le joueur lit tout le
+  // temps. Le détour est posé ici, une fois, avant que le client ait la moindre
+  // occasion de demander un message : `msgoverride::Reload` est ensuite rejoué à
+  // chaque changement de langue. Cf. ragnarok/msgstring_override.h.
+  msgoverride::Reload();
 
   // La police de l'interface voyage avec elle, et pour la même raison : l'écran
   // de login la propose juste à côté du choix de la langue, et

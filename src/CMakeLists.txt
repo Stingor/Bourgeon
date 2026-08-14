@@ -286,6 +286,8 @@ set(BOURGEON_FILES
 	"ragnarok/item_db.h"
 	"ragnarok/msgstring.cc"
 	"ragnarok/msgstring.h"
+	"ragnarok/msgstring_override.cc"
+	"ragnarok/msgstring_override.h"
 	"ragnarok/pet.cc"
 	"ragnarok/pet.h"
 	"ragnarok/user_hotkey.cc"

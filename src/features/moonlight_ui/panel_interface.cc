@@ -17,6 +17,7 @@
 #include "ui/ro_imgui.h"
 #include "ui/ro_widgets.h"
 #include "ui/skin_panel.h"
+#include "ragnarok/msgstring_override.h"
 #include "utils/i18n.h"
 #include "utils/log_console.h"  // LogDiag (export du gabarit de traduction)
 
@@ -322,6 +323,11 @@ void MoonlightUi::DrawInterfacePanel() {
           if (!language.available) ImGui::BeginDisabled();
           if (ImGui::Selectable(language.label, selected) && !selected) {
             changed |= i18n::SetLanguage(language.code);
+            // La table de messages du CLIENT suit la même langue que notre
+            // interface. Sûr en pleine frame : le rechargement n'efface AUCUNE
+            // chaîne déjà rendue (elles vivent dans un stockage qu'on ne libère
+            // jamais), donc un libellé « en vol » reste valide.
+            msgoverride::Reload();
           }
           if (!language.available) ImGui::EndDisabled();
           if (selected) ImGui::SetItemDefaultFocus();

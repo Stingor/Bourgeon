@@ -28,6 +28,7 @@
 #include "utils/game_paths.h"
 #include "utils/startup_settings.h"
 #include "yaml-cpp/yaml.h"
+#include "ragnarok/msgstring_override.h"
 #include "utils/i18n.h"
 
 namespace {
@@ -458,8 +459,10 @@ void DrawLanguageAndFontPickers() {
       // ce qui invaliderait un pointeur obtenu avant le clic. C'est aussi
       // pourquoi ces combos sont dessinés EN DERNIER, après tout le reste de la
       // fenêtre : plus aucun libellé traduit n'est en vol quand il bascule.
-      if (ImGui::Selectable(language.label, selected) && !selected)
+      if (ImGui::Selectable(language.label, selected) && !selected) {
         i18n::SetLanguage(language.code);
+        msgoverride::Reload();  // la table du client suit, cf. panel_interface.cc
+      }
       if (!language.available) ImGui::EndDisabled();
       if (selected) ImGui::SetItemDefaultFocus();
     }
