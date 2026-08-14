@@ -238,6 +238,14 @@ set(BOURGEON_FILES
 	"ui/sprite_view.h"
 	"ui/mob_sprite.cc"
 	"ui/mob_sprite.h"
+	# Monstres 3D (Emperium, gardiens, drapeau, coffres) : lecture .gr2 via la
+	# granny2.dll du client, rendu logiciel, affichage comme un sprite animé.
+	"ui/gr2_model.cc"
+	"ui/gr2_model.h"
+	"ui/model_raster.cc"
+	"ui/model_raster.h"
+	"ui/mob_model.cc"
+	"ui/mob_model.h"
 	"ui/game_emotes.cc"
 	"ui/game_emotes.h"
 	"ui/emoji_set.cc"

@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "features/plugin.h"
+#include "ui/mob_model.h"
 #include "ui/mob_sprite.h"
 
 // ── MonsterInfoWindow ────────────────────────────────────────────────────────
@@ -235,6 +236,11 @@ class MonsterInfoWindow : public Plugin {
 
   // Ressources .spr/.act du monstre affiché (rechargées quand il change).
   ro::MobSpriteRes sprite_;
+
+  // Et son modèle 3D, quand il n'a justement PAS de sprite : l'Emperium, les
+  // gardiens de forteresse, le drapeau de guilde et les coffres au trésor sont
+  // des acteurs Granny. `sprite_.is_model` dit lequel des deux dessiner.
+  ro::MobModelRes model_;
 
   // ── Le sprite se manipule ──────────────────────────────────────────────────
   // Molette au-dessus = on tourne le monstre : le .act range ses actions en

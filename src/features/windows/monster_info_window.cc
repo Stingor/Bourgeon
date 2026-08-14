@@ -508,6 +508,10 @@ void MonsterInfoWindow::OnModeSwitch(ModeMgr::ModeType, const char*) {
   current_id_ = 0;
   sense_ = SenseSnapshot{};
   sprite_ = ro::MobSpriteRes{};
+  // 🔴 Le modèle 3D se libère EXPLICITEMENT : il tient une quarantaine de
+  // textures et un fichier Granny ouvert, là où `MobSpriteRes{}` ne fait que
+  // lâcher une poignée vers un cache qui, lui, sait vivre sans elle.
+  ro::FreeMobModel(&model_);
   poke_action_ = -1;
   poke_freeze_ = false;
   poke_ready_at_ = 0.0f;
@@ -953,8 +957,24 @@ void MonsterInfoWindow::DrawHeader(MobInfo& mob) {
   // gabarit, pas un défaut de cadrage.
   const ImVec2 s0(p0.x + shake, p0.y);
   const ImVec2 s1(p1.x + shake, p1.y);
-  const bool drawn = ro::DrawMobSprite(dl, sprite_, s0, s1, clock, action, ms,
-                                       /*allow_upscale=*/false);
+
+  bool drawn = false;
+  if (sprite_.is_model) {
+    // ── Acteur 3D ─────────────────────────────────────────────────────────────
+    // L'animation est PRÉ-RENDUE en images (ui/mob_model.h) : à partir d'ici le
+    // modèle se comporte exactement comme un sprite, y compris pour la rotation
+    // à la molette — sauf qu'elle est continue au lieu d'être limitée aux huit
+    // poses d'un .act. `sprite_dir_` reste la mémoire commune de l'orientation,
+    // pour qu'un aller-retour entre un monstre 2D et un 3D garde le même angle.
+    if (ro::LoadMobModel(sprite_.model, static_cast<int>(box.x),
+                         static_cast<int>(box.y), &model_)) {
+      ro::SetMobModelYaw(&model_, static_cast<float>(sprite_dir_) * 0.7853982f);
+      drawn = ro::DrawMobModel(dl, &model_, s0, s1, clock);
+    }
+  } else {
+    drawn = ro::DrawMobSprite(dl, sprite_, s0, s1, clock, action, ms,
+                              /*allow_upscale=*/false);
+  }
   // 🔴 Le placeholder ne dépend PAS de `drawn` : `DrawSprite` rend aussi false
   // quand l'image est simplement VIDE (aucun calque), et une animation de mort
   // se termine justement sur des images vides — le corps disparaît, c'est le
@@ -963,8 +983,13 @@ void MonsterInfoWindow::DrawHeader(MobInfo& mob) {
   if (!drawn && !have_sprite) {
     const ImVec2 c((p0.x + p1.x) * 0.5f, (p0.y + p1.y) * 0.5f);
     dl->AddCircleFilled(c, 18.0f, IM_COL32(120, 110, 100, 160), 16);
+    // 🔴 Deux échecs BIEN distincts : le monstre custom sans art, et l'acteur 3D
+    // (Emperium, gardiens, coffres…) dont le client rend un modèle Granny et
+    // pour qui aucun .spr n'a jamais existé. Écrire « pas de sprite » sur le
+    // second serait exact au mot près et faux sur le fond.
     dl->AddText(ImVec2(p0.x + 6.0f, p1.y - 18.0f), IM_COL32(200, 190, 170, 200),
-                i18n::Tr("pas de sprite"));
+                sprite_.is_model ? i18n::Tr("modèle 3D")
+                                 : i18n::Tr("pas de sprite"));
   }
 
   // ── Le cadre est une ZONE ACTIVE ──────────────────────────────────────────

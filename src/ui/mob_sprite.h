@@ -22,11 +22,26 @@ namespace ro {
 struct MobSpriteRes {
   int       class_id = -1;
   bool      failed   = false;
+  // 🔴 La classe est rendue par un MODÈLE 3D, pas par un sprite : elle n'a
+  // AUCUN .spr, et en chercher un est une erreur, pas un accident. `model`
+  // porte alors le nom du fichier tel que la table le donne, extension
+  // comprise (« Empelium90_0.gr2 »), à compléter en `data\model\3dmob\<model>`.
+  bool      is_model = false;
+  char      model[64] = {0};
   SpriteRes sprite;
 };
 
 // Charge (ou retrouve en cache) les ressources du monstre `class_id`.
 // Rend true quand le .spr et le .act sont exploitables.
+//
+// 🔴 false ne veut pas dire « pas d'art » : une poignée de classes (Emperium,
+// gardiens de forteresse, drapeau de guilde, coffres au trésor — 85 en tout,
+// pour 8 modèles distincts) sont des ACTEURS 3D. Le client le sait à
+// l'extension que lui rend `jobName.lub` (« Empelium90_0.gr2 » au lieu de
+// « Chocho ») et bifurque vers `model\3dmob\%s` — il n'existe pas de liste d'ids
+// à recopier, l'extension EST le marqueur. Ces classes-là ressortent avec
+// `is_model = true` : à l'appelant de dire « modèle 3D » plutôt que « pas de
+// sprite », qui serait un mensonge.
 bool LoadMobSprite(int class_id, MobSpriteRes* res);
 
 // Nombre d'images de l'action (0 = idle, orientation sud).

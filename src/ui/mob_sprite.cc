@@ -55,6 +55,21 @@ bool JobResName(int class_id, int sex, char* out, size_t out_size) {
   return ok;
 }
 
+// La table rend-elle un MODÈLE 3D plutôt qu'un sprite ?
+//
+// 🔴 C'est le client lui-même qui tranche ainsi, et pas sur une liste d'ids :
+// `jobName.lub` donne « Empelium90_0.gr2 » là où un monstre ordinaire donne
+// « Chocho », et la fonction d'animation Granny (0x0071F600) recolle ce nom au
+// gabarit `model\3dmob\%s` — noter le `%s` SANS extension : elle vient du nom.
+// Un `.spr` de ce nom n'existe nulle part, d'où le « pas de sprite » qu'on
+// affichait sur l'Emperium.
+bool IsModelResName(const char* name) {
+  const size_t n = name ? std::strlen(name) : 0;
+  // Comparaison insensible à la casse ASCII, et à elle seule : les autres noms
+  // de la table sont en CP949, où abaisser un octet abîmerait le coréen.
+  return n > 4 && _stricmp(name + n - 4, ".gr2") == 0;
+}
+
 // Chemin VFS complet SANS extension, ex. `data\sprite\몬스터\Chocho`.
 //
 // 🔴 `data\sprite\`, PAS `data\`. Le gabarit du client est relatif à la racine
@@ -64,12 +79,7 @@ bool JobResName(int class_id, int sex, char* out, size_t out_size) {
 // (0x00573340) ajoute « data\ ». On court-circuite les deux, donc on pose les
 // deux — ne mettre que « data\ » rendait « fichier introuvable » sur TOUS les
 // monstres.
-bool BasePathFor(int class_id, char* out, size_t out_size) {
-  char name[128] = {0};
-  // sex = -1 : le client le résout lui-même, et sa branche « monstre » sort
-  // avant d'en avoir besoin.
-  if (!JobResName(class_id, -1, name, sizeof(name))) return false;
-
+void BasePathFor(const char* name, char* out, size_t out_size) {
   char tail[256];
   // ⚠ `std::snprintf` et non `_snprintf_s` : le gabarit n'est pas un littéral
   // (il est lu dans le binaire du client), et la famille sécurisée déclenche
@@ -80,7 +90,6 @@ bool BasePathFor(int class_id, char* out, size_t out_size) {
   if (n > 4) tail[n - 4] = '\0';
 
   std::snprintf(out, out_size, "data\\sprite\\%s", tail);
-  return true;
 }
 
 }  // namespace
@@ -89,13 +98,28 @@ bool LoadMobSprite(int class_id, MobSpriteRes* res) {
   if (!res || class_id <= 0) return false;
   if (res->class_id == class_id) return res->sprite.res != nullptr;
   res->class_id = class_id;
-  res->sprite = SpriteRes{};
+  res->sprite   = SpriteRes{};
+  res->is_model = false;
+  res->model[0] = '\0';
 
-  char base[352];
-  if (!BasePathFor(class_id, base, sizeof(base))) {
+  char name[128] = {0};
+  // sex = -1 : le client le résout lui-même, et sa branche « monstre » sort
+  // avant d'en avoir besoin.
+  if (!JobResName(class_id, -1, name, sizeof(name))) {
     res->failed = true;
     return false;
   }
+  if (IsModelResName(name)) {
+    // Acteur 3D : on n'invente pas un chemin de sprite qui n'existera jamais.
+    // L'échec est franc, mais il est QUALIFIÉ — cf. `is_model`.
+    res->is_model = true;
+    lstrcpynA(res->model, name, static_cast<int>(sizeof(res->model)));
+    res->failed = true;
+    return false;
+  }
+
+  char base[352];
+  BasePathFor(name, base, sizeof(base));
   const bool ok = LoadSprite(base, &res->sprite);
   res->failed = !ok;
   return ok;
