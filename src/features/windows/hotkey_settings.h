@@ -188,6 +188,8 @@ class HotkeySettings : public Plugin {
   // Échap route « Sélection du personnage ». -1 = rien en attente.
   int pending_battle_mode_ = -1;
   void DriveBattleMode(bool on);
+  // Le retour au chat de `/bm`, que la commande 213 n'émet pas d'elle-même.
+  void SayBattleMode(bool on);
 
   // ── Réinitialisation aux touches du client ─────────────────────────────────
   // Le [Reset] du natif, rejoué par ses propres commandes : 363 met les défauts

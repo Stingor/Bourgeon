@@ -13,6 +13,7 @@
 #include "features/moonlight_ui/moonlight_ui.h"
 #include "imgui.h"
 #include "ragnarok/msgstring.h"
+#include "ragnarok/ui_window_mgr.h"  // UIM_PUSHINTOCHATHISTORY (retour de /bm)
 #include "ragnarok/uiwnd.h"
 #include "ui/ro_imgui.h"
 #include "utils/i18n.h"
@@ -42,6 +43,11 @@ constexpr int kMsgBattleMode   = 1775;  // MSI_CHATMODE_ONOFF      « Enable Bat
 // continue? » — le client a le texte mais n'affiche AUCUNE modale sur sa
 // commande 363. Nous, si : l'action efface tous les raccourcis du joueur.
 constexpr int kMsgResetConfirm = 1490;
+// Les deux lignes que `/bm` écrit au chat. La commande 213 de la fenêtre ne les
+// émet PAS — seul le chemin de la commande de chat le fait — alors que c'est le
+// seul retour visible d'une bascule dont l'effet, lui, ne se voit qu'en jouant.
+constexpr int kMsgBattleOn  = 785;  // MSI_BATTLE_ON  « …are Enabled. [/bm ON] »
+constexpr int kMsgBattleOff = 786;  // MSI_BATTLE_OFF « …are Disabled. [/bm OFF] »
 
 // ── Battle Mode ──────────────────────────────────────────────────────────────
 // g_ChangeChatMode : l'état du mode combat, un OCTET. Écrit par le message 213 de
@@ -508,6 +514,23 @@ void HotkeySettings::DriveBattleMode(bool on) {
   routing_ = false;
 
   if (uiwnd::SafeFindWindow(kHotkeyWndId)) uiwnd::SafeCloseWindow(kHotkeyWndId);
+
+  SayBattleMode(on);
+}
+
+// Reprend le retour au chat de la commande `/bm`, que la case ne donnait pas :
+// une bascule dont l'effet ne se voit qu'en jouant méritait d'être confirmée
+// quelque part. Libellé du CLIENT, en CP949 — c'est ce qu'attend le chat.
+//
+// UIM_PUSHINTOCHATHISTORY empile une ligne et n'ouvre aucune modale ; il est
+// d'ailleurs appelé ici depuis le TICK, donc hors de toute frame ImGui. Quand la
+// chatbox ImGui a remplacé la native, la ligne ne sort même pas de chez nous
+// (Bourgeon::RouteChatLine la reprend au passage).
+void HotkeySettings::SayBattleMode(bool on) {
+  const char* text = msgstr::Cp949(on ? kMsgBattleOn : kMsgBattleOff);
+  if (!text || !*text) return;
+  UIWindowMgr::SendMsg(UIMessage::UIM_PUSHINTOCHATHISTORY,
+                       reinterpret_cast<int>(text), 0, 0, 0);
 }
 
 void HotkeySettings::DriveResetDefaults() {
