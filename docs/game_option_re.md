@@ -837,6 +837,77 @@ La combo native ajoute d'abord `<Basic Skin>` (id 0) puis un item par entrée du
 vecteur ; l'id d'item vaut donc `index + 1`, ce que confirme `0x009ED040`
 (`item_id − 1` → `SetSkin`) et `0x009F09C0` (sélection = `index + 1`).
 
+### 3.10 ✅ Onglet Graphics — RE complet (2026-08-14)
+
+Le dernier onglet resté au natif. Six groupes, et la découverte qui commande tout
+le reste : **ils se séparent en deux familles qui n'ont pas le même prix.**
+
+| groupe | vtable | OnCreate | Refresh `[55]` | applique |
+|---|---|---|---|---|
+| `CUIGroupGraphicsAPI` | `0x01047740` | `0x009D9F70` | `0x009EFD80` | 🔁 redémarrage |
+| `CUIGroupGraphics` | `0x01047824` | `0x009D9020` | `0x009EF610` | 🔁 redémarrage |
+| `CUIGroupSpriteDetailLevel` | `0x01047908` | `0x009DED30` | `0x009F0BF0` | ⚡ à chaud |
+| `CUIGroupTextureDetailLevel` | `0x010479EC` | `0x009DF440` | `0x009F0C30` | ⚡ à chaud |
+| `CUIGroupFullscreen` | `0x01047AD0` | `0x009D8450` | `0x009F0850` | 🔁 redémarrage |
+| `CUIGroupTrilinear` | `0x01047BB4` | `0x009DFB50` | `0x009F0C70` | ⚡ à chaud |
+
+#### Le bloc de configuration, `0x01602610`
+
+Vérifié **en direct** sur le client en cours d'exécution (x32dbg), pas seulement
+lu au désassemblage — fenêtré, 1760×990×32, DX9, détails 2/2, trilinéaire actif.
+
+| adresse | nom | contenu |
+|---|---|---|
+| `0x01602610` | `g_cfg_FullscreenMode` | 0 = fenêtré |
+| `0x01602614` | `g_cfg_RenderWidth` | |
+| `0x01602618` | `g_cfg_RenderHeight` | |
+| `0x0160261C` | `g_cfg_BitsPerPixel` | |
+| `0x01602630` | `g_cfg_SpriteDetailLevel` | 0..2 |
+| `0x01602634` | `g_cfg_TextureDetailLevel` | 0..2 |
+| `0x01602638` | `g_cfg_Trilinear` | |
+| `0x01602640` | `g_cfg_RenderSystem` | **1 = DX7, 2 = DX9** |
+| `0x01602644` | `g_cfg_DX9AdapterGuid` | 16 o. |
+| `0x01602654` | `g_cfg_DX9DeviceName` | 32 o. |
+| `0x016025C8` / `0x016025D8` | `g_cfg_DX7DeviceGuid` / `DriverGuid` | 16 o. chacun |
+| `0x016025E8` | `g_cfg_DX7AdapterName` | 40 o. |
+| `0x0122B3D8` | `g_TextureDownscaleFactor` | dérivé : niveau 0→4, 1→2, 2→1 |
+
+#### 🔴 `[Apply]` a DEUX BRANCHES, et la première relance le client
+
+`GameSettingsUI_GraphicsPage_NeedsRestart` (`0x009ED6B0`) tranche : vrai dès que
+**l'API, l'adaptateur, la résolution ou le mode plein écran** ont changé. C'est
+lui qui choisit le texte de la modale — `MSI_GRAPHIC_SETTING_WARNING_RESTART`
+(0xC60) au lieu de `MSI_GRAPHIC_SETTING_APPLY` (0xC5F).
+
+`GameSettingsUI_GraphicsPage_Apply` (`0x009EDB30`) enchaîne alors :
+
+1. **branche structurelle** — écrit tout le bloc ci-dessus, pose
+   **`g_RestartRequested = 1`** (`0x01602A8C`), appelle
+   `CRagConnection_OnDisconnect`, puis `SendMsg(2)` au mode courant. Il n'y a
+   **aucun reset de device** : `WinMainCRTStartup_Run` relit `g_RestartRequested`
+   à la sortie de sa boucle et **ré-exécute le client**. Un panneau de
+   remplacement doit donc assumer la relance, pas espérer un reset ;
+2. **branche à chaud** — trois réglages seulement, applicables sans rien relancer :
+   `g_cfg_SpriteDetailLevel` (+ `0x01602B60`/`B64`), `g_cfg_TextureDetailLevel`
+   (→ `g_TextureDownscaleFactor`), et `g_cfg_Trilinear` (→ `SpriteTexFactory` puis
+   vidage du cache `sub_568B30(&g_SpriteTexFactoryCache)`).
+
+#### Énumérer : trois fonctions, trois dispositions d'enregistrement
+
+| fonction | adresse | enregistrement |
+|---|---|---|
+| `RenderSystem_EnumerateList(out)` | `0x00561260` | **28 o.** `{int id; std::string nom}` — liste **EN DUR** de deux entrées, aucune détection |
+| `Adapter_EnumerateList(out, api)` | `0x00560FB0` | **104 o.** `{int api; int index; string desc; 3×16 o. de GUID; string device}` |
+| `DisplayMode_EnumerateList(out, api, index)` | `0x00561550` | **36 o.** `{int w; int h; int bpp; std::string libellé}` |
+
+Plus `RenderConfig_GetCurrentAdapter` (`0x005610B0`) qui rebâtit l'enregistrement
+courant depuis les globales, `AdapterRecord_Equals` (`0x00560D60`) et
+`DisplayMode_Equals` (`0x00560E20`, **trois entiers seulement**).
+
+⚠ `Adapter_EnumerateDX9` (`0x00564730`) crée un `IDirect3D9Ex` le temps de
+l'énumération et le relâche : appeler l'énumérateur coûte, il ne se fait pas par
+frame.
+
 ---
 
 ## 4. Shortcut Settings — `UIHotKeyWnd` (id 156)
