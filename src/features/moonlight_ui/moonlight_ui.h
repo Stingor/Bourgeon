@@ -100,6 +100,12 @@ class MoonlightUi : public Plugin {
   void OnRenderUI() override;
   void OnTick() override;
 
+  // Montre la fenêtre de réglages, dépliée et au premier plan — le chemin qu'emprunte
+  // le menu Échap (« Moonlight Settings »). Sûre à appeler pendant le rendu d'une
+  // AUTRE fenêtre : elle ne fait que poser l'état que la frame suivante consomme.
+  void ShowWindow();
+  bool WindowVisible() const { return ui_visible_; }
+
   // Demande l'écriture de bourgeon_settings.yaml. Public so sibling plugins (e.g. the
   // status-icon panel) can persist their own config through the shared file.
   //
@@ -374,6 +380,16 @@ class MoonlightUi : public Plugin {
   // One of: trace, debug, info, warn, error, off.
   std::string log_level_ = "info";
 
+  // 🔴 AFFICHAGE de la fenêtre de réglages. Elle était jusqu'ici IMPOSSIBLE à
+  // fermer : on ne pouvait que la replier, et elle occupait donc un coin de
+  // l'écran en permanence. Elle se ferme désormais (croix ou bouton), et le menu
+  // Échap la rouvre — c'est lui qui remplace la « toujours là ».
+  //
+  // ⚠ VISIBLE par défaut, exprès : au premier lancement, rien n'aurait indiqué
+  // qu'un panneau de réglages existe ni où le chercher. Le joueur la ferme quand
+  // il l'a comprise ; ce choix-là, lui, est persisté.
+  bool ui_visible_       = true;
+
   // Persisted collapse state of the Moonlight-Destiny window.
   // Restored once per login via SetNextWindowCollapsed; saved on every change.
   bool ui_collapsed_     = false;
@@ -419,6 +435,9 @@ class MoonlightUi : public Plugin {
   void DrawCommandsPanel();
   void DrawFunPanels();
   void DrawAlootOverlay();
+  // Affichages pilotés par ce panneau mais dessinés HORS de lui : ils survivent à
+  // sa fermeture, et sont donc appelés sur les DEUX chemins de rendu.
+  void DrawDetachedOverlays();
   void DrawInterfacePanel();
   void InstallItemDescProbe();
 };

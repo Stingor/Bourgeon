@@ -993,7 +993,7 @@ struct MoonlightUiOwnSettings {
   using SType = moonlight_ui::SettingType;
 
   // En-tête du fichier : état de la fenêtre + journalisation + overlay alootid.
-  static const moonlight_ui::SettingDesc kHeader[5];
+  static const moonlight_ui::SettingDesc kHeader[6];
   // Réglages de chat portés par MoonlightUi (ils déménageront chez ChatTweaks à
   // l'étape C — c'est ce qui débloquera le déplacement du panneau « Chat »).
   static const moonlight_ui::SettingDesc kChat[5];
@@ -1003,7 +1003,12 @@ struct MoonlightUiOwnSettings {
   static const moonlight_ui::SettingDesc kGrid[4];
 };
 
-const moonlight_ui::SettingDesc MoonlightUiOwnSettings::kHeader[5] = {
+const moonlight_ui::SettingDesc MoonlightUiOwnSettings::kHeader[6] = {
+    // ⚠ Défaut VISIBLE : au premier lancement, rien n'indiquerait qu'un panneau de
+    // réglages existe. Le joueur le ferme quand il l'a compris, et c'est CE
+    // choix-là qui est persisté.
+    {"ui_visible", SType::kBool, MLUI_SELF(ui_visible_),
+     MLUI_LITERAL(bool, true)},
     {"ui_collapsed", SType::kBool, MLUI_SELF(ui_collapsed_),
      MLUI_LITERAL(bool, false)},
     {"log_level", SType::kString, MLUI_SELF(log_level_),
@@ -2061,11 +2066,9 @@ void MoonlightUi::OpenInterfaceSection(int section) {
   pending_header_key_ = "interface";
   // Fenêtre repliée : la déplier, sinon le saut serait invisible. Même chemin que
   // la restauration au login (pending_collapse_restore_ -> SetNextWindowCollapsed).
-  if (ui_collapsed_) {
-    ui_collapsed_ = false;
-    pending_collapse_restore_ = true;
-  }
-  ImGui::SetWindowFocus("Moonlight-Destiny");
+  // Fenêtre FERMÉE ou repliée : la rouvrir, sinon le saut serait invisible et le
+  // lien passerait pour mort.
+  ShowWindow();
 }
 
 // Le point d'entrée des LIENS de réglage : une clé, qui désigne indifféremment un
@@ -2083,11 +2086,9 @@ void MoonlightUi::OpenSettingTarget(const char* key) {
   // joueur un réglage qui n'y est pas.
   if (iface::DestLabel(key) == nullptr) return;
   pending_header_key_ = key;
-  if (ui_collapsed_) {
-    ui_collapsed_ = false;
-    pending_collapse_restore_ = true;
-  }
-  ImGui::SetWindowFocus("Moonlight-Destiny");
+  // Fenêtre FERMÉE ou repliée : la rouvrir, sinon le saut serait invisible et le
+  // lien passerait pour mort.
+  ShowWindow();
 }
 
 bool MoonlightUi::ConsumeHeaderJump(const char* key) {
@@ -2144,13 +2145,28 @@ void MoonlightUi::OnRenderUI() {
     ImGui::SetNextWindowCollapsed(true, ImGuiCond_Always);
   }
 
+  // 🔴 FENÊTRE FERMÉE : on sort AVANT elle, mais surtout PAS avant ses overlays.
+  // La barre alootid et celle des préréglages de chat sont dessinées plus bas et
+  // ne dépendent pas d'elle — un `return` sec ici les aurait éteintes avec elle,
+  // et le joueur aurait perdu deux affichages en fermant un panneau de réglages.
+  if (!ui_visible_) {
+    DrawDetachedOverlays();
+    return;
+  }
+
   // Default window style (rounded corners, thin border, rounded sliders/knobs).
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_GrabRounding, 6.0f);
   // Skin RO (toggleable : BeginRoWindow retombe sur ImGui::Begin si skin off).
-  ro::BeginRoWindow("Moonlight-Destiny");
+  // La croix ferme la fenêtre — le menu Échap est là pour la rouvrir.
+  bool keep_open = true;
+  ro::BeginRoWindow("Moonlight-Destiny", &keep_open);
+  if (!keep_open) {
+    ui_visible_ = false;
+    SaveSettings();
+  }
 
   const bool is_collapsed = ImGui::IsWindowCollapsed();
   if (is_collapsed != ui_collapsed_) {
@@ -2266,10 +2282,32 @@ void MoonlightUi::OnRenderUI() {
 
     // ── Commands Settings ────────────────────────────────────────────────────
     DrawCommandsPanel();
+
+    // Fermer, en pied de fenêtre : la croix de la barre de titre fait la même
+    // chose, mais elle est petite et rien ne dit qu'elle est là. Le menu Échap
+    // rouvre la fenêtre — c'est écrit dans l'infobulle, parce qu'une fermeture
+    // sans retour connu se refuse d'instinct.
+    ImGui::Separator();
+    if (ro::RoButton(i18n::Tr("Fermer"))) {
+      ui_visible_ = false;
+      SaveSettings();
+    }
+    if (ImGui::IsItemHovered()) {
+      ImGui::SetTooltip("%s",
+                        i18n::Tr("Ferme ce panneau. Pour le rouvrir : touche "
+                                 "Échap, puis « Moonlight Settings »."));
+    }
   }
   ro::EndRoWindow();
   ImGui::PopStyleVar(4);
 
+  DrawDetachedOverlays();
+}
+
+// Les affichages qui ne vivent PAS dans la fenêtre de réglages, seulement pilotés
+// par elle. Ils survivent donc à sa fermeture — d'où cette fonction, appelée sur
+// les deux chemins plutôt que recopiée sur l'un d'eux.
+void MoonlightUi::DrawDetachedOverlays() {
   DrawAlootOverlay();
 
   // Barre flottante de préréglages du chat principal : elle appartient à
@@ -2279,4 +2317,18 @@ void MoonlightUi::OnRenderUI() {
     if (auto* chat_tweaks = Bourgeon::Instance().chat_tweaks())
       if (chat_tweaks->DrawPresetBar()) SaveSettings();
   }
+}
+
+void MoonlightUi::ShowWindow() {
+  if (!ui_visible_) {
+    ui_visible_ = true;
+    SaveSettings();
+  }
+  // Repliée, elle réapparaîtrait en simple barre de titre : le joueur croirait
+  // que le bouton n'a rien fait.
+  if (ui_collapsed_) {
+    ui_collapsed_ = false;
+    pending_collapse_restore_ = true;
+  }
+  ImGui::SetWindowFocus("Moonlight-Destiny");
 }

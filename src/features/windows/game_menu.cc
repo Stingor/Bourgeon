@@ -1,6 +1,7 @@
 #include "features/windows/game_menu.h"
 
-#include "features/windows/chat_window.h"  // QueueCommand (@load)
+#include "features/moonlight_ui/moonlight_ui.h"  // ShowWindow (Moonlight Settings)
+#include "features/windows/chat_window.h"        // QueueCommand (@load)
 #include "features/windows/hotkey_settings.h"
 
 #include <Windows.h>
@@ -353,6 +354,9 @@ void GameMenu::OnRenderUI() {
   // « mon » les distingue à la lecture, et ils ne s'affichent jamais ensemble.
   const char* label_load        = i18n::Tr("Retour à mon point de sauvegarde");
   const char* label_macros      = i18n::Tr("Ouvrir les macros");
+  // Nom du projet, donc pas traduit — c'est ce que le joueur voit sur la fenêtre
+  // qu'il va rouvrir, et deux noms pour une même chose se cherchent longtemps.
+  const char* label_moonlight   = "Moonlight Settings";
 
   // Largeur MESURÉE sur le plus long libellé, jamais en dur : la police ET la
   // langue sont des réglages (feedback_ui_width_measured_not_hardcoded), et une
@@ -362,7 +366,7 @@ void GameMenu::OnRenderUI() {
                                              label_shortcuts, label_exit,
                                              label_return, label_savepoint,
                                              label_resurrect, label_load,
-                                             label_macros});
+                                             label_macros, label_moonlight});
   ImGui::SetNextWindowSize(
       ImVec2(button_w + ImGui::GetStyle().WindowPadding.x * 2.0f, 0.0f),
       ImGuiCond_Always);
@@ -432,6 +436,18 @@ void GameMenu::OnRenderUI() {
     // s'atteignent qu'au raccourci (Alt+M par défaut). Un joueur qui l'a remappé,
     // ou qui ne l'a jamais su, n'y accédait donc plus du tout.
     if (ro::RoButton(label_macros, button_w)) pending_ = Action::kOpenMacros;
+
+    // 🔴 LE CHEMIN DE RETOUR DU PANNEAU DE BOURGEON. Il est fermable depuis peu ;
+    // sans ce bouton, le fermer serait sans retour — et un panneau qu'on ne sait
+    // pas rouvrir, personne ne le ferme. Sa place est ici : le menu Échap est le
+    // seul écran que tout le monde sait atteindre.
+    // Pas d'action différée, rien de natif là-dedans : `ShowWindow` ne fait que
+    // poser l'état que la frame suivante consomme.
+    if (ro::RoButton(label_moonlight, button_w)) {
+      Close();
+      if (auto* ui = Bourgeon::Instance().moonlight_ui()) ui->ShowWindow();
+    }
+
     if (ro::RoButton(label_exit, button_w)) pending_ = Action::kExitToWindows;
     if (ro::RoButton(label_return, button_w)) Close();
   } else {
