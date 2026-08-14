@@ -182,4 +182,13 @@ class HotkeySettings : public Plugin {
   // Échap route « Sélection du personnage ». -1 = rien en attente.
   int pending_battle_mode_ = -1;
   void DriveBattleMode(bool on);
+
+  // ── Réinitialisation aux touches du client ─────────────────────────────────
+  // Le [Reset] du natif, rejoué par ses propres commandes : 363 met les défauts
+  // en attente, 184 les commet. Différé au tick pour la même raison que la
+  // bascule ci-dessus, et confirmé d'abord — il efface TOUS les raccourcis du
+  // joueur, et le client, lui, ne demande rien.
+  bool confirm_reset_ = false;
+  bool pending_reset_ = false;
+  void DriveResetDefaults();
 };

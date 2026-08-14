@@ -2783,3 +2783,8 @@
 "Le jeu ne retient qu'un seul modificateur (Ctrl, Alt ou Maj) par raccourci.": "The game only keeps one modifier (Ctrl, Alt or Shift) per shortcut."
 "Ouvre la fenêtre de raccourcis du client : elle seule sait remettre les touches par défaut (bouton Reset, puis OK). Cette vue-ci se met à jour dès que tu la refermes.": "Opens the client's own shortcut window: only it can restore the default keys (Reset button, then OK). This view refreshes as soon as you close it."
 "le déplacement au clavier (ZQSD)": "keyboard movement (WASD)"
+"Confirmation###bourgeon_hotkey_reset": "Confirmation###bourgeon_hotkey_reset"
+"Les raccourcis enregistrés vont être réinitialisés. Continuer ?": "Stored shortcut keys will be reset. Continue?"
+"Ouvre la fenêtre de raccourcis du client, telle quelle. Cette vue-ci se met à jour dès que tu la refermes.": "Opens the client's own shortcut window, as it is. This view refreshes as soon as you close it."
+"Réinitialiser...": "Reset..."
+"Remet TOUTES les commandes du jeu aux touches par défaut du client. Les actions de Bourgeon ne sont pas touchées.": "Puts ALL the game commands back to the client's default keys. Bourgeon actions are left alone."

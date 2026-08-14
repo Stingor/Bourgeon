@@ -38,16 +38,30 @@ constexpr int kMsgNotAssigned  = 1518;  // MSI_HOTKEY_NOTHING      « Not Assign
 constexpr int kMsgUnspecified  = 1700;  // MSI_HOTKEY_UNKOWN       « Unspecified value »
 constexpr int kMsgWindowTitle  = 1494;  // MSI_HOTKEYWND_TITLE     « Shortcut Settings »
 constexpr int kMsgBattleMode   = 1775;  // MSI_CHATMODE_ONOFF      « Enable Battle Mode »
+// « Stored shortcut key combination will be initialized. Do you want to
+// continue? » — le client a le texte mais n'affiche AUCUNE modale sur sa
+// commande 363. Nous, si : l'action efface tous les raccourcis du joueur.
+constexpr int kMsgResetConfirm = 1490;
 
 // ── Battle Mode ──────────────────────────────────────────────────────────────
 // g_ChangeChatMode : l'état du mode combat, un OCTET. Écrit par le message 213 de
 // UIHotKeyWnd, lu par la fenêtre de chat.
 constexpr uintptr_t kChangeChatModeAddr = 0x0131f50e;
 
-// Message natif de la bascule, et l'emplacement du bouton bascule dans la fenêtre.
-// Le handler REFUSE le message si son premier argument n'est pas ce bouton-là
+// 🔴 213 est une COMMANDE, pas un message. `UIHotKeyWnd_OnMsg` (0x008FB130)
+// n'entre dans son switch que si le message vaut **6** (= clic sur un bouton) ;
+// 213 y est la valeur du paramètre suivant, au même titre que 184 (OK) ou 185
+// (cancel). Envoyer 213 EN MESSAGE tombe dans `UIWindow_OnMsg_Default`, qui ne
+// fait rien et ne se plaint pas — la case se dessinait donc, sans jamais agir.
+constexpr int kMsgButtonClick      = 6;
+constexpr int kCmdToggleBattleMode = 213;
+// Les deux commandes du [Reset] natif. Il en faut DEUX : 363 ne fait que METTRE
+// les défauts en attente dans les quatre maps d'édition, 184 (OK) est ce qui les
+// commet — et referme la fenêtre au passage.
+constexpr int kCmdStageDefaults    = 363;
+constexpr int kCmdCommitAndClose   = 184;
+// Le handler REFUSE la commande si son premier argument n'est pas ce bouton-là
 // (`if (param_1 != *(this + 264)) return 0;`) — d'où la lecture de +0x108.
-constexpr int kMsgToggleBattleMode = 213;
 constexpr int kOffToggleButton     = 0x108;
 
 bool BattleModeEnabled() {
@@ -193,6 +207,12 @@ void HotkeySettings::OnTick() {
     const bool on = (pending_battle_mode_ != 0);
     pending_battle_mode_ = -1;
     DriveBattleMode(on);
+    return;
+  }
+
+  if (pending_reset_) {
+    pending_reset_ = false;
+    DriveResetDefaults();
     return;
   }
 
@@ -402,12 +422,12 @@ void HotkeySettings::DriveBattleMode(bool on) {
   if (win) {
     __try {
       uiwnd::SetVisible(win, false);
-      // ⚠ Le handler REFUSE le message si son premier argument n'est pas le bouton
-      // bascule de la fenêtre : on le lui repasse tel quel.
+      // ⚠ Le handler REFUSE la commande si son premier argument n'est pas le
+      // bouton bascule de la fenêtre : on le lui repasse tel quel.
       void* toggle = *reinterpret_cast<void**>(
           reinterpret_cast<uint8_t*>(win) + kOffToggleButton);
-      uiwnd::OnMsg(win, kMsgToggleBattleMode, /*p2=*/0, /*p3=*/on ? 1 : 0,
-                   /*p4=*/0, /*p5=*/0,
+      uiwnd::OnMsg(win, kMsgButtonClick, /*p2=*/kCmdToggleBattleMode,
+                   /*p3=*/on ? 1 : 0, /*p4=*/0, /*p5=*/0,
                    /*arg0=*/static_cast<int>(reinterpret_cast<uintptr_t>(toggle)));
     } __except (EXCEPTION_EXECUTE_HANDLER) {
     }
@@ -415,6 +435,33 @@ void HotkeySettings::DriveBattleMode(bool on) {
   routing_ = false;
 
   if (uiwnd::SafeFindWindow(kHotkeyWndId)) uiwnd::SafeCloseWindow(kHotkeyWndId);
+}
+
+void HotkeySettings::DriveResetDefaults() {
+  // Même recette que le Battle Mode : la native ne vit que le temps de deux
+  // commandes, HORS frame ImGui, et c'est elle qui fait tout le travail.
+  //
+  // 🔴 DEUX COMMANDES, PAS UNE. `StageDefaultBindings` (363) ne fait que remplir
+  // les maps d'édition avec ce que rend le Lua `GetOriginalHotKeyInfo` ; sans le
+  // OK (184) qui suit, rien n'est écrit et tout est jeté à la fermeture. C'est
+  // exactement le piège documenté du bouton Reset natif.
+  routing_ = true;
+  void* win = uiwnd::MakeWindow(kHotkeyWndId);
+  if (win) {
+    __try {
+      uiwnd::SetVisible(win, false);
+      uiwnd::OnMsg(win, kMsgButtonClick, kCmdStageDefaults);
+      // ⚠ 184 commet PUIS referme la fenêtre lui-même
+      // (`UIWindowMgr_SaveRectAndCloseWindow`) : `win` est mort après cet appel,
+      // ne plus y toucher.
+      uiwnd::OnMsg(win, kMsgButtonClick, kCmdCommitAndClose);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
+  }
+  routing_ = false;
+
+  if (uiwnd::SafeFindWindow(kHotkeyWndId)) uiwnd::SafeCloseWindow(kHotkeyWndId);
+  rows_dirty_ = true;
 }
 
 void HotkeySettings::OpenNativeForEditing() {
@@ -625,13 +672,48 @@ void HotkeySettings::OnRenderUI() {
   }
 
   ImGui::SameLine();
+  if (ro::RoButton(i18n::Tr("Réinitialiser..."))) confirm_reset_ = true;
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("%s",
+                      i18n::Tr("Remet TOUTES les commandes du jeu aux touches "
+                               "par défaut du client. Les actions de Bourgeon "
+                               "ne sont pas touchées."));
+  }
+
+  ImGui::SameLine();
   if (ro::RoButton(i18n::Tr("Fenêtre du jeu..."))) OpenNativeForEditing();
   if (ImGui::IsItemHovered()) {
     ImGui::SetTooltip("%s",
-                      i18n::Tr("Ouvre la fenêtre de raccourcis du client : elle "
-                               "seule sait remettre les touches par défaut "
-                               "(bouton Reset, puis OK). Cette vue-ci se met à "
-                               "jour dès que tu la refermes."));
+                      i18n::Tr("Ouvre la fenêtre de raccourcis du client, telle "
+                               "quelle. Cette vue-ci se met à jour dès que tu la "
+                               "refermes."));
+  }
+
+  // ⚠ UNE SEULE chaîne pour l'ouverture ET pour le Begin : ImGui apparie les
+  // popups par l'identifiant qui suit `###`, et l'échec est SILENCIEUX.
+  const char* kResetPopup = i18n::Tr("Confirmation###bourgeon_hotkey_reset");
+  if (confirm_reset_) {
+    ImGui::OpenPopup(kResetPopup);
+    confirm_reset_ = false;
+  }
+  if (ro::BeginRoPopupModal(kResetPopup)) {
+    // Sinon un Échap fermerait À LA FOIS la confirmation et la fenêtre derrière.
+    ro::SuppressEscapeStack();
+    const char* question = msgstr::Utf8(kMsgResetConfirm);
+    if (!question || !*question) {
+      question = i18n::Tr("Les raccourcis enregistrés vont être réinitialisés. "
+                          "Continuer ?");
+    }
+    ImGui::TextUnformatted(question);
+    ImGui::Spacing();
+    const float ok_w = ro::MaxButtonWidth({i18n::Tr("OK"), i18n::Tr("Annuler")});
+    if (ro::RoButton(i18n::Tr("OK"), ok_w)) {
+      pending_reset_ = true;
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::SameLine();
+    if (ro::RoButton(i18n::Tr("Annuler"), ok_w)) ImGui::CloseCurrentPopup();
+    ro::EndRoPopupModal();
   }
 
   ro::EndRoWindow();

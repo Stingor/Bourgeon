@@ -2739,3 +2739,8 @@
 "Le jeu ne retient qu'un seul modificateur (Ctrl, Alt ou Maj) par raccourci.": "El juego solo admite un modificador (Ctrl, Alt o Mayús) por atajo."
 "Ouvre la fenêtre de raccourcis du client : elle seule sait remettre les touches par défaut (bouton Reset, puis OK). Cette vue-ci se met à jour dès que tu la refermes.": "Abre la ventana de atajos del cliente: solo ella sabe restablecer las teclas por defecto (botón Reset, luego OK). Esta vista se actualiza en cuanto la cierras."
 "le déplacement au clavier (ZQSD)": "el movimiento con teclado (WASD)"
+"Confirmation###bourgeon_hotkey_reset": "Confirmación###bourgeon_hotkey_reset"
+"Les raccourcis enregistrés vont être réinitialisés. Continuer ?": "Los atajos guardados se van a reiniciar. ¿Continuar?"
+"Ouvre la fenêtre de raccourcis du client, telle quelle. Cette vue-ci se met à jour dès que tu la refermes.": "Abre la ventana de atajos del cliente, tal cual. Esta vista se actualiza en cuanto la cierras."
+"Réinitialiser...": "Reiniciar..."
+"Remet TOUTES les commandes du jeu aux touches par défaut du client. Les actions de Bourgeon ne sont pas touchées.": "Devuelve TODOS los comandos del juego a las teclas por defecto del cliente. Las acciones de Bourgeon no se tocan."
