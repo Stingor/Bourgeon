@@ -213,7 +213,32 @@ bool ParseLine(const std::string& line, std::string* key, std::string* value) {
   return !key->empty();
 }
 
+// Le catalogue est-il encore à lire ? Cf. `LoadCatalogNow` et `Reload`.
+bool g_pending = false;
+bool g_loading = false;
+
+void LoadCatalogNow();
+
 const char* __cdecl GetByIdHook(unsigned int id) {
+  // 🔴 LE CHARGEMENT SE FAIT ICI, AU PREMIER MESSAGE DEMANDÉ — jamais à
+  // l'initialisation de Bourgeon.
+  //
+  // Bug payé le 2026-08-14 : lire la table depuis `Bourgeon::Initialize` faisait
+  // MOURIR le client au lancement, sans une ligne de journal après « Bourgeon
+  // 0.1.0 ». La cause est un problème d'ordre, pas de code : notre DLL est
+  // chargée en proxy de DirectDraw, donc `Initialize` tourne AVANT que le client
+  // ait monté ses archives — et on y appelait son gestionnaire de fichiers.
+  //
+  // Ce point-ci est la garantie qu'on cherchait : si le client réclame un
+  // message, c'est que sa propre table est chargée, donc que son VFS est prêt.
+  // `g_loading` couvre la réentrance — la validation des formats rappelle le
+  // trampoline, qui ne repasse pas par ce hook, mais un handler tiers le pourrait.
+  if (g_pending && !g_loading) {
+    g_loading = true;
+    LoadCatalogNow();
+    g_loading = false;
+    g_pending = false;
+  }
   const char* ours = Lookup(static_cast<int>(id));
   if (ours) return ours;
   return g_orig_get_by_id ? g_orig_get_by_id(id) : "";
@@ -229,19 +254,10 @@ void InstallHook() {
   g_stats.hooked = (g_orig_get_by_id != nullptr);
 }
 
-}  // namespace
-
-const char* Lookup(int id) {
-  const auto it = g_by_id.find(id);
-  return (it == g_by_id.end()) ? nullptr : it->second;
-}
-
-void Reload() {
-  // 🔴 Le détour d'ABORD, et une seule fois. Il doit rester posé même sans
-  // catalogue : la langue peut changer en cours de partie, et reposer un hook sur
-  // une fonction déjà détournée par nous-mêmes enchaînerait deux trampolines.
-  InstallHook();
-
+// Le vrai travail : lire le csv du client et le catalogue de la langue, puis
+// construire la table `id -> texte`. ⚠ N'est JAMAIS appelée depuis
+// l'initialisation de Bourgeon — voir le commentaire de `GetByIdHook`.
+void LoadCatalogNow() {
   g_by_id.clear();
   g_stats.entries = 0;
   g_stats.rejected = 0;
@@ -292,6 +308,35 @@ void Reload() {
 
   LogInfo("[msgstring] {} : {} traduction(s) active(s), {} refusée(s) sur {} entrées",
           g_stats.language, g_stats.entries, g_stats.rejected, g_stats.table);
+}
+
+}  // namespace
+
+const char* Lookup(int id) {
+  const auto it = g_by_id.find(id);
+  return (it == g_by_id.end()) ? nullptr : it->second;
+}
+
+void Reload() {
+  // 🔴 CE QUI SE PASSE ICI DOIT ÊTRE INOFFENSIF À TOUT MOMENT. `Reload` est
+  // appelée depuis `Bourgeon::Initialize`, c'est-à-dire depuis le proxy
+  // DirectDraw, AVANT que le client ait fini de se mettre en place. On se
+  // contente donc de poser le détour et de lever un drapeau : la lecture du csv
+  // et du catalogue attend le premier message demandé par le client
+  // (cf. `GetByIdHook`), seul instant où son VFS est garanti prêt.
+  //
+  // Le détour est posé UNE fois. La langue peut changer en cours de partie, et
+  // reposer un hook sur une fonction que nous détournons déjà enchaînerait deux
+  // trampolines.
+  InstallHook();
+
+  // Rechargement demandé : on repart d'une table vide, et le prochain message
+  // relira tout. Les chaînes déjà rendues au client, elles, ne sont pas libérées
+  // (cf. `g_storage`) — il peut encore en tenir des pointeurs.
+  g_by_id.clear();
+  g_stats.entries = 0;
+  g_stats.rejected = 0;
+  g_pending = true;
 }
 
 Stats Current() { return g_stats; }
