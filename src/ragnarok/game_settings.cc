@@ -213,10 +213,46 @@ bool At(int index, Option* out) {
 
 bool IsOn(int id) { return RawFlag(id) ^ IsInverted(id); }
 
+bool InTable(int id) {
+  const int count = Count();
+  for (int i = 0; i < count; ++i) {
+    const uint8_t* rec = RecordAt(i);
+    if (!rec) continue;
+    __try {
+      if (*reinterpret_cast<const int*>(rec + kRecIdOffset) == id) return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+  }
+  return false;
+}
+
 void SetOn(int id, bool on) {
   void* mgr = Mgr();
   if (!mgr) return;
   const char internal = static_cast<char>((on ^ IsInverted(id)) ? 1 : 0);
+
+  // 🔴 DEUX CHEMINS, ET LE MAUVAIS NE DIT RIEN. `CGameSettingsMgr::SetOption`
+  // commence par CHERCHER l'id dans le vecteur `OptionTbl` ; s'il ne l'y trouve
+  // pas, elle sort **sans rien écrire et sans se plaindre**. Or toutes les
+  // options du client n'y sont pas : la page Basique en câble plusieurs en dur
+  // (bordure d'emblème 0xF3, notification de connexion 0xA5), et celles-là
+  // n'existent que dans la table des drapeaux.
+  //
+  // Bug vécu en jeu le 2026-08-14 : les deux cases de l'onglet Basique restaient
+  // figées. La LECTURE marchait — elle passe par la table des drapeaux, qui les
+  // contient — donc la case affichait fidèlement une valeur que l'écriture ne
+  // changeait jamais. Un test « ça lit bien » n'aurait rien vu.
+  //
+  // On aiguille donc sur la présence RÉELLE dans la table, plutôt que d'entretenir
+  // une liste d'exceptions qui se périmerait au premier `GameSettings.lub` modifié
+  // par le serveur.
+  if (!InTable(id)) {
+    // Écriture directe, exactement ce que font les groupes de la page Basique
+    // (`0x009EEF50`, `0x009EF000`). Pas de handler à déclencher : ces options
+    // sont relues par leur consommateur, pas appliquées à l'écriture.
+    SetRawFlag(id, on ^ IsInverted(id));
+    return;
+  }
+
   __try {
     // annonce = 0 : la case à cocher native n'écrit rien au chat (c'est la
     // commande slash qui le fait). Cf. GameSettingsUI_OptionItem_OnCheck.

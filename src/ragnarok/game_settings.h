@@ -89,7 +89,18 @@ bool IsOn(int id);
 // ⚠ N'annonce RIEN au chat, exactement comme la case à cocher de la fenêtre
 // native. La commande slash équivalente, elle, annonce — ce sont deux chemins
 // distincts du même client, et un panneau qui remplace la fenêtre suit la fenêtre.
+//
+// 🔴 AIGUILLAGE AUTOMATIQUE, et il est indispensable. `SetOption` ne sait écrire
+// que les options présentes dans la table `OptionTbl` — pour les autres, elle sort
+// **sans rien faire et sans se plaindre**. Les bascules câblées en dur de la page
+// Basique (bordure d'emblème, notification de connexion) sont dans ce cas. `SetOn`
+// vérifie donc la présence réelle de l'id dans la table et retombe sur l'écriture
+// directe quand il n'y est pas. Cf. le commentaire du .cc — bug vécu en jeu.
 void SetOn(int id, bool on);
+
+// L'id est-il décrit dans `OptionTbl` ? Exposé parce que la réponse change le
+// comportement de `SetOn`, et qu'un appelant peut vouloir le savoir avant.
+bool InTable(int id);
 
 // Exécute une option `kTypeCommand` (les `/sit`, `/where`, `/memo`… de l'onglet
 // Divers). Sans effet sur une bascule.

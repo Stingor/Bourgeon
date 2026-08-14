@@ -43,20 +43,40 @@ Stats g_stats;
 // en retirant drapeaux, largeur et précision — traduire « %-20s » en « %s » est
 // une différence de mise en forme, pas de contrat, et refuser ça bloquerait des
 // traductions parfaitement sûres.
+//
+// 🔴 DEUX PRÉCAUTIONS APPRISES SUR LE TAS (2026-08-14), sans quoi ce contrôle
+// refuse des traductions correctes :
+//
+// 1. **L'ESPACE N'EST PAS TRAITÉ COMME UN DRAPEAU**, alors que `printf` l'accepte.
+//    La table du client est pleine de POURCENTAGES littéraux — « your Weight is
+//    over 50% of the Weight Limit ». En comptant l'espace comme drapeau, `% o` se
+//    lit comme un `%o` octal ; la traduction « dépasse 50% de la limite » donne
+//    alors `%d`, les séquences diffèrent, et la ligne est refusée pour rien. Le
+//    drapeau espace de `printf` est rarissime, le pourcentage suivi d'un mot est
+//    partout : l'arbitrage est vite fait.
+//
+// 2. **Le caractère final doit être une VRAIE lettre de conversion.** Sans ce
+//    test, « 50% de » pousserait l'espace ou le « d » d'un mot dans la séquence.
 std::vector<char> FormatSequence(const std::string& text) {
+  static const char kFlags[] = "-+#0123456789.*";
+  static const char kLength[] = "hlLzjt";
+  static const char kConversions[] = "diouxXeEfgGaAcspn";
+
   std::vector<char> seq;
   for (std::size_t i = 0; i < text.size(); ++i) {
     if (text[i] != '%') continue;
     if (i + 1 < text.size() && text[i + 1] == '%') { ++i; continue; }  // %% littéral
     std::size_t j = i + 1;
-    while (j < text.size() &&
-           (std::strchr("-+ #0123456789.*", text[j]) != nullptr))
-      ++j;
+    while (j < text.size() && std::strchr(kFlags, text[j]) != nullptr) ++j;
     // Modificateurs de longueur : ils ne changent pas la nature de l'argument
     // pour ce contrôle, mais doivent être franchis pour atteindre le type.
-    while (j < text.size() && std::strchr("hlLzjt", text[j]) != nullptr) ++j;
-    if (j < text.size()) seq.push_back(text[j]);
-    i = j;
+    while (j < text.size() && std::strchr(kLength, text[j]) != nullptr) ++j;
+    if (j < text.size() && std::strchr(kConversions, text[j]) != nullptr) {
+      seq.push_back(text[j]);
+      i = j;
+    }
+    // Sinon ce n'était pas un spécificateur : on laisse `i` avancer d'un cran,
+    // sans rien enregistrer.
   }
   return seq;
 }
