@@ -1,6 +1,8 @@
 #include "features/windows/game_menu.h"
 
 #include "features/moonlight_ui/moonlight_ui.h"  // ShowWindow (Moonlight Settings)
+#include "features/staff_gate.h"                 // IsStaff (bouton Staff Tools)
+#include "features/windows/staff_tools.h"
 #include "features/windows/chat_window.h"        // QueueCommand (@load)
 #include "features/windows/hotkey_settings.h"
 
@@ -357,6 +359,7 @@ void GameMenu::OnRenderUI() {
   // Nom du projet, donc pas traduit — c'est ce que le joueur voit sur la fenêtre
   // qu'il va rouvrir, et deux noms pour une même chose se cherchent longtemps.
   const char* label_moonlight   = "Moonlight Settings";
+  const char* label_staff_tools = "Staff Tools";  // idem : nom du projet
 
   // Largeur MESURÉE sur le plus long libellé, jamais en dur : la police ET la
   // langue sont des réglages (feedback_ui_width_measured_not_hardcoded), et une
@@ -366,7 +369,8 @@ void GameMenu::OnRenderUI() {
                                              label_shortcuts, label_exit,
                                              label_return, label_savepoint,
                                              label_resurrect, label_load,
-                                             label_macros, label_moonlight});
+                                             label_macros, label_moonlight,
+                                             label_staff_tools});
   ImGui::SetNextWindowSize(
       ImVec2(button_w + ImGui::GetStyle().WindowPadding.x * 2.0f, 0.0f),
       ImGuiCond_Always);
@@ -446,6 +450,15 @@ void GameMenu::OnRenderUI() {
     if (ro::RoButton(label_moonlight, button_w)) {
       Close();
       if (auto* ui = Bourgeon::Instance().moonlight_ui()) ui->ShowWindow();
+    }
+
+    // 🔴 Réservé au STAFF, et le droit est relu à CHAQUE frame : le niveau de
+    // groupe arrive au login et peut changer en cours de session. Le bouton
+    // disparaît alors de lui-même, comme la fenêtre qu'il ouvre.
+    if (IsStaff() && ro::RoButton(label_staff_tools, button_w)) {
+      Close();
+      if (auto* staff_tools = Bourgeon::Instance().staff_tools())
+        staff_tools->Open();
     }
 
     if (ro::RoButton(label_exit, button_w)) pending_ = Action::kExitToWindows;

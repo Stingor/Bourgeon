@@ -38,6 +38,7 @@
 #include "features/windows/inventory_viewer.h"
 #include "features/windows/bank_window.h"
 #include "features/windows/game_menu.h"
+#include "features/windows/staff_tools.h"
 #include "features/windows/hotkey_settings.h"
 #include "features/windows/cart_viewer.h"
 #include "features/windows/cashshop_window.h"
@@ -81,11 +82,6 @@
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
 namespace {
-
-// Miroir persistable du réglage « glyphes coréens ». La valeur qui COMPTE est
-// celle que ro::KoreanGlyphsWanted() lit dans le yaml à l'init — bien avant que
-// ce fichier ne soit chargé. Celui-ci ne sert qu'à l'écrire et à l'afficher.
-bool g_korean_glyphs = false;
 
 // Les helpers de couleur persistée vivent avec les moteurs de la table
 // (moonlight_ui/settings_table.h) : ce sont eux qui connaissent la dualité
@@ -993,7 +989,7 @@ struct MoonlightUiOwnSettings {
   using SType = moonlight_ui::SettingType;
 
   // En-tête du fichier : état de la fenêtre + journalisation + overlay alootid.
-  static const moonlight_ui::SettingDesc kHeader[6];
+  static const moonlight_ui::SettingDesc kHeader[7];
   // Réglages de chat portés par MoonlightUi (ils déménageront chez ChatTweaks à
   // l'étape C — c'est ce qui débloquera le déplacement du panneau « Chat »).
   static const moonlight_ui::SettingDesc kChat[5];
@@ -1003,7 +999,7 @@ struct MoonlightUiOwnSettings {
   static const moonlight_ui::SettingDesc kGrid[4];
 };
 
-const moonlight_ui::SettingDesc MoonlightUiOwnSettings::kHeader[6] = {
+const moonlight_ui::SettingDesc MoonlightUiOwnSettings::kHeader[7] = {
     // ⚠ Défaut VISIBLE : au premier lancement, rien n'indiquerait qu'un panneau de
     // réglages existe. Le joueur le ferme quand il l'a compris, et c'est CE
     // choix-là qui est persisté.
@@ -1036,8 +1032,16 @@ const moonlight_ui::SettingDesc MoonlightUiOwnSettings::kHeader[6] = {
     // Défaut FAUX : le hangul pesait 97 % de l'atlas pour des caractères
     // qu'aucun joueur ne voit. Seul le staff qui lit des chemins de fichiers du
     // jeu dans la console en a l'usage.
-    {"korean_glyphs", SType::kBool,
-     []() -> void* { return &g_korean_glyphs; },
+    // ⚠ CLÉ INCHANGÉE malgré le déménagement du réglage vers StaffTools : la
+    // renommer perdrait le choix des yaml déjà en place, et surtout
+    // `ro::KoreanGlyphsWanted()` la cherche par son NOM dans le fichier, bien
+    // avant que les plugins n'existent.
+    {"korean_glyphs", SType::kBool, MLUI_FIELD(staff_tools, korean_glyphs_),
+     MLUI_LITERAL(bool, false)},
+    // Fenêtre des outils du staff : rouverte au lancement pour qui s'en sert
+    // comme établi. Le rendu revérifie IsStaff à chaque frame, donc un `true`
+    // hérité chez un compte devenu ordinaire n'ouvre rien.
+    {"staff_tools_open", SType::kBool, MLUI_FIELD(staff_tools, open_),
      MLUI_LITERAL(bool, false)},
 };
 
@@ -2180,81 +2184,11 @@ void MoonlightUi::OnRenderUI() {
   if (!is_collapsed) ro::RegisterEscapeMinimizeWindow(&pending_collapse_request_);
 
   if (!is_collapsed) {
-    // ── Staff Tools (réservé group level serveur >= 80, cf. IsStaff) ──────────
-    // Regroupe les fonctionnalités réservées au staff : affichage permanent des
-    // noms d'entités + SPR Lab. Gaté PUREMENT sur le group level reçu au login
-    // (setting id 26). Toute la section disparaît pour un non-staff, et l'overlay
-    // des noms reste inerte (OnRenderUI vérifie IsStaff).
-    if (IsStaff() && iface::LinkableHeader("staff_tools")) {
-      PushStyleCompact();
-
-      SeparatorText(i18n::Tr("Noms des entités"));
-      if (auto* entity_names = Bourgeon::Instance().entity_names())
-        entity_names->DrawSettings();
-
-      // Cast en une action : la touche du sort suffit, la visée est résolue sous
-      // le curseur et le lancement émis par les messages d'acteur du clic natif
-      // (cf. quick_cast.h pour les deux approches écartées).
-      SeparatorText(i18n::Tr("Quick cast"));
-      if (auto* quick_cast = Bourgeon::Instance().quick_cast())
-        quick_cast->DrawSettings();
-
-      // SeparatorText(i18n::Tr("SPR Lab"));
-      // spr_lab::DrawDebugControls();
-
-      // Fond neutre pour les captures d'écran : repeint le terrain d'une couleur
-      // unie sans toucher à sa géométrie (l'occlusion reste correcte). Vivait dans
-      // le SPR Lab, dont il ne partageait rien — et que plus rien ne dessine.
-      SeparatorText(i18n::Tr("Fond de capture"));
-      ground_paint::DrawSettings();
-
-      // Enregistrement d'une zone de l'écran en GIF animé : de quoi illustrer un
-      // tutoriel avec ce que le joueur verra vraiment, interface Bourgeon comprise.
-      SeparatorText(i18n::Tr("Enregistrer une zone (GIF)"));
-      if (auto* zone_recorder = Bourgeon::Instance().zone_recorder())
-        zone_recorder->DrawSettings();
-
-      // ── Journal Bourgeon ────────────────────────────────────────────────────
-      // Remplace la console Windows : tout ce qui passe par LogInfo/LogDiag/
-      // LogError y arrive, sélectionnable et copiable. PERSISTÉ
-      // (« staff_log_window ») : pour qui s'en sert comme console de travail, la
-      // rouvrir à chaque lancement serait une corvée quotidienne.
-      SeparatorText(i18n::Tr("Journal"));
-      if (ro::RoCheckbox(i18n::Tr("Fenêtre de logs"),
-                         &Bourgeon::Instance().show_log_window()))
-        SaveSettings();
-      ImGui::SameLine();
-      HelpMarker(
-          i18n::Tr("Miroir en jeu de tout ce que le client journalise "
-          "(LogInfo / LogDiag / LogError), à la place de la console Windows.\n\n"
-          "Le texte est SÉLECTIONNABLE et copiable : sélection à la souris, "
-          "Ctrl+A, Ctrl+C, ou le bouton « Copier tout ». Un champ de filtre "
-          "restreint l'affichage à une sous-chaîne.\n\n"
-          "Réservé au staff, et le droit est revérifié à chaque frame : la "
-          "fenêtre disparaît si le niveau de groupe change en cours de session."));
-
-      // ── Glyphes coréens ────────────────────────────────────────────────
-      // Ici, à côté du journal, parce que c'est SON usage : lire les chemins
-      // des fichiers du jeu (« 유저인터페이스\… ») quand on débogue.
-      //
-      // 🔴 Le hangul pèse 11 172 glyphes, soit 97 % de l'atlas de polices, pour
-      // des caractères qu'aucun joueur ne voit — le jeu est en français et en
-      // anglais. Il n'est donc plus chargé par défaut.
-      if (ro::RoCheckbox(i18n::Tr("Glyphes coréens (redémarrage)"), &g_korean_glyphs))
-        SaveSettings();
-      ImGui::SameLine();
-      HelpMarker(
-          i18n::Tr("Charge les caractères coréens dans les polices. Utile UNIQUEMENT "
-          "pour lire les chemins des fichiers du jeu dans le journal — rien "
-          "en jeu ne s'affiche en coréen.\n\n"
-          "⚠ Prend effet au PROCHAIN LANCEMENT : les polices sont préparées "
-          "une seule fois au démarrage, et le moteur DirectDraw ne sait pas "
-          "les refaire en cours de partie.\n\n"
-          "Éteint, l'atlas de polices est vingt fois plus léger et le client "
-          "démarre plus vite. Un caractère coréen y apparaîtrait en carré."));
-
-      PopStyleCompact();
-    }
+    // ── Staff Tools : PARTIS dans leur propre fenêtre ─────────────────────────
+    // features/windows/staff_tools.{h,cc}, ouverte depuis le menu Échap. Ce ne
+    // sont pas des réglages de confort mais des outils de travail, et ce panneau
+    // est désormais fermable : y laisser les outils du staff aurait lié leur
+    // disponibilité à celle d'une fenêtre qu'on ferme.
 
     moonlight_ui::DrawRules();
 

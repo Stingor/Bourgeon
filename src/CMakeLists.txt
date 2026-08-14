@@ -77,6 +77,8 @@ set(BOURGEON_FILES
 	"features/windows/entity_inspector.h"
 	"features/windows/game_menu.cc"
 	"features/windows/game_menu.h"
+	"features/windows/staff_tools.cc"
+	"features/windows/staff_tools.h"
 	"features/windows/hotkey_settings.cc"
 	"features/windows/hotkey_settings.h"
 	"features/windows/inventory_viewer.cc"

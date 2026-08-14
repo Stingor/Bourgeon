@@ -85,8 +85,12 @@ struct PanelHeader {
   bool        staff_only;
 };
 
+// ⚠ « staff_tools » a QUITTÉ cette table : les outils du staff ne sont plus un
+// en-tête de ce panneau mais leur propre fenêtre (features/windows/staff_tools.h).
+// L'y laisser aurait formé des liens vers une destination qui n'existe plus —
+// `DestLabel` rendant un libellé pour une clé que `LinkableHeader` ne déplie
+// jamais, le lien aurait été cliquable et muet.
 constexpr PanelHeader kPanelHeaders[] = {
-    {"staff_tools", "Staff Tools",       true},
     {"rules",       "Règles du serveur", false},
     {"dps",         "DPS Meter",         false},
     {"minigames",   "Mini-jeux",         false},

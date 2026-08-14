@@ -29,6 +29,7 @@
 #include "features/windows/inventory_viewer.h"
 #include "features/windows/bank_window.h"
 #include "features/windows/game_menu.h"
+#include "features/windows/staff_tools.h"
 #include "features/windows/hotkey_settings.h"
 #include "features/windows/cart_viewer.h"
 #include "features/patches/equip_tweaks.h"
@@ -111,6 +112,7 @@ InventoryViewer* Bourgeon::inventory_viewer() { return inventory_viewer_; }
 CartViewer* Bourgeon::cart_viewer() { return cart_viewer_; }
 BankWindow* Bourgeon::bank_window() { return bank_window_; }
 GameMenu* Bourgeon::game_menu() { return game_menu_; }
+StaffTools* Bourgeon::staff_tools() { return staff_tools_; }
 HotkeySettings* Bourgeon::hotkey_settings() { return hotkey_settings_; }
 CashShopWindow* Bourgeon::cashshop_window() { return cashshop_window_; }
 NpcShopWindow* Bourgeon::npc_shop_window() { return npc_shop_window_; }
@@ -751,6 +753,13 @@ void Bourgeon::LoadPlugins() {
     auto game_menu = std::make_unique<GameMenu>();
     game_menu_ = game_menu.get();
     plugins_.emplace_back(std::move(game_menu));
+  }
+  {
+    // Outils du staff, sortis du panneau de réglages : ce sont des outils de
+    // travail, pas des préférences (cf. features/windows/staff_tools.h).
+    auto staff_tools = std::make_unique<StaffTools>();
+    staff_tools_ = staff_tools.get();
+    plugins_.emplace_back(std::move(staff_tools));
   }
   {
     // Table des raccourcis (« Shortcut Settings », id 156), en LECTURE SEULE : le

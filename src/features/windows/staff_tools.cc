@@ -1,0 +1,140 @@
+#include "features/windows/staff_tools.h"
+
+#include "bourgeon.h"
+#include "features/fx/ground_paint.h"
+#include "features/fx/zone_recorder.h"
+#include "features/gameplay/quick_cast.h"
+#include "features/moonlight_ui/moonlight_ui.h"
+#include "features/overlays/entity_names.h"
+#include "features/staff_gate.h"
+#include "imgui.h"
+#include "ui/ro_imgui.h"
+#include "ui/ro_widgets.h"
+#include "utils/i18n.h"
+
+namespace {
+
+// Persiste les réglages du panneau partagé. Les outils ci-dessous écrivent tous
+// dans le même fichier que le reste de Bourgeon — la fenêtre change, pas le
+// stockage.
+void Persist() {
+  if (auto* ui = Bourgeon::Instance().moonlight_ui()) ui->SaveSettings();
+}
+
+}  // namespace
+
+void StaffTools::Open() {
+  open_ = true;
+  need_pos_ = true;
+  show_panel_ = true;
+  Persist();
+}
+
+void StaffTools::Toggle() {
+  if (open_) {
+    open_ = false;
+    Persist();
+  } else {
+    Open();
+  }
+}
+
+void StaffTools::OnRenderUI() {
+  // 🔴 Droit revérifié À CHAQUE FRAME, jamais mémorisé : le niveau de groupe
+  // arrive au login et peut changer en cours de session. Un `open_` hérité du
+  // yaml d'un compte devenu ordinaire n'ouvre donc rien.
+  if (!open_ || !IsStaff()) return;
+  if (!Bourgeon::Instance().IsGameActive()) return;
+
+  if (need_pos_) {
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(vp->GetCenter(), ImGuiCond_FirstUseEver,
+                            ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSize(ImVec2(ro::Px(420.0f), ro::Px(520.0f)),
+                             ImGuiCond_FirstUseEver);
+    need_pos_ = false;
+  }
+
+  // Titre à suffixe STABLE : la fenêtre garde position et taille d'une langue à
+  // l'autre. « Staff Tools » n'est pas traduit — c'est le nom que le staff se
+  // donne, et il figure tel quel dans le menu Échap qui l'ouvre.
+  const bool begun =
+      ro::BeginRoWindow("Staff Tools###bourgeon_staff_tools", &show_panel_);
+  if (!show_panel_) {
+    open_ = false;
+    show_panel_ = true;
+    Persist();
+  }
+  if (!begun) { ro::EndRoWindow(); return; }
+
+  mui::PushStyleCompact();
+
+  mui::SeparatorText(i18n::Tr("Noms des entités"));
+  if (auto* entity_names = Bourgeon::Instance().entity_names())
+    entity_names->DrawSettings();
+
+  // Cast en une action : la touche du sort suffit, la visée est résolue sous le
+  // curseur et le lancement émis par les messages d'acteur du clic natif
+  // (cf. quick_cast.h pour les deux approches écartées).
+  mui::SeparatorText(i18n::Tr("Quick cast"));
+  if (auto* quick_cast = Bourgeon::Instance().quick_cast())
+    quick_cast->DrawSettings();
+
+  // Fond neutre pour les captures d'écran : repeint le terrain d'une couleur unie
+  // sans toucher à sa géométrie (l'occlusion reste correcte).
+  mui::SeparatorText(i18n::Tr("Fond de capture"));
+  ground_paint::DrawSettings();
+
+  // Enregistrement d'une zone de l'écran en GIF animé : de quoi illustrer un
+  // tutoriel avec ce que le joueur verra vraiment, interface Bourgeon comprise.
+  mui::SeparatorText(i18n::Tr("Enregistrer une zone (GIF)"));
+  if (auto* zone_recorder = Bourgeon::Instance().zone_recorder())
+    zone_recorder->DrawSettings();
+
+  // ── Journal Bourgeon ───────────────────────────────────────────────────────
+  // Remplace la console Windows : tout ce qui passe par LogInfo/LogDiag/LogError
+  // y arrive, sélectionnable et copiable.
+  mui::SeparatorText(i18n::Tr("Journal"));
+  if (ro::RoCheckbox(i18n::Tr("Fenêtre de logs"),
+                     &Bourgeon::Instance().show_log_window()))
+    Persist();
+  ImGui::SameLine();
+  mui::HelpMarker(
+      i18n::Tr("Miroir en jeu de tout ce que le client journalise "
+      "(LogInfo / LogDiag / LogError), à la place de la console Windows.\n\n"
+      "Le texte est SÉLECTIONNABLE et copiable : sélection à la souris, "
+      "Ctrl+A, Ctrl+C, ou le bouton « Copier tout ». Un champ de filtre "
+      "restreint l'affichage à une sous-chaîne.\n\n"
+      "Réservé au staff, et le droit est revérifié à chaque frame : la "
+      "fenêtre disparaît si le niveau de groupe change en cours de session."));
+
+  // ── Glyphes coréens ────────────────────────────────────────────────────────
+  // Ici, à côté du journal, parce que c'est SON usage : lire les chemins des
+  // fichiers du jeu (« 유저인터페이스\… ») quand on débogue.
+  if (ro::RoCheckbox(i18n::Tr("Glyphes coréens (redémarrage)"), &korean_glyphs_))
+    Persist();
+  ImGui::SameLine();
+  mui::HelpMarker(
+      i18n::Tr("Charge les caractères coréens dans les polices. Utile UNIQUEMENT "
+      "pour lire les chemins des fichiers du jeu dans le journal — rien "
+      "en jeu ne s'affiche en coréen.\n\n"
+      "⚠ Prend effet au PROCHAIN LANCEMENT : les polices sont préparées "
+      "une seule fois au démarrage, et le moteur DirectDraw ne sait pas "
+      "les refaire en cours de partie.\n\n"
+      "Éteint, l'atlas de polices est vingt fois plus léger et le client "
+      "démarre plus vite. Un caractère coréen y apparaîtrait en carré."));
+
+  mui::PopStyleCompact();
+
+  // Fermer, calé à droite comme dans le panneau de réglages : position
+  // recalculée à chaque frame, largeur mesurée sur le libellé traduit.
+  ImGui::Separator();
+  const float close_w = ro::MaxButtonWidth({i18n::Tr("Fermer")});
+  ImGui::SetCursorPosX(ImGui::GetContentRegionMax().x - close_w);
+  if (ro::RoButton(i18n::Tr("Fermer"), close_w)) {
+    open_ = false;
+    Persist();
+  }
+
+  ro::EndRoWindow();
+}
