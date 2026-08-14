@@ -29,6 +29,7 @@
 #include "features/windows/inventory_viewer.h"
 #include "features/windows/bank_window.h"
 #include "features/windows/game_menu.h"
+#include "features/windows/hotkey_settings.h"
 #include "features/windows/cart_viewer.h"
 #include "features/patches/equip_tweaks.h"
 #include "features/patches/window_pos_tweaks.h"
@@ -109,6 +110,7 @@ InventoryViewer* Bourgeon::inventory_viewer() { return inventory_viewer_; }
 CartViewer* Bourgeon::cart_viewer() { return cart_viewer_; }
 BankWindow* Bourgeon::bank_window() { return bank_window_; }
 GameMenu* Bourgeon::game_menu() { return game_menu_; }
+HotkeySettings* Bourgeon::hotkey_settings() { return hotkey_settings_; }
 CashShopWindow* Bourgeon::cashshop_window() { return cashshop_window_; }
 NpcShopWindow* Bourgeon::npc_shop_window() { return npc_shop_window_; }
 VendingWindow* Bourgeon::vending_window() { return vending_window_; }
@@ -748,6 +750,13 @@ void Bourgeon::LoadPlugins() {
     auto game_menu = std::make_unique<GameMenu>();
     game_menu_ = game_menu.get();
     plugins_.emplace_back(std::move(game_menu));
+  }
+  {
+    // Table des raccourcis (« Shortcut Settings », id 156), en LECTURE SEULE : le
+    // remappage reste au natif tant que les ponts Lua d'écriture ne sont pas RE'd.
+    auto hotkey_settings = std::make_unique<HotkeySettings>();
+    hotkey_settings_ = hotkey_settings.get();
+    plugins_.emplace_back(std::move(hotkey_settings));
   }
   {
     auto cashshop_window = std::make_unique<CashShopWindow>();

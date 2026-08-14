@@ -17,6 +17,7 @@
 #include "features/windows/character_sheet.h"  // hide-native-at-creation (grimoire 0x25)
 #include "features/windows/pet_window.h"  // hide-native-at-creation (fiche pet 88 / menu 260)
 #include "features/windows/game_menu.h"  // hide-native-at-creation (menu Échap 155)
+#include "features/windows/hotkey_settings.h"  // hide-native-at-creation (raccourcis 156)
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 
@@ -189,6 +190,15 @@ void* __fastcall MakeWindowHook(void* mgr, void* edx, int windowID) {
     if (windowID == 155) {
       if (auto* gm = Bourgeon::Instance().game_menu())
         gm->HandleNativeCreation(win);
+    }
+    // La table des raccourcis (UIHotKeyWnd id 156). Même raisonnement que le menu
+    // Échap ci-dessus : elle est détruite au tick, donc toute demande repasse ici.
+    // ⚠ HotkeySettings la rouvre LUI-MÊME pour le remappage (les ponts Lua
+    // d'écriture ne sont pas encore RE'd) : dans ce cas il neutralise ce hook,
+    // sinon il basculerait son propre panneau au lieu de laisser la native vivre.
+    if (windowID == 156) {
+      if (auto* hs = Bourgeon::Instance().hotkey_settings())
+        hs->HandleNativeCreation(win);
     }
     // Le PET : la fiche (UIPetInfoWnd id 88), le menu de commandes qu'elle
     // ouvrait (UIMenuWnd id 260) et la fenêtre d'évolution (UIPetEvolutionWnd

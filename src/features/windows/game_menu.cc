@@ -1,5 +1,7 @@
 #include "features/windows/game_menu.h"
 
+#include "features/windows/hotkey_settings.h"
+
 #include <Windows.h>
 
 #include <algorithm>
@@ -359,9 +361,11 @@ void GameMenu::OnRenderUI() {
       uiwnd::MakeWindow(0x271E);
     }
     if (ro::RoButton(label_shortcuts, button_w)) {
-      // ⏳ INTERIM, même raison : la native Shortcut Settings (id 0x9C).
+      // La table des raccourcis Bourgeon (lecture seule ; son propre bouton
+      // « Modifier les touches » rouvre la native pour le remappage).
       Close();
-      uiwnd::MakeWindow(0x9C);
+      if (auto* hotkeys = Bourgeon::Instance().hotkey_settings())
+        hotkeys->OpenFromMenu();
     }
     if (ro::RoButton(label_exit, button_w)) pending_ = Action::kExitToWindows;
     if (ro::RoButton(label_return, button_w)) Close();

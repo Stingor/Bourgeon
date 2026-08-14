@@ -2703,3 +2703,19 @@
 "Résurrection": "Resurrección"
 "Confirmation###bourgeon_game_menu_savepoint": "Confirmación###bourgeon_game_menu_savepoint"
 "Revenir au point de sauvegarde ?": "¿Volver al punto de guardado?"
+
+# ── Ajustes de atajos (HotkeySettings, sustituye UIHotKeyWnd id 156) ──────────
+# Vista de solo lectura por ahora: el remapeo sigue pasando por la ventana del
+# juego. Los nombres de pestaña y las etiquetas de fila vienen del cliente.
+"Raccourcis clavier": "Atajos de teclado"
+"Rechercher une commande ou une touche...": "Buscar un comando o una tecla..."
+"Commande": "Comando"
+"Touche": "Tecla"
+"%d raccourcis": "%d atajos"
+"Aucun raccourci dans cet onglet.": "Ningún atajo en esta pestaña."
+"Aucun résultat pour cette recherche.": "Sin resultados para esta búsqueda."
+"Modifier les touches...": "Cambiar las teclas..."
+"Ouvre la fenêtre de raccourcis du jeu, la seule qui sache encore écrire les touches. Cette vue-ci se met à jour dès que tu la refermes.": "Abre la ventana de atajos del juego, la única que todavía sabe escribir las teclas. Esta vista se actualiza en cuanto la cierras."
+"Onglet": "Pestaña"
+"Mode combat": "Modo combate"
+"Entrée ouvre la saisie du chat au lieu de la laisser toujours ouverte : les touches de raccourci restent actives pendant le combat.": "Intro abre la entrada del chat en vez de dejarla siempre abierta: los atajos siguen activos durante el combate."

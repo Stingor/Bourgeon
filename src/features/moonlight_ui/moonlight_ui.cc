@@ -38,6 +38,7 @@
 #include "features/windows/inventory_viewer.h"
 #include "features/windows/bank_window.h"
 #include "features/windows/game_menu.h"
+#include "features/windows/hotkey_settings.h"
 #include "features/windows/cart_viewer.h"
 #include "features/windows/cashshop_window.h"
 #include "features/windows/npc_shop_window.h"
@@ -496,6 +497,13 @@ const moonlight_ui::SettingDesc kBankSettings[] = {
 // par SetModernInterface : défaut OFF, comme tous les membres du groupe.
 const moonlight_ui::SettingDesc kGameMenuSettings[] = {
     {"gamemenu_imgui", SType::kBool, MLUI_FIELD(game_menu, imgui_enabled_),
+     MLUI_LITERAL(bool, false)},
+};
+
+// Table des raccourcis (« Shortcut Settings », id 156), en lecture seule.
+// « hotkeys_imgui » est basculé en GROUPE par SetModernInterface : défaut OFF.
+const moonlight_ui::SettingDesc kHotkeySettings[] = {
+    {"hotkeys_imgui", SType::kBool, MLUI_FIELD(hotkey_settings, imgui_enabled_),
      MLUI_LITERAL(bool, false)},
 };
 
@@ -1257,6 +1265,13 @@ void SetModernInterface(bool on) {
   // le mixe que ce groupe supprime. Cf. docs/game_option_re.md §5.2.
   if (auto* game_menu = Bourgeon::Instance().game_menu())
     game_menu->imgui_enabled_ = on;
+  // La table des raccourcis suit : le menu Échap ci-dessus est son SEUL chemin
+  // d'ouverture. L'activer seule donnerait un panneau que rien n'ouvre ; la
+  // laisser seule éteinte ferait ouvrir par un menu moderne une fenêtre native
+  // que plus rien ne détruit — et une native de raccourcis vivante CONFISQUE tout
+  // le clavier (UIWindowMgr_OnKeyDown @0x00A47201).
+  if (auto* hotkey_settings = Bourgeon::Instance().hotkey_settings())
+    hotkey_settings->imgui_enabled_ = on;
 }
 
 bool ModernInterfaceEnabled() {
@@ -1358,6 +1373,7 @@ void MoonlightUi::LoadSettings() {
     moonlight_ui::ReadSettings(ui, kStorageSettings);
     moonlight_ui::ReadSettings(ui, kBankSettings);
     moonlight_ui::ReadSettings(ui, kGameMenuSettings);
+    moonlight_ui::ReadSettings(ui, kHotkeySettings);
     moonlight_ui::ReadSettings(ui, kRefineSettings);
     moonlight_ui::ReadSettings(ui, kMakeItemSettings);
     moonlight_ui::ReadSettings(ui, kCraftAtlasSettings);
@@ -1506,6 +1522,7 @@ void MoonlightUi::WriteSettingsFile() {
   moonlight_ui::WriteSettings(out, kStorageSettings);
   moonlight_ui::WriteSettings(out, kBankSettings);
   moonlight_ui::WriteSettings(out, kGameMenuSettings);
+  moonlight_ui::WriteSettings(out, kHotkeySettings);
   moonlight_ui::WriteSettings(out, kRefineSettings);
   moonlight_ui::WriteSettings(out, kMakeItemSettings);
   moonlight_ui::WriteSettings(out, kCraftAtlasSettings);

@@ -806,6 +806,71 @@ to specify a single key. »*, `1488` *« Unable to specify the key assigned. »*
 `1489` *« This key is already registered to [[%s]]. Bind it to this function
 instead? »*.
 
+### 4.9 Le chemin d'ÉCRITURE (RE du 2026-08-14)
+
+Trois primitives suffisent, toutes vérifiées au désassemblage :
+
+| fonction | adresse | signature |
+|---|---|---|
+| `UserHotkey_Lua_ChangeHotKey` | `0x005D56D0` | `int __stdcall(int catégorie, int cmdIdx, int key1, int key2, const std::string* nom)` |
+| `UserHotkey_Lua_SaveUserHotKeys2` | `0x005D54C0` | `int __stdcall(void)` |
+| `std_string_assign` | `0x004F1940` | `void* __thiscall(void* str, const void* src, size_t len)` |
+
+⚠ **L'ordre des arguments C n'est PAS celui du Lua.** `ChangeUserHotKey` reçoit le
+`std::string*` en **dernière** position côté C, alors qu'il est le **3ᵉ** argument
+côté Lua : le pont réordonne en poussant `fmt="ddsdd"`, `catégorie+1`, `cmdIdx`,
+`c_str`, `key1`, `key2`. Le `c_str` est extrait sur place par le test SSO
+classique (`capacité >= 0x10` ⇒ déréférencer).
+
+⚠ `SaveUserHotKeys2` **ne prend aucun argument** : il fabrique lui-même
+`"SaveData\UserKeys" + ".lua"` et appelle le global Lua avec le format `"s"`.
+
+**Encodage des touches = VK Windows.** `UserKeys.lua` stocke `KEY1 = 65` pour
+« A », et le natif compare la touche pressée à 16 / 17 / 18 (Shift / Ctrl / Alt).
+`key2` porte le modificateur, 0 s'il n'y en a pas. La capture maison
+(`hotkeys::CaptureMainVk`) rend exactement ces codes — aucune table de conversion.
+
+**La touche pressée** vit dans deux globales écrites par le handler clavier :
+`*(int*)0x0131F4F8` (touche principale, déréférencée) et `0x0131F4FC` (modificateur).
+
+#### `UIHotKeyWnd_ValidateKeyCombo` (0x008DC890) = le CONTRÔLE DE COLLISION
+
+Ce n'est pas un validateur de forme (mauvais nom donné en première lecture) : il
+balaie les autres commandes à la recherche du même couple de touches.
+
+```
+pour chaque catégorie 0..3 :
+    si (catégorie éditée == 0 et candidate == 3) -> SAUTER
+    si (catégorie éditée == 3 et candidate == 0) -> SAUTER
+    pour chaque ligne : si (kc1,kc2) == combo pressé -> collision
+```
+
+🔴 **Les deux barres de raccourcis (catégories 0 et 3) ont le DROIT de partager
+une touche** — ce sont deux pages de la même barre, permutées par une option. Les
+catégories Interface et Macros, elles, entrent en collision avec tout.
+
+Suite du traitement :
+- collision sur la ligne en cours d'édition → renvoie **1** (rien à faire) ;
+- collision ailleurs → modale `MsgString(1489)` ; réponse ≠ 187 → renvoie **1** =
+  **abandonner l'affectation** ; réponse 187 → **efface l'ancienne affectation**
+  (`WritePendingBinding` avec key1=key2=0 et un nom vide) puis renvoie **0** ;
+- cas particulier : si l'ancienne était en catégorie 0 alors qu'on édite une autre
+  catégorie, la même touche est AUSSI effacée en catégorie 3.
+
+**Convention de retour : 1 = abandonner, 0 = poursuivre.**
+
+**La validation de FORME est en amont**, dans `sub_A2D450` (appelé par
+`UIWindowMgr_OnKeyDown`), qui rend un « genre » consommé par
+`UIHotKeyWnd_AssignKeyToSelectedRow` : 1 = ignorer, 2 → message 1487, 3 → message
+1488, 4 → lancer le contrôle de collision ci-dessus.
+
+📌 **Conséquence de conception pour le portage** : il ne faut PAS appeler
+`ValidateKeyCombo` — il exige une instance de la fenêtre native, lit les globales
+du handler clavier et ouvre une modale bloquante. Un panneau ImGui tient déjà
+**toutes** les lignes en mémoire : la collision se cherche en C++, sur ses propres
+données, avec sa propre popup — en rejouant les deux règles ci-dessus (exemption
+0↔3, et effacement de l'ancienne affectation avant d'écrire la nouvelle).
+
 ---
 
 ## 5. Blueprint : remplacement en ImGui

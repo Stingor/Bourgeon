@@ -1,0 +1,90 @@
+#pragma once
+
+#include <cstdint>
+
+// ── user_hotkey : les raccourcis clavier du CLIENT, en accès typé ────────────
+// (client 20250716, base 0x400000 — RE : docs/game_option_re.md §4)
+//
+// Le client range ses raccourcis côté LUA (`SaveData\UserKeys.lua`, tables
+// `USERKEY_<catégorie+1>`) et n'expose que des ponts C minces. Ce module les
+// enveloppe une fois pour toutes : SEH, destruction des `std::string` que les
+// ponts allouent, et une struct de ligne prête à dessiner.
+//
+// 🔴 POURQUOI PASSER PAR LE NATIF ET NE RIEN RECOPIER. Le nom de touche rendu
+// ici est **layout-aware** : il vient du jeu, donc « A » sur AZERTY et « Q » sur
+// QWERTY, rebinds du joueur compris. Une table de touches écrite à la main a
+// déjà été proposée puis refusée dans ce projet pour cette raison exacte
+// (cf. project_shortcut_bar_re).
+//
+// ⚠ ÉTAT : LECTURE SEULE. L'écriture (`ChangeUserHotKey`, `SaveUserHotKeys2`)
+// et le contrôle de collision (MsgStringTable 1489) ne sont pas encore RE'd —
+// c'est le chantier suivant, décrit dans docs/game_option_re.md §5.8. Tant qu'il
+// n'est pas fait, le remappage passe par la fenêtre native.
+
+namespace userhotkey {
+
+// Les quatre catégories, telles que le Lua les numérote (0-based côté C, +1 côté
+// Lua). ⚠ L'ordre des ONGLETS de la fenêtre native n'est PAS celui-ci — voir
+// `CategoryForTab`.
+enum Category {
+  kSkillBar1 = 0,   // USERKEY_1 — barre de raccourcis, onglet 1
+  kInterface = 1,   // USERKEY_2 — fenêtres et commandes d'interface
+  kMacros    = 2,   // USERKEY_3 — l'onglet que la fenêtre native nomme « Macros »
+  kSkillBar2 = 3,   // USERKEY_4 — barre de raccourcis, onglet 2
+  kCategoryCount = 4,
+};
+
+// Onglet affiché -> catégorie Lua. 0->0, 1->3, 2->1, 3->2.
+//
+// 🔴 L'ordre visuel n'est PAS l'ordre des catégories, et s'y tromper affiche
+// silencieusement les raccourcis d'un autre onglet. On appelle le natif
+// (`UserHotkey_TabIndexToCategory` 0x005D4C50) plutôt que de recopier la table.
+int CategoryForTab(int tab_index);
+
+// Nombre de lignes AFFICHABLES de la catégorie, trous compris… c'est-à-dire
+// déduits : pour la catégorie Interface le natif retranche lui-même les douze
+// commandes non remappables (index 30, 33, 34, 36, 43, 45, 53, 58, 62, 64, 65,
+// 66). 0 si le Lua n'est pas prêt.
+int RowCount(int category);
+
+// Index de commande de la n-ième ligne affichable, ou -1 s'il n'y en a pas.
+// C'est lui — et pas le numéro de ligne — qu'attendent les autres ponts.
+int CommandIndexAt(int category, int row);
+
+// Une ligne de la table des raccourcis.
+struct Binding {
+  int  command_index = -1;  // ce que `CommandIndexAt` a rendu
+  int  key_code1 = 0;       // code de la touche principale (0 = aucune)
+  int  key_code2 = 0;       // modificateur / seconde touche
+  char key_name[64] = {0};  // « F1 », « A », « Shift+F1 » — layout-aware, UTF-8
+  char label[128] = {0};    // « Hotkey 2-1 » — le champ EXE de UserKeys.lua, UTF-8
+  bool assigned = false;    // false = aucune touche affectée à cette commande
+};
+
+// Remplit `out` pour la ligne demandée. Renvoie false si la ligne n'existe pas
+// (label vide côté client = commande inexistante, c'est le test de validité du
+// natif). Les deux `std::string` allouées par le pont sont détruites ici.
+bool ReadBinding(int category, int row, Binding* out);
+
+// ── Écriture ────────────────────────────────────────────────────────────────
+// RE : docs/game_option_re.md §4.9.
+
+// Affecte une touche à une commande — ou l'EFFACE si `key1` et `key2` valent 0.
+//
+// `label_utf8` est le libellé rendu par `ReadBinding` : côté Lua c'est LUI qui
+// identifie l'entrée (champ EXE), il doit donc être repassé tel quel. Il est
+// reconverti ici vers la code-page du client, et emballé dans un `std::string`
+// construit avec l'allocateur du jeu — le pont natif attend un vrai `std::string`,
+// pas un `char*`.
+//
+// ⚠ Les codes sont des VK Windows (65 = « A », 16/17/18 = Maj/Ctrl/Alt), donc
+// exactement ce que rend `hotkeys::CaptureMainVk`. `key2` est le modificateur.
+//
+// N'écrit RIEN sur le disque : appeler `Save()` après la rafale.
+bool WriteBinding(int category, int command_index, int key1, int key2,
+                  const char* label_utf8);
+
+// Grave `SaveData\UserKeys.lua`. Une fois, après les écritures.
+bool Save();
+
+}  // namespace userhotkey

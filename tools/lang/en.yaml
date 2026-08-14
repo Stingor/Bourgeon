@@ -2745,3 +2745,21 @@
 "Résurrection": "Resurrection"
 "Confirmation###bourgeon_game_menu_savepoint": "Confirmation###bourgeon_game_menu_savepoint"
 "Revenir au point de sauvegarde ?": "Go back to your save point?"
+
+# ── Shortcut Settings (HotkeySettings, replaces the native UIHotKeyWnd id 156) ─
+# Read-only view for now: remapping still goes through the game's own window,
+# until the Lua write bridges are reverse-engineered.
+# The TAB names and the row labels are NOT here on purpose: they come from the
+# client (MsgStringTable / UserKeys.lua), like item names.
+"Raccourcis clavier": "Keyboard shortcuts"
+"Rechercher une commande ou une touche...": "Search a command or a key..."
+"Commande": "Command"
+"Touche": "Key"
+"%d raccourcis": "%d shortcuts"
+"Aucun raccourci dans cet onglet.": "No shortcut in this tab."
+"Aucun résultat pour cette recherche.": "No result for this search."
+"Modifier les touches...": "Change keys..."
+"Ouvre la fenêtre de raccourcis du jeu, la seule qui sache encore écrire les touches. Cette vue-ci se met à jour dès que tu la refermes.": "Opens the game's own shortcut window, the only one that can still write keys. This view refreshes as soon as you close it."
+"Onglet": "Tab"
+"Mode combat": "Battle Mode"
+"Entrée ouvre la saisie du chat au lieu de la laisser toujours ouverte : les touches de raccourci restent actives pendant le combat.": "Enter opens the chat input instead of leaving it always open: hotkeys stay active during combat."
