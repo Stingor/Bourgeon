@@ -801,31 +801,38 @@ exit. »* — d'où la remarque du §2.7 : couper le processus sans passer par
 `SaveData\UserKeys.lua` ne contient **que les surcharges** (le fichier du client
 commence à `[9]`, les slots 0-8 = F1..F9 étant restés aux défauts).
 
-#### 🔴 Conséquence énorme : une commande du jeu ne peut PAS être « déliée »
+#### Les TROIS états d'une commande (vérifié sur le fichier, 2026-08-14)
 
-Constaté en jeu puis vérifié sur le fichier le 2026-08-14. `USERKEY_2` — la
-catégorie **Interface** — était **vide**, et pourtant toutes ses commandes
-fonctionnaient, *Screenshot* sur Impr. écran comprise. Effacer une touche depuis
-la fenêtre (native ou la nôtre) retire donc la **surcharge**, et la **table par
-défaut du client reprend aussitôt la main** :
+| état de `UserKeys.lua` | ce qui agit | ce que rend `GetHotKey` |
+|---|---|---|
+| **aucune entrée** | la touche d'ORIGINE | la touche d'origine |
+| entrée **avec** `KEY1` | la touche choisie | la touche choisie |
+| entrée **sans** `KEY1` | **plus rien** — commande DÉLIÉE | rien |
 
-* `UserHotkey_ResolveBehavior` (`0x00A32C10`) interroge le global Lua
-  **`GetBehaviorOfHotKey2(kc1, kc2, …)`** (fmt `"ddd>d"`) **à chaque frappe** — la
-  résolution est donc VIVANTE : une écriture par `ChangeUserHotKey` agit
-  immédiatement, sans relog. C'est aussi pourquoi la table par défaut répond
-  encore quand la surcharge est vide : la recherche se fait **par TOUCHE**, et
-  effacer la touche d'une commande ne retire pas l'entrée par défaut de cette
-  touche-là ;
-* `GetHotKey`, lui, rend la surcharge — d'où l'incohérence visible : le natif
-  affiche *« Not Assigned »* sur une ligne dont la touche marche toujours.
+Le troisième état est ce qu'écrit l'**Échap** du natif sur une ligne
+sélectionnée, et il est bien persisté : `USERKEY_2 = { [21] = { EXE = "Screenshot" } }`
+— entrée présente, `KEY1` absent. Vérifié en jeu : Alt+H retiré de la liste
+d'amis, la fenêtre ne s'ouvre plus.
 
-📌 **Pour un portage** : afficher `GetHotKey` tel quel fait mentir la table sur la
-majorité de ses lignes (le fichier est presque vide sur un compte neuf). Il faut
-retomber sur `GetOriginalHotKeyInfo` quand la surcharge est absente — et le
-**contrôle de collision doit en faire autant**, sans quoi il laisse poser une
-touche qu'une commande du jeu déclenche déjà. Et un bouton « effacer » ne doit pas
-promettre ce que le client ne sait pas tenir : sur une commande qui a un défaut,
-l'effacement est en réalité un *retour au défaut*.
+⚠ **Piège de lecture payé** : voir `USERKEY_2` **vide** alors que les commandes
+d'interface fonctionnent ne prouve PAS qu'on ne peut pas délier — cela prouve
+seulement qu'une entrée ABSENTE laisse agir la touche d'origine. J'en avais
+conclu à tort que l'effacement était impossible, et fait retomber l'affichage
+**et le contrôle de collision** sur `GetOriginalHotKeyInfo` — ce qui déclarait
+occupée la touche d'origine d'une commande que le joueur venait justement de
+délier. `GetHotKey` rend **déjà** la touche effective ; il n'y a rien à corriger.
+
+Reste vrai, et utile : `UserHotkey_ResolveBehavior` (`0x00A32C10`) interroge le
+global Lua **`GetBehaviorOfHotKey2`** (fmt `"ddd>d"`) **à chaque frappe** — la
+résolution est VIVANTE, une écriture par `ChangeUserHotKey` agit **immédiatement,
+sans relog**.
+
+📌 **Le cas particulier `Screenshot`** : sa touche est Impr. écran, que **Windows**
+intercepte avant le jeu (Outil Capture d'écran sur Windows 11). Même déliée, la
+capture système part. Elle n'émet d'ailleurs aucun `WM_KEYDOWN`, seulement le
+`WM_KEYUP` — d'où son traitement à part dans `Game_MainWndProc`. Une interface de
+remappage n'a donc rien à en dire : ni la proposer comme touche, ni montrer la
+ligne comme réglable.
 
 Ponts C→Lua voisins (déjà connus) : `UserHotkey_Lua_ChangeHotKey` 0x005D56D0,
 `…ClearUserHotKeys` 0x005D4910, `…SaveUserHotKeys2` 0x005D54C0,

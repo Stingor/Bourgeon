@@ -114,15 +114,16 @@ int CaptureMainVk() {
 int CaptureAnyVk() {
   if (const int vkey = CaptureMainVk()) return vkey;
   for (const KeyVk& entry : kExtendedKeys) {
-    // Impr. écran est traitée à part, juste en dessous.
+    // 🔴 IMPR. ÉCRAN N'EST PAS AFFECTABLE, et ce n'est pas un manque : WINDOWS la
+    // prend avant le jeu. Sur Windows 11 elle ouvre l'Outil Capture d'écran, et
+    // elle n'émet même pas de WM_KEYDOWN — seulement le WM_KEYUP, ce qui est déjà
+    // la raison pour laquelle le client la traite dans `Game_MainWndProc` sur
+    // `case WM_KEYUP`. Un raccourci posé dessus se déclencherait EN PLUS de la
+    // capture système, sans qu'on puisse jamais le lui reprendre. Elle reste dans
+    // la table ci-dessus pour être NOMMÉE, pas pour être choisie.
     if (entry.key == ImGuiKey_PrintScreen) continue;
     if (ImGui::IsKeyPressed(entry.key, false)) return entry.vk;
   }
-  // 🔴 IMPR. ÉCRAN SE CAPTURE AU RELÂCHEMENT. Windows n'émet PAS de WM_KEYDOWN
-  // pour cette touche — seulement le WM_KEYUP. C'est déjà pour ça que le client
-  // la traite dans `Game_MainWndProc` sur `case WM_KEYUP`. Guetter un appui la
-  // rendait donc invisible, et la commande « Screenshot » inréattribuable.
-  if (ImGui::IsKeyReleased(ImGuiKey_PrintScreen)) return VK_SNAPSHOT;
   return 0;
 }
 
@@ -262,16 +263,14 @@ bool Conflict(int vkey, bool ctrl, bool alt, bool shift, Owner self, int self_in
     for (int row = 0; row < row_count; ++row) {
       userhotkey::Binding binding;
       if (!userhotkey::ReadBinding(category, row, &binding)) continue;
-      // 🔴 UNE COMMANDE SANS SURCHARGE N'EST PAS LIBRE : `UserKeys.lua` ne
-      // contient QUE les surcharges, et la table par DÉFAUT du client continue de
-      // répondre pour tout le reste (vérifié le 2026-08-14 : `USERKEY_2` est vide
-      // sur cette installation, et les commandes d'interface marchent). Ne regarder
-      // que les surcharges laissait donc poser une touche qu'une commande du jeu
-      // déclenche déjà — le cas le plus fréquent, puisque le fichier est presque
-      // vide sur un compte neuf.
-      if (!binding.assigned &&
-          !userhotkey::ReadDefaultBinding(category, binding.command_index, &binding))
-        continue;
+      // 🔴 `GetHotKey` REND DÉJÀ LA TOUCHE EFFECTIVE : la touche d'origine quand
+      // `UserKeys.lua` n'a pas d'entrée, la surcharge quand il en a une, et RIEN
+      // quand la commande a été déliée (le fichier porte alors une entrée sans
+      // `KEY1`, ce que fait l'Échap du natif comme notre effacement).
+      // ⚠ Ne PAS retomber sur `GetOriginalHotKeyInfo` ici : ce serait déclarer
+      // occupée la touche d'origine d'une commande que le joueur vient justement
+      // de délier pour s'en servir ailleurs. Erreur commise puis corrigée le
+      // 2026-08-14, sur une lecture trop rapide d'un `USERKEY_2` vide.
       if (!binding.assigned) continue;
       if (category == self_category && binding.command_index == self_command) continue;
       auto is_modifier = [](int key_code) {

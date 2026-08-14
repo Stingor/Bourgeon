@@ -18,13 +18,15 @@
 //     liée à une touche donnée demandait de feuilleter les pages ;
 //   - un onglet « Bourgeon » et une vue « Tout » qui réunissent les commandes du
 //     JEU et les actions de l'interface moderne, que le client ne connaît pas ;
-//   - 🔴 DEUX colonnes de touches, « d'origine » et « choisie », là où le natif
-//     n'en montre qu'une. Ce n'est pas du confort : `UserKeys.lua` ne porte que
-//     des SURCHARGES au-dessus d'une table d'origine que le client ne sait pas
-//     effacer. Le natif, qui n'affiche que la surcharge, écrit donc
-//     « Not Assigned » sur des lignes dont la touche fonctionne — et sur un compte
-//     neuf, c'est la MAJORITÉ d'entre elles. Les séparer rend le mécanisme
-//     lisible : la colonne « choisie » reste presque vide, et c'est l'état normal.
+//   - DEUX colonnes de touches, « d'origine » et « actuelle », là où le natif
+//     n'en montre qu'une : on ne pouvait donc jamais savoir ce qu'on avait changé
+//     ni à quoi revenir. Les trois états du client s'y lisent d'un coup d'œil —
+//     colonnes identiques : rien touché ; différentes : le joueur a choisi ;
+//     actuelle vide : commande DÉLIÉE (entrée sans `KEY1` dans `UserKeys.lua`,
+//     ce qu'écrit l'Échap du natif) ;
+//   - la commande « Screenshot » est RETIRÉE de la table, et Impr. écran n'est pas
+//     capturable : Windows prend cette touche avant le jeu, donc aucune
+//     manipulation n'y aurait d'effet visible.
 //
 // ── L'ÉCRITURE ──────────────────────────────────────────────────────────────
 // Elle passe par `userhotkey::WriteBinding` + `Save` pour les commandes du

@@ -99,6 +99,23 @@ const char* TabLabel(int tab) {
   return (s && *s) ? s : kTabFallback[tab];
 }
 
+// Commandes du client RETIRÉES de la table, parce que leur touche ne nous
+// appartient pas.
+//
+// 🔴 « Screenshot » vit sur Impr. écran, que WINDOWS intercepte avant le jeu
+// (Outil Capture d'écran sur Windows 11). La commande reste donc VIVANTE dans le
+// client — on ne la débranche pas — mais la montrer réglable serait un mensonge :
+// la délier n'empêche pas la capture, et lui donner une autre touche ne libère
+// pas Impr. écran. Une ligne dont aucune manipulation n'a d'effet visible est
+// pire qu'une ligne absente.
+//
+// La comparaison porte sur le champ EXE de `UserKeys.lua`, l'identifiant INTERNE
+// de la commande : il ne se traduit pas d'une langue de client à l'autre,
+// contrairement à ce que le natif affiche.
+bool IsUnmappableCommand(const char* exe_label) {
+  return exe_label && std::strcmp(exe_label, "Screenshot") == 0;
+}
+
 // VK du modificateur d'un combo, 0 s'il n'y en a pas — la forme qu'attend le
 // client, qui n'en retient qu'UN.
 int ModifierVk(bool ctrl, bool alt, bool shift) {
@@ -264,6 +281,7 @@ void HotkeySettings::RefreshRows() {
         entry.tab = tab;
         entry.category = category;
         if (!userhotkey::ReadBinding(category, row, &entry.binding)) continue;
+        if (IsUnmappableCommand(entry.binding.label)) continue;
         // 🔴 SANS SURCHARGE, C'EST LA TOUCHE D'ORIGINE QUI AGIT — et le natif
         // affiche pourtant « Not Assigned ». `UserKeys.lua` ne contient QUE les
         // surcharges (vérifié : `USERKEY_2` vide alors que les commandes
@@ -325,21 +343,17 @@ bool HotkeySettings::DrawRowMenu(const Row& row) {
   }
 
   // ── Commandes du CLIENT ────────────────────────────────────────────────────
-  // 🔴 UNE SEULE ÉCRITURE POSSIBLE, et le libellé le dit : on retire la SURCHARGE,
-  // pas la touche. `UserKeys.lua` n'a aucune façon d'exprimer « aucune touche », et
-  // la table d'origine reprend la main — ce que la colonne d'à côté montre déjà.
-  //
-  // Le contrôle de collision n'est PAS refait ici : la touche qui reprend la main
-  // est celle d'origine, que le client fait déjà cohabiter avec le reste. La
-  // refuser interdirait de revenir en arrière, ce qui serait pire.
-  if (ImGui::MenuItem(i18n::Tr("Retirer la touche choisie"), nullptr, false,
+  // Délier pour de bon : `UserKeys.lua` reçoit une entrée SANS `KEY1`, qui masque
+  // la touche d'origine — c'est ce que fait l'Échap du natif, et la commande cesse
+  // vraiment de répondre. À ne pas confondre avec l'ABSENCE d'entrée, qui laisse
+  // au contraire la touche d'origine agir.
+  if (ImGui::MenuItem(i18n::Tr("Retirer la touche"), nullptr, false,
                       row.binding.assigned || row.binding.key_code1 != 0)) {
     pending_write_.valid = true;
     pending_write_.category = row.category;
     pending_write_.command_index = row.binding.command_index;
-    // 0/0 = retirer la surcharge, la convention du pont. On n'écrit PAS la touche
-    // d'origine à la place : la laisser reprendre la main garde le fichier propre,
-    // et c'est exactement ce que fait le [Reset] du client.
+    // 0/0 = « aucune touche », la convention du pont — le Lua écrit alors une
+    // entrée sans `KEY1`.
     pending_write_.key1 = 0;
     pending_write_.key2 = 0;
     std::snprintf(pending_write_.label, sizeof(pending_write_.label), "%s",
@@ -642,15 +656,16 @@ void HotkeySettings::OnRenderUI() {
                               tab_col_w + ImGui::GetFontSize());
     }
     ImGui::TableSetupColumn(i18n::Tr("Commande"), ImGuiTableColumnFlags_WidthStretch);
-    // 🔴 DEUX COLONNES DE TOUCHES, PARCE QUE LE CLIENT EN A DEUX. `UserKeys.lua`
-    // ne porte que des SURCHARGES par-dessus une table par défaut qui, elle, ne
-    // s'efface pas. Les fondre en une seule colonne obligeait soit à mentir (« Not
-    // Assigned » sur une touche qui marche), soit à bricoler un marqueur. Séparées,
-    // la mécanique se lit d'un coup d'œil — et la colonne personnalisée reste
-    // presque vide, ce qui est exactement l'état normal d'une installation.
+    // DEUX COLONNES DE TOUCHES : ce que le client livre, et ce qui agit
+    // réellement. Le natif ne montre que la seconde, si bien qu'on ne peut jamais
+    // savoir ce qu'on a changé ni à quoi revenir. Les trois états du client se
+    // lisent alors d'un coup d'œil :
+    //   colonnes IDENTIQUES  -> rien n'a été touché ;
+    //   colonnes DIFFÉRENTES -> le joueur a choisi sa touche ;
+    //   « actuelle » vide    -> la commande est DÉLIÉE (entrée sans `KEY1`).
     ImGui::TableSetupColumn(i18n::Tr("Touche d'origine"),
                             ImGuiTableColumnFlags_WidthFixed, key_col_w);
-    ImGui::TableSetupColumn(i18n::Tr("Touche choisie"),
+    ImGui::TableSetupColumn(i18n::Tr("Touche actuelle"),
                             ImGuiTableColumnFlags_WidthFixed, key_col_w);
     ImGui::TableSetupScrollFreeze(0, 1);
     ImGui::TableHeadersRow();
@@ -678,14 +693,13 @@ void HotkeySettings::OnRenderUI() {
       ImGui::TextUnformatted(binding.label);
 
       // ── Touche d'origine ─────────────────────────────────────────────────
-      // Non cliquable : elle n'appartient pas au joueur. Le client ne sait pas
-      // l'effacer, et la montrer grisée dit mieux que n'importe quel texte
-      // qu'elle restera là quoi qu'il fasse.
+      // Non cliquable : c'est un repère, pas un réglage — ce que le client
+      // donnerait sur une installation neuve, et donc ce à quoi on revient.
       ImGui::TableSetColumnIndex(column++);
       ImGui::TextColored(kSecondaryText, "%s",
                          entry.fallback.assigned ? entry.fallback.key_name : "-");
 
-      // ── Touche choisie ───────────────────────────────────────────────────
+      // ── Touche actuelle ──────────────────────────────────────────────────
       ImGui::TableSetColumnIndex(column);
       bool wrote = false;
       if (IsCapturing(entry)) {
@@ -705,8 +719,9 @@ void HotkeySettings::OnRenderUI() {
           const char* text = msgstr::Utf8(kMsgUnspecified);
           std::snprintf(cell, sizeof(cell), "%s", (text && *text) ? text : "?");
         } else {
-          // Vide, et non « Not Assigned » : la ligne n'est pas sans raccourci,
-          // elle est sans raccourci CHOISI — ce que dit déjà la colonne d'à côté.
+          // Vraiment aucune touche : soit la commande n'en a jamais eu, soit elle
+          // a été DÉLIÉE. La colonne d'à côté distingue les deux — si elle montre
+          // une touche, c'est que le joueur l'a retirée.
           std::snprintf(cell, sizeof(cell), "%s", "-");
         }
         if (!binding.assigned) ImGui::PushStyleColor(ImGuiCol_Text, kSecondaryText);
@@ -716,7 +731,7 @@ void HotkeySettings::OnRenderUI() {
         if (ImGui::IsItemHovered()) {
           ImGui::SetTooltip("%s",
                             i18n::Tr("Clic : choisir une touche (Échap annule).  "
-                                     "Clic droit : retirer la touche choisie."));
+                                     "Clic droit : retirer la touche."));
         }
         wrote = DrawRowMenu(entry);
       }
