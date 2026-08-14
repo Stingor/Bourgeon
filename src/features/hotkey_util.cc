@@ -12,6 +12,7 @@
 #include "ragnarok/user_hotkey.h"  // raccourcis du CLIENT (les quatre catégories)
 #include "features/hotkey_actions.h"            // actions Bourgeon liables
 #include "features/windows/character_sheet.h"  // EquipPreset (presets d'équipement)
+#include "features/gameplay/keyboard_move.h"    // déplacement ZQSD
 #include "features/gameplay/player_jump.h"      // touche de saut
 #include "features/fx/zone_recorder.h"          // touche d'enregistrement de zone
 #include "utils/i18n.h"
@@ -141,7 +142,21 @@ bool Conflict(int vkey, bool ctrl, bool alt, bool shift, Owner self, int self_in
     }
   }
 
-  // d) Une action Bourgeon (la sienne exclue). Contrôlée AVANT les raccourcis
+  // d) Le déplacement au clavier, SI le joueur l'a activé. Ses quatre touches ne
+  // se règlent pas, donc il n'y a rien à exclure — et on ne les contrôle QUE
+  // lorsqu'il est actif : les interdire à tout le monde retirerait Z, Q, S et D
+  // aux joueurs qui ne s'en servent pas.
+  if (!ctrl && !alt && !shift) {
+    if (auto* keyboard_move = Bourgeon::Instance().keyboard_move()) {
+      if (keyboard_move->enabled() &&
+          (vkey == 'Z' || vkey == 'Q' || vkey == 'S' || vkey == 'D')) {
+        std::snprintf(what, cap, i18n::Tr("le déplacement au clavier (ZQSD)"));
+        return true;
+      }
+    }
+  }
+
+  // e) Une action Bourgeon (la sienne exclue). Contrôlée AVANT les raccourcis
   // natifs parce que c'est la seule qu'on sache nommer précisément au joueur.
   for (int i = 0; i < ActionCount(); ++i) {
     if (self == Owner::kAction && i == self_index) continue;

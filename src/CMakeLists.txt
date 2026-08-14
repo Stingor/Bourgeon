@@ -38,6 +38,8 @@ set(BOURGEON_FILES
 	"features/hotkey_util.h"
 	"features/hotkey_actions.cc"
 	"features/hotkey_actions.h"
+	"features/hotkey_dispatch.cc"
+	"features/hotkey_dispatch.h"
 
 	# Menu Moonlight : le sommaire des réglages + la persistance du yaml.
 	# Panneaux extraits d'OnRenderUI (en-tête privé au dossier : internal.h).

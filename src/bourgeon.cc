@@ -46,6 +46,7 @@
 #include "features/gameplay/keyboard_move.h"
 #include "features/gameplay/quick_cast.h"
 #include "features/gameplay/player_jump.h"
+#include "features/hotkey_dispatch.h"
 #include "features/minigames/doom.h"
 #include "features/minigames/roggle.h"
 #include "features/minigames/rojeweled.h"
@@ -841,6 +842,9 @@ void Bourgeon::LoadPlugins() {
     keyboard_move_ = keyboard_move.get();
     plugins_.emplace_back(std::move(keyboard_move));
   }
+  // Aucun accesseur : personne ne l'interroge. Il écoute le clavier et joue les
+  // actions du catalogue, dont l'état vit dans hotkey_actions.
+  plugins_.emplace_back(std::make_unique<HotkeyDispatch>());
   {
     auto quick_cast = std::make_unique<QuickCast>();
     quick_cast_ = quick_cast.get();
