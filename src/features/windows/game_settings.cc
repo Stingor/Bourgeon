@@ -69,9 +69,6 @@ constexpr int kMsgResetConfirm = 3166;
 // ── Les libellés des trois derniers groupes de la page Basique ──────────────
 constexpr int kMsgSkin           = 1497;  // MSI_SKIN
 constexpr int kMsgSkinDefault    = 3090;  // MSI_BASIC_SKIN — « <Basic Skin> »
-constexpr int kMsgMail           = 3136;  // MSI_MAIL
-constexpr int kMsgRodexAcceptAll = 4152;  // ..._RODEX_SPAM_OFF
-constexpr int kMsgRodexBlock     = 4151;  // ..._RODEX_SPAM_ON
 constexpr int kMsgPriority       = 4153;  // ..._PROCESS_PRIORITY
 constexpr int kMsgPriorityHigh   = 4154;
 constexpr int kMsgPriorityHighTip   = 4155;
@@ -485,26 +482,18 @@ void GameSettings::DrawBasicTab() {
   mui::HelpMarker(
       i18n::Tr("Annonce au chat les connexions et déconnexions de vos amis."));
 
-  // ── Courrier (RODEX) ───────────────────────────────────────────────────────
-  // 🔴 AUCUN AFFICHAGE OPTIMISTE ICI, et c'est délibéré. Le client n'écrit jamais
-  // ce drapeau lui-même : il demande au serveur (CZ 0x0B93) et attend sa réponse
-  // (ZC 0x0B94). Faire bouger la case tout de suite affirmerait un changement que
-  // personne n'a confirmé — et si le serveur ignore le paquet, elle mentirait pour
-  // de bon. Le natif fait pareil : ses boutons ne bougent qu'au retour du serveur.
-  mui::SeparatorText(msgstr::Utf8Or(kMsgMail, i18n::Tr("Courrier")));
-
-  bool rodex_all = gamesettings::RodexAcceptsEveryone();
-  if (ro::RoCheckbox(
-          msgstr::Utf8Or(kMsgRodexAcceptAll,
-                         i18n::Tr("Recevoir le courrier de tout le monde")),
-          &rodex_all)) {
-    gamesettings::RequestRodexAcceptsEveryone(rodex_all);
-  }
-  ImGui::SameLine();
-  mui::HelpMarker(
-      i18n::Tr("Décoché, le serveur bloque le courrier des joueurs inconnus.\n"
-               "Le réglage appartient au serveur : la case ne bouge qu'une fois "
-               "sa réponse reçue."));
+  // ⛔ PAS DE GROUPE « COURRIER » ICI, ET C'EST UN CHOIX. Le natif en a un — deux
+  // boutons radio « recevoir de tout le monde / bloquer les inconnus » — mais il
+  // est MORT sur Moonlight : le client demande le changement par `CZ 0x0B93`, et
+  // le serveur ne mappe aucun `0x0b9x` (`clif_parse_configuration` n'écoute que
+  // `0x02d8`). Le paquet part dans le vide, chez nous comme dans la fenêtre du
+  // client. Une case qui ne bouge jamais est pire qu'une case absente.
+  //
+  // Le RE complet est au §3.9 de docs/game_option_re.md, y compris ce qu'il
+  // faudrait ajouter côté serveur pour le faire vivre : un type
+  // `CONFIG_RODEX_SPAM` (celui que le client envoie, 1, vaut `CONFIG_CALL` chez
+  // rAthena — le brancher tel quel basculerait le refus des APPELS), le mappage
+  // du paquet, un champ persisté, et l'émission de `0x0B95` à l'entrée en jeu.
 
   // ── Priorité du processus ──────────────────────────────────────────────────
   // Réglage purement local (SetPriorityClass) : il s'applique immédiatement, sans

@@ -4,7 +4,6 @@
 
 #include <cstring>
 
-#include "bourgeon.h"  // Bourgeon::SendPacket (le CZ du réglage RODEX)
 #include "ragnarok/globals.h"
 #include "ragnarok/talktype.h"
 #include "ragnarok/uiwnd.h"
@@ -90,17 +89,6 @@ constexpr int kCmdBgmToggled = 90;
 // La classe de priorité que le client a posée. `CUIGroupProcessPriority` coche
 // ses boutons dessus (0x009F0910) et son reset y remet NORMAL (0x009ED9C0).
 constexpr uintptr_t kPriorityClassAddr = 0x0160232c;
-
-// Le drapeau RODEX, écrit UNIQUEMENT par les deux handlers de réception
-// (0x00CF8290 pour la liste d'entrée, 0x00CF97A0 pour un changement).
-constexpr uintptr_t kRodexAcceptAllAddr = 0x01602430;
-
-// CZ_CONFIG : `{ u16 opcode ; u16 bourrage ; i32 type ; i32 valeur }`, 12 octets
-// fixes — c'est la longueur que la table du client donne pour 0x0B93, et les
-// champs sont bien alignés sur 4 (relevé au désassemblage de 0x009EF0F0, pas
-// déduit d'un `struct` supposé packé).
-constexpr uint16_t kCzConfigOpcode  = 0x0b93;
-constexpr int32_t  kCzConfigRodex   = 1;  // le seul type que ce client émette
 
 // Gestionnaire de skins. `this[7]` = index courant, `this[11]/this[12]` = le
 // vecteur de noms (des `std::string`, 24 octets pièce).
@@ -405,34 +393,6 @@ void SetProcessPriority(int priority_class) {
     *reinterpret_cast<uint32_t*>(kPriorityClassAddr) =
         static_cast<uint32_t>(priority_class);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
-}
-
-// ── RODEX ───────────────────────────────────────────────────────────────────
-
-bool RodexAcceptsEveryone() {
-  __try {
-    return *reinterpret_cast<const uint8_t*>(kRodexAcceptAllAddr) != 0;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return true; }
-}
-
-void RequestRodexAcceptsEveryone(bool accept) {
-#pragma pack(push, 1)
-  struct CzConfig {
-    uint16_t opcode;
-    uint16_t padding;
-    int32_t  type;
-    int32_t  value;
-  };
-#pragma pack(pop)
-  static_assert(sizeof(CzConfig) == 12, "CZ 0x0B93 fait 12 octets");
-
-  CzConfig packet{};
-  packet.opcode  = kCzConfigOpcode;
-  packet.padding = 0;
-  packet.type    = kCzConfigRodex;
-  packet.value   = accept ? 1 : 0;
-  Bourgeon::Instance().SendPacket(reinterpret_cast<const uint8_t*>(&packet),
-                                  sizeof(packet));
 }
 
 // ── Skin ────────────────────────────────────────────────────────────────────

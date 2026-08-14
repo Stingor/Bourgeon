@@ -198,22 +198,13 @@ int  ProcessPriority();
 // Applique et mémorise, dans cet ordre — le global est ce que le natif relira.
 void SetProcessPriority(int priority_class);
 
-// ── RODEX : accepter le courrier de n'importe qui ───────────────────────────
-//
-// 🔴 CE RÉGLAGE APPARTIENT AU SERVEUR. Le client n'écrit JAMAIS son propre
-// drapeau : il envoie `CZ 0x0B93` et attend que le serveur le lui renvoie
-// (`ZC 0x0B94` pour un changement, `ZC 0x0B95` pour la liste complète à
-// l'entrée en jeu). Un affichage optimiste mentirait donc — si le serveur ignore
-// le paquet, la case doit RESTER où elle est. C'est ce que fait le natif.
-
-// Vrai = « recevoir le courrier de tout le monde » (le filtre anti-spam est
-// DÉSACTIVÉ). C'est le sens du drapeau du client, pas celui de son libellé
-// `..._RODEX_SPAM_ON`, qui nomme l'autre bouton radio.
-bool RodexAcceptsEveryone();
-
-// Demande le changement au serveur. Ne modifie rien localement, et n'a aucun
-// effet visible tant que le serveur n'a pas répondu.
-void RequestRodexAcceptsEveryone(bool accept);
+// ⛔ RIEN POUR LE RÉGLAGE RODEX, ET C'EST DÉLIBÉRÉ. Il a été RE (docs §3.9) puis
+// retiré : le client demande le changement par `CZ 0x0B93` et Moonlight ne mappe
+// aucun `0x0b9x`, donc le paquet part dans le vide — la fenêtre native est inerte
+// elle aussi. Des accesseurs que personne n'appelle deviendraient du code mort,
+// c'est-à-dire des adresses que plus rien ne vérifie
+// (feedback_dead_code_unverified_offsets). Le §3.9 dit tout ce qu'il faut pour
+// les réécrire le jour où le serveur saura répondre.
 
 // ── Skin de l'interface ─────────────────────────────────────────────────────
 // Le gestionnaire (`0x011FE3A8`) tient la liste des skins installés et l'index

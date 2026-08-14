@@ -14,14 +14,18 @@
 // ── CE QUI EST PORTÉ, ET CE QUI RESTE AU NATIF ──────────────────────────────
 // Portés : **Effets**, **Contrôles**, **Divers** — les trois onglets que le
 // client construit à partir d'une TABLE (62 lignes lues dans `GameSettings.lub`),
-// donc les seuls qui se rejouent sans rien figer — et **Basique en entier** :
-// son groupe Audio, ses deux bascules `TALKTYPE`, puis le **skin**, le **courrier
-// (RODEX)** et la **priorité du processus**, dont chacun a fallu RE séparément
-// parce qu'aucun ne passe par la table d'options (docs §3.9).
+// donc les seuls qui se rejouent sans rien figer — et **Basique** : son groupe
+// Audio, ses deux bascules `TALKTYPE`, puis le **skin** et la **priorité du
+// processus**, qu'il a fallu RE séparément parce qu'aucun ne passe par la table
+// d'options (docs §3.9).
 //
 // Reste au natif, derrière un bouton : **Graphismes** seulement (résolution,
 // carte, filtrage). C'est un reset de device qu'on ne sait pas déclencher depuis
 // l'extérieur, et que `Setup.exe` couvre déjà.
+//
+// ⛔ Le groupe **Courrier (RODEX)** du natif n'est PAS repris : il est mort sur
+// Moonlight, le serveur ne mappant pas le paquet que le client émet. Détail et
+// marche à suivre dans le .cc, à l'endroit où il aurait pris place.
 //
 // ── POURQUOI CE PANNEAU EST PLUS UTILE QUE LE NATIF ─────────────────────────
 //   - une RECHERCHE, et une vue « Tout » qui fusionne les trois onglets : le

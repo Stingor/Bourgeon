@@ -804,8 +804,13 @@ serveur n'écoute pas le paquet, et **la fenêtre native est aussi inerte**.
 ➡ Le faire vivre demande un **travail serveur** : un type `CONFIG_RODEX_SPAM`,
 `parseable_packet(0x0b93, 12, clif_parse_configuration, 2, 6)`, un champ persisté
 sur le personnage, l'émission de `0x0B95` à l'entrée en jeu et le contrôle à
-l'envoi d'un courrier. Tant que ce n'est pas fait, la case reste honnêtement
-immobile — c'est exactement ce que fait le client d'origine.
+l'envoi d'un courrier.
+
+➡ **Décision (2026-08-14) : le groupe n'est PAS repris dans le panneau ImGui**, et
+ses accesseurs ont été retirés de `ragnarok/game_settings.h`. Une case qui ne
+bouge jamais est pire qu'une case absente, et des accesseurs que personne
+n'appelle sont des adresses que plus rien ne vérifie. Ce paragraphe suffit à les
+réécrire le jour où le serveur saura répondre.
 
 #### Skin — une combo, et une purge de toutes les textures
 
@@ -1483,7 +1488,7 @@ de voler la touche. Ne reste au natif que son **[Reset]**, faute d'équivalent �
 |---|---|---|
 | Game Options 155 | ✅ portée | `features/windows/game_menu.{h,cc}` |
 | Shortcut Settings 156 | ✅ portée, écriture comprise | `features/windows/hotkey_settings.{h,cc}`, `ragnarok/user_hotkey.{h,cc}` |
-| Game Settings 0x271E | ✅ portée **sauf l'onglet Graphics** — Basique complet, skin / RODEX / priorité compris (§3.9) | `features/windows/game_settings.{h,cc}`, `ragnarok/game_settings.{h,cc}` |
+| Game Settings 0x271E | ✅ portée **sauf l'onglet Graphics** — Basique compris (skin, priorité) ; groupe **RODEX volontairement non repris**, mort côté serveur (§3.9) | `features/windows/game_settings.{h,cc}`, `ragnarok/game_settings.{h,cc}` |
 
 Les trois sont **ON par défaut et HORS du groupe « Interface moderne »** : ce sont
 des écrans de réglages, pas des morceaux de HUD, et aucun n'a besoin du reste de
