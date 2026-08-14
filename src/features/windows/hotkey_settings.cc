@@ -8,6 +8,8 @@
 #include <cstring>
 
 #include "bourgeon.h"
+#include "features/gameplay/keyboard_move.h"  // les 8 touches de déplacement
+#include "features/gameplay/player_jump.h"    // la touche de saut
 #include "features/hotkey_actions.h"
 #include "features/hotkey_util.h"
 #include "features/moonlight_ui/moonlight_ui.h"
@@ -296,26 +298,114 @@ void HotkeySettings::RefreshRows() {
 
   if (!all && tab_ != kTabBourgeon) return;
 
-  // Les actions de Bourgeon, rendues dans la MÊME struct que les commandes du
+  // Les lignes de Bourgeon, rendues dans la MÊME struct que les commandes du
   // client : le libellé traduit prend la place du champ EXE, le libellé de combo
   // celle du nom de touche. Le dessin et la recherche n'ont donc qu'un chemin.
-  for (int i = 0; i < hotkeys::ActionCount(); ++i) {
+  auto add_own = [this](RowKind kind, int index, const char* label,
+                        int default_vk = 0) {
     Row entry;
-    entry.tab = kTabBourgeon;
-    entry.action_index = i;
-    entry.binding.command_index = i;
-    std::snprintf(entry.binding.label, sizeof(entry.binding.label), "%s",
-                  i18n::Tr(hotkeys::ActionAt(i).label_fr));
-    const hotkeys::Binding& binding = hotkeys::BindingAt(i);
+    entry.tab   = kTabBourgeon;
+    entry.kind  = kind;
+    entry.index = index;
+    entry.binding.command_index = index;
+    std::snprintf(entry.binding.label, sizeof(entry.binding.label), "%s", label);
+    // La colonne « touche d'origine » garde son sens ici : ce à quoi on revient.
+    if (default_vk != 0) {
+      entry.fallback.key_code1 = default_vk;
+      entry.fallback.assigned  = true;
+      hotkeys::Label(default_vk, false, false, false, entry.fallback.key_name,
+                     sizeof(entry.fallback.key_name));
+    }
+    const hotkeys::Binding binding = ReadOwnBinding(entry);
     entry.binding.key_code1 = binding.vk;
     entry.binding.key_code2 = ModifierVk(binding.ctrl, binding.alt, binding.shift);
-    entry.binding.assigned = (binding.vk != 0);
+    entry.binding.assigned  = (binding.vk != 0);
     if (entry.binding.assigned) {
       hotkeys::Label(binding.vk, binding.ctrl, binding.alt, binding.shift,
                      entry.binding.key_name, sizeof(entry.binding.key_name));
     }
     rows_.push_back(entry);
+  };
+
+  for (int i = 0; i < hotkeys::ActionCount(); ++i)
+    add_own(RowKind::kAction, i, i18n::Tr(hotkeys::ActionAt(i).label_fr));
+
+  // Le saut : sa touche se réglait jusqu'ici dans un coin du panneau « Fun », loin
+  // de tous les autres raccourcis. Elle est ici AUSSI — même valeur, deux endroits
+  // pour l'atteindre.
+  if (Bourgeon::Instance().player_jump()) add_own(RowKind::kJump, 0, i18n::Tr("Saut"));
+
+  // Les huit touches du déplacement clavier, seulement quand il est ACTIF : les
+  // montrer éteintes ferait croire à un réglage qui ne pilote rien, et elles ne
+  // sont contrôlées en conflit que dans ce cas-là non plus.
+  if (auto* keyboard_move = Bourgeon::Instance().keyboard_move()) {
+    if (keyboard_move->enabled()) {
+      static const char* kMoveLabels[KeyboardMove::kMoveKeyCount] = {
+          "Déplacement : avancer",       "Déplacement : reculer",
+          "Déplacement : vers la gauche", "Déplacement : vers la droite",
+          "Déplacement : avancer (2)",   "Déplacement : reculer (2)",
+          "Déplacement : vers la gauche (2)", "Déplacement : vers la droite (2)",
+      };
+      // Les défauts viennent d'une instance construite par défaut : ils restent
+      // écrits UNE seule fois, dans keyboard_move.h, jamais recopiés ici.
+      static const KeyboardMove kDefaults;
+      for (int slot = 0; slot < KeyboardMove::kMoveKeyCount; ++slot)
+        add_own(RowKind::kMove, slot, i18n::Tr(kMoveLabels[slot]),
+                kDefaults.keys_[slot]);
+    }
   }
+}
+
+// ── Liaisons de Bourgeon : un seul point de lecture et d'écriture ────────────
+
+hotkeys::Binding HotkeySettings::ReadOwnBinding(const Row& row) const {
+  hotkeys::Binding binding;
+  switch (row.kind) {
+    case RowKind::kAction:
+      return hotkeys::BindingAt(row.index);
+    case RowKind::kJump:
+      if (auto* jump = Bourgeon::Instance().player_jump()) {
+        binding.vk    = jump->key_vk();
+        binding.ctrl  = jump->key_ctrl();
+        binding.alt   = jump->key_alt();
+        binding.shift = jump->key_shift();
+      }
+      return binding;
+    case RowKind::kMove:
+      if (auto* keyboard_move = Bourgeon::Instance().keyboard_move()) {
+        if (row.index >= 0 && row.index < KeyboardMove::kMoveKeyCount)
+          binding.vk = keyboard_move->keys_[row.index];
+      }
+      return binding;
+    case RowKind::kClient:
+      break;
+  }
+  return binding;
+}
+
+void HotkeySettings::WriteOwnBinding(const Row& row, const hotkeys::Binding& binding) {
+  switch (row.kind) {
+    case RowKind::kAction:
+      hotkeys::SetBinding(row.index, binding);
+      break;
+    case RowKind::kJump:
+      if (auto* jump = Bourgeon::Instance().player_jump()) {
+        jump->key_vk()    = binding.vk;
+        jump->key_ctrl()  = binding.ctrl;
+        jump->key_alt()   = binding.alt;
+        jump->key_shift() = binding.shift;
+      }
+      break;
+    case RowKind::kMove:
+      if (auto* keyboard_move = Bourgeon::Instance().keyboard_move()) {
+        if (row.index >= 0 && row.index < KeyboardMove::kMoveKeyCount)
+          keyboard_move->keys_[row.index] = binding.vk;
+      }
+      break;
+    case RowKind::kClient:
+      return;  // celles-là passent par pending_write_, pas par ici
+  }
+  if (auto* ui = Bourgeon::Instance().moonlight_ui()) ui->SaveSettings();
 }
 
 // ── Menu contextuel d'une ligne ──────────────────────────────────────────────
@@ -327,13 +417,13 @@ bool HotkeySettings::DrawRowMenu(const Row& row) {
 
   bool wrote = false;
 
-  if (row.action_index >= 0) {
-    // Nos actions, elles, savent vraiment n'avoir aucune touche : notre stockage
-    // sait écrire « rien ».
+  if (row.kind != RowKind::kClient) {
+    // Nos réglages, eux, savent vraiment n'avoir aucune touche : notre stockage
+    // sait écrire « rien ». Une direction sans touche est simplement injouable,
+    // ce qui est un choix valide (ne jouer qu'aux flèches, par exemple).
     if (ImGui::MenuItem(i18n::Tr("Effacer la touche"), nullptr, false,
                         row.binding.assigned)) {
-      hotkeys::SetBinding(row.action_index, hotkeys::Binding());
-      if (auto* ui = Bourgeon::Instance().moonlight_ui()) ui->SaveSettings();
+      WriteOwnBinding(row, hotkeys::Binding());
       capture_error_[0] = '\0';
       wrote = true;
     }
@@ -370,23 +460,26 @@ bool HotkeySettings::DrawRowMenu(const Row& row) {
 // ── Capture ──────────────────────────────────────────────────────────────────
 
 bool HotkeySettings::IsCapturing(const Row& row) const {
-  if (!capturing_) return false;
-  if (row.action_index >= 0) return capture_action_ == row.action_index;
-  return capture_category_ == row.category &&
-         capture_command_ == row.binding.command_index;
+  if (!capturing_ || capture_kind_ != row.kind) return false;
+  if (row.kind == RowKind::kClient)
+    return capture_category_ == row.category &&
+           capture_command_ == row.binding.command_index;
+  return capture_index_ == row.index;
 }
 
 void HotkeySettings::BeginCapture(const Row& row) {
   capturing_ = true;
   capture_error_[0] = '\0';
-  capture_action_   = row.action_index;
-  capture_category_ = (row.action_index >= 0) ? -1 : row.category;
-  capture_command_  = (row.action_index >= 0) ? -1 : row.binding.command_index;
+  capture_kind_     = row.kind;
+  capture_index_    = row.index;
+  capture_category_ = row.category;
+  capture_command_  = row.binding.command_index;
 }
 
 void HotkeySettings::CancelCapture() {
   capturing_ = false;
-  capture_action_   = -1;
+  capture_kind_     = RowKind::kClient;
+  capture_index_    = -1;
   capture_category_ = -1;
   capture_command_  = -1;
 }
@@ -418,8 +511,11 @@ bool HotkeySettings::RunCapture(const Row& row) {
   // ⚠ Suppr et Retour arrière n'effacent PLUS pendant la capture : ce sont des
   // touches que le client sait affecter, et les réserver à un geste les rendait
   // impossibles à choisir. L'effacement est au clic droit, où il est visible.
-  const int vkey = (row.action_index >= 0) ? hotkeys::CaptureMainVk()
-                                           : hotkeys::CaptureAnyVk();
+  // Le déplacement, lui, prend le jeu LARGE : ses touches par défaut sont les
+  // flèches, et c'est un usage à la manette, pas un raccourci de commande.
+  const bool own = (row.kind != RowKind::kClient);
+  const int vkey = (own && row.kind != RowKind::kMove) ? hotkeys::CaptureMainVk()
+                                                      : hotkeys::CaptureAnyVk();
   if (vkey == 0) return false;
 
   ImGuiIO& io = ImGui::GetIO();
@@ -429,34 +525,48 @@ bool HotkeySettings::RunCapture(const Row& row) {
 
   // ⚠ Le client ne retient qu'UN modificateur (`key2`) : lui en passer deux en
   // perdrait un en silence, et la touche affectée ne serait pas celle affichée.
-  // Nos propres actions, elles, en acceptent autant qu'on veut.
-  if (row.action_index < 0 && ModifierCount(ctrl, alt, shift) > 1) {
+  // Nos actions et le saut, eux, en acceptent autant qu'on veut.
+  if (!own && ModifierCount(ctrl, alt, shift) > 1) {
     std::snprintf(capture_error_, sizeof(capture_error_), "%s",
                   i18n::Tr("Le jeu ne retient qu'un seul modificateur (Ctrl, Alt "
                            "ou Maj) par raccourci."));
     return false;
   }
 
+  // 🔴 AUCUN modificateur pour le déplacement, et le refuser vaut mieux que
+  // l'accepter : `KeyboardMove::Update` s'arrête net dès que Ctrl, Alt ou Maj est
+  // enfoncé (ce sont des raccourcis du jeu, et Maj sert au clic forcé). Une
+  // direction sur « Ctrl+Z » serait donc acceptée, affichée… et morte.
+  if (row.kind == RowKind::kMove && ModifierCount(ctrl, alt, shift) > 0) {
+    std::snprintf(capture_error_, sizeof(capture_error_), "%s",
+                  i18n::Tr("Le déplacement au clavier ne prend pas de "
+                           "modificateur : la marche s'arrête dès que Ctrl, Alt "
+                           "ou Maj est enfoncé."));
+    return false;
+  }
+
   char what[96];
-  const hotkeys::Owner owner = (row.action_index >= 0) ? hotkeys::Owner::kAction
-                                                       : hotkeys::Owner::kClientCommand;
-  const int self_index = (row.action_index >= 0)
-                             ? row.action_index
-                             : hotkeys::ClientSelf(row.category, row.binding.command_index);
+  hotkeys::Owner owner = hotkeys::Owner::kClientCommand;
+  int self_index = hotkeys::ClientSelf(row.category, row.binding.command_index);
+  switch (row.kind) {
+    case RowKind::kAction: owner = hotkeys::Owner::kAction;        self_index = row.index; break;
+    case RowKind::kJump:   owner = hotkeys::Owner::kJump;          self_index = -1;        break;
+    case RowKind::kMove:   owner = hotkeys::Owner::kKeyboardMove;  self_index = row.index; break;
+    case RowKind::kClient: break;
+  }
   if (hotkeys::Conflict(vkey, ctrl, alt, shift, owner, self_index, what, sizeof(what))) {
     std::snprintf(capture_error_, sizeof(capture_error_),
                   i18n::Tr("Déjà utilisé par %s — choisis une autre touche."), what);
     return false;
   }
 
-  if (row.action_index >= 0) {
+  if (own) {
     hotkeys::Binding binding;
     binding.vk = vkey;
     binding.ctrl = ctrl;
     binding.alt = alt;
     binding.shift = shift;
-    hotkeys::SetBinding(row.action_index, binding);
-    if (auto* ui = Bourgeon::Instance().moonlight_ui()) ui->SaveSettings();
+    WriteOwnBinding(row, binding);
   } else {
     // Différée au tick : ces deux ponts appellent le Lua du client.
     pending_write_.valid = true;

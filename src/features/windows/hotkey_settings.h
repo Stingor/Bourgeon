@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "features/hotkey_actions.h"  // hotkeys::Binding (les liaisons de Bourgeon)
 #include "features/plugin.h"
 #include "ragnarok/user_hotkey.h"
 
@@ -135,6 +136,13 @@ class HotkeySettings : public Plugin {
   // Les deux mondes partagent la même struct de rendu : une action Bourgeon
   // remplit `binding.label` / `binding.key_name` comme le ferait le client. Une
   // seule boucle de dessin, un seul chemin de recherche.
+  // D'où vient la ligne — et donc où sa touche se lit et s'écrit. L'onglet
+  // « Bourgeon » en réunit trois : le catalogue d'actions, le saut, et les huit
+  // touches du déplacement clavier. Aucun de ces trois ne partage un stockage
+  // avec les autres, et c'est très bien : ce sont des réglages de features, pas
+  // des entrées d'une table commune. L'écran, lui, les montre ensemble.
+  enum class RowKind { kClient, kAction, kJump, kMove };
+
   struct Row {
     // Ce que le JOUEUR a choisi : la surcharge de `UserKeys.lua` pour une
     // commande du client, notre liaison pour une action Bourgeon. Souvent vide,
@@ -146,10 +154,11 @@ class HotkeySettings : public Plugin {
     // plutôt qu'un marqueur collé à la précédente.
     userhotkey::Binding fallback;
     int tab = 0;
-    // Commande du CLIENT : sa catégorie Lua. -1 pour une action Bourgeon.
+    RowKind kind = RowKind::kClient;
+    // Commande du CLIENT : sa catégorie Lua.
     int category = -1;
-    // Action BOURGEON : son index dans hotkey_actions. -1 pour le client.
-    int action_index = -1;
+    // kAction : index dans hotkey_actions. kMove : slot dans KeyboardMove.
+    int index = -1;
   };
 
   // Lignes de l'onglet courant — tout quand « Tout » est actif. Relues à
@@ -162,11 +171,18 @@ class HotkeySettings : public Plugin {
   // La ligne en cours de capture est désignée par ce qui l'IDENTIFIE et non par
   // son rang : `rows_` est reconstruit après chaque écriture, et un index y
   // survivrait à la ligne qu'il désignait.
-  bool capturing_ = false;
-  int  capture_category_ = -1;  // commande du client
-  int  capture_command_  = -1;
-  int  capture_action_   = -1;  // action Bourgeon
-  char capture_error_[224] = {0};
+  bool    capturing_ = false;
+  RowKind capture_kind_ = RowKind::kClient;
+  int     capture_category_ = -1;  // kClient
+  int     capture_command_  = -1;  // kClient
+  int     capture_index_    = -1;  // kAction / kMove
+  char    capture_error_[224] = {0};
+
+  // Liaison d'une ligne de BOURGEON (action, saut, déplacement), lue et écrite au
+  // même endroit pour les trois — l'écran n'a ainsi qu'un chemin de capture.
+  // Écrire persiste immédiatement (SaveSettings est anti-rebondi).
+  hotkeys::Binding ReadOwnBinding(const Row& row) const;
+  void             WriteOwnBinding(const Row& row, const hotkeys::Binding& binding);
 
   // Menu contextuel de la colonne « touche choisie » : retirer la surcharge, une
   // ligne à la fois, là où le natif ne sait que réinitialiser les quatre

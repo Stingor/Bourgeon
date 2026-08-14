@@ -811,6 +811,24 @@ const moonlight_ui::SettingDesc kKeyboardMoveSettings[] = {
      MLUI_FIELD(keyboard_move, camera_relative()), MLUI_LITERAL(bool, true)},
     {"kbmove_stop_on_release", SType::kBool,
      MLUI_FIELD(keyboard_move, stop_on_release()), MLUI_LITERAL(bool, true)},
+    // Les huit touches, en VK Windows. Défauts pris sur une instance construite
+    // par défaut : ils restent écrits UNE fois, dans keyboard_move.h.
+    {"kbmove_key_fwd", SType::kInt, MLUI_FIELD(keyboard_move, keys_[KeyboardMove::kFwd]),
+     MLUI_DEFAULT(KeyboardMove, keys_[KeyboardMove::kFwd])},
+    {"kbmove_key_back", SType::kInt, MLUI_FIELD(keyboard_move, keys_[KeyboardMove::kBack]),
+     MLUI_DEFAULT(KeyboardMove, keys_[KeyboardMove::kBack])},
+    {"kbmove_key_left", SType::kInt, MLUI_FIELD(keyboard_move, keys_[KeyboardMove::kLeft]),
+     MLUI_DEFAULT(KeyboardMove, keys_[KeyboardMove::kLeft])},
+    {"kbmove_key_right", SType::kInt, MLUI_FIELD(keyboard_move, keys_[KeyboardMove::kRight]),
+     MLUI_DEFAULT(KeyboardMove, keys_[KeyboardMove::kRight])},
+    {"kbmove_key2_fwd", SType::kInt, MLUI_FIELD(keyboard_move, keys_[KeyboardMove::kAltFwd]),
+     MLUI_DEFAULT(KeyboardMove, keys_[KeyboardMove::kAltFwd])},
+    {"kbmove_key2_back", SType::kInt, MLUI_FIELD(keyboard_move, keys_[KeyboardMove::kAltBack]),
+     MLUI_DEFAULT(KeyboardMove, keys_[KeyboardMove::kAltBack])},
+    {"kbmove_key2_left", SType::kInt, MLUI_FIELD(keyboard_move, keys_[KeyboardMove::kAltLeft]),
+     MLUI_DEFAULT(KeyboardMove, keys_[KeyboardMove::kAltLeft])},
+    {"kbmove_key2_right", SType::kInt, MLUI_FIELD(keyboard_move, keys_[KeyboardMove::kAltRight]),
+     MLUI_DEFAULT(KeyboardMove, keys_[KeyboardMove::kAltRight])},
 };
 
 // Quick cast (QuickCast, réservé staff) : cast en une action, opt-in, OFF par

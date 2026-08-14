@@ -31,6 +31,7 @@ enum class Owner {
   kZoneRecorder,  // touches de l'enregistreur de zone ; self_index = kZoneRecKey*
   kAction,        // action Bourgeon ; self_index = son index dans hotkey_actions
   kClientCommand, // commande du CLIENT ; self_index = ClientSelf(cat, cmdIdx)
+  kKeyboardMove,  // déplacement clavier ; self_index = son slot (KeyboardMove::k*)
 };
 
 // Encodage du `self_index` d'une commande du client : elle a besoin de DEUX

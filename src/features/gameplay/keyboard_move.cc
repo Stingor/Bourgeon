@@ -256,18 +256,27 @@ void KeyboardMove::Update() {
   // bout en bout — lire un livre n'a jamais empêché d'avancer.
   const bool side_arrows_ours = !ItemDescWindow::WantsSideArrows();
 
+  // Une touche d'un des deux jeux est-elle enfoncée ? Les touches sont des VK
+  // configurables : on repasse par la table de `hotkey_util`, qui est l'inverse
+  // exacte de celle du backend ImGui.
+  //
+  // ⚠ La règle des flèches latérales suit la TOUCHE, pas l'emplacement : le
+  // joueur peut avoir mis ← ailleurs que dans le second jeu, et c'est bien ←
+  // qu'il faut taire quand le panneau livre s'en sert.
+  auto pressed = [&](int slot) {
+    const int vkey = keys_[slot];
+    if (vkey == 0) return false;
+    if (!side_arrows_ours && (vkey == VK_LEFT || vkey == VK_RIGHT)) return false;
+    const ImGuiKey key = hotkeys::VkToImGuiKey(vkey);
+    return key != ImGuiKey_None && ImGui::IsKeyDown(key);
+  };
+
   int screen_x = 0, screen_y = 0;
   if (keys_ours) {
-    if (ImGui::IsKeyDown(ImGuiKey_Z) || ImGui::IsKeyDown(ImGuiKey_UpArrow))
-      ++screen_y;
-    if (ImGui::IsKeyDown(ImGuiKey_S) || ImGui::IsKeyDown(ImGuiKey_DownArrow))
-      --screen_y;
-    if (ImGui::IsKeyDown(ImGuiKey_D) ||
-        (side_arrows_ours && ImGui::IsKeyDown(ImGuiKey_RightArrow)))
-      ++screen_x;
-    if (ImGui::IsKeyDown(ImGuiKey_Q) ||
-        (side_arrows_ours && ImGui::IsKeyDown(ImGuiKey_LeftArrow)))
-      --screen_x;
+    if (pressed(kFwd)   || pressed(kAltFwd))   ++screen_y;
+    if (pressed(kBack)  || pressed(kAltBack))  --screen_y;
+    if (pressed(kRight) || pressed(kAltRight)) ++screen_x;
+    if (pressed(kLeft)  || pressed(kAltLeft))  --screen_x;
   }
 
   void* gm = GetGameMode();

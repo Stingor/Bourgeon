@@ -209,16 +209,22 @@ bool Conflict(int vkey, bool ctrl, bool alt, bool shift, Owner self, int self_in
     }
   }
 
-  // d) Le déplacement au clavier, SI le joueur l'a activé. Ses quatre touches ne
-  // se règlent pas, donc il n'y a rien à exclure — et on ne les contrôle QUE
-  // lorsqu'il est actif : les interdire à tout le monde retirerait Z, Q, S et D
-  // aux joueurs qui ne s'en servent pas.
+  // d) Le déplacement au clavier, SI le joueur l'a activé.
+  //
+  // ⚠ On ne le contrôle QUE lorsqu'il est actif : ses touches par défaut sont des
+  // lettres courantes, et les interdire à tout le monde les retirerait à ceux qui
+  // ne s'en servent pas. Et seulement pour un combo SANS modificateur, puisque le
+  // déplacement refuse lui-même de marcher dès qu'un modificateur est enfoncé —
+  // « Ctrl+Z » ne peut donc pas entrer en conflit avec lui.
   if (!ctrl && !alt && !shift) {
     if (auto* keyboard_move = Bourgeon::Instance().keyboard_move()) {
-      if (keyboard_move->enabled() &&
-          (vkey == 'Z' || vkey == 'Q' || vkey == 'S' || vkey == 'D')) {
-        std::snprintf(what, cap, i18n::Tr("le déplacement au clavier (ZQSD)"));
-        return true;
+      if (keyboard_move->enabled()) {
+        for (int slot = 0; slot < KeyboardMove::kMoveKeyCount; ++slot) {
+          if (self == Owner::kKeyboardMove && slot == self_index) continue;
+          if (keyboard_move->keys_[slot] != vkey) continue;
+          std::snprintf(what, cap, i18n::Tr("le déplacement au clavier"));
+          return true;
+        }
       }
     }
   }

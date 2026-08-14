@@ -67,6 +67,29 @@ class KeyboardMove : public Plugin {
   bool& stop_on_release() { return stop_on_release_; }
   bool& camera_relative() { return camera_relative_; }
 
+  // ── Les touches, CONFIGURABLES (VK Windows) ────────────────────────────────
+  // Quatre directions × DEUX jeux : le principal (ZQSD sur un clavier français)
+  // et un second (les flèches). Les deux marchent en même temps, comme avant —
+  // ce qui change, c'est qu'aucun des huit n'est plus figé dans le code.
+  //
+  // 🔴 Sans modificateur, et ce n'est pas un oubli : `Update` refuse de marcher
+  // dès que Ctrl, Alt ou Maj est enfoncé (Alt+lettre et Ctrl+lettre sont des
+  // raccourcis du jeu, Maj sert au clic forcé). Une direction sur « Ctrl+Z » ne
+  // se déclencherait donc JAMAIS. L'écran de raccourcis refuse d'en poser.
+  //
+  // ⚠ 0 = touche retirée. Une direction peut n'avoir aucune touche ; elle est
+  // alors simplement injouable, ce qui est un choix valide (jouer aux seules
+  // flèches, par exemple).
+  enum MoveKeySlot {
+    kFwd = 0, kBack, kLeft, kRight,          // jeu principal
+    kAltFwd, kAltBack, kAltLeft, kAltRight,  // second jeu
+    kMoveKeyCount
+  };
+  // Publiques : la table de persistance décrit un réglage par l'ADRESSE de sa
+  // valeur, et l'écran des raccourcis les lit et les écrit.
+  // VK : 0x26 haut, 0x28 bas, 0x25 gauche, 0x27 droite.
+  int keys_[kMoveKeyCount] = {'Z', 'S', 'Q', 'D', 0x26, 0x28, 0x25, 0x27};
+
  private:
   void Reset();  // oublie la direction en cours (changement de map, hors jeu…)
 
