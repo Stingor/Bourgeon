@@ -9,7 +9,9 @@
 #include "features/windows/craft_atlas.h"
 #include "features/windows/game_menu.h"
 #include "features/windows/hotkey_settings.h"
+#include "features/staff_gate.h"  // IsStaff (actions réservées)
 #include "features/windows/palette_editor.h"
+#include "features/windows/staff_tools.h"
 #include "ragnarok/uiwnd.h"
 
 namespace hotkeys {
@@ -54,6 +56,9 @@ const Action kActions[] = {
     {"win_hotkeys",      "Raccourcis clavier",      ActionGroup::kTools,   0, 0, 0},
     {"tool_craft_atlas", "Atlas des recettes",      ActionGroup::kTools,   0, 0, 0},
     {"tool_palette",     "Style du personnage",     ActionGroup::kTools,   0, 0, 0},
+    // Établi du staff. Le seul membre du catalogue à être gaté : il ne s'affiche
+    // même pas dans l'écran des raccourcis d'un joueur ordinaire.
+    {"tool_staff",       "Staff Tools",             ActionGroup::kTools,   0, 0, 0, true},
 };
 
 constexpr int kActionCount = static_cast<int>(sizeof(kActions) / sizeof(kActions[0]));
@@ -101,6 +106,10 @@ void SetBinding(int index, const Binding& binding) {
 bool Invoke(const char* id) {
   const Action* action = FindAction(id);
   if (!action) return false;
+  // Droit relu ICI, à l'exécution : une liaison posée par un compte staff reste
+  // dans le yaml quand le niveau de groupe change, et ne doit alors plus rien
+  // déclencher.
+  if (action->staff_only && !IsStaff()) return false;
 
   // Le cas général : demander l'ouverture au client, et laisser nos hooks router
   // vers le panneau moderne. Un seul chemin, qui reste correct en interface
@@ -133,6 +142,10 @@ bool Invoke(const char* id) {
   }
   if (std::strcmp(id, "tool_palette") == 0) {
     if (auto* palette = bourgeon.palette_editor()) { palette->Toggle(); return true; }
+    return false;
+  }
+  if (std::strcmp(id, "tool_staff") == 0) {
+    if (auto* staff_tools = bourgeon.staff_tools()) { staff_tools->Toggle(); return true; }
     return false;
   }
   return false;

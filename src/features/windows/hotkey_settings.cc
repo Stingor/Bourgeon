@@ -12,6 +12,7 @@
 #include "features/gameplay/player_jump.h"    // la touche de saut
 #include "features/hotkey_actions.h"
 #include "features/hotkey_util.h"
+#include "features/staff_gate.h"  // IsStaff (actions réservées)
 #include "features/moonlight_ui/moonlight_ui.h"
 #include "imgui.h"
 #include "ragnarok/msgstring.h"
@@ -362,8 +363,12 @@ void HotkeySettings::RefreshRows() {
               kDefaults.keys_[slot]);
   }
 
-  for (int i = 0; i < hotkeys::ActionCount(); ++i)
+  for (int i = 0; i < hotkeys::ActionCount(); ++i) {
+    // Une action réservée ne se montre PAS à qui ne peut pas s'en servir : une
+    // ligne réglable qui ne déclenche rien vaut moins qu'une ligne absente.
+    if (hotkeys::ActionAt(i).staff_only && !IsStaff()) continue;
     add_own(RowKind::kAction, i, i18n::Tr(hotkeys::ActionAt(i).label_fr));
+  }
 }
 
 // ── Liaisons de Bourgeon : un seul point de lecture et d'écriture ────────────

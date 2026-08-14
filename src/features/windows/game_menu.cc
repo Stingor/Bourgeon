@@ -418,29 +418,6 @@ void GameMenu::OnRenderUI() {
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("@load");
 
     if (ro::RoButton(label_char_select, button_w)) pending_ = Action::kCharSelect;
-    if (ro::RoButton(label_settings, button_w)) {
-      // ⏳ INTERIM : la fenêtre Game Settings ImGui n'existe pas encore, on ouvre
-      // donc la native (id 0x271E). À remplacer par l'ouverture de notre panneau
-      // dès que game_settings.{h,cc} atterrit — c'est l'étape suivante du chantier
-      // décrit dans docs/game_option_re.md §5.7. Un bouton mort serait pire : le
-      // joueur perdrait l'accès à ses réglages.
-      pending_ = Action::kOpenGameSettings;
-    }
-    if (ro::RoButton(label_shortcuts, button_w)) {
-      Close();
-      // ⚠ CE BOUTON NE DOIT JAMAIS ÊTRE MORT. Notre table est ON par défaut, mais
-      // le joueur peut la désactiver seule dans le panneau — et notre panneau
-      // refuse alors de s'ouvrir. On retombe donc sur la fenêtre du client, que
-      // son hook de création laissera vivre puisqu'il est éteint lui aussi.
-      auto* hotkeys = Bourgeon::Instance().hotkey_settings();
-      if (hotkeys && hotkeys->imgui_enabled_) hotkeys->OpenFromMenu();
-      else                                    pending_ = Action::kOpenHotkeyNative;
-    }
-    // Les macros n'ont AUCUN chemin d'ouverture dans le menu du client : elles ne
-    // s'atteignent qu'au raccourci (Alt+M par défaut). Un joueur qui l'a remappé,
-    // ou qui ne l'a jamais su, n'y accédait donc plus du tout.
-    if (ro::RoButton(label_macros, button_w)) pending_ = Action::kOpenMacros;
-
     // 🔴 LE CHEMIN DE RETOUR DU PANNEAU DE BOURGEON. Il est fermable depuis peu ;
     // sans ce bouton, le fermer serait sans retour — et un panneau qu'on ne sait
     // pas rouvrir, personne ne le ferme. Sa place est ici : le menu Échap est le
@@ -452,16 +429,47 @@ void GameMenu::OnRenderUI() {
       if (auto* ui = Bourgeon::Instance().moonlight_ui()) ui->ShowWindow();
     }
 
+    if (ro::RoButton(label_settings, button_w)) {
+      // ⏳ INTERIM : la fenêtre Game Settings ImGui n'existe pas encore, on ouvre
+      // donc la native (id 0x271E). À remplacer par l'ouverture de notre panneau
+      // dès que game_settings.{h,cc} atterrit — c'est l'étape suivante du chantier
+      // décrit dans docs/game_option_re.md §5.7. Un bouton mort serait pire : le
+      // joueur perdrait l'accès à ses réglages.
+      pending_ = Action::kOpenGameSettings;
+    }
+
+    if (ro::RoButton(label_shortcuts, button_w)) {
+      Close();
+      // ⚠ CE BOUTON NE DOIT JAMAIS ÊTRE MORT. Notre table est ON par défaut, mais
+      // le joueur peut la désactiver seule dans le panneau — et notre panneau
+      // refuse alors de s'ouvrir. On retombe donc sur la fenêtre du client, que
+      // son hook de création laissera vivre puisqu'il est éteint lui aussi.
+      auto* hotkeys = Bourgeon::Instance().hotkey_settings();
+      if (hotkeys && hotkeys->imgui_enabled_) hotkeys->OpenFromMenu();
+      else                                    pending_ = Action::kOpenHotkeyNative;
+    }
+
+    // Les macros n'ont AUCUN chemin d'ouverture dans le menu du client : elles ne
+    // s'atteignent qu'au raccourci (Alt+M par défaut). Un joueur qui l'a remappé,
+    // ou qui ne l'a jamais su, n'y accédait donc plus du tout.
+    if (ro::RoButton(label_macros, button_w)) pending_ = Action::kOpenMacros;
+
     // 🔴 Réservé au STAFF, et le droit est relu à CHAQUE frame : le niveau de
     // groupe arrive au login et peut changer en cours de session. Le bouton
     // disparaît alors de lui-même, comme la fenêtre qu'il ouvre.
+    //
+    // ⚠ BASCULE, et SANS refermer ce menu — contrairement à tous les autres
+    // boutons. C'est un établi qu'on garde ouvert pendant qu'on travaille, pas
+    // une destination : le menu reste donc affiché, la fenêtre apparaît à côté,
+    // et le même bouton la remballe. L'état étant persisté, ouvrir le menu suffit
+    // ensuite à la retrouver — il n'y a plus de clic à refaire à chaque session.
     if (IsStaff() && ro::RoButton(label_staff_tools, button_w)) {
-      Close();
       if (auto* staff_tools = Bourgeon::Instance().staff_tools())
-        staff_tools->Open();
+        staff_tools->Toggle();
     }
 
     if (ro::RoButton(label_exit, button_w)) pending_ = Action::kExitToWindows;
+
     if (ro::RoButton(label_return, button_w)) Close();
   } else {
     if (layout_ == Layout::kDeadWithToken) {

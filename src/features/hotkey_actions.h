@@ -53,6 +53,11 @@ struct Action {
   // modificateur (VK_CONTROL / VK_SHIFT / VK_MENU) ou 0.
   int default_vk;
   int default_mod;
+  // 🔴 Réservé au STAFF : l'action ne s'exécute pas et ne s'AFFICHE pas chez un
+  // joueur ordinaire. Le droit est relu à chaque fois, jamais mémorisé — le
+  // niveau de groupe arrive au login et peut changer en cours de session.
+  // Dernier champ, avec un défaut : les entrées existantes n'ont pas à le citer.
+  bool staff_only = false;
 };
 
 int           ActionCount();
