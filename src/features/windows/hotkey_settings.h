@@ -148,6 +148,12 @@ class HotkeySettings : public Plugin {
   int  capture_action_   = -1;  // action Bourgeon
   char capture_error_[224] = {0};
 
+  // Menu contextuel de la cellule des touches : effacer, ou remettre la touche
+  // que le client donne par défaut à CETTE commande — le [Reset] pris ligne à
+  // ligne, là où le natif ne sait que réinitialiser les quatre catégories.
+  // Renvoie true si une écriture a été demandée.
+  bool DrawRowMenu(const Row& row);
+
   bool IsCapturing(const Row& row) const;
   void BeginCapture(const Row& row);
   void CancelCapture();

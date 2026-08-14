@@ -66,6 +66,16 @@ struct Binding {
 // natif). Les deux `std::string` allouées par le pont sont détruites ici.
 bool ReadBinding(int category, int row, Binding* out);
 
+// Raccourci PAR DÉFAUT d'une commande — ce que le client lui donnerait sur une
+// installation neuve. Renvoie false si la commande n'existe pas.
+//
+// C'est la brique du [Reset] natif, mais prise UNITAIREMENT : son bouton passe
+// les quatre catégories entières (`UIHotKeyWnd_StageDefaultBindings` 0x008E2930),
+// là où une seule ligne suffit souvent. Le natif n'expose aucun pont C pour ce
+// global : on appelle donc `GetOriginalHotKeyInfo(cat+1, cmdIdx)` par l'API C de
+// Lua (`ragnarok/lua.h`), exactement ce que le natif fait en ligne.
+bool ReadDefaultBinding(int category, int command_index, Binding* out);
+
 // ── Écriture ────────────────────────────────────────────────────────────────
 // RE : docs/game_option_re.md §4.9.
 

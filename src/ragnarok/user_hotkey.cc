@@ -5,6 +5,7 @@
 #include <cstring>
 
 #include "ragnarok/globals.h"
+#include "ragnarok/lua.h"
 #include "ui/ro_imgui.h"
 
 namespace userhotkey {
@@ -147,6 +148,73 @@ bool ReadBinding(int category, int row, Binding* out) {
 
   // Le client parle sa propre code-page (CP949 ou CP1252 selon l'install) ; ces
   // deux textes viennent de lui, donc ils passent par la conversion du toolkit.
+  const char* key_utf8   = ro::LocalToUtf8(key_name_local);
+  const char* label_utf8 = ro::LocalToUtf8(label_local);
+  if (key_utf8) {
+    std::strncpy(out->key_name, key_utf8, sizeof(out->key_name) - 1);
+    out->key_name[sizeof(out->key_name) - 1] = '\0';
+  }
+  if (label_utf8) {
+    std::strncpy(out->label, label_utf8, sizeof(out->label) - 1);
+    out->label[sizeof(out->label) - 1] = '\0';
+  }
+  return true;
+}
+
+bool ReadDefaultBinding(int category, int command_index, Binding* out) {
+  if (!out) return false;
+  *out = Binding();
+  if (category < 0 || category >= kCategoryCount || command_index < 0) return false;
+  void* lua_state = lua::State();
+  if (!lua_state) return false;
+  out->command_index = command_index;
+
+  // Tampons POD : le SEH de MSVC interdit de dérouler des objets C++ ici.
+  char key_name_local[64] = {0};
+  char label_local[128]   = {0};
+  int  kc1 = 0;
+  int  kc2 = 0;
+  bool ok = false;
+
+  __try {
+    // 4 valeurs de retour + la fonction + 2 arguments : on demande la place.
+    if (lua::CheckStack(lua_state, 8)) {
+      lua::GetField(lua_state, lua::kGlobalsIndex, "GetOriginalHotKeyInfo");
+      lua::PushNumber(lua_state, category + 1);  // le Lua est 1-based
+      lua::PushNumber(lua_state, command_index);
+      // Format natif « dd>ddss » : deux entrées, quatre sorties dans cet ordre —
+      // code de touche, modificateur, NOM de touche, LIBELLÉ de la commande.
+      if (lua::PCall(lua_state, 2, 4, 0) == 0) {
+        kc1 = static_cast<int>(lua::ToNumber(lua_state, -4));
+        kc2 = static_cast<int>(lua::ToNumber(lua_state, -3));
+        const char* key_name = lua::ToLString(lua_state, -2, nullptr);
+        const char* label    = lua::ToLString(lua_state, -1, nullptr);
+        if (key_name) {
+          std::strncpy(key_name_local, key_name, sizeof(key_name_local) - 1);
+          key_name_local[sizeof(key_name_local) - 1] = '\0';
+        }
+        if (label) {
+          std::strncpy(label_local, label, sizeof(label_local) - 1);
+          label_local[sizeof(label_local) - 1] = '\0';
+        }
+        lua::Pop(lua_state, 4);
+        ok = true;
+      } else {
+        // Échec : Lua a empilé un message d'erreur à la place des résultats.
+        lua::Pop(lua_state, 1);
+      }
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    return false;
+  }
+
+  // Même test de validité que le natif : libellé vide = la commande n'existe pas.
+  if (!ok || label_local[0] == '\0') return false;
+
+  out->key_code1 = kc1;
+  out->key_code2 = kc2;
+  out->assigned  = (key_name_local[0] != '\0');
+
   const char* key_utf8   = ro::LocalToUtf8(key_name_local);
   const char* label_utf8 = ro::LocalToUtf8(label_local);
   if (key_utf8) {

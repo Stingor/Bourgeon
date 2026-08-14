@@ -310,6 +310,79 @@ void HotkeySettings::RefreshRows() {
   }
 }
 
+// ── Menu contextuel d'une ligne ──────────────────────────────────────────────
+
+bool HotkeySettings::DrawRowMenu(const Row& row) {
+  // Attaché à la cellule qui précède (la colonne des touches). L'identifiant est
+  // celui poussé par la boucle : deux lignes ne peuvent pas se le disputer.
+  if (!ImGui::BeginPopupContextItem("##hotkey_row_menu")) return false;
+
+  bool wrote = false;
+  const bool is_action = (row.action_index >= 0);
+
+  // « Touche du client » n'a de sens que pour SES commandes : le catalogue de
+  // Bourgeon ne propose aucun défaut, remettre le sien reviendrait à effacer.
+  if (!is_action) {
+    if (ImGui::MenuItem(i18n::Tr("Remettre la touche par défaut"))) {
+      userhotkey::Binding fallback;
+      if (userhotkey::ReadDefaultBinding(row.category, row.binding.command_index,
+                                         &fallback)) {
+        int  main_vk = 0;
+        bool ctrl = false, alt = false, shift = false;
+        SplitClientKeys(fallback, &main_vk, &ctrl, &alt, &shift);
+        // Le défaut peut très bien être déjà pris par un autre raccourci — le
+        // joueur l'a peut-être déplacé lui-même. On le contrôle donc comme
+        // n'importe quelle affectation, plutôt que de créer un doublon muet.
+        char what[96];
+        if (main_vk != 0 &&
+            hotkeys::Conflict(main_vk, ctrl, alt, shift, hotkeys::Owner::kClientCommand,
+                              hotkeys::ClientSelf(row.category, row.binding.command_index),
+                              what, sizeof(what))) {
+          std::snprintf(capture_error_, sizeof(capture_error_),
+                        i18n::Tr("Déjà utilisé par %s — choisis une autre touche."),
+                        what);
+        } else {
+          pending_write_.valid = true;
+          pending_write_.category = row.category;
+          pending_write_.command_index = row.binding.command_index;
+          pending_write_.key1 = main_vk;
+          pending_write_.key2 = ModifierVk(ctrl, alt, shift);
+          std::snprintf(pending_write_.label, sizeof(pending_write_.label), "%s",
+                        row.binding.label);
+          capture_error_[0] = '\0';
+          wrote = true;
+        }
+      } else {
+        std::snprintf(capture_error_, sizeof(capture_error_), "%s",
+                      i18n::Tr("Le client ne donne aucune touche par défaut à "
+                               "cette commande."));
+      }
+    }
+  }
+
+  if (ImGui::MenuItem(i18n::Tr("Effacer la touche"), nullptr, false,
+                      row.binding.assigned || row.binding.key_code1 != 0)) {
+    if (is_action) {
+      hotkeys::SetBinding(row.action_index, hotkeys::Binding());
+      if (auto* ui = Bourgeon::Instance().moonlight_ui()) ui->SaveSettings();
+    } else {
+      pending_write_.valid = true;
+      pending_write_.category = row.category;
+      pending_write_.command_index = row.binding.command_index;
+      pending_write_.key1 = 0;  // 0/0 = effacement, c'est la convention du pont
+      pending_write_.key2 = 0;
+      std::snprintf(pending_write_.label, sizeof(pending_write_.label), "%s",
+                    row.binding.label);
+    }
+    capture_error_[0] = '\0';
+    wrote = true;
+  }
+
+  ImGui::EndPopup();
+  if (wrote) rows_dirty_ = true;
+  return wrote;
+}
+
 // ── Capture ──────────────────────────────────────────────────────────────────
 
 bool HotkeySettings::IsCapturing(const Row& row) const {
@@ -626,9 +699,12 @@ void HotkeySettings::OnRenderUI() {
         if (!binding.assigned) ImGui::PopStyleColor();
         if (ImGui::IsItemHovered()) {
           ImGui::SetTooltip("%s",
-                            i18n::Tr("Clic : choisir une touche.  Pendant la "
-                                     "capture, Suppr efface et Échap annule."));
+                            i18n::Tr("Clic : choisir une touche.  Clic droit : "
+                                     "effacer, ou remettre celle du client.  "
+                                     "Pendant la capture, Suppr efface et Échap "
+                                     "annule."));
         }
+        wrote = DrawRowMenu(entry);
       }
       ImGui::PopID();
       if (wrote) break;  // `rows_` sera relu : ne pas continuer sur l'ancien
@@ -688,6 +764,14 @@ void HotkeySettings::OnRenderUI() {
                                "quelle. Cette vue-ci se met à jour dès que tu la "
                                "refermes."));
   }
+
+  // Fermer, calé à DROITE comme dans la fenêtre du client. Position mesurée sur
+  // le libellé traduit : « Fermer », « Close » et « Cerrar » n'ont pas la même
+  // largeur, et une valeur en dur décollerait le bouton du bord dans deux langues
+  // sur trois.
+  const float close_w = ro::MaxButtonWidth({i18n::Tr("Fermer")});
+  ImGui::SameLine(ImGui::GetContentRegionMax().x - close_w);
+  if (ro::RoButton(i18n::Tr("Fermer"), close_w)) Close();
 
   // ⚠ UNE SEULE chaîne pour l'ouverture ET pour le Begin : ImGui apparie les
   // popups par l'identifiant qui suit `###`, et l'échec est SILENCIEUX.
