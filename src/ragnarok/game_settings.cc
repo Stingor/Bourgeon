@@ -37,6 +37,13 @@ constexpr uintptr_t kSetFlagRawAddr = 0x0068fd50;
 using MgrSetOption_t = void(__thiscall*)(void*, unsigned int, char, char);
 constexpr uintptr_t kMgrSetOptionAddr = 0x0068dfd0;
 
+// La SEULE fonction qui insère une clé absente : elle résout un nom de commande
+// slash en identifiant d'option, puis écrit sans exiger que la clé préexiste.
+// Rend 3 quand la commande est inconnue. Cf. le commentaire de `SetOnByCommand`.
+using SetFlagByCommand_t = int(__cdecl*)(const char*, char);
+constexpr uintptr_t kSetFlagByCommandAddr = 0x0068fc70;
+constexpr int kCommandUnknown = 3;
+
 // `CGameSettingsMgr::ExecOption(id)` — les lignes de type EXE.
 using MgrExecOption_t = char(__thiscall*)(void*, int);
 constexpr uintptr_t kMgrExecOptionAddr = 0x0068e160;
@@ -259,6 +266,20 @@ void SetOn(int id, bool on) {
     reinterpret_cast<MgrSetOption_t>(kMgrSetOptionAddr)(
         mgr, static_cast<unsigned int>(id), internal, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
+bool SetOnByCommand(const char* slash_command, bool on) {
+  if (!slash_command || !*slash_command) return false;
+  // ⚠ Pas de XOR d'inversion ici, et ce n'est pas un oubli : on ne connaît l'id
+  // qu'APRÈS l'appel, trop tard pour corriger la valeur. Le cas ne se pose pas —
+  // les cinq options rangées à l'envers sont toutes dans `OptionTbl`, donc
+  // accessibles par `SetOn`, alors que ce chemin-ci ne sert qu'aux options qui
+  // n'y sont pas.
+  __try {
+    const int id = reinterpret_cast<SetFlagByCommand_t>(kSetFlagByCommandAddr)(
+        slash_command, on ? 1 : 0);
+    return id != kCommandUnknown;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
 void Exec(int id) {

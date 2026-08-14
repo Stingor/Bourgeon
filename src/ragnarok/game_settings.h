@@ -102,6 +102,30 @@ void SetOn(int id, bool on);
 // comportement de `SetOn`, et qu'un appelant peut vouloir le savoir avant.
 bool InTable(int id);
 
+// ── Écrire une bascule que le client ne connaît PAS ENCORE ───────────────────
+//
+// 🔴 IL Y A UN TROISIÈME CAS, et il est vicieux. `GameSettings_SetFlagRaw` ne
+// MET À JOUR que des clés existantes : si l'option n'est pas déjà dans la table
+// des drapeaux, elle **ne fait rien et rend 0**. Or cette table n'est peuplée que
+// par deux chemins — les options de `OptionTbl`, et les commandes slash listées
+// dans `CmdOnOffList` de `SaveData\OptionInfo.lua`. Une option qui n'est dans
+// aucun des deux est donc **impossible à écrire**, y compris pour le client
+// lui-même.
+//
+// C'est le cas, vérifié en jeu le 2026-08-14, de la **bordure d'emblème**
+// (`TT_EMBLEM_FRAME_ON_OFF`) : `/frame` est absent de `CmdOnOffList`, et le
+// réglage est donc inerte DANS LA FENÊTRE NATIVE AUSSI — ce n'est pas une
+// régression du portage, c'est un réglage mort chez le client.
+//
+// `sub_68FC70` est la seule fonction qui INSÈRE : elle résout le nom de commande
+// (« /frame ») en identifiant, puis écrit sans exiger que la clé préexiste. On
+// passe donc par elle pour ces options-là, ce qui les fait marcher là où le natif
+// échoue.
+//
+// `slash_command` est le nom EXACT de la commande de chat, barre oblique comprise.
+// Renvoie false si le client ne connaît pas cette commande.
+bool SetOnByCommand(const char* slash_command, bool on);
+
 // Exécute une option `kTypeCommand` (les `/sit`, `/where`, `/memo`… de l'onglet
 // Divers). Sans effet sur une bascule.
 void Exec(int id);

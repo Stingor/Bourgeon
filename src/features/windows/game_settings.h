@@ -123,6 +123,11 @@ class GameSettings : public Plugin {
     int  id = 0;
     bool on = false;
     bool exec = false;  // ligne de type EXE : exécuter au lieu d'écrire
+    // Option que le client ne sait PAS écrire par son id, faute de clé dans sa
+    // table de drapeaux : on passe alors par le nom de sa commande de chat, seul
+    // chemin qui insère (cf. gamesettings::SetOnByCommand). Littéral statique,
+    // jamais alloué — sa durée de vie dépasse celle de la structure.
+    const char* slash = nullptr;
   };
   PendingWrite pending_write_;
 

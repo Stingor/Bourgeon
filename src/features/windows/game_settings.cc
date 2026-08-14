@@ -191,6 +191,12 @@ void GameSettings::OnTick() {
     pending_write_ = PendingWrite();
     if (write.exec) {
       gamesettings::Exec(write.id);
+    } else if (write.slash) {
+      // Option absente de la table des drapeaux : seul le chemin par nom de
+      // commande sait l'y insérer. Si le client ne connaît pas la commande, on
+      // retombe sur l'écriture ordinaire plutôt que de ne rien faire.
+      if (!gamesettings::SetOnByCommand(write.slash, write.on))
+        gamesettings::SetOn(write.id, write.on);
     } else {
       gamesettings::SetOn(write.id, write.on);
     }
@@ -402,6 +408,12 @@ void GameSettings::DrawBasicTab() {
     pending_write_.valid = true;
     pending_write_.id = kTtEmblemFrame;
     pending_write_.on = emblem;
+    // 🔴 PAR LA COMMANDE, pas par l'id. `/frame` est absent de `CmdOnOffList`
+    // dans `SaveData\OptionInfo.lua`, donc la clé de cette option n'existe pas
+    // dans la table des drapeaux — et `SetFlagRaw` refuse de créer ce qu'il ne
+    // trouve pas. Le réglage est pour cette raison inerte JUSQUE DANS LA FENÊTRE
+    // NATIVE (constaté en jeu). Le chemin par nom de commande, lui, insère.
+    pending_write_.slash = "/frame";
   }
   ImGui::SameLine();
   mui::HelpMarker(i18n::Tr("Encadre l'emblème de guilde affiché à côté des noms."));
