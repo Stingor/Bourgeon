@@ -1338,10 +1338,20 @@ int EmblemVersionSEH(int guildId) {
 // Le même `field4c` garde aussi `Guild_DrawEmblemOnPartyHUD` (0x00825160), le
 // second consommateur du bitmap. Les deux chemins tombent par la même cause.
 //
-// ⚠ Ce champ est un MODE (comparé à 1, pas à zéro), posé entre autres par un
-// paquet dans `RecvLoop_DispatchPackets` — qui, au même endroit, force
-// `TT_MIN_EFFECT_ON_OFF`. Il ne nous appartient donc pas : le rallumer serait
-// changer un mode d'affichage du client, pas réparer un réglage.
+// 🔴 ET CE CHAMP EST « JE SUIS SUR UNE CARTE DE SIÈGE ». Il est posé par
+// `ZC_NOTIFY_MAPPROPERTY` de valeur **3 = `MAPPROPERTY_AGITZONE`** (0x00CA6426),
+// que rAthena envoie quand `mapdata_flag_gvg(map)` est vrai (clif.cpp:14669) —
+// et la même branche force `TT_MIN_EFFECT_ON_OFF`, la signature d'une carte de
+// siège. Le champ est donc renommé `GameSession_IsAgitZone`.
+//
+// ➡ **Le cadre d'emblème est une fonction de WoE.** Le client ne l'affiche que
+// là où distinguer les guildes d'un coup d'œil sert à quelque chose. Ailleurs
+// il ne peut PAS apparaître, et `/frame` seul n'y changera jamais rien : ce
+// n'est pas une panne, c'est la conception.
+//
+// C'est aussi pourquoi on ne force rien : ce champ dit au client sur quel type
+// de carte il est. Le mentir pour un liseré, c'est mentir aussi aux étiquettes
+// de nom, au clic sur les acteurs et au survol du curseur, qui le lisent tous.
 //
 // ➡ On l'honore donc là où NOUS dessinons l'emblème. Le bitmap est celui du
 // client, chargé par son propre TexMgr : il suit le skin actif comme n'importe
