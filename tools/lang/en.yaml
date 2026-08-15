@@ -2799,7 +2799,6 @@
 "Retirer la touche": "Remove the key"
 "Clic : choisir une touche (Échap annule).  Clic droit : retirer la touche.": "Click: choose a key (Esc cancels).  Right click: remove the key."
 "Retour à mon point de sauvegarde": "Back to my save point"
-"Ouvrir les macros": "Open the macros"
 "le déplacement au clavier": "keyboard movement"
 "Le déplacement au clavier ne prend pas de modificateur : la marche s'arrête dès que Ctrl, Alt ou Maj est enfoncé.": "Keyboard movement takes no modifier: walking stops as soon as Ctrl, Alt or Shift is held."
 # Étiquettes des huit touches de déplacement (table statique, hotkey_settings.cc).
@@ -2835,6 +2834,7 @@
 "Contrôles": "Controls"
 "Bordure d'emblème": "Emblem Border"
 "Notification de connexion": "Login Notification"
+"Macros de chat (Alt+1 à 0)": "Chat macros (Alt+1 to 0)"
 "Encadre l'emblème de guilde au-dessus des noms. Le client ne dessine ce cadre que sur une carte de siège (GvG) : ailleurs la commande bascule, mais rien ne change à l'écran. Bourgeon l'honore partout où il dessine lui-même l'emblème, comme la fiche de personnage.": "Frames the guild emblem above names. The client only draws this frame on a siege (GvG) map: elsewhere the command toggles, but nothing changes on screen. Bourgeon honours it wherever it draws the emblem itself, such as the character sheet."
 
 ⚠ The stock client NEVER draws this frame, whatever you tick: its only drawing function is reached solely in a tag-display mode this client never enables. Bourgeon honours it where it draws the emblem itself."

@@ -44,7 +44,7 @@ constexpr int kGameSettingsWndId = 0x271E;  // 10014  « Game Settings »
 // ce qui le confirme par un second chemin.
 // ⚠ NE PAS confondre avec `UIMacroRegisterWnd` (id 0x11E), qu'AUCUN raccourci
 // n'ouvre : c'est une autre fenêtre, malgré son nom.
-constexpr int kMacroWndId = 86;  // 0x56
+constexpr int kChatMacroWndId = 86;  // 0x56
 
 // Les trois fenêtres que le branchement « Character Select » ferme. On ne les
 // ferme pas nous-mêmes (le natif le fait), elles sont ici pour le REPLI.
@@ -302,9 +302,9 @@ void GameMenu::RunPendingAction() {
       SendModeCmd(kCmdRequestDisconnect, 0);
       break;
 
-    case Action::kOpenMacros:
+    case Action::kOpenChatMacros:
       Close();
-      uiwnd::MakeWindow(kMacroWndId);
+      uiwnd::MakeWindow(kChatMacroWndId);
       break;
 
     case Action::kOpenGameSettings:
@@ -356,7 +356,14 @@ void GameMenu::OnRenderUI() {
   // téléportation d'un personnage VIVANT (commande serveur @load). Le possessif
   // « mon » les distingue à la lecture, et ils ne s'affichent jamais ensemble.
   const char* label_load        = i18n::Tr("Retour à mon point de sauvegarde");
-  const char* label_macros      = i18n::Tr("Ouvrir les macros");
+  // 🔴 « Macros DE CHAT », et les touches qui les déclenchent. « Ouvrir les
+  // macros » ne disait ni ce que c'est ni à quoi ça sert, et le mot seul entre
+  // en collision avec `UIMacroRegisterWnd` / `UIMacroDetectorWnd` — l'anti-bot,
+  // qui n'a AUCUN rapport (docs/shortcut_list_re.md §0). Cette fenêtre-là associe
+  // dix touches à dix textes de chat (`@load`, `/lv`…) et les envoie d'une
+  // frappe : c'est `Alt+1 à 0` qui compte pour le joueur, pas l'Alt+M qui ouvre
+  // — ce bouton s'en charge déjà.
+  const char* label_chat_macros = i18n::Tr("Macros de chat (Alt+1 à 0)");
   // Nom du projet, donc pas traduit — c'est ce que le joueur voit sur la fenêtre
   // qu'il va rouvrir, et deux noms pour une même chose se cherchent longtemps.
   const char* label_moonlight   = "Moonlight Settings";
@@ -370,7 +377,7 @@ void GameMenu::OnRenderUI() {
                                              label_shortcuts, label_exit,
                                              label_return, label_savepoint,
                                              label_resurrect, label_load,
-                                             label_macros, label_moonlight,
+                                             label_chat_macros, label_moonlight,
                                              label_staff_tools});
   ImGui::SetNextWindowSize(
       ImVec2(button_w + ImGui::GetStyle().WindowPadding.x * 2.0f, 0.0f),
@@ -455,7 +462,7 @@ void GameMenu::OnRenderUI() {
     // Les macros n'ont AUCUN chemin d'ouverture dans le menu du client : elles ne
     // s'atteignent qu'au raccourci (Alt+M par défaut). Un joueur qui l'a remappé,
     // ou qui ne l'a jamais su, n'y accédait donc plus du tout.
-    if (ro::RoButton(label_macros, button_w)) pending_ = Action::kOpenMacros;
+    if (ro::RoButton(label_chat_macros, button_w)) pending_ = Action::kOpenChatMacros;
 
     // 🔴 Réservé au STAFF, et le droit est relu à CHAQUE frame : le niveau de
     // groupe arrive au login et peut changer en cours de session. Le bouton

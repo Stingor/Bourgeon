@@ -2755,7 +2755,6 @@
 "Retirer la touche": "Quitar la tecla"
 "Clic : choisir une touche (Échap annule).  Clic droit : retirer la touche.": "Clic: elegir una tecla (Esc cancela).  Clic derecho: quitar la tecla."
 "Retour à mon point de sauvegarde": "Volver a mi punto de guardado"
-"Ouvrir les macros": "Abrir las macros"
 "le déplacement au clavier": "el movimiento con teclado"
 "Le déplacement au clavier ne prend pas de modificateur : la marche s'arrête dès que Ctrl, Alt ou Maj est enfoncé.": "El movimiento con teclado no admite modificadores: la marcha se detiene en cuanto se mantiene Ctrl, Alt o Mayús."
 # Etiquetas de las ocho teclas de movimiento (tabla estatica, hotkey_settings.cc).
@@ -2791,6 +2790,7 @@
 "Contrôles": "Controles"
 "Bordure d'emblème": "Borde del emblema"
 "Notification de connexion": "Notificación de conexión"
+"Macros de chat (Alt+1 à 0)": "Macros de chat (Alt+1 a 0)"
 "Encadre l'emblème de guilde au-dessus des noms. Le client ne dessine ce cadre que sur une carte de siège (GvG) : ailleurs la commande bascule, mais rien ne change à l'écran. Bourgeon l'honore partout où il dessine lui-même l'emblème, comme la fiche de personnage.": "Enmarca el emblema de gremio sobre los nombres. El cliente solo dibuja este marco en un mapa de asedio (GvG): en otros sitios el comando cambia, pero nada cambia en pantalla. Bourgeon lo respeta allí donde dibuja el emblema él mismo, como la hoja de personaje."
 
 ⚠ El cliente original NUNCA dibuja este marco, marques lo que marques: su única función de dibujo solo se alcanza en un modo de etiquetas que este cliente no activa. Bourgeon lo respeta allí donde dibuja el emblema él mismo."

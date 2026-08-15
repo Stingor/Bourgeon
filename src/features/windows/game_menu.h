@@ -101,7 +101,7 @@ class GameMenu : public Plugin {
     // Ouvertures de fenêtres NATIVES. Elles passent par la file d'actions et non
     // par un `MakeWindow` en pleine frame : fabriquer une native pendant le rendu
     // ImGui gèle le client sans un mot (feedback_no_native_cmd_during_imgui_frame).
-    kOpenMacros,        // fenêtre 86 — celle d'Alt+M
+    kOpenChatMacros,        // fenêtre 86 — celle d'Alt+M
     kOpenGameSettings,  // fenêtre 0x271E, en attendant notre panneau
     kOpenHotkeyNative,  // fenêtre 156, quand notre table est désactivée seule
   };
