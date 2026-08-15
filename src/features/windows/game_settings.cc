@@ -9,6 +9,7 @@
 #include <iterator>  // std::size
 
 #include "bourgeon.h"
+#include "features/systems/dx7_warning.h"  // dx7::DrawWarningBody — texte PARTAGÉ
 #include "imgui.h"
 #include "ragnarok/game_settings.h"
 #include "ragnarok/msgstring.h"
@@ -225,6 +226,18 @@ void GameSettings::OnTick() {
     return;
   }
 
+  // Les trois réglages « effet immédiat » : différés jusqu'ici parce que les
+  // appliquer recharge des textures du client.
+  if (pending_hot_.sprite >= 0 || pending_hot_.texture >= 0 ||
+      pending_hot_.trilinear >= 0) {
+    const PendingHotGraphics hot = pending_hot_;
+    pending_hot_ = PendingHotGraphics();
+    if (hot.sprite >= 0)    gamesettings::graphics::SetSpriteDetail(hot.sprite);
+    if (hot.texture >= 0)   gamesettings::graphics::SetTextureDetail(hot.texture);
+    if (hot.trilinear >= 0) gamesettings::graphics::SetTrilinear(hot.trilinear != 0);
+    return;
+  }
+
   // Énumération auprès du client : coûteuse (elle crée un device Direct3D en
   // DX9), donc au tick et sur évènement seulement.
   if (pending_graphics_refresh_) {
@@ -438,6 +451,42 @@ void GameSettings::OnRenderUI() {
     }
     ImGui::SameLine();
     if (ro::RoButton(i18n::Tr("Annuler"), w)) ImGui::CloseCurrentPopup();
+    ro::EndRoPopupModal();
+  }
+
+  // ── Avertissement DirectX 7 ────────────────────────────────────────────────
+  // Le même constat que la modale de démarrage, à la source partagée : c'est une
+  // liste de fonctionnalités qui bouge, et deux copies auraient divergé.
+  if (confirm_dx7_) {
+    ImGui::OpenPopup("###gs_confirm_dx7");
+    confirm_dx7_ = false;
+  }
+  ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing,
+                          ImVec2(0.5f, 0.5f));
+  char dx7_id[128];
+  std::snprintf(dx7_id, sizeof(dx7_id), "%s###gs_confirm_dx7",
+                i18n::Tr("DirectX 7 ?"));
+  if (ro::BeginRoPopupModal(dx7_id)) {
+    ro::SuppressEscapeStack();
+
+    ImGui::TextColored(kChangedText, "%s",
+                       i18n::Tr("DirectX 7 éteint une partie de Bourgeon."));
+    ImGui::Spacing();
+    dx7::DrawWarningBody();
+    ImGui::Spacing();
+
+    const float w = ro::MaxButtonWidth(
+        {i18n::Tr("Choisir DirectX 7 quand même"), i18n::Tr("Rester en DirectX 9")});
+    if (ro::RoButton(i18n::Tr("Choisir DirectX 7 quand même"), w))
+      ImGui::CloseCurrentPopup();
+    ImGui::SameLine();
+    if (ro::RoButton(i18n::Tr("Rester en DirectX 9"), w)) {
+      // Retour au choix précédent, listes comprises : le brouillon ne doit pas
+      // garder un adaptateur énuméré pour l'autre API.
+      draft_.system = system_before_dx7_;
+      pending_graphics_refresh_ = true;
+      ImGui::CloseCurrentPopup();
+    }
     ro::EndRoPopupModal();
   }
 
@@ -735,27 +784,31 @@ void GameSettings::DrawGraphicsTab() {
   const char* detail_names[] = {i18n::Tr("Basse"), i18n::Tr("Moyenne"),
                                 i18n::Tr("Élevée")};
 
-  int sprite = gfx::SpriteDetail();
+  // Affichage OPTIMISTE : l'écriture est différée au tick, et sans cela la liste
+  // se redessinerait dans son ancien état entre le clic et le tick.
+  const int sprite = (pending_hot_.sprite >= 0) ? pending_hot_.sprite
+                                                : gfx::SpriteDetail();
   ImGui::SetNextItemWidth(ro::Px(150.0f));
   if (ImGui::BeginCombo(msgstr::Utf8Or(kMsgSpriteDetail,
                                        i18n::Tr("Finesse des sprites")),
                         detail_names[sprite])) {
     for (int i = 0; i <= gfx::kDetailMax; ++i) {
       ImGui::PushID(i);
-      if (ImGui::Selectable(detail_names[i], i == sprite)) gfx::SetSpriteDetail(i);
+      if (ImGui::Selectable(detail_names[i], i == sprite)) pending_hot_.sprite = i;
       ImGui::PopID();
     }
     ImGui::EndCombo();
   }
 
-  int texture = gfx::TextureDetail();
+  const int texture = (pending_hot_.texture >= 0) ? pending_hot_.texture
+                                                  : gfx::TextureDetail();
   ImGui::SetNextItemWidth(ro::Px(150.0f));
   if (ImGui::BeginCombo(msgstr::Utf8Or(kMsgTextureDetail,
                                        i18n::Tr("Finesse des textures")),
                         detail_names[texture])) {
     for (int i = 0; i <= gfx::kDetailMax; ++i) {
       ImGui::PushID(i);
-      if (ImGui::Selectable(detail_names[i], i == texture)) gfx::SetTextureDetail(i);
+      if (ImGui::Selectable(detail_names[i], i == texture)) pending_hot_.texture = i;
       ImGui::PopID();
     }
     ImGui::EndCombo();
@@ -765,10 +818,11 @@ void GameSettings::DrawGraphicsTab() {
                            "la mémoire vidéo.\nLes textures déjà chargées sont "
                            "rechargées aussitôt."));
 
-  bool trilinear = gfx::Trilinear();
+  bool trilinear = (pending_hot_.trilinear >= 0) ? (pending_hot_.trilinear != 0)
+                                                 : gfx::Trilinear();
   if (ro::RoCheckbox(msgstr::Utf8Or(kMsgTrilinear, i18n::Tr("Filtrage trilinéaire")),
                      &trilinear)) {
-    gfx::SetTrilinear(trilinear);
+    pending_hot_.trilinear = trilinear ? 1 : 0;
   }
   ImGui::SameLine();
   mui::HelpMarker(i18n::Tr("Lisse les textures vues de loin. Coût négligeable sur "
@@ -795,6 +849,14 @@ void GameSettings::DrawGraphicsTab() {
       ImGui::PushID(choice.value);
       if (ImGui::Selectable(choice.name, draft_.system == choice.value) &&
           draft_.system != choice.value) {
+        // 🔴 Choisir DX7 mérite l'avertissement, et il vaut mieux le donner ICI
+        // qu'après la relance : en DX7 le moteur n'a ni shaders ni cible de
+        // rendu, et une bonne part de Bourgeon s'éteint. On garde de quoi
+        // revenir en arrière si le joueur refuse.
+        if (choice.value == gfx::kRenderDx7) {
+          system_before_dx7_ = draft_.system;
+          confirm_dx7_ = true;
+        }
         draft_.system = choice.value;
         // Changer d'API renouvelle adaptateurs ET modes : on redemande au
         // client, au tick — l'énumération DX9 crée un device Direct3D.

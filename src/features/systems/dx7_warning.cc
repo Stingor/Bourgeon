@@ -94,6 +94,28 @@ void LaunchSetup() {
 
 }  // namespace
 
+namespace dx7 {
+
+void DrawWarningBody() {
+  ImGui::PushTextWrapPos(ImGui::GetCursorPos().x + 460.0f);
+  ImGui::TextUnformatted(
+      i18n::Tr("Bourgeon est développé et testé pour DirectX 9. En DirectX 7, le moteur "
+      "n'a ni shaders ni cible de rendu : plusieurs fonctionnalités sont "
+      "automatiquement désactivées ou dégradées."));
+  ImGui::Spacing();
+  ImGui::BulletText(i18n::Tr("Effets d'image : luminosité, contraste, filtres, vignettage, netteté, FXAA"));
+  ImGui::BulletText(i18n::Tr("Capture d'écran propre (sans interface) et filtrage des textures"));
+  ImGui::BulletText(i18n::Tr("Aperçus de sprites et d'effets (SPR Effect Lab, aperçus de costumes)"));
+  ImGui::BulletText(i18n::Tr("Mini-jeux : sprites réels indisponibles, DOOM inaccessible"));
+  ImGui::Spacing();
+  ImGui::TextUnformatted(
+      i18n::Tr("Les performances et la compatibilité avec Windows 10/11 sont également "
+      "bien meilleures en DirectX 9."));
+  ImGui::PopTextWrapPos();
+}
+
+}  // namespace dx7
+
 void Dx7Warning::Draw(bool at_login) {
   if (!g_imgui_dx7_active || dismissed_) return;
 
@@ -121,32 +143,21 @@ void Dx7Warning::Draw(bool at_login) {
   // Tant que la modale est là, Échap ne doit pas fermer les fenêtres RO derrière.
   ro::SuppressEscapeStack();
 
-  ImGui::PushTextWrapPos(ImGui::GetCursorPos().x + 460.0f);
-
   ImGui::TextColored(ImVec4(0.75f, 0.15f, 0.15f, 1.0f),
                      i18n::Tr("Ton client tourne en DirectX 7."));
   ImGui::Spacing();
-  ImGui::TextUnformatted(
-      i18n::Tr("Bourgeon est développé et testé pour DirectX 9. En DirectX 7, le moteur "
-      "n'a ni shaders ni cible de rendu : plusieurs fonctionnalités sont "
-      "automatiquement désactivées ou dégradées."));
-  ImGui::Spacing();
-  ImGui::BulletText(i18n::Tr("Effets d'image : luminosité, contraste, filtres, vignettage, netteté, FXAA"));
-  ImGui::BulletText(i18n::Tr("Capture d'écran propre (sans interface) et filtrage des textures"));
-  ImGui::BulletText(i18n::Tr("Aperçus de sprites et d'effets (SPR Effect Lab, aperçus de costumes)"));
-  ImGui::BulletText(i18n::Tr("Mini-jeux : sprites réels indisponibles, DOOM inaccessible"));
-  ImGui::Spacing();
-  ImGui::TextUnformatted(
-      i18n::Tr("Les performances et la compatibilité avec Windows 10/11 sont également "
-      "bien meilleures en DirectX 9."));
+  dx7::DrawWarningBody();
   ImGui::Spacing();
   ImGui::Separator();
   ImGui::Spacing();
+  ImGui::PushTextWrapPos(ImGui::GetCursorPos().x + 460.0f);
+  // ⚠ Le menu Échap de Bourgeon sait désormais changer l'API lui-même (onglet
+  // Graphismes). Le Setup reste proposé parce que cette modale s'affiche AUSSI à
+  // l'écran de login, où le panneau de réglages n'existe pas.
   ImGui::TextUnformatted(
-      i18n::Tr("Pour changer : ferme le jeu, lance Setup.exe (dans le dossier du client), "
-      "onglet « Graphics », choisis « DirectX 9 » dans « Graphics API », "
-      "enregistre, puis relance le jeu."));
-
+      i18n::Tr("Pour changer : Échap -> Réglages du jeu -> onglet « Graphismes », "
+      "choisis « DirectX 9 » comme API graphique, puis applique — le client "
+      "redémarrera. Le Setup du client fait la même chose."));
   ImGui::PopTextWrapPos();
   ImGui::Spacing();
 

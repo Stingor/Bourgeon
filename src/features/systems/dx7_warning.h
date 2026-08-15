@@ -18,6 +18,23 @@
 // l'écran de login), une modale RO qui explique la marche à suivre et propose
 // d'ouvrir le Setup. Rien n'est persisté : tant que le joueur reste en DX7 il
 // revoit le message au lancement suivant — c'est l'incitation.
+namespace dx7 {
+
+// Le CORPS de l'avertissement — ce que DirectX 7 coûte au joueur — sans sa
+// conclusion, qui dépend de qui pose la question.
+//
+// 🔴 Extrait pour qu'il n'existe qu'UNE fois. Deux endroits l'affichent
+// désormais : cette modale de démarrage (« ton client tourne en DX7 »), et
+// l'onglet Graphismes du panneau de réglages quand le joueur CHOISIT DX7 dans la
+// liste des API. Recopier le texte les aurait laissés diverger au premier
+// ajustement — et c'est une liste de fonctionnalités qui bouge.
+//
+// L'appelant ouvre la modale, écrit sa propre phrase d'attaque et ses propres
+// boutons ; celui-ci ne dessine que le constat.
+void DrawWarningBody();
+
+}  // namespace dx7
+
 class Dx7Warning : public Plugin {
  public:
   const char* name() const override { return "Dx7Warning"; }

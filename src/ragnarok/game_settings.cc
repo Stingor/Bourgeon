@@ -128,7 +128,14 @@ using SpriteTexFactoryGet_t = void*(__cdecl*)();
 constexpr uintptr_t kSpriteTexFactoryGetAddr = 0x00554070;
 using SpriteTexFactoryApply_t = void(__thiscall*)(void*);
 constexpr uintptr_t kSpriteTexFactoryApplyAddr = 0x00560f80;
-using CacheFlush_t = void(__cdecl*)(void*);
+
+// 🔴 __THISCALL, PAS __CDECL. Le natif fait `mov ecx, offset g_SpriteTexFactoryCache`
+// puis `jmp sub_568B30` : le cache passe par ECX. Déclarée `__cdecl`, la fonction
+// lisait le contenu d'un ECX de passage — et sortait AUSSITÔT par son test de
+// liste vide, sans rien recharger et sans se plaindre. Symptôme exact vécu en
+// jeu : les réglages « effet immédiat » n'agissaient qu'au redémarrage suivant,
+// puisque les globales, elles, étaient bien écrites.
+using CacheFlush_t = void(__thiscall*)(void*);
 constexpr uintptr_t kSpriteTexCacheFlushAddr = 0x00568b30;
 constexpr uintptr_t kSpriteTexCacheAddr      = 0x0125161c;
 

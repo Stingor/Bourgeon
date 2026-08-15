@@ -202,10 +202,29 @@ class GameSettings : public Plugin {
   std::vector<gamesettings::graphics::Adapter> adapters_;
   std::vector<gamesettings::graphics::Mode>    modes_;
 
+  // 🔴 Les trois réglages « effet immédiat » sont eux aussi DIFFÉRÉS AU TICK, et
+  // pour la même raison que le skin : les appliquer recharge des textures du
+  // client, ce qui n'a rien à faire au milieu d'une frame ImGui
+  // (feedback_no_native_cmd_during_imgui_frame). L'affichage montre la demande en
+  // attendant, sinon la case se redessinerait dans son ancien état jusqu'au tick.
+  // −1 = rien en attente.
+  struct PendingHotGraphics {
+    int sprite    = -1;
+    int texture   = -1;
+    int trilinear = -1;  // 0 ou 1
+  };
+  PendingHotGraphics pending_hot_;
+
   bool graphics_ready_   = false;  // les listes ont été chargées au moins une fois
   bool pending_graphics_refresh_ = false;
   bool confirm_restart_  = false;
   bool pending_restart_  = false;
+
+  // Avertissement « DirectX 7 » à l'instant du CHOIX, pas après la relance : en
+  // DX7 le moteur n'a ni shaders ni cible de rendu, et une bonne part de Bourgeon
+  // s'éteint. Le texte est celui de `Dx7Warning`, partagé — pas recopié.
+  bool confirm_dx7_ = false;
+  int  system_before_dx7_ = 0;  // pour revenir en arrière si le joueur refuse
 
   // Une ligne affichée. On RECOPIE la description du client au lieu de pointer
   // dedans : le vecteur source peut être réalloué, et une infobulle qui survit à
