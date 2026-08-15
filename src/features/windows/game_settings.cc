@@ -778,8 +778,20 @@ void GameSettings::DrawGraphicsTab() {
   namespace gfx = gamesettings::graphics;
   mui::PushStyleCompact();
 
-  // ── ⚡ Ce qui s'applique tout de suite ─────────────────────────────────────
-  mui::SeparatorText(i18n::Tr("Effet immédiat"));
+  // ── ⚡ Ce qui ne demande pas de redémarrage ────────────────────────────────
+  //
+  // 🔴 « Sans redémarrage » ne veut PAS dire « visible sur-le-champ », et la
+  // nuance est celle du client, pas la nôtre (docs §3.10) :
+  //   - la finesse des TEXTURES l'est vraiment : le cache de sprites est
+  //     rechargé avec le nouveau diviseur ;
+  //   - la finesse des SPRITES est lue par `CSprRes_Load`, donc au CHARGEMENT
+  //     d'un sprite : elle ne touche pas ceux déjà en mémoire ;
+  //   - le filtrage trilinéaire est FIGÉ dans chaque texture à sa création : il
+  //     ne change que celles recréées ensuite — l'interface tout de suite, le
+  //     reste au fil des rechargements.
+  // Chacun le dit à sa ligne. Promettre un effet immédiat pour les deux derniers
+  // ferait passer le comportement normal du client pour une panne.
+  mui::SeparatorText(i18n::Tr("Sans redémarrage"));
 
   const char* detail_names[] = {i18n::Tr("Basse"), i18n::Tr("Moyenne"),
                                 i18n::Tr("Élevée")};
@@ -799,6 +811,11 @@ void GameSettings::DrawGraphicsTab() {
     }
     ImGui::EndCombo();
   }
+  ImGui::SameLine();
+  mui::HelpMarker(
+      i18n::Tr("Le client lit ce réglage quand il CHARGE un sprite : les "
+               "personnages et monstres déjà à l'écran gardent leur finesse.\n"
+               "Changez de carte pour tout revoir."));
 
   const int texture = (pending_hot_.texture >= 0) ? pending_hot_.texture
                                                   : gfx::TextureDetail();
@@ -825,8 +842,12 @@ void GameSettings::DrawGraphicsTab() {
     pending_hot_.trilinear = trilinear ? 1 : 0;
   }
   ImGui::SameLine();
-  mui::HelpMarker(i18n::Tr("Lisse les textures vues de loin. Coût négligeable sur "
-                           "une carte moderne."));
+  mui::HelpMarker(
+      i18n::Tr("Lisse les textures vues de loin. Coût négligeable sur une carte "
+               "moderne.\n"
+               "Le filtre est figé dans chaque texture au moment où elle est "
+               "créée : le changement se voit tout de suite sur l'interface, et "
+               "sur le reste au fur et à mesure des rechargements."));
 
   // ── 🔁 Ce qui exige une relance ───────────────────────────────────────────
   ImGui::Spacing();

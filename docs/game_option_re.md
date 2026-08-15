@@ -892,6 +892,20 @@ lui qui choisit le texte de la modale — `MSI_GRAPHIC_SETTING_WARNING_RESTART`
    (→ `g_TextureDownscaleFactor`), et `g_cfg_Trilinear` (→ `SpriteTexFactory` puis
    rechargement du cache `SpriteTexCache_ReloadAll(&g_SpriteTexCache)`).
 
+⚠ **« Sans redémarrage » ≠ « visible sur-le-champ ».** Sur les trois, un seul
+l'est vraiment, et c'est une propriété du CLIENT, pas du portage :
+
+| réglage | ce qui se passe |
+|---|---|
+| finesse des **textures** | ✅ visible aussitôt — le cache de sprites est rechargé avec le nouveau diviseur |
+| finesse des **sprites** | ⚠ `g_SprLoadHalfA/B` (`0x01602B60`/`B64`) ne sont lus que par **`CSprRes_Load`** (`0x007282D0`), donc au CHARGEMENT d'un sprite. Les entités déjà en mémoire ne changent pas ; `Reload_CommonSprites` (`0x00D746B0`) existe mais **n'a aucun xref** |
+| **trilinéaire** | ⚠ `g_TexFilterFlags_Sampler`/`_Texture` (`0x0124F2D4`/`D0`) sont **figés dans chaque texture à sa création** (`CTexture_Create_BakeFilterFlags` `0x0053AAA0`). Le natif ne recharge que le cache de sprites → l'interface et la minimap changent, le reste attend d'être recréé |
+
+➡ Un panneau de remplacement doit le **dire**, pas le masquer : promettre un effet
+immédiat ferait passer le comportement normal du client pour une panne. Constaté
+en jeu le 2026-08-15 (« Sprite Resolution ne semble avoir aucun effet », « le
+trilinéaire n'affecte que la minimap »).
+
 🔴 **`SpriteTexCache_ReloadAll` (`0x00568B30`) est `__thiscall` : le cache passe
 par ECX.** Le site d'appel (`0x009EDDA0`) fait `mov ecx, offset g_SpriteTexCache`
 puis `jmp`. Appelée en `__cdecl`, elle lit un ECX de passage et **sort aussitôt
