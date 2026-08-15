@@ -551,6 +551,13 @@ const moonlight_ui::SettingDesc kHotkeySettings[] = {
 const moonlight_ui::SettingDesc kGameSettingsSettings[] = {
     {"gamesettings_imgui", SType::kBool, MLUI_FIELD(game_settings, imgui_enabled_),
      MLUI_LITERAL(bool, true)},
+    // 🔴 La bordure d'emblème est persistée ICI parce que le CLIENT ne la persiste
+    // nulle part : `/frame` n'entre pas dans le `CmdOnOffList` de
+    // `SaveData\OptionInfo.lua`, et la clé `Emblem Frame` qu'on y trouve est un
+    // fossile qu'aucun code de l'exe ne relit. D'où le « ça repart sur OFF à
+    // chaque relance ». Cf. `GameSettings::emblem_frame_`.
+    {"emblem_frame", SType::kBool, MLUI_FIELD(game_settings, emblem_frame()),
+     MLUI_LITERAL(bool, false)},
 };
 
 // Refine d'arme Whitesmith (fenêtre « Upgradeable weapons », id 111).

@@ -2820,7 +2820,6 @@
 "Aucun réglage dans cet onglet.": "No setting in this tab."
 "Aucun réglage ne correspond.": "No setting matches."
 "Effets sonores": "Sound effects"
-"Encadre l'emblème de guilde affiché à côté des noms.": "Draws a border around the guild emblem shown next to names."
 "Exécuter": "Run"
 "Les réglages du client ne sont pas encore chargés.": "The client settings are not loaded yet."
 "Musique de fond": "Background music"
@@ -2836,6 +2835,13 @@
 "Contrôles": "Controls"
 "Bordure d'emblème": "Emblem Border"
 "Notification de connexion": "Login Notification"
+"Encadre l'emblème de guilde. Le client d'origine ne dessine jamais ce cadre : Bourgeon l'honore là où il dessine lui-même l'emblème.": "Frames the guild emblem. The stock client never draws this frame: Bourgeon honours it where it draws the emblem itself."
+
+⚠ The stock client NEVER draws this frame, whatever you tick: its only drawing function is reached solely in a tag-display mode this client never enables. Bourgeon honours it where it draws the emblem itself."
+
+⚠ Le client d'origine ne dessine JAMAIS ce cadre, quoi qu'on coche : son unique fonction de dessin n'est atteinte que dans un mode d'affichage des étiquettes que ce client n'active pas. Bourgeon l'honore là où il dessine lui-même l'emblème.": "Frames the guild emblem.
+
+⚠ The stock client NEVER draws this frame, whatever you tick: its only drawing function is reached solely in a tag-display mode this client never enables. Bourgeon honours it where it draws the emblem itself."
 "Rien à enregistrer : aucun onglet ne contient de ligne.": "Nothing to save: no tab holds a single line."
 "Journal enregistré : %d fichier(s) dans %s": "Chat log saved: %d file(s) in %s"
 "Courbe des temps d'image": "Frame-time graph"

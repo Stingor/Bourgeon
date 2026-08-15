@@ -284,7 +284,20 @@ void GameSettings::Close() {
   confirm_restart_ = false;
 }
 
+void GameSettings::ApplyEmblemFrame() {
+  // La table des drapeaux est reconstruite à chaque session, et celle-ci n'y
+  // figure dans AUCUNE source du client (ni `OptionTbl`, ni `CmdOnOffList`) :
+  // sans cette réinjection, le réglage repart à zéro à chaque lancement, ce que
+  // le joueur voit comme « ça ne se retient pas ».
+  gamesettings::SetOn(kTtEmblemFrame, emblem_frame_);
+  emblem_frame_applied_ = true;
+}
+
 void GameSettings::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
+  // Réarmé à CHAQUE bascule, y compris vers le jeu : le manager n'est pas encore
+  // prêt ici (`CSession_ctor` remplit sa table juste après), donc on ne peut
+  // qu'armer — c'est `OnTick` qui écrira, une fois le manager debout.
+  emblem_frame_applied_ = false;
   if (mode_type != ModeMgr::ModeType::kGame) {
     Close();
     rows_.clear();
@@ -304,6 +317,11 @@ void GameSettings::OnTick() {
     if (open_) Close();
     return;
   }
+
+  // Le réglage que le client ne sait pas retenir, réinjecté une fois par entrée
+  // en jeu. `gamesettings::Count()` ne rend rien tant que le manager n'est pas
+  // rempli : on attend qu'il le soit plutôt que d'écrire dans le vide.
+  if (!emblem_frame_applied_ && gamesettings::Count() > 0) ApplyEmblemFrame();
 
   if (pending_reset_) {
     pending_reset_ = false;
@@ -729,6 +747,10 @@ void GameSettings::DrawBasicTab() {
   bool emblem = PendingValue(kTtEmblemFrame, gamesettings::IsOn(kTtEmblemFrame));
   if (ro::RoCheckbox(
           msgstr::Utf8Or(kMsgEmblemFrame, i18n::Tr("Bordure d'emblème")), &emblem)) {
+    // 🔴 NOTRE copie D'ABORD : c'est la seule qui survive à la relance (cf. le
+    // .h). L'écriture dans la table du client suit, pour la session en cours.
+    emblem_frame_ = emblem;
+    if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
     PendingWrite write;
     write.valid = true;
     write.id = kTtEmblemFrame;
@@ -743,7 +765,10 @@ void GameSettings::DrawBasicTab() {
     pending_writes_.push_back(write);
   }
   ImGui::SameLine();
-  mui::HelpMarker(i18n::Tr("Encadre l'emblème de guilde affiché à côté des noms."));
+  mui::HelpMarker(
+      i18n::Tr("Encadre l'emblème de guilde. Le client d'origine ne dessine "
+               "jamais ce cadre : Bourgeon l'honore là où il dessine lui-même "
+               "l'emblème."));
 
   bool login = PendingValue(kTtLoginNotify, gamesettings::IsOn(kTtLoginNotify));
   if (ro::RoCheckbox(

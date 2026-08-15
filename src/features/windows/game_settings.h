@@ -139,8 +139,26 @@ class GameSettings : public Plugin {
   // ── Settings PERSISTANTS (bourgeon_settings.yaml, via MoonlightUi) ──────────
   bool imgui_enabled_ = true;
 
+  // ── Bordure d'emblème ──────────────────────────────────────────────────────
+  //
+  // 🔴 PERSISTÉE CHEZ NOUS, PARCE QUE LE CLIENT NE LA PERSISTE PAS DU TOUT. La
+  // chaîne « Emblem Frame » n'existe **nulle part dans l'exécutable** : la ligne
+  // qu'on trouve dans `SaveData\OptionInfo.lua` est un fossile qu'aucun code ne
+  // relit ni ne réécrit. Et son drapeau (`TT_EMBLEM_FRAME_ON_OFF` 0xF3) n'est ni
+  // dans `OptionTbl` ni dans `CmdOnOffList` : la clé n'existe donc même pas dans
+  // la table des drapeaux au démarrage, et `GetFlag` rend 0. D'où le « revient
+  // sur OFF à chaque relance » constaté en jeu.
+  //
+  // On garde donc la valeur de notre côté et on la réinjecte à l'entrée en jeu.
+  bool emblem_frame_ = false;
+  bool& emblem_frame() { return emblem_frame_; }
+
  private:
   void Close();
+  // Réinjecte `emblem_frame_` dans la table des drapeaux du client. Une fois par
+  // entrée en jeu : la table est reconstruite à chaque session.
+  void ApplyEmblemFrame();
+  bool emblem_frame_applied_ = false;
   void RefreshRows();
 
   void DrawBasicTab();

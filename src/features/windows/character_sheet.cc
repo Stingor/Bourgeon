@@ -2,6 +2,7 @@
 #include "ragnarok/item_db.h"
 #include "ragnarok/globals.h"
 #include "features/windows/character_sheet.h"
+#include "ragnarok/game_settings.h"  // IsOn : la bordure d'emblème
 #include "ui/game_texture.h"
 
 // Icônes d'item : ro::ItemIcon (ui/icon_cache.h) — cache partagé. Les caches
@@ -1312,6 +1313,67 @@ int EmblemVersionSEH(int guildId) {
     return reinterpret_cast<GetEmblemVersion_t>(kGetEmblemVersion)(
         mgr, static_cast<unsigned>(guildId));
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+}
+
+// ── Le cadre d'emblème, que le CLIENT ne dessine jamais ─────────────────────
+//
+// Le réglage « Bordure d'emblème » (`TT_EMBLEM_FRAME_ON_OFF` 0xF3) existe, son
+// bitmap est bien dans `data.grf` (`유저인터페이스\emblem_frame.bmp`, 28×28), et
+// le client a le code pour le peindre — `Guild_DrawEmblemOnPartyHUD`
+// (`0x00825160`) blitte le cadre puis décale l'emblème de 2 px.
+//
+// 🔴 SAUF QUE CE CODE NE TOURNE JAMAIS. Il est gardé par
+// `GameSession_GetField4c()`, relevé à **0** en jeu (x32dbg, 2026-08-15) — et ce
+// même garde couvre l'emblème lui-même, que le client dessine donc par un autre
+// chemin. Résultat : le réglage est inerte dans le client d'origine, quoi qu'on
+// écrive et quoi que contienne le GRF. Constaté par le joueur, expliqué ici.
+//
+// ➡ On l'honore donc là où NOUS dessinons l'emblème. Le bitmap est celui du
+// client, chargé par son propre TexMgr : il suit le skin actif comme n'importe
+// quelle autre pièce d'interface, et son magenta devient transparent tout seul.
+//
+// Géométrie reprise du natif, en proportions : le cadre occupe la boîte entière,
+// l'emblème est rentré de 2/28ᵉ de chaque côté. C'est ce qui garde le rendu juste
+// à toutes les tailles — l'en-tête l'affiche en 48 px, la poupée en 24.
+constexpr float kEmblemFrameSide  = 28.0f;
+constexpr float kEmblemFrameInset = 2.0f;
+// `TT_EMBLEM_FRAME_ON_OFF` — l'identifiant du réglage, celui que la commande
+// `/frame` bascule. (Elle existe : son nom est déclaré dans la TABLE DES
+// MESSAGES, `MSI_DRAW_EMBLEM_FRAME_ONOFF` = 3532, et non comme littéral de
+// l'exécutable — une recherche d'octets dans l'exe ne la trouve donc pas.)
+constexpr int kTtEmblemFrame = 0xf3;
+
+ro::GameTexture EmblemFrameTexture() {
+  // 🔴 DEUX littéraux concaténés, et ce n'est pas du style : collés en un seul,
+  // l'octet `\xBA` du préfixe CP949 et la suite formeraient une autre séquence
+  // d'échappement (même piège que `icon_cache.cc`).
+  static const char kPath[] =
+      "\xC0\xAF\xC0\xFA\xC0\xCE\xC5\xCD\xC6\xE4\xC0\xCC\xBD\xBA" "\\emblem_frame.bmp";
+  return ro::CachedTextureFromGameFile(kPath);
+}
+
+// Dessine l'emblème dans la boîte donnée, encadré si le joueur l'a demandé.
+// Rend true si le cadre du client a été posé — l'appelant sait alors qu'il n'a
+// pas à ajouter sa propre décoration par-dessus.
+bool DrawEmblemBoxed(ImDrawList* dl, const ImVec2& p0, const ImVec2& p1,
+                     void* emblem_tex) {
+  if (!emblem_tex) return false;
+  if (!gamesettings::IsOn(kTtEmblemFrame)) {
+    dl->AddImage(reinterpret_cast<ImTextureID>(emblem_tex), p0, p1);
+    return false;
+  }
+  const ro::GameTexture frame = EmblemFrameTexture();
+  if (!frame.tex) {
+    // Cadre demandé mais introuvable : afficher l'emblème nu plutôt que rien.
+    dl->AddImage(reinterpret_cast<ImTextureID>(emblem_tex), p0, p1);
+    return false;
+  }
+  const float inset = (p1.x - p0.x) * (kEmblemFrameInset / kEmblemFrameSide);
+  dl->AddImage(reinterpret_cast<ImTextureID>(frame.tex), p0, p1);
+  dl->AddImage(reinterpret_cast<ImTextureID>(emblem_tex),
+               ImVec2(p0.x + inset, p0.y + inset),
+               ImVec2(p1.x - inset, p1.y - inset));
+  return true;
 }
 
 ro::IconTex ResolveEmblem(int guildId) {
@@ -4870,8 +4932,10 @@ void CharacterSheet::DrawGuildTab() {
   if (emblem.tex) {
     ImDrawList* dl = ImGui::GetWindowDrawList();
     dl->AddRectFilled(emblem_min, emblem_max, IM_COL32(0, 0, 0, 30), 4.0f);
-    dl->AddImage(reinterpret_cast<ImTextureID>(emblem.tex), emblem_min, emblem_max);
-    dl->AddRect(emblem_min, emblem_max, IM_COL32(90, 90, 110, 220), 4.0f, 0, 1.5f);
+    // Notre liseré ne se pose QUE si le cadre du client n'est pas là : deux
+    // bordures concentriques feraient un empilement que personne n'a demandé.
+    if (!DrawEmblemBoxed(dl, emblem_min, emblem_max, emblem.tex))
+      dl->AddRect(emblem_min, emblem_max, IM_COL32(90, 90, 110, 220), 4.0f, 0, 1.5f);
   }
   // L'emblème lui-même ouvre le changement d'emblème (réservé au maître, comme côté
   // serveur). Bouton posé AVANT les lignes de texte puis curseur restauré : l'en-tête

@@ -2776,7 +2776,6 @@
 "Aucun réglage dans cet onglet.": "No hay ajustes en esta pestaña."
 "Aucun réglage ne correspond.": "Ningún ajuste coincide."
 "Effets sonores": "Efectos de sonido"
-"Encadre l'emblème de guilde affiché à côté des noms.": "Enmarca el emblema de gremio mostrado junto a los nombres."
 "Exécuter": "Ejecutar"
 "Les réglages du client ne sont pas encore chargés.": "Los ajustes del cliente aún no están cargados."
 "Musique de fond": "Música de fondo"
@@ -2792,6 +2791,13 @@
 "Contrôles": "Controles"
 "Bordure d'emblème": "Borde del emblema"
 "Notification de connexion": "Notificación de conexión"
+"Encadre l'emblème de guilde. Le client d'origine ne dessine jamais ce cadre : Bourgeon l'honore là où il dessine lui-même l'emblème.": "Enmarca el emblema de gremio. El cliente original nunca dibuja este marco: Bourgeon lo respeta allí donde dibuja el emblema él mismo."
+
+⚠ El cliente original NUNCA dibuja este marco, marques lo que marques: su única función de dibujo solo se alcanza en un modo de etiquetas que este cliente no activa. Bourgeon lo respeta allí donde dibuja el emblema él mismo."
+
+⚠ Le client d'origine ne dessine JAMAIS ce cadre, quoi qu'on coche : son unique fonction de dessin n'est atteinte que dans un mode d'affichage des étiquettes que ce client n'active pas. Bourgeon l'honore là où il dessine lui-même l'emblème.": "Enmarca el emblema de gremio.
+
+⚠ El cliente original NUNCA dibuja este marco, marques lo que marques: su única función de dibujo solo se alcanza en un modo de etiquetas que este cliente no activa. Bourgeon lo respeta allí donde dibuja el emblema él mismo."
 "Rien à enregistrer : aucun onglet ne contient de ligne.": "Nada que guardar: ninguna pestaña contiene una línea."
 "Journal enregistré : %d fichier(s) dans %s": "Registro guardado: %d archivo(s) en %s"
 "Courbe des temps d'image": "Gráfica de tiempos de fotograma"
