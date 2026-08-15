@@ -41,6 +41,7 @@
 // ceux de `UINewChatWnd_Create` : battle_option, dialog_btn0, sys_base).
 
 #include <cstdint>
+#include <atomic>
 #include <deque>
 #include <map>
 #include <mutex>
@@ -261,6 +262,18 @@ class ChatWindow : public Plugin {
 
   // Vide l'historique (bouton du panneau, changement de personnage).
   void ClearHistory();
+
+  // ── `/savechat` ────────────────────────────────────────────────────────────
+  //
+  // Le dump ponctuel du journal, un fichier par onglet. Le client en a un
+  // (`ChatLog_SaveAllToFiles 0x00907030`, docs/chatbox_re.md §6.3) mais il
+  // parcourt SES fenêtres — que l'interface moderne détruit — et sort donc sans
+  // rien écrire ni rien dire. La commande était devenue muette.
+  //
+  // ⚠ ARMER, jamais écrire tout de suite : `ChatActionFilter` peut tourner sur le
+  // fil réseau, et `channels_` n'appartient qu'au rendu. L'écriture a lieu à la
+  // frame suivante, dans `OnRenderUI` (cf. features/net_inbox.h, même règle).
+  void RequestSaveLog();
 
   // ── Le parseur du chat, ouvert aux autres surfaces d'affichage ──────────────
   // Rend le texte AFFICHABLE d'une ligne brute (code-page client) : `<ITEML>`,
@@ -853,6 +866,13 @@ class ChatWindow : public Plugin {
   // Historique conservé d'une session à l'autre (option, désactivée par défaut).
   void LoadHistory();
   void SaveHistory() const;
+
+  // Écrit un fichier par onglet dans `<racine>\Chat\`. Rend le nombre de
+  // fichiers écrits, 0 si rien n'était à écrire ou si le dossier a résisté.
+  int SaveLogToFiles();
+  // Armé par `RequestSaveLog`, consommé au rendu. `std::atomic` parce que les
+  // deux bouts ne sont pas sur le même fil.
+  std::atomic<bool> pending_save_log_{false};
   // ── Éviction : un quota PAR TYPE, pas un plafond unique ─────────────────────
   // 🔴 LE DÉFAUT QUE ÇA CORRIGE, rapporté par des joueurs : on entre en donjon, le
   // log de combat crache des centaines de lignes de dégâts, et les conversations

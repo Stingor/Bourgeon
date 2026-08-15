@@ -356,6 +356,15 @@ int __cdecl ChatActionFilter(int action, const char* text, int color,
   // d'afficher l'annonce.
   if (action == 3 && g_chat_window != nullptr && g_chat_window->imgui_enabled_)
     return 1;
+  // 🔴 Action 6 = `/savechat`, et elle est MUETTE chez le client dès que notre
+  // chatbox vit. `ChatLog_SaveAllToFiles` (0x00907030) parcourt les sous-fenêtres
+  // natives (`mgr+0x1C8`) : détruites, il n'y a rien à parcourir, et la fonction
+  // sort sans écrire ni se plaindre — le joueur tape la commande et il ne se
+  // passe rien. On la reprend donc, sur NOTRE modèle.
+  if (action == 6 && g_chat_window != nullptr && g_chat_window->imgui_enabled_) {
+    g_chat_window->RequestSaveLog();
+    return 1;
+  }
   // 🔴 Action 14 = `UIM_MAKE_WHISPER_WINDOW` : LE SECOND chemin d'ouverture d'une
   // conversation 1:1, et il ne passe PAS par le pivot que nous détournons. Le
   // « Chuchoter » du menu contextuel d'entité appelle `ChatAction(mgr, 14, …)`
@@ -1346,6 +1355,103 @@ uint64_t ChatWindow::LastLineSeq() const {
   // d'insertion, et `LoadHistory` — le seul à insérer en tête — renumérote tout
   // derrière lui (cf. TrimLines).
   return lines_.empty() ? 0 : lines_.back().seq;
+}
+
+// ── `/savechat` — le dump ponctuel, repris du client ────────────────────────
+
+void ChatWindow::RequestSaveLog() {
+  pending_save_log_.store(true, std::memory_order_release);
+}
+
+namespace {
+
+// Un nom d'onglet est libre : le joueur l'écrit, et rien ne l'empêche d'y mettre
+// une barre oblique ou un deux-points. Tout ce que Windows refuse devient un
+// souligné — écrire hors du dossier voulu à cause d'un nom d'onglet serait le
+// genre de faute qu'on ne remarque qu'une fois le fichier ailleurs.
+std::string SafeFileStem(const std::string& name) {
+  std::string out;
+  out.reserve(name.size());
+  for (unsigned char c : name) {
+    if (c < 0x20 || std::strchr("\\/:*?\"<>|", c) != nullptr) {
+      out.push_back('_');
+    } else {
+      out.push_back(static_cast<char>(c));
+    }
+  }
+  while (!out.empty() && (out.back() == ' ' || out.back() == '.')) out.pop_back();
+  if (out.empty()) out = "chat";
+  return out;
+}
+
+}  // namespace
+
+int ChatWindow::SaveLogToFiles() {
+  // Même dossier que le client : `<racine>\Chat\`. Le joueur qui connaît déjà
+  // `/savechat` va regarder là, et deux emplacements pour la même commande
+  // seraient une trouvaille de plus à faire.
+  //
+  // ⚠ `CreateDirectoryA` n'est pas plus récursif que le `_mkdir` du client, mais
+  // la racine, elle, existe forcément : c'est le dossier du jeu.
+  const std::string dir = paths::GameDir() + "Chat";
+  CreateDirectoryA(dir.c_str(), nullptr);  // ERROR_ALREADY_EXISTS : sans importance
+
+  int written = 0;
+  for (const Channel& channel : channels_) {
+    // Les lignes de CE canal, filtrées exactement comme à l'écran : ce que le
+    // joueur enregistre doit être ce qu'il lit. Le verrou couvre la copie, pas
+    // l'écriture disque — inutile de tenir l'ingestion pendant un accès fichier.
+    std::vector<std::string> out;
+    {
+      std::lock_guard<std::mutex> lock(lines_mutex_);
+      out.reserve(lines_.size());
+      for (const Line& line : lines_) {
+        if (!ChannelAccepts(channel, line)) continue;
+        char stamp[16];
+        std::snprintf(stamp, sizeof(stamp), "[%02u:%02u:%02u] ", line.hour,
+                      line.minute, line.second);
+        out.push_back(std::string(stamp) + line.plain);
+      }
+    }
+    if (out.empty()) continue;  // un onglet vide ne mérite pas un fichier vide
+
+    // Rotation à la manière du natif : le nom simple, puis `_001`, `_002`… Deux
+    // `/savechat` d'affilée ne doivent pas s'écraser l'un l'autre — c'est
+    // typiquement ce qu'on fait avant et après un évènement.
+    const std::string stem = dir + "\\Chat_" + SafeFileStem(channel.name);
+    std::string path = stem + ".txt";
+    for (int i = 1; i < 1000 &&
+                    GetFileAttributesA(path.c_str()) != INVALID_FILE_ATTRIBUTES;
+         ++i) {
+      char suffix[16];
+      std::snprintf(suffix, sizeof(suffix), "_%03d.txt", i);
+      path = stem + suffix;
+    }
+
+    std::ofstream file(path, std::ios::binary);
+    if (!file) continue;
+    // 🔴 BOM UTF-8. Nos lignes sont en UTF-8 ; sans lui, le Bloc-notes les lit en
+    // ANSI et tous les accents — et tout le coréen — sortent en charabia. Le
+    // fichier du client, lui, est écrit dans l'encodage du système : il n'avait
+    // pas ce choix à faire.
+    file << "\xEF\xBB\xBF";
+    for (const std::string& line : out) file << line << "\r\n";
+    if (file) ++written;
+  }
+
+  // Dire ce qui a été fait, ET OÙ. Le client se contente d'un « … is Saved. »
+  // qui ne nomme pas le dossier ; on a assez souffert de commandes qui ne disent
+  // rien pour ne pas en fabriquer une de plus.
+  char notice[512];
+  if (written > 0) {
+    std::snprintf(notice, sizeof(notice), i18n::Tr("Journal enregistré : %d fichier(s) dans %s"),
+                  written, (paths::GameDir() + "Chat").c_str());
+  } else {
+    std::snprintf(notice, sizeof(notice), "%s",
+                  i18n::Tr("Rien à enregistrer : aucun onglet ne contient de ligne."));
+  }
+  Ingest(notice, 0xFFD070, 0, 'P');
+  return written;
 }
 
 void ChatWindow::ClearHistory() {
@@ -2718,6 +2824,12 @@ void ChatWindow::OnRenderUI() {
     imgprev::SetUserHostsCsv(url_hosts_);
     url_hosts_seen_ = url_hosts_;
   }
+  // `/savechat` armé à la frame précédente : ICI, parce que `channels_`
+  // n'appartient qu'à ce fil-ci (cf. `RequestSaveLog`). Avant le dessin, pour
+  // que le message de confirmation paraisse dès cette frame.
+  if (pending_save_log_.exchange(false, std::memory_order_acquire))
+    SaveLogToFiles();
+
   // Relevée ICI, hors de toute fenêtre : c'est la seule taille de police qui ne
   // porte l'échelle d'aucune d'entre elles. Tout le log s'en déduit.
   base_font_size_ = ImGui::GetFontSize();

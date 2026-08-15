@@ -2792,6 +2792,8 @@
 "Contrôles": "Controles"
 "Bordure d'emblème": "Borde del emblema"
 "Notification de connexion": "Notificación de conexión"
+"Rien à enregistrer : aucun onglet ne contient de ligne.": "Nada que guardar: ninguna pestaña contiene una línea."
+"Journal enregistré : %d fichier(s) dans %s": "Registro guardado: %d archivo(s) en %s"
 "Courbe des temps d'image": "Gráfica de tiempos de fotograma"
 "Les 120 dernières images, de 0 à 33 ms. Un pic visible est un à-coup — c'est ce qu'un compteur moyenné cache.": "Los últimos 120 fotogramas, de 0 a 33 ms. Un pico visible es un tirón — justo lo que oculta un contador promediado."
 "Ping serveur": "Ping del servidor"
