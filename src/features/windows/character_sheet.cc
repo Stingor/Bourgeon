@@ -1322,11 +1322,19 @@ int EmblemVersionSEH(int guildId) {
 // le client a le code pour le peindre — `Guild_DrawEmblemOnPartyHUD`
 // (`0x00825160`) blitte le cadre puis décale l'emblème de 2 px.
 //
-// 🔴 SAUF QUE CE CODE NE TOURNE JAMAIS. Il est gardé par
-// `GameSession_GetField4c()`, relevé à **0** en jeu (x32dbg, 2026-08-15) — et ce
-// même garde couvre l'emblème lui-même, que le client dessine donc par un autre
-// chemin. Résultat : le réglage est inerte dans le client d'origine, quoi qu'on
-// écrive et quoi que contienne le GRF. Constaté par le joueur, expliqué ici.
+// ⚠ CE CADRE NE S'AFFICHE JAMAIS EN JEU — constat du joueur, cause NON ÉTABLIE.
+// Ce qui est vérifié : le bitmap a **deux** consommateurs dans le client.
+//   - `Guild_DrawEmblemOnPartyHUD` (0x00825160) est gardée par
+//     `GameSession_GetField4c()`, relevé à **0** en jeu (x32dbg, 2026-08-15) :
+//     celle-là ne tourne pas, et le même garde couvre l'emblème lui-même — que
+//     le client dessine donc par un autre chemin (le quad de nameplate).
+//   - `sub_825510` (0x00825510), elle, n'a **aucun garde global** : elle pose le
+//     cadre à gauche puis une image et des lignes de texte empilées. Sa
+//     condition est un octet de la fenêtre, `this[0xBD]`, dont le point
+//     d'écriture reste à trouver.
+// ⛔ NE PAS réécrire « le client ne peut pas » ici sans avoir tranché ce point :
+// la première version de ce commentaire l'affirmait sur la foi d'UNE seule
+// fonction, avant que la recherche des xrefs du chemin n'en révèle deux.
 //
 // ➡ On l'honore donc là où NOUS dessinons l'emblème. Le bitmap est celui du
 // client, chargé par son propre TexMgr : il suit le skin actif comme n'importe
