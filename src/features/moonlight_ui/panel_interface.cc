@@ -28,6 +28,7 @@
 #include "features/overlays/chat_balloon.h"
 #include "features/windows/bank_window.h"
 #include "features/windows/craft_atlas.h"
+#include "features/windows/game_settings.h"  // gslink — les onglets sont des destinations
 #include "features/windows/make_item_window.h"
 #include "features/windows/entity_context_menu.h"
 #include "features/windows/monster_info_window.h"
@@ -91,12 +92,16 @@ struct PanelHeader {
 // L'y laisser aurait formé des liens vers une destination qui n'existe plus —
 // `DestLabel` rendant un libellé pour une clé que `LinkableHeader` ne déplie
 // jamais, le lien aurait été cliquable et muet.
+//
+// ⚠ « graphics » l'a quittée à son tour : la section Graphismes est devenue
+// l'onglet du même nom de **Game Settings**, et c'est `gslink` qui porte
+// désormais sa clé — la MÊME, pour que les liens déjà posés dans le chat
+// continuent d'ouvrir la bonne chose. `DestLabel` la lui demande plus bas.
 constexpr PanelHeader kPanelHeaders[] = {
     {"rules",       "Règles du serveur", false},
     {"dps",         "DPS Meter",         false},
     {"minigames",   "Mini-jeux",         false},
     {"interface",   "Interface de jeu",  false},
-    {"graphics",    "Graphismes",        false},
     {"commands",    "Commands Settings", false},
 };
 
@@ -133,49 +138,12 @@ constexpr IfaceEntry kIfaceSections[] = {
 static_assert(IM_ARRAYSIZE(kIfaceSections) == MoonlightUi::kIfaceCount,
               "kIfaceSections doit couvrir exactement l'enum IfaceSection");
 
-// ── LE GESTE DE LIEN SE LIT SUR LA GÉOMÉTRIE, PAS SUR L'ÉTAT D'IMGUI ─────────
-//
-// 🔴 `IsItemHovered()` EST INUTILISABLE ICI, et deux corrections successives par
-// drapeaux n'y ont rien changé. Poser un lien donne le focus à la saisie du chat,
-// et cet état la fait mentir de plusieurs façons à la fois : la saisie devient
-// l'`ActiveId` (« Test if another item is active »), le focus venant de
-// `SetKeyboardFocusHere` l'item actif est d'origine CLAVIER donc
-// `g.NavHighlightItemUnderNav` se lève et une branche PRIORITAIRE exige alors que
-// l'item ait le focus nav, `g.HoveredWindow` est remis à NULL quand le clic
-// initial n'appartient pas à une fenêtre… Chaque garde neutralisée en découvrait
-// une autre, et le geste continuait de mourir dès la barre focalisée.
-//
-// On lit donc CE QU'ON VOIT : le rectangle de l'item (clippé par la fenêtre) et
-// le bouton BRUT de l'IO. Ni l'un ni l'autre ne consulte le focus, l'item actif
-// ou la navigation — c'est déjà ainsi que le log du chat teste ses liens, pour la
-// même raison.
-//
-// ⚠ Réservé à un geste MODIFIÉ, qu'aucun widget ne réclame : ImGui refuse déjà le
-// clic modifié sur un en-tête, et un `Selectable` ne s'active pas sous un item
-// actif. Il n'y a donc personne à qui voler le clic. Un geste ORDINAIRE, lui, doit
-// rester au widget : ces gardes sont ce qui empêche un slider d'en piloter un
-// autre au passage.
-bool ShiftClickedLastItem() {
-  const ImGuiIO& io = ImGui::GetIO();
-  if (!io.KeyShift || !io.MouseClicked[0]) return false;
-  // Le seul garde qu'on garde d'ImGui : « une AUTRE fenêtre n'est pas par-dessus ».
-  // La géométrie seule poserait un lien à travers la chatbox posée sur le panneau.
-  // Celui-ci ne peut pas mentir comme les autres — il ne consulte que la fenêtre
-  // survolée, sans branche de navigation clavier (vérifié dans `IsWindowHovered`).
-  if (!ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows |
-                              ImGuiHoveredFlags_AllowWhenBlockedByActiveItem))
-    return false;
-  return ImGui::IsMouseHoveringRect(ImGui::GetItemRectMin(),
-                                    ImGui::GetItemRectMax());
-}
-
-// Le SURVOL, pour l'infobulle qui annonce le geste. Elle, peut se contenter de
-// l'`IsItemHovered` d'ImGui — c'est de la décoration, et son délai vient du style.
-// Les deux drapeaux couvrent les deux gardes les plus fréquentes ; si elle
-// s'efface pendant que la saisie a le focus, on ne perd qu'une aide, pas un geste.
-constexpr ImGuiHoveredFlags kLinkHoverFlags =
-    ImGuiHoveredFlags_AllowWhenBlockedByActiveItem |
-    ImGuiHoveredFlags_NoNavOverride;
+// ⚠ LE GESTE DE LIEN A DÉMÉNAGÉ dans `links::ShiftClickedLastItem` /
+// `links::HoveredForLinkTooltip` (features/link_gesture.h), avec le récit de ses
+// deux échecs. Il est parti d'ici le jour où les ONGLETS de Game Settings ont eu
+// besoin du même geste : le recopier là-bas aurait fait diverger la seule lecture
+// délicate du système de liens.
+bool ShiftClickedLastItem() { return links::ShiftClickedLastItem(); }
 
 // L'en-tête que désigne cette clé, s'il est DISPONIBLE pour ce joueur.
 const PanelHeader* HeaderByKey(const char* key) {
@@ -207,8 +175,11 @@ int SectionByKey(const char* key) {
 const char* DestLabel(const char* key) {
   const int section = SectionByKey(key);
   if (section >= 0) return SectionLabel(section);
-  const PanelHeader* header = HeaderByKey(key);
-  return (header != nullptr) ? header->label : nullptr;
+  if (const PanelHeader* header = HeaderByKey(key)) return header->label;
+  // Troisième étage : les onglets de Game Settings. Ils vivent dans leur propre
+  // fenêtre, mais partagent l'espace de clés — un lien de réglage ne dit pas
+  // QUELLE fenêtre il ouvre, seulement CE qu'il désigne.
+  return gslink::LabelByKey(key);
 }
 
 // ── L'en-tête qui sait se lier ───────────────────────────────────────────────
@@ -256,7 +227,7 @@ bool LinkableHeader(const char* key) {
   // exactement là où le geste tient, sinon elle disparaît précisément au moment
   // où l'on s'en sert — la barre de chat ouverte.
   if (header != nullptr && links::CanPostToChat() &&
-      ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip | kLinkHoverFlags))
+      links::HoveredForLinkTooltip())
     ImGui::SetTooltip(i18n::Tr("Maj + clic : poser le lien de cette "
                                "section dans le chat"));
   return open;
@@ -523,7 +494,7 @@ void MoonlightUi::DrawInterfacePanel() {
       // (`ForTooltip`) : la liste se survole en permanence, elle ne doit pas
       // clignoter au passage.
       if ((link_posts || nav_clipped) &&
-          ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip | kLinkHoverFlags)) {
+          links::HoveredForLinkTooltip()) {
         const char* const gesture =
             link_posts ? i18n::Tr("Maj + clic : poser le lien de cette "
                                   "section dans le chat")

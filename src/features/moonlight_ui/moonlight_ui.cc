@@ -2098,6 +2098,14 @@ void MoonlightUi::OpenSettingTarget(const char* key) {
     OpenInterfaceSection(section);
     return;
   }
+  // Une destination peut vivre dans une AUTRE fenêtre que celle-ci : les onglets
+  // de Game Settings en sont, depuis que la section Graphismes y a déménagé. Un
+  // lien de réglage ne dit pas quelle fenêtre il ouvre, seulement ce qu'il
+  // désigne — c'est ici que la question se tranche.
+  if (const int tab = gslink::TabByKey(key); tab != gslink::kNoTab) {
+    if (auto* gs = Bourgeon::Instance().game_settings()) gs->OpenTab(tab);
+    return;
+  }
   // Destination inconnue ici (version plus ancienne, en-tête réservé au staff) :
   // ne rien ouvrir DU TOUT. Ouvrir le panneau « à peu près » ferait chercher au
   // joueur un réglage qui n'y est pas.
@@ -2209,23 +2217,13 @@ void MoonlightUi::OnRenderUI() {
     DrawFunPanels();
 
     DrawInterfacePanel();
-    // ── Graphismes (color grading post-process, ScreenFx plugin) ───────
-    if (iface::LinkableHeader("graphics")) {
-      PushStyleCompact();
-      if (auto* screen_fx = Bourgeon::Instance().screen_fx())
-        screen_fx->DrawSettings();
 
-      if (auto* weapon_dual_sprites = Bourgeon::Instance().weapon_dual_sprites()) {
-        if (ro::RoCheckbox(i18n::Tr("Sprites d'armes doubles"), &weapon_dual_sprites->enabled()))
-          SaveSettings();
-        SameLine(); HelpMarker(
-            i18n::Tr("Affiche le sprite/l'animation PROPRE à chaque arme quand tu portes "
-            "deux armes (assassin, kagerou/oboro) ou une seule arme en main "
-            "gauche.\n\nOFF (défaut) : le client fond les deux armes en un sprite "
-            "générique. ON : chaque arme garde son apparence d'origine."));
-      }
-      PopStyleCompact();
-    }
+    // ⛔ PLUS DE SECTION « Graphismes » ICI. Elle a rejoint l'ONGLET du même nom
+    // de Game Settings (features/windows/game_settings.cc, `DrawGraphicsTab`) :
+    // le joueur qui cherche un réglage d'image n'a plus à deviner lequel de deux
+    // panneaux le porte. Sa clé de lien — « graphics » — l'a suivie, inchangée,
+    // pour que les liens déjà posés dans le chat continuent d'ouvrir la bonne
+    // chose ; c'est `gslink` qui la résout désormais.
 
     // ── Commands Settings ────────────────────────────────────────────────────
     DrawCommandsPanel();

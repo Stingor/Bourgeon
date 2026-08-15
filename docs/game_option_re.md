@@ -1666,6 +1666,22 @@ de voler la touche. Ne reste au natif que son **[Reset]**, faute d'équivalent �
 | Shortcut Settings 156 | ✅ portée, écriture comprise | `features/windows/hotkey_settings.{h,cc}`, `ragnarok/user_hotkey.{h,cc}` |
 | Game Settings 0x271E | ✅ portée **en entier, les cinq onglets** — Graphics compris (§3.10) ; la native n'est plus jamais ouverte. Groupe **RODEX volontairement non repris**, mort côté serveur (§3.9). Le [Apply] structurel **enregistre et sauve, sans poser `g_RestartRequested`** — le drapeau ouvre une page web, pas un client | `features/windows/game_settings.{h,cc}`, `ragnarok/game_settings.{h,cc}` |
 
+**Deux ajouts qui ne viennent pas du client** (2026-08-15) :
+
+- l'onglet Graphismes héberge désormais **les effets d'écran de Bourgeon** et les
+  sprites d'armes doubles, venus de la section « Graphismes » de Moonlight
+  Settings. Un joueur qui cherche un réglage d'image n'a plus à deviner lequel de
+  deux panneaux le porte ; la frontière reste dite à l'écran (« Ajouts de
+  Bourgeon »), parce que ces réglages-là ne sont écrits dans aucun fichier du
+  client et survivent à son [Tout réinitialiser] ;
+- **les six onglets sont des destinations de lien** : Maj + clic sur une
+  languette pose « [Réglage: Graphismes] » dans le chat, et le clic d'un lecteur
+  ouvre le panneau sur le bon onglet (`gslink`, `GameSettings::OpenTab`). La clé
+  `graphics` est **celle qu'avait la section déménagée**, inchangée : les liens
+  déjà postés continuent d'ouvrir la bonne chose. Le geste lui-même a quitté
+  `panel_interface.cc` pour `links::ShiftClickedLastItem` — il ne se recopie pas,
+  sa lecture « à la main » ayant échoué deux fois avant de tenir.
+
 Les trois sont **ON par défaut et HORS du groupe « Interface moderne »** : ce sont
 des écrans de réglages, pas des morceaux de HUD, et aucun n'a besoin du reste de
 l'interface moderne — tout passe par les ponts du client. Clés yaml :

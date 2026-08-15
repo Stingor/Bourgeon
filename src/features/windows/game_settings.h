@@ -23,11 +23,12 @@
 // et elle est alors masquée puis détruite.
 //
 // ⚠ L'onglet Graphismes sépare ce qui s'applique AU CLIC (finesse des sprites et
-// des textures, filtrage) de ce qui exige de **relancer le client** (API,
+// des textures, filtrage) de ce que le client ne lit **qu'à son démarrage** (API,
 // adaptateur, résolution, plein écran). Ce n'est pas notre choix : le [Apply] du
-// client ne fait aucun reset de device, il écrit sa configuration et se
-// ré-exécute. Les quatre réglages structurels restent donc un brouillon jusqu'à
-// ce que le joueur accepte la relance, avertissement du client à l'appui.
+// client ne fait aucun reset de device — et ne relance rien non plus, son drapeau
+// « restart » se contentant d'ouvrir une page web. Les quatre réglages
+// structurels restent donc un brouillon jusqu'à validation, puis sont écrits ET
+// sauvés, pour le prochain lancement. Le §3.10 du doc raconte le piège en entier.
 //
 // ⛔ Le groupe **Courrier (RODEX)** du natif n'est PAS repris : il est mort sur
 // Moonlight, le serveur ne mappant pas le paquet que le client émet. Détail et
@@ -68,6 +69,38 @@
 // tout passe par le manager du client — et il est dessiné au-dessus de tout, là
 // où le natif s'enterre sous les fenêtres du jeu.
 
+// ── Les onglets vus par le système de liens ─────────────────────────────────
+//
+// Un onglet de ce panneau est une DESTINATION comme une autre : Maj + clic sur
+// sa languette pose « [Réglage: Graphismes] » dans le chat, et un lecteur qui
+// clique dessus arrive ici, sur le bon onglet.
+//
+// 🔴 LA CLÉ N'EST PAS LE NUMÉRO D'ONGLET, même règle que pour les sections de
+// Moonlight Settings : un lien voyage vers d'autres clients, et la numérotation
+// du Lua n'est ni contiguë ni stable d'une version du client à l'autre. Une clé
+// posée ne se renomme donc **jamais** — les lignes de chat déjà envoyées la
+// portent encore. Le libellé, lui, est libre : il est traduit à l'affichage.
+//
+// ⚠ `graphics` est délibérément l'ANCIENNE clé de la section « Graphismes » de
+// Moonlight Settings, qui a déménagé dans l'onglet du même nom : les liens déjà
+// posés dans le chat continuent d'ouvrir la bonne chose.
+namespace gslink {
+
+// Aucun onglet — valeur hors de toute numérotation, la nôtre comprise.
+constexpr int kNoTab = INT32_MIN;
+
+// L'onglet que désigne cette clé, `kNoTab` si elle n'est pas des nôtres.
+int TabByKey(const char* key);
+
+// Le libellé NON TRADUIT d'une clé, `nullptr` si inconnue. C'est ce que
+// `iface::DestLabel` consulte pour composer « [Réglage: …] ».
+const char* LabelByKey(const char* key);
+
+// La clé d'un onglet, `nullptr` s'il n'est pas liable.
+const char* KeyByTab(int tab);
+
+}  // namespace gslink
+
 class GameSettings : public Plugin {
  public:
   const char* name() const override { return "GameSettings"; }
@@ -83,6 +116,11 @@ class GameSettings : public Plugin {
 
   // Ouvre le panneau depuis le menu Échap (bouton « Réglages du jeu »).
   void OpenFromMenu();
+
+  // Ouvre le panneau SUR UN ONGLET donné. C'est ce qu'honore un lien de réglage
+  // reçu dans le chat — même chemin que le saut vers une section de Moonlight
+  // Settings, à ceci près que la destination est ici un onglet.
+  void OpenTab(int tab);
 
   bool IsOpen() const { return open_; }
 
@@ -107,6 +145,9 @@ class GameSettings : public Plugin {
 
   void DrawBasicTab();
   void DrawGraphicsTab();
+  // Le bas de l'onglet Graphismes : les effets d'écran et les sprites d'armes
+  // doubles, qui n'appartiennent pas au client. Venus de Moonlight Settings.
+  void DrawBourgeonGraphics();
   void DrawListTab(int tab);
 
   // Relit les listes d'adaptateurs et de modes auprès du client. Coûteux —

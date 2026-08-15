@@ -10,6 +10,10 @@
 #include <iterator>  // std::size
 
 #include "bourgeon.h"
+#include "features/fx/screen_fx.h"         // les effets d'écran, hébergés ici
+#include "features/link_gesture.h"         // Maj + clic sur un onglet = un lien
+#include "features/moonlight_ui/moonlight_ui.h"  // SaveSettings (bourgeon_settings.yaml)
+#include "features/fx/weapon_dual_sprites.h"
 #include "features/systems/dx7_warning.h"  // dx7::DrawWarningBody — texte PARTAGÉ
 #include "imgui.h"
 #include "ragnarok/game_settings.h"
@@ -110,6 +114,31 @@ const ImVec4 kSecondaryText(0.42f, 0.38f, 0.32f, 1.0f);
 // Le marqueur « ce réglage n'est plus à son défaut ».
 const ImVec4 kChangedText(0.65f, 0.30f, 0.10f, 1.0f);
 
+// ── Les onglets, vus par le système de liens (cf. le .h) ────────────────────
+//
+// ⚠ Le libellé n'est PAS celui de la languette. Une languette dit « Basique » au
+// milieu de ses cinq sœurs, ce qui suffit ; un lien dans le chat, lui, arrive
+// seul au milieu d'une conversation — « [Réglage: Basique] » n'y désigne rien.
+// Le libellé porte donc son contexte, et il est en FRANÇAIS NU : c'est
+// `SettingLabel` qui le traduit, chez le lecteur, dans SA langue.
+struct TabLink {
+  int tab;
+  const char* key;
+  const char* label;  // non traduit
+};
+
+constexpr TabLink kTabLinks[] = {
+    {GameSettings::kTabAll,           "gs_all",      "Réglages du jeu"},
+    {GameSettings::kTabBasic,         "gs_basic",    "Réglages : Basique"},
+    // 🔴 « graphics » et pas « gs_graphics » : c'est la clé qu'avait la section
+    // Graphismes de Moonlight Settings, d'où elle a déménagé. Les liens déjà
+    // posés dans le chat ouvrent donc toujours la bonne chose.
+    {GameSettings::kTabGraphics,      "graphics",    "Graphismes"},
+    {gamesettings::kTabEffect,        "gs_effect",   "Réglages : Effets"},
+    {gamesettings::kTabControl,       "gs_control",  "Réglages : Contrôles"},
+    {gamesettings::kTabEtc,           "gs_etc",      "Réglages : Divers"},
+};
+
 const char* TabLabel(int tab) {
   switch (tab) {
     case gamesettings::kTabEffect:
@@ -168,6 +197,32 @@ bool Contains(const char* haystack, const char* needle) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+namespace gslink {
+
+int TabByKey(const char* key) {
+  if (key == nullptr || key[0] == '\0') return kNoTab;
+  for (const TabLink& link : kTabLinks)
+    if (std::strcmp(link.key, key) == 0) return link.tab;
+  return kNoTab;
+}
+
+const char* LabelByKey(const char* key) {
+  if (key == nullptr || key[0] == '\0') return nullptr;
+  for (const TabLink& link : kTabLinks)
+    if (std::strcmp(link.key, key) == 0) return link.label;
+  return nullptr;
+}
+
+const char* KeyByTab(int tab) {
+  for (const TabLink& link : kTabLinks)
+    if (link.tab == tab) return link.key;
+  return nullptr;
+}
+
+}  // namespace gslink
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 void GameSettings::HandleNativeCreation(void* win) {
   if (!imgui_enabled_) return;
 
@@ -205,6 +260,18 @@ void GameSettings::OpenFromMenu() {
   graphics_ready_ = false;
   adapters_.clear();
   modes_.clear();
+}
+
+void GameSettings::OpenTab(int tab) {
+  // Réouvrir remet le brouillon graphique à plat : c'est ce que fait le menu
+  // Échap, et un lien de chat ne doit pas se comporter autrement.
+  OpenFromMenu();
+  tab_ = tab;
+  // 🔴 L'onglet Graphismes a besoin de ses listes, et il ne passera PAS par le
+  // `BeginTabItem` qui les demande d'ordinaire : `tab_` est déjà posé, donc le
+  // test « on vient d'y entrer » sera faux à la première frame. Sans cette ligne,
+  // un lien vers Graphismes ouvre un onglet aux listes vides.
+  if (tab == kTabGraphics) pending_graphics_refresh_ = true;
 }
 
 void GameSettings::Close() {
@@ -414,7 +481,28 @@ void GameSettings::OnRenderUI() {
       // avec sa langue, ce qui recréerait l'onglet à chaque bascule.
       char tab_id[96];
       std::snprintf(tab_id, sizeof(tab_id), "%s###gs_tab_%d", label, tab);
-      if (ImGui::BeginTabItem(tab_id)) {
+      const bool selected = ImGui::BeginTabItem(tab_id);
+      // ── Maj + clic sur la languette : le lien dans le chat ──────────────────
+      //
+      // Le geste se lit APRÈS `BeginTabItem` et AVANT `EndTabItem` : c'est la
+      // languette qui est le dernier item, et le corps de l'onglet le remplacera
+      // dès la première ligne dessinée.
+      //
+      // ⚠ Contrairement à un en-tête repliable, un onglet ACCEPTE le clic
+      // modifié : la languette bascule donc aussi. On le laisse — poser un lien
+      // vers un onglet en l'ouvrant au passage montre ce qu'on vient de poser, et
+      // l'annuler demanderait de rejouer l'état interne de la barre d'onglets.
+      const char* link_key = gslink::KeyByTab(tab);
+      if (link_key != nullptr && links::CanPostToChat()) {
+        if (links::ShiftClickedLastItem())
+          links::PostToChat(links::FromSetting(link_key));
+        // Le geste n'a aucune trace visible : sans cette aide, il n'existe que
+        // pour qui l'a lu dans un changelog.
+        else if (links::HoveredForLinkTooltip())
+          ImGui::SetTooltip(i18n::Tr("Maj + clic : poser le lien de cet onglet "
+                                     "dans le chat"));
+      }
+      if (selected) {
         // Les listes d'adaptateurs et de modes sont demandées À L'ENTRÉE dans
         // l'onglet, jamais à l'ouverture du panneau : l'énumération DX9 crée un
         // device Direct3D, et le joueur qui ne va pas dans Graphismes n'a pas à
@@ -1077,7 +1165,39 @@ void GameSettings::DrawGraphicsTab() {
                        i18n::Tr("Enregistré. Actif au prochain démarrage du jeu."));
   }
 
+  DrawBourgeonGraphics();
   mui::PopStyleCompact();
+}
+
+// ── Les réglages d'image qui n'appartiennent PAS au client ──────────────────
+//
+// Ils vivaient dans la section « Graphismes » de Moonlight Settings. Ils sont ici
+// parce qu'un joueur qui cherche un réglage d'image ne devrait pas avoir à
+// deviner lequel de deux panneaux le porte — le client ni Bourgeon ne sont une
+// distinction qui l'intéresse.
+//
+// La frontière reste dite, en revanche : ce qui suit ne passe par aucun réglage
+// du client, n'est écrit dans aucun de ses fichiers, et survit à un [Tout
+// réinitialiser] qui, lui, ne touche que les siens.
+void GameSettings::DrawBourgeonGraphics() {
+  ImGui::Spacing();
+  mui::SeparatorText(i18n::Tr("Ajouts de Bourgeon"));
+
+  if (auto* screen_fx = Bourgeon::Instance().screen_fx()) screen_fx->DrawSettings();
+
+  if (auto* dual = Bourgeon::Instance().weapon_dual_sprites()) {
+    if (ro::RoCheckbox(i18n::Tr("Sprites d'armes doubles"), &dual->enabled())) {
+      // La sauvegarde appartient à MoonlightUi : c'est lui qui tient
+      // bourgeon_settings.yaml, pour tous les greffons à la fois.
+      if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
+    }
+    ImGui::SameLine();
+    mui::HelpMarker(
+        i18n::Tr("Affiche le sprite/l'animation PROPRE à chaque arme quand tu portes "
+                 "deux armes (assassin, kagerou/oboro) ou une seule arme en main "
+                 "gauche.\n\nOFF (défaut) : le client fond les deux armes en un sprite "
+                 "générique. ON : chaque arme garde son apparence d'origine."));
+  }
 }
 
 void GameSettings::DrawListTab(int tab) {

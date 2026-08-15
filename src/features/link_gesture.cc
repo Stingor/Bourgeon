@@ -368,6 +368,33 @@ void OpenDescription(const Target& target) {
   }
 }
 
+// ── Le Maj + clic des surfaces qui ont déjà un métier au clic gauche ─────────
+// Le pourquoi de cette lecture « à la main » est dans le .h, et il vaut la peine
+// d'être lu : la version « propre » par drapeaux d'`IsItemHovered` a échoué deux
+// fois. Ce code vivait dans `panel_interface.cc` ; il en est sorti le jour où les
+// onglets de Game Settings ont eu, eux aussi, besoin de poser un lien.
+bool ShiftClickedLastItem() {
+  const ImGuiIO& io = ImGui::GetIO();
+  if (!io.KeyShift || !io.MouseClicked[0]) return false;
+  // Le seul garde qu'on garde d'ImGui : « une AUTRE fenêtre n'est pas par-dessus ».
+  // La géométrie seule poserait un lien à travers la chatbox posée sur le panneau.
+  // Celui-ci ne peut pas mentir comme les autres — il ne consulte que la fenêtre
+  // survolée, sans branche de navigation clavier (vérifié dans `IsWindowHovered`).
+  if (!ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows |
+                              ImGuiHoveredFlags_AllowWhenBlockedByActiveItem))
+    return false;
+  return ImGui::IsMouseHoveringRect(ImGui::GetItemRectMin(),
+                                    ImGui::GetItemRectMax());
+}
+
+bool HoveredForLinkTooltip() {
+  // Les deux drapeaux couvrent les gardes les plus fréquentes ; le délai vient du
+  // style, d'où `ForTooltip`.
+  return ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip |
+                              ImGuiHoveredFlags_AllowWhenBlockedByActiveItem |
+                              ImGuiHoveredFlags_NoNavOverride);
+}
+
 bool CanPostToChat() {
   ChatWindow* chat = Bourgeon::Instance().chat_window();
   // La barre de SAISIE, et pas seulement la chatbox : c'est elle qui reçoit le

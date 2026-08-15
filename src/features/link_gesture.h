@@ -123,6 +123,36 @@ std::string SettingLabel(const char* key);
 // qui ouvrirait le réglage d'à côté — ou rien du tout.
 Target FromSetting(const char* key);
 
+// ── Le Maj + clic, pour les surfaces qui ne passent pas par `Gestures` ───────
+//
+// Un en-tête repliable, un onglet, un bouton : ces widgets ont déjà un métier au
+// clic gauche, et le lien ne s'ajoute que sur le geste MODIFIÉ. Ils ne peuvent
+// donc pas appeler `Gestures`, qui gouverne les trois boutons — mais ils ne
+// doivent pas non plus recopier la lecture du geste, qui est tout sauf évidente.
+//
+// 🔴 `ImGui::IsItemHovered()` EST INUTILISABLE ICI, et deux corrections
+// successives par drapeaux n'y ont rien changé. Poser un lien donne le focus à la
+// saisie du chat, et cet état la fait mentir de plusieurs façons à la fois : la
+// saisie devient l'`ActiveId`, le focus venant de `SetKeyboardFocusHere` l'item
+// actif est d'origine CLAVIER donc une branche PRIORITAIRE exige alors que l'item
+// ait le focus nav, `g.HoveredWindow` est remis à NULL quand le clic initial
+// n'appartient pas à une fenêtre… Chaque garde neutralisée en découvrait une
+// autre, et le geste continuait de mourir dès la barre focalisée.
+//
+// On lit donc CE QU'ON VOIT : le rectangle du dernier item et le bouton BRUT de
+// l'IO, plus la seule garde qui ne ment pas — « une AUTRE fenêtre n'est pas
+// par-dessus », sans quoi on poserait un lien à travers la chatbox.
+//
+// ⚠ RÉSERVÉ À UN GESTE MODIFIÉ, qu'aucun widget ne réclame. Un geste ORDINAIRE
+// doit rester au widget : les gardes d'ImGui sont ce qui empêche un slider d'en
+// piloter un autre au passage.
+bool ShiftClickedLastItem();
+
+// Le SURVOL du dernier item, pour l'infobulle qui ANNONCE le geste. Elle, peut se
+// contenter de l'`IsItemHovered` d'ImGui — c'est de la décoration, et si elle
+// s'efface pendant que la saisie a le focus on ne perd qu'une aide, pas un geste.
+bool HoveredForLinkTooltip();
+
 // Le geste RECONNU, sans rien jouer. Pour les surfaces qui ont leur propre façon
 // d'ouvrir une description : les cartes et les membres de combo d'une fenêtre de
 // description REMPLACENT l'objet affiché (comme un lien de carte natif) au lieu
