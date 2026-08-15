@@ -278,9 +278,16 @@ int  BitsPerPixel();
 
 // Un adaptateur, tel que le client l'énumère. `index` est le sien : c'est lui
 // qu'attend `EnumerateModes`, et lui que reprend `ApplyAndRestart`.
+//
+// ⚠ **DEUX ENTRÉES PEUVENT PORTER LE MÊME `name`.** Direct3D 9 énumère un
+// adaptateur par SORTIE D'AFFICHAGE, pas par carte : une carte reliée à deux
+// écrans apparaît deux fois, avec la même description et deux `device`
+// différents (`\\.\DISPLAY1`, `\\.\DISPLAY2`). C'est `device` qui les sépare —
+// l'afficher n'est pas un détail, c'est ce qui rend la liste utilisable.
 struct Adapter {
   int  index = 0;
-  char name[128] = {0};
+  char name[128] = {0};  // description de la carte (« NVIDIA GeForce… »)
+  char device[64] = {0}; // nom de la sortie Windows ; vide en DirectX 7
 };
 
 // Un mode d'affichage. Le client ne compare QUE les trois entiers ; le libellé

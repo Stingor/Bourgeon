@@ -2839,6 +2839,8 @@
 "Contrôles": "Controls"
 "Bordure d'emblème": "Emblem Border"
 "Notification de connexion": "Login Notification"
+"%s  —  écran %d": "%s  —  screen %d"
+"Une même carte apparaît une fois PAR ÉCRAN branché : ce que vous choisissez ici, c'est l'écran sur lequel le jeu s'ouvrira.": "The same card shows up once PER CONNECTED SCREEN: what you pick here is the screen the game will open on."
 "Sans redémarrage": "No restart needed"
 "Le client lit ce réglage quand il CHARGE un sprite : les personnages et monstres déjà à l'écran gardent leur finesse.\nChangez de carte pour tout revoir.": "The client reads this setting when it LOADS a sprite: characters and monsters already on screen keep their resolution.\nChange map to see it everywhere."
 "Lisse les textures vues de loin. Coût négligeable sur une carte moderne.\nLe filtre est figé dans chaque texture au moment où elle est créée : le changement se voit tout de suite sur l'interface, et sur le reste au fur et à mesure des rechargements.": "Smooths textures seen from afar. Negligible cost on a modern card.\nThe filter is baked into each texture when it is created: the change shows on the interface right away, and on everything else as textures are reloaded."

@@ -920,6 +920,7 @@ redémarrer, un changement de finesse de textures ou de filtrage.
 |---|---|---|
 | `RenderSystem_EnumerateList(out)` | `0x00561260` | **28 o.** `{int id; std::string nom}` — liste **EN DUR** de deux entrées, aucune détection |
 | `Adapter_EnumerateList(out, api)` | `0x00560FB0` | **104 o.** `{int api; int index; string desc; 3×16 o. de GUID; string device}` |
+
 | `DisplayMode_EnumerateList(out, api, index)` | `0x00561550` | **36 o.** `{int w; int h; int bpp; std::string libellé}` |
 
 Plus `RenderConfig_GetCurrentAdapter` (`0x005610B0`) qui rebâtit l'enregistrement
@@ -929,6 +930,28 @@ courant depuis les globales, `AdapterRecord_Equals` (`0x00560D60`) et
 ⚠ `Adapter_EnumerateDX9` (`0x00564730`) crée un `IDirect3D9Ex` le temps de
 l'énumération et le relâche : appeler l'énumérateur coûte, il ne se fait pas par
 frame.
+
+#### ⚠ « Pourquoi ma carte apparaît-elle deux fois ? »
+
+Parce que **Direct3D 9 énumère une SORTIE D'AFFICHAGE, pas une carte.**
+`Adapter_EnumerateDX9` boucle sur `GetAdapterCount()` et remplit chaque
+enregistrement depuis `GetAdapterIdentifier` — un `D3DADAPTER_IDENTIFIER9` dont
+le client retient trois champs :
+
+| champ D3D | où il atterrit | exemple |
+|---|---|---|
+| `Description` | enreg. `+0x08` | « NVIDIA GeForce RTX… » |
+| `DeviceName` | enreg. `+0x50` | `\\.\DISPLAY2` |
+| `DeviceIdentifier` (GUID) | enreg. `+0x40` | ce que `AdapterRecord_Equals` compare |
+
+Une carte reliée à deux écrans produit donc **deux lignes à la description
+identique**, que seul `DeviceName` distingue — et c'est aussi ce que le joueur
+choisit réellement : **l'écran sur lequel le jeu s'ouvrira**. Relevé en direct sur
+le client, `g_cfg_DX9DeviceName` valait `\\.\DISPLAY2`.
+
+➡ Un panneau de remplacement doit afficher le numéro d'écran à côté de la
+description ; le natif ne montre que la description, et sa liste est pour cette
+raison ambiguë sur un poste multi-écrans.
 
 ---
 

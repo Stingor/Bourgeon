@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <cstdlib>  // std::atoi
 #include <cstring>
 #include <iterator>  // std::size
 
@@ -120,6 +121,31 @@ const char* TabLabel(int tab) {
     default:
       return "";
   }
+}
+
+// Le libellé d'un adaptateur : sa description, et l'écran quand il y en a un.
+//
+// `\\.\DISPLAY2` est le nom Windows de la sortie — exact, mais illisible pour un
+// joueur. On n'en garde que le NUMÉRO, qui est justement ce qui distingue les
+// deux lignes. Un nom d'une autre forme (ce qui n'arrive pas en Direct3D 9, mais
+// rien ne l'interdit) est recopié tel quel plutôt qu'écarté.
+void FormatAdapterLabel(const gamesettings::graphics::Adapter& adapter, char* out,
+                        size_t out_size) {
+  if (adapter.device[0] == '\0') {
+    std::snprintf(out, out_size, "%s", adapter.name);
+    return;
+  }
+  static const char kPrefix[] = "\\\\.\\DISPLAY";
+  const size_t prefix_len = sizeof(kPrefix) - 1;
+  if (std::strncmp(adapter.device, kPrefix, prefix_len) == 0 &&
+      adapter.device[prefix_len] != '\0') {
+    const int screen = std::atoi(adapter.device + prefix_len);
+    if (screen > 0) {
+      std::snprintf(out, out_size, i18n::Tr("%s  —  écran %d"), adapter.name, screen);
+      return;
+    }
+  }
+  std::snprintf(out, out_size, "%s  —  %s", adapter.name, adapter.device);
 }
 
 // Recherche insensible à la casse, sur une sous-chaîne.
@@ -889,16 +915,28 @@ void GameSettings::DrawGraphicsTab() {
   }
 
   // Adaptateur.
-  const char* adapter_name = i18n::Tr("(aucun)");
+  //
+  // 🔴 Direct3D 9 énumère une sortie D'AFFICHAGE, pas une carte : deux écrans
+  // branchés sur la même carte donnent deux lignes à la description identique.
+  // Le numéro d'écran est la seule chose qui les distingue, et sans lui la liste
+  // est inutilisable — c'est exactement ce qu'un joueur a signalé.
+  char adapter_label[192];
+  std::strncpy(adapter_label, i18n::Tr("(aucun)"), sizeof(adapter_label) - 1);
+  adapter_label[sizeof(adapter_label) - 1] = '\0';
   for (const gfx::Adapter& adapter : adapters_) {
-    if (adapter.index == draft_.adapter) { adapter_name = adapter.name; break; }
+    if (adapter.index == draft_.adapter) {
+      FormatAdapterLabel(adapter, adapter_label, sizeof(adapter_label));
+      break;
+    }
   }
-  ImGui::SetNextItemWidth(ro::Px(260.0f));
+  ImGui::SetNextItemWidth(ro::Px(300.0f));
   if (ImGui::BeginCombo(msgstr::Utf8Or(kMsgGraphicDevice, i18n::Tr("Carte graphique")),
-                        adapter_name)) {
+                        adapter_label)) {
     for (const gfx::Adapter& adapter : adapters_) {
+      char label[192];
+      FormatAdapterLabel(adapter, label, sizeof(label));
       ImGui::PushID(adapter.index);
-      if (ImGui::Selectable(adapter.name, adapter.index == draft_.adapter) &&
+      if (ImGui::Selectable(label, adapter.index == draft_.adapter) &&
           adapter.index != draft_.adapter) {
         draft_.adapter = adapter.index;
         pending_graphics_refresh_ = true;  // les modes dépendent de l'adaptateur
@@ -907,6 +945,10 @@ void GameSettings::DrawGraphicsTab() {
     }
     ImGui::EndCombo();
   }
+  ImGui::SameLine();
+  mui::HelpMarker(
+      i18n::Tr("Une même carte apparaît une fois PAR ÉCRAN branché : ce que vous "
+               "choisissez ici, c'est l'écran sur lequel le jeu s'ouvrira."));
 
   // Résolution.
   char mode_label[96];

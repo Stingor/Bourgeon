@@ -2795,6 +2795,8 @@
 "Contrôles": "Controles"
 "Bordure d'emblème": "Borde del emblema"
 "Notification de connexion": "Notificación de conexión"
+"%s  —  écran %d": "%s  —  pantalla %d"
+"Une même carte apparaît une fois PAR ÉCRAN branché : ce que vous choisissez ici, c'est l'écran sur lequel le jeu s'ouvrira.": "La misma tarjeta aparece una vez POR PANTALLA conectada: lo que eliges aquí es la pantalla en la que se abrirá el juego."
 "Sans redémarrage": "Sin reiniciar"
 "Le client lit ce réglage quand il CHARGE un sprite : les personnages et monstres déjà à l'écran gardent leur finesse.\nChangez de carte pour tout revoir.": "El cliente lee este ajuste cuando CARGA un sprite: los personajes y monstruos ya en pantalla conservan su resolución.\nCambia de mapa para verlo en todo."
 "Lisse les textures vues de loin. Coût négligeable sur une carte moderne.\nLe filtre est figé dans chaque texture au moment où elle est créée : le changement se voit tout de suite sur l'interface, et sur le reste au fur et à mesure des rechargements.": "Suaviza las texturas vistas de lejos. Coste insignificante en una tarjeta moderna.\nEl filtro queda fijado en cada textura al crearse: el cambio se ve en la interfaz al instante, y en el resto a medida que se recargan."

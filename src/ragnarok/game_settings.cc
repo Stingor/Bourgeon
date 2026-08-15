@@ -676,6 +676,10 @@ bool EnumerateAdapters(int system, Adapter* out, int max_count, int* out_count) 
       Adapter& adapter = out[count];
       adapter.index = *reinterpret_cast<const int32_t*>(rec + kAdapterRecIndex);
       CopyClientString(rec + kAdapterRecDesc, adapter.name, sizeof(adapter.name));
+      // La sortie d'affichage : sans elle, deux écrans branchés sur la même carte
+      // donnent deux lignes rigoureusement identiques. Vide en DirectX 7, dont
+      // l'énumération ne remplit pas ce champ.
+      CopyClientString(rec + kAdapterRecDx9Name, adapter.device, sizeof(adapter.device));
       ++count;
     }
   }
