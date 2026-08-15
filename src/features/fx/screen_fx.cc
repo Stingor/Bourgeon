@@ -160,14 +160,14 @@ void ScreenFx::DrawSettings() {
     // le joueur, et deux widgets l'obligeraient à faire l'aller-retour entre un
     // curseur et une pastille pour juger du résultat.
     ImVec4 bg = ImGui::ColorConvertU32ToFloat4(fps_bg_col_);
-    if (ImGui::ColorEdit4(i18n::Tr("Fond"), &bg.x, ImGuiColorEditFlags_AlphaBar |
-                                                       ImGuiColorEditFlags_AlphaPreviewHalf)) {
+    if (RoColorSwatch(i18n::Tr("Fond"), &bg.x, nullptr, /*with_alpha=*/true,
+                          /*numeric_inputs=*/false)) {
       fps_bg_col_ = ImGui::ColorConvertFloat4ToU32(bg);
       save = true;
     }
     ImVec4 text = ImGui::ColorConvertU32ToFloat4(fps_text_col_);
-    if (ImGui::ColorEdit4(i18n::Tr("Texte"), &text.x, ImGuiColorEditFlags_AlphaBar |
-                                                          ImGuiColorEditFlags_AlphaPreviewHalf)) {
+    if (RoColorSwatch(i18n::Tr("Texte"), &text.x, nullptr, /*with_alpha=*/true,
+                          /*numeric_inputs=*/false)) {
       fps_text_col_ = ImGui::ColorConvertFloat4ToU32(text);
       save = true;
     }
@@ -316,9 +316,16 @@ void ScreenFx::OnRenderUI() {
     // -delà de ×2, ce qui est acceptable ici et ne l'aurait pas été pour du texte.
     ImGui::SetWindowFontScale(fps_scale_);
 
+    // 🔴 LA LIGNE NE PORTE QUE LES IMAGES PAR SECONDE. Elle affichait aussi
+    // « (16,7 ms) » — le temps d'une image, l'inverse du chiffre d'à côté. Deux
+    // reproches, tous deux fondés : ça ne dit rien de plus au joueur, et depuis
+    // que le ping existe, deux nombres en « ms » se suivent sans que rien ne
+    // distingue une durée d'affichage d'une latence réseau.
+    //
+    // Le temps d'image n'a pas disparu : il est passé SUR LA COURBE, qui est
+    // précisément ce qu'elle trace, avec son unité écrite en toutes lettres.
     char line[96];
-    std::snprintf(line, sizeof(line), i18n::Tr("%.0f FPS  (%.1f ms)"), io.Framerate,
-                  1000.0f / io.Framerate);
+    std::snprintf(line, sizeof(line), i18n::Tr("%.0f FPS"), io.Framerate);
     FpsText(line);
 
     if (fps_show_ping_) {
@@ -339,8 +346,16 @@ void ScreenFx::OnRenderUI() {
     }
 
     if (fps_graph_) {
-      ImGui::PlotLines("##ft", fps_hist_, IM_ARRAYSIZE(fps_hist_), fps_head_, nullptr,
+      // Le temps d'une image, ÉCRIT SUR SA COURBE. `ms/image` et pas `ms` tout
+      // court : c'est la seule chose qui empêche de le lire comme un ping.
+      std::snprintf(line, sizeof(line), i18n::Tr("%.1f ms/image"),
+                    1000.0f / io.Framerate);
+      // `PlotLines` dessine son texte avec `ImGuiCol_Text` : sans ce push, la
+      // légende ignorerait la couleur choisie pour le reste de l'overlay.
+      ImGui::PushStyleColor(ImGuiCol_Text, fps_text_col_);
+      ImGui::PlotLines("##ft", fps_hist_, IM_ARRAYSIZE(fps_hist_), fps_head_, line,
                        0.0f, 33.3f, ImVec2(140.0f * fps_scale_, 32.0f * fps_scale_));
+      ImGui::PopStyleColor();
     }
     ImGui::SetWindowFontScale(1.0f);
   }
