@@ -2,6 +2,7 @@
 
 #include "bourgeon.h"
 #include "features/fx/ground_paint.h"
+#include "features/fx/weapon_dual_sprites.h"
 #include "features/fx/zone_recorder.h"
 #include "features/gameplay/quick_cast.h"
 #include "features/moonlight_ui/moonlight_ui.h"
@@ -91,6 +92,25 @@ void StaffTools::OnRenderUI() {
   // sans toucher à sa géométrie (l'occlusion reste correcte).
   mui::SeparatorText(i18n::Tr("Fond de capture"));
   ground_paint::DrawSettings();
+
+  // ── Sprites d'armes doubles ────────────────────────────────────────────────
+  // ⚠ CE N'EST PLUS UN RÉGLAGE DE JOUEUR. Le comportement est devenu le défaut —
+  // une arme porte son sprite, main gauche comprise — et la case n'est ici que
+  // pour COMPARER avec le rendu d'origine du client quand on débogue les couches
+  // d'armes. Elle reste donc accessible, mais au seul endroit où l'on sait ce
+  // qu'on éteint.
+  mui::SeparatorText(i18n::Tr("Sprites d'armes doubles"));
+  if (auto* dual = Bourgeon::Instance().weapon_dual_sprites()) {
+    if (ro::RoCheckbox(i18n::Tr("Sprite propre à chaque arme"), &dual->enabled()))
+      Persist();
+    ImGui::SameLine();
+    mui::HelpMarker(
+        i18n::Tr("ON (défaut) : chaque arme garde son apparence d'origine quand tu "
+                 "en portes deux (assassin, kagerou/oboro) ou une seule en main "
+                 "gauche.\n\nOFF : le comportement d'ORIGINE du client, qui fond "
+                 "les deux armes en un sprite générique. À n'éteindre que pour "
+                 "comparer les deux rendus."));
+  }
 
   // Enregistrement d'une zone de l'écran en GIF animé : de quoi illustrer un
   // tutoriel avec ce que le joueur verra vraiment, interface Bourgeon comprise.

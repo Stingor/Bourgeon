@@ -3,7 +3,12 @@
 #include "features/plugin.h"
 
 // Restores each weapon's OWN item sprite/animation while dual-wielding (or when
-// only an off-hand weapon is equipped). Opt-in: default OFF.
+// only an off-hand weapon is equipped).
+//
+// 🔴 ON BY DEFAULT since 2026-08-15 — it is no longer a player setting but the
+// client's expected behaviour: a weapon wears its own sprite, off-hand included.
+// The toggle survives ONLY in Staff Tools, to compare against the stock render
+// while debugging the weapon layers.
 //
 // Why it's needed (RE, 20250716 client, no-ASLR addr == live):
 //  - In-world characters build their weapon layers in

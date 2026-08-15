@@ -1185,19 +1185,10 @@ void GameSettings::DrawBourgeonGraphics() {
 
   if (auto* screen_fx = Bourgeon::Instance().screen_fx()) screen_fx->DrawSettings();
 
-  if (auto* dual = Bourgeon::Instance().weapon_dual_sprites()) {
-    if (ro::RoCheckbox(i18n::Tr("Sprites d'armes doubles"), &dual->enabled())) {
-      // La sauvegarde appartient à MoonlightUi : c'est lui qui tient
-      // bourgeon_settings.yaml, pour tous les greffons à la fois.
-      if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
-    }
-    ImGui::SameLine();
-    mui::HelpMarker(
-        i18n::Tr("Affiche le sprite/l'animation PROPRE à chaque arme quand tu portes "
-                 "deux armes (assassin, kagerou/oboro) ou une seule arme en main "
-                 "gauche.\n\nOFF (défaut) : le client fond les deux armes en un sprite "
-                 "générique. ON : chaque arme garde son apparence d'origine."));
-  }
+  // ⛔ PLUS DE CASE « sprites d'armes doubles » ICI. Le comportement est devenu
+  // le DÉFAUT — une arme porte son sprite, main gauche comprise — donc il n'y a
+  // plus rien à décider pour un joueur. La bascule survit dans Staff Tools, où
+  // elle sert à comparer avec le rendu d'origine du client.
 }
 
 void GameSettings::DrawListTab(int tab) {

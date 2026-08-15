@@ -46,7 +46,11 @@ typedef void(__fastcall* RefFn)(void* res);
 typedef int(__cdecl* ItemClassFn)(int item_view);
 
 // File scope (NOT namespaced) so the naked bridge can resolve them by name.
-static bool    g_dual_enabled = false;              // live toggle read by both hooks
+// 🔴 DÉFAUT ON depuis 2026-08-15. Ce n'est plus un réglage de joueur mais le
+// comportement normal du client : une arme porte son sprite, y compris en main
+// gauche. La bascule survit uniquement dans Staff Tools, pour comparer avec le
+// rendu d'origine quand on débogue les couches d'armes.
+static bool    g_dual_enabled = true;               // live toggle read by both hooks
 static void*   g_tramp_build  = nullptr;            // -> stock BuildWeaponLayers
 static BuildFn g_stock_build  = nullptr;
 static void*   g_act_get_frame = reinterpret_cast<void*>(render::kActionGetFrameAddr);

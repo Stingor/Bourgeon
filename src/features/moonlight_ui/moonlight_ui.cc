@@ -407,9 +407,19 @@ const moonlight_ui::SettingDesc kBugReportSettings[] = {
     {"bugreport_button", SType::kBool, MLUI_FIELD(bug_report, enabled()),
      MLUI_LITERAL(bool, true)},
 };
+// 🔴 CLÉ RENOMMÉE, ET C'EST LE POINT. Le réglage est passé de « opt-in du
+// joueur » à « comportement normal, bascule de staff » : son défaut vaut
+// désormais `true`. Mais chaque `bourgeon_settings.yaml` déjà écrit porte
+// `weapon_dual_sprites: false` — le fichier est reconstruit ENTIÈREMENT à chaque
+// sauvegarde, donc tout le monde a la clé, choix explicite ou pas. Se contenter
+// de changer le défaut n'aurait donc rien changé pour personne : le nouveau
+// défaut n'est lu que par qui n'a pas de valeur enregistrée.
+// La clé neuve, elle, n'existe dans aucun fichier : tout le monde prend le
+// défaut une fois, puis c'est le staff qui décide. L'ancienne disparaît d'
+// elle-même à la première sauvegarde, l'écriture ne connaissant que ces tables.
 const moonlight_ui::SettingDesc kWeaponSpriteSettings[] = {
-    {"weapon_dual_sprites", SType::kBool, MLUI_FIELD(weapon_dual_sprites, enabled()),
-     MLUI_LITERAL(bool, false)},
+    {"weapon_dual_sprites_staff", SType::kBool,
+     MLUI_FIELD(weapon_dual_sprites, enabled()), MLUI_LITERAL(bool, true)},
 };
 
 // Inventaire ImGui. Le placement libre (inventory_layout) est un CONTENEUR :
