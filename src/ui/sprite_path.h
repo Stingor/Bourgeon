@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>  // uint32_t (BodySpriteKey)
 
 // ── Briques de chemin d'un sprite de PERSONNAGE ──────────────────────────────
 //
@@ -76,5 +77,30 @@ bool BodyPalettePathForSprite(const char* spr_base, int color, char* out,
 // porte le sien. Race lue dans le chemin du sprite de TÊTE.
 bool HairPaletteRelForSprite(const char* head_spr, int color, char* out,
                              size_t out_size);
+
+// L'identité d'un CORPS, réduite à 32 bits : FNV-1a sur le chemin de son `.spr`.
+//
+// ── À quoi ça sert ───────────────────────────────────────────────────────────
+// Une recette de couleurs ne désigne ses pièces que par des index de palette, et
+// un index ne veut rien dire hors du sprite où il a été mesuré. Un joueur a donc
+// une recette PAR CORPS — à pied, sur sa monture, en costume — et il faut
+// pouvoir dire de laquelle on parle : sur le réseau, dans une variable de
+// personnage, dans un fichier de cache. Le chemin lui-même ne convient pas
+// (jusqu'à 80 octets, et du CP949 au milieu) ; ce condensé, si.
+//
+// 🔴 Tous les clients DOIVENT en trouver le même pour le même corps : c'est ce
+// qui leur fait choisir la même variante pour le joueur qu'ils regardent. Ils
+// lisent tous le chemin au même endroit — l'emplacement 0 du composite de
+// l'acteur — donc la seule chose à garantir ici est la stabilité de la fonction.
+// D'où la normalisation : séparateurs unifiés, extension `.spr` ignorée, et
+// repli en minuscules des SEULS 'A'-'Z'.
+//
+// ⚠ Le repli ASCII n'est pas un détail : un `tolower()` de la CRT sur un octet
+// CP949 dépend de la locale, et abîmerait les dossiers coréens du chemin — deux
+// clients de locales différentes ne calculeraient plus la même clé.
+//
+// Rend 0 sur un chemin vide, ce qui vaut « corps inconnu » et ne désigne jamais
+// une variante.
+uint32_t BodySpriteKey(const char* spr_path);
 
 }  // namespace ro

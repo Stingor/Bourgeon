@@ -23,6 +23,8 @@
 #include "ui/sprite_view.h"  // corps peint d'une palette en mémoire
 #include "ui/ro_imgui.h"
 #include "ui/ro_widgets.h"
+#include "ui/sprite_path.h"   // BodySpriteKey (le style se range par corps)
+#include "utils/log_console.h"
 #include "ui/sprite_path.h"
 #include "utils/i18n.h"
 
@@ -356,7 +358,33 @@ bool PaletteEditor::SeedFromShared() {
   // depuis cet état AURAIT EFFACÉ le style du joueur. Tous les gestes qu'elle
   // prétendait protéger posent déjà `touched_`.
   if (touched_) return false;
-  if (!fx::style_sync::LocalRecipe(&recipe_)) return false;
+
+  // 🔴🔴 Le corps se résout ICI, et surtout pas en se fiant à `body_key_`.
+  //
+  // Celui-ci n'est renseigné que par `Reload()`, qui tourne APRÈS nous — ses
+  // deux appelants amorcent d'abord, justement parce que la recette porte la
+  // teinte de base dont dépendent les rampes. À la première ouverture il vaut
+  // donc ZÉRO, et `LocalRecipe(0, ...)` rend le REPLI : un joueur en selle
+  // voyait sa fenêtre s'amorcer sur le style de son corps à pied, puis
+  // l'afficher sur la base de sa monture. Les pastilles annonçaient des couleurs
+  // qu'il n'avait jamais choisies (un noir devenu blanc), le pantin montrait des
+  // zones vives — et le personnage à l'écran, lui, était parfaitement juste,
+  // puisque la boucle de propagation, elle, connaît le corps.
+  //
+  // ⚠ Signature de cette panne, et elle vaut au-delà d'ici : quand la FENÊTRE
+  // et le PERSONNAGE divergent, ce n'est pas l'injection qu'il faut suspecter,
+  // c'est l'ordre dans lequel la fenêtre apprend ce qu'elle affiche.
+  uint32_t cle = body_key_;
+  if (cle == 0) {
+    char spr[352];
+    if (fx::palette_inject::ActorBodySpritePath(OwnGid(), spr, sizeof(spr)) &&
+        spr[0] != '\0')
+      cle = ro::BodySpriteKey(spr);
+  }
+  // La variante du corps PORTÉ, pas « la » recette du joueur : depuis la v7 il
+  // en a une par corps, et amorcer sur celle d'un autre lui ferait réécrire le
+  // style de son personnage à pied en croyant régler sa monture.
+  if (!fx::style_sync::LocalRecipe(cle, &recipe_)) return false;
   // 🔴 Verrouillé sur le SUCCÈS seulement. Le verrouiller sur un échec — ce qui
   // arrivait quand l'éditeur s'ouvrait avant que les couleurs ne soient connues
   // — figeait une recette vide pour toute la session, et le joueur ne pouvait
@@ -421,6 +449,7 @@ bool PaletteEditor::Reload() {
 
   // Le corps a changé : les vignettes de teinte ne valent plus rien, elles
   // étaient fusionnées sur l'ANCIEN sprite.
+  const uint32_t nouvelle_cle = ro::BodySpriteKey(b.spr_path.c_str());
   if (body_path_ != b.spr_path) {
     palette_preview_.clear();
     palette_page_ = 0;
@@ -428,8 +457,35 @@ bool PaletteEditor::Reload() {
     // corps, et ses index désigneraient d'autres pièces.
     body_res_ = ro::spract::Resource();
     body_res_tried_ = false;
+
+    // ── Le style suit le CORPS ────────────────────────────────────────────
+    //
+    // 🔴 Depuis la v7, chaque corps a le sien. Enfourcher une monture déjà
+    // habillée doit donc ramener SES réglages, sinon le joueur regarderait les
+    // couleurs de sa monture en manipulant celles de son corps à pied — et la
+    // première validation écraserait ces dernières.
+    //
+    // ⚠ Sauf s'il a du travail EN COURS : un réglage non validé ne se jette pas
+    // sous prétexte qu'on a changé de monture. Dans ce cas on garde ce qu'il
+    // compose, qui est aussi ce que l'acteur affiche (le repli).
+    const bool travail_en_cours =
+        fx::palette_cache::EncodeShare(recipe_) !=
+        fx::palette_cache::EncodeShare(applied_);
+    ro::PaletteRecipe sienne;
+    bool exacte = false;
+    // ⚠ `body_key_` nul compte comme un changement, et c'est une ceinture : à la
+    // toute première résolution du corps, il vaut zéro. Si l'amorçage n'a pas
+    // encore eu lieu — ou s'il a rendu le repli — c'est ici qu'on rattrape la
+    // variante propre à ce corps, tant que rien n'est en cours de réglage.
+    if (nouvelle_cle != body_key_ && !travail_en_cours &&
+        fx::style_sync::LocalRecipe(nouvelle_cle, &sienne, &exacte) && exacte) {
+      recipe_ = sienne;
+      applied_ = sienne;
+      SeedWornHead();  // la tête reste celle que le personnage porte
+    }
   }
   body_path_ = b.spr_path;
+  body_key_ = nouvelle_cle;
   loaded_body_ = body;
   loaded_sex_ = sex;
   base_ = b.base;
@@ -532,6 +588,11 @@ void PaletteEditor::Apply() {
   // Valider des réglages nuls a donc un sens : c'est demander les couleurs
   // d'origine du sprite, ce que le chemin natif ne sait pas produire. Pour
   // n'avoir plus AUCUNE palette imposée, il faut « Supprimer mon style ».
+  // À comparer avec la ligne « auto » de la boucle de propagation : les deux
+  // chemins doivent aboutir aux mêmes octets pour un même corps.
+  LogDiag("[palette] éditeur corps={:08x} rampes={} pal={} couverture={}/{}",
+          body_key_, ramp_count_, static_cast<int>(recipe_.palette_id),
+          pixels_covered_, pixels_total_);
   fx::palette_inject::SetRecipe(gid, base_.data(), ramps_, ramp_count_,
                                 recipe_);
   // La tête suit le même geste, mais par un tout autre chemin : sa palette est
@@ -577,11 +638,46 @@ void PaletteEditor::RestoreServerColors() {
   fx::style_sync::ForgetLocal();
   // Et les AUTRES doivent l'oublier aussi, sinon ils continueraient d'afficher
   // des couleurs que le joueur vient d'abandonner.
-  fx::style_sync::SendClear();
+  // TOUT, et pas seulement le corps porté : quelqu'un qui demande à redevenir
+  // lui-même ne s'attend pas à devoir le redemander une fois en selle.
+  fx::style_sync::SendClearAll();
   shared_tick_ = 0.0;
   // Rebâtir la base : elle avait été fusionnée sur l'ancienne teinte, et la
   // fenêtre reste ouverte. Rien n'est injecté — `Reload` ne touche jamais au
   // personnage.
+  Reload();
+}
+
+void PaletteEditor::ForgetCurrentBodyStyle() {
+  const uint32_t gid = OwnGid();
+  if (gid == 0 || body_key_ == 0) return;
+  // Le serveur d'abord : c'est lui qui tient la liste des corps habillés, et
+  // c'est de lui que les autres joueurs tiendront la nouvelle.
+  fx::style_sync::SendClear(body_key_);
+  touched_ = true;
+  fx::palette_cache::DraftSave(OwnCharId(), nullptr);
+  draft_tick_ = 0.0;
+
+  // 🔴 Poser le repli NOUS-MÊMES. L'écho du serveur arrivera bien, mais la
+  // boucle de propagation refuse de poser notre propre style tant que cette
+  // fenêtre est ouverte — pour ne pas faire sauter en arrière un réglage en
+  // cours. Sans ce qui suit, le corps garderait donc à l'écran le style qu'on
+  // vient justement de supprimer.
+  ro::PaletteRecipe repli;
+  if (fx::style_sync::LocalRecipe(body_key_, &repli)) {
+    recipe_ = repli;
+    SeedWornHead();  // la tête reste celle que le personnage porte
+    Apply();         // pose sur le personnage, sans rien renvoyer au serveur
+  } else {
+    // C'était la dernière : il n'y a plus rien à porter.
+    fx::palette_inject::ClearRecipe(gid);
+    fx::palette_inject::ClearHairPalette(gid);
+    recipe_ = ro::PaletteRecipe();
+    recipe_.hair_style = 1;
+    applied_ = recipe_;
+  }
+  // La base ne change pas (même corps), mais les vignettes et l'état affiché en
+  // dépendent — et `Reload` est le seul endroit qui les remette d'aplomb.
   Reload();
 }
 
@@ -1308,6 +1404,44 @@ void PaletteEditor::OnRenderUI() {
           ImGui::EndTooltip();
         }
       }
+
+      // ── À QUEL CORPS ce réglage appartient ────────────────────────────────
+      //
+      // 🔴 Depuis la v7, un joueur habille chaque corps séparément : le sien, sa
+      // monture, ses costumes. Sans cette ligne, rien à l'écran ne distingue
+      // « je règle ma monture » de « je m'apprête à réécrire le style de mon
+      // personnage à pied » — deux gestes identiques aux conséquences opposées.
+      //
+      // ⚠ Le corps ne peut pas être NOMMÉ : son nom est le chemin de son sprite,
+      // en coréen CP949, que la police de l'interface (0x20-0xFF) rendrait en
+      // rectangles vides. On dit donc ce qui se décide, pas ce qui se porte.
+      if (body_key_ != 0) {
+        const bool sien = fx::style_sync::LocalHasVariant(body_key_);
+        const int total = fx::style_sync::LocalVariantCount();
+        if (sien) {
+          char etat[160];
+          std::snprintf(etat, sizeof(etat),
+                        i18n::Tr("Ce corps a son propre style (%d au total)."),
+                        total);
+          ImGui::TextUnformatted(etat);
+        } else if (total > 0) {
+          ImGui::TextUnformatted(
+              i18n::Tr("Ce corps reprend ton style principal."));
+        }
+        if (ImGui::IsItemHovered() && (sien || total > 0)) {
+          ImGui::BeginTooltip();
+          ImGui::PushTextWrapPos(ImGui::GetFontSize() * 24.0f);
+          ImGui::TextUnformatted(
+              sien ? i18n::Tr("Les couleurs d'un corps ne veulent rien dire sur "
+                              "un autre : chaque monture, chaque costume a donc "
+                              "son propre style. Valider ne change que celui-ci.")
+                   : i18n::Tr("Tu n'as pas encore habillé ce corps : il reprend "
+                              "ton style principal, au plus proche. Valide pour "
+                              "lui donner le sien, sans toucher aux autres."));
+          ImGui::PopTextWrapPos();
+          ImGui::EndTooltip();
+        }
+      }
       ImGui::Separator();
 
       // La palette telle qu'elle sera rendue — elle sert aux pastilles, donc
@@ -1639,7 +1773,26 @@ void PaletteEditor::OnRenderUI() {
         ImGui::EndTooltip();
       }
 
-      // ── Les deux confirmations ───────────────────────────────────────────
+      // Et le geste FIN : n'oublier que le corps porté. Proposé seulement quand
+      // il en reste un autre — sinon il ferait doublon avec le bouton ci-dessus,
+      // avec un libellé plus obscur.
+      if (fx::style_sync::LocalHasVariant(body_key_) &&
+          fx::style_sync::LocalVariantCount() > 1) {
+        if (ro::RoButton(i18n::Tr("Oublier le style de ce corps")))
+          ImGui::OpenPopup("##confirm_suppr_corps");
+        if (ImGui::IsItemHovered()) {
+          ImGui::BeginTooltip();
+          ImGui::PushTextWrapPos(ImGui::GetFontSize() * 24.0f);
+          ImGui::TextUnformatted(
+              i18n::Tr("Efface le style de CE corps seulement. Tes autres corps "
+                       "gardent le leur, et celui-ci reprend ton style "
+                       "principal."));
+          ImGui::PopTextWrapPos();
+          ImGui::EndTooltip();
+        }
+      }
+
+      // ── Les confirmations ────────────────────────────────────────────────
       //
       // 🔴 Des popups ImGui, JAMAIS la modale native (`UIWndMgr_ShowMessageBox`)
       // : celle-ci ne rend pas la main, elle boucle en relançant le tick et le
@@ -1710,6 +1863,25 @@ void PaletteEditor::OnRenderUI() {
         ImGui::EndPopup();
       }
 
+      if (ImGui::BeginPopupModal("##confirm_suppr_corps", nullptr,
+                                 ImGuiWindowFlags_AlwaysAutoResize |
+                                     ImGuiWindowFlags_NoTitleBar)) {
+        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 20.0f);
+        ImGui::TextUnformatted(
+            i18n::Tr("Oublier le style de ce corps ? Il reprendra ton style "
+                     "principal, chez toi comme chez les autres. Tes autres "
+                     "corps ne changent pas."));
+        ImGui::PopTextWrapPos();
+        ImGui::Separator();
+        if (ro::RoButton(i18n::Tr("Oublier"))) {
+          ForgetCurrentBodyStyle();
+          ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ro::RoButton(i18n::Tr("Annuler"))) ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
+      }
+
       // ── LA VALIDATION ────────────────────────────────────────────────────
       //
       // 🔴 Le seul geste de cette fenêtre qui touche au personnage. Tout ce qui
@@ -1729,7 +1901,7 @@ void PaletteEditor::OnRenderUI() {
         //    coiffure comprise. ⚠ Le serveur ne se contente pas de la ranger —
         //    il APPLIQUE la coiffure (`pc_changelook`), qui devient un vrai
         //    changement de personnage, sauvegardé et vu de tous.
-        fx::style_sync::SendRecipe(recipe_);
+        fx::style_sync::SendRecipe(recipe_, body_key_);
         shared_tick_ = ImGui::GetTime();
       }
       if (ImGui::IsItemHovered()) {

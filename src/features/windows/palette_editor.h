@@ -141,8 +141,15 @@ class PaletteEditor : public Plugin {
   // aperçu à moitié posé sur l'acteur survivait à un « annuler ».
   void Apply();
 
-  // Retire la recette : le joueur retrouve EXACTEMENT son apparence native.
+  // Retire TOUTES les recettes : le joueur retrouve EXACTEMENT son apparence
+  // native, sur tous ses corps.
   void RestoreServerColors();
+
+  // Retire la recette du SEUL corps porté. Les autres survivent, et celui-ci
+  // reprend aussitôt le style principal — sans attendre l'écho du serveur, que
+  // la boucle de propagation ignore justement tant que cette fenêtre est
+  // ouverte.
+  void ForgetCurrentBodyStyle();
 
   // Dessine le pantin d'aperçu à droite de la liste des pièces.
   //
@@ -193,6 +200,12 @@ class PaletteEditor : public Plugin {
   std::string body_path_;
   int loaded_body_ = -1;
   int loaded_sex_ = -1;
+
+  // Le MÊME corps, réduit à sa clé (`ro::BodySpriteKey`). C'est sous elle que le
+  // style se range, se partage et se retrouve : le joueur en a un par corps —
+  // à pied, en selle, en costume — et tout ce que cette fenêtre valide ne
+  // concerne QUE celui qu'il porte à cet instant.
+  uint32_t body_key_ = 0;
 
   // Le sprite a-t-il été LU sur l'acteur, ou seulement déduit de la classe ?
   // 🔴 La déduction rejoue une résolution native pleine de cas particuliers

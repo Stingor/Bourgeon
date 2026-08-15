@@ -2,6 +2,7 @@
 #define BOURGEON_FEATURES_FX_PALETTE_CACHE_H_
 
 #include <cstdint>
+#include <map>
 #include <string>
 
 #include "ui/palette_ramps.h"
@@ -23,15 +24,36 @@
 namespace fx {
 namespace palette_cache {
 
-// Range la recette de ce personnage. `recipe` nul = efface l'entrée.
+// Range TOUTES les variantes de ce personnage, indexées par clé de corps
+// (`ro::BodySpriteKey`). Une map vide efface l'entrée.
+//
+// 🔴 L'ensemble d'un coup, jamais une variante à la fois : le cache est le
+// reflet de ce que le serveur détient, et il le remplace en bloc pour la même
+// raison qu'un lot ZC redéfinit tout. Un `Save` par variante laisserait vivre
+// ici des recettes que le serveur a déjà évincées.
+//
 // Écrit le fichier immédiatement : ces appels sont rares (un partage, un login),
-// et différer l'écriture perdrait la recette à la fermeture du client.
-void Save(uint32_t char_id, const ro::PaletteRecipe* recipe);
+// et différer l'écriture perdrait les couleurs à la fermeture du client.
+void SaveAll(uint32_t char_id,
+             const std::map<uint32_t, ro::PaletteRecipe>& variants,
+             uint32_t default_key);
 
-// La recette en cache pour ce personnage. false si aucune, ou si l'entrée a été
-// écrite par une version antérieure du format de recette — auquel cas elle est
-// ININTERPRÉTABLE et doit être ignorée, pas relue de travers.
-bool Load(uint32_t char_id, ro::PaletteRecipe* out);
+// Les variantes en cache pour ce personnage, et la clé de celle qui sert de
+// repli. false si aucune, ou si les entrées ont été écrites par une version
+// antérieure du format — auquel cas elles sont ININTERPRÉTABLES et doivent être
+// ignorées, pas relues de travers.
+bool LoadAll(uint32_t char_id, std::map<uint32_t, ro::PaletteRecipe>* out,
+             uint32_t* out_default_key);
+
+// La recette à montrer pour ce personnage SANS acteur sous la main : celle du
+// corps `body_key` s'il en a une, son repli sinon.
+//
+// 🔴 C'est la forme dont le char-select a besoin : là, le sprite est DÉDUIT de
+// (classe, sexe) et non lu sur un acteur, donc la clé peut très bien ne
+// correspondre à aucune variante — un personnage déconnecté en selle, par
+// exemple. Le repli est alors la bonne réponse : c'est celle que les autres
+// joueurs verraient sur un corps inconnu.
+bool Load(uint32_t char_id, uint32_t body_key, ro::PaletteRecipe* out);
 
 // Compteur incrémenté à CHAQUE modification du cache.
 //

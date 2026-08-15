@@ -12,6 +12,7 @@
 #include "features/fx/palette_inject.h"
 #include "features/systems/bourgeon_opcodes.h"
 #include "features/windows/palette_editor.h"  // ouverture pilotée par un NPC
+#include "ui/sprite_path.h"                   // ro::BodySpriteKey
 #include "utils/log_console.h"
 
 namespace {
@@ -34,21 +35,63 @@ uint32_t ReadGlobalU32(uintptr_t addr) {
 uint32_t OwnGid() { return ReadGlobalU32(kOwnAidAddr); }
 uint32_t OwnCharId() { return ReadGlobalU32(kOwnCharIdAddr); }
 
-// La recette d'un AUTRE joueur, en attente d'être posée sur son acteur.
+// Le style d'un joueur : une recette par CORPS, plus celle qui sert de repli.
 struct Remote {
-  ro::PaletteRecipe recipe;
-  bool clear = false;
+  // Clé de corps (`ro::BodySpriteKey`) -> recette. Au plus `kMaxVariants`, le
+  // serveur ne pouvant en ranger davantage.
+  std::map<uint32_t, ro::PaletteRecipe> variants;
+  // La variante à appliquer aux corps qui n'ont pas la leur. 🔴 DÉSIGNÉE par le
+  // serveur (`kFlagDefault`), jamais devinée : deux clients qui la choisiraient
+  // chacun de leur côté — le premier reçu, le plus petit numéro — finiraient par
+  // diverger sur l'ordre d'arrivée d'un paquet.
+  uint32_t default_key = 0;
   // 🔴 Cette VERSION-CI a-t-elle été posée sur l'acteur ? Remis à false à chaque
   // paquet reçu, et c'est essentiel : sans ce drapeau, on ne se fiait qu'à
   // « l'acteur a-t-il DÉJÀ une recette », ce qui est vrai dès la première. Un
   // joueur qui retouchait ses couleurs et les re-partageait restait donc figé,
   // chez les autres, sur sa toute première version.
   bool applied = false;
+  // La variante RÉELLEMENT posée. Sans elle, un joueur qui enfourche sa monture
+  // garderait la recette de son corps à pied : `applied` serait vrai, et rien ne
+  // dirait qu'elle ne correspond plus au corps affiché.
+  uint32_t applied_key = 0;
   // Tentatives d'application déjà faites. Un acteur qu'on n'arrive pas à monter
   // (sprite absent, corps sans palette) ne doit pas être réessayé indéfiniment :
   // chaque essai relit et reparse un `.spr`, ce qui n'est pas gratuit.
   int attempts = 0;
 };
+
+// La clé du corps que cet acteur porte EN CE MOMENT, ou 0 si on ne peut pas le
+// lire (acteur mort, composite pas encore monté).
+uint32_t CurrentBodyKey(uint32_t gid) {
+  char spr[300];
+  if (!fx::palette_inject::ActorBodySpritePath(gid, spr, sizeof(spr)))
+    return 0;
+  return ro::BodySpriteKey(spr);
+}
+
+// La recette à appliquer à ce corps : la sienne si elle existe, sinon le repli.
+// Rend nullptr si ce joueur n'a aucune variante. `out_key` reçoit la clé
+// RETENUE, qui n'est pas toujours celle demandée.
+const ro::PaletteRecipe* PickVariant(const Remote& r, uint32_t body_key,
+                                     uint32_t* out_key) {
+  if (body_key != 0) {
+    auto exact = r.variants.find(body_key);
+    if (exact != r.variants.end()) {
+      *out_key = body_key;
+      return &exact->second;
+    }
+  }
+  auto repli = r.variants.find(r.default_key);
+  // Un serveur qui aurait omis le drapeau ne doit pas laisser le joueur sans
+  // couleurs : la première variante fait alors office de repli. L'ordre d'une
+  // `std::map` est celui des clés, donc identique chez tous les clients — ce qui
+  // suffit à garder la règle déterministe.
+  if (repli == r.variants.end()) repli = r.variants.begin();
+  if (repli == r.variants.end()) return nullptr;
+  *out_key = repli->first;
+  return &repli->second;
+}
 
 // 🔴 Écrite et lue par le SEUL fil principal (HandlePacket et OnTick le sont
 // tous les deux). Aucun verrou n'est donc nécessaire — et le fil réseau ne la
@@ -73,10 +116,10 @@ uint32_t g_restored_cid = 0;
 // personnage sans quitter le client — voir `ForgetPreviousCharacter`.
 uint32_t g_session_cid = 0;
 
-// Notre propre recette, telle que le serveur nous la renvoie, et l'état de
-// l'éditeur qui décide si on a le droit de la reposer.
-ro::PaletteRecipe g_local_recipe;
-bool g_has_local = false;
+// NOS variantes, telles que le serveur nous les renvoie, et l'état de l'éditeur
+// qui décide si on a le droit de les reposer.
+std::map<uint32_t, ro::PaletteRecipe> g_local_variants;
+uint32_t g_local_default = 0;
 bool g_local_editing = false;
 
 StyleSync* g_instance = nullptr;
@@ -152,24 +195,29 @@ void PruneIfCrowded() {
   LogDebug("[palette] registre élagué : {} -> {}", avant, g_remote.size());
 }
 
-void SendOne(const ro::PaletteRecipe& recipe, bool clear) {
+void SendOne(const ro::PaletteRecipe& recipe, uint8_t flags, uint32_t body_key) {
+  const bool clear = flags != 0;
   uint8_t pkt[fx::style_sync::kCzBytes];
   std::memset(pkt, 0, sizeof(pkt));
   *reinterpret_cast<uint16_t*>(&pkt[0]) = bopcodes::kStyle;
   *reinterpret_cast<uint16_t*>(&pkt[2]) =
       static_cast<uint16_t>(fx::style_sync::kCzBytes);
   pkt[4] = fx::style_sync::kWireVersion;
-  pkt[5] = clear ? fx::style_sync::kFlagClear : 0;
+  pkt[5] = flags;
+  pkt[6] = static_cast<uint8_t>(body_key & 0xFF);
+  pkt[7] = static_cast<uint8_t>((body_key >> 8) & 0xFF);
+  pkt[8] = static_cast<uint8_t>((body_key >> 16) & 0xFF);
+  pkt[9] = static_cast<uint8_t>((body_key >> 24) & 0xFF);
   const int16_t pal = clear ? static_cast<int16_t>(-1) : recipe.palette_id;
   const int16_t hair = clear ? static_cast<int16_t>(-1) : recipe.hair_palette_id;
   const int16_t coupe = clear ? static_cast<int16_t>(-1) : recipe.hair_style;
-  pkt[6] = static_cast<uint8_t>(pal & 0xFF);
-  pkt[7] = static_cast<uint8_t>((pal >> 8) & 0xFF);
-  pkt[8] = static_cast<uint8_t>(hair & 0xFF);
-  pkt[9] = static_cast<uint8_t>((hair >> 8) & 0xFF);
-  pkt[10] = static_cast<uint8_t>(coupe & 0xFF);
-  pkt[11] = static_cast<uint8_t>((coupe >> 8) & 0xFF);
-  if (!clear) WriteAdjusts(&pkt[12], recipe);
+  pkt[10] = static_cast<uint8_t>(pal & 0xFF);
+  pkt[11] = static_cast<uint8_t>((pal >> 8) & 0xFF);
+  pkt[12] = static_cast<uint8_t>(hair & 0xFF);
+  pkt[13] = static_cast<uint8_t>((hair >> 8) & 0xFF);
+  pkt[14] = static_cast<uint8_t>(coupe & 0xFF);
+  pkt[15] = static_cast<uint8_t>((coupe >> 8) & 0xFF);
+  if (!clear) WriteAdjusts(&pkt[16], recipe);
   Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
 }
 
@@ -182,36 +230,90 @@ bool Available() { return g_instance != nullptr; }
 
 void SetLocalEditing(bool editing) { g_local_editing = editing; }
 
-bool LocalRecipe(ro::PaletteRecipe* out) {
-  if (!out || !g_has_local) return false;
-  *out = g_local_recipe;
+bool LocalRecipe(uint32_t body_key, ro::PaletteRecipe* out, bool* out_exact) {
+  if (!out) return false;
+  if (out_exact) *out_exact = false;
+  if (g_local_variants.empty()) return false;
+  if (body_key != 0) {
+    auto exact = g_local_variants.find(body_key);
+    if (exact != g_local_variants.end()) {
+      *out = exact->second;
+      if (out_exact) *out_exact = true;
+      return true;
+    }
+  }
+  // Même règle de repli que pour les autres joueurs — c'est bien le même objet
+  // qu'on regarde des deux côtés du fil, et il ne doit pas se lire autrement
+  // chez soi que chez les autres.
+  auto repli = g_local_variants.find(g_local_default);
+  if (repli == g_local_variants.end()) repli = g_local_variants.begin();
+  *out = repli->second;
   return true;
 }
 
+bool LocalHasVariant(uint32_t body_key) {
+  return body_key != 0 && g_local_variants.count(body_key) != 0;
+}
+
+int LocalVariantCount() { return static_cast<int>(g_local_variants.size()); }
+
 void ForgetLocal() {
-  g_has_local = false;
-  g_local_recipe = ro::PaletteRecipe();
+  g_local_variants.clear();
+  g_local_default = 0;
   const uint32_t self = OwnGid();
   if (self != 0) g_remote.erase(self);
 }
 
-void SendRecipe(const ro::PaletteRecipe& recipe) {
+void SendRecipe(const ro::PaletteRecipe& recipe, uint32_t body_key) {
   if (!g_instance) return;
-  SendOne(recipe, /*clear=*/false);
-  // Ce que le joueur vient de partager EST désormais sa recette de référence,
-  // sans attendre que le serveur nous la renvoie.
-  g_local_recipe = recipe;
-  g_has_local = true;
+  // 🔴 Une clé nulle veut dire « je n'ai pas su lire le corps ». La ranger
+  // quand même donnerait une variante qu'aucun client ne choisirait jamais —
+  // elle ne correspondrait à aucun sprite — et elle prendrait la place d'une
+  // vraie dans les quatre emplacements du personnage.
+  if (body_key == 0) {
+    LogDiag("[palette] style non partagé : corps inconnu (acteur pas monté ?)");
+    return;
+  }
+  SendOne(recipe, /*flags=*/0, body_key);
+  // Ce que le joueur vient de partager EST désormais sa référence pour ce corps,
+  // sans attendre que le serveur nous le renvoie.
+  g_local_variants[body_key] = recipe;
+  if (g_local_default == 0) g_local_default = body_key;
+  // ⚠ Le plafond est celui du serveur, et il évince la plus ANCIENNE : notre
+  // copie locale doit suivre la même règle, sinon l'éditeur proposerait une
+  // variante que le serveur a déjà oubliée. Faute de connaître son numéro de
+  // séquence, on jette celle qui n'est pas le repli et dont la clé est la plus
+  // petite — l'écart se corrige de toute façon au premier écho du serveur, qui
+  // fait autorité.
+  while (static_cast<int>(g_local_variants.size()) > kMaxVariants) {
+    auto victime = g_local_variants.begin();
+    if (victime->first == g_local_default && g_local_variants.size() > 1)
+      ++victime;
+    g_local_variants.erase(victime);
+  }
   // Sans attendre l'écho du serveur : si la session se termine avant qu'il ne
   // revienne, le char-select afficherait encore l'ancienne apparence.
-  fx::palette_cache::Save(OwnCharId(), &recipe);
+  fx::palette_cache::SaveAll(OwnCharId(), g_local_variants, g_local_default);
 }
 
-void SendClear() {
+void SendClear(uint32_t body_key) {
+  if (!g_instance || body_key == 0) return;
+  const ro::PaletteRecipe vide;
+  SendOne(vide, fx::style_sync::kFlagClear, body_key);
+  g_local_variants.erase(body_key);
+  if (g_local_default == body_key)
+    g_local_default = g_local_variants.empty() ? 0
+                                               : g_local_variants.begin()->first;
+  fx::palette_cache::SaveAll(OwnCharId(), g_local_variants, g_local_default);
+}
+
+void SendClearAll() {
   if (!g_instance) return;
   const ro::PaletteRecipe vide;
-  SendOne(vide, /*clear=*/true);
-  fx::palette_cache::Save(OwnCharId(), nullptr);
+  SendOne(vide, fx::style_sync::kFlagClearAll, /*body_key=*/0);
+  g_local_variants.clear();
+  g_local_default = 0;
+  fx::palette_cache::SaveAll(OwnCharId(), g_local_variants, 0);
 }
 
 }  // namespace style_sync
@@ -269,6 +371,13 @@ void StyleSync::HandlePacket(uint16_t opcode, const uint8_t* data,
             available);
   }
 
+  // 🔴 Un lot REDÉFINIT INTÉGRALEMENT les variantes des joueurs qu'il mentionne :
+  // le serveur envoie toujours l'ensemble complet d'un personnage, même quand une
+  // seule vient de changer. On vide donc à la PREMIÈRE entrée rencontrée pour un
+  // GID, et pas avant — sinon un lot tronqué ou une version refusée effacerait
+  // des variantes valides sans rien mettre à la place.
+  std::map<uint32_t, bool> vus;
+
   for (int i = 0; i < available; ++i) {
     const uint8_t* e = p + i * fx::style_sync::kZcEntryBytes;
     const uint32_t gid = static_cast<uint32_t>(e[0]) |
@@ -282,38 +391,53 @@ void StyleSync::HandlePacket(uint16_t opcode, const uint8_t* data,
     // poserait des couleurs tirées d'octets mal découpés.
     if (e[4] != fx::style_sync::kWireVersion) continue;
 
-    Remote r;
-    r.clear = (e[5] & fx::style_sync::kFlagClear) != 0;
-    if (!r.clear) {
-      r.recipe.palette_id = static_cast<int16_t>(
-          static_cast<uint16_t>(e[6]) | (static_cast<uint16_t>(e[7]) << 8));
-      r.recipe.hair_palette_id = static_cast<int16_t>(
-          static_cast<uint16_t>(e[8]) | (static_cast<uint16_t>(e[9]) << 8));
-      r.recipe.hair_style = static_cast<int16_t>(
+    const uint8_t flags = e[5];
+    const bool clear = (flags & fx::style_sync::kFlagClear) != 0;
+    const uint32_t body_key = static_cast<uint32_t>(e[6]) |
+                              (static_cast<uint32_t>(e[7]) << 8) |
+                              (static_cast<uint32_t>(e[8]) << 16) |
+                              (static_cast<uint32_t>(e[9]) << 24);
+    ro::PaletteRecipe recipe;
+    if (!clear) {
+      recipe.palette_id = static_cast<int16_t>(
           static_cast<uint16_t>(e[10]) | (static_cast<uint16_t>(e[11]) << 8));
-      ReadAdjusts(e + 12, &r.recipe);
+      recipe.hair_palette_id = static_cast<int16_t>(
+          static_cast<uint16_t>(e[12]) | (static_cast<uint16_t>(e[13]) << 8));
+      recipe.hair_style = static_cast<int16_t>(
+          static_cast<uint16_t>(e[14]) | (static_cast<uint16_t>(e[15]) << 8));
+      ReadAdjusts(e + 16, &recipe);
     }
 
-    // ── Notre propre recette ─────────────────────────────────────────────
-    // Elle nous revient au login (le serveur nous la repousse) et à chaque
-    // partage (la diffusion de zone nous inclut). On la MÉMORISE toujours —
-    // l'éditeur démarrera dessus au lieu d'une recette vide qui l'effacerait —
-    // mais on ne la POSE que si l'éditeur est fermé : sinon on écraserait un
+    const bool premiere = !vus[gid];
+    vus[gid] = true;
+
+    // ── Nos propres variantes ────────────────────────────────────────────
+    // Elles nous reviennent au login (le serveur nous les repousse) et à chaque
+    // partage (la diffusion de zone nous inclut). On les MÉMORISE toujours —
+    // l'éditeur démarrera dessus au lieu d'une recette vide qui les effacerait —
+    // mais on ne les POSE que si l'éditeur est fermé : sinon on écraserait un
     // réglage en cours par la dernière version validée, et le joueur verrait
     // ses curseurs sauter en arrière.
     if (gid == self) {
-      g_has_local = !r.clear;
-      g_local_recipe = r.recipe;
+      if (premiere) {
+        g_local_variants.clear();
+        g_local_default = 0;
+      }
+      if (!clear && body_key != 0) {
+        g_local_variants[body_key] = recipe;
+        if ((flags & fx::style_sync::kFlagDefault) || g_local_default == 0)
+          g_local_default = body_key;
+      }
       // Le cache local suit le serveur, qui fait autorité. C'est ce qui permet
       // au char-select — hors de portée du map-server — de montrer les bonnes
       // couleurs dès la prochaine session.
-      fx::palette_cache::Save(OwnCharId(), r.clear ? nullptr : &r.recipe);
+      fx::palette_cache::SaveAll(OwnCharId(), g_local_variants, g_local_default);
       // 🔴 Un EFFACEMENT est honoré même l'éditeur ouvert. Il n'apporte aucune
       // couleur, donc il ne risque pas d'écraser un réglage en cours — alors
       // que le laisser en attente ferait REPOSER l'ancienne recette au tick
       // suivant, dès que `HasRecipe` retombe. C'est exactement ce qui rendait
       // le bouton « Supprimer mes couleurs » sans effet durable.
-      if (r.clear) {
+      if (g_local_variants.empty()) {
         g_remote.erase(gid);
         // L'éditeur a déjà retiré l'injection de son côté ; ne pas le refaire
         // pendant qu'il est ouvert évite un aller-retour visible.
@@ -321,18 +445,34 @@ void StyleSync::HandlePacket(uint16_t opcode, const uint8_t* data,
         continue;
       }
       if (g_local_editing) continue;
-      g_remote[gid] = r;
+      // Notre entrée est une COPIE de nos variantes : à partir d'ici, elle suit
+      // exactement le même chemin d'application que celle d'un autre joueur.
+      Remote& r = g_remote[gid];
+      r.variants = g_local_variants;
+      r.default_key = g_local_default;
+      r.applied = false;
+      r.attempts = 0;
       continue;
     }
 
-    if (r.clear) {
+    Remote& r = g_remote[gid];
+    if (premiere) {
+      r.variants.clear();
+      r.default_key = 0;
+      r.applied = false;  // le lot peut changer la variante posée
+      r.attempts = 0;
+    }
+    if (!clear && body_key != 0) {
+      r.variants[body_key] = recipe;
+      if ((flags & fx::style_sync::kFlagDefault) || r.default_key == 0)
+        r.default_key = body_key;
+    }
+    if (r.variants.empty()) {
       // Effacement : immédiat, il ne demande rien de l'acteur.
       fx::palette_inject::ClearRecipe(gid);
       fx::palette_inject::ClearHairPalette(gid);
       g_remote.erase(gid);
-      continue;
     }
-    g_remote[gid] = r;  // remplace toute version précédente, compteur remis à 0
   }
   PruneIfCrowded();
 }
@@ -343,6 +483,21 @@ int StyleSync::ApplyPending(int budget) {
     const uint32_t gid = it->first;
     Remote& r = it->second;
 
+    // 🔴 La variante se choisit sur le corps que l'acteur porte MAINTENANT, à
+    // chaque passage. C'est ici, et nulle part ailleurs, que se fait la
+    // correspondance corps -> recette : le serveur nous a donné toutes les
+    // variantes sans savoir laquelle s'applique, parce que lui ne voit pas le
+    // sprite.
+    const uint32_t body_key = CurrentBodyKey(gid);
+    uint32_t choix = 0;
+    const ro::PaletteRecipe* recette = PickVariant(r, body_key, &choix);
+    if (recette == nullptr) {
+      // Plus aucune variante : il n'y a rien à poser, et garder l'entrée ferait
+      // rejouer ce calcul à chaque tick.
+      it = g_remote.erase(it);
+      continue;
+    }
+
     // CETTE version est déjà posée : le détour de `palette_inject` la
     // ré-applique tout seul quand l'acteur est reconstruit (changement de carte,
     // de tenue). Rien à faire — et surtout pas un SetRecipe de plus, qui
@@ -351,15 +506,17 @@ int StyleSync::ApplyPending(int budget) {
     //
     // 🔴 Le test porte sur `r.applied`, PAS seulement sur `HasRecipe` : ce
     // dernier reste vrai d'une version à l'autre, et s'y fier seul gèlerait
-    // l'acteur sur la première recette reçue.
-    if (r.applied && fx::palette_inject::HasRecipe(gid)) {
+    // l'acteur sur la première recette reçue. Et sur `applied_key` : sans lui, un
+    // joueur qui change de corps garderait la recette de l'ancien.
+    if (r.applied && r.applied_key == choix &&
+        fx::palette_inject::HasRecipe(gid)) {
       ++it;
       continue;
     }
 
     fx::palette_base::Body body;
     const fx::palette_base::Status st =
-        fx::palette_base::BuildForGid(gid, r.recipe.palette_id, &body);
+        fx::palette_base::BuildForGid(gid, recette->palette_id, &body);
     if (st == fx::palette_base::kNoSprite) {
       // L'acteur n'est pas encore monté côté client. C'est le cas NORMAL juste
       // après l'annonce : on réessaiera au prochain tick, sans compter d'échec.
@@ -384,18 +541,87 @@ int StyleSync::ApplyPending(int budget) {
       continue;
     }
 
+    // Qui pose, et à partir de quoi. À lire avec la ligne « pose » de
+    // `palette_inject` juste en dessous : ensemble, elles disent si la boucle
+    // automatique et la fenêtre de style aboutissent bien au même résultat.
+    LogDiag("[palette] auto gid={} corps={:08x} variante={:08x} rampes={} "
+            "couverture={}/{}",
+            gid, body_key, choix, body.ramp_count, body.pixels_covered,
+            body.pixels_total);
     fx::palette_inject::SetRecipe(gid, body.base.data(), body.ramps,
-                                  body.ramp_count, r.recipe);
-    fx::palette_inject::SetHairPalette(gid, r.recipe.hair_palette_id);
+                                  body.ramp_count, *recette);
+    fx::palette_inject::SetHairPalette(gid, recette->hair_palette_id);
     // 🔴 La COIFFURE de la recette n'est pas posée, et ce n'est pas un oubli :
     // le serveur l'a déjà appliquée par `pc_changelook`, et son ZC_SPRITE_CHANGE
     // natif est arrivé avant nous. L'acteur la porte donc déjà — la reposer
     // referait le travail du jeu, avec le rechargement de texture que cela
     // suppose.
     r.applied = true;
+    r.applied_key = choix;
     ++it;
   }
   return done;
+}
+
+// ── Le corps a changé sous la palette ────────────────────────────────────────
+//
+// 🔴 Une recette ne désigne ses couleurs que par des INDEX, et un index ne veut
+// rien dire hors du sprite où il a été mesuré. Le bloc de 1024 octets qu'on pose
+// sur un acteur ne vaut donc que pour SON corps du moment. Quand le client en
+// monte un autre — monture, costume de corps, classe qui change — rien ne le
+// disait : le détour reposait fidèlement notre chemin de palette, et le rendu
+// continuait d'appliquer la table de l'ancien corps par-dessus le nouveau
+// sprite. D'où des couleurs délavées ou franchement fausses, jusqu'à ce que le
+// joueur revalide son style à la main (observé sur une monture le 2026-08-15).
+//
+// ⚠ Le pantin de l'éditeur, lui, suivait déjà le sprite — c'est ce qui rendait
+// le défaut lisible : l'aperçu montrait la bonne interprétation pendant que le
+// personnage en portait une périmée. Deux chemins pour la même règle, un seul
+// des deux la respectait.
+int StyleSync::RefreshChangedBodies() {
+  uint32_t gids[32];
+  const int n = fx::palette_inject::PollStaleSprites(gids, 32);
+  for (int i = 0; i < n; ++i) {
+    const uint32_t gid = gids[i];
+
+    // Une recette connue : il suffit de la redéclarer « à poser ». La boucle
+    // d'application rebâtira la base sur le NOUVEAU sprite et refera le bloc.
+    auto it = g_remote.find(gid);
+    if (it != g_remote.end()) {
+      it->second.applied = false;
+      it->second.attempts = 0;  // le corps précédent n'a rien à léguer
+      continue;
+    }
+
+    // Les nôtres, quand elles viennent du cache local : elles n'ont jamais
+    // transité par le registre, et personne ne les reposerait.
+    //
+    // ⚠ On ne consulte PAS `g_local_editing` ici. Ce qu'on repose est la
+    // dernière recette VALIDÉE, jamais les curseurs en cours — c'est donc bien
+    // l'apparence que le joueur a partagée, celle que les autres voient déjà.
+    // S'en abstenir pendant l'édition laisserait justement le personnage sur ses
+    // couleurs périmées au moment où le joueur les regarde.
+    if (gid == OwnGid() && !g_local_variants.empty()) {
+      Remote r;
+      r.variants = g_local_variants;
+      r.default_key = g_local_default;
+      g_remote[gid] = r;
+      continue;
+    }
+
+    // Reste la réparation automatique : une recette NEUTRE, calculée sur le corps
+    // d'avant. On la retire — l'acteur revient à son rendu natif — et on
+    // réautorise l'examen, qui rejugera le nouveau corps au tick suivant. Sans
+    // cette remise à zéro, la garde « il a déjà une recette » d'`AutoRepair` la
+    // prendrait pour un travail fait et n'y reviendrait jamais.
+    fx::palette_inject::ClearRecipe(gid);
+    g_repair_seen.erase(gid);
+    // 🔴 `g_first_seen`, en revanche, n'est PAS touché : son sursis sert à
+    // laisser le réseau annoncer une recette au SPAWN. Ici l'acteur est là depuis
+    // longtemps, et le remettre à zéro ne ferait que prolonger d'une seconde et
+    // demie un corps noir.
+  }
+  return n;
 }
 
 // ── Réparation automatique des corps que les palettes du client abîment ──────
@@ -504,31 +730,47 @@ void StyleSync::RestoreLocalFromCache() {
   if (g_restored_cid == cid) return;
   if (fx::palette_inject::HasRecipe(gid)) { g_restored_cid = cid; return; }
 
-  ro::PaletteRecipe recipe;
-  if (!fx::palette_cache::Load(cid, &recipe)) {
+  std::map<uint32_t, ro::PaletteRecipe> variants;
+  uint32_t defaut = 0;
+  if (!fx::palette_cache::LoadAll(cid, &variants, &defaut) || variants.empty()) {
     g_restored_cid = cid;  // ce personnage n'a pas de couleurs : rien à faire
     return;
   }
+
+  // La variante du corps qu'il porte à cet instant — il peut très bien se
+  // reconnecter en selle.
+  Remote provisoire;
+  provisoire.variants = variants;
+  provisoire.default_key = defaut;
+  uint32_t choix = 0;
+  const ro::PaletteRecipe* recette =
+      PickVariant(provisoire, CurrentBodyKey(gid), &choix);
+  if (recette == nullptr) {
+    g_restored_cid = cid;
+    return;
+  }
+
   fx::palette_base::Body body;
   // Acteur pas encore monté : on réessaiera au prochain tick.
-  if (fx::palette_base::BuildForGid(gid, recipe.palette_id, &body) !=
+  if (fx::palette_base::BuildForGid(gid, recette->palette_id, &body) !=
       fx::palette_base::kOk)
     return;
 
   fx::palette_inject::SetRecipe(gid, body.base.data(), body.ramps,
-                                body.ramp_count, recipe);
-  fx::palette_inject::SetHairPalette(gid, recipe.hair_palette_id);
-  // 🔴 Renseigner AUSSI la recette locale, celle qui amorce l'éditeur.
+                                body.ramp_count, *recette);
+  fx::palette_inject::SetHairPalette(gid, recette->hair_palette_id);
+  // 🔴 Renseigner AUSSI les variantes locales, celles qui amorcent l'éditeur.
   //
-  // Sans ça, elle n'était posée que par l'écho du SERVEUR — plus lent que le
+  // Sans ça, elles n'étaient posées que par l'écho du SERVEUR — plus lent que le
   // cache. Un joueur qui ouvrait l'éditeur dans cet intervalle l'amorçait à
   // vide, et l'amorçage ne se faisant qu'une fois, ses couleurs restaient
   // ineditables pour toute la session. Le cache sait déjà tout : il doit donc
   // servir les deux usages, pas seulement l'affichage.
-  g_local_recipe = recipe;
-  g_has_local = true;
+  g_local_variants = variants;
+  g_local_default = defaut;
   g_restored_cid = cid;
-  LogDebug("[palette] couleurs restaurées du cache local (cid={})", cid);
+  LogDebug("[palette] {} variante(s) restaurée(s) du cache local (cid={})",
+          variants.size(), cid);
 }
 
 // Changement de PERSONNAGE sans quitter le client.
@@ -577,10 +819,10 @@ void StyleSync::ForgetPreviousCharacter() {
     g_repair_seen.erase(gid);
     g_first_seen.erase(gid);
   }
-  // Notre recette locale sert à amorcer l'éditeur : la garder ferait proposer au
-  // nouveau venu les couleurs de son prédécesseur.
-  g_local_recipe = ro::PaletteRecipe();
-  g_has_local = false;
+  // Nos variantes locales servent à amorcer l'éditeur : les garder ferait
+  // proposer au nouveau venu les couleurs de son prédécesseur.
+  g_local_variants.clear();
+  g_local_default = 0;
   // Et la restauration depuis le cache doit être REFAITE, avec la clé du
   // nouveau personnage.
   g_restored_cid = 0;
@@ -632,8 +874,8 @@ void StyleSync::ForgetLocalActor() {
   g_remote.erase(gid);
   g_repair_seen.erase(gid);
   g_first_seen.erase(gid);
-  g_local_recipe = ro::PaletteRecipe();
-  g_has_local = false;
+  g_local_variants.clear();
+  g_local_default = 0;
   g_local_editing = false;
   g_restored_cid = 0;
   g_session_cid = 0;
@@ -646,6 +888,23 @@ void StyleSync::OnRenderUI() {
   // recette héritée du personnage précédent.
   ForgetPreviousCharacter();
   RestoreLocalFromCache();
+
+  // ── Le changement de corps se traite à la FRAME, pas au battement ─────────
+  //
+  // 🔴 `OnTick` est bridé à ~10 Hz : enfourcher une monture y laissait voir
+  // jusqu'à un dixième de seconde de palette d'origine avant que la recette ne
+  // reprenne la main. Ce n'est pas un délai de calcul — c'est un délai
+  // d'APERÇU du problème, et il se supprime en regardant plus tôt.
+  //
+  // Le coût est une lecture de chaîne par porteur de recette et par frame, soit
+  // exactement ce que fait déjà le chien de garde des chemins. Ce qui coûte —
+  // l'analyse du `.spr` — n'a lieu que sur un vrai changement, et le cache de
+  // bases le rend gratuit dès la deuxième fois qu'on enfourche.
+  //
+  // ⚠ `ApplyPending` est appelée ici EN PLUS du battement, jamais à sa place :
+  // un acteur qui n'est pas encore monté doit continuer d'être réessayé, et
+  // c'est le battement qui s'en charge à son rythme.
+  if (RefreshChangedBodies() > 0) ApplyPending(kApplyBudget);
 }
 
 void StyleSync::OnRenderLoginUI() {
@@ -669,6 +928,10 @@ void StyleSync::OnTick() {
   // affichage encore à venir. Ne rien reposer est le cas courant, et il ne
   // coûte qu'une comparaison de chemin par porteur de recette.
   fx::palette_inject::ReassertPaths();
+  // 🔴 AVANT l'application : c'est elle qui remet en file les corps qui ont
+  // changé, et `ApplyPending` saute toute entrée déjà posée. L'ordre inverse
+  // ferait attendre un tick de plus à chaque enfourchement.
+  RefreshChangedBodies();
   if (!g_remote.empty() && ApplyPending(kApplyBudget) > 0) return;
   // Les recettes ensuite : elles portent un choix explicite du joueur, la
   // réparation n'est qu'un défaut.

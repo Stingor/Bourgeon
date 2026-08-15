@@ -209,4 +209,32 @@ bool BodySpritePath(int job, int body, int sex, char* out, size_t out_size,
   return out[0] != '\0';
 }
 
+uint32_t BodySpriteKey(const char* spr_path) {
+  if (!spr_path || !*spr_path) return 0;
+
+  size_t n = std::strlen(spr_path);
+  // L'extension ne fait pas partie de l'identité : selon l'appelant, le chemin
+  // est une BASE (`...\dragon_knight_남`) ou un fichier (`....spr`). Les deux
+  // désignent le même corps et doivent donner la même clé.
+  if (n > 4 && (spr_path[n - 4] == '.') &&
+      (spr_path[n - 3] == 's' || spr_path[n - 3] == 'S') &&
+      (spr_path[n - 2] == 'p' || spr_path[n - 2] == 'P') &&
+      (spr_path[n - 1] == 'r' || spr_path[n - 1] == 'R'))
+    n -= 4;
+
+  // FNV-1a 32 bits. Choisie pour être trivialement réimplémentable ailleurs — la
+  // clé voyage sur le réseau et se range en base, donc elle survivra à ce code.
+  uint32_t h = 2166136261u;
+  for (size_t i = 0; i < n; ++i) {
+    unsigned char c = static_cast<unsigned char>(spr_path[i]);
+    if (c == '/') c = '\\';                    // le client mélange les deux
+    if (c >= 'A' && c <= 'Z') c += 'a' - 'A';  // 🔴 ASCII SEUL : cf. le .h
+    h ^= c;
+    h *= 16777619u;
+  }
+  // 0 est la sentinelle « corps inconnu » : on la déplace plutôt que de la
+  // rendre par accident sur un chemin parfaitement valide.
+  return h ? h : 1u;
+}
+
 }  // namespace ro

@@ -24,7 +24,10 @@ namespace {
 // des recettes mal alignées.
 constexpr int kHexChars = ro::kMaxRamps * fx::style_sync::kRampBytes * 2;
 
-std::map<uint32_t, std::string> g_entries;  // char_id -> "<version>:<hex>"
+// char_id -> ses variantes encodées. 🔴 La PREMIÈRE est celle du repli : le
+// fichier garde ainsi l'information sans avoir à la répéter, et un YAML relu à
+// la main reste lisible.
+std::map<uint32_t, std::vector<std::string>> g_entries;
 bool g_loaded = false;
 uint32_t g_generation = 0;
 
@@ -37,15 +40,19 @@ int FromHex(char c) {
   return -1;
 }
 
-std::string Encode(const ro::PaletteRecipe& recipe) {
+std::string Encode(const ro::PaletteRecipe& recipe, uint32_t body_key) {
   std::string out;
-  out.reserve(16 + kHexChars);
-  char head[48];
-  // "<version>:<palette>:<cheveux>:<coiffure>:" — en clair, pour rester lisible
-  // en base de données comme dans le presse-papiers. MÊME forme que la chaîne du
-  // serveur : les deux stockages s'invalident donc ensemble.
-  std::snprintf(head, sizeof(head), "%d:%d:%d:%d:",
-                fx::style_sync::kWireVersion,
+  out.reserve(24 + kHexChars);
+  char head[64];
+  // "<version>:<corps>:<palette>:<cheveux>:<coiffure>:" — en clair, pour rester
+  // lisible en base de données comme dans le presse-papiers. MÊME forme que la
+  // chaîne du serveur : les deux stockages s'invalident donc ensemble.
+  //
+  // Le corps est en HEXADÉCIMAL sur 8 chiffres, à la différence des autres
+  // champs : c'est un condensé, pas un nombre qu'on lit ou qu'on compare à
+  // l'œil, et la largeur fixe le rend repérable d'un coup dans une valeur SQL.
+  std::snprintf(head, sizeof(head), "%d:%08x:%d:%d:%d:",
+                fx::style_sync::kWireVersion, body_key,
                 static_cast<int>(recipe.palette_id),
                 static_cast<int>(recipe.hair_palette_id),
                 static_cast<int>(recipe.hair_style));
@@ -68,7 +75,9 @@ std::string Encode(const ro::PaletteRecipe& recipe) {
   return out;
 }
 
-bool Decode(const std::string& s, ro::PaletteRecipe* out) {
+bool Decode(const std::string& s, ro::PaletteRecipe* out,
+            uint32_t* out_body_key = nullptr) {
+  if (out_body_key) *out_body_key = 0;
   // 🔴 La VERSION d'abord, et une SEULE est acceptée : la courante.
   //
   // Des branches de migration ont existé (v2→v3→v4→v5) tant que les versions
@@ -83,7 +92,11 @@ bool Decode(const std::string& s, ro::PaletteRecipe* out) {
       std::snprintf(head, sizeof(head), "%d:", fx::style_sync::kWireVersion);
   if (s.size() < static_cast<size_t>(n) || s.compare(0, n, head) != 0)
     return false;
-  const size_t sep1 = s.find(':', n);
+  // Le champ de CORPS, ajouté en v7 : huit chiffres hexadécimaux entre la
+  // version et la palette.
+  const size_t sep0 = s.find(':', n);
+  if (sep0 == std::string::npos || sep0 - n != 8) return false;
+  const size_t sep1 = s.find(':', sep0 + 1);
   if (sep1 == std::string::npos) return false;
   const size_t sep2 = s.find(':', sep1 + 1);
   if (sep2 == std::string::npos) return false;
@@ -92,7 +105,16 @@ bool Decode(const std::string& s, ro::PaletteRecipe* out) {
   const size_t plen = sep3 + 1;
   if (s.size() != plen + kHexChars) return false;
 
-  out->palette_id = static_cast<int16_t>(std::atoi(s.c_str() + n));
+  if (out_body_key) {
+    uint32_t key = 0;
+    for (size_t i = n; i < sep0; ++i) {
+      const int v = FromHex(s[i]);
+      if (v < 0) return false;
+      key = (key << 4) | static_cast<uint32_t>(v);
+    }
+    *out_body_key = key;
+  }
+  out->palette_id = static_cast<int16_t>(std::atoi(s.c_str() + sep0 + 1));
   out->hair_palette_id = static_cast<int16_t>(std::atoi(s.c_str() + sep1 + 1));
   out->hair_style = static_cast<int16_t>(std::atoi(s.c_str() + sep2 + 1));
 
@@ -124,8 +146,21 @@ void EnsureLoaded() {
     if (!root || !root.IsMap()) return;
     for (const auto& kv : root) {
       const uint32_t id = kv.first.as<uint32_t>(0u);
-      const std::string val = kv.second.as<std::string>("");
-      if (id != 0 && !val.empty()) g_entries[id] = val;
+      if (id == 0) continue;
+      std::vector<std::string> vals;
+      if (kv.second.IsSequence()) {
+        for (const YAML::Node& n : kv.second) {
+          const std::string v = n.as<std::string>("");
+          if (!v.empty()) vals.push_back(v);
+        }
+      } else {
+        // Forme d'avant la v7 : une seule recette par personnage, en scalaire.
+        // On la lit sans effort particulier — `Decode` la refusera sur sa
+        // version, ce qui est exactement le traitement voulu.
+        const std::string v = kv.second.as<std::string>("");
+        if (!v.empty()) vals.push_back(v);
+      }
+      if (!vals.empty()) g_entries[id] = std::move(vals);
     }
   } catch (const std::exception&) {
     // Fichier absent au premier lancement : c'est le cas NOMINAL, pas une
@@ -136,7 +171,11 @@ void EnsureLoaded() {
 void Flush() {
   const std::string path = paths::PaletteCachePath();
   YAML::Node root(YAML::NodeType::Map);
-  for (const auto& kv : g_entries) root[kv.first] = kv.second;
+  for (const auto& kv : g_entries) {
+    YAML::Node seq(YAML::NodeType::Sequence);
+    for (const std::string& v : kv.second) seq.push_back(v);
+    root[kv.first] = seq;
+  }
   std::ofstream f(path, std::ios::binary | std::ios::trunc);
   if (!f) {
     LogError("[palette] cache non écrit : {}", path);
@@ -148,29 +187,74 @@ void Flush() {
 
 }  // namespace
 
-void Save(uint32_t char_id, const ro::PaletteRecipe* recipe) {
+void SaveAll(uint32_t char_id,
+             const std::map<uint32_t, ro::PaletteRecipe>& variants,
+             uint32_t default_key) {
   if (char_id == 0) return;
   EnsureLoaded();
-  if (recipe) {
-    const std::string encoded = Encode(*recipe);
-    auto it = g_entries.find(char_id);
-    if (it != g_entries.end() && it->second == encoded) return;  // rien de neuf
-    g_entries[char_id] = encoded;
-  } else if (g_entries.erase(char_id) == 0) {
-    return;  // rien à effacer : pas de réécriture inutile
+  if (variants.empty()) {
+    if (g_entries.erase(char_id) == 0) return;  // rien à effacer
+    ++g_generation;
+    Flush();
+    return;
   }
+
+  std::vector<std::string> encoded;
+  encoded.reserve(variants.size());
+  // Le repli EN TÊTE : c'est la convention du fichier, et celle que `LoadAll`
+  // relit. La ranger ailleurs demanderait un second champ pour la désigner.
+  auto repli = variants.find(default_key);
+  if (repli != variants.end()) encoded.push_back(Encode(repli->second, repli->first));
+  for (const auto& kv : variants) {
+    if (repli != variants.end() && kv.first == repli->first) continue;
+    encoded.push_back(Encode(kv.second, kv.first));
+  }
+
+  auto it = g_entries.find(char_id);
+  if (it != g_entries.end() && it->second == encoded) return;  // rien de neuf
+  g_entries[char_id] = std::move(encoded);
   ++g_generation;
   Flush();
 }
 
 uint32_t Generation() { return g_generation; }
 
-bool Load(uint32_t char_id, ro::PaletteRecipe* out) {
+bool LoadAll(uint32_t char_id, std::map<uint32_t, ro::PaletteRecipe>* out,
+             uint32_t* out_default_key) {
   if (char_id == 0 || !out) return false;
+  out->clear();
+  if (out_default_key) *out_default_key = 0;
   EnsureLoaded();
   auto it = g_entries.find(char_id);
   if (it == g_entries.end()) return false;
-  return Decode(it->second, out);
+  for (const std::string& s : it->second) {
+    ro::PaletteRecipe recipe;
+    uint32_t key = 0;
+    // Version périmée ou entrée abîmée : ignorée en silence, comme toujours ici.
+    // Un cache se refait ; une recette mal alignée, elle, se voit.
+    if (!Decode(s, &recipe, &key) || key == 0) continue;
+    if (out->empty() && out_default_key) *out_default_key = key;  // la 1ʳᵉ = le repli
+    (*out)[key] = recipe;
+  }
+  return !out->empty();
+}
+
+bool Load(uint32_t char_id, uint32_t body_key, ro::PaletteRecipe* out) {
+  if (!out) return false;
+  std::map<uint32_t, ro::PaletteRecipe> variants;
+  uint32_t defaut = 0;
+  if (!LoadAll(char_id, &variants, &defaut)) return false;
+  if (body_key != 0) {
+    auto exact = variants.find(body_key);
+    if (exact != variants.end()) {
+      *out = exact->second;
+      return true;
+    }
+  }
+  auto repli = variants.find(defaut);
+  if (repli == variants.end()) repli = variants.begin();
+  *out = repli->second;
+  return true;
 }
 
 // ── Préréglages ─────────────────────────────────────────────────────────────
@@ -254,7 +338,10 @@ bool PresetSave(const std::string& raw_name, const ro::PaletteRecipe& recipe) {
   EnsurePresets();
   // La coiffure est DANS la recette : un préréglage garde donc l'allure
   // complète, sans traitement particulier.
-  const std::string encoded = Encode(recipe);
+  // 🔴 Clé de corps NULLE, et ce n'est pas un oubli : un préréglage est fait pour
+  // être reposé sur n'importe quel corps — c'est même son seul intérêt. Y graver
+  // celui de sa naissance laisserait croire qu'il lui est réservé.
+  const std::string encoded = Encode(recipe, /*body_key=*/0);
   for (auto& kv : g_presets) {
     if (kv.first == name) {  // homonyme : on remplace, sans doublon dans la liste
       kv.second = encoded;
@@ -355,7 +442,10 @@ void DraftSave(uint32_t char_id, const ro::PaletteRecipe* recipe) {
   if (char_id == 0) return;
   EnsureDrafts();
   if (recipe) {
-    const std::string encoded = Encode(*recipe);
+    // Clé nulle, comme les préréglages : un brouillon suit le joueur, pas un
+    // corps. S'il en change avant de reprendre son travail, ses réglages se
+    // ré-appliqueront par index — le même compromis que partout ailleurs.
+    const std::string encoded = Encode(*recipe, /*body_key=*/0);
     auto it = g_drafts.find(char_id);
     if (it != g_drafts.end() && it->second == encoded) return;  // rien de neuf
     g_drafts[char_id] = encoded;
@@ -380,7 +470,11 @@ bool HasDraft(uint32_t char_id) {
 }
 
 std::string EncodeShare(const ro::PaletteRecipe& recipe) {
-  return Encode(recipe);
+  // Sans clé de corps : un code se colle sur le personnage qu'on veut. C'est
+  // aussi ce qui en fait un comparateur sûr pour « ce réglage a-t-il changé
+  // depuis la validation ? » — deux recettes identiques donnent la même chaîne,
+  // quel que soit le corps porté au moment du calcul.
+  return Encode(recipe, /*body_key=*/0);
 }
 
 bool DecodeShare(const std::string& code, ro::PaletteRecipe* out) {

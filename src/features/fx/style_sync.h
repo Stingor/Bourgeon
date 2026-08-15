@@ -26,10 +26,11 @@
 // Un RÉGLAGE de rampe, 5 octets :
 //     [teinte:int16 LE][saturation:int8][luminosité:int8][absolu:uint8]
 //
-// CZ_BOURGEON_STYLE (0x0F26), client -> serveur, 52 octets fixes :
+// CZ_BOURGEON_STYLE (0x0F26), client -> serveur, 56 octets fixes :
 //     [opcode:2][longueur:2]        = 4
 //     [version:1]                   = kWireVersion
-//     [drapeaux:1]                  bit 0 = EFFACER (le reste est ignoré)
+//     [drapeaux:1]                  bit 0 = effacer CE corps, bit 1 = effacer TOUT
+//     [corps:uint32 LE]             `ro::BodySpriteKey` du `.spr` de corps
 //     [palette:int16 LE]            palette de corps officielle 1..553, -1 = celle du serveur
 //     [cheveux:int16 LE]            palette de cheveux 1..251, -1 = celle du personnage
 //     [coiffure:int16 LE]           coupe 1..80, -1 = celle du personnage
@@ -37,9 +38,9 @@
 //
 // ZC_BOURGEON_STYLES (0x0F27), serveur -> client, longueur variable :
 //     [opcode:2][longueur:2][nombre:2]              = 6
-//     puis `nombre` fois, 52 octets chacun :
-//     [gid:4][version:1][drapeaux:1][palette:int16][cheveux:int16][coiffure:int16]
-//     [réglages: 8 × 5]
+//     puis `nombre` fois, 56 octets chacun :
+//     [gid:4][version:1][drapeaux:1][corps:uint32][palette:int16][cheveux:int16]
+//     [coiffure:int16][réglages: 8 × 5]
 //
 // ⚠ La coiffure d'une entrée ZC n'est PAS posée sur l'acteur : le serveur l'a
 // déjà appliquée par `pc_changelook`, et son ZC_SPRITE_CHANGE natif est arrivé
@@ -50,33 +51,60 @@
 // des dizaines de joueurs d'un coup, et un paquet par joueur multiplierait le
 // nombre de trames pour rien.
 //
-// ── Pourquoi la trame ne porte NI la classe NI le sprite ─────────────────────
-// La tentation est grande : les index de palette n'ont aucune signification
-// commune d'un corps à l'autre (mesuré : un Dragon Knight utilise 7-73, un
-// Creator 112-223), donc on voudrait vérifier que la recette correspond bien au
-// corps affiché, et la refuser sinon.
+// ── 🔴🔴 UNE RECETTE PAR CORPS (v7, 2026-08-15) ─────────────────────────────
 //
-// 🔴 Ce serait une erreur, et la raison est une contrainte de COHÉRENCE. Quand
-// le joueur monte à cheval, son sprite de corps change (`knight` ->
-// `knight_riding`) et SON PROPRE éditeur ré-applique la même recette, par index,
-// sur le nouveau sprite. Si les autres clients refusaient de le faire, il se
-// verrait autrement que les autres le voient. La règle doit donc être la même
-// partout : on applique PAR INDEX DE RAMPE, sans condition.
+// Une recette ne désigne ses pièces que par des INDEX de palette, et les index
+// n'ont aucune signification commune d'un corps à l'autre (mesuré : un Dragon
+// Knight utilise 7-73, un Creator 112-223). Jusqu'à la v6, la même recette était
+// donc ré-appliquée par index sur le corps du moment, quel qu'il fût : monter
+// sur une monture rendait au joueur des couleurs plausibles mais AUTRES que les
+// siennes. Le compromis a tenu tant qu'on croyait la monture un cas rare ; elle
+// ne l'est pas, et les costumes de corps comme les changements de classe posent
+// exactement le même problème.
 //
-// Ce n'est pas arbitraire non plus : les rampes sont triées par surface, donc la
-// rampe N est « la N-ième pièce la plus visible » — une correspondance qui garde
-// du sens d'un corps à l'autre. La version, elle, sert à refuser proprement une
-// trame d'un futur format (un `kMaxRamps` différent, par exemple).
+// La v7 range donc une recette PAR CORPS, chacune désignée par
+// `ro::BodySpriteKey` — le condensé du chemin de son `.spr`.
+//
+// 🔴 Le serveur ne calcule JAMAIS cette clé et n'a pas à savoir ce qu'elle
+// désigne. Il ne connaît pas le sprite d'un joueur : cette résolution est faite
+// par le client, avec une demi-douzaine de cas particuliers dont une copie
+// serveur divergerait au premier costume. Il range N recettes sous leurs clés et
+// les rediffuse TOUTES ; c'est le client destinataire — le seul à voir le corps
+// réellement monté — qui choisit laquelle appliquer.
+//
+// ⚠ Un lot ZC REDÉFINIT INTÉGRALEMENT les variantes des GID qu'il mentionne. Le
+// serveur envoie donc toujours l'ensemble complet d'un joueur, y compris quand
+// une seule vient de changer. C'est ce qui rend la règle du client trivialement
+// juste : « ce que je reçois est tout ce qu'il a ».
+//
+// ── Le REPLI, et pourquoi il existe ─────────────────────────────────────────
+// Un corps sans variante propre reprend celle marquée `kFlagDefault`. Sans ce
+// repli, enfourcher une monture jamais personnalisée ferait perdre au joueur
+// TOUTES ses couleurs d'un coup, ce qui serait une régression franche sur la v6.
+// Avec, il garde un rendu proche, et n'a qu'à valider une fois monté pour donner
+// à ce corps-là ses propres réglages.
 
 namespace fx {
 namespace style_sync {
 
 // Tailles de trame — partagées avec le serveur, qui doit les recopier.
 constexpr int kRampBytes    = 5;
-constexpr int kAdjustBytes  = ro::kMaxRamps * kRampBytes;            // 40
-constexpr int kCzBytes      = 4 + 1 + 1 + 2 + 2 + 2 + kAdjustBytes;  // 52
-constexpr int kZcHeadBytes  = 4 + 2;                                 // 6
-constexpr int kZcEntryBytes = 4 + 1 + 1 + 2 + 2 + 2 + kAdjustBytes;  // 52
+constexpr int kAdjustBytes  = ro::kMaxRamps * kRampBytes;                // 40
+constexpr int kCzBytes      = 4 + 1 + 1 + 4 + 2 + 2 + 2 + kAdjustBytes;  // 56
+constexpr int kZcHeadBytes  = 4 + 2;                                     // 6
+constexpr int kZcEntryBytes = 4 + 1 + 1 + 4 + 2 + 2 + 2 + kAdjustBytes;  // 56
+
+// Nombre de corps qu'un personnage peut habiller séparément.
+//
+// 🔴 Ce plafond dimensionne le STOCKAGE SERVEUR : une variable de personnage par
+// variante, chacune tenant très largement sous les 254 caractères d'une
+// `char_reg_str`. Le monter demande d'ajouter des variables côté serveur, pas
+// seulement de changer ce nombre.
+//
+// Quatre couvre ce qu'un joueur porte réellement : son corps, sa monture, un
+// costume, et un de rab. Au-delà, la variante la plus anciennement validée cède
+// sa place — le serveur range un numéro de séquence pour savoir laquelle.
+constexpr int kMaxVariants = 4;
 
 // 🔴 À incrémenter dès que la disposition OU le sens des rampes change — et
 // `ro::kMaxRamps` en fait partie, puisqu'il dimensionne le bloc de réglages.
@@ -101,15 +129,30 @@ constexpr int kZcEntryBytes = 4 + 1 + 1 + 2 + 2 + 2 + kAdjustBytes;  // 52
 // (2026-08-11/12) ajoutaient des champs et se migraient ; celle-ci se jette,
 // comme la v2 qui avait déjà déplacé les frontières de rampes.
 //
+// v7 (2026-08-15) : une recette PAR CORPS. La trame gagne quatre octets de clé,
+// et un joueur peut désormais avoir plusieurs entrées dans un même lot. Les
+// recettes v6 sont jetées comme les précédentes : elles ne portent aucune clé,
+// donc rien ne dirait à quel corps les rattacher — et les rattacher au corps
+// courant serait un pari, puisque le joueur peut être monté au moment où on lit.
+//
 // 🔴 Elle est la seule entrée que le serveur INTERPRÈTE. Tout le reste, il le
 // range sans le comprendre ; celle-ci, il l'applique par `pc_changelook`, ce qui
 // l'écrit dans `sd->status.hair`, la sauvegarde avec le personnage et l'annonce
 // à la zone par le ZC_SPRITE_CHANGE natif — clients vanilla compris. Elle est
 // ici parce que POUR LE JOUEUR la coiffure fait partie du style, et que c'est
 // son point de vue qui commande le format.
-constexpr uint8_t kWireVersion = 6;
+constexpr uint8_t kWireVersion = 7;
 
-constexpr uint8_t kFlagClear = 0x01;  // « ce joueur n'a plus de recette »
+// CZ : efface la variante de CE corps. ZC : ce joueur n'a plus aucune recette.
+constexpr uint8_t kFlagClear = 0x01;
+// CZ seulement : efface TOUTES les variantes du personnage. Le bouton « Supprimer
+// mon style » enlève tout — un joueur qui veut redevenir lui-même ne s'attend
+// pas à devoir le demander corps par corps.
+constexpr uint8_t kFlagClearAll = 0x02;
+// ZC seulement : cette variante est celle du REPLI, appliquée aux corps qui n'en
+// ont pas. Le serveur la pose sur la plus ancienne qu'il détient — le client ne
+// la devine pas, sans quoi deux clients pourraient choisir différemment.
+constexpr uint8_t kFlagDefault = 0x04;
 
 // 🔴 Le garde-fou du protocole. Ces tailles sont recopiées à la main côté
 // serveur (moonlight : packets_struct.hpp, PACKET_CZ_BOURGEON_STYLE et
@@ -118,17 +161,26 @@ constexpr uint8_t kFlagClear = 0x01;  // « ce joueur n'a plus de recette »
 // rAthena rejetterait la trame en silence. Ces assertions transforment cet
 // accident muet en échec de compilation, à charge de bumper `kWireVersion` et de
 // mettre le serveur à jour.
-static_assert(kCzBytes == 52, "trame CZ modifiée : bumper kWireVersion et mettre à jour moonlight");
-static_assert(kZcEntryBytes == 52, "entrée ZC modifiée : bumper kWireVersion et mettre à jour moonlight");
+static_assert(kCzBytes == 56, "trame CZ modifiée : bumper kWireVersion et mettre à jour moonlight");
+static_assert(kZcEntryBytes == 56, "entrée ZC modifiée : bumper kWireVersion et mettre à jour moonlight");
 
-// Envoie la recette courante du joueur. À appeler quand il VALIDE, pas à chaque
-// mouvement de curseur : l'aperçu est déjà local et immédiat, et le serveur n'a
-// que faire des soixante états intermédiaires d'un glissement.
-void SendRecipe(const ro::PaletteRecipe& recipe);
+// Envoie la recette du joueur POUR UN CORPS DONNÉ. À appeler quand il VALIDE,
+// pas à chaque mouvement de curseur : l'aperçu est déjà local et immédiat, et le
+// serveur n'a que faire des soixante états intermédiaires d'un glissement.
+//
+// `body_key` = `ro::BodySpriteKey` du corps qu'il porte à cet instant. Une clé
+// nulle est refusée : ranger une recette sous « corps inconnu » la rendrait
+// inapplicable, et elle prendrait la place d'une vraie.
+void SendRecipe(const ro::PaletteRecipe& recipe, uint32_t body_key);
 
-// Dit au serveur d'oublier la recette : le joueur revient à son apparence
-// native, pour lui comme pour les autres.
-void SendClear();
+// Dit au serveur d'oublier la variante de CE corps. Les autres survivent, et le
+// corps concerné retombe sur la variante de repli — ou sur son apparence native
+// si c'était la dernière.
+void SendClear(uint32_t body_key);
+
+// Dit au serveur d'oublier TOUT : le joueur revient à son apparence native, pour
+// lui comme pour les autres, sur tous ses corps.
+void SendClearAll();
 
 // Numéro le plus élevé d'une coiffure proposée. Même convention et même valeur
 // que la grille de création de personnage (`kMaxHairStyle`, features/windows/
@@ -153,10 +205,26 @@ bool Available();
 // chaque connexion sans qu'il ait rien à rouvrir.
 void SetLocalEditing(bool editing);
 
-// La dernière recette reçue pour NOTRE acteur, s'il y en a une. L'éditeur s'en
-// sert pour démarrer sur les couleurs que le joueur a déjà partagées, au lieu
-// d'une recette vide qui les effacerait à la première application.
-bool LocalRecipe(ro::PaletteRecipe* out);
+// La recette que NOTRE acteur porte sur le corps `body_key`, s'il y en a une.
+// L'éditeur s'en sert pour démarrer sur les couleurs que le joueur a déjà
+// partagées, au lieu d'une recette vide qui les effacerait à la première
+// application.
+//
+// `out_exact` (facultatif) dit si elle a été faite POUR ce corps ou si c'est le
+// repli. La fenêtre le montre au joueur : sans ça, il croirait modifier le style
+// de sa monture alors qu'il s'apprête à réécrire celui de son corps à pied.
+//
+// `body_key` nul = « je ne sais pas quel corps » : rend alors la variante de
+// repli, qui est le meilleur résumé de l'allure du personnage.
+bool LocalRecipe(uint32_t body_key, ro::PaletteRecipe* out,
+                 bool* out_exact = nullptr);
+
+// Le joueur a-t-il une variante FAITE POUR ce corps ? (Le repli ne compte pas.)
+bool LocalHasVariant(uint32_t body_key);
+
+// Combien de corps le joueur a-t-il habillés ? Pour la fenêtre, qui prévient
+// quand le plafond est atteint et qu'une validation de plus en évincera une.
+int LocalVariantCount();
 
 // Oublie NOTRE recette : celle du registre d'application ET celle qui amorce
 // l'éditeur.
@@ -216,6 +284,18 @@ class StyleSync : public Plugin {
  private:
   // Applique ce qui peut l'être, au plus `budget` acteurs. Rend le nombre traité.
   int ApplyPending(int budget);
+
+  // Remet en file d'application les acteurs qui ont CHANGÉ DE CORPS — monture
+  // enfourchée ou quittée, costume de corps, changement de classe. Rend le
+  // nombre d'acteurs concernés.
+  //
+  // 🔴 Sans elle, la palette posée reste celle de l'ancien corps : ses index ne
+  // désignent plus les mêmes pièces, et le personnage part en couleurs délavées
+  // ou fausses jusqu'à ce que son propriétaire revalide son style à la main.
+  // C'est exactement la règle annoncée en tête de ce fichier — « on applique par
+  // index de rampe, sans condition » — qui n'était appliquée que par l'éditeur
+  // du joueur, pas par la boucle qui sert tout le monde.
+  int RefreshChangedBodies();
 
   // Impose la palette du SPRITE aux corps que les palettes de vêtement du client
   // abîment — et à eux seuls. Voir le .cc : on ne dévie du natif que si la

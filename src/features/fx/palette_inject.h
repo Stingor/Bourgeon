@@ -137,6 +137,26 @@ bool ActorBodySpritePath(uint32_t gid, char* out, size_t out_size);
 // ⚠ À appeler depuis le FIL DE RENDU : on écrit dans un acteur.
 int ReassertPaths();
 
+// Les acteurs dont le CORPS a changé depuis le calcul de leur palette : monture
+// enfourchée ou quittée, costume de corps équipé, changement de classe. Rend le
+// nombre de GID écrits dans `out` (au plus `max`).
+//
+// 🔴 Pourquoi cette fonction existe. Une recette ne désigne ses couleurs que par
+// des INDEX de palette, et les index n'ont aucune signification commune d'un
+// sprite à l'autre. Le bloc de 1024 octets est donc valable pour UN corps
+// précis ; le jour où le client en monte un autre, il continue pourtant d'être
+// rendu — le détour repose fidèlement notre chemin, et personne ne recalcule
+// rien. Symptôme exact (2026-08-15, monture) : le personnage passe en couleurs
+// délavées ou fausses, alors que le pantin de l'éditeur — qui, lui, suit le
+// sprite — montre déjà la bonne interprétation. Il fallait revalider son style
+// à la main pour que l'écran se remette d'accord avec lui-même.
+//
+// ⚠ Le chemin de référence est ADOPTÉ au passage : un GID n'est signalé qu'une
+// fois par changement. C'est à l'appelant de réessayer si son recalcul échoue —
+// signaler en boucle ferait fabriquer un bloc de palette par tick, et les blocs
+// ne sont jamais libérés.
+int PollStaleSprites(uint32_t* out, int max);
+
 // L'acteur de ce GID existe-t-il encore ? Le pointeur mémorisé par le détour est
 // revalidé (GID relu, sous SEH), donc un acteur détruit rend false.
 //

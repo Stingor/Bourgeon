@@ -919,8 +919,21 @@ const uint8_t* CustomBodyPalette(uint32_t char_id, int job, int body, int sex,
     c.key.clear();
     c.hair = -1;
 
+    // 🔴 Ici le sprite est forcément DÉDUIT : il n'y a pas d'acteur au
+    // char-select, donc rien sur quoi lire ce que le client a résolu. Sur un
+    // corps où la déduction diverge, l'aperçu différera du rendu en jeu.
+    //
+    // Et il faut le résoudre AVANT de chercher la recette, puisque depuis la v7
+    // c'est lui qui désigne la variante : un joueur habille son corps, sa
+    // monture et ses costumes séparément. La déduction ne rend jamais un corps
+    // monté — on n'est pas en selle sur cet écran — donc ce qu'on trouve est
+    // bien la variante « à pied », ou le repli si elle n'existe pas.
+    char spr[512];
+    const bool a_sprite = ro::BodySpritePath(job, body, sex, spr, sizeof(spr));
     ro::PaletteRecipe recipe;
-    if (fx::palette_cache::Load(char_id, &recipe)) {
+    if (a_sprite &&
+        fx::palette_cache::Load(char_id,
+                                ro::BodySpriteKey(spr), &recipe)) {
       // La couleur de cheveux n'a besoin d'AUCUN calcul : le composeur sait déjà
       // teindre une tête à partir d'un numéro, c'est ce qu'il fait pour la
       // couleur du styliste. On lui en donne un autre.
@@ -928,11 +941,7 @@ const uint8_t* CustomBodyPalette(uint32_t char_id, int job, int body, int sex,
       // 🔴 Pas de COUPE ici : elle vient de la liste de personnages (`v.hair`),
       // parce que c'est le serveur qui la possède. La relire de notre cache
       // serait une seconde source de vérité, en retard d'une session.
-      char spr[512];
-      // 🔴 Ici le sprite est forcément DÉDUIT : il n'y a pas d'acteur au
-      // char-select, donc rien sur quoi lire ce que le client a résolu. Sur un
-      // corps où la déduction diverge, l'aperçu différera du rendu en jeu.
-      if (ro::BodySpritePath(job, body, sex, spr, sizeof(spr))) {
+      {
         char pal[160] = {0};
         // 🔴 La TEINTE DE BASE de la recette prime sur la couleur de vêtement du
         // personnage. C'est elle qui a servi de base en jeu ; l'ignorer ici

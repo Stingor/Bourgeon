@@ -4,6 +4,7 @@
 #include "ragnarok/own_actor.h"  // arme / bouclier / chariot déjà résolus par le client
 #include "ui/doll.h"  // aperçu d'article : pantin COMPOSÉ (remplace la capture)
 #include "ui/sprite_view.h"  // chariot : sprite indépendant, posé sur le pantin
+#include "ui/sprite_path.h"  // BodySpriteKey (le style se range par corps)
 #include "ui/game_texture.h"
 #include "features/overlays/basic_info.h"
 #include "ui/ro_imgui.h"
@@ -1119,8 +1120,15 @@ bool FillOwnDollPalette(ro::DollLook* look) {
   // fait le styliste — il n'y a donc rien à injecter, juste à lui donner le bon.
   // 🔴 Sans ça, il lirait la couleur du serveur : la tête du pantin resterait à
   // sa teinte d'origine pendant que celle du personnage en scène a changé.
+  //
+  // La variante du corps PORTÉ : le style se range par corps, et la couleur de
+  // cheveux qu'il faut au pantin est celle de la recette réellement appliquée —
+  // le joueur peut très bien avoir choisi une teinte de cheveux différente pour
+  // sa monture. Le sprite vient d'être lu juste au-dessus, donc la clé est
+  // gratuite ; un corps illisible retombe sur le style principal.
   ro::PaletteRecipe recette;
-  if (fx::style_sync::LocalRecipe(&recette) && recette.hair_palette_id > 0)
+  if (fx::style_sync::LocalRecipe(ro::BodySpriteKey(spr), &recette) &&
+      recette.hair_palette_id > 0)
     look->hair_color = recette.hair_palette_id;
   // 🔴 Rien à faire pour la COUPE : elle vit dans la globale d'apparence que le
   // client tient à jour sur ZC_SPRITE_CHANGE, et `BuildOwnDollLook` l'a déjà

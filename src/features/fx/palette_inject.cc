@@ -145,6 +145,18 @@ struct Entry {
   // de refaire la fusion, la détection de rampes et l'application de recette
   // pour aboutir aux octets qu'on a déjà.
   std::vector<uint8_t> rgba;
+  // 🔴 Le `.spr` de corps que l'acteur portait quand ce bloc a été calculé.
+  //
+  // C'est ce qui rend le bloc PÉRISSABLE : une recette ne désigne ses couleurs
+  // que par des index, et les index ne veulent rien dire d'un sprite à l'autre.
+  // Enfourcher une monture change le corps sans rien changer d'autre — ni la
+  // recette, ni le chemin de palette qu'on a posé — donc rien ne le signalait, et
+  // le rendu continuait d'appliquer la table de l'ancien corps.
+  //
+  // ⚠ Toujours LU SUR L'ACTEUR, jamais déduit ni recopié de l'appelant : c'est
+  // ce qui garantit qu'une comparaison ne peut pas osciller sur une différence de
+  // forme (casse, préfixe) et refabriquer un bloc à chaque tick.
+  std::string spr_path;
 };
 
 std::mutex g_mutex;
@@ -581,6 +593,34 @@ bool SetRecipe(uint32_t gid, const uint8_t* base, const ro::PaletteRamp* ramps,
   std::vector<uint8_t> block;
   BuildBlock(&block, teinte, gid);
 
+  // Le corps pour lequel ce bloc vaut, LU sur l'acteur. Une lecture qui échoue —
+  // acteur pas encore monté — laisse la référence vide : `PollStaleSprites` la
+  // prendra au premier passage réussi plutôt que de crier au changement.
+  char spr_courant[300];
+  const bool spr_lu = ActorBodySpritePath(gid, spr_courant, sizeof(spr_courant)) &&
+                      spr_courant[0] != '\0';
+
+  // ── Trace de comparaison des DEUX chemins qui posent une recette ───────────
+  //
+  // La boucle de propagation et la fenêtre de style doivent aboutir aux MÊMES
+  // 1024 octets pour un même corps ; si elles divergent, cela ne se voit qu'à
+  // l'œil, sur un sprite — ce qui n'est pas une mesure. Deux empreintes le
+  // disent en une ligne : celle de la BASE (donc du couple sprite ⊕ palette de
+  // vêtement retenu) et celle de la SORTIE (donc des réglages appliqués
+  // par-dessus). Un écart sur la base et pas sur la recette, ou l'inverse,
+  // désigne directement le coupable.
+  uint32_t h_base = 2166136261u, h_sortie = 2166136261u;
+  for (int i = 0; i < 1024; ++i) {
+    h_base ^= base[i];
+    h_base *= 16777619u;
+    h_sortie ^= teinte[i];
+    h_sortie *= 16777619u;
+  }
+  LogDiag("[palette] pose gid={} corps={:08x} rampes={} pal={} base={:08x} "
+          "sortie={:08x}",
+          gid, spr_lu ? ro::BodySpriteKey(spr_courant) : 0u, ramp_count,
+          static_cast<int>(recipe.palette_id), h_base, h_sortie);
+
   {
     std::lock_guard<std::mutex> lock(g_mutex);
     Entry& e = g_recipes[gid];
@@ -589,6 +629,7 @@ bool SetRecipe(uint32_t gid, const uint8_t* base, const ro::PaletteRamp* ramps,
     if (!e.block.empty()) Retire(std::move(e.block));
     e.block = std::move(block);
     e.rgba.assign(teinte, teinte + 1024);
+    if (spr_lu) e.spr_path = spr_courant; else e.spr_path.clear();
     // Cet acteur a de nouveau une recette : une perte future doit être signalée.
     g_miss_signale.erase(gid);
   }
@@ -804,6 +845,46 @@ int ReassertPaths() {
     }
   }
   return reposes;
+}
+
+int PollStaleSprites(uint32_t* out, int max) {
+  if (!out || max <= 0) return 0;
+
+  // Les GID d'abord, sous verrou, et le verrou relâché avant de lire le moindre
+  // acteur — même précaution que `ReassertPaths`.
+  std::vector<uint32_t> gids;
+  {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    gids.reserve(g_recipes.size());
+    for (const auto& kv : g_recipes) gids.push_back(kv.first);
+  }
+
+  int n = 0;
+  for (uint32_t gid : gids) {
+    if (n >= max) break;
+    char spr[300];
+    // Acteur mort, ou composite pas encore monté : rien à conclure. Surtout pas
+    // « le corps a changé » — on jetterait un bloc parfaitement valide.
+    if (!ActorBodySpritePath(gid, spr, sizeof(spr)) || spr[0] == '\0') continue;
+
+    std::lock_guard<std::mutex> lock(g_mutex);
+    auto it = g_recipes.find(gid);
+    if (it == g_recipes.end()) continue;  // retirée entre-temps
+    if (it->second.spr_path.empty()) {
+      // Première lecture réussie : elle devient la référence, sans rien signaler.
+      it->second.spr_path = spr;
+      continue;
+    }
+    if (it->second.spr_path == spr) continue;  // le cas courant, une comparaison
+    LogDiag("[palette] gid={} a changé de corps ({} -> {}) : palette à refaire",
+            gid, it->second.spr_path, spr);
+    // 🔴 Adopter TOUT DE SUITE le nouveau chemin. Attendre que l'appelant ait
+    // réussi son recalcul ferait redire « périmé » à chaque tick, donc fabriquer
+    // un bloc de palette par tick — et les blocs ne sont jamais libérés.
+    it->second.spr_path = spr;
+    out[n++] = gid;
+  }
+  return n;
 }
 
 bool ActorAlive(uint32_t gid) {
