@@ -5,6 +5,7 @@
 #include <cstring>
 
 #include "bourgeon.h"
+#include "features/systems/net_ping.h"  // horodatage de la demande d'heure
 #include "features/windows/npc_dialog_window.h"
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
@@ -526,6 +527,14 @@ void RagConnection::ConnectionHook() {
 }
 
 bool RagConnection::SendPacketHook(int packet_len, char* packet) {
+  // [ping] Horodatage de la demande d'heure du client. C'est le SEUL endroit qui
+  // voie partir le paquet ; la réponse (ZC_NOTIFY_TIME) ne l'écho pas, donc sans
+  // cette marque il n'y a pas d'aller-retour à mesurer. NetPing trie lui-même :
+  // ici on ne fait que lui montrer tout ce qui sort. L'opcode est en clair (le
+  // XOR natif n'agit qu'APRÈS nous, sur le premier mot).
+  if (packet_len >= 2 && packet != nullptr)
+    NetPing::NoteSend(*reinterpret_cast<uint16_t*>(packet), packet_len);
+
   // Map-load end: the client sends CZ_NOTIFY_ACTORINIT (0x007d, a 2-byte packet)
   // once the new map has finished loading and it is ready — clear the loading
   // gate. Opcode is plaintext here (the native XOR runs only after us).

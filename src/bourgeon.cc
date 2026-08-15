@@ -75,6 +75,7 @@
 #include "features/windows/rodex_window.h"
 #include "features/windows/npc_dialog_window.h"
 #include "features/systems/bug_report.h"
+#include "features/systems/net_ping.h"
 #include "features/windows/character_sheet.h"
 #include "features/overlays/login_parade.h"
 #include "features/overlays/cast_bar.h"
@@ -717,6 +718,11 @@ void Bourgeon::LoadPlugins() {
     auto bug_report = std::make_unique<BugReport>();
     bug_report_ = bug_report.get();
     plugins_.emplace_back(std::move(bug_report));
+  }
+  {
+    // Mesure de latence : aucun accesseur, tout son état est statique — le seul
+    // lecteur est l'overlay FPS, qui appelle `NetPing::LastMs()`.
+    plugins_.emplace_back(std::make_unique<NetPing>());
   }
   {
     auto chat_tweaks = std::make_unique<ChatTweaks>();

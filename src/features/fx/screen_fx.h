@@ -1,9 +1,11 @@
 #pragma once
 
 #include <climits>
+#include <cstdint>
 
 #include "features/plugin.h"
 #include "d3d9/d3d9_hook.h"  // D3D9PostFx
+#include "imgui.h"           // IM_COL32 (défauts de l'overlay FPS)
 
 // Client "Game Settings"-style tweaks the native options window can't do.
 //
@@ -22,6 +24,16 @@ class ScreenFx : public Plugin {
   // Persisted config access (used by moonlight_ui's settings save/load).
   D3D9PostFx& fx() { return fx_; }
   bool& fps_overlay() { return fps_overlay_; }
+  // ── Habillage de l'overlay FPS ────────────────────────────────────────────
+  // Les couleurs sont des ImU32 (ABGR empaqueté, l'ordre d'`IM_COL32`) : la
+  // table de réglages ne connaît pas `ImVec4`, et un entier se relit à
+  // l'identique d'une version à l'autre.
+  bool&     fps_graph()    { return fps_graph_; }
+  bool&     fps_shadow()   { return fps_shadow_; }
+  bool&     fps_show_ping(){ return fps_show_ping_; }
+  float&    fps_scale()    { return fps_scale_; }
+  uint32_t& fps_bg_col()   { return fps_bg_col_; }
+  uint32_t& fps_text_col() { return fps_text_col_; }
   bool& zoom_enabled() { return zoom_enabled_; }
   float& zoom_factor() { return zoom_factor_; }
   float& zoom_speed() { return zoom_speed_; }
@@ -63,6 +75,20 @@ class ScreenFx : public Plugin {
   bool       fps_overlay_ = false;
   float      fps_hist_[120] = {};  // frametime ring buffer (ms)
   int        fps_head_ = 0;
+
+  // ── Habillage de l'overlay ────────────────────────────────────────────────
+  // Défauts choisis pour rester lisibles SANS rien régler : blanc sur un noir à
+  // 45 % — c'est ce que l'overlay affichait en dur — plus l'ombrage, qui ne
+  // coûte qu'un second `AddText` et sauve le texte quand le fond est mis à zéro
+  // au-dessus d'une carte claire.
+  bool     fps_graph_     = true;
+  bool     fps_shadow_    = true;
+  bool     fps_show_ping_ = true;
+  float    fps_scale_     = 1.0f;                       // multiplicateur de police
+  uint32_t fps_bg_col_    = IM_COL32(0, 0, 0, 115);     // ≈ l'ancien BgAlpha 0.45
+  uint32_t fps_text_col_  = IM_COL32(255, 255, 255, 255);
+  // Dessine le texte à la position courante, avec son ombre si elle est active.
+  void FpsText(const char* text) const;
 
   // ── Camera zoom-out extension ────────────────────────────────────────────
   // Camera_ApplyViewDistanceClamp (0x00c82340) clamps the zoom to the engine's

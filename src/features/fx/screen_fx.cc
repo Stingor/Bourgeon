@@ -11,6 +11,7 @@
 #include "bourgeon.h"
 #include "d3d9/d3d9_hook.h"
 #include "features/moonlight_ui/moonlight_ui.h"
+#include "features/systems/net_ping.h"     // le ping affiché par l'overlay
 #include "features/windows/chat_window.h"  // imgui_enabled_ : plafond du FXAA
 #include "ui/ro_imgui.h"
 #include "utils/i18n.h"
@@ -124,12 +125,55 @@ void PatchFloatRO(float* addr, float value) {
 void ScreenFx::DrawSettings() {
   bool apply = false;  // push to the renderer this frame (live preview)
   bool save  = false;  // persist to disk (on release, not every drag frame)
-  if (ro::RoCheckbox(i18n::Tr("Overlay FPS"), &fps_overlay_)) save = true;
   auto slider = [&](const char* label, float* v, float lo, float hi) {
     ImGui::SetNextItemWidth(ro::Px(160.0f));
     if (WheelSliderFloat(label, v, lo, hi)) apply = true;
     if (ImGui::IsItemDeactivatedAfterEdit()) save = true;
   };
+
+  // ── Overlay FPS ────────────────────────────────────────────────────────────
+  if (ro::RoCheckbox(i18n::Tr("Overlay FPS"), &fps_overlay_)) save = true;
+  if (fps_overlay_) {
+    ImGui::Indent();
+    if (ro::RoCheckbox(i18n::Tr("Courbe des temps d'image"), &fps_graph_)) save = true;
+    ImGui::SameLine();
+    HelpMarker(i18n::Tr("Les 120 dernières images, de 0 à 33 ms. Un pic visible "
+                        "est un à-coup — c'est ce qu'un compteur moyenné cache."));
+
+    if (ro::RoCheckbox(i18n::Tr("Ping serveur"), &fps_show_ping_)) save = true;
+    ImGui::SameLine();
+    HelpMarker(i18n::Tr("Mesuré sur l'échange d'heure que le client entretient "
+                        "déjà avec le serveur, toutes les quelques secondes : "
+                        "rien n'est envoyé en plus.\n"
+                        "« -- » tant qu'aucun échange n'a eu lieu."));
+
+    if (ro::RoCheckbox(i18n::Tr("Ombrage du texte"), &fps_shadow_)) save = true;
+    ImGui::SameLine();
+    HelpMarker(i18n::Tr("Une ombre d'un pixel sous le texte. C'est elle qui le "
+                        "garde lisible si vous rendez le fond transparent."));
+
+    ImGui::SetNextItemWidth(ro::Px(160.0f));
+    if (WheelSliderFloat(i18n::Tr("Taille du texte"), &fps_scale_, 0.6f, 3.0f, "%.1fx"))
+      save = true;
+
+    // ⚠ `ColorEdit4` avec l'alpha : « couleur ET opacité » est UNE décision pour
+    // le joueur, et deux widgets l'obligeraient à faire l'aller-retour entre un
+    // curseur et une pastille pour juger du résultat.
+    ImVec4 bg = ImGui::ColorConvertU32ToFloat4(fps_bg_col_);
+    if (ImGui::ColorEdit4(i18n::Tr("Fond"), &bg.x, ImGuiColorEditFlags_AlphaBar |
+                                                       ImGuiColorEditFlags_AlphaPreviewHalf)) {
+      fps_bg_col_ = ImGui::ColorConvertFloat4ToU32(bg);
+      save = true;
+    }
+    ImVec4 text = ImGui::ColorConvertU32ToFloat4(fps_text_col_);
+    if (ImGui::ColorEdit4(i18n::Tr("Texte"), &text.x, ImGuiColorEditFlags_AlphaBar |
+                                                          ImGuiColorEditFlags_AlphaPreviewHalf)) {
+      fps_text_col_ = ImGui::ColorConvertFloat4ToU32(text);
+      save = true;
+    }
+    ImGui::Unindent();
+  }
+  ImGui::Spacing();
 
   if (ro::RoCheckbox(i18n::Tr("Post-processing (effets d'écran)"), &fx_.enabled)) {
     apply = true;
@@ -140,7 +184,7 @@ void ScreenFx::DrawSettings() {
   if (fx_.enabled) {
     // ── Presets ──
     auto preset = [&](const char* name, D3D9PostFx p) {
-      if (ImGui::Button(name)) {
+      if (ro::RoButton(name)) {
         p.enabled = true;
         fx_ = p;
         apply = true;
@@ -222,22 +266,77 @@ void ScreenFx::DrawSettings() {
   }
 }
 
+// Le texte de l'overlay, avec son ombre portée.
+//
+// 🔴 UNE OMBRE, PAS UN CONTOUR. Un contour demande quatre passes et se voit
+// comme un halo ; une ombre d'un pixel en bas à droite suffit à décoller le
+// texte de n'importe quel fond, et c'est justement ce qui rend l'overlay
+// lisible quand le joueur met l'opacité du fond à zéro — ce qu'il fera, puisque
+// le réglage existe. L'ombre est noire à l'alpha du texte : elle disparaît donc
+// avec lui si l'on rend le texte translucide.
+void ScreenFx::FpsText(const char* text) const {
+  if (fps_shadow_) {
+    const ImVec2 pos = ImGui::GetCursorPos();
+    const ImU32 alpha = (fps_text_col_ >> IM_COL32_A_SHIFT) & 0xFF;
+    ImGui::SetCursorPos(ImVec2(pos.x + 1.0f, pos.y + 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(0, 0, 0, alpha));
+    ImGui::TextUnformatted(text);
+    ImGui::PopStyleColor();
+    // Revenir EXACTEMENT sur la position d'origine : `SameLine` ne suffirait
+    // pas, il ne rattrape que l'axe X et laisserait la ligne décalée d'un pixel
+    // vers le bas pour tout ce qui suit.
+    ImGui::SetCursorPos(pos);
+  }
+  ImGui::PushStyleColor(ImGuiCol_Text, fps_text_col_);
+  ImGui::TextUnformatted(text);
+  ImGui::PopStyleColor();
+}
+
 void ScreenFx::OnRenderUI() {
   if (!fps_overlay_) return;
   const ImGuiIO& io = ImGui::GetIO();
   fps_hist_[fps_head_] = io.DeltaTime * 1000.0f;  // ms
   fps_head_ = (fps_head_ + 1) % IM_ARRAYSIZE(fps_hist_);
 
-  ImGui::SetNextWindowBgAlpha(0.45f);
+  // Fond posé par le STYLE et non par `SetNextWindowBgAlpha` : celui-ci ne règle
+  // que l'alpha, et le joueur choisit ici la couleur entière.
+  ImGui::PushStyleColor(ImGuiCol_WindowBg, fps_bg_col_);
   ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration |
                            ImGuiWindowFlags_AlwaysAutoResize |
                            ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoFocusOnAppearing;
   if (ImGui::Begin("##fps_overlay", nullptr, flags)) {
-    ImGui::Text(i18n::Tr("%.0f FPS  (%.1f ms)"), io.Framerate, 1000.0f / io.Framerate);
-    ImGui::PlotLines("##ft", fps_hist_, IM_ARRAYSIZE(fps_hist_), fps_head_, nullptr,
-                     0.0f, 33.3f, ImVec2(140, 32));
+    // ⚠ `SetWindowFontScale` et pas une police de plus : l'overlay n'affiche que
+    // des chiffres, et charger un second atlas pour ça coûterait de la mémoire
+    // vidéo à chaque changement de taille. Le grossissement est un peu mou au
+    // -delà de ×2, ce qui est acceptable ici et ne l'aurait pas été pour du texte.
+    ImGui::SetWindowFontScale(fps_scale_);
+
+    char line[96];
+    std::snprintf(line, sizeof(line), i18n::Tr("%.0f FPS  (%.1f ms)"), io.Framerate,
+                  1000.0f / io.Framerate);
+    FpsText(line);
+
+    if (fps_show_ping_) {
+      const int ping = NetPing::LastMs();
+      if (ping >= 0) {
+        std::snprintf(line, sizeof(line), i18n::Tr("%d ms au serveur"), ping);
+      } else {
+        // 🔴 DIRE L'ABSENCE. Le client ne demande l'heure du serveur que toutes
+        // les quelques secondes : avant le premier battement — et hors du jeu —
+        // il n'y a rien à afficher. Un « 0 ms » se lirait comme une mesure.
+        std::snprintf(line, sizeof(line), "%s", i18n::Tr("-- ms au serveur"));
+      }
+      FpsText(line);
+    }
+
+    if (fps_graph_) {
+      ImGui::PlotLines("##ft", fps_hist_, IM_ARRAYSIZE(fps_hist_), fps_head_, nullptr,
+                       0.0f, 33.3f, ImVec2(140.0f * fps_scale_, 32.0f * fps_scale_));
+    }
+    ImGui::SetWindowFontScale(1.0f);
   }
   ImGui::End();
+  ImGui::PopStyleColor();
 }
 
 void ScreenFx::OnTick() {

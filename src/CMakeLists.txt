@@ -199,6 +199,8 @@ set(BOURGEON_FILES
 	"features/systems/bourgeon_opcodes.h"
 	"features/systems/bug_report.cc"
 	"features/systems/bug_report.h"
+	"features/systems/net_ping.cc"
+	"features/systems/net_ping.h"
 	"features/systems/cheat_detector.cc"
 	"features/systems/cheat_detector.h"
 	"features/systems/discord_relay.cc"
