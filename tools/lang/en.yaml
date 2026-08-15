@@ -2844,7 +2844,7 @@
 "Ombrage du texte": "Text shadow"
 "Une ombre d'un pixel sous le texte. C'est elle qui le garde lisible si vous rendez le fond transparent.": "A one-pixel shadow under the text. It is what keeps it readable if you make the background transparent."
 "Fond": "Background"
-"%d ms au serveur": "%d ms to server"
+"%.1f ms au serveur": "%.1f ms to server"
 "-- ms au serveur": "-- ms to server"
 "Tous les onglets": "All tabs"
 "Sprite propre à chaque arme": "Each weapon keeps its own sprite"

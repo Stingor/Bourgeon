@@ -2800,7 +2800,7 @@
 "Ombrage du texte": "Sombra del texto"
 "Une ombre d'un pixel sous le texte. C'est elle qui le garde lisible si vous rendez le fond transparent.": "Una sombra de un píxel bajo el texto. Es lo que lo mantiene legible si dejas el fondo transparente."
 "Fond": "Fondo"
-"%d ms au serveur": "%d ms al servidor"
+"%.1f ms au serveur": "%.1f ms al servidor"
 "-- ms au serveur": "-- ms al servidor"
 "Tous les onglets": "Todas las pestañas"
 "Sprite propre à chaque arme": "Cada arma con su propio sprite"

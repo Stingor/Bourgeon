@@ -301,6 +301,11 @@ void ScreenFx::OnRenderUI() {
   // Fond posé par le STYLE et non par `SetNextWindowBgAlpha` : celui-ci ne règle
   // que l'alpha, et le joueur choisit ici la couleur entière.
   ImGui::PushStyleColor(ImGuiCol_WindowBg, fps_bg_col_);
+  // ⚠ `NoDecoration` ne retire PAS la bordure : il enlève titre, redimensionnement
+  // et barre de défilement, mais le liseré vient de `WindowBorderSize`, un style.
+  // Sans cette ligne l'overlay porte un cadre que le joueur n'a pas demandé — et
+  // qui reste visible même avec le fond rendu transparent.
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
   ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration |
                            ImGuiWindowFlags_AlwaysAutoResize |
                            ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoFocusOnAppearing;
@@ -317,9 +322,13 @@ void ScreenFx::OnRenderUI() {
     FpsText(line);
 
     if (fps_show_ping_) {
-      const int ping = NetPing::LastMs();
-      if (ping >= 0) {
-        std::snprintf(line, sizeof(line), i18n::Tr("%d ms au serveur"), ping);
+      const int ping_us = NetPing::LastUs();
+      if (ping_us >= 0) {
+        // Une décimale, parce que la mesure la mérite maintenant : sur un
+        // serveur local l'aller-retour tient sous la milliseconde, et l'arrondir
+        // à l'entier redonnerait le « 0 ms » que la basse résolution affichait.
+        std::snprintf(line, sizeof(line), i18n::Tr("%.1f ms au serveur"),
+                      ping_us / 1000.0f);
       } else {
         // 🔴 DIRE L'ABSENCE. Le client ne demande l'heure du serveur que toutes
         // les quelques secondes : avant le premier battement — et hors du jeu —
@@ -336,6 +345,7 @@ void ScreenFx::OnRenderUI() {
     ImGui::SetWindowFontScale(1.0f);
   }
   ImGui::End();
+  ImGui::PopStyleVar();
   ImGui::PopStyleColor();
 }
 

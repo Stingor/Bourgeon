@@ -37,21 +37,27 @@ class NetPing : public Plugin {
   void OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
   void OnModeSwitch(ModeMgr::ModeType mode_type, const char* map_name) override;
 
-  // Le dernier aller-retour mesuré, en millisecondes. **−1 tant qu'on n'a rien
-  // mesuré** — c'est le cas au premier chargement (le client n'a pas encore
+  // Le dernier aller-retour mesuré, en **MICROSECONDES**. −1 tant qu'on n'a rien
+  // mesuré — c'est le cas au premier chargement (le client n'a pas encore
   // battu), hors du jeu, et sur un client dont on ne reconnaîtrait pas la
   // demande. L'appelant doit afficher cette absence, pas un zéro.
-  static int LastMs();
+  //
+  // 🔴 EN MICROSECONDES, ET C'EST UNE CORRECTION. La première version mesurait
+  // avec `GetTickCount64`, dont le pas est le tick du planificateur — ~15,6 ms.
+  // Un aller-retour local tombait donc toujours sur 0 ou 15 ms, et ce « 15 »
+  // n'était pas une latence mais la granularité de l'horloge. On mesure
+  // désormais au compteur de performance, qui a la résolution du matériel.
+  static int LastUs();
 
   // Horodate la demande d'heure. Appelée par `RagConnection::SendPacketHook`
   // pour TOUT paquet sortant ; c'est elle qui trie.
   static void NoteSend(uint16_t opcode, int packet_len);
 
  private:
-  // Horloge monotone en millisecondes (`GetTickCount64`), 0 = « rien en vol ».
+  // Compteur de performance à l'envoi, 0 = « rien en vol ».
   static std::atomic<uint64_t> s_sent_at_;
   // L'opcode retenu une fois qu'un aller-retour a réussi. 0 = on cherche encore.
   static std::atomic<uint16_t> s_learned_op_;
   static std::atomic<uint16_t> s_pending_op_;
-  static std::atomic<int>      s_last_ms_;
+  static std::atomic<int>      s_last_us_;
 };
