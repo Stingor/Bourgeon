@@ -2835,7 +2835,7 @@
 "Contrôles": "Controls"
 "Bordure d'emblème": "Emblem Border"
 "Notification de connexion": "Login Notification"
-"Encadre l'emblème de guilde. Le client d'origine ne dessine jamais ce cadre : Bourgeon l'honore là où il dessine lui-même l'emblème.": "Frames the guild emblem. The stock client never draws this frame: Bourgeon honours it where it draws the emblem itself."
+"Encadre l'emblème de guilde au-dessus des noms. Le client ne dessine ce cadre que sur une carte de siège (GvG) : ailleurs la commande bascule, mais rien ne change à l'écran. Bourgeon l'honore partout où il dessine lui-même l'emblème, comme la fiche de personnage.": "Frames the guild emblem above names. The client only draws this frame on a siege (GvG) map: elsewhere the command toggles, but nothing changes on screen. Bourgeon honours it wherever it draws the emblem itself, such as the character sheet."
 
 ⚠ The stock client NEVER draws this frame, whatever you tick: its only drawing function is reached solely in a tag-display mode this client never enables. Bourgeon honours it where it draws the emblem itself."
 

@@ -765,10 +765,16 @@ void GameSettings::DrawBasicTab() {
     pending_writes_.push_back(write);
   }
   ImGui::SameLine();
+  // 🔴 L'INFOBULLE DIT LA CONDITION MANQUANTE, parce que le réglage seul ne
+  // suffit jamais : le client calcule `cadre = (carte GvG) ET (/frame)`. Sans
+  // cette phrase, la case passe pour cassée — c'est exactement ce qui a coûté
+  // une demi-journée d'enquête (docs/game_option_re.md §3.3).
   mui::HelpMarker(
-      i18n::Tr("Encadre l'emblème de guilde. Le client d'origine ne dessine "
-               "jamais ce cadre : Bourgeon l'honore là où il dessine lui-même "
-               "l'emblème."));
+      i18n::Tr("Encadre l'emblème de guilde au-dessus des noms. Le client ne "
+               "dessine ce cadre que sur une carte de siège (GvG) : ailleurs la "
+               "commande bascule, mais rien ne change à l'écran. Bourgeon "
+               "l'honore partout où il dessine lui-même l'emblème, comme la "
+               "fiche de personnage."));
 
   bool login = PendingValue(kTtLoginNotify, gamesettings::IsOn(kTtLoginNotify));
   if (ro::RoCheckbox(
