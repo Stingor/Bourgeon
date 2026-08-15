@@ -128,6 +128,9 @@ constexpr uintptr_t kInputTargetMode    = 0x015ff838;  // 0 public 1 groupe 2 gu
 constexpr uintptr_t kOwnGuildId         = 0x0159c230;
 constexpr uintptr_t kPartyMemberCount   = 0x00d5cf50;  // __thiscall(ctxKey)
 constexpr uintptr_t kClanStatePtr       = 0x0159c07c;  // *(byte*)(*ptr + 0x5C) = clan
+// `/battlechat` : quand il est armé, l'ENTRÉE native envoie tout au champ de
+// bataille et ne consulte NI le mode NI les préfixes (0x00c7a905).
+constexpr uintptr_t kBattleChatModeOn   = 0x015ff824;
 constexpr int       kSendMsgVtOff       = 0x18;        // CMode::SendMsg (vtbl+0x18)
 // Les commandes de CMode::SendMsg utilisées ici (§5.2 de la doc).
 constexpr int kMsgPublic  = 6;
@@ -135,6 +138,8 @@ constexpr int kMsgWhisper = 11;
 constexpr int kMsgParty   = 66;   // 0x42
 constexpr int kMsgGuild   = 129;  // 0x81
 constexpr int kMsgClan    = 289;  // 0x121
+constexpr int kMsgAlly    = 330;  // 0x14A — guildes ALLIÉES (paquet 0xBDD)
+constexpr int kMsgBattle  = 254;  // 0xFE  — champ de bataille (paquet 0x2DB)
 constexpr int kMsgCommand = 42;   // 0x2A -> Chat_HandleChatMessage
 // « Cette commande n'accepte pas de lien d'objet » — le refus de l'ENTRÉE
 // native, réservé aux commandes slash 18/26/55.
@@ -743,14 +748,126 @@ bool ModeSendMsg(int cmd, int p2 = 0, int p3 = 0, int p4 = 0, int p5 = 0) {
   return true;
 }
 
+// Nombre de membres de mon groupe. ⚠ Appel natif : sous SEH seulement.
+int PartyMemberCount() {
+  return reinterpret_cast<PartyCount_t>(kPartyMemberCount)(
+      reinterpret_cast<void*>(kUIWindowContextKey));
+}
+
+// Les trois touches que l'ENTRÉE native consulte au moment où l'on valide. Même
+// API que le client (`GetAsyncKeyState`, bit « enfoncée MAINTENANT ») : pour
+// Verr.Maj c'est donc la touche PHYSIQUEMENT tenue, pas le voyant allumé.
+ChatWindow::SendToggles ReadSendToggleKeys() {
+  ChatWindow::SendToggles toggles;
+  toggles.party = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
+  toggles.guild = (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
+  toggles.ally  = (GetAsyncKeyState(VK_CAPITAL) & 0x8000) != 0;
+  return toggles;
+}
+
+// Ce premier caractère est-il un préfixe de canal ? Si oui, arme la bascule
+// correspondante. Les trois sont ceux du client (0x00c7a7ea / 7a821 / 7a894).
+bool SendPrefixToggle(char first, ChatWindow::SendToggles* toggles) {
+  switch (first) {
+    case '%': toggles->party = true; return true;
+    case '$': toggles->guild = true; return true;
+    case '#': toggles->ally  = true; return true;
+    default: return false;
+  }
+}
+
+// Retire le préfixe de tête et arme sa bascule. Rend false quand il ne reste
+// rien à envoyer : le natif compare la longueur à 1 et abandonne l'envoi tout
+// entier sur un « % » solitaire. ⚠ `*text` a alors déjà avancé — sans
+// conséquence, l'appelant ne s'en sert plus.
+bool StripSendPrefix(const char** text, ChatWindow::SendToggles* toggles) {
+  if (!SendPrefixToggle((*text)[0], toggles)) return true;
+  ++(*text);
+  return (*text)[0] != '\0';
+}
+
+// ── Le canal réellement visé par un envoi ────────────────────────────────────
+// Réplique du routage du `case 0` de `Chat_HandleChatMessage` (0x00c7a7b2,
+// docs/chatbox_re.md §3.3), gardes d'appartenance comprises : le client REFUSE
+// de parler à un canal dont on n'est pas (pas de groupe, pas de guilde, pas de
+// clan) et retombe alors sur le public.
+//
+// 🔴 Une bascule ne DÉSIGNE pas toujours un canal, elle le QUITTE quand c'est
+// déjà celui de la combo : « $ » en mode Guilde renvoie au public, exactement
+// comme le natif. Ce n'est qu'au mode « Tous » — ou quand le canal armé est
+// indisponible — qu'elle sert à choisir.
+//
+// ⚠ DEUX écarts assumés avec le chemin des MACROS, qui ne connaît ni le mode 4
+// ni le champ de bataille et envoie donc en public dans les deux cas : ici, tout
+// ce qui part d'une macro ou d'une émote passe par le même routeur. C'est notre
+// combo qui tranche — elle PROPOSE « Alliés », et un joueur qui l'a choisi
+// n'attend pas que son émote parte à la carte entière.
+//
+// ⚠ Déréférence les globaux du client et appelle le natif : sous SEH seulement.
+int ResolveSendCommand(ChatWindow::SendToggles toggles) {
+  // Le chat de champ de bataille court-circuite tout, mode et bascules compris.
+  if (*reinterpret_cast<int*>(kBattleChatModeOn) != 0) return kMsgBattle;
+
+  const int  mode     = *reinterpret_cast<int*>(kInputTargetMode);
+  const bool in_guild = *reinterpret_cast<uint32_t*>(kOwnGuildId) != 0;
+  if (mode == 2 && in_guild) return toggles.guild ? kMsgPublic : kMsgGuild;
+  if (mode == 1) {
+    if (toggles.party) return kMsgPublic;
+    return (PartyMemberCount() != 0) ? kMsgParty : kMsgPublic;
+  }
+  if (mode == 3) {
+    const uint8_t* clan = *reinterpret_cast<const uint8_t**>(kClanStatePtr);
+    if (clan != nullptr && clan[0x5C] == 1) return kMsgClan;
+  } else if (mode == 4 && in_guild) {
+    return toggles.ally ? kMsgPublic : kMsgAlly;
+  }
+  // Chemin par défaut : mode « Tous », ou canal armé indisponible.
+  if (toggles.party && PartyMemberCount() != 0) return kMsgParty;
+  if (toggles.guild) return kMsgGuild;  // ⚠ le natif ne teste PAS la guilde ici
+  if (toggles.ally)  return kMsgAlly;
+  return kMsgPublic;
+}
+
+// Même question, posée depuis une frame ImGui (aperçu de la combo) : lecture
+// protégée, repli sur le public.
+int SafeResolveSendCommand(ChatWindow::SendToggles toggles) {
+  __try {
+    return ResolveSendCommand(toggles);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    return kMsgPublic;
+  }
+}
+
+// L'index de la combo (0 Tous, 1 Groupe, 2 Guilde, 3 Clan, 4 Alliés) qui décrit
+// une commande d'envoi, ou -1 quand la combo n'a rien pour le dire (bataille).
+int SendCommandToModeIndex(int command) {
+  switch (command) {
+    case kMsgPublic: return 0;
+    case kMsgParty:  return 1;
+    case kMsgGuild:  return 2;
+    case kMsgClan:   return 3;
+    case kMsgAlly:   return 4;
+    default:         return -1;
+  }
+}
+
 // Envoie `text` (code-page du fil) exactement comme l'ENTER natif : commandes,
 // modes d'envoi, chuchotement. `whisper_target` non vide = chuchotement, comme la
 // box destinataire du chat natif. Rend un message d'erreur à afficher, ou nullptr.
+//
+// `typed` distingue les deux chemins d'envoi du client, qui ne routent PAS de la
+// même façon : une ligne TAPÉE passe par le `case 0` (préfixes de tête +
+// touches maintenues), une macro ou une émote part au mode armé sans rien lire
+// (`ChatMacro_SendEmotionHotkeySlot`). `toggles` porte les touches relevées à la
+// validation — pas ici : FlushPending tourne une frame plus tard, et une touche
+// relâchée entre-temps changerait le canal sous les pieds du joueur.
+
 // Code de la dernière exception attrapée dans le chemin d'envoi. Hors du __try :
 // une variable locale modifiée dans le filtre SEH n'est pas fiable.
 DWORD g_last_send_fault = 0;
 
-const char* NativeSendChatText(const char* text, const char* whisper_target) {
+const char* NativeSendChatText(const char* text, const char* whisper_target,
+                               bool typed, ChatWindow::SendToggles toggles) {
   if (text == nullptr || text[0] == '\0') return nullptr;
 
   const char* error = nullptr;
@@ -786,24 +903,14 @@ const char* NativeSendChatText(const char* text, const char* whisper_target) {
       ModeSendMsg(kMsgWhisper,
                   static_cast<int>(reinterpret_cast<intptr_t>(whisper_target)));
     } else {
-      SetPendingSendText(text);
-      // Mode d'envoi : le client REFUSE de basculer vers un canal auquel on
-      // n'appartient pas (pas de groupe, pas de guilde, pas de clan) et retombe
-      // sur le public. On rejoue ses trois gardes.
-      const int mode = *reinterpret_cast<int*>(kInputTargetMode);
-      bool sent = false;
-      if (mode == 2) {
-        if (*reinterpret_cast<uint32_t*>(kOwnGuildId) != 0)
-          sent = ModeSendMsg(kMsgGuild);
-      } else if (mode == 1) {
-        void* ctx = reinterpret_cast<void*>(kUIWindowContextKey);
-        if (reinterpret_cast<PartyCount_t>(kPartyMemberCount)(ctx) != 0)
-          sent = ModeSendMsg(kMsgParty);
-      } else if (mode == 3) {
-        const uint8_t* clan = *reinterpret_cast<const uint8_t**>(kClanStatePtr);
-        if (clan != nullptr && clan[0x5C] != 0) sent = ModeSendMsg(kMsgClan);
-      }
-      if (!sent) ModeSendMsg(kMsgPublic);
+      // Texte simple. 🔴 C'est ICI que l'ENTRÉE native diffère des macros : elle
+      // lit d'abord un « % / $ / # » de tête, qu'elle RETIRE du message, puis
+      // route selon la bascule et le mode armé. Une ligne partie sans ce
+      // dépouillement s'affiche avec son préfixe et va au mauvais canal.
+      const char* body = text;
+      if (typed && !StripSendPrefix(&body, &toggles)) return nullptr;
+      SetPendingSendText(body);
+      ModeSendMsg(ResolveSendCommand(toggles));
     }
   } __except (g_last_send_fault = GetExceptionCode(), EXCEPTION_EXECUTE_HANDLER) {
     // 🔴 Le code de l'exception, PAS un message générique. « L'envoi a échoué »
@@ -3588,6 +3695,7 @@ void ChatWindow::QueueWhisperSend(Channel& channel) {
   pending_text_    = ro::Utf8ToWireText(channel.whisper_input.c_str());
   pending_whisper_ = ro::Utf8ToWire(channel.whisper_with.c_str());
   has_pending_     = true;
+  pending_typed_   = false;  // un chuchotement ne lit aucun préfixe de canal
   channel.whisper_stamp = GetTickCount();
   channel.whisper_input.clear();
 }
@@ -4837,7 +4945,8 @@ bool ChatWindow::SendTextNow(const char* utf8, const char* whisper_utf8) {
   // ce correspondant-là, même si la box destinataire du chat dit autre chose.
   pending_whisper_ =
       ro::Utf8ToWire((whisper_utf8 != nullptr) ? whisper_utf8 : whisper_);
-  has_pending_ = true;
+  has_pending_   = true;
+  pending_typed_ = false;  // ce n'est pas une ligne tapée : aucun préfixe à lire
   return true;
 }
 
@@ -4901,10 +5010,27 @@ void ChatWindow::DrawInputRow() {
   // lui : le nom est déjà LU dans la box juste à côté, et le répéter mangerait la
   // seule information que la combo apporte.
   const bool channel_selected = whisper_[0] == '#';
-  const char* preview = channel_selected ? whisper_ : kModes[mode];
+  // 🔴 Un préfixe tapé l'emporte AUSSI sur le mode armé, et pour la même raison
+  // il doit se lire ici : « $ » en tête envoie en guilde depuis « Tous »… et
+  // RENVOIE au public depuis « Guilde ». Seul le routage complet sait laquelle
+  // des deux, d'où l'appel plutôt qu'une table. Le mode armé, lui, ne bouge pas :
+  // c'est la coche de la liste qui continue de le montrer.
+  int preview_mode = mode;
+  if (!channel_selected && whisper_[0] == '\0') {
+    SendToggles typed_toggles;
+    if (SendPrefixToggle(input_[0], &typed_toggles)) {
+      const int prefixed_mode =
+          SendCommandToModeIndex(SafeResolveSendCommand(typed_toggles));
+      if (prefixed_mode >= 0) preview_mode = prefixed_mode;
+    }
+  }
+  const char* preview =
+      channel_selected ? whisper_ : i18n::Tr(kModes[preview_mode]);
   ImGui::SetNextItemWidth(ro::Px(80.0f));
   ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
-  if (ro::RoBeginCombo("##chat_mode", preview)) {
+  const bool mode_combo_open    = ro::RoBeginCombo("##chat_mode", preview);
+  const bool mode_combo_hovered = ImGui::IsItemHovered();
+  if (mode_combo_open) {
     for (int i = 0; i < static_cast<int>(_countof(kModes)); ++i) {
       if (ImGui::Selectable(i18n::Tr(kModes[i]), !channel_selected && mode == i)) {
         WriteSendMode(i);
@@ -4945,6 +5071,19 @@ void ChatWindow::DrawInputRow() {
       }
     }
     ro::RoEndCombo();
+  }
+  // Les préfixes ne se devinent pas : le client ne les écrit nulle part, et un
+  // joueur qui vient du chat natif est justement celui qui les cherche.
+  if (mode_combo_hovered && !mode_combo_open) {
+    ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
+    // « %s » et pas la chaîne directement : le texte porte un « % », que
+    // SetTooltip lirait comme un format.
+    ImGui::SetTooltip("%s", i18n::Tr(
+        "Où part ce que tu écris.\n"
+        "En tête de phrase, sans toucher au réglage :\n"
+        "  % groupe (ou Ctrl)   $ guilde (ou Alt)   # alliés (ou Verr.Maj)\n"
+        "Le préfixe RENVOIE au public quand c'est déjà le canal choisi."));
+    ImGui::PopStyleColor();
   }
   ImGui::PopStyleColor();
   ImGui::SameLine();
@@ -6186,7 +6325,8 @@ void ChatWindow::QueueCommand(const char* utf8) {
   if (utf8 == nullptr || utf8[0] == '\0') return;
   pending_text_ = ro::Utf8ToWireText(utf8);
   pending_whisper_.clear();
-  has_pending_ = true;
+  has_pending_   = true;
+  pending_typed_ = false;  // une commande de menu, pas une ligne tapée
 }
 
 void ChatWindow::QueueNameAction(NameAction action, const char* name_wire) {
@@ -6641,6 +6781,11 @@ void ChatWindow::QueueSend() {
   pending_text_    = ro::Utf8ToWireText(resolved.c_str());
   pending_whisper_ = ro::Utf8ToWire(whisper_);
   has_pending_     = true;
+  // 🔴 Les touches se relèvent MAINTENANT, pas à l'envoi : `FlushPending` tourne
+  // une frame plus tard, et le Ctrl que le joueur tenait en validant sera peut-être
+  // déjà relâché. Le natif, lui, les lit dans la foulée de sa touche ENTRÉE.
+  pending_typed_   = true;
+  pending_toggles_ = ReadSendToggleKeys();
   input_[0] = '\0';
 }
 
@@ -6763,8 +6908,14 @@ void ChatWindow::FlushPending() {
   FlushNameAction();
   if (!has_pending_) return;
   has_pending_ = false;
-  const char* error =
-      NativeSendChatText(pending_text_.c_str(), pending_whisper_.c_str());
+  const SendToggles toggles = pending_toggles_;
+  const bool        typed   = pending_typed_;
+  // Remis à zéro TOUT DE SUITE : le prochain envoi qui n'est pas une ligne tapée
+  // ne doit rien hériter de celle-ci.
+  pending_typed_   = false;
+  pending_toggles_ = SendToggles();
+  const char* error = NativeSendChatText(pending_text_.c_str(),
+                                         pending_whisper_.c_str(), typed, toggles);
   pending_text_.clear();
   pending_whisper_.clear();
   // Un refus (mot interdit) s'affiche dans NOTRE chat : le natif ouvrirait une

@@ -1027,8 +1027,22 @@ Un lien Moonlight reste donc lisible par un client vanille.
 
 ### 8.5 Envoi = Option B (répliquer — l'input natif n'existe plus)
 - Texte simple : `std_string_assign(g_ChatPendingSendText, txt)` puis
-  `CMode::SendMsg(0x2A, 0, 0, 0, 0)` — les préfixes %/$/#, le mode
-  (`g_ChatInputTargetMode`) et le battle-chat sont gérés par le case 0 natif.
+  `CMode::SendMsg` **de la commande du canal** (6 / 0x42 / 0x81 / 0x121 / 0x14A /
+  0xFE). 🔴 **Passer par `SendMsg(0x2A, 0)` — le case 0 — ferait tout ce travail
+  tout seul, mais ce n'est PAS ce que fait `chat_window.cc`** : il a copié le
+  chemin des MACROS (`ChatMacro_SendEmotionHotkeySlot`), qui appelle directement
+  la commande de canal. Conséquence mesurée le 2026-08-15 : les préfixes `%` /
+  `$` / `#` partaient LITTÉRALEMENT, en public.
+  ⇒ `ResolveSendCommand` (chat_window.cc) rejoue le case 0 en C++ :
+  * préfixe de tête RETIRÉ du message, `%` groupe / `$` guilde / `#` alliés, et
+    Ctrl / Alt / Verr.Maj **enfoncées** font la même chose (0x00c7a85d) ;
+  * un préfixe seul (« % ») n'envoie RIEN — le natif compare la longueur à 1 ;
+  * la bascule **quitte** le canal quand c'est déjà celui de `g_ChatInputTargetMode`
+    (« $ » en mode Guilde → public) ; elle ne DÉSIGNE un canal qu'au mode « Tous »
+    ou quand le canal armé est indisponible ;
+  * `g_BattleChatModeOn 0x015ff824` court-circuite tout (`SendMsg(0xFE)`).
+  ⚠ Les macros, elles, ne lisent NI préfixe NI touche (vérifié au décompilé) :
+  d'où le drapeau `typed` du chemin d'envoi.
 - Whisper : pending text + `SendMsg(11, nomCible)` ; notre propre historique de
   destinataires (l'équivalent de la box `+0xC0`).
 - Commandes : `ChatCmd_LookupSlashCommandTable(txt, &id, args)` (callable

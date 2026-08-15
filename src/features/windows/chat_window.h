@@ -377,6 +377,20 @@ class ChatWindow : public Plugin {
   // s'en sert : une commande ne doit JAMAIS partir pendant une frame ImGui.
   void QueueCommand(const char* utf8);
 
+  // ── Les bascules de canal d'une ligne TAPÉE ────────────────────────────────
+  // Un « % / $ / # » en tête de phrase, ou la touche équivalente maintenue au
+  // moment où l'on valide. Ce sont les trois du client, relevées dans le
+  // `case 0` de `Chat_HandleChatMessage` (docs/chatbox_re.md §3.3) : elles
+  // envoient la phrase à un autre canal que celui de la combo, sans y toucher.
+  //
+  // 🔴 Publique parce que le chemin d'envoi vit dans le namespace anonyme du
+  // .cc — elle n'a aucun autre usage à l'extérieur.
+  struct SendToggles {
+    bool party = false;  // « % » ou Ctrl
+    bool guild = false;  // « $ » ou Alt
+    bool ally  = false;  // « # » ou Verr.Maj
+  };
+
   // ── Actions sur un JOUEUR désigné par son NOM ───────────────────────────────
   // Armées pendant la frame, jouées par `FlushPending` — deux d'entre elles
   // passent par le natif, proscrit entre NewFrame et Render. `name` est dans la
@@ -1284,6 +1298,12 @@ class ChatWindow : public Plugin {
   std::string pending_text_;
   std::string pending_whisper_;
   bool        has_pending_ = false;
+  // 🔴 Une ligne TAPÉE et une macro ne routent pas pareil : seule la première
+  // lit les préfixes et les touches (cf. SendToggles). Les touches sont relevées
+  // à la VALIDATION et voyagent ici, parce que FlushPending tourne une frame
+  // plus tard — le temps de relâcher Ctrl et de changer de canal sans le vouloir.
+  bool        pending_typed_ = false;
+  SendToggles pending_toggles_;
   // Action « par nom » en attente (cf. QueueNameAction). Une seule à la fois : ce
   // sont des gestes de menu, et il n'en part qu'un par clic.
   std::string pending_name_;

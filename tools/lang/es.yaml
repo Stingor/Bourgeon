@@ -781,6 +781,7 @@
 "Exporter en GIF": "Exportar en GIF"
 "Ecrit un GIF par emote dans « emotes_export »,\na cote de l'executable. Pour Discord.": "Escribe un GIF por emote en « emotes_export »,\njunto al ejecutable. Para Discord."
 "Destinataire du chuchotement.\nClic droit : les récents.": "Destinatario del susurro.\nClic derecho: los recientes."
+"Où part ce que tu écris.\nEn tête de phrase, sans toucher au réglage :\n  % groupe (ou Ctrl)   $ guilde (ou Alt)   # alliés (ou Verr.Maj)\nLe préfixe RENVOIE au public quand c'est déjà le canal choisi.": "A dónde va lo que escribes.\nAl principio de la frase, sin tocar el ajuste:\n  % party (o Ctrl)   $ guild (o Alt)   # aliados (o Bloq Mayús)\nEl prefijo DEVUELVE al público cuando ese canal ya es el elegido."
 "%s\nLecture seule.": "%s\nSolo lectura."
 "Emotes et emoji.\nUne emote part SEULE, en clair (« :smile: ») : tout le monde la lit.\nUn emoji, lui, s'ajoute à ta phrase.": "Emotes y emoji.\nUn emote sale SOLO, en texto plano (« :smile: »): todo el mundo lo lee.\nUn emoji, en cambio, se añade a tu frase."
 "Renommer le canal — Entrée pour valider.": "Renombrar el canal — Intro para confirmar."
