@@ -245,6 +245,16 @@ Points importants :
 * Les valeurs de `clientinfo.xml` viennent de `Apply_ClientInfoConnection`
   `0x00a72da0` : `<address>`, `<port>`, `<domain>`, `<langtype>`,
   `<registrationweb>`, `<version>`, `<taaddress>`, `<aid>/<admin>`, `<yellow>`.
+
+> ⚠ **`<taaddress>` n'entre PAS dans la chaîne ci-dessus**, malgré son nom
+> (« TA » = l'adresse du service d'**assistance**). Il est recopié tel quel
+> (`snprintf "%s"`) dans un tampon global de **129 octets** à `0x0159B820`
+> (`0x00A72E78`), qui est un canal PARALLÈLE — la résolution d'`AssistAddr` ne le
+> consulte jamais. Son défaut, posé par `sub_A716D0` quand `clientinfo.xml`
+> manque, est une chaîne codée en dur avec un port tiré au hasard parmi trois
+> (6951–6953) : **ces chaînes sont VIDES dans l'exe distribué**, Gravity ayant
+> retiré ses adresses internes. C'est pourquoi un client sans `<taaddress>`
+> — comme celui de Moonlight — fonctionne parfaitement : seul le Lua compte.
 * Si `AssistAddr` est vide **et** que `AssistAddrTbl` n'existe pas, la fonction
   renvoie `""` et **tous les appelants sautent l'initialisation de leurs URLs**
   (voir §5) — le sous-système concerné devient inerte, sans message d'erreur.
