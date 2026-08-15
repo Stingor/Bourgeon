@@ -52,24 +52,33 @@ constexpr int kMinZonePx = 32;  // en deçà, un tracé est un clic qui a gliss�
 // sur l'écran pendant qu'on cadre la prise suivante.
 constexpr unsigned long kToastMs = 3000;
 
-// <jeu>\screenshot\bourgeon_zone_AAAAMMJJ_HHMMSS.gif (dossier créé au besoin).
-std::string TimestampedGifPath() {
+// Au-delà, on considère que la frame attendue ne viendra pas (Present arrêté :
+// fenêtre réduite en plein écran, device perdu). Une capture demande UNE frame ;
+// deux secondes laissent la marge d'un gros à-coup sans jamais faire attendre.
+constexpr unsigned long kShotTimeoutMs = 2000;
+
+// <jeu>\screenshot\bourgeon_zone_AAAAMMJJ_HHMMSS.<ext> (dossier créé au besoin).
+// L'horodatage va à la SECONDE : deux prises dans la même seconde s'écrasent, ce
+// qui ne peut pas arriver à la main (une capture demande déjà une frame, un GIF
+// plusieurs secondes).
+std::string TimestampedCapturePath(const char* extension) {
   const std::string dir = paths::InGameDir("screenshot");
   CreateDirectoryA(dir.c_str(), nullptr);
   SYSTEMTIME t;
   GetLocalTime(&t);
   char name[64];
-  std::snprintf(name, sizeof(name), "\\bourgeon_zone_%04d%02d%02d_%02d%02d%02d.gif",
-                t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond);
+  std::snprintf(name, sizeof(name), "\\bourgeon_zone_%04d%02d%02d_%02d%02d%02d.%s",
+                t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond, extension);
   return dir + name;
 }
 
-// 🔴 On copie le GIF EN TANT QUE FICHIER (CF_HDROP), pas en tant qu'image. Un
-// CF_DIB/CF_BITMAP n'emporterait que la première image et l'animation — tout
-// l'intérêt du GIF — serait perdue. Avec CF_HDROP, un Ctrl+V dans Discord (ou
-// dans un dossier de l'explorateur) colle le .gif complet, exactement comme un
-// copier-coller de fichier depuis l'explorateur.
-bool CopyGifToClipboard(const std::string& path) {
+// 🔴 On copie le FICHIER (CF_HDROP), pas une image. Pour un GIF, un CF_DIB/
+// CF_BITMAP n'emporterait que la première image et l'animation — tout l'intérêt du
+// format — serait perdue. Avec CF_HDROP, un Ctrl+V dans Discord (ou dans un
+// dossier de l'explorateur) colle le fichier complet, exactement comme un
+// copier-coller depuis l'explorateur. Le PNG d'une capture fixe suit le même
+// chemin : rien ici ne regarde l'extension.
+bool CopyFileToClipboard(const std::string& path) {
   // CF_HDROP = un DROPFILES suivi de la liste des chemins, terminée par un NUL
   // supplémentaire (d'où les +2 : celui du chemin, puis celui de la liste).
   const size_t bytes = sizeof(DROPFILES) + path.size() + 2;
@@ -178,6 +187,18 @@ ZoneRecorder::~ZoneRecorder() {
 
 // ── Capture, sur le fil de rendu ─────────────────────────────────────────────
 void ZoneRecorder::OnPostFrame() {
+  // Image fixe : une seule prise, celle de la première frame qui suit l'appui.
+  // L'écriture du PNG se fait ICI et pas plus tard : le fichier ne peut sortir que
+  // de la surface D3D, qui n'appartient qu'à ce fil. Le coût est celui d'une
+  // frame, comme la touche Impr. écran de Windows.
+  if (state_ == State::kShot) {
+    if (!shot_done_) {
+      shot_ok_   = D3D9_SaveBackbufferRegionPng(zone_x_, zone_y_, zone_w_, zone_h_,
+                                                shot_path_.c_str());
+      shot_done_ = true;  // en DERNIER : c'est ce que le fil principal guette
+    }
+    return;
+  }
   if (state_ != State::kRecording) return;
 
   const unsigned long now = GetTickCount();
@@ -209,6 +230,17 @@ void ZoneRecorder::OnPostFrame() {
 
 // ── Machine à états ──────────────────────────────────────────────────────────
 void ZoneRecorder::PumpState() {
+  if (state_ == State::kShot) {
+    // Même filet que pour l'enregistrement : sans Present (fenêtre réduite, device
+    // perdu) la prise n'aurait jamais lieu, et la touche resterait sans effet ET
+    // sans explication. Deux secondes suffisent — une seule frame est attendue.
+    if (!shot_done_) {
+      if (GetTickCount() - shot_arm_tick_ >= kShotTimeoutMs) FinishScreenshot();
+      return;
+    }
+    FinishScreenshot();
+    return;
+  }
   if (state_ == State::kCountdown) {
     if (static_cast<long>(GetTickCount() - countdown_end_tick_) >= 0) BeginRecording();
     return;
@@ -244,7 +276,7 @@ void ZoneRecorder::PumpState() {
     // un thread qui se termine dans la foulée est un mauvais pari. Le join vient
     // d'avoir lieu, le fichier est donc complet et fermé.
     if (auto_copy_) {
-      clip_msg_ = CopyGifToClipboard(last_saved_path_)
+      clip_msg_ = CopyFileToClipboard(last_saved_path_)
                       ? i18n::Tr("GIF copié — Ctrl+V dans Discord pour le poster.")
                       : i18n::Tr("Copie automatique impossible : une autre application "
                                  "retient le presse-papier. Le bouton ci-dessous "
@@ -361,6 +393,10 @@ void ZoneRecorder::ToggleZoneSelection() {
     case State::kEncoding:
       toast_msg_ = i18n::Tr("Recadrage impossible pendant l'encodage");
       break;
+    case State::kShot:
+      // Une seule frame nous sépare de l'image : le message serait DEDANS. On
+      // ignore, la touche reste disponible juste après.
+      break;
   }
 }
 
@@ -387,7 +423,7 @@ void ZoneRecorder::FinishRecording() {
     return;
   }
 
-  encode_path_   = TimestampedGifPath();
+  encode_path_   = TimestampedCapturePath("gif");
   encode_frames_ = frame_count_;
   // Le GIF compte en centièmes de seconde ; 2 cs est le plancher que respectent
   // les décodeurs (en dessous, la plupart substituent 10 cs et l'animation traîne).
@@ -407,6 +443,78 @@ void ZoneRecorder::FinishRecording() {
   });
 }
 
+// ── Image fixe ───────────────────────────────────────────────────────────────
+// La touche vaut pendant qu'on JOUE : chaque refus se dit à l'écran, comme pour le
+// tracé. 🔴 Aucun message n'est posé quand la prise est ACCEPTÉE, et le message qui
+// traînait est effacé : la capture se fait à la fin de la frame suivante, tout ce
+// qui serait dessiné d'ici là finirait dans l'image.
+void ZoneRecorder::ArmScreenshot() {
+  if (state_ == State::kShot) return;  // déjà armée : une frame, rien à dire
+  toast_tick_ = GetTickCount();
+  if (state_ != State::kIdle) {
+    toast_msg_ = i18n::Tr("Capture impossible : un enregistrement est en cours");
+    return;
+  }
+  if (g_imgui_dx7_active) {
+    toast_msg_ = i18n::Tr("Capture indisponible en DirectX 7");
+    return;
+  }
+  if (!IsZoneValid()) {
+    toast_msg_ = i18n::Tr("Aucune zone définie — trace-la d'abord");
+    return;
+  }
+
+  toast_msg_        = nullptr;  // 🔴 rien à l'écran pendant la frame capturée
+  clip_msg_         = nullptr;
+  last_status_.clear();
+  last_status_tick_ = GetTickCount();
+  shot_path_        = TimestampedCapturePath("png");
+  shot_done_        = false;
+  shot_ok_          = false;
+  shot_arm_tick_    = GetTickCount();
+  state_            = State::kShot;
+  D3D9_SetPostFrameCallback(&PostFrameThunk);
+}
+
+// Récolte, sur le fil principal : l'écriture est finie (ou n'aura pas lieu), donc
+// le fichier est complet et fermé — c'est ici, et pas dans le hook de rendu, que
+// le presse-papier peut être touché (cf. la même règle pour le GIF).
+void ZoneRecorder::FinishScreenshot() {
+  D3D9_SetPostFrameCallback(nullptr);
+  state_            = State::kIdle;
+  last_status_tick_ = GetTickCount();
+  toast_tick_       = GetTickCount();
+
+  if (!shot_done_) {
+    last_status_ = i18n::Tr("capture abandonnée : le jeu n'a rien affiché");
+    toast_msg_   = i18n::Tr("Capture abandonnée");
+    LogError("ZoneRecorder: capture abandonnée, aucune frame en {} ms", kShotTimeoutMs);
+    return;
+  }
+  if (!shot_ok_) {
+    last_saved_path_.clear();
+    last_status_ = i18n::Tr("échec de l'écriture de l'image");
+    toast_msg_   = i18n::Tr("Échec de la capture");
+    LogError("ZoneRecorder: écriture impossible : {}", shot_path_);
+    return;
+  }
+
+  last_saved_path_ = shot_path_;
+  last_status_     = i18n::Tr("image enregistrée");
+  LogInfo("ZoneRecorder: {} ({}x{})", shot_path_, zone_w_, zone_h_);
+  toast_msg_ = i18n::Tr("Capture enregistrée");
+  if (auto_copy_) {
+    const bool copied = CopyFileToClipboard(last_saved_path_);
+    clip_msg_ = copied ? i18n::Tr("Image copiée — Ctrl+V dans Discord pour la poster.")
+                       : i18n::Tr("Copie automatique impossible : une autre application "
+                                  "retient le presse-papier. Le bouton ci-dessous "
+                                  "réessaie.");
+    // Le témoin ne promet le presse-papier que si la copie a bien eu lieu ; sinon
+    // il en reste à « enregistrée », et le panneau donne le détail.
+    if (copied) toast_msg_ = i18n::Tr("Capture copiée dans le presse-papier");
+  }
+}
+
 void ZoneRecorder::CancelAll() {
   if (state_ == State::kEncoding) return;  // un GIF en cours d'écriture va au bout
   D3D9_SetPostFrameCallback(nullptr);
@@ -416,6 +524,10 @@ void ZoneRecorder::CancelAll() {
   dragging_ = false;
   select_hint_.clear();
   toast_msg_ = nullptr;
+  // Une image fixe armée est abandonnée en silence : le fichier n'existe pas
+  // encore (il n'est créé qu'au moment de l'écriture), il n'y a rien à nettoyer.
+  shot_done_ = false;
+  shot_ok_   = false;
   state_ = State::kIdle;
 }
 
@@ -442,7 +554,10 @@ void ZoneRecorder::OnKeyDown(unsigned long vkey, int, int) {
   const bool record = matches(key_vk_, key_ctrl_, key_alt_, key_shift_);
   const bool select = !record && matches(sel_key_vk_, sel_key_ctrl_, sel_key_alt_,
                                          sel_key_shift_);
-  if (!record && !select) return;
+  const bool shot   = !record && !select &&
+                      matches(shot_key_vk_, shot_key_ctrl_, shot_key_alt_,
+                              shot_key_shift_);
+  if (!record && !select && !shot) return;
 
   if (hotkeys::CaptureInProgress()) return;  // un remappage est en cours
   if (!Bourgeon::Instance().IsGameActive()) return;
@@ -452,6 +567,10 @@ void ZoneRecorder::OnKeyDown(unsigned long vkey, int, int) {
 
   if (select) {
     ToggleZoneSelection();
+    return;
+  }
+  if (shot) {
+    ArmScreenshot();
     return;
   }
 
@@ -468,7 +587,9 @@ void ZoneRecorder::OnKeyDown(unsigned long vkey, int, int) {
       state_ = State::kEncoding;  // arrêt anticipé ; PumpState encode ce qu'on a
       break;
     default:
-      break;  // kSelecting (la souris décide) / kEncoding (rien à interrompre)
+      // kSelecting (la souris décide) / kEncoding (rien à interrompre) / kShot
+      // (une frame : refuser par écrit salirait justement l'image attendue).
+      break;
   }
 }
 
@@ -485,6 +606,11 @@ void ZoneRecorder::OnRenderUI() {
     case State::kEncoding:  DrawRecordingOverlay(); break;
     // À l'arrêt, seul un message récent a quelque chose à dire (« GIF copié »).
     case State::kIdle:      if (HasToast()) DrawToast(); break;
+    // 🔴 RIEN pendant la frame d'une image fixe : c'est CELLE-LÀ qui part dans le
+    // PNG. Le message qui traînait est déjà effacé (ArmScreenshot) — il s'affiche
+    // au centre du bas de l'écran, donc possiblement DANS la zone — et un cadre
+    // n'aurait rien à annoncer pour une prise qui est finie avant d'être vue.
+    case State::kShot:      break;
   }
 }
 
@@ -754,8 +880,9 @@ void ZoneRecorder::DrawSettings() {
   SameLine();
   HelpMarker(
       i18n::Tr("Trace un rectangle à la souris, comme l'outil de capture de Windows. La "
-      "zone est mémorisée : ensuite, la touche ci-dessous suffit. Une seconde "
-      "touche rouvre le tracé en jeu, pour recadrer sans rouvrir ce panneau.\n\n"
+      "zone est mémorisée : ensuite, les touches ci-dessous suffisent — filmer, "
+      "prendre une image fixe, ou rouvrir le tracé en jeu pour recadrer sans "
+      "rouvrir ce panneau.\n\n"
       "L'image enregistrée est celle que tu vois — monde, interface native ET "
       "fenêtres Bourgeon. Le cadre et le témoin, eux, sont dessinés en dehors de "
       "la zone : ils n'apparaissent jamais dans le GIF.\n\n"
@@ -797,8 +924,8 @@ void ZoneRecorder::DrawSettings() {
     save = true;
   SameLine();
   HelpMarker(
-      i18n::Tr("Dès que le GIF est écrit, il part dans le presse-papier comme fichier : "
-      "un Ctrl+V dans Discord le poste, animation comprise.\n\n"
+      i18n::Tr("Dès que le fichier est écrit — le GIF comme l'image fixe — il part dans "
+      "le presse-papier : un Ctrl+V dans Discord le poste, animation comprise.\n\n"
       "Un message le confirme à l'écran, panneau fermé compris. Ce que tu avais "
       "copié auparavant est perdu."));
 
@@ -876,6 +1003,17 @@ void ZoneRecorder::DrawSettings() {
 
   hotkey_row(i18n::Tr("Filmer :"), "zonerec_key", hotkeys::kZoneRecKeyRecord,
              &key_vk_, &key_ctrl_, &key_alt_, &key_shift_);
+  hotkey_row(i18n::Tr("Capturer une image :"), "zoneshot_key", hotkeys::kZoneRecKeyShot,
+             &shot_key_vk_, &shot_key_ctrl_, &shot_key_alt_, &shot_key_shift_);
+  SameLine();
+  HelpMarker(
+      i18n::Tr("Un PNG de la MÊME zone, pris à l'instant de l'appui : ni décompte, "
+      "ni durée, rien à arrêter.\n\n"
+      "L'image sort à la taille réelle de la zone — la « largeur max » ci-dessus "
+      "ne concerne que le GIF, où elle sert à contenir le poids d'une animation.\n\n"
+      "Elle contient elle aussi ce que tu vois, fenêtres Bourgeon comprises. Ce "
+      "panneau, donc, s'il est ouvert : c'est en jeu, panneau fermé, que la touche "
+      "sert."));
   hotkey_row(i18n::Tr("Retracer la zone :"), "zonesel_key", hotkeys::kZoneRecKeySelect,
              &sel_key_vk_, &sel_key_ctrl_, &sel_key_alt_, &sel_key_shift_);
   SameLine();
@@ -891,10 +1029,11 @@ void ZoneRecorder::DrawSettings() {
 
   // ── Dernier résultat ──
   // Le MESSAGE s'efface au bout d'une minute — un « aucune zone définie » n'a
-  // rien à faire à l'écran dix minutes plus tard. Le dernier GIF écrit, lui,
-  // reste offert tant que la session dure : on revient le copier bien après
-  // l'enregistrement, une fois le tutoriel rédigé, et le faire disparaître
-  // obligerait à réenregistrer pour retrouver les boutons.
+  // rien à faire à l'écran dix minutes plus tard. Le dernier fichier écrit, lui,
+  // reste offert tant que la session dure : on revient le copier bien après la
+  // prise, une fois le tutoriel rédigé, et le faire disparaître obligerait à
+  // refilmer pour retrouver les boutons. GIF ou PNG : c'est la DERNIÈRE prise,
+  // quelle qu'elle soit, les deux touches écrivent au même endroit.
   const bool show_status =
       !last_status_.empty() && GetTickCount() - last_status_tick_ < 60000u;
   if (show_status || !last_saved_path_.empty()) {
@@ -903,11 +1042,12 @@ void ZoneRecorder::DrawSettings() {
     if (!last_saved_path_.empty()) {
       ImGui::TextDisabled("%s", last_saved_path_.c_str());
       if (ro::RoButton(i18n::Tr("Copier dans le presse-papier"))) {
-        clip_msg_ = CopyGifToClipboard(last_saved_path_)
-                        ? i18n::Tr("GIF copié — Ctrl+V dans Discord pour le poster.") : i18n::Tr("Copie impossible : une autre application retient le "
+        clip_msg_ = CopyFileToClipboard(last_saved_path_)
+                        ? i18n::Tr("Copié — Ctrl+V dans Discord pour le poster.") : i18n::Tr("Copie impossible : une autre application retient le "
                           "presse-papier, réessaie.");
       }
-      Tooltip(i18n::Tr("Colle le fichier GIF lui-même, animation comprise."));
+      Tooltip(i18n::Tr("Colle le fichier lui-même — l'animation d'un GIF est donc "
+                       "conservée."));
       SameLine(0.0f, 6.0f);
       if (ro::RoButton(i18n::Tr("Ouvrir le dossier"))) RevealInExplorer(last_saved_path_);
       if (clip_msg_) ImGui::TextWrapped("%s", clip_msg_);

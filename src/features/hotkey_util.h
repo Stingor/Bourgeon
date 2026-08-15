@@ -41,11 +41,12 @@ inline constexpr int ClientSelf(int category, int command_index) {
   return category * kClientSelfScale + command_index;
 }
 
-// L'enregistreur de zone porte DEUX touches distinctes, qui se contrôlent l'une
+// L'enregistreur de zone porte TROIS touches distinctes, qui se contrôlent l'une
 // contre l'autre comme n'importe quelle autre paire : elles se passent en
 // `self_index` pour ne pas se déclarer en conflit avec elles-mêmes.
 inline constexpr int kZoneRecKeyRecord = 0;  // lance / arrête l'enregistrement
 inline constexpr int kZoneRecKeySelect = 1;  // retrace la zone
+inline constexpr int kZoneRecKeyShot   = 2;  // une image fixe de la même zone
 
 int      ImGuiKeyToVk(ImGuiKey key);
 ImGuiKey VkToImGuiKey(int vkey);

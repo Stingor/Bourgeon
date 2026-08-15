@@ -177,8 +177,9 @@ bool Conflict(int vkey, bool ctrl, bool alt, bool shift, Owner self, int self_in
     }
   }
 
-  // c) Les DEUX touches de l'enregistreur de zone (staff) : celle qui filme et
-  // celle qui retrace la zone. Contrôlées pour tout le monde et pas seulement pour
+  // c) Les TROIS touches de l'enregistreur de zone (staff) : celle qui filme,
+  // celle qui capture une image fixe, celle qui retrace la zone. Contrôlées pour
+  // tout le monde et pas seulement pour
   // le staff : le niveau de groupe peut changer en cours de session, et un conflit
   // qui n'apparaîtrait qu'à ce moment-là serait incompréhensible pour qui a réglé
   // sa touche la veille.
@@ -198,6 +199,9 @@ bool Conflict(int vkey, bool ctrl, bool alt, bool shift, Owner self, int self_in
         {kZoneRecKeySelect, zone_recorder->sel_key_vk(), zone_recorder->sel_key_ctrl(),
          zone_recorder->sel_key_alt(), zone_recorder->sel_key_shift(),
          i18n::Tr("le tracé de la zone à enregistrer")},
+        {kZoneRecKeyShot, zone_recorder->shot_key_vk(), zone_recorder->shot_key_ctrl(),
+         zone_recorder->shot_key_alt(), zone_recorder->shot_key_shift(),
+         i18n::Tr("la capture d'image de la zone")},
     };
     for (const auto& zone_key : zone_keys) {
       if (self == Owner::kZoneRecorder && zone_key.index == self_index) continue;

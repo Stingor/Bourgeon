@@ -117,6 +117,24 @@ void D3D9_SetPostFrameCallback(void (*callback)());
 bool D3D9_GrabBackbufferRegion(int src_x, int src_y, int src_w, int src_h,
                                int out_w, int out_h, void* out_argb);
 
+// Same rectangle of the same finished frame, written straight out as a PNG — the
+// single-shot counterpart of the grab above (zone recorder's screenshot key).
+//
+// 1:1, no rescale: a screenshot keeps the resolution it was taken at (the GIF's
+// width cap only exists to keep an ANIMATION small). If the window has since
+// shrunk, the rectangle is clamped and the file simply comes out smaller rather
+// than stretched.
+//
+// Encoding and the disk write both happen inline, in the caller's frame — one
+// still image, so the hitch is a single frame, exactly like the OS screenshot key.
+//
+// 🔴 Same constraint as the grab: OUTSIDE a BeginScene/EndScene pair, i.e. from
+// the post-frame callback. Needs `d3dx9_43.dll` (shipped with the client, and
+// already loaded for the post-fx shaders). Returns false and logs on failure.
+// DX9 only.
+bool D3D9_SaveBackbufferRegionPng(int src_x, int src_y, int src_w, int src_h,
+                                  const char* filepath);
+
 // One textured quad for offscreen avatar compositing: `tex` = IDirect3DTexture9*,
 // (x0,y0)-(x1,y1) = destination rect in canvas pixels, (u0,v0)-(u1,v1) = source UVs
 // (pass them pre-swapped for a horizontal mirror).

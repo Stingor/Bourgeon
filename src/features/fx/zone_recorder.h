@@ -14,9 +14,16 @@
 // secondes. Le résultat est un GIF animé dans <jeu>\screenshot, destiné aux
 // tutoriels qui présentent les fonctionnalités du serveur.
 //
-// DEUX raccourcis, tous deux facultatifs : l'un lance et arrête l'enregistrement,
-// l'autre rouvre le tracé pour recadrer sans passer par le panneau — le panneau
-// recouvre l'écran, c'est-à-dire ce qu'on cherche justement à cadrer.
+// TROIS raccourcis, tous facultatifs : l'un lance et arrête l'enregistrement, le
+// deuxième prend UNE image fixe de la même zone (un PNG, sans décompte : ce que
+// montre l'écran à l'instant de l'appui), le troisième rouvre le tracé pour
+// recadrer sans passer par le panneau — le panneau recouvre l'écran, c'est-à-dire
+// ce qu'on cherche justement à cadrer.
+//
+// La capture fixe partage TOUT avec l'enregistrement — la zone, le moment de la
+// prise, donc l'interface Bourgeon dans l'image — sauf la réduction de largeur,
+// qui n'existe que pour tenir le poids d'une ANIMATION : un PNG sort à la
+// résolution de la zone.
 //
 // 🔴 LA CAPTURE CONTIENT NOTRE INTERFACE. Elle est prise dans Present, APRÈS le
 // rendu de l'overlay ImGui (cf. D3D9_SetPostFrameCallback) : c'est tout l'intérêt
@@ -74,6 +81,10 @@ class ZoneRecorder : public Plugin {
   bool& sel_key_ctrl()  { return sel_key_ctrl_; }
   bool& sel_key_alt()   { return sel_key_alt_; }
   bool& sel_key_shift() { return sel_key_shift_; }
+  int&  shot_key_vk()    { return shot_key_vk_; }
+  bool& shot_key_ctrl()  { return shot_key_ctrl_; }
+  bool& shot_key_alt()   { return shot_key_alt_; }
+  bool& shot_key_shift() { return shot_key_shift_; }
 
   // Appelé depuis le hook Present (fil de rendu), une fois l'image finie.
   void OnPostFrame();
@@ -85,6 +96,7 @@ class ZoneRecorder : public Plugin {
     kCountdown,  // zone armée, on laisse le temps de se placer
     kRecording,  // captures en cours
     kEncoding,   // le thread écrit le GIF
+    kShot,       // image fixe demandée, prise à la fin de la frame en cours
   };
 
   // Transitions d'état, hors du fil de rendu (rendu ET tick y passent : un
@@ -101,6 +113,12 @@ class ZoneRecorder : public Plugin {
   void BeginRecording();
   void FinishRecording();  // fin des captures -> lance l'encodage
   void CancelAll();        // retour à kIdle en abandonnant ce qui est en cours
+
+  // Capture d'UNE image. Armer = brancher le callback de fin de frame et se taire
+  // jusqu'à ce qu'il ait pris l'image (rien ne doit être dessiné entre-temps, cf.
+  // OnRenderUI) ; récolter = dire le résultat et, au besoin, copier le fichier.
+  void ArmScreenshot();
+  void FinishScreenshot();
 
   void DrawSelectionOverlay();
   void DrawRecordingOverlay();
@@ -145,6 +163,15 @@ class ZoneRecorder : public Plugin {
   bool sel_key_alt_   = false;
   bool sel_key_shift_ = false;
 
+  // Troisième touche : une IMAGE FIXE de la zone. Séparée elle aussi, parce qu'un
+  // tutoriel alterne les deux — on filme une manipulation, puis on veut la fenêtre
+  // arrêtée sur une image — et qu'obliger à choisir dans un panneau à chaque fois
+  // reviendrait à ouvrir ce panneau devant ce qu'on veut capturer.
+  int  shot_key_vk_    = 0;
+  bool shot_key_ctrl_  = false;
+  bool shot_key_alt_   = false;
+  bool shot_key_shift_ = false;
+
   // ── Capture de la touche dans le panneau ──────────────────────────────────
   // Quelle touche est en cours de remappage : hotkeys::kZoneRecKey*, ou -1. Une
   // seule à la fois, d'où le message de conflit partagé.
@@ -167,6 +194,15 @@ class ZoneRecorder : public Plugin {
   unsigned long next_capture_tick_ = 0;
   unsigned long record_start_tick_ = 0;
   unsigned long countdown_end_tick_ = 0;
+
+  // ── Capture d'une image fixe ──────────────────────────────────────────────
+  // Aucun tampon d'image ici : le PNG est écrit directement depuis le fil de
+  // rendu (cf. D3D9_SaveBackbufferRegionPng), qui ne rend au fil principal que le
+  // verdict. `shot_done_` est posé EN DERNIER, c'est lui que PumpState guette.
+  std::string   shot_path_;            // figé à l'armement, relu par le fil de rendu
+  bool          shot_done_ = false;
+  bool          shot_ok_   = false;
+  unsigned long shot_arm_tick_ = 0;    // pour renoncer si Present ne tourne plus
 
   // ── Encodage ──────────────────────────────────────────────────────────────
   std::thread       encoder_thread_;

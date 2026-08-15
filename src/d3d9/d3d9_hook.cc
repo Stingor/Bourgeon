@@ -694,12 +694,22 @@ static void Grab_ReleaseSurfaces() {
 
 void D3D9_SetPostFrameCallback(void (*callback)()) { g_post_frame_cb = callback; }
 
-bool D3D9_GrabBackbufferRegion(int src_x, int src_y, int src_w, int src_h,
-                               int out_w, int out_h, void* out_argb) {
+// Resolves a rectangle of the current backbuffer into the scratch SYSTEM-MEMORY
+// surface (g_grab_sys), rescaled to out_w * out_h. Shared core of the two outputs
+// below: copying the pixels back to RAM (GIF recording) and writing them out as a
+// PNG (single shot) both want the exact same thing — a piece of the finished frame
+// made readable to the CPU.
+//
+// `out_w`/`out_h` <= 0 means "whatever the source rectangle measures once clamped
+// to the backbuffer", i.e. a true 1:1 copy with no stretching. The size actually
+// produced comes back through `made_w`/`made_h` (either may be null).
+//
+// 🔴 Outside a BeginScene/EndScene pair (StretchRect).
+static bool Grab_RegionToSysSurface(int src_x, int src_y, int src_w, int src_h,
+                                    int out_w, int out_h, int* made_w, int* made_h) {
     if (g_imgui_dx7_active) return false;
     IDirect3DDevice9* dev = g_imgui_device;
-    if (!dev || !out_argb || src_w <= 0 || src_h <= 0 || out_w <= 0 || out_h <= 0)
-        return false;
+    if (!dev || src_w <= 0 || src_h <= 0) return false;
 
     IDirect3DSurface9* back = nullptr;
     if (FAILED(dev->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &back)) || !back)
@@ -714,6 +724,13 @@ bool D3D9_GrabBackbufferRegion(int src_x, int src_y, int src_w, int src_h,
     if (src_x + src_w > static_cast<int>(bd.Width))  src_w = static_cast<int>(bd.Width) - src_x;
     if (src_y + src_h > static_cast<int>(bd.Height)) src_h = static_cast<int>(bd.Height) - src_y;
     if (src_w <= 0 || src_h <= 0) { back->Release(); return false; }
+
+    // The 1:1 caller asks for its size HERE, after the clamp: taking the requested
+    // rectangle instead would stretch the clamped source over the full surface.
+    if (out_w <= 0) out_w = src_w;
+    if (out_h <= 0) out_h = src_h;
+    if (made_w) *made_w = out_w;
+    if (made_h) *made_h = out_h;
 
     // (Re)build the scratch pair when the geometry or the format changed. The
     // render target keeps the BACKBUFFER's format on purpose: StretchRect between
@@ -750,7 +767,15 @@ bool D3D9_GrabBackbufferRegion(int src_x, int src_y, int src_w, int src_h,
     back->Release();
     if (FAILED(hr)) return false;
 
-    if (FAILED(dev->GetRenderTargetData(g_grab_rt_surf, g_grab_sys))) return false;
+    return SUCCEEDED(dev->GetRenderTargetData(g_grab_rt_surf, g_grab_sys));
+}
+
+bool D3D9_GrabBackbufferRegion(int src_x, int src_y, int src_w, int src_h,
+                               int out_w, int out_h, void* out_argb) {
+    if (!out_argb || out_w <= 0 || out_h <= 0) return false;
+    if (!Grab_RegionToSysSurface(src_x, src_y, src_w, src_h, out_w, out_h, nullptr, nullptr))
+        return false;
+
     D3DLOCKED_RECT lr;
     if (FAILED(g_grab_sys->LockRect(&lr, nullptr, D3DLOCK_READONLY))) return false;
     auto* dst = static_cast<uint32_t*>(out_argb);
@@ -764,6 +789,31 @@ bool D3D9_GrabBackbufferRegion(int src_x, int src_y, int src_w, int src_h,
         for (int x = 0; x < out_w; ++x) out_row[x] = row[x] | 0xFF000000u;
     }
     g_grab_sys->UnlockRect();
+    return true;
+}
+
+bool D3D9_SaveBackbufferRegionPng(int src_x, int src_y, int src_w, int src_h,
+                                  const char* filepath) {
+    if (!filepath || !*filepath) return false;
+    HMODULE d3dx = D3dx9();
+    if (!d3dx) { LogError("ZoneShot: d3dx9_43.dll not available"); return false; }
+    auto save = reinterpret_cast<D3DXSaveSurfaceToFile_t>(
+        GetProcAddress(d3dx, "D3DXSaveSurfaceToFileA"));
+    if (!save) { LogError("ZoneShot: D3DXSaveSurfaceToFileA missing"); return false; }
+
+    // 1:1 (0,0) — see the header: a screenshot keeps its own resolution.
+    if (!Grab_RegionToSysSurface(src_x, src_y, src_w, src_h, 0, 0, nullptr, nullptr))
+        return false;
+
+    // The RESOLVED system-memory surface, never the backbuffer itself: D3DX only
+    // has to lock it, so the write depends neither on the backbuffer being
+    // lockable nor on it being free of multisampling.
+    const HRESULT hr = save(filepath, /*D3DXIFF_PNG*/3, g_grab_sys, nullptr, nullptr);
+    if (FAILED(hr)) {
+        LogError("ZoneShot: PNG write failed hr={:x} ({})",
+                 static_cast<unsigned>(hr), filepath);
+        return false;
+    }
     return true;
 }
 
