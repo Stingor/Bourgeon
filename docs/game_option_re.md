@@ -890,7 +890,15 @@ lui qui choisit le texte de la modale — `MSI_GRAPHIC_SETTING_WARNING_RESTART`
 2. **branche à chaud** — trois réglages seulement, applicables sans rien relancer :
    `g_cfg_SpriteDetailLevel` (+ `0x01602B60`/`B64`), `g_cfg_TextureDetailLevel`
    (→ `g_TextureDownscaleFactor`), et `g_cfg_Trilinear` (→ `SpriteTexFactory` puis
-   vidage du cache `sub_568B30(&g_SpriteTexFactoryCache)`).
+   rechargement du cache `SpriteTexCache_ReloadAll(&g_SpriteTexCache)`).
+
+🔴 **`SpriteTexCache_ReloadAll` (`0x00568B30`) est `__thiscall` : le cache passe
+par ECX.** Le site d'appel (`0x009EDDA0`) fait `mov ecx, offset g_SpriteTexCache`
+puis `jmp`. Appelée en `__cdecl`, elle lit un ECX de passage et **sort aussitôt
+par son test de liste vide** — sans rien recharger et sans se plaindre. Symptôme
+vécu en jeu : le réglage était bien écrit en mémoire, donc actif au démarrage
+suivant, mais rien ne bougeait à l'écran. C'est ce qui rend visible, sans
+redémarrer, un changement de finesse de textures ou de filtrage.
 
 #### Énumérer : trois fonctions, trois dispositions d'enregistrement
 
