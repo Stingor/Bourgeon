@@ -1322,19 +1322,26 @@ int EmblemVersionSEH(int guildId) {
 // le client a le code pour le peindre — `Guild_DrawEmblemOnPartyHUD`
 // (`0x00825160`) blitte le cadre puis décale l'emblème de 2 px.
 //
-// ⚠ CE CADRE NE S'AFFICHE JAMAIS EN JEU — constat du joueur, cause NON ÉTABLIE.
-// Ce qui est vérifié : le bitmap a **deux** consommateurs dans le client.
-//   - `Guild_DrawEmblemOnPartyHUD` (0x00825160) est gardée par
-//     `GameSession_GetField4c()`, relevé à **0** en jeu (x32dbg, 2026-08-15) :
-//     celle-là ne tourne pas, et le même garde couvre l'emblème lui-même — que
-//     le client dessine donc par un autre chemin (le quad de nameplate).
-//   - `sub_825510` (0x00825510), elle, n'a **aucun garde global** : elle pose le
-//     cadre à gauche puis une image et des lignes de texte empilées. Sa
-//     condition est un octet de la fenêtre, `this[0xBD]`, dont le point
-//     d'écriture reste à trouver.
-// ⛔ NE PAS réécrire « le client ne peut pas » ici sans avoir tranché ce point :
-// la première version de ce commentaire l'affirmait sur la foi d'UNE seule
-// fonction, avant que la recherche des xrefs du chemin n'en révèle deux.
+// 🔴 CE CADRE NE S'AFFICHE JAMAIS EN JEU, ET LA CAUSE EST ÉTABLIE — désassemblage
+// ET expérience en direct (x32dbg, 2026-08-15). L'étiquette de nom d'un acteur
+// est construite par `GameMode_BuildActorNameLabel` (0x00C6D720), qui calcule le
+// drapeau de cadre par une CONJONCTION :
+//
+//     cadre  =  ( *(CGameMode+0xCC) + 0x4C  ==  1 )   ET   ( drapeau /frame )
+//
+// Ce premier terme — `GameSession_GetField4c()` — vaut **0** sur ce client. La
+// conjonction retombe donc à zéro quoi que dise `/frame`, le drapeau part à
+// `UIActorNameLabel_SetEmblem` (0x0082DCC0) qui l'écrit en `this[0xBD]`, et
+// `sub_825510` saute sa branche de cadre (`cmp byte [edi+0BDh], 1`).
+// Preuve : forcer ce champ à 1 en mémoire FAIT APPARAÎTRE le cadre.
+//
+// Le même `field4c` garde aussi `Guild_DrawEmblemOnPartyHUD` (0x00825160), le
+// second consommateur du bitmap. Les deux chemins tombent par la même cause.
+//
+// ⚠ Ce champ est un MODE (comparé à 1, pas à zéro), posé entre autres par un
+// paquet dans `RecvLoop_DispatchPackets` — qui, au même endroit, force
+// `TT_MIN_EFFECT_ON_OFF`. Il ne nous appartient donc pas : le rallumer serait
+// changer un mode d'affichage du client, pas réparer un réglage.
 //
 // ➡ On l'honore donc là où NOUS dessinons l'emblème. Le bitmap est celui du
 // client, chargé par son propre TexMgr : il suit le skin actif comme n'importe
