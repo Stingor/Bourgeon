@@ -116,11 +116,15 @@ const ImVec4 kChangedText(0.65f, 0.30f, 0.10f, 1.0f);
 
 // ── Les onglets, vus par le système de liens (cf. le .h) ────────────────────
 //
-// ⚠ Le libellé n'est PAS celui de la languette. Une languette dit « Basique » au
-// milieu de ses cinq sœurs, ce qui suffit ; un lien dans le chat, lui, arrive
-// seul au milieu d'une conversation — « [Réglage: Basique] » n'y désigne rien.
-// Le libellé porte donc son contexte, et il est en FRANÇAIS NU : c'est
-// `SettingLabel` qui le traduit, chez le lecteur, dans SA langue.
+// ⚠ Le libellé est le NOM NU de l'onglet, sans « Réglages : » devant. La
+// première version le préfixait pour donner du contexte à un lien qui arrive
+// seul au milieu d'une conversation — mais l'enveloppe le dit DÉJÀ : le résultat
+// se lisait « [Réglage: Réglages : Effets ] ». Le contexte appartient à
+// `SettingLabel`, pas au libellé. Signalé en jeu le 2026-08-15.
+//
+// Corollaire heureux : ces noms-là sont exactement les replis de `TabLabel`, donc
+// déjà traduits dans les deux catalogues. Le libellé se passe en FRANÇAIS NU —
+// c'est `SettingLabel` qui le traduit, chez le lecteur, dans SA langue.
 struct TabLink {
   int tab;
   const char* key;
@@ -128,15 +132,15 @@ struct TabLink {
 };
 
 constexpr TabLink kTabLinks[] = {
-    {GameSettings::kTabAll,           "gs_all",      "Réglages du jeu"},
-    {GameSettings::kTabBasic,         "gs_basic",    "Réglages : Basique"},
+    {GameSettings::kTabAll,           "gs_all",      "Tous les onglets"},
+    {GameSettings::kTabBasic,         "gs_basic",    "Basique"},
     // 🔴 « graphics » et pas « gs_graphics » : c'est la clé qu'avait la section
     // Graphismes de Moonlight Settings, d'où elle a déménagé. Les liens déjà
     // posés dans le chat ouvrent donc toujours la bonne chose.
     {GameSettings::kTabGraphics,      "graphics",    "Graphismes"},
-    {gamesettings::kTabEffect,        "gs_effect",   "Réglages : Effets"},
-    {gamesettings::kTabControl,       "gs_control",  "Réglages : Contrôles"},
-    {gamesettings::kTabEtc,           "gs_etc",      "Réglages : Divers"},
+    {gamesettings::kTabEffect,        "gs_effect",   "Effets"},
+    {gamesettings::kTabControl,       "gs_control",  "Contrôles"},
+    {gamesettings::kTabEtc,           "gs_etc",      "Divers"},
 };
 
 const char* TabLabel(int tab) {
