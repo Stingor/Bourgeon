@@ -1374,7 +1374,7 @@ void PaletteEditor::OnRenderUI() {
         // retient pas : trois rangées de chiffres pour une commande qui n'existe
         // pas.
         if (RoColorSwatch("##sw", rgb, &this_open, /*with_alpha=*/false,
-                          /*numeric_inputs=*/false)) {
+                          /*numeric_inputs=*/true)) {
           const uint32_t target =
               (static_cast<uint32_t>(rgb[0] * 255.0f + 0.5f) << 16) |
               (static_cast<uint32_t>(rgb[1] * 255.0f + 0.5f) << 8) |
