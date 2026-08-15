@@ -523,11 +523,45 @@ suffit pour écrire.
 | `CGameSettingsMgr::ToggleOption` | `0x0068FAA0` | `__thiscall(int tt)` |
 | `CGameSettingsMgr::ExecOption` | `0x0068E160` | `__thiscall(int tt)` — lignes `EXE` |
 | `CGameSettingsMgr::ResetAllToDefault` | `0x0068F8E0` | `__thiscall()` |
+| `GameSettings_SetFlagByCommandName` | `0x0068FC70` | `int __cdecl(const char* nom, char v)` — **insère**, mais par NOM de commande ; rend **3** si le nom est inconnu |
+| `GameSettingsFlagMap_GetOrInsert` | `0x0068CDF0` | `__thiscall(map, out[5], const uint32* cle)` — **la porte d'insertion**, sans nom |
 
 **Lecture** — la valeur est dans l'`unordered_map` `0x012515FC` (hash FNV-1a sur
 les quatre octets de l'id, valeur à `node+12`), et l'affichage vaut
 `GetFlag(tt) ^ IsInvertedOption(tt)`. C'est exactement ce que fait
 `GameSettingsUI_ListPage_RefreshValues` (0x009F0DA0) ligne par ligne.
+
+#### 🔴 Écrire une option ABSENTE de la table des drapeaux
+
+`GameSettings_SetFlagRaw` ne **met à jour** que des clés existantes : sur une clé
+absente, elle sort **sans rien écrire et sans se plaindre**. Deux options de la
+page Basique sont dans ce cas — et la première a coûté deux corrections :
+
+| option | id | état |
+|---|---|---|
+| Notification de connexion | `0xA5` | `/loginout` **est** dans le `CmdOnOffList` de `SaveData\OptionInfo.lua` ⇒ la clé existe, l'écriture ordinaire suffit |
+| **Bordure d'emblème** | `0xF3` | ni dans `OptionTbl`, ni dans `CmdOnOffList` ⇒ **inerte jusque dans la fenêtre NATIVE** |
+
+La première correction (2026-08-14) passait par `GameSettings_SetFlagByCommandName`,
+la seule fonction du client qui INSÈRE. Elle a échoué pour une raison qu'aucune
+lecture du code d'écriture ne pouvait révéler : **la chaîne « /frame » n'existe
+nulle part dans l'image**, ni dans le Lua. `ChatCmd_LookupSlashCommandTable`
+rendait donc « inconnu » (3), et la case restait morte — le second échec muet du
+même réglage.
+
+➡ La bonne porte est celle que le client emprunte lui-même **une fois le nom
+résolu** : `GameSettingsFlagMap_GetOrInsert(0x012515FC, out, &id)`, puis
+`*(uint8*)(out.node + 12) = valeur`. Aucun nom à résoudre. Côté Bourgeon,
+`gamesettings::SetRawFlag` **relit après écriture** et n'insère que si la valeur
+n'a pas bougé : les options normales ne changent pas de chemin.
+
+⚠ La texture du cadre, elle, n'a jamais manqué : `data\texture\유저인터페이스\emblem_frame.bmp`
+est bien dans `data.grf` (28×28, Bgr24). Le dessin est fait par
+`Guild_DrawEmblemOnPartyHUD` (`0x00825160`, blit du cadre puis emblème décalé de
+2 px) et `Guild_DrawEmblemOnInfoBar` (`0x00827E10`, fenêtre 24 → 28 px), tous
+deux atteints par vtable et tous deux gardés par
+`GameSession_GetField4c() && !GameSession_GetField50()` — les mêmes gardes que
+l'emblème lui-même, donc sans effet si l'emblème s'affiche.
 
 **Écriture** — `SetOption` cherche le record dans le vecteur, puis un **HANDLER**
 dans la table de hachage du manager. S'il en trouve un, **c'est le handler qui

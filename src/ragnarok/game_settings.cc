@@ -37,12 +37,29 @@ constexpr uintptr_t kSetFlagRawAddr = 0x0068fd50;
 using MgrSetOption_t = void(__thiscall*)(void*, unsigned int, char, char);
 constexpr uintptr_t kMgrSetOptionAddr = 0x0068dfd0;
 
-// La SEULE fonction qui insère une clé absente : elle résout un nom de commande
-// slash en identifiant d'option, puis écrit sans exiger que la clé préexiste.
-// Rend 3 quand la commande est inconnue. Cf. le commentaire de `SetOnByCommand`.
+// Résout un nom de commande slash en identifiant d'option, puis écrit sans
+// exiger que la clé préexiste. Rend 3 quand la commande est inconnue — ce qui
+// arrive plus souvent qu'on ne croit, cf. `SetRawFlag`.
 using SetFlagByCommand_t = int(__cdecl*)(const char*, char);
 constexpr uintptr_t kSetFlagByCommandAddr = 0x0068fc70;
 constexpr int kCommandUnknown = 3;
+
+// ── La table des drapeaux, et sa porte d'insertion ──────────────────────────
+//
+// `GameSettings_SetFlagRaw` ne met à jour que l'existant ; la seule façon de
+// CRÉER une clé sans passer par un nom de commande est cette table de hachage,
+// que le client interroge lui-même une fois le nom résolu.
+//
+// `out` reçoit 5 octets : le pointeur sur le nœud, puis 1 si la clé vient d'être
+// créée. Le nœud porte la clé en +8 et **la valeur en +12**, sur un octet.
+constexpr uintptr_t kFlagMapAddr = 0x012515fc;
+using MapGetOrInsert_t = void*(__thiscall*)(void*, void*, const uint32_t*);
+constexpr uintptr_t kMapGetOrInsertAddr = 0x0068cdf0;
+constexpr int kMapNodeValue = 12;
+struct MapInsertResult {
+  uintptr_t node = 0;
+  uint8_t   created = 0;
+};
 
 // `CGameSettingsMgr::ExecOption(id)` — les lignes de type EXE.
 using MgrExecOption_t = char(__thiscall*)(void*, int);
@@ -324,6 +341,28 @@ void SetRawFlag(int id, bool value) {
   __try {
     reinterpret_cast<SetFlagRaw_t>(kSetFlagRawAddr)(static_cast<unsigned int>(id),
                                                     value ? 1 : 0);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+
+  // 🔴 VÉRIFIER, PARCE QUE L'ÉCHEC EST MUET. `GameSettings_SetFlagRaw` ne MET À
+  // JOUR que des clés existantes : sur une option absente de la table des
+  // drapeaux, elle sort sans rien écrire et sans se plaindre. C'est le cas de la
+  // bordure d'emblème (0xF3) — inerte jusque dans la fenêtre native du client.
+  //
+  // Le chemin par nom de commande (`GameSettings_SetFlagByCommandName`) sait
+  // insérer, mais il exige un nom résoluble ; or « /frame » n'existe NULLE PART
+  // dans l'image, ni dans le `CmdOnOffList` du Lua. Il rendait donc 3, et la
+  // case restait morte.
+  //
+  // On insère donc nous-mêmes, par la porte que le client emprunte lui-même une
+  // fois le nom résolu : sa table de hachage. Relire d'abord évite d'y toucher
+  // quand l'écriture ordinaire a suffi — le cas de toutes les autres options.
+  if (RawFlag(id) == value) return;
+  __try {
+    const uint32_t key = static_cast<uint32_t>(id);
+    MapInsertResult out = {};
+    reinterpret_cast<MapGetOrInsert_t>(kMapGetOrInsertAddr)(
+        reinterpret_cast<void*>(kFlagMapAddr), &out, &key);
+    if (out.node) *reinterpret_cast<uint8_t*>(out.node + kMapNodeValue) = value ? 1 : 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 

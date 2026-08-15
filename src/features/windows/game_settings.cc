@@ -733,12 +733,13 @@ void GameSettings::DrawBasicTab() {
     write.valid = true;
     write.id = kTtEmblemFrame;
     write.on = emblem;
-    // 🔴 PAR LA COMMANDE, pas par l'id. `/frame` est absent de `CmdOnOffList`
-    // dans `SaveData\OptionInfo.lua`, donc la clé de cette option n'existe pas
-    // dans la table des drapeaux — et `SetFlagRaw` refuse de créer ce qu'il ne
-    // trouve pas. Le réglage est pour cette raison inerte JUSQUE DANS LA FENÊTRE
-    // NATIVE (constaté en jeu). Le chemin par nom de commande, lui, insère.
-    write.slash = "/frame";
+    // ⛔ PLUS DE CHEMIN PAR NOM DE COMMANDE. La clé de cette option n'existe pas
+    // dans la table des drapeaux — `SetFlagRaw` ne met à jour que l'existant —
+    // et le réglage est pour cette raison inerte JUSQUE DANS LA FENÊTRE NATIVE.
+    // La première correction passait par « /frame », la seule fonction qui
+    // INSÈRE… mais cette chaîne n'existe nulle part dans le client, ni dans le
+    // `CmdOnOffList` du Lua : la résolution rendait « commande inconnue » et la
+    // case restait morte. `SetOn` insère désormais lui-même (docs §3.3).
     pending_writes_.push_back(write);
   }
   ImGui::SameLine();
