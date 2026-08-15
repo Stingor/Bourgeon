@@ -97,7 +97,6 @@ class HotkeySettings : public Plugin {
  private:
   void Close();
   void RefreshRows();
-  void OpenNativeForEditing();
 
   bool open_ = false;
   bool need_pos_ = false;
@@ -115,13 +114,11 @@ class HotkeySettings : public Plugin {
   // `OnTick` ne la détruit donc pas tant que ce drapeau tient, et le baisse quand
   // elle disparaît (OK / cancel / close) — moment où les raccourcis ont pu
   // changer, donc où il faut relire.
-  bool native_editing_ = false;
 
   // Demande d'ouverture de la native, posée au rendu et consommée au TICK :
   // ouvrir une fenêtre native pendant une frame ImGui gèle le client en silence
   // (feedback_no_native_cmd_during_imgui_frame). Le bouton ne sert plus qu'à
   // atteindre le [Reset] du client, seule fonction qu'on ne sache pas rejouer.
-  bool pending_open_native_ = false;
 
   // Onglet AFFICHÉ (≠ catégorie, cf. userhotkey::CategoryForTab).
   // Défaut = « Tout », et il est affiché EN PREMIER : c'est la vue la plus utile

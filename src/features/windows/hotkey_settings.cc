@@ -193,7 +193,6 @@ void HotkeySettings::Close() {
 void HotkeySettings::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
   if (mode_type != ModeMgr::ModeType::kGame) {
     Close();
-    native_editing_ = false;
     rows_.clear();
     rows_dirty_ = true;
   }
@@ -206,7 +205,6 @@ void HotkeySettings::OnTick() {
   }
   if (!Bourgeon::Instance().IsGameActive()) {
     if (open_) Close();
-    native_editing_ = false;
     return;
   }
 
@@ -243,32 +241,14 @@ void HotkeySettings::OnTick() {
     return;
   }
 
-  // Demande de remappage : on fabrique la native NOUS-MÊMES, hook neutralisé, et
-  // on la laisse vivre et visible tant que le joueur s'en sert.
-  if (pending_open_native_) {
-    pending_open_native_ = false;
-    routing_ = true;
-    void* win = uiwnd::MakeWindow(kHotkeyWndId);
-    routing_ = false;
-    native_editing_ = (win != nullptr);
-    return;
-  }
-
-  void* native = uiwnd::SafeFindWindow(kHotkeyWndId);
-
-  if (native_editing_) {
-    // Le joueur remappe dans la fenêtre du jeu : on la laisse vivre. Quand elle
-    // disparaît (OK / cancel / close), les raccourcis ont pu changer -> relire.
-    if (!native) {
-      native_editing_ = false;
-      rows_dirty_ = true;
-    }
-    return;
-  }
-
-  // 🔴 DÉTRUIRE, pas masquer : tant qu'elle existe, la native détourne et consomme
-  // TOUTE la frappe clavier (UIWindowMgr_OnKeyDown @0x00A47201).
-  if (native) uiwnd::SafeCloseWindow(kHotkeyWndId);
+  // 🔴 DÉTRUIRE, pas masquer, et SANS exception depuis qu'aucun bouton ne l'ouvre :
+  // tant qu'elle existe, la native détourne et consomme TOUTE la frappe clavier
+  // (`UIWindowMgr_OnKeyDown` @0x00A47201). Le seul usage qui lui restait — le
+  // [Reset] — passe par `DriveResetDefaults`, qui la fabrique invisible le temps
+  // de deux commandes. Une native trouvée ici vient donc forcément d'ailleurs
+  // (menu Échap du client remis par le joueur) : elle n'a rien à faire debout.
+  if (void* native = uiwnd::SafeFindWindow(kHotkeyWndId))
+    uiwnd::SafeCloseWindow(kHotkeyWndId);
 }
 
 // ── Données ──────────────────────────────────────────────────────────────────
@@ -669,16 +649,6 @@ void HotkeySettings::DriveResetDefaults() {
   rows_dirty_ = true;
 }
 
-void HotkeySettings::OpenNativeForEditing() {
-  // Le remappage se fait chez nous ; la native ne sert plus qu'au [Reset], qui
-  // relit les défauts du client (`GetOriginalHotKeyInfo`) et n'a pas d'équivalent
-  // de notre côté. Appelée depuis OnRenderUI, donc l'ouverture est DIFFÉRÉE au
-  // tick (feedback_no_native_cmd_during_imgui_frame).
-  CancelCapture();
-  pending_open_native_ = true;
-  Close();
-}
-
 // ── Rendu ────────────────────────────────────────────────────────────────────
 
 void HotkeySettings::OnRenderUI() {
@@ -930,14 +900,13 @@ void HotkeySettings::OnRenderUI() {
                                "ne sont pas touchées."));
   }
 
-  ImGui::SameLine();
-  if (ro::RoButton(i18n::Tr("Fenêtre du jeu..."))) OpenNativeForEditing();
-  if (ImGui::IsItemHovered()) {
-    ImGui::SetTooltip("%s",
-                      i18n::Tr("Ouvre la fenêtre de raccourcis du client, telle "
-                               "quelle. Cette vue-ci se met à jour dès que tu la "
-                               "refermes."));
-  }
+  // ⛔ PLUS DE BOUTON « Fenêtre du jeu… ». Il ouvrait la native telle quelle, à
+  // l'époque où elle seule savait remettre les défauts. Ce n'est plus vrai :
+  // `DriveResetDefaults` la fabrique INVISIBLE, lui envoie ses deux commandes et
+  // la détruit — le joueur ne la voit jamais. Le garder, c'était laisser une
+  // porte vers une fenêtre qui vole tout le clavier tant qu'elle vit
+  // (`UIWindowMgr_OnKeyDown`), pour un service que le panneau rend déjà.
+  // Symétrique du « Réglages natifs… » retiré de Game Settings (docs §5.9).
 
   // Fermer, calé à DROITE comme dans la fenêtre du client. Position mesurée sur
   // le libellé traduit : « Fermer », « Close » et « Cerrar » n'ont pas la même

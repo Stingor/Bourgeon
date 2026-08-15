@@ -1675,11 +1675,12 @@ entre 2 et 3 boutons. Un joueur mort qui verrait « Character Select » et pas
   `SetOption(id, coché ^ inversé, annonce=0)`, §3.5.1 ;
 - ✅ **la remise à zéro globale** : `CGameSettingsMgr::ResetAllToDefault`
   (0x0068F8E0) parcourt le vecteur et rejoue chaque `Default` ;
-- ✅ **les setters de la page Basic** : faits pour le groupe **Audio** et les deux
-  bascules `TALKTYPE` (§3.5.2). Skin, priorité et RODEX restent **délibérément**
-  au natif : ils n'écrivent pas dans la table d'options (RODEX est même un
-  réglage serveur), et chacun demanderait son propre RE pour un gain nul —
-  le bouton « Réglages natifs… » du panneau y mène en un clic ;
+- ✅ **les setters de la page Basic** : le groupe **Audio**, les deux bascules
+  `TALKTYPE` (§3.5.2), **et depuis le 2026-08-14 le skin et la priorité de
+  processus** (§3.9). Seul **RODEX** reste non repris, et pour une raison qui
+  n'est pas le coût : il est **mort côté serveur** (§3.9). ⚠ Le bouton
+  « Réglages natifs… » que ce paragraphe citait **n'existe plus** — la fenêtre
+  native n'est jamais ouverte ;
 - ✅ **le contenu de `OptionTbl`** : extrait, en clair, 62 entrées (§3.5) ;
 - ⏳ **comment la page-liste connaît son `Tab`** : toujours pas localisé, et c'est
   désormais **sans objet** — le panneau ImGui filtre lui-même sur le champ `Tab`
@@ -1689,15 +1690,25 @@ entre 2 et 3 boutons. Un joueur mort qui verrait « Character Select » et pas
 `UIHotKeyWnd_ValidateKeyCombo` `0x008DC890` — §4.9. Le remappage est porté :
 `HotkeySettings` écrit par `userhotkey::WriteBinding` + `Save`, contrôle la
 collision en C++ (`hotkeys::Conflict`, exemption 0↔3 comprise) et refuse au lieu
-de voler la touche. Ne reste au natif que son **[Reset]**, faute d'équivalent à
-`GetOriginalHotKeyInfo` de notre côté.
+de voler la touche. Le **[Reset]** reste le travail du natif — faute d'équivalent
+à `GetOriginalHotKeyInfo` — mais `DriveResetDefaults` le lui fait faire **fenêtre
+INVISIBLE** (deux commandes, 363 puis 184, puis destruction) : le joueur ne la
+voit jamais.
+
+⛔ **Le bouton « Fenêtre du jeu… » a été RETIRÉ** (2026-08-15). Il ouvrait la
+native telle quelle, à l'époque où elle seule savait remettre les défauts. Le
+garder revenait à laisser une porte vers une fenêtre qui **consomme toute la
+frappe clavier tant qu'elle vit** (`UIWindowMgr_OnKeyDown` 0x00A47201), pour un
+service que le panneau rend déjà. Symétrique du « Réglages natifs… » de Game
+Settings. Avec lui sont partis `OpenNativeForEditing`, `pending_open_native_` et
+`native_editing_`, devenus inatteignables.
 
 ### 5.9 État du portage (2026-08-15)
 
 | fenêtre | état | fichiers |
 |---|---|---|
 | Game Options 155 | ✅ portée | `features/windows/game_menu.{h,cc}` |
-| Shortcut Settings 156 | ✅ portée, écriture comprise | `features/windows/hotkey_settings.{h,cc}`, `ragnarok/user_hotkey.{h,cc}` |
+| Shortcut Settings 156 | ✅ portée **en entier**, écriture ET [Reset] compris ; la native n'est plus jamais VISIBLE — `DriveResetDefaults` la fabrique invisible le temps de deux commandes puis la détruit | `features/windows/hotkey_settings.{h,cc}`, `ragnarok/user_hotkey.{h,cc}` |
 | Game Settings 0x271E | ✅ portée **en entier, les cinq onglets** — Graphics compris (§3.10) ; la native n'est plus jamais ouverte. Groupe **RODEX volontairement non repris**, mort côté serveur (§3.9). Le [Apply] structurel **enregistre et sauve, sans poser `g_RestartRequested`** — le drapeau ouvre une page web, pas un client | `features/windows/game_settings.{h,cc}`, `ragnarok/game_settings.{h,cc}` |
 
 **Deux ajouts qui ne viennent pas du client** (2026-08-15) :
