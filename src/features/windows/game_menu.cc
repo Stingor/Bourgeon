@@ -363,7 +363,7 @@ void GameMenu::OnRenderUI() {
   // dix touches à dix textes de chat (`@load`, `/lv`…) et les envoie d'une
   // frappe : c'est `Alt+1 à 0` qui compte pour le joueur, pas l'Alt+M qui ouvre
   // — ce bouton s'en charge déjà.
-  const char* label_chat_macros = i18n::Tr("Macros de chat (Alt+1 à 0)");
+  const char* label_chat_macros = i18n::Tr("Macros de chat");
   // Nom du projet, donc pas traduit — c'est ce que le joueur voit sur la fenêtre
   // qu'il va rouvrir, et deux noms pour une même chose se cherchent longtemps.
   const char* label_moonlight   = "Moonlight Settings";
