@@ -76,7 +76,11 @@ class HotkeySettings : public Plugin {
   void HandleNativeCreation(void* win);
 
   // Ouvre le panneau depuis le menu Échap (bouton « Configuration des raccourcis »).
-  void OpenFromMenu();
+  // `force_tab` >= 0 sélectionne un onglet d'office — ce dont se sert la fenêtre
+  // des macros, qui envoie ici pour réaffecter ses dix touches et n'a aucune
+  // raison de faire chercher l'onglet au joueur. ⚠ C'est un rang d'ONGLET, pas une
+  // catégorie Lua (`userhotkey::CategoryForTab`).
+  void OpenFromMenu(int force_tab = -1);
 
   bool IsOpen() const { return open_; }
 
@@ -119,6 +123,11 @@ class HotkeySettings : public Plugin {
   // ouvrir une fenêtre native pendant une frame ImGui gèle le client en silence
   // (feedback_no_native_cmd_during_imgui_frame). Le bouton ne sert plus qu'à
   // atteindre le [Reset] du client, seule fonction qu'on ne sache pas rejouer.
+
+  // Onglet à sélectionner d'office à la prochaine frame, -1 sinon. Écrire `tab_`
+  // ne suffit pas : c'est la barre d'onglets d'ImGui qui décide lequel est actif,
+  // et elle ne relit pas notre membre — il faut lui passer `SetSelected`.
+  int force_tab_ = -1;
 
   // Onglet AFFICHÉ (≠ catégorie, cf. userhotkey::CategoryForTab).
   // Défaut = « Tout », et il est affiché EN PREMIER : c'est la vue la plus utile

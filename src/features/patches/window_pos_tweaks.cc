@@ -19,6 +19,7 @@
 #include "features/windows/game_menu.h"  // hide-native-at-creation (menu Échap 155)
 #include "features/windows/game_settings.h"    // hide-native-at-creation (réglages 0x271E)
 #include "features/windows/hotkey_settings.h"  // hide-native-at-creation (raccourcis 156)
+#include "features/windows/macro_window.h"     // hide-native-at-creation (macros 86)
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 
@@ -200,6 +201,16 @@ void* __fastcall MakeWindowHook(void* mgr, void* edx, int windowID) {
     if (windowID == 156) {
       if (auto* hs = Bourgeon::Instance().hotkey_settings())
         hs->HandleNativeCreation(win);
+    }
+    // La liste des MACROS de chat (« Shortcut List », UIEmotionWnd id 86, Alt+M).
+    // Même raisonnement encore : détruite au tick, donc jamais existante, donc son
+    // unique chemin d'ouverture — le comportement de raccourci 114 de
+    // `UIWindowMgr_DispatchHotkeyBehavior` — repasse forcément par la fabrique.
+    // ⚠ NE PAS confondre avec `UIMacroRegisterWnd` (0x11E) : malgré son nom, c'est
+    // l'anti-bot, et aucun raccourci ne l'ouvre. Cf. docs/shortcut_list_re.md.
+    if (windowID == 86) {
+      if (auto* mw = Bourgeon::Instance().macro_window())
+        mw->HandleNativeCreation(win);
     }
     // Les réglages du jeu (CUIGameSettingsUI id 0x271E). FILET DE SÉCURITÉ, et
     // rien de plus : notre menu Échap ouvre directement le panneau ImGui sans

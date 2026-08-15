@@ -174,12 +174,13 @@ void HotkeySettings::HandleNativeCreation(void* win) {
   }
 }
 
-void HotkeySettings::OpenFromMenu() {
+void HotkeySettings::OpenFromMenu(int force_tab) {
   open_ = true;
   need_pos_ = true;
   show_panel_ = true;
   rows_dirty_ = true;  // relire AVANT la première frame (docs §5.6 point 11)
   esc_grace_frames_ = 2;
+  force_tab_ = force_tab;
 }
 
 void HotkeySettings::Close() {
@@ -700,7 +701,12 @@ void HotkeySettings::OnRenderUI() {
       char tab_id[96];
       std::snprintf(tab_id, sizeof(tab_id), "%s###hotkey_tab_%d",
                     (tab == kTabAll) ? i18n::Tr("Tout") : TabLabel(tab), tab);
-      if (ImGui::BeginTabItem(tab_id)) {
+      // Sélection d'office demandée par un appelant (la fenêtre des macros).
+      // Consommée à la première frame : sans ça l'onglet redeviendrait actif à
+      // chaque frame et le joueur ne pourrait plus en changer.
+      const ImGuiTabItemFlags tab_flags =
+          (force_tab_ == tab) ? ImGuiTabItemFlags_SetSelected : 0;
+      if (ImGui::BeginTabItem(tab_id, nullptr, tab_flags)) {
         if (tab_ != tab) {
           tab_ = tab;
           // Changer d'onglet en pleine capture laisserait une ligne invisible en
@@ -714,6 +720,7 @@ void HotkeySettings::OnRenderUI() {
     }
     ro::RoEndTabBar();
   }
+  force_tab_ = -1;
 
   // ── La table ───────────────────────────────────────────────────────────────
   // Hauteur : tout l'espace restant moins le pied de fenêtre. Le natif paginait

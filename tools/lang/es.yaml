@@ -2805,14 +2805,8 @@
 "Contrôles": "Controles"
 "Bordure d'emblème": "Borde del emblema"
 "Notification de connexion": "Notificación de conexión"
-"Macros de chat (Alt+1 à 0)": "Macros de chat (Alt+1 a 0)"
+"Macros de chat": "Macros de chat"
 "Encadre l'emblème de guilde au-dessus des noms. Le client ne dessine ce cadre que sur une carte de siège (GvG) : ailleurs la commande bascule, mais rien ne change à l'écran. Bourgeon l'honore partout où il dessine lui-même l'emblème, comme la fiche de personnage.": "Enmarca el emblema de gremio sobre los nombres. El cliente solo dibuja este marco en un mapa de asedio (GvG): en otros sitios el comando cambia, pero nada cambia en pantalla. Bourgeon lo respeta allí donde dibuja el emblema él mismo, como la hoja de personaje."
-
-⚠ El cliente original NUNCA dibuja este marco, marques lo que marques: su única función de dibujo solo se alcanza en un modo de etiquetas que este cliente no activa. Bourgeon lo respeta allí donde dibuja el emblema él mismo."
-
-⚠ Le client d'origine ne dessine JAMAIS ce cadre, quoi qu'on coche : son unique fonction de dessin n'est atteinte que dans un mode d'affichage des étiquettes que ce client n'active pas. Bourgeon l'honore là où il dessine lui-même l'emblème.": "Enmarca el emblema de gremio.
-
-⚠ El cliente original NUNCA dibuja este marco, marques lo que marques: su única función de dibujo solo se alcanza en un modo de etiquetas que este cliente no activa. Bourgeon lo respeta allí donde dibuja el emblema él mismo."
 "Rien à enregistrer : aucun onglet ne contient de ligne.": "Nada que guardar: ninguna pestaña contiene una línea."
 "Journal enregistré : %d fichier(s) dans %s": "Registro guardado: %d archivo(s) en %s"
 "Courbe des temps d'image": "Gráfica de tiempos de fotograma"
@@ -2873,3 +2867,49 @@
 "Remplace les images de l'interface du client.\nLe changement recharge toutes les textures : un temps d'arrêt d'une fraction de seconde est normal.": "Sustituye las imágenes de la interfaz del cliente.\nAplicarlo recarga todas las texturas: una pausa de una fracción de segundo es normal."
 "Aucun skin installé — seule l'apparence d'origine est disponible.": "Ningún skin instalado — solo está disponible el aspecto original."
 "Les réglages graphiques (résolution, mode d'écran, filtrage) restent dans la fenêtre du client.": "Los ajustes gráficos (resolución, modo de pantalla, filtrado) siguen en la ventana del cliente."
+
+# ── Shortcut List (MacroWindow, reemplaza la nativa UIEmotionWnd id 86) ───────
+# Las diez macros de chat ligadas a Alt+1..Alt+0. El TÍTULO de la ventana viene
+# del cliente (MsgStringTable 574): «Liste des raccourcis» de abajo solo es el
+# repliegue usado mientras esa tabla no está cargada.
+# «Public» se queda en inglés por la misma razón que «Party» y «Guild»: son
+# ámbitos de chat, es decir términos del juego.
+"Liste des raccourcis": "Lista de atajos"
+"Ces macros partent sur :": "Estas macros se envían a:"
+"Public": "Public"
+"Touche": "Tecla"
+"Macro": "Macro"
+"Essayer": "Probar"
+"Envoie la macro tout de suite, sans fermer la fenêtre": "Envía la macro ahora mismo, sin cerrar la ventana"
+"Glisser sur une autre ligne pour échanger les deux macros.\nClic droit : commandes du serveur.": "Arrastra sobre otra fila para intercambiar las dos macros.\nClic derecho: comandos del servidor."
+"Texte, /commande ou @commande...": "Texto, /comando o @comando..."
+"La destination suit l'onglet de chat courant. Une macro qui commence par / ou @ n'est pas concernée : c'est une commande.": "El destino sigue la pestaña de chat actual. Una macro que empieza por / o @ no se ve afectada: es un comando."
+"Ouvre l'écran des raccourcis à l'onglet Macros, où ces dix touches se réaffectent.": "Abre la pantalla de atajos en su pestaña Macros, donde estas diez teclas se reasignan."
+"Valeurs par défaut...": "Valores por defecto..."
+"Valeurs par défaut": "Valores por defecto"
+"Les dix macros vont reprendre les valeurs d'origine du client.\nCe que vous avez écrit sera perdu.": "Las diez macros volverán a los valores originales del cliente.\nLo que hayas escrito se perderá."
+"Vider la ligne": "Vaciar la fila"
+"Émotions": "Emotes"
+"Ouvre le storage alternatif %d.": "Abre el storage alternativo %d."
+"Ouvre le storage alternatif 5, celui des cartes.": "Abre el storage alternativo 5, el de las cards."
+"Envoie tout l'inventaire au storage alternatif %d.": "Envía todo el inventario al storage alternativo %d."
+# El menú de comandos del servidor (tablas estáticas en macro_window.cc) —
+# invisible para el extractor estático, como el catálogo de acciones de Bourgeon
+# más arriba. «Ramassage» y «Storage» NO se repiten aquí: ya tienen su entrada.
+# La redacción sigue la ayuda del propio SERVIDOR (moonlight: conf/atcommands.yml,
+# conf/import/atcommands.yml, src/custom/atcommand.inc), no una suposición.
+"Autre": "Otro"
+"Informations": "Información"
+"Les objets ramassés vont droit dans l'inventaire.": "Los objetos recogidos van directos al inventario."
+"Ramasse aussi les récompenses des MVP.": "Recoge también las recompensas de los MVP."
+"Ne ramasse que les objets valant au moins ce prix.": "Solo recoge los objetos que valgan al menos este precio."
+"Ne ramasse que les objets rares listés par le serveur.": "Solo recoge los objetos raros listados por el servidor."
+"Téléporte à votre point de sauvegarde.": "Te teletransporta a tu punto de guardado."
+"Bascule la protection contre le vol de kill.": "Alterna la protección contra el robo de kills."
+"Resynchronise votre position à l'écran.": "Resincroniza tu posición en pantalla."
+"Depuis combien de temps le serveur tourne.": "Cuánto tiempo lleva el servidor en marcha."
+"Date et heure du serveur.": "Fecha y hora del servidor."
+"Liste les joueurs connectés, avec leur groupe et leur guilde.": "Lista los jugadores conectados, con su party y su guild."
+"Ouvre le storage.": "Abre el storage."
+"Envoie tout l'inventaire au storage.": "Envía todo el inventario al storage."
+"Ouvre le storage de guilde.": "Abre el storage de guild."

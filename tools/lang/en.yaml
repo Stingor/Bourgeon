@@ -2849,14 +2849,8 @@
 "Contrôles": "Controls"
 "Bordure d'emblème": "Emblem Border"
 "Notification de connexion": "Login Notification"
-"Macros de chat (Alt+1 à 0)": "Chat macros (Alt+1 to 0)"
+"Macros de chat": "Chat macros"
 "Encadre l'emblème de guilde au-dessus des noms. Le client ne dessine ce cadre que sur une carte de siège (GvG) : ailleurs la commande bascule, mais rien ne change à l'écran. Bourgeon l'honore partout où il dessine lui-même l'emblème, comme la fiche de personnage.": "Frames the guild emblem above names. The client only draws this frame on a siege (GvG) map: elsewhere the command toggles, but nothing changes on screen. Bourgeon honours it wherever it draws the emblem itself, such as the character sheet."
-
-⚠ The stock client NEVER draws this frame, whatever you tick: its only drawing function is reached solely in a tag-display mode this client never enables. Bourgeon honours it where it draws the emblem itself."
-
-⚠ Le client d'origine ne dessine JAMAIS ce cadre, quoi qu'on coche : son unique fonction de dessin n'est atteinte que dans un mode d'affichage des étiquettes que ce client n'active pas. Bourgeon l'honore là où il dessine lui-même l'emblème.": "Frames the guild emblem.
-
-⚠ The stock client NEVER draws this frame, whatever you tick: its only drawing function is reached solely in a tag-display mode this client never enables. Bourgeon honours it where it draws the emblem itself."
 "Rien à enregistrer : aucun onglet ne contient de ligne.": "Nothing to save: no tab holds a single line."
 "Journal enregistré : %d fichier(s) dans %s": "Chat log saved: %d file(s) in %s"
 "Courbe des temps d'image": "Frame-time graph"
@@ -2917,3 +2911,49 @@
 "Remplace les images de l'interface du client.\nLe changement recharge toutes les textures : un temps d'arrêt d'une fraction de seconde est normal.": "Replaces the client interface images.\nApplying it reloads every texture: a fraction of a second of pause is normal."
 "Aucun skin installé — seule l'apparence d'origine est disponible.": "No skin installed — only the original look is available."
 "Les réglages graphiques (résolution, mode d'écran, filtrage) restent dans la fenêtre du client.": "Graphics settings (resolution, screen mode, filtering) stay in the client window."
+
+# ── Shortcut List (MacroWindow, replaces the native UIEmotionWnd id 86) ───────
+# The ten chat macros bound to Alt+1..Alt+0. The window TITLE comes from the
+# client (MsgStringTable 574), so "Liste des raccourcis" below is only the
+# fallback used when that table is not loaded yet.
+# "Public" stays English here for the same reason "Party" and "Guild" do: these
+# are chat scopes, i.e. game terms.
+"Liste des raccourcis": "Shortcut List"
+"Ces macros partent sur :": "These macros are sent to:"
+"Public": "Public"
+"Touche": "Key"
+"Macro": "Macro"
+"Essayer": "Try"
+"Envoie la macro tout de suite, sans fermer la fenêtre": "Sends the macro right now, without closing the window"
+"Glisser sur une autre ligne pour échanger les deux macros.\nClic droit : commandes du serveur.": "Drag onto another row to swap the two macros.\nRight-click: server commands."
+"Texte, /commande ou @commande...": "Text, /command or @command..."
+"La destination suit l'onglet de chat courant. Une macro qui commence par / ou @ n'est pas concernée : c'est une commande.": "The destination follows the current chat tab. A macro starting with / or @ is not affected: it is a command."
+"Ouvre l'écran des raccourcis à l'onglet Macros, où ces dix touches se réaffectent.": "Opens the shortcut screen on its Macros tab, where these ten keys are remapped."
+"Valeurs par défaut...": "Default values..."
+"Valeurs par défaut": "Default values"
+"Les dix macros vont reprendre les valeurs d'origine du client.\nCe que vous avez écrit sera perdu.": "The ten macros will go back to the client's original values.\nWhatever you have written will be lost."
+"Vider la ligne": "Clear the row"
+"Émotions": "Emotes"
+"Ouvre le storage alternatif %d.": "Opens alternative storage %d."
+"Ouvre le storage alternatif 5, celui des cartes.": "Opens alternative storage 5, the card one."
+"Envoie tout l'inventaire au storage alternatif %d.": "Sends the whole inventory to alternative storage %d."
+# The server-command menu (static tables in macro_window.cc) — invisible to the
+# static extractor, like the Bourgeon action catalogue above. "Ramassage" and
+# "Storage" are NOT repeated here: they already have their entry.
+# The wording follows the SERVER's own help (moonlight: conf/atcommands.yml,
+# conf/import/atcommands.yml, src/custom/atcommand.inc), not a guess.
+"Autre": "Other"
+"Informations": "Information"
+"Les objets ramassés vont droit dans l'inventaire.": "Picked-up items go straight into the inventory."
+"Ramasse aussi les récompenses des MVP.": "Also loots MVP rewards."
+"Ne ramasse que les objets valant au moins ce prix.": "Only loots items worth at least this price."
+"Ne ramasse que les objets rares listés par le serveur.": "Only loots the rare items listed by the server."
+"Téléporte à votre point de sauvegarde.": "Warps you to your save point."
+"Bascule la protection contre le vol de kill.": "Toggles kill-steal protection."
+"Resynchronise votre position à l'écran.": "Resyncs your position on screen."
+"Depuis combien de temps le serveur tourne.": "How long the server has been up."
+"Date et heure du serveur.": "The server's date and time."
+"Liste les joueurs connectés, avec leur groupe et leur guilde.": "Lists online players, with their party and guild."
+"Ouvre le storage.": "Opens the storage."
+"Envoie tout l'inventaire au storage.": "Sends the whole inventory to the storage."
+"Ouvre le storage de guilde.": "Opens the guild storage."

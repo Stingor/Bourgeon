@@ -34,6 +34,7 @@
 #include "features/windows/staff_tools.h"
 #include "features/windows/game_settings.h"
 #include "features/windows/hotkey_settings.h"
+#include "features/windows/macro_window.h"
 #include "features/windows/cart_viewer.h"
 #include "features/patches/equip_tweaks.h"
 #include "features/patches/window_pos_tweaks.h"
@@ -119,6 +120,7 @@ BankWindow* Bourgeon::bank_window() { return bank_window_; }
 GameMenu* Bourgeon::game_menu() { return game_menu_; }
 StaffTools* Bourgeon::staff_tools() { return staff_tools_; }
 HotkeySettings* Bourgeon::hotkey_settings() { return hotkey_settings_; }
+MacroWindow* Bourgeon::macro_window() { return macro_window_; }
 GameSettings* Bourgeon::game_settings() { return game_settings_; }
 CashShopWindow* Bourgeon::cashshop_window() { return cashshop_window_; }
 NpcShopWindow* Bourgeon::npc_shop_window() { return npc_shop_window_; }
@@ -785,6 +787,14 @@ void Bourgeon::LoadPlugins() {
     auto hotkey_settings = std::make_unique<HotkeySettings>();
     hotkey_settings_ = hotkey_settings.get();
     plugins_.emplace_back(std::move(hotkey_settings));
+  }
+  {
+    // Les dix macros de chat (« Shortcut List », UIEmotionWnd id 86, Alt+M).
+    // Enregistrée APRÈS l'écran des raccourcis : elle lui délègue la réaffectation
+    // de ses touches, et l'ordre d'enregistrement est celui du rendu.
+    auto macro_window = std::make_unique<MacroWindow>();
+    macro_window_ = macro_window.get();
+    plugins_.emplace_back(std::move(macro_window));
   }
   {
     // Réglages du jeu (« Game Settings », id 0x271E). Les trois onglets pilotés

@@ -41,6 +41,7 @@
 #include "features/windows/staff_tools.h"
 #include "features/windows/game_settings.h"
 #include "features/windows/hotkey_settings.h"
+#include "features/windows/macro_window.h"
 #include "features/windows/cart_viewer.h"
 #include "features/windows/cashshop_window.h"
 #include "features/windows/npc_shop_window.h"
@@ -549,6 +550,16 @@ const moonlight_ui::SettingDesc kGameMenuSettings[] = {
 
 const moonlight_ui::SettingDesc kHotkeySettings[] = {
     {"hotkeywnd_imgui", SType::kBool, MLUI_FIELD(hotkey_settings, imgui_enabled_),
+     MLUI_LITERAL(bool, true)},
+};
+
+// Les dix macros de chat (« Shortcut List », id 86, Alt+M). Même statut que les
+// deux ci-dessus : hors du groupe « Interface moderne », ON par défaut. Elle
+// n'écrit que dans les structures du client et grave par sa propre fonction de
+// sauvegarde — donc elle rend le même service dans les deux modes, et corrige au
+// passage le défaut qui perdait les saisies à la fermeture.
+const moonlight_ui::SettingDesc kMacroWindowSettings[] = {
+    {"macrolist_imgui", SType::kBool, MLUI_FIELD(macro_window, imgui_enabled_),
      MLUI_LITERAL(bool, true)},
 };
 
@@ -1463,6 +1474,7 @@ void MoonlightUi::LoadSettings() {
     moonlight_ui::ReadSettings(ui, kBankSettings);
     moonlight_ui::ReadSettings(ui, kGameMenuSettings);
     moonlight_ui::ReadSettings(ui, kHotkeySettings);
+    moonlight_ui::ReadSettings(ui, kMacroWindowSettings);
     moonlight_ui::ReadSettings(ui, kGameSettingsSettings);
     moonlight_ui::ReadBourgeonHotkeys(ui);
     moonlight_ui::ReadSettings(ui, kRefineSettings);
@@ -1614,6 +1626,7 @@ void MoonlightUi::WriteSettingsFile() {
   moonlight_ui::WriteSettings(out, kBankSettings);
   moonlight_ui::WriteSettings(out, kGameMenuSettings);
   moonlight_ui::WriteSettings(out, kHotkeySettings);
+  moonlight_ui::WriteSettings(out, kMacroWindowSettings);
   moonlight_ui::WriteSettings(out, kGameSettingsSettings);
   moonlight_ui::WriteBourgeonHotkeys(out);
   moonlight_ui::WriteSettings(out, kRefineSettings);
