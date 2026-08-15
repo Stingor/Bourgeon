@@ -117,9 +117,18 @@ constexpr uintptr_t kSpriteDetailFlagB = 0x01602b64;
 // Diviseur de textures dérivé du niveau : 0 -> 4, 1 -> 2, 2 -> 1.
 constexpr uintptr_t kTextureDownscaleAddr = 0x0122b3d8;
 
-// Drapeau relu par `WinMainCRTStartup_Run` à la sortie de sa boucle : à 1, le
-// client se ré-exécute.
-constexpr uintptr_t kRestartRequestedAddr = 0x01602a8c;
+// ⛔ `g_RestartRequested` (0x01602a8c) — DÉLIBÉRÉMENT INUTILISÉ, gardé pour la
+// mémoire. Le nom ment : à la sortie de sa boucle, `WinMainCRTStartup_Run`
+// (0x00dba10d) ne ré-exécute rien. Il fait UN SEUL geste,
+// `ShellExecuteA("OPEN", MsgString(0xD75), …)` — et 0xD75 est
+// `MSI_WEB_ADDRESS_FOR_RESTART` : le client ouvre la PAGE WEB du lanceur
+// d'origine dans le navigateur, puis s'arrête, en laissant l'humain relancer.
+// (Si la ligne de commande contient « Dev », c'est le remplaçant « http:// ».)
+// Le poser depuis notre panneau faisait donc surgir un navigateur au lieu d'un
+// client — constaté en jeu le 2026-08-15. On ne le pose plus.
+//
+// Sans conséquence pour la configuration : `OptionInfo_SaveToFile` passe AVANT
+// ce test, à chaque arrêt propre. Ce que nous écrivons est sauvé de toute façon.
 
 // La fabrique de sprites et son cache — à notifier quand le filtrage ou la
 // finesse des textures changent, sinon les textures déjà chargées gardent
@@ -161,11 +170,30 @@ constexpr uintptr_t kEnumModesAddr = 0x00561550;
 constexpr int kModeRecordSize = 36;
 constexpr int kModeRecLabel   = 0x0c;  // std::string
 
+// Rebâtit l'enregistrement de l'adaptateur COURANT depuis la configuration.
+// 🔴 Ne remplit que ce que la comparaison ci-dessous consulte : le champ
+// `kAdapterRecIndex` reste à ZÉRO. Voir `CurrentAdapterIndex`.
 using GetCurrentAdapter_t = void*(__cdecl*)(void*);
 constexpr uintptr_t kGetCurrentAdapterAddr = 0x005610b0;
 
-// La déconnexion propre, puis l'arrêt du mode courant : les deux derniers gestes
-// du bouton [Apply] natif avant que le processus ne se relance.
+// Le comparateur du client lui-même : `this` = un enregistrement énuméré, le
+// paramètre = celui de la configuration. L'index n'entre PAS dans la
+// comparaison — en DirectX 9, ce sont le GUID (+0x40) ET le nom de sortie
+// (+0x50) qui décident, et il faut bien les deux : deux écrans branchés sur la
+// même carte partagent le GUID, seul `\\.\DISPLAYn` les sépare.
+using AdapterEquals_t = bool(__thiscall*)(const void*, const void*);
+constexpr uintptr_t kAdapterEqualsAddr = 0x00560d60;
+
+// La sauvegarde du fichier d'options, `this` = la session. Le client ne l'appelle
+// qu'à l'arrêt ; on la déclenche nous-mêmes pour qu'un réglage structurel
+// survive à une fin de partie brutale.
+using OptionSave_t = void(__thiscall*)(void*);
+constexpr uintptr_t kOptionSaveAddr    = 0x00d78970;
+constexpr uintptr_t kOptionContextAddr = 0x015fa3c0;  // la session
+
+// La déconnexion propre puis l'arrêt du mode courant — les deux gestes du
+// [Apply] natif qui, eux, marchent parfaitement. Sans le drapeau de « relance »
+// qui les accompagnait, l'arrêt est un arrêt : plus de page web.
 using ConnGetInstance_t = void*(__cdecl*)();
 constexpr uintptr_t kConnGetInstanceAddr = 0x00c14d60;
 using ConnDisconnect_t = void(__thiscall*)(void*);
@@ -722,18 +750,64 @@ bool EnumerateModes(int system, int adapter_index, Mode* out, int max_count,
 int CurrentAdapterIndex() {
   // L'enregistrement rebâti par le client depuis sa configuration : 104 octets,
   // dont deux `std::string` qu'il construit — donc à détruire.
-  alignas(4) uint8_t record[kAdapterRecordSize] = {0};
-  int index = -1;
+  //
+  // 🔴 SON CHAMP `index` NE VEUT RIEN DIRE : le client le met à zéro et ne le
+  // remplit jamais. Le lire, c'est répondre « le premier de la liste » à toutes
+  // les questions — et c'est ce que faisait ce code, d'où un panneau qui
+  // reproposait éternellement le même écran quel que soit le choix enregistré.
+  //
+  // On refait donc ce que fait `D3D9_ResolveAdapterOrdinalAndCreateDevice`
+  // (0x00565230) juste avant de créer son device : énumérer, comparer avec le
+  // comparateur du client, et rendre l'index de celui qui correspond. Passer par
+  // sa comparaison plutôt que la nôtre garantit que nous montrons exactement
+  // l'adaptateur qu'il choisira.
+  const int system = System();
+  if (system != kRenderDx7 && system != kRenderDx9) return -1;
+
+  alignas(4) uint8_t current[kAdapterRecordSize] = {0};
+  bool current_built = false;
   __try {
-    reinterpret_cast<GetCurrentAdapter_t>(kGetCurrentAdapterAddr)(record);
-    index = *reinterpret_cast<const int32_t*>(record + kAdapterRecIndex);
-    reinterpret_cast<StrDtor_t>(rag::kStdStringDtorAddr)(record + kAdapterRecDesc);
-    reinterpret_cast<StrDtor_t>(rag::kStdStringDtorAddr)(record + kAdapterRecDx9Name);
+    reinterpret_cast<GetCurrentAdapter_t>(kGetCurrentAdapterAddr)(current);
+    current_built = true;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return -1; }
-  return index;
+
+  ClientVector vec;
+  __try {
+    reinterpret_cast<EnumAdapters_t>(kEnumAdaptersAddr)(&vec, system);
+  } __except (EXCEPTION_EXECUTE_HANDLER) { vec = ClientVector(); }
+
+  int index = -1;
+  if (vec.begin && vec.end > vec.begin) {
+    const int total = static_cast<int>((vec.end - vec.begin) / kAdapterRecordSize);
+    __try {
+      for (int i = 0; i < total; ++i) {
+        const uint8_t* rec = vec.begin + static_cast<ptrdiff_t>(i) * kAdapterRecordSize;
+        if (!reinterpret_cast<AdapterEquals_t>(kAdapterEqualsAddr)(rec, current))
+          continue;
+        index = *reinterpret_cast<const int32_t*>(rec + kAdapterRecIndex);
+        break;
+      }
+    } __except (EXCEPTION_EXECUTE_HANDLER) { index = -1; }
+  }
+  const int kStrings[] = {kAdapterRecDesc, kAdapterRecDx9Name};
+  FreeVector(&vec, kAdapterRecordSize, kStrings, 2);
+
+  if (current_built) {
+    __try {
+      reinterpret_cast<StrDtor_t>(rag::kStdStringDtorAddr)(current + kAdapterRecDesc);
+      reinterpret_cast<StrDtor_t>(rag::kStdStringDtorAddr)(current + kAdapterRecDx9Name);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {}
+  }
+
+  // Aucune correspondance : le client fera de même et retombera sur l'adaptateur
+  // 0. Autant l'annoncer plutôt que de rendre -1, qui ferait choisir au panneau
+  // une ligne au hasard.
+  return (index >= 0) ? index : 0;
 }
 
-bool ApplyAndRestart(int system, int adapter_index, int width, int height,
+bool AdapterChoiceMovesWindow() { return Fullscreen(); }
+
+bool ApplyStructural(int system, int adapter_index, int width, int height,
                      int bpp, bool fullscreen) {
   if (system != kRenderDx7 && system != kRenderDx9) return false;
   if (width <= 0 || height <= 0 || bpp <= 0) return false;
@@ -791,15 +865,24 @@ bool ApplyAndRestart(int system, int adapter_index, int width, int height,
   WriteInt(kCfgBppAddr, bpp);
   WriteInt(kCfgFullscreenAddr, fullscreen ? 1 : 0);
 
+  // Sauver TOUT DE SUITE. Le client, lui, n'écrit son fichier d'options qu'à
+  // l'arrêt propre : une déconnexion brutale ou un plantage entre ce clic et la
+  // fermeture emporterait le réglage, et le joueur croirait le panneau menteur.
   __try {
-    *reinterpret_cast<uint8_t*>(kRestartRequestedAddr) = 1;
+    reinterpret_cast<OptionSave_t>(kOptionSaveAddr)(
+        reinterpret_cast<void*>(kOptionContextAddr));
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+  return true;
+}
+
+void ShutdownClient() {
+  __try {
     void* connection = reinterpret_cast<ConnGetInstance_t>(kConnGetInstanceAddr)();
     if (connection)
       reinterpret_cast<ConnDisconnect_t>(kConnDisconnectAddr)(connection);
     void* mode = *reinterpret_cast<void**>(kCurrentModePtrAddr);
     if (mode) uiwnd::Vf<DispCmd_t>(mode, kVfDispCmd)(mode, kCmdShutdown, 0, 0, 0, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
-  return true;
 }
 
 }  // namespace graphics

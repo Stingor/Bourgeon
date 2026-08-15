@@ -193,9 +193,13 @@ void GameSettings::OpenFromMenu() {
   namespace gfx = gamesettings::graphics;
   draft_.system     = gfx::System();
   draft_.fullscreen = gfx::Fullscreen();
-  draft_.adapter    = gfx::CurrentAdapterIndex();
-  if (draft_.adapter < 0) draft_.adapter = 0;
+  // 🔴 L'adaptateur N'EST PAS relu ici : le connaître demande une énumération, et
+  // donc un device Direct3D, pour un panneau qui s'ouvre le plus souvent sur un
+  // autre onglet. −1 = « pas encore su » ; `RefreshGraphicsLists` tranchera.
+  draft_.adapter    = -1;
+  current_adapter_  = -1;
   draft_.mode = -1;
+  saved_structural_ = false;
   // Les listes elles-mêmes ne sont PAS relues ici : elles coûtent un device
   // Direct3D, et l'onglet Graphismes les demandera s'il est ouvert.
   graphics_ready_ = false;
@@ -237,17 +241,31 @@ void GameSettings::OnTick() {
     return;
   }
 
-  // 🔴 LA RELANCE EN PREMIER : elle déconnecte et arrête le mode courant, donc
-  // rien de ce qui suit n'aurait de sens après elle.
+  // Les réglages structurels : différés jusqu'ici parce qu'ils réénumèrent les
+  // adaptateurs (un device Direct3D le temps de l'appel) et écrivent le fichier
+  // d'options. Rien ne ferme la session — le panneau reste ouvert, et l'on
+  // affiche ce qui a été retenu.
   if (pending_restart_) {
     pending_restart_ = false;
     const bool has_mode =
         draft_.mode >= 0 && draft_.mode < static_cast<int>(modes_.size());
     if (has_mode) {
-      Close();  // ne pas laisser un panneau ouvert par-dessus un client qui s'arrête
-      gamesettings::graphics::ApplyAndRestart(
+      saved_structural_ = gamesettings::graphics::ApplyStructural(
           draft_.system, draft_.adapter, modes_[draft_.mode].width,
           modes_[draft_.mode].height, modes_[draft_.mode].bpp, draft_.fullscreen);
+      // Le brouillon EST la configuration, maintenant : sans cette ligne le
+      // bouton resterait actif et proposerait d'enregistrer ce qui vient de
+      // l'être — la seule alternative étant de réénumérer pour le savoir.
+      if (saved_structural_) current_adapter_ = draft_.adapter;
+    }
+    // 🔴 L'arrêt APRÈS l'écriture, et seulement si elle a réussi : quitter sur un
+    // réglage non enregistré ferait perdre la session pour rien.
+    if (pending_shutdown_) {
+      pending_shutdown_ = false;
+      if (saved_structural_) {
+        Close();  // ne pas laisser un panneau ouvert par-dessus un client qui s'arrête
+        gamesettings::graphics::ShutdownClient();
+      }
     }
     return;
   }
@@ -516,10 +534,14 @@ void GameSettings::OnRenderUI() {
     ro::EndRoPopupModal();
   }
 
-  // ── Confirmation de la RELANCE du client ───────────────────────────────────
-  // 🔴 Le seul geste de tout le panneau qui ferme la session du joueur. Le texte
-  // est celui du CLIENT — c'est exactement l'avertissement que sa propre fenêtre
-  // affiche — et le bouton dit ce qu'il fait, pas « OK ».
+  // ── Confirmation d'un réglage qui n'agira qu'au prochain démarrage ─────────
+  //
+  // 🔴 ON NE FERME PAS LA SESSION, ET ON NE PROMET PAS DE RELANCE. Le [Apply]
+  // natif pose `g_RestartRequested` — mais ce drapeau ne relance rien : à la
+  // sortie de sa boucle, le client ouvre la PAGE WEB du lanceur d'origine
+  // (`MSI_WEB_ADDRESS_FOR_RESTART`) et s'arrête. Reproduire le geste faisait
+  // donc surgir un navigateur au lieu d'un client, signalé en jeu le
+  // 2026-08-15. On écrit la configuration, on la sauve, et on le dit.
   if (confirm_restart_) {
     ImGui::OpenPopup("###gs_confirm_restart");
     confirm_restart_ = false;
@@ -528,21 +550,31 @@ void GameSettings::OnRenderUI() {
                           ImVec2(0.5f, 0.5f));
   char restart_id[128];
   std::snprintf(restart_id, sizeof(restart_id), "%s###gs_confirm_restart",
-                i18n::Tr("Redémarrer le client"));
+                i18n::Tr("Au prochain démarrage"));
   if (ro::BeginRoPopupModal(restart_id)) {
     ro::SuppressEscapeStack();
 
     ImGui::TextWrapped("%s",
-                       msgstr::Utf8Or(kMsgRestartConfirm,
-                                      i18n::Tr("Ces réglages demandent un "
-                                               "redémarrage du client. Continuer ?")));
+                       i18n::Tr("Ces réglages sont enregistrés tout de suite, mais "
+                                "le client ne les lit qu'à son démarrage : ils "
+                                "prendront effet la prochaine fois que vous "
+                                "lancerez le jeu."));
     ImGui::Spacing();
     ImGui::TextColored(kChangedText, "%s",
-                       i18n::Tr("Votre personnage sera déconnecté."));
+                       i18n::Tr("Quitter maintenant vous déconnecte : le client se "
+                                "ferme, et c'est à vous de le relancer."));
     ImGui::Spacing();
-    const float w = ro::MaxButtonWidth({i18n::Tr("Redémarrer"), i18n::Tr("Annuler")});
-    if (ro::RoButton(i18n::Tr("Redémarrer"), w)) {
+    const float w = ro::MaxButtonWidth({i18n::Tr("Enregistrer"),
+                                        i18n::Tr("Enregistrer et quitter"),
+                                        i18n::Tr("Annuler")});
+    if (ro::RoButton(i18n::Tr("Enregistrer"), w)) {
       pending_restart_ = true;
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::SameLine();
+    if (ro::RoButton(i18n::Tr("Enregistrer et quitter"), w)) {
+      pending_restart_ = true;
+      pending_shutdown_ = true;
       ImGui::CloseCurrentPopup();
     }
     ImGui::SameLine();
@@ -712,7 +744,7 @@ void GameSettings::DrawBasicTab() {
   }
 
   ImGui::SetNextItemWidth(ro::Px(220.0f));
-  if (ImGui::BeginCombo("###gs_skin", current_name)) {
+  if (ro::RoBeginCombo("###gs_skin", current_name)) {
     char name[128];
     if (!gamesettings::SkinName(gamesettings::kSkinDefault, name, sizeof(name))) {
       std::strncpy(name, msgstr::Utf8Or(kMsgSkinDefault, i18n::Tr("Par défaut")),
@@ -728,7 +760,7 @@ void GameSettings::DrawBasicTab() {
       if (ImGui::Selectable(name, current_skin == i)) pending_skin_ = i;
       ImGui::PopID();
     }
-    ImGui::EndCombo();
+    ro::RoEndCombo();
   }
   ImGui::SameLine();
   mui::HelpMarker(
@@ -763,6 +795,14 @@ void GameSettings::RefreshGraphicsLists() {
   if (!gfx::EnumerateAdapters(draft_.system, adapters_.data(), kMaxAdapters, &count))
     count = 0;
   adapters_.resize(static_cast<size_t>(count));
+
+  // Celui que le client choisira réellement — relu ICI et nulle part ailleurs,
+  // parce que le savoir coûte une énumération de plus.
+  current_adapter_ = (draft_.system == gfx::System()) ? gfx::CurrentAdapterIndex() : -1;
+
+  // Première venue : le brouillon part de la configuration réelle.
+  if (draft_.adapter < 0)
+    draft_.adapter = (current_adapter_ >= 0) ? current_adapter_ : 0;
 
   // L'adaptateur du brouillon doit rester dans la liste : changer d'API la
   // renouvelle entièrement, et garder un index qui n'y est plus ferait écrire
@@ -827,7 +867,7 @@ void GameSettings::DrawGraphicsTab() {
   const int sprite = (pending_hot_.sprite >= 0) ? pending_hot_.sprite
                                                 : gfx::SpriteDetail();
   ImGui::SetNextItemWidth(ro::Px(150.0f));
-  if (ImGui::BeginCombo(msgstr::Utf8Or(kMsgSpriteDetail,
+  if (ro::RoBeginCombo(msgstr::Utf8Or(kMsgSpriteDetail,
                                        i18n::Tr("Finesse des sprites")),
                         detail_names[sprite])) {
     for (int i = 0; i <= gfx::kDetailMax; ++i) {
@@ -835,7 +875,7 @@ void GameSettings::DrawGraphicsTab() {
       if (ImGui::Selectable(detail_names[i], i == sprite)) pending_hot_.sprite = i;
       ImGui::PopID();
     }
-    ImGui::EndCombo();
+    ro::RoEndCombo();
   }
   ImGui::SameLine();
   mui::HelpMarker(
@@ -846,7 +886,7 @@ void GameSettings::DrawGraphicsTab() {
   const int texture = (pending_hot_.texture >= 0) ? pending_hot_.texture
                                                   : gfx::TextureDetail();
   ImGui::SetNextItemWidth(ro::Px(150.0f));
-  if (ImGui::BeginCombo(msgstr::Utf8Or(kMsgTextureDetail,
+  if (ro::RoBeginCombo(msgstr::Utf8Or(kMsgTextureDetail,
                                        i18n::Tr("Finesse des textures")),
                         detail_names[texture])) {
     for (int i = 0; i <= gfx::kDetailMax; ++i) {
@@ -854,7 +894,7 @@ void GameSettings::DrawGraphicsTab() {
       if (ImGui::Selectable(detail_names[i], i == texture)) pending_hot_.texture = i;
       ImGui::PopID();
     }
-    ImGui::EndCombo();
+    ro::RoEndCombo();
   }
   ImGui::SameLine();
   mui::HelpMarker(i18n::Tr("Divise la résolution des textures pour économiser de "
@@ -875,13 +915,14 @@ void GameSettings::DrawGraphicsTab() {
                "créée : le changement se voit tout de suite sur l'interface, et "
                "sur le reste au fur et à mesure des rechargements."));
 
-  // ── 🔁 Ce qui exige une relance ───────────────────────────────────────────
+  // ── 🔁 Ce qui n'est lu qu'au démarrage ────────────────────────────────────
   ImGui::Spacing();
-  mui::SeparatorText(i18n::Tr("Demande un redémarrage du client"));
+  mui::SeparatorText(i18n::Tr("Au prochain démarrage"));
 
   ImGui::TextColored(kSecondaryText, "%s",
-                     i18n::Tr("Le client n'applique ces quatre réglages qu'au "
-                              "démarrage : les changer ferme la session."));
+                     i18n::Tr("Le client ne lit ces quatre réglages qu'à son "
+                              "démarrage. Ils sont enregistrés tout de suite et "
+                              "prendront effet au prochain lancement."));
   ImGui::Spacing();
 
   // Système de rendu — la liste du client est en dur, deux entrées.
@@ -890,7 +931,7 @@ void GameSettings::DrawGraphicsTab() {
                                    {gfx::kRenderDx9, "DirectX 9"}};
   const char* system_name = (draft_.system == gfx::kRenderDx7) ? "DirectX 7" : "DirectX 9";
   ImGui::SetNextItemWidth(ro::Px(150.0f));
-  if (ImGui::BeginCombo(msgstr::Utf8Or(kMsgRenderSystem, i18n::Tr("API graphique")),
+  if (ro::RoBeginCombo(msgstr::Utf8Or(kMsgRenderSystem, i18n::Tr("API graphique")),
                         system_name)) {
     for (const SystemChoice& choice : kSystems) {
       ImGui::PushID(choice.value);
@@ -911,7 +952,7 @@ void GameSettings::DrawGraphicsTab() {
       }
       ImGui::PopID();
     }
-    ImGui::EndCombo();
+    ro::RoEndCombo();
   }
 
   // Adaptateur.
@@ -930,7 +971,7 @@ void GameSettings::DrawGraphicsTab() {
     }
   }
   ImGui::SetNextItemWidth(ro::Px(300.0f));
-  if (ImGui::BeginCombo(msgstr::Utf8Or(kMsgGraphicDevice, i18n::Tr("Carte graphique")),
+  if (ro::RoBeginCombo(msgstr::Utf8Or(kMsgGraphicDevice, i18n::Tr("Carte graphique")),
                         adapter_label)) {
     for (const gfx::Adapter& adapter : adapters_) {
       char label[192];
@@ -943,12 +984,26 @@ void GameSettings::DrawGraphicsTab() {
       }
       ImGui::PopID();
     }
-    ImGui::EndCombo();
+    ro::RoEndCombo();
   }
   ImGui::SameLine();
   mui::HelpMarker(
       i18n::Tr("Une même carte apparaît une fois PAR ÉCRAN branché : ce que vous "
-               "choisissez ici, c'est l'écran sur lequel le jeu s'ouvrira."));
+               "choisissez ici, c'est l'écran sur lequel le jeu s'ouvrira.\n"
+               "Uniquement en plein écran : en fenêtré, le client place toujours "
+               "sa fenêtre sur l'écran principal de Windows."));
+
+  // 🔴 Le dire À LA LIGNE, pas seulement dans l'infobulle : en fenêtré, ce choix
+  // n'a AUCUN effet, et un réglage qui ne fait rien sans le dire passe pour une
+  // panne. `GameWindow_Create` place la fenêtre d'après
+  // `GetSystemMetrics(SM_CXSCREEN)` — l'écran principal — et borne toute
+  // abscisse qui en sortirait ; l'adaptateur n'entre jamais dans cette fonction.
+  // Signalé en jeu le 2026-08-15 : « il ouvre toujours sur écran 1 ».
+  if (!draft_.fullscreen && adapters_.size() > 1) {
+    ImGui::TextColored(kSecondaryText, "%s",
+                       i18n::Tr("En fenêtré, le jeu s'ouvre toujours sur l'écran "
+                                "principal de Windows."));
+  }
 
   // Résolution.
   char mode_label[96];
@@ -964,7 +1019,7 @@ void GameSettings::DrawGraphicsTab() {
                   i18n::Tr("hors liste"));
   }
   ImGui::SetNextItemWidth(ro::Px(260.0f));
-  if (ImGui::BeginCombo(msgstr::Utf8Or(kMsgResolution, i18n::Tr("Résolution")),
+  if (ro::RoBeginCombo(msgstr::Utf8Or(kMsgResolution, i18n::Tr("Résolution")),
                         mode_label)) {
     for (size_t i = 0; i < modes_.size(); ++i) {
       const gfx::Mode& mode = modes_[i];
@@ -976,7 +1031,7 @@ void GameSettings::DrawGraphicsTab() {
         draft_.mode = static_cast<int>(i);
       ImGui::PopID();
     }
-    ImGui::EndCombo();
+    ro::RoEndCombo();
   }
 
   // Plein écran / fenêtré : deux radios, comme le natif.
@@ -991,23 +1046,35 @@ void GameSettings::DrawGraphicsTab() {
     draft_.fullscreen = false;
 
   // ── Le bouton, actif seulement s'il y a quelque chose à appliquer ─────────
+  //
+  // 🔴 `current_adapter_` et pas `gfx::CurrentAdapterIndex()` : depuis qu'elle
+  // compare comme le client, cette fonction ÉNUMÈRE — donc crée un device
+  // Direct3D le temps de l'appel. L'appeler ici la mettrait dans le chemin de
+  // CHAQUE FRAME. Elle est relue avec les listes, c'est-à-dire quand quelque
+  // chose a pu changer.
   const bool has_mode = (draft_.mode >= 0 && draft_.mode < static_cast<int>(modes_.size()));
   const bool changed =
       draft_.system != gfx::System() || draft_.fullscreen != gfx::Fullscreen() ||
-      draft_.adapter != gfx::CurrentAdapterIndex() ||
+      draft_.adapter != current_adapter_ ||
       (has_mode && (modes_[draft_.mode].width != gfx::Width() ||
                     modes_[draft_.mode].height != gfx::Height() ||
                     modes_[draft_.mode].bpp != gfx::BitsPerPixel()));
 
   ImGui::Spacing();
   ImGui::BeginDisabled(!changed || !has_mode);
-  if (ro::RoButton(i18n::Tr("Appliquer et redémarrer"),
-                   ro::ButtonWidth(i18n::Tr("Appliquer et redémarrer"))))
+  if (ro::RoButton(i18n::Tr("Enregistrer ces réglages"),
+                   ro::ButtonWidth(i18n::Tr("Enregistrer ces réglages"))))
     confirm_restart_ = true;
   ImGui::EndDisabled();
   if (!has_mode && !modes_.empty()) {
     ImGui::SameLine();
     ImGui::TextColored(kChangedText, "%s", i18n::Tr("Choisissez une résolution."));
+  } else if (saved_structural_ && !changed) {
+    // Rien ne bouge à l'écran avant le prochain démarrage : sans cet accusé de
+    // réception, le joueur n'a qu'un bouton qui se grise pour toute réponse.
+    ImGui::SameLine();
+    ImGui::TextColored(kSecondaryText, "%s",
+                       i18n::Tr("Enregistré. Actif au prochain démarrage du jeu."));
   }
 
   mui::PopStyleCompact();

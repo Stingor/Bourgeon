@@ -872,7 +872,7 @@ lu au désassemblage — fenêtré, 1760×990×32, DX9, détails 2/2, trilinéai
 | `0x016025E8` | `g_cfg_DX7AdapterName` | 40 o. |
 | `0x0122B3D8` | `g_TextureDownscaleFactor` | dérivé : niveau 0→4, 1→2, 2→1 |
 
-#### 🔴 `[Apply]` a DEUX BRANCHES, et la première relance le client
+#### 🔴 `[Apply]` a DEUX BRANCHES, et la première **n'est pas une relance**
 
 `GameSettingsUI_GraphicsPage_NeedsRestart` (`0x009ED6B0`) tranche : vrai dès que
 **l'API, l'adaptateur, la résolution ou le mode plein écran** ont changé. C'est
@@ -884,9 +884,33 @@ lui qui choisit le texte de la modale — `MSI_GRAPHIC_SETTING_WARNING_RESTART`
 1. **branche structurelle** — écrit tout le bloc ci-dessus, pose
    **`g_RestartRequested = 1`** (`0x01602A8C`), appelle
    `CRagConnection_OnDisconnect`, puis `SendMsg(2)` au mode courant. Il n'y a
-   **aucun reset de device** : `WinMainCRTStartup_Run` relit `g_RestartRequested`
-   à la sortie de sa boucle et **ré-exécute le client**. Un panneau de
-   remplacement doit donc assumer la relance, pas espérer un reset ;
+   **aucun reset de device** — et, contrairement à ce que ce document a d'abord
+   affirmé (corrigé le 2026-08-15), **aucune ré-exécution non plus** :
+
+   > 🔴 **`g_RestartRequested` OUVRE UNE PAGE WEB.** À la sortie de sa boucle,
+   > `WinMainCRTStartup_Run` (`0x00DBA10D`) teste le drapeau et fait **un seul
+   > geste** : `ShellExecuteA(0, "OPEN", MsgString(0xD75), MsgString(0xD75), 0, 1)`.
+   > Et `0xD75` est **`MSI_WEB_ADDRESS_FOR_RESTART`** — l'adresse du lanceur
+   > d'origine. Le client ouvre le navigateur sur la page du patcher, s'arrête,
+   > et laisse l'humain relancer. (Si la ligne de commande contient « `Dev` »,
+   > c'est le remplaçant littéral « `http://` » qui part, deux fois.) Il n'y a ni
+   > `CreateProcess` ni `ShellExecute` de l'exe sur ce chemin.
+   >
+   > Constaté en jeu : « quand on fait apply and restart, la page du site
+   > internet s'ouvre dans le browser ». L'arrêt, lui, fonctionne parfaitement —
+   > c'est **la déconnexion + `SendMsg(2)` qui ferment le client**, pas le
+   > drapeau.
+   >
+   > Sans conséquence pour la configuration : `OptionInfo_SaveToFile`
+   > (`0x00D78970`, `this` = la session `0x015FA3C0`) passe **avant** ce test, à
+   > chaque arrêt propre. Ce qui est écrit dans le bloc `0x01602610` est sauvé de
+   > toute façon.
+   >
+   > ➡ Un panneau de remplacement ne doit **jamais** poser ce drapeau. Il écrit
+   > la configuration, appelle lui-même `OptionInfo_SaveToFile` pour qu'un
+   > plantage ne l'emporte pas, et annonce « au prochain démarrage ». Quitter
+   > reste possible — déconnexion + `SendMsg(2)`, sans le drapeau — mais c'est un
+   > choix offert au joueur, pas une conséquence du réglage ;
 2. **branche à chaud** — trois réglages seulement, applicables sans rien relancer :
    `g_cfg_SpriteDetailLevel` (+ `0x01602B60`/`B64`), `g_cfg_TextureDetailLevel`
    (→ `g_TextureDownscaleFactor`), et `g_cfg_Trilinear` (→ `SpriteTexFactory` puis
@@ -952,6 +976,42 @@ le client, `g_cfg_DX9DeviceName` valait `\\.\DISPLAY2`.
 ➡ Un panneau de remplacement doit afficher le numéro d'écran à côté de la
 description ; le natif ne montre que la description, et sa liste est pour cette
 raison ambiguë sur un poste multi-écrans.
+
+⚠ Le GUID `DeviceIdentifier` est **le même pour les deux sorties d'une même
+carte** : il identifie le pilote, pas le moniteur. `AdapterRecord_Equals`
+(`0x00560D60`, `__thiscall`, l'enregistrement en `ECX`) compare donc, en DX9, le
+GUID **ET** le `DeviceName` — les deux, sans quoi la première sortie gagnerait
+toujours.
+
+#### 🔴 Deux pièges dans le choix d'écran
+
+**a) `RenderConfig_GetCurrentAdapter` (`0x005610B0`) ne remplit JAMAIS le champ
+`index`.** Il le met à zéro en tête et ne le touche plus : sa seule raison d'être
+est de fournir un enregistrement comparable, et la comparaison n'a pas besoin de
+l'ordinal. Lire `+0x04` après cet appel rend donc **toujours 0**, quel que soit
+l'adaptateur configuré. Pour connaître l'ordinal réel, il faut refaire ce que
+fait `D3D9_ResolveAdapterOrdinalAndCreateDevice` (`0x00565230`) juste avant de
+créer son device : énumérer, comparer chaque enregistrement avec
+`AdapterRecord_Equals`, et prendre le `+0x04` de **celui qui correspond** — c'est
+cette valeur-là qui part en paramètre de `CreateDeviceEx`. Symptôme du piège :
+un panneau qui repropose éternellement le même écran, quoi qu'on enregistre.
+
+**b) En mode FENÊTRÉ, le choix d'écran ne fait rien — et c'est le client.**
+`GameWindow_Create` (`0x00DB6670`) place sa fenêtre à partir de
+`GetSystemMetrics(SM_CXSCREEN/SM_CYSCREEN)` — **l'écran principal de Windows**,
+jamais le bureau virtuel — avec pour défauts les options `Window_XPos` /
+`Window_YPos`, puis **borne toute abscisse supérieure à `SM_CXSCREEN - largeur`**
+en la ramenant au centre. Une fenêtre ne peut donc pas naître sur un écran
+secondaire. L'adaptateur n'entre jamais dans cette fonction : il n'est consulté
+que plus tard, par `D3D9_CreateDeviceEx_Init` (`0x00542C20`), et en fenêtré
+celui-ci se contente de présenter dans le `HWND` existant — là où il est.
+
+Seul le **plein écran** suit le choix, où c'est `CreateDeviceEx(ordinal, …)` avec
+le mode d'affichage qui décide du moniteur. Constaté en jeu le 2026-08-15 :
+« il ouvre toujours sur écran 1 ».
+
+➡ Le dire à l'écran, pas seulement en infobulle : un réglage qui n'agit que dans
+un mode doit annoncer lequel, sinon il passe pour cassé.
 
 ---
 
@@ -1598,13 +1658,13 @@ collision en C++ (`hotkeys::Conflict`, exemption 0↔3 comprise) et refuse au li
 de voler la touche. Ne reste au natif que son **[Reset]**, faute d'équivalent à
 `GetOriginalHotKeyInfo` de notre côté.
 
-### 5.9 État du portage (2026-08-14)
+### 5.9 État du portage (2026-08-15)
 
 | fenêtre | état | fichiers |
 |---|---|---|
 | Game Options 155 | ✅ portée | `features/windows/game_menu.{h,cc}` |
 | Shortcut Settings 156 | ✅ portée, écriture comprise | `features/windows/hotkey_settings.{h,cc}`, `ragnarok/user_hotkey.{h,cc}` |
-| Game Settings 0x271E | ✅ portée **sauf l'onglet Graphics** — Basique compris (skin, priorité) ; groupe **RODEX volontairement non repris**, mort côté serveur (§3.9) | `features/windows/game_settings.{h,cc}`, `ragnarok/game_settings.{h,cc}` |
+| Game Settings 0x271E | ✅ portée **en entier, les cinq onglets** — Graphics compris (§3.10) ; la native n'est plus jamais ouverte. Groupe **RODEX volontairement non repris**, mort côté serveur (§3.9). Le [Apply] structurel **enregistre et sauve, sans poser `g_RestartRequested`** — le drapeau ouvre une page web, pas un client | `features/windows/game_settings.{h,cc}`, `ragnarok/game_settings.{h,cc}` |
 
 Les trois sont **ON par défaut et HORS du groupe « Interface moderne »** : ce sont
 des écrans de réglages, pas des morceaux de HUD, et aucun n'a besoin du reste de

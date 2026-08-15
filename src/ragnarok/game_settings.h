@@ -310,14 +310,30 @@ bool EnumerateAdapters(int system, Adapter* out, int max_count, int* out_count);
 bool EnumerateModes(int system, int adapter_index, Mode* out, int max_count,
                     int* out_count);
 
-// L'adaptateur COURANT, tel que le client le rebâtit depuis sa configuration.
-// -1 si indéterminable.
+// L'adaptateur COURANT — celui que le client CHOISIRA vraiment au prochain
+// démarrage. -1 si indéterminable.
+//
+// 🔴 NE PAS lire le champ `index` de l'enregistrement que le client rebâtit
+// depuis sa configuration : `RenderConfig_GetCurrentAdapter` (0x005610b0) ne le
+// remplit JAMAIS — il le met à zéro en tête et ne le touche plus, parce que sa
+// comparaison n'en a pas besoin. Le lire renvoie donc toujours 0, quel que soit
+// l'adaptateur configuré. On refait ici ce que fait le client au moment de créer
+// son device : énumérer, comparer chaque enregistrement avec son propre
+// `AdapterRecord_Equals`, et prendre l'index de CELUI QUI CORRESPOND.
 int CurrentAdapterIndex();
 
-// 🔴 ÉCRIT LA CONFIGURATION **PUIS RELANCE LE CLIENT**. C'est le geste du bouton
-// [Apply] natif, branche structurelle, reproduit tel quel : configuration en
-// mémoire, drapeau de relance, déconnexion propre, message d'arrêt au mode
-// courant. L'appelant DOIT avoir prévenu le joueur — il va perdre sa session.
+// Écrit la configuration structurelle et la SAUVEGARDE SUR-LE-CHAMP. Prend
+// effet au prochain démarrage du client.
+//
+// 🔴 NE RELANCE RIEN, ET C'EST VOULU. Le bouton [Apply] natif pose
+// `g_RestartRequested` — mais ce drapeau ne relance pas le client : à la sortie
+// de sa boucle, `WinMainCRTStartup_Run` le lit et fait UN SEUL geste,
+// `ShellExecuteA("OPEN", MsgString(0xD75))`, où 0xD75 est
+// `MSI_WEB_ADDRESS_FOR_RESTART` — il OUVRE UNE PAGE WEB dans le navigateur,
+// celle du lanceur d'origine, et laisse l'humain relancer. Sur Moonlight cette
+// adresse ne mène nulle part d'utile : reproduire le geste ferait surgir un
+// navigateur au lieu d'un client. On écrit donc la configuration, on force la
+// sauvegarde, et on annonce « au prochain démarrage ».
 //
 // `adapter_index` vient de `EnumerateAdapters` ; les GUID de l'adaptateur sont
 // recopiés depuis l'énumération, seule source qui les connaisse.
@@ -325,8 +341,25 @@ int CurrentAdapterIndex();
 // Rend false sans rien faire si l'adaptateur demandé n'est pas dans la liste :
 // écrire une configuration à moitié valide rendrait le client incapable de
 // redémarrer, et c'est le seul échec dont on ne se relève pas depuis le jeu.
-bool ApplyAndRestart(int system, int adapter_index, int width, int height,
+bool ApplyStructural(int system, int adapter_index, int width, int height,
                      int bpp, bool fullscreen);
+
+// Arrête le client proprement : déconnexion, puis message d'arrêt au mode
+// courant — les deux derniers gestes du [Apply] natif, sans le drapeau qui les
+// accompagnait. Le joueur relance lui-même.
+//
+// ⚠ Aucun retour, et pour cause : après cet appel le client se ferme. À
+// n'appeler qu'AU TICK, et depuis un panneau déjà fermé.
+void ShutdownClient();
+
+// ⚠ En mode FENÊTRÉ, le choix d'adaptateur ne déplace pas la fenêtre.
+// `GameWindow_Create` (0x00db6670) la place à partir de
+// `GetSystemMetrics(SM_CXSCREEN/SM_CYSCREEN)` — l'écran PRINCIPAL de Windows,
+// jamais le bureau virtuel — et borne toute abscisse qui en sortirait. La
+// fenêtre ne peut donc pas naître sur un écran secondaire, quel que soit
+// l'adaptateur. Seul le plein écran suit le choix, où c'est `CreateDeviceEx`
+// qui décide du moniteur.
+bool AdapterChoiceMovesWindow();  // == Fullscreen()
 
 }  // namespace graphics
 

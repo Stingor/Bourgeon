@@ -219,6 +219,22 @@ class GameSettings : public Plugin {
   bool pending_graphics_refresh_ = false;
   bool confirm_restart_  = false;
   bool pending_restart_  = false;
+  bool pending_shutdown_ = false;  // « Enregistrer et quitter » : l'arrêt suit l'écriture
+
+  // Un réglage structurel a été enregistré pendant cette ouverture du panneau.
+  // Sert à afficher l'accusé de réception : sans lui, le bouton se grise et rien
+  // ne dit au joueur que quelque chose a été retenu — puisque, justement, rien
+  // ne change à l'écran avant le prochain démarrage.
+  bool saved_structural_ = false;
+
+  // L'adaptateur que le client CHOISIRA au prochain démarrage. −1 tant que les
+  // listes n'ont pas été chargées.
+  //
+  // 🔴 MIS EN CACHE À DESSEIN. `gamesettings::graphics::CurrentAdapterIndex()`
+  // énumère les adaptateurs pour comparer comme le client — un device Direct3D
+  // par appel. Le relire par frame, dans le test « quelque chose a-t-il
+  // changé ? », coûterait cela soixante fois par seconde.
+  int current_adapter_ = -1;
 
   // Avertissement « DirectX 7 » à l'instant du CHOIX, pas après la relance : en
   // DX7 le moteur n'a ni shaders ni cible de rendu, et une bonne part de Bourgeon
