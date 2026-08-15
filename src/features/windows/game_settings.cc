@@ -534,9 +534,22 @@ void GameSettings::OnRenderUI() {
       DrawListTab(tab_);
     }
   }
-  // 🔴 Le verrou anti-défilement : sans lui, la molette au-dessus d'un slider
-  // fait aussi défiler la fenêtre derrière (feedback_imgui_wheel_scroll_gate).
-  mui::RegionWheel("gs_body", ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows));
+  // ⛔ PAS DE `RegionWheel` ICI, et c'était un contresens qui MANGEAIT le
+  // défilement. `RegionWheel` sert à une zone qui VEUT la molette pour son propre
+  // usage — un aperçu qui tourne, les pages d'un livre : elle en revendique la
+  // possession (`SetKeyOwner`) dès que le curseur s'y est posé un instant, puis
+  // la consomme. L'appliquer au corps défilant, c'est la retirer à la seule chose
+  // qui devait l'avoir.
+  //
+  // Le symptôme était exactement celui décrit en jeu — « ne fonctionne pas
+  // toujours » : la molette marchait dans les 0,3 s qui suivaient un mouvement de
+  // souris, puis mourait. Pire, le verrou ne se relâchait plus : il ne se rearme
+  // que lorsqu'un défilement a EU LIEU, et il n'en avait plus lieu.
+  //
+  // Il n'y avait rien à protéger. Les deux curseurs de volume passent par
+  // `mui::WheelSliderInt`, qui filtre déjà la molette par `LastItemWheel` — c'est
+  // LÀ que vit le verrou anti-défilement, au widget qui prend la molette, jamais
+  // au conteneur qui défile (feedback_imgui_wheel_scroll_gate).
   ImGui::EndChild();
 
   // ── Pied ───────────────────────────────────────────────────────────────────
