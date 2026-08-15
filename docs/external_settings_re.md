@@ -374,9 +374,19 @@ zlib-compresse le BMP reçu, écrit le nouveau `.ebm` puis
     `+0x7FFFFFFF` sur la version (§5.3) pour que le fichier écrit soit celui que
     le client relit.
 * Les autres endpoints (`/userconfig`, `/charconfig`, `/party/*`,
-  `/MerchantStore/*`, `/twitter/*`) sont aussi inertes tant qu'`AssistAddr`
-  n'est pas servi — c'est ce qui désactive de fait l'Agence des aventuriers
-  « web » et la sauvegarde serveur des raccourcis/positions de fenêtres.
+  `/MerchantStore/*`, `/twitter/*`) sont inertes tant qu'`AssistAddr` n'est pas
+  servi.
+
+> ✅ **SUR MOONLIGHT, ILS NE LE SONT PAS** (vérifié le 2026-08-15). L'adresse
+> vient du **Lua**, pas de `clientinfo.xml` — qui n'a aucun `<taaddress>` :
+> `data\luafiles514\lua files\service_korea\ExternalSettings_kr.lub` porte
+> `AssistAddr = "192.168.1.13:8888"`. Un `web-server` rAthena y écoute
+> (`~/moonlight/src/web/`), avec ses contrôleurs compilés : `userconfig`,
+> `charconfig`, `emblem`, `merchantstore`, `partybooking`.
+> ⇒ La sauvegarde serveur des raccourcis et des positions de fenêtres **par
+> compte** fonctionne, et le client la fait tout seul à la sortie propre. Le
+> paragraphe qui précède décrit le cas d'un serveur qui ne sert pas l'adresse —
+> ce n'est pas le nôtre.
 
 ---
 
