@@ -140,6 +140,11 @@ constexpr int kMaxMemosPerMap = 32;
 bool g_shift_engaged = false;
 bool g_menu_open = false;
 
+// Temps de survol, en secondes, avant que le rappel « Maj » ne s'affiche.
+// Calé sur le délai des infobulles d'ImGui : assez long pour qu'un curseur qui
+// ne fait que traverser la carte n'en déclenche aucune.
+constexpr float kHintHoverDelay = 0.6f;
+
 // Cellule visée par le dernier clic droit, en attente dans le menu d'ajout.
 int  g_memo_cell_x = 0;
 int  g_memo_cell_y = 0;
@@ -923,6 +928,32 @@ void Minimap::OnRenderUI() {
   // sous cette condition, la perdre les refermerait sous le curseur.
   const bool engaged = g_shift_engaged || g_menu_open;
   const bool interactive = !g_cfg.locked || engaged;
+
+  // Le rappel du geste. En mode traverser les clics, RIEN à l'écran ne dit que
+  // la minimap redevient saisissable : ni bouton, ni bordure, ni curseur — c'est
+  // tout l'intérêt du mode, et c'est aussi ce qui le rend indevinable.
+  //
+  // Il n'apparaît qu'après un temps de survol, et il ne peut pas gêner : sans
+  // Maj la souris traverse, donc la bulle ne recouvre jamais que ce que le
+  // joueur regardait déjà. Pousser la bulle dès l'effleurement, en revanche,
+  // ferait clignoter un pavé de texte à chaque fois qu'on passe devant la carte
+  // pour cliquer derrière.
+  //
+  // 🔴 `SetTooltip` et pas `Tooltip` du toolkit : celui-ci se gouverne à
+  // `IsLastItemHovered()`, et il n'y a ICI aucun item — la fenêtre porte
+  // `NoInputs`, c'est notre propre test de rectangle qui tranche le survol.
+  static float s_hint_hover = 0.0f;
+  if (g_cfg.locked && mouse_over && !engaged) {
+    s_hint_hover += io.DeltaTime;
+    if (s_hint_hover >= kHintHoverDelay) {
+      ImGui::SetTooltip(
+          "%s", i18n::Tr("Maintenir Maj pour saisir la minimap\n"
+                         "Sans Maj la souris la traverse : ni déplacement, ni "
+                         "poignées, ni molette, ni bouton de réglages."));
+    }
+  } else {
+    s_hint_hover = 0.0f;
+  }
 
   ImGuiWindowFlags flags = ImGuiWindowFlags_NoSavedSettings |
                            ImGuiWindowFlags_NoNav |
