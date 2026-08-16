@@ -137,6 +137,8 @@
 "Affiche un séparateur dans le chat log entre chaque kill de mobs. (Demandez à Spider - @separate)": "Muestra un separador en el log del chat entre cada mob abatido. (Pídeselo a Spider - @separate)"
 "Block EXP Gain": "Bloquear la ganancia de EXP"
 "Bloque le gain d'EXP. (@blockexp)": "Bloquea la ganancia de EXP. (@blockexp)"
+"Fly Wing marker": "Marcador de Fly Wing"
+"Marque sur la carte le point d'arrivée après une Fly Wing\nou un Téléport niveau 1. (@flywinglast)": "Marca en el mapa el punto de llegada tras una Fly Wing\no un Teleport de nivel 1. (@flywinglast)"
 "Show Skill Delay": "Mostrar el delay de habilidad"
 "Affiche un message dans le chat quand un skill\néchoue à cause du cooldown. (@showdelay)": "Muestra un mensaje en el chat cuando una habilidad\nfalla por su cooldown. (@showdelay)"
 "Show Speed": "Mostrar la velocidad"

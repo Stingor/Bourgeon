@@ -57,6 +57,8 @@ void MoonlightUi::DrawCommandsPanel() {
           SameLine(); HelpMarker(i18n::Tr("Refuse automatiquement les invitations\nde trade, de guilde et d'alliance. (@noask)"));
           ImGui::TableNextColumn(); if (ro::RoCheckbox(i18n::Tr("Wings"), &wings_enabled_)) SendSetting(kSettingWings, wings_enabled_ ? 1 : 0);
           SameLine(); HelpMarker(i18n::Tr("Active ou désactive le sprite alternatif des Angel wings et Devil wings (Moonlight 2005 vibe - @wings)"));
+          ImGui::TableNextColumn(); if (ro::RoCheckbox(i18n::Tr("Fly Wing marker"), &fly_wing_last_)) SendSetting(kSettingFlyWingLast, fly_wing_last_ ? 1 : 0);
+          SameLine(); HelpMarker(i18n::Tr("Marque sur la carte le point d'arrivée après une Fly Wing\nou un Téléport niveau 1. (@flywinglast)"));
           ImGui::EndTable();
         }
         // @noks — combo 4 options (off / self / party / guild)

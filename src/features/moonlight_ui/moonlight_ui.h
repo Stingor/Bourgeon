@@ -257,6 +257,7 @@ class MoonlightUi : public Plugin {
   // ailleurs, par IsStaff() (staff_gate.h). Un `if (kSettingGroupLevel)` écrit de
   // bonne foi serait donc toujours vrai — d'où le nom, qui dit la valeur.
   static constexpr uint16_t kSettingGroupLevel    = 26;  // lecture seule
+  static constexpr uint16_t kSettingFlyWingLast   = 27;  // marque le point d'arrivée d'une Fly Wing
 
   // Updates both directions of the relay based on current state.
   void UpdateRelay();
@@ -292,6 +293,7 @@ class MoonlightUi : public Plugin {
   bool no_ask_enabled_            = false;
   int  noks_mode_                 = 0;  // ⚠ énuméré : 0=off 1=self 2=party 3=guild
   bool wings_enabled_             = false;
+  bool fly_wing_last_             = false;  // marque sur la carte le point d'arrivée d'une Fly Wing
   bool aloot_mvp_       = false;
   bool aloot_mvp_rwd_   = false;
   int  sort_mode_inventory_    = 0;  // ⚠ énumérés : e_sort_mode 0-6, pas des booléens

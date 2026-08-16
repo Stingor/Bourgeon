@@ -1970,6 +1970,9 @@ void MoonlightUi::HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t le
         block_exp_ = (setting_value != 0);
         // LogInfo("[MoonlightUi] block_exp={}", block_exp_);
         break;
+      case kSettingFlyWingLast:
+        fly_wing_last_ = (setting_value != 0);
+        break;
       case kSettingAlootRare:
         aloot_rare_ = (setting_value != 0);
         // LogInfo("[MoonlightUi] aloot_rare={}", aloot_rare_);
