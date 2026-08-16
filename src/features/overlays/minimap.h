@@ -110,13 +110,33 @@ struct MinimapConfig {
 //     et la preuve chiffrée sont sur `RotatedQuad`, dans le .cc.
 class Minimap : public Plugin {
  public:
+  // Pose le veto du dessin natif : un détour sur le SITE D'APPEL de
+  // `GameMode_DrawMiniMap`. C'est lui, et pas le battement de frame ci-dessous,
+  // qui empêche le radar natif de clignoter au téléport — le client le recrée
+  // au milieu de sa frame, aucun battement en tête de frame ne peut arriver à
+  // temps. Le récit complet est sur `kDrawMiniMapCall`, dans le .cc.
+  Minimap();
+
   const char* name() const override { return "Minimap"; }
 
   void OnModeSwitch(ModeMgr::ModeType mode_type, const char* map_name) override;
   void OnRenderUI() override;
-  // Ferme (ou rend) le radar natif. 🔴 Hors frame ImGui : `CloseWindow` est une
-  // commande du client, l'appeler pendant notre rendu fige le jeu en silence.
-  void OnTick() override;
+
+  // Ferme (ou rend) le radar natif, et vide la bascule de fenêtre demandée par
+  // le menu. Appelé par `Bourgeon::OnGameFrame`, donc à CHAQUE frame et AVANT
+  // que le jeu ne dessine.
+  //
+  // 🔴 Deux raisons de ne PAS être dans OnTick, et aucune de nous y remettre :
+  //   · le client RECRÉE sa fenêtre 14 à chaque entrée de carte ; bridé à
+  //     ~100 ms, le rattrapage la laissait vivre le dixième de seconde qu'il
+  //     fallait pour la voir (le clignotement RÉSIDUEL d'une frame, lui, est du
+  //     ressort du veto de dessin, pas de ce battement) ;
+  //   · le bridage décale l'ouverture d'une fenêtre lourde (la carte du monde)
+  //     sur une frame quelconque, ce qui la faisait planter par intermittence.
+  // 🔴 Et hors frame ImGui dans les deux cas : `CloseWindow` et `MakeWindow`
+  // sont des commandes du client, les émettre pendant notre rendu fige le jeu
+  // en silence.
+  void OnGameFramePulse();
 
   // Réglages persistés (lus/écrits par moonlight_ui).
   MinimapConfig& config();

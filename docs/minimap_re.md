@@ -119,6 +119,36 @@ UIWindowMgr_RenderWindows(mgr)  ← les fenêtres passent PAR-DESSUS
 🔴 **Garde d'entrée : `if (g_MinimapZoomWnd)`.** Pas de fenêtre 14 ⇒ pas de
 radar du tout, même si tout le reste est prêt.
 
+### 🔴 2.0 Le supprimer sans clignotement : vetoer le SITE D'APPEL
+
+Fermer la fenêtre 14 depuis un battement en tête de frame **ne suffit pas**, et
+ce n'est pas une question de cadence : le client la recrée au MILIEU de sa frame
+(traitement des paquets d'entrée de carte) et dessine le radar plus loin dans
+CETTE MÊME frame. Quel que soit le battement, il est déjà passé. Il restait donc
+une frame pleine de radar natif à chaque téléport — bien visible au sortir d'un
+écran de chargement.
+
+Le seul point qui soit à coup sûr **après toute création et avant tout dessin**
+est l'appel lui-même, `0x00c74fc2`. Bourgeon y pose un JMP-hook (5 octets,
+`E8 E9 1A FF FF`) et saute l'appel quand sa minimap remplace le radar. Trois
+raisons pour lesquelles c'est sans risque :
+
+- sauter l'appel équivaut **exactement** à la garde d'entrée ci-dessus, que le
+  client prend lui-même dès que la fenêtre 14 n'existe pas ;
+- **tous** les marqueurs partent d'ici : les xrefs de
+  `GameMode_DrawMiniMapMarker` et de `GameMode_DrawMiniMapPartyGuildQuestMarkers`
+  ne mènent nulle part ailleurs ;
+- la fonction ne fait que dessiner — aucun état de jeu n'en dépend.
+
+⚠ **Le détour va sur le site d'appel, PAS sur la fonction** : le prologue de
+`GameMode_DrawMiniMap` installe un cadre SEH (`push -1` / `push handler` /
+`mov eax, fs:0`), que le JMP-hook ne sait pas relayer.
+
+Reste le cadre de la fenêtre 14 (coordonnées + cinq boutons), rendu **après**
+ce point par `UIWindowMgr_RenderWindows` : le détour le masque au passage
+(`+0x28 = 0`, une simple écriture de champ). Sa destruction, elle, est une
+commande du client et attend le battement de frame suivant.
+
 ### 2.1 Géométrie et cadrage
 
 ```c

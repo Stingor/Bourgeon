@@ -297,6 +297,17 @@ void Bourgeon::OnGameFrame() {
   // visible une frame. Le relevé des horodatages d'incantation se fait dans la
   // foulée, sous la même garde.
   if (auto* cast = cast_bar()) cast->OnGameFramePulse();
+
+  // Minimap : même famille de raison. Le client RECRÉE son radar (fenêtre 14) à
+  // chaque entrée de carte ; le refermer au rythme d'OnTick le laissait vivre
+  // un bon dixième de seconde à chaque téléport. ⚠ Ce battement ne peut pas
+  // pour autant tout couvrir : il passe en TÊTE de frame, la recréation a lieu
+  // au milieu de la précédente. La frame résiduelle est refusée ailleurs, par
+  // un détour sur le site d'appel du dessin natif (features/overlays/minimap.cc,
+  // `kDrawMiniMapCall`). Ici on ne fait que détruire, et vider la bascule de
+  // fenêtre du menu (carte du monde, navigation) : une fenêtre lourde ouverte
+  // depuis OnTick tombe sur une frame quelconque, et plante par intermittence.
+  if (auto* mm = minimap()) mm->OnGameFramePulse();
 }
 
 // 🔴 Le décodage des paquets, rejoué sur le fil PRINCIPAL pour tous les modules.

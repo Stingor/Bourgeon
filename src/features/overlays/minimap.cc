@@ -16,7 +16,9 @@
 #include "ragnarok/uiwnd.h"  // FindWindow / CloseWindow / MakeWindow
 #include "ui/ro_imgui.h"
 #include "ui/ro_widgets.h"  // mui::WheelSliderInt, HelpMarker, SeparatorText…
+#include "utils/hooking/hook_manager.h"
 #include "utils/i18n.h"
+#include "utils/log_console.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -90,6 +92,36 @@ constexpr int kNativeRadarWndId = 14;
 // pour « UINaviSearchWnd » : il ne vaut pas une mesure.
 constexpr int kWorldMapWndId   = 140;   // 0x8C, UIRoMapWnd
 constexpr int kNavigationWndId = 203;   // 0xCB, UINavigationV4Wnd
+
+// ── Le veto du dessin natif ──────────────────────────────────────────────────
+//
+// 🔴 Fermer la fenêtre 14 au battement de frame NE SUFFIT PAS, et aucun réglage
+// de cadence n'y changera rien. Le client recrée son radar au MILIEU de sa
+// frame (traitement des paquets d'entrée de carte) et le dessine plus loin dans
+// CETTE MÊME frame ; notre battement, lui, passe au DÉBUT de la frame et est
+// donc déjà passé. Il restait une frame pleine de radar natif à chaque
+// téléport — parfaitement visible au sortir d'un écran de chargement.
+//
+// Le seul point qui soit à coup sûr APRÈS toute création et AVANT tout dessin,
+// c'est le site d'appel du dessin lui-même :
+//   `GameMode_InGame_ProcessFrame+0x542 : call GameMode_DrawMiniMap`.
+// Sauter cet appel revient EXACTEMENT à ce que fait le client quand la fenêtre
+// 14 n'existe pas — la première chose que teste `GameMode_DrawMiniMap` est
+// `if (!g_MinimapZoomWnd) return`. Le veto ne prive donc le jeu de rien d'autre
+// que d'un dessin, et il emporte AUSSI tous les marqueurs : ils sont posés
+// depuis cette fonction, et de nulle part ailleurs (relevé des xrefs de
+// `GameMode_DrawMiniMapMarker`).
+//
+// ⚠ Le détour se pose sur le SITE D'APPEL et pas sur la fonction : le prologue
+// de `GameMode_DrawMiniMap` installe un cadre SEH (`push -1` / `push handler` /
+// `mov eax, fs:0`), que le JMP-hook ne sait pas relayer.
+constexpr uintptr_t kDrawMiniMapCall  = 0x00c74fc2;  // call GameMode_DrawMiniMap
+constexpr uintptr_t kDrawMiniMapAfter = 0x00c74fc7;  // l'instruction suivante
+// Les cinq octets attendus là : `call rel32` vers 0x00c66ab0. Vérifiés avant de
+// poser le détour, parce que l'exe livré porte des correctifs WARP que l'IDB ne
+// montre pas — écrire un JMP par-dessus autre chose qu'un appel de 5 octets ne
+// pardonnerait pas.
+constexpr uint8_t kDrawMiniMapCallBytes[5] = {0xE8, 0xE9, 0x1A, 0xFF, 0xFF};
 
 // ── État du module ───────────────────────────────────────────────────────────
 
@@ -678,7 +710,62 @@ inline int F3ToRgb(const float* f) {
   return (r << 16) | (g << 8) | b;
 }
 
+// ── Détour du dessin natif ───────────────────────────────────────────────────
+
+// Trampoline rendu par le HookManager : l'appel volé, RELOGÉ (`DetourCopyInstruction`
+// réécrit le rel32), suivi d'un saut vers l'instruction d'après. On y SAUTE, on
+// ne l'appelle pas — il ne revient pas ici mais dans le jeu.
+void* g_tramp_draw_minimap = nullptr;
+
+// Le radar natif doit-il disparaître de cette frame ? Appelée depuis le stub,
+// donc en plein dessin du jeu : hors frame ImGui, et sans le moindre objet à
+// dérouler — c'est ce qui autorise le `__try` de `SafeFindWindow` (C2712).
+bool NativeRadarVetoed() {
+  if (!g_in_game || !g_cfg.enabled || !g_cfg.replace_native) return false;
+  // Et le cadre avec. Le gestionnaire de fenêtres rend les siennes APRÈS ce
+  // point : masquer ici retire dans la MÊME frame le texte des coordonnées et
+  // les cinq boutons que porte la fenêtre 14 — le reliquat visible que le veto
+  // du quad, à lui seul, laissait passer. Sa DESTRUCTION, elle, attend le
+  // battement de frame suivant : `CloseWindow` est une commande du client, et
+  // on ne l'émet pas au milieu de son rendu.
+  uiwnd::SafeSetVisible(uiwnd::SafeFindWindow(kNativeRadarWndId), false);
+  return true;
+}
+
+__declspec(naked) void DrawMiniMapStub() {
+  __asm {
+    pushad
+    call NativeRadarVetoed
+    test al, al
+    popad                 // POPAD ne touche pas aux drapeaux : le test tient
+    jz   draw
+    // ⚠ Adresse en DUR, et pas la constante nommée juste au-dessus : dans l'asm
+    // inline MSVC, un identifiant C++ désigne un EMPLACEMENT mémoire —
+    // `jmp kDrawMiniMapAfter` sauterait à son CONTENU.
+    mov  eax, 0C74FC7h    // = kDrawMiniMapAfter, l'instruction après l'appel
+    jmp  eax              // l'appel n'a pas lieu ; eax est volatil pour l'appelant
+  draw:
+    jmp  [g_tramp_draw_minimap]
+  }
+}
+
 }  // namespace
+
+// ── Cycle de vie ─────────────────────────────────────────────────────────────
+
+Minimap::Minimap() {
+  const uint8_t* site = reinterpret_cast<const uint8_t*>(kDrawMiniMapCall);
+  if (memcmp(site, kDrawMiniMapCallBytes, sizeof(kDrawMiniMapCallBytes)) != 0) {
+    LogError(
+        "Minimap : 0x{:x} ne porte pas l'appel attendu au radar natif — détour "
+        "NON posé, le radar natif clignotera à chaque téléport.",
+        kDrawMiniMapCall);
+    return;
+  }
+  g_tramp_draw_minimap = hooking::HookManager::Instance().SetHook(
+      hooking::HookType::kJmpHook, reinterpret_cast<uint8_t*>(kDrawMiniMapCall),
+      reinterpret_cast<uint8_t*>(&DrawMiniMapStub));
+}
 
 // ── Événements ───────────────────────────────────────────────────────────────
 
@@ -690,7 +777,7 @@ void Minimap::OnModeSwitch(ModeMgr::ModeType mode_type, const char* map_name) {
     g_map_fallback[0] = '\0';
 }
 
-void Minimap::OnTick() {
+void Minimap::OnGameFramePulse() {
   if (!g_in_game) return;
 
   // Bascule demandée par le menu. Vidée ICI et pas au clic : `MakeWindow` et
@@ -711,8 +798,16 @@ void Minimap::OnTick() {
   // boutons tout en laissant le quad de carte se dessiner : le pire des deux.
   // Seule sa destruction retire l'ensemble.
   //
-  // Et c'est à rejouer à CHAQUE tick, pas une fois : le client recrée sa fenêtre
-  // à chaque entrée de carte, comme il le fait pour le bouton du cash shop.
+  // Et c'est à rejouer à CHAQUE frame, pas une fois : le client recrée sa
+  // fenêtre à chaque entrée de carte, comme il le fait pour le bouton du cash
+  // shop.
+  //
+  // ⚠ Ce rattrapage-ci arrive forcément UNE FRAME APRÈS la recréation — il est
+  // en tête de frame, la recréation a lieu au milieu de la précédente. Ce n'est
+  // donc PAS lui qui empêche le clignotement au téléport : c'est le veto posé
+  // sur le site d'appel du dessin (cf. `kDrawMiniMapCall`), qui masque la
+  // fenêtre et saute le radar dans la frame même où elle réapparaît. Ici, on ne
+  // fait que la détruire pour de bon, sans urgence.
   const bool want_native_gone = g_cfg.enabled && g_cfg.replace_native;
   void* native = uiwnd::SafeFindWindow(kNativeRadarWndId);
   if (want_native_gone) {
