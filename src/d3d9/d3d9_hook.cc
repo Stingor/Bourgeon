@@ -845,6 +845,45 @@ static HRESULT __fastcall Hooked_SetSamplerState(void* vtable_ecx, void* /*edx*/
 
 void D3D9_SetTextureFilter(int mode) { g_tex_filter_mode = mode; }
 
+// ── Mort du device : le NOMMER, faute de pouvoir la réparer ──────────────────
+//
+// 🔴 Sur un device **Ex**, `D3DERR_DEVICELOST` n'existe pas. Quand le GPU cesse de
+// répondre, `Present` renvoie `D3DERR_DEVICEHUNG` (0x88760874), ou
+// `D3DERR_DEVICEREMOVED` si l'adaptateur a disparu. À partir de là TOUT échoue en
+// silence — `BeginScene`, les dessins, `Present` — donc le back buffer n'est plus
+// jamais rempli : écran noir total, sans overlay ni curseur, alors que le client
+// continue de tourner et reste jouable à l'aveugle (on peut s'y reconnecter au
+// clavier). Le symptôme ne ressemble donc PAS à une panne graphique.
+//
+// Pourquoi cette ligne vaut son poids (diagnostic du 2026-08-16, une heure de RE) :
+//   · l'appel échoué n'atteint JAMAIS le noyau — un breakpoint sur
+//     `win32u!NtGdiDdDDIPresent` ne se déclenche pas, ce qui fait croire à tort
+//     que le client ne présente rien ;
+//   · Windows ne journalise pas forcément de TDR : l'absence d'événement système
+//     ne prouve rien ;
+//   · et comme le client tourne, ni x32dbg ni le gestionnaire des tâches ne
+//     signalent quoi que ce soit.
+//
+// ⚠ On ne tente RIEN : un `Reset` ne récupère pas un device Ex mort — il faudrait
+// le détruire et le recréer entièrement, avec toutes ses ressources, ce que le
+// client ne sait pas faire. La seule issue est de relancer le jeu, d'où le
+// message. Une ligne par TRANSITION d'état, jamais une par frame.
+static void ReportDeviceDeath(HRESULT hr) {
+    static HRESULT s_last_hr = S_OK;
+    if (hr == s_last_hr) return;
+    s_last_hr = hr;
+    if (hr == D3DERR_DEVICEHUNG)
+        LogError("[D3D9] le GPU ne répond plus (D3DERR_DEVICEHUNG {:#x}) — écran noir "
+                 "définitif : un device Ex ne se répare pas, il faut RELANCER le jeu.",
+                 static_cast<unsigned>(hr));
+    else if (hr == D3DERR_DEVICEREMOVED)
+        LogError("[D3D9] l'adaptateur graphique a disparu (D3DERR_DEVICEREMOVED {:#x}) — "
+                 "écran noir définitif : il faut RELANCER le jeu.",
+                 static_cast<unsigned>(hr));
+    else if (FAILED(hr))
+        LogError("[D3D9] Present a échoué ({:#x}).", static_cast<unsigned>(hr));
+}
+
 // ── Present hook ──────────────────────────────────────────────────────────────
 // ecx = vtable; self = device (first explicit stack arg).
 // ImGui is rendered here — after ALL of the game's BeginScene/EndScene passes —
@@ -878,8 +917,10 @@ static HRESULT __fastcall Hooked_Present(void* vtable_ecx, void* /*edx*/,
         // That is the zone recorder's window; see D3D9_SetPostFrameCallback.
         if (g_post_frame_cb) g_post_frame_cb();
     }
-    return g_orig_present(vtable_ecx, nullptr, self, pSrcRect, pDestRect,
-                          hDestWindowOverride, pDirtyRegion);
+    const HRESULT hr = g_orig_present(vtable_ecx, nullptr, self, pSrcRect, pDestRect,
+                                      hDestWindowOverride, pDirtyRegion);
+    ReportDeviceDeath(hr);  // écran noir + client vivant = c'est ici que ça se voit
+    return hr;
 }
 
 // ── Reset hook ────────────────────────────────────────────────────────────────
