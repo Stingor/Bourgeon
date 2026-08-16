@@ -152,6 +152,8 @@ set(BOURGEON_FILES
 	"features/overlays/login_parade.h"
 	"features/overlays/menu_icons.cc"
 	"features/overlays/menu_icons.h"
+	"features/overlays/minimap.cc"
+	"features/overlays/minimap.h"
 	"features/overlays/quest_tracker.cc"
 	"features/overlays/quest_tracker.h"
 	"features/overlays/skill_bar.cc"

@@ -190,6 +190,30 @@ son bitmap est remplacé** par `유저인터페이스\basic_interface\quest_arro
 (`%d` = le côté, 1..4) — sauf pour le genre 5. C'est le mécanisme de la flèche
 directionnelle de quête.
 
+### 🔴 Le piège de la rotation (genre 4)
+
+`sub_A74E90` place les coins d'un quad pivoté ainsi :
+
+```
+x = cx + u·sin(θ) − v·cos(θ)
+y = cy + u·cos(θ) + v·sin(θ)
+```
+
+**Ce n'est pas la rotation d'écran usuelle** : elle vaut une rotation de
+**`90° − θ`**, pas de `θ`. Recopiée telle quelle dans une surface Y-vers-le-bas
+(ImGui, par exemple), elle **miroite** le sprite — l'échange `θ ↔ 90−θ` est une
+réflexion dans l'espace des angles.
+
+Le symptôme est reconnaissable et se vérifie au chiffre près : la flèche ne
+pointe juste qu'au **nord-est et au sud-ouest**. Avec la formule du moteur elle
+vise `(−cos A, −sin A)`, avec la rotation usuelle `(sin A, cos A)` ; les deux ne
+coïncident que si `−cos A = sin A`, soit `A = 135°` et `A = 315°`. Un demi-tour,
+lui, ne laisserait **aucune** direction correcte — c'est ce qui distingue un
+miroir d'une inversion, et ce qui permet de trancher sans debugger.
+
+À reprendre : l'**angle** du natif (`θ = 180 − acteur+0x4C`), mais une rotation
+d'écran normale. Constaté en jeu le 2026-08-15 sur la minimap Bourgeon.
+
 ### 2.4 Ce que la fonction dessine, dans l'ordre
 
 | # | source | genre | demi | bitmap / couleur |
@@ -211,6 +235,32 @@ directionnelle de quête.
 | `+0x1C0` (`[112]`) | leur nombre | — | `484` index 1 |
 | `+0x1F0` (`[124]`) | marqueurs de **quête** | 0, collé au bord | via `485` (cf. §3.3) |
 | `0x015fff88` / `0x015fff8c` | cellule du marqueur « recherche de boutique » | 0, collé au bord | — |
+
+### 2.5 bis Les repères du serveur — `viewpoint` / `ZC_COMPASS`
+
+La liste clignotante de `GameMode_DrawMiniMap` est celle que remplit le paquet
+**`ZC_COMPASS` (0x0144)**, c'est-à-dire la commande de script rAthena
+`viewpoint <type>,<x>,<y>,<id>,<color>`.
+
+```
+CGameMode + 0x1C4   tête de std::map<id, Viewpoint>
+CGameMode + 0x1C8   taille
+  nœud + 0x10  id (la clé — c'est le 4ᵉ argument de `viewpoint`)
+  nœud + 0x14  cellule X
+  nœud + 0x18  cellule Y
+  nœud + 0x1C  int : 0 = éphémère, non nul = permanent
+  nœud + 0x20  D3DCOLOR (ARGB) — le 5ᵉ argument de `viewpoint`
+  nœud + 0x24  DWORD : `timeGetTime()` à la pose
+```
+
+- **Clé confirmée** par `0x00c65fe0`, l'`erase` par id (le `type = 1` du paquet).
+- Rendu : genre **3** (croix), demi-étendue **1**, couleur du nœud, **clignotant
+  500 ms sur 1000** — la phase part de l'horodatage de pose, donc deux repères
+  posés à des instants différents clignotent en décalé.
+- 🔴 Un repère éphémère est **détruit au bout de 15 s par le dessin lui-même**.
+  Un module externe qui les affiche doit donc **filtrer** les périmés, jamais les
+  retirer : la liste appartient au client, et y toucher pendant son itération la
+  casserait.
 
 Bitmaps : quêtes `유저인터페이스\basic_interface\quest_%d.bmp`,
 boutique `유저인터페이스\basic_interface\search_store.bmp`.
@@ -267,9 +317,29 @@ Appliqué depuis `OnMsg 34` quand le rect sauvegardé sort de l'écran.
 | mémo `\minimap\memo_ready` | 356 | `MSI_MINIMAP_MSG_08` — Record |
 | boss `\minimap\boss` `this[75]` | 205 | `MSI_MINIMAP_MSG_09` — Boss Monster |
 | 20 points mémo `\minimap\memopoint` `this[49..68]` | 600..619 | — |
+
 | marqueur du joueur `this[74]` | 200 | `MSI_MINIMAP_MSG_10` — « I » |
 
 Les trois bascules sont posées en bas (`y = hauteur-19`) aux `x` 20 / 120 / 220.
+
+### 🔴 Les noms de bitmap du tableau ci-dessus sont des BASES, pas des fichiers
+
+`UIMiniMapWnd_CreateBitmapButton` @ `0x00895750` reçoit `"minimap\memopoint"` et
+compose **trois** chemins complets :
+
+```
+유저인터페이스\  +  <base>  +  "_1" | "_2" | "_3"  +  ".bmp"
+        (si le drapeau param_6 est posé)      normal / survol / enfoncé
+```
+
+Donc le fichier réel est `유저인터페이스\minimap\memopoint_1.bmp`, jamais
+`memopoint.bmp`. Même chose pour `minimap\boss`, `minimap\memo_ready`,
+`minimap\memo_ok`, et pour les cinq boutons du radar (`minimap\i_<nom>_1.bmp`,
+cf. §1.2 — ceux-là passent par `UIMinimapZoomWnd_CreateControls`, qui fait la
+même composition à la main).
+
+Le symptôme d'un oubli est explicite en jeu : `Resource File Loading fail`, puis
+le chemin tenté préfixé de `texture\` par le gestionnaire de textures.
 
 ### 3.3 `OnMsg` @ `0x00962a30` — le protocole moteur → fenêtre
 
@@ -306,6 +376,75 @@ Les trois vecteurs sont construits par le `eh vector constructor iterator` du
 ctor (`this+82`, 12 octets × 3) et adressés par `this + 3*idx + 82` dans le
 message 483 → **idx 0 = groupe, 1 = guilde, 2 = warp**, ce qui recoupe l'ordre
 des textures ci-dessus.
+
+### 3.4 bis La table des objets de carte — `0x00a81e00`
+
+C'est la source des icônes de **PNJ, commodités et warps**, pour la grande carte
+comme pour le radar.
+
+```c
+// __thiscall ; la table est *(0x0159C08C), un POINTEUR à déréférencer.
+void GetMapObject(void* table, MapObject* out, std::string map /*PAR VALEUR*/, int index);
+```
+
+- `map` est passée **par valeur** (24 octets poussés sur la pile) ; la fonction
+  retaille elle-même le nom à son premier `.`, donc l'extension est tolérée.
+- `MapObject` fait **60 octets** :
+
+| offset | champ |
+|---|---|
+| `+0x00` | `int` type — **8 = warp** |
+| `+0x04` | `std::string` nom affiché (l'infobulle du bouton natif) |
+| `+0x1C` | `int` cellule X |
+| `+0x20` | `int` cellule Y |
+| `+0x24` | `std::string` chemin du bitmap |
+
+- **Fin de liste = le second `std::string` (le bitmap) est VIDE.** C'est le test
+  des deux appelants (`if (!v75[4]) break;`), pas une valeur de retour.
+- 🔴 Appeler cette fonction n'est **pas** une lecture mémoire : elle *construit*
+  deux `std::string` dans le tampon de sortie et, sur le chemin « pas trouvé »,
+  passe par `sub_A809C0(out)`. L'appelant doit donc fournir des `std::string`
+  déjà valides (SSO vide) et libérer celles qui débordent des 15 caractères, avec
+  l'allocateur du CLIENT. Un `memset` sur le tampon ne suffit pas.
+
+**⇒ Ne pas l'appeler : lire la table.** `0x0159C08C` est le singleton
+`CTownInfoMgr`, et sa table est une `std::map<std::string, std::vector<Rec60>>`
+tout à fait ordinaire :
+
+```
+mgr + 0x08          nœud sentinelle de la map
+  nœud + 0x10       std::string  = le nom de carte (la clé)
+  nœud + 0x28/0x2C  vecteur : _Myfirst / _Mylast, pas de 60
+```
+
+La parcourir et comparer les clés soi-même évite jusqu'au `find` natif — qui
+prendrait lui aussi sa clé par valeur.
+
+### Les dix icônes, et d'où elles viennent
+
+Le champ `bitmap` de l'enregistrement n'est pas dans le `.lub` : `sub_A80E30`
+(le constructeur d'enregistrement, appelé par `TownInfoLua_AddTownInfo`
+`0x00a82260`) le copie depuis un **tableau statique de dix `std::string` à
+`0x0159C090`, pas de 24, indexé par le TYPE** :
+
+| type | icône | libellé du `.lub` |
+|---|---|---|
+| 0 | `유저인터페이스\Information\Store.bmp` | Tool Dealer |
+| 1 | `…\Weaponshop.bmp` | Weapon Dealer |
+| 2 | `…\ArmorShops.bmp` | Armor Dealer |
+| 3 | `…\Smithy.bmp` | Smith |
+| 4 | `…\Guide.bmp` | Guide |
+| 5 | `…\Inn.bmp` | Inn |
+| 6 | `…\kafra.bmp` | Kafra Employee |
+| 7 | `…\style.bmp` | Styling Shop |
+| 8 | `…\warp.bmp` | (portail — pas dans Towninfo.lub) |
+| 9 | `유저인터페이스\minimap\Quest.bmp` | (quête — idem) |
+
+Source Lua : `System\Towninfo.lub` (chaîne `0x0104E264`), chargé par `sub_A81600`,
+qui enregistre la fonction Lua `AddTownInfo(carte, nom, x, y, type)`. Le client
+lit en réalité `SystemEN\` quand cette langue est active, et `Towninfo_C.lub`
+fusionne ses ajouts par-dessus via `F_ROTP`. **Raison de plus pour lire la table
+plutôt que le fichier** : elle porte déjà le résultat de tout ça.
 
 ### 3.5 Les objets de carte et les warps — `UIMiniMapWnd_BuildMapObjectButtons` @ `0x00961350`
 
@@ -354,6 +493,36 @@ réécrit **entièrement** puis rechargé.
 
 ---
 
+## 4 bis. Les bitmaps de carte sont GÉNÉRÉS, pas dessinés
+
+Relevé sur les 877 fichiers de
+`data\texture\유저인터페이스\map\` (client Moonlight, 2026-08-16) :
+
+| dimensions | nombre |
+|---|---|
+| 512 × 512 | 823 |
+| 1 × 1 | 28 (cartes sans minimap — des bouchons) |
+| 12 × 12 | 5 |
+| **512 × 511** | 4 |
+| 981 × 981 | 3 |
+| **512 × 513** | 2 |
+
+834 des 877 sont en **8 bits par pixel** (palettisés).
+
+Deux détails tranchent la question : le **canevas fixe à 512** quelle que soit la
+forme de la carte, et surtout les **512×511 / 512×513** — un arrondi à un pixel
+près. Personne ne dessine à la main une image de 512×511 ; c'est la signature
+d'une chaîne de mise à l'échelle automatique. Le contenu est vraisemblablement
+rasterisé depuis le `.gat` (la grille de collision : un type par cellule), ce que
+confirme le rendu — les bâtiments d'une ville sont des TROUS, c'est-à-dire des
+cellules bloquées, pas des murs tracés.
+
+🔴 **Conséquence pour tout portage** : le canevas étant carré et la carte non, le
+contenu est **étiré** de façon non uniforme pour le remplir. C'est exactement ce
+que suppose le natif, dont les UV couvrent tout le bitmap (`u = px/largeur`,
+`v = (hauteur−py)/hauteur`) — il n'y a AUCUN calage à faire, et vouloir
+« préserver le rapport de forme » du bitmap décalerait les marqueurs.
+
 ## 5. Navigation (voisinage)
 
 - `CNavigation_SearchRoute` @ `0x00b314f0`, `CNavigation_SearchByName` @ `0x00b31980`,
@@ -362,6 +531,15 @@ réécrit **entièrement** puis rechargé.
   (`_krpri`, `_krSak`, `_krLoc`) :
   `Lua Files\Navigation\Navi_f`, `Navi_Map`, `Navi_Npc`, `Navi_Mob`, `Navi_Link`,
   `Navi_LinkDistance`, `navi_picknpc`, `Navi_Scroll`, `Navi_NpcDistance`.
+- 🔴 **La fenêtre de navigation est l'id `0xCB` (203), classe `UINavigationV4Wnd`**
+  (vtable `0x00FD95EC`). MESURÉ en jeu, pas déduit : `CNavigation_SearchRoute`
+  publie la fenêtre ouverte dans **`0x0136E57C`** et, quand ce global est nul,
+  ouvre `MakeWindow(0xCB)`. Lire `*(0x0136E57C)+0x2C` pendant qu'elle est
+  affichée donne l'id sans ambiguïté.
+  ⚠ Le relevé RTTI de 2026-07-10 attribuait `0x9c` à « UINaviSearchWnd » : c'est
+  faux — **`0x9c` ouvre une fenêtre de réglages de raccourcis** (elle passe par
+  `UIWindowMgr_MakeWindowFromLuaInfo`, la fabrique générique que partagent aussi
+  `0x271E` et consorts). Une classe devinée par balayage ne vaut pas une mesure.
 - Classes RTTI voisines : `UINavigationWnd`, `UINavigationV4Wnd`,
   `UINavigationHelpWnd`, `UINavigationroadiconWnd`, `UINavigationRuideWnd`,
   `UIListBoxNavi`, `UIListBox_NaviSearch`, `UINaviLinkButton`, `UIScrollBar_Navi`.

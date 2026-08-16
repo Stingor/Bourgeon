@@ -26,6 +26,7 @@
 #include "features/overlays/dps_meter.h"
 #include "features/overlays/menu_icons.h"
 #include "features/overlays/status_icon_bar.h"
+#include "features/overlays/minimap.h"
 #include "features/overlays/quest_tracker.h"
 #include "features/overlays/item_obtain_toast.h"
 #include "features/fx/screen_fx.h"
@@ -148,6 +149,37 @@ const moonlight_ui::SettingDesc kQuestTrackerSettings[] = {
     {"questtracker_show_objective", SType::kBool, QTRACK(show_objective)},
 };
 #undef QTRACK
+
+// Minimap ImGui (carte du lieu + position du personnage).
+#define MINIMAP(member) \
+  MLUI_FIELD(minimap, config().member), MLUI_DEFAULT(MinimapConfig, member)
+const moonlight_ui::SettingDesc kMinimapSettings[] = {
+    {"minimap_enabled",       SType::kBool, MINIMAP(enabled)},
+    {"minimap_pos_x",         SType::kInt,  MINIMAP(pos_x)},
+    {"minimap_pos_y",         SType::kInt,  MINIMAP(pos_y)},
+    {"minimap_size",          SType::kInt,  MINIMAP(size)},
+    {"minimap_locked",        SType::kBool,  MINIMAP(locked)},
+    {"minimap_zoom",          SType::kFloat, MINIMAP(zoom)},
+    {"minimap_bg_alpha",      SType::kInt,  MINIMAP(bg_alpha)},
+    {"minimap_map_alpha",     SType::kInt,  MINIMAP(map_alpha)},
+    {"minimap_smooth",        SType::kBool, MINIMAP(smooth)},
+    // 🔴 Noms NEUFS (ex-`minimap_marker_rgb` / `minimap_marker_size`) : le
+    // repère est devenu la flèche du client, ces deux réglages ont changé de
+    // sens ET de défaut. Réutiliser les anciennes clés aurait imposé le point
+    // rouge de la version précédente à tous ceux qui l'ont déjà enregistré.
+    {"minimap_marker_tint",   SType::kInt,  MINIMAP(marker_tint)},
+    {"minimap_marker_px",     SType::kInt,  MINIMAP(marker_px)},
+    {"minimap_show_coords",   SType::kBool, MINIMAP(show_coords)},
+    {"minimap_show_party",    SType::kBool, MINIMAP(show_party)},
+    {"minimap_show_guild",    SType::kBool, MINIMAP(show_guild)},
+    {"minimap_show_quests",   SType::kBool, MINIMAP(show_quests)},
+    {"minimap_show_town",     SType::kBool, MINIMAP(show_town)},
+    {"minimap_show_viewpoints", SType::kBool, MINIMAP(show_viewpoints)},
+    {"minimap_show_boss",       SType::kBool, MINIMAP(show_boss)},
+    {"minimap_show_map_name",   SType::kBool, MINIMAP(show_map_name)},
+    {"minimap_replace_native",  SType::kBool, MINIMAP(replace_native)},
+};
+#undef MINIMAP
 
 // Bandeau « objet obtenu » (remplacement ImGui de la fenêtre native 58).
 #define IOTOAST(member) \
@@ -1496,6 +1528,8 @@ void MoonlightUi::LoadSettings() {
 
     moonlight_ui::ReadSettings(ui, kStatusIconSettings);
     moonlight_ui::ReadSettings(ui, kQuestTrackerSettings);
+    moonlight_ui::ReadSettings(ui, kMinimapSettings);
+    moonlight_ui::ReadMinimapMemos(ui);
     moonlight_ui::ReadSettings(ui, kItemObtainToastSettings);
     moonlight_ui::ReadSettings(ui, kGraphicsSettings);
     moonlight_ui::ReadSettings(ui, kZoneRecorderSettings);
@@ -1607,6 +1641,9 @@ void MoonlightUi::WriteSettingsFile() {
   moonlight_ui::WriteSettings(out, kStatusIconSettings);
 
   moonlight_ui::WriteSettings(out, kQuestTrackerSettings);
+
+  moonlight_ui::WriteSettings(out, kMinimapSettings);
+  moonlight_ui::WriteMinimapMemos(out);
 
   moonlight_ui::WriteSettings(out, kItemObtainToastSettings);
 

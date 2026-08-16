@@ -18,6 +18,7 @@
 #include "features/patches/equip_tweaks.h"
 #include "features/windows/inventory_viewer.h"
 #include "features/overlays/menu_icons.h"
+#include "features/overlays/minimap.h"
 #include "features/moonlight_ui/settings_table.h"  // ReadArgbKey / WriteArgbKey
 #include "features/overlays/skill_bar.h"
 #include "features/patches/status_tweaks.h"
@@ -118,6 +119,51 @@ void WriteMenuIcons(YAML::Emitter& out) {
           << YAML::Key << "y"      << YAML::Value << entry.second.y
           << YAML::Key << "hidden" << YAML::Value << entry.second.hidden
           << YAML::EndMap;
+    }
+  }
+  out << YAML::EndMap;
+}
+
+void ReadMinimapMemos(const YAML::Node& ui) {
+  auto* minimap = Bourgeon::Instance().minimap();
+  if (!minimap) return;
+  const YAML::Node maps = ui["minimap_memos"];
+  if (!maps) return;
+  minimap->memos_.clear();
+  for (auto it = maps.begin(); it != maps.end(); ++it) {
+    const std::string map_name = it->first.as<std::string>("");
+    if (map_name.empty() || !it->second.IsSequence()) continue;
+    std::vector<MinimapMemo> list;
+    for (const YAML::Node& entry : it->second) {
+      MinimapMemo memo;
+      memo.x = entry["x"].as<int>(-1);
+      memo.y = entry["y"].as<int>(-1);
+      memo.name = entry["name"].as<std::string>("");
+      // Une cellule négative ne désigne aucune case de carte : c'est une entrée
+      // tronquée ou éditée à la main, on la laisse tomber plutôt que de poser un
+      // marqueur invisible que le joueur ne pourra jamais retirer.
+      if (memo.x < 0 || memo.y < 0) continue;
+      list.push_back(std::move(memo));
+    }
+    if (!list.empty()) minimap->memos_[map_name] = std::move(list);
+  }
+}
+
+void WriteMinimapMemos(YAML::Emitter& out) {
+  auto* minimap = Bourgeon::Instance().minimap();
+  out << YAML::Key << "minimap_memos" << YAML::Value << YAML::BeginMap;
+  if (minimap) {
+    for (const auto& entry : minimap->memos_) {
+      if (entry.second.empty()) continue;
+      out << YAML::Key << entry.first << YAML::Value << YAML::BeginSeq;
+      for (const MinimapMemo& memo : entry.second) {
+        out << YAML::BeginMap
+            << YAML::Key << "x"    << YAML::Value << memo.x
+            << YAML::Key << "y"    << YAML::Value << memo.y
+            << YAML::Key << "name" << YAML::Value << memo.name
+            << YAML::EndMap;
+      }
+      out << YAML::EndSeq;
     }
   }
   out << YAML::EndMap;

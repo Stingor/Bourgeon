@@ -172,6 +172,7 @@ class MoonlightUi : public Plugin {
     // chaque ligne porte son identifiant — il est libre.
     kIfaceCastBar,
     kIfacePet,
+    kIfaceMinimap,
     kIfaceCount,
   };
   // Ouvre le panneau Moonlight directement sur `section` : déplie la fenêtre,

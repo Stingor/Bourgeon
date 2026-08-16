@@ -39,6 +39,7 @@
 #include "features/patches/equip_tweaks.h"
 #include "features/patches/window_pos_tweaks.h"
 #include "features/overlays/status_icon_bar.h"
+#include "features/overlays/minimap.h"
 #include "features/overlays/quest_tracker.h"
 #include "features/overlays/item_obtain_toast.h"
 #include "features/fx/screen_fx.h"
@@ -99,6 +100,7 @@ BasicInfo* Bourgeon::basic_info() { return basic_info_; }
 MenuIcons* Bourgeon::menu_icons()  { return menu_icons_; }
 StatusIconBar* Bourgeon::status_icons() { return status_icons_; }
 QuestTracker* Bourgeon::quest_tracker() { return quest_tracker_; }
+Minimap* Bourgeon::minimap() { return minimap_; }
 ItemObtainToast* Bourgeon::item_obtain_toast() { return item_obtain_toast_; }
 ScreenFx* Bourgeon::screen_fx() { return screen_fx_; }
 ZoneRecorder* Bourgeon::zone_recorder() { return zone_recorder_; }
@@ -972,6 +974,11 @@ void Bourgeon::LoadPlugins() {
     auto quest_tracker = std::make_unique<QuestTracker>();
     quest_tracker_ = quest_tracker.get();
     plugins_.emplace_back(std::move(quest_tracker));
+  }
+  {
+    auto minimap = std::make_unique<Minimap>();
+    minimap_ = minimap.get();
+    plugins_.emplace_back(std::move(minimap));
   }
   {
     auto item_obtain_toast = std::make_unique<ItemObtainToast>();

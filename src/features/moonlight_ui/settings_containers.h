@@ -29,6 +29,14 @@ void WriteMenuIcons(YAML::Emitter& out);
 void ReadInventoryLayout(const YAML::Node& ui);
 void WriteInventoryLayout(YAML::Emitter& out);
 
+// Marqueurs de la minimap, sous « minimap_memos: { <carte>: [ {x,y,name}, … ] } ».
+// La clé est le nom de carte SANS extension ; une carte sans marqueur n'a pas
+// d'entrée. Les cartes sont écrites dans l'ordre de la std::map (donc trié), et
+// les marqueurs dans leur ordre de création — le fichier reste stable d'une
+// sauvegarde à l'autre.
+void ReadMinimapMemos(const YAML::Node& ui);
+void WriteMinimapMemos(YAML::Emitter& out);
+
 // NPC rendus sourds au clic gauche : séquence d'objets { id, name }. L'id est un
 // GID de la plage réservée aux NPC à identifiant fixe (moon/npc_fixed_id.yml) —
 // c'est LUI la clé ; le nom n'est là que pour nommer la ligne du panneau quand

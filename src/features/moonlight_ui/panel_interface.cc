@@ -42,6 +42,7 @@
 #include "features/windows/item_desc_window.h"
 #include "features/overlays/menu_icons.h"
 #include "features/windows/npc_dialog_window.h"
+#include "features/overlays/minimap.h"
 #include "features/overlays/quest_tracker.h"
 #include "features/overlays/item_obtain_toast.h"
 #include "features/windows/rodex_window.h"
@@ -119,6 +120,7 @@ constexpr IfaceEntry kIfaceSections[] = {
     {MoonlightUi::kIfaceMenuIcons,   "menu_icons",   "Icônes du menu"},
     {MoonlightUi::kIfaceStatusIcons, "status_icons", "Icônes de statut"},
     {MoonlightUi::kIfaceQuest,       "quest",        "Suivi de quête"},
+    {MoonlightUi::kIfaceMinimap,     "minimap",      "Minimap"},
     {MoonlightUi::kIfaceItemToast,   "item_toast",   "Objet obtenu"},
     {MoonlightUi::kIfaceDesc,        "desc",         "Descriptions"},
     {MoonlightUi::kIfaceSkin,        "skin",         "Skin RO"},
@@ -706,6 +708,14 @@ void MoonlightUi::DrawInterfacePanel() {
       if (iface_nav_ == kIfaceQuest) {
         if (auto* qt = Bourgeon::Instance().quest_tracker())
           qt->DrawSettings();
+        else
+          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
+      }
+
+      // ── Minimap (carte du lieu + position du personnage) ────────────
+      if (iface_nav_ == kIfaceMinimap) {
+        if (auto* mm = Bourgeon::Instance().minimap())
+          mm->DrawSettings();
         else
           ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
       }
