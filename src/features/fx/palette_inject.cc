@@ -622,9 +622,9 @@ bool SetRecipe(uint32_t gid, const uint8_t* base, const ro::PaletteRamp* ramps,
   //
   // 🔴 UNE FOIS par session. Il y a une pose par joueur visible, plus une à
   // chaque reconstruction d'acteur (carte, tenue) : la répéter remplirait le
-  // journal de TOUS les joueurs, au niveau warn de surcroît, et un diagnostic
-  // qu'on ne peut pas éteindre finit par masquer ce qu'il devait montrer. La
-  // première pose suffit à prouver que la chaîne tient ; ensuite seul l'anormal
+  // journal de TOUS les joueurs, et un diagnostic qu'on ne peut pas éteindre
+  // finit par masquer ce qu'il devait montrer. La première pose suffit à
+  // prouver que la chaîne tient ; ensuite seul l'anormal
   // parle — le refus d'`ApplyRecipe` ci-dessus, la couverture nulle côté
   // `style_sync`, la perte de recette dans le détour. Le calcul des empreintes
   // est lui aussi dans le `if` : inutile de hacher 2 Kio par pose pour rien.
@@ -652,7 +652,10 @@ bool SetRecipe(uint32_t gid, const uint8_t* base, const ro::PaletteRamp* ramps,
       h_sortie ^= teinte[i];
       h_sortie *= 16777619u;
     }
-    LogDiag("[palette] 1re pose gid={} corps={:08x} rampes={} pal={} "
+    // Niveau info, pas warn : c'est une preuve de BON fonctionnement. La mettre
+    // au niveau des alertes ferait exactement ce qu'on cherche à éviter — un
+    // journal où l'on ne distingue plus ce qui cloche de ce qui marche.
+    LogInfo("[palette] 1re pose gid={} corps={:08x} rampes={} pal={} "
             "base={:08x} sortie={:08x} (les suivantes sont muettes)",
             gid, spr_lu ? ro::BodySpriteKey(spr_courant) : 0u, ramp_count,
             static_cast<int>(recipe.palette_id), h_base, h_sortie);
