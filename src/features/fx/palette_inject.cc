@@ -168,6 +168,10 @@ std::map<uint32_t, Entry> g_recipes;
 // pour qu'une PERTE ULTÉRIEURE soit de nouveau signalée.
 std::map<uint32_t, bool> g_miss_signale;
 
+// La preuve de bout en bout n'est écrite qu'UNE fois par session (cf. la trace
+// dans `SetRecipe`). Sous `g_mutex`, comme tout ce qui précède.
+bool g_preuve_pose = false;
+
 // Ce que le NATIF avait choisi, par acteur : son chemin de palette et sa
 // couleur de vêtement. Séparés des recettes, car ils doivent survivre à un
 // ClearRecipe — c'est tout ce qui permet de rendre au joueur son apparence
@@ -587,8 +591,14 @@ bool SetRecipe(uint32_t gid, const uint8_t* base, const ro::PaletteRamp* ramps,
 
   uint8_t teinte[1024];
   if (!ro::ApplyRecipe(base, 1024, ramps, ramp_count, recipe, teinte,
-                       sizeof(teinte)))
+                       sizeof(teinte))) {
+    // 🔴 Ce refus était MUET : l'acteur restait dans ses couleurs d'origine et
+    // rien, nulle part, ne disait pourquoi. C'est exactement le genre de panne
+    // qui mérite une ligne — à l'inverse du succès, qui n'en mérite aucune.
+    LogDiag("[palette] gid={} : ApplyRecipe a refusé ({} rampes, pal={})", gid,
+            ramp_count, static_cast<int>(recipe.palette_id));
     return false;
+  }
 
   std::vector<uint8_t> block;
   BuildBlock(&block, teinte, gid);
@@ -609,20 +619,20 @@ bool SetRecipe(uint32_t gid, const uint8_t* base, const ro::PaletteRamp* ramps,
   // vêtement retenu) et celle de la SORTIE (donc des réglages appliqués
   // par-dessus). Un écart sur la base et pas sur la recette, ou l'inverse,
   // désigne directement le coupable.
-  uint32_t h_base = 2166136261u, h_sortie = 2166136261u;
-  for (int i = 0; i < 1024; ++i) {
-    h_base ^= base[i];
-    h_base *= 16777619u;
-    h_sortie ^= teinte[i];
-    h_sortie *= 16777619u;
-  }
-  LogDiag("[palette] pose gid={} corps={:08x} rampes={} pal={} base={:08x} "
-          "sortie={:08x}",
-          gid, spr_lu ? ro::BodySpriteKey(spr_courant) : 0u, ramp_count,
-          static_cast<int>(recipe.palette_id), h_base, h_sortie);
+  //
+  // 🔴 UNE FOIS par session. Il y a une pose par joueur visible, plus une à
+  // chaque reconstruction d'acteur (carte, tenue) : la répéter remplirait le
+  // journal de TOUS les joueurs, au niveau warn de surcroît, et un diagnostic
+  // qu'on ne peut pas éteindre finit par masquer ce qu'il devait montrer. La
+  // première pose suffit à prouver que la chaîne tient ; ensuite seul l'anormal
+  // parle — le refus d'`ApplyRecipe` ci-dessus, la couverture nulle côté
+  // `style_sync`, la perte de recette dans le détour. Le calcul des empreintes
+  // est lui aussi dans le `if` : inutile de hacher 2 Kio par pose pour rien.
+  bool dire_preuve = false;
 
   {
     std::lock_guard<std::mutex> lock(g_mutex);
+    if (!g_preuve_pose) { g_preuve_pose = true; dire_preuve = true; }
     Entry& e = g_recipes[gid];
     // L'ancien bloc part à la poubelle plutôt qu'au ramasse-miettes : le rendu
     // de la frame en cours peut encore tenir son `+0x510`.
@@ -632,6 +642,20 @@ bool SetRecipe(uint32_t gid, const uint8_t* base, const ro::PaletteRamp* ramps,
     if (spr_lu) e.spr_path = spr_courant; else e.spr_path.clear();
     // Cet acteur a de nouveau une recette : une perte future doit être signalée.
     g_miss_signale.erase(gid);
+  }
+
+  if (dire_preuve) {
+    uint32_t h_base = 2166136261u, h_sortie = 2166136261u;
+    for (int i = 0; i < 1024; ++i) {
+      h_base ^= base[i];
+      h_base *= 16777619u;
+      h_sortie ^= teinte[i];
+      h_sortie *= 16777619u;
+    }
+    LogDiag("[palette] 1re pose gid={} corps={:08x} rampes={} pal={} "
+            "base={:08x} sortie={:08x} (les suivantes sont muettes)",
+            gid, spr_lu ? ro::BodySpriteKey(spr_courant) : 0u, ramp_count,
+            static_cast<int>(recipe.palette_id), h_base, h_sortie);
   }
 
   // 🔴 Poser le chemin TOUT DE SUITE, sans quoi rien ne changerait à l'écran.

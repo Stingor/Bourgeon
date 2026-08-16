@@ -588,9 +588,11 @@ void PaletteEditor::Apply() {
   // Valider des réglages nuls a donc un sens : c'est demander les couleurs
   // d'origine du sprite, ce que le chemin natif ne sait pas produire. Pour
   // n'avoir plus AUCUNE palette imposée, il faut « Supprimer mon style ».
-  // À comparer avec la ligne « auto » de la boucle de propagation : les deux
-  // chemins doivent aboutir aux mêmes octets pour un même corps.
-  LogDiag("[palette] éditeur corps={:08x} rampes={} pal={} couverture={}/{}",
+  // Niveau info, pas diagnostic : ce n'est pas une anomalie, c'est un geste
+  // explicite du joueur — donc rare, et sans risque d'inonder le journal. La
+  // boucle de propagation, elle, ne dit plus rien quand tout va bien (cf.
+  // style_sync) : une pose par joueur visible, c'était du bruit permanent.
+  LogInfo("[palette] éditeur corps={:08x} rampes={} pal={} couverture={}/{}",
           body_key_, ramp_count_, static_cast<int>(recipe_.palette_id),
           pixels_covered_, pixels_total_);
   fx::palette_inject::SetRecipe(gid, base_.data(), ramps_, ramp_count_,

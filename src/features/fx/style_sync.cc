@@ -5,6 +5,7 @@
 #include <cstring>
 #include <iterator>  // std::next
 #include <map>
+#include <set>  // les corps dont on a déjà signalé la couverture
 
 #include "bourgeon.h"  // SendPacket / RegisterRecvOpcode
 #include "features/fx/palette_base.h"
@@ -541,13 +542,26 @@ int StyleSync::ApplyPending(int budget) {
       continue;
     }
 
-    // Qui pose, et à partir de quoi. À lire avec la ligne « pose » de
-    // `palette_inject` juste en dessous : ensemble, elles disent si la boucle
-    // automatique et la fenêtre de style aboutissent bien au même résultat.
-    LogDiag("[palette] auto gid={} corps={:08x} variante={:08x} rampes={} "
-            "couverture={}/{}",
-            gid, body_key, choix, body.ramp_count, body.pixels_covered,
-            body.pixels_total);
+    // Silence quand tout va bien : il y a une pose par joueur visible, et
+    // annoncer chacune noierait le journal sur une carte peuplée. Ce qui mérite
+    // une ligne, c'est une base que la recette ne peut presque pas TEINDRE :
+    // trop peu de pixels appartiennent à une rampe, le joueur verra ses couleurs
+    // d'origine et aucune erreur ne sera remontée nulle part.
+    //
+    // Le seuil est volontairement bas (un dixième) : les corps de 4e classe ont
+    // légitimement 40 à 62 % de pixels noircis, donc une couverture partielle
+    // est NORMALE et ne doit pas parler. Une fois par CORPS, pas par joueur —
+    // vingt joueurs qui portent la même apparence, c'est le même défaut.
+    if (body.pixels_total > 0 &&
+        body.pixels_covered * 10 < body.pixels_total) {
+      static std::set<uint32_t> corps_signales;
+      if (corps_signales.insert(body_key).second) {
+        LogDiag("[palette] corps={:08x} : couverture {}/{} ({} rampes) — la "
+                "recette ne teindra presque rien (gid {})",
+                body_key, body.pixels_covered, body.pixels_total,
+                body.ramp_count, gid);
+      }
+    }
     fx::palette_inject::SetRecipe(gid, body.base.data(), body.ramps,
                                   body.ramp_count, *recette);
     fx::palette_inject::SetHairPalette(gid, recette->hair_palette_id);

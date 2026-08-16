@@ -103,7 +103,9 @@ void NetPing::OnRecvPacket(uint16_t opcode, const uint8_t*, uint16_t) {
     s_learned_op_.store(op, std::memory_order_relaxed);
     // Une ligne, une seule fois : elle dit quel opcode ce client emploie, ce qui
     // est exactement ce qu'il faudrait savoir si la mesure se mettait à mentir.
-    LogDiag("[NetPing] demande d'heure reconnue : opcode 0x{:04X}", op);
+    // Niveau info : c'est un apprentissage RÉUSSI, pas une anomalie — le niveau
+    // warn est réservé à ce qui cloche.
+    LogInfo("[NetPing] demande d'heure reconnue : opcode 0x{:04X}", op);
   }
   s_last_us_.store(static_cast<int>(rtt_us), std::memory_order_relaxed);
 }
