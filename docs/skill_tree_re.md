@@ -575,14 +575,28 @@ La case n'affiche « n / m » que si **`IsLevelUseSkill(id)`** est vrai ; sinon 
 
 ### 11.4 Le reste des gestes
 
-| geste | code natif | effet |
-|---|---|---|
-| clic gauche | `0x009782B0` -> msg `0x3A` | ouvre la description (dispatcher cmd `0x71`) |
-| clic droit | `0x00978520` | **réserve** un point (gate : `+0x04` et `+0x2C`) |
-| double-clic | `0x009786F0` | épingle la surbrillance des prérequis **et** ouvre/ferme la fenêtre `0x2E` via `OnMsg(0, 0x3D, id, upgradable, niveau, 1)` |
-| glisser | `0x009783E0` | pose le skill dans la barre d'action (catégorie 8) |
-| survol | `0x00978600` | infobulle = **nom du skill** seulement |
-| molette | `0x00978970` | scroll (`this+0x258` en LIGNES) |
+> 🔴 **CORRIGÉ le 2026-08-16.** Les trois premières lignes de cette table étaient
+> FAUSSES (clic gauche = description, clic droit = réserve, double-clic = `0x2E`).
+> Elles avaient été déduites de l'ordre des slots de vtable au lieu d'être lues
+> dans le **répartiteur**, seul juge du geste. `UIWindowMgr_DispatchMouseInput`
+> (`0x00A46380`) tranche :
+> - `0x00A46F21` `cmp g_Mouse_RButtonState, 3` -> `call [eax+84h]` ⇒ **+0x84 = clic DROIT** ;
+> - `0x00A46F38` / `0x00A46B6C` `cmp g_Mouse_LButtonState, 3` -> `call [eax+7Ch]` ⇒ **+0x7C = clic GAUCHE** ;
+> - `0x00A46ADF` `cmp g_Mouse_LButtonState, 4` -> `call [eax+64h]` puis `[eax+68h]`.
+>
+> Et `msg 0x3A` n'ouvre AUCUNE description : `OnMsg` case 58 relaie à
+> `CGameMode::SendMsg(113, …)` = **`0x71`, le lanceur de skill**
+> ([[reference_cmode_sendmsg_use_skill]]). Signalé par l'utilisateur, qui voyait
+> bien le clic droit ouvrir la description en jeu.
+
+| geste | slot vt | code natif | effet |
+|---|---|---|---|
+| **clic DROIT** | **+0x84** | `0x009786F0` | épingle la surbrillance des prérequis **et** ouvre/ferme la fenêtre `0x2E` (la description) via `OnMsg(0, 0x3D, id, upgradable, niveau, 1)` |
+| **clic GAUCHE** | **+0x7C** | `0x00978520` | **monte** un niveau (`sub_979BA0`) — gate `+0x04`/`+0x2C`, vue GRILLE seulement (`!Simplicity`) |
+| clic gauche (appui) | +0x68 | `0x009782B0` | **LANCE** le skill : msg `0x3A` -> `CGameMode::SendMsg(0x71)` |
+| glisser | +0x64 | `0x009783E0` | pose le skill dans la barre d'action (catégorie 8) |
+| survol | +0x70 | `0x00978600` | infobulle = **nom du skill** seulement |
+| molette | +0x8C | `0x00978970` | scroll (`this+0x258` en LIGNES) |
 
 ### 11.5 Les onglets
 
