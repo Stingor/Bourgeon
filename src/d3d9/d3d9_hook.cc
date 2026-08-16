@@ -2,8 +2,10 @@
 
 #include <Windows.h>
 #include <d3d9.h>
+#include <chrono>
 #include <cstdint>
 #include <cstring>
+#include <string>
 #include <thread>
 
 #include "backends/imgui_impl_dx9.h"
@@ -11,8 +13,10 @@
 #include "bourgeon.h"
 #include "imgui.h"
 #include "imgui/imgui_impl_dx7.h"
+#include "ragnarok/ragnarok_client.h"  // GameWindow() — pour refermer le client
 #include "utils/frame_profiler.h"
 #include "utils/hooking/hook_manager.h"
+#include "utils/i18n.h"
 #include "utils/log_console.h"
 
 extern bool g_imgui_dx7_active;
@@ -868,20 +872,86 @@ void D3D9_SetTextureFilter(int mode) { g_tex_filter_mode = mode; }
 // le détruire et le recréer entièrement, avec toutes ses ressources, ce que le
 // client ne sait pas faire. La seule issue est de relancer le jeu, d'où le
 // message. Une ligne par TRANSITION d'état, jamais une par frame.
+// Nombre de `Present` refusés d'affilée avant de prévenir le joueur et de fermer.
+// Un device Ex mort ne guérit pas, mais refermer le client sur un unique appel raté
+// serait un remède pire que le mal : on exige environ une seconde de refus continu.
+constexpr int kFatalPresentFrames = 60;
+
+// ── L'avis de décès, celui que le JOUEUR peut voir ───────────────────────────
+//
+// 🔴 Une fenêtre ImGui ne peut PAS servir ici, et c'est tout le nœud : notre
+// overlay est dessiné PAR le device, donc il meurt avec lui — l'écran noir, c'est
+// précisément lui qui ne s'affiche plus. Seule une fenêtre rendue par le SYSTÈME
+// reste visible par-dessus. D'où `MessageBoxW`, que le client emploie déjà pour ses
+// propres pannes fatales (« No compatible devices », GameGuard).
+//
+// ⚠ Dans un thread DÉTACHÉ, et ce n'est pas du confort : `MessageBox` fait tourner
+// sa propre pompe de messages. L'appeler depuis `Present` laisserait le client
+// continuer à traiter ses messages — donc à redemander une frame, donc à rentrer
+// une SECONDE fois dans ce hook — pendant que la boîte est ouverte.
+//
+// ⚠ Les deux textes arrivent déjà traduits et sont COPIÉS à l'entrée : `i18n::Tr`
+// ne s'appelle que depuis le fil de rendu et rend un pointeur qui appartient au
+// catalogue (cf. utils/i18n.h) — il ne survivrait pas au thread.
+static void ShowFatalDeviceDialog(const char* utf8_title, const char* utf8_body) {
+    std::thread([title = std::string(utf8_title), body = std::string(utf8_body)] {
+        // UTF-8 → UTF-16 : nos textes sont accentués, et `MessageBoxA` les lirait
+        // dans la page de code locale — accents faux chez le joueur.
+        auto wide = [](const std::string& s) {
+            std::wstring w;
+            const int n = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, nullptr, 0);
+            if (n > 1) {
+                w.resize(static_cast<size_t>(n) - 1);
+                MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, &w[0], n);
+            }
+            return w;
+        };
+        MessageBoxW(nullptr, wide(body).c_str(), wide(title).c_str(),
+                    MB_OK | MB_ICONERROR | MB_TOPMOST | MB_SETFOREGROUND);
+        // Fermeture par la porte du client : il sauve ses options et se déconnecte
+        // proprement. Le joueur, lui, ne peut pas viser une croix qu'il ne voit pas.
+        if (HWND hwnd = static_cast<HWND>(RagnarokClient::GameWindow()))
+            PostMessageW(hwnd, WM_CLOSE, 0, 0);
+        // Filet : si le client ne sait plus se refermer, ne pas laisser le joueur
+        // seul avec une fenêtre noire et le gestionnaire des tâches pour recours.
+        std::this_thread::sleep_for(std::chrono::seconds(5));
+        ExitProcess(0);
+    }).detach();
+}
+
 static void ReportDeviceDeath(HRESULT hr) {
-    static HRESULT s_last_hr = S_OK;
-    if (hr == s_last_hr) return;
-    s_last_hr = hr;
-    if (hr == D3DERR_DEVICEHUNG)
-        LogError("[D3D9] le GPU ne répond plus (D3DERR_DEVICEHUNG {:#x}) — écran noir "
-                 "définitif : un device Ex ne se répare pas, il faut RELANCER le jeu.",
-                 static_cast<unsigned>(hr));
-    else if (hr == D3DERR_DEVICEREMOVED)
-        LogError("[D3D9] l'adaptateur graphique a disparu (D3DERR_DEVICEREMOVED {:#x}) — "
-                 "écran noir définitif : il faut RELANCER le jeu.",
-                 static_cast<unsigned>(hr));
-    else if (FAILED(hr))
-        LogError("[D3D9] Present a échoué ({:#x}).", static_cast<unsigned>(hr));
+    static HRESULT s_last_hr       = S_OK;
+    static int     s_fatal_frames  = 0;
+    static bool    s_announced     = false;
+
+    if (hr != s_last_hr) {  // une ligne par TRANSITION, jamais une par frame
+        s_last_hr = hr;
+        if (hr == D3DERR_DEVICEHUNG)
+            LogError("[D3D9] le GPU ne répond plus (D3DERR_DEVICEHUNG {:#x}) — écran noir "
+                     "définitif : un device Ex ne se répare pas, il faut RELANCER le jeu.",
+                     static_cast<unsigned>(hr));
+        else if (hr == D3DERR_DEVICEREMOVED)
+            LogError("[D3D9] l'adaptateur graphique a disparu (D3DERR_DEVICEREMOVED {:#x}) — "
+                     "écran noir définitif : il faut RELANCER le jeu.",
+                     static_cast<unsigned>(hr));
+        else if (FAILED(hr))
+            LogError("[D3D9] Present a échoué ({:#x}).", static_cast<unsigned>(hr));
+    }
+
+    // Le journal ne suffit pas : le joueur ne l'ouvrira jamais, et ce qu'il voit —
+    // un jeu figé qui ne plante pas — ne ressemble à aucune panne connue. Sans ce
+    // message il conclura à un bug du serveur.
+    const bool fatal = (hr == D3DERR_DEVICEHUNG || hr == D3DERR_DEVICEREMOVED);
+    if (!fatal) { s_fatal_frames = 0; return; }
+    if (s_announced || ++s_fatal_frames < kFatalPresentFrames) return;
+    s_announced = true;
+    ShowFatalDeviceDialog(
+        i18n::Tr("Moonlight — affichage interrompu"),
+        i18n::Tr("Votre carte graphique a cessé de répondre : le jeu ne peut plus rien "
+                 "afficher.\n\nIl va se fermer, merci de le relancer.\n\nSi cela se "
+                 "reproduit souvent, fermez ce qui sollicite la carte graphique pendant "
+                 "que vous jouez : un second client, un logiciel de capture ou de "
+                 "streaming, une IA locale."));
 }
 
 // ── Present hook ──────────────────────────────────────────────────────────────
