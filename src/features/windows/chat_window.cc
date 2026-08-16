@@ -765,15 +765,63 @@ ChatWindow::SendToggles ReadSendToggleKeys() {
   return toggles;
 }
 
-// Ce premier caractère est-il un préfixe de canal ? Si oui, arme la bascule
-// correspondante. Les trois sont ceux du client (0x00c7a7ea / 7a821 / 7a894).
-bool SendPrefixToggle(char first, ChatWindow::SendToggles* toggles) {
-  switch (first) {
-    case '%': toggles->party = true; return true;
-    case '$': toggles->guild = true; return true;
-    case '#': toggles->ally  = true; return true;
-    default: return false;
+// ── Les trois caractères de bascule, LUS DANS L'EXE ──────────────────────────
+// 🔴 NE PAS LES CODER EN DUR. Le patch WARP `AllianceChatHotkeySelector` RÉÉCRIT
+// l'immédiat du `cmp` de l'alliance (motif `80 BD 84 FE FF FF 23`), et Moonlight
+// l'a posé sur « ^ » PRÉCISÉMENT pour rendre le « # » aux charcommands de
+// rAthena (« #pseudo @commande »). L'IDB, lui, est un exe VANILLA : il montre
+// encore 0x23, et le croire a cassé les charcommands (2026-08-16).
+// Cf. docs/warp_patches.md §1 et docs/chatbox_re.md §8.5.
+//
+// Les trois immédiats se lisent au site de leur comparaison, dans le case 0 :
+// `cmp al, '%'` (3C 25) · `cmp al, '$'` (3C 24) · `cmp byte [ebp-17C], '#'`.
+constexpr uintptr_t kPartyPrefixByte = 0x00c7a7eb;
+constexpr uintptr_t kGuildPrefixByte = 0x00c7a822;
+constexpr uintptr_t kAllyPrefixByte  = 0x00c7a89a;
+
+struct SendPrefixChars {
+  char party;
+  char guild;
+  char ally;
+};
+
+// Repli sur les valeurs vanilla si la lecture échoue — un exe illisible à ces
+// adresses n'est pas une raison de ne plus router du tout.
+SendPrefixChars ReadSendPrefixChars() {
+  SendPrefixChars chars = {'%', '$', '#'};
+  __try {
+    chars.party = static_cast<char>(*reinterpret_cast<const uint8_t*>(kPartyPrefixByte));
+    chars.guild = static_cast<char>(*reinterpret_cast<const uint8_t*>(kGuildPrefixByte));
+    chars.ally  = static_cast<char>(*reinterpret_cast<const uint8_t*>(kAllyPrefixByte));
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
   }
+  return chars;
+}
+
+// Ce premier caractère est-il un préfixe de canal ? Si oui, arme la bascule
+// correspondante.
+//
+// ⚠ Le natif fait DEUX tests indépendants — « % sinon $ », puis « # » sur le
+// caractère D'ORIGINE (0x00c7a894) — et non un aiguillage à trois branches. La
+// nuance ne se voit qu'une fois le patch WARP passé par là : si deux canaux
+// reçoivent le même caractère, les deux bascules s'arment, et un seul caractère
+// est retiré. On garde donc la forme du natif.
+bool SendPrefixToggle(char first, ChatWindow::SendToggles* toggles) {
+  if (first == '\0') return false;  // jamais sur une saisie vide
+  const SendPrefixChars chars = ReadSendPrefixChars();
+  bool matched = false;
+  if (first == chars.party) {
+    toggles->party = true;
+    matched = true;
+  } else if (first == chars.guild) {
+    toggles->guild = true;
+    matched = true;
+  }
+  if (first == chars.ally) {
+    toggles->ally = true;
+    matched = true;
+  }
+  return matched;
 }
 
 // Retire le préfixe de tête et arme sa bascule. Rend false quand il ne reste
@@ -5076,13 +5124,18 @@ void ChatWindow::DrawInputRow() {
   // joueur qui vient du chat natif est justement celui qui les cherche.
   if (mode_combo_hovered && !mode_combo_open) {
     ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
-    // « %s » et pas la chaîne directement : le texte porte un « % », que
-    // SetTooltip lirait comme un format.
-    ImGui::SetTooltip("%s", i18n::Tr(
+    // 🔴 Les caractères sont ceux de l'EXE, pas ceux du désassemblage : sur
+    // Moonlight l'alliance est passée sur « ^ » (patch WARP). Une aide qui
+    // annoncerait « # » enverrait le joueur droit dans le mur.
+    const SendPrefixChars chars = ReadSendPrefixChars();
+    char help[512];  // large : une traduction est plus longue que le français
+    std::snprintf(help, sizeof(help), i18n::Tr(
         "Où part ce que tu écris.\n"
         "En tête de phrase, sans toucher au réglage :\n"
-        "  % groupe (ou Ctrl)   $ guilde (ou Alt)   # alliés (ou Verr.Maj)\n"
-        "Le préfixe RENVOIE au public quand c'est déjà le canal choisi."));
+        "  %c groupe (ou Ctrl)   %c guilde (ou Alt)   %c alliés (ou Verr.Maj)\n"
+        "Le préfixe RENVOIE au public quand c'est déjà le canal choisi."),
+        chars.party, chars.guild, chars.ally);
+    ImGui::SetTooltip("%s", help);
     ImGui::PopStyleColor();
   }
   ImGui::PopStyleColor();

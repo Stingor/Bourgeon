@@ -82,6 +82,7 @@ est consommé sans rien imprimer). Ce que dit IDA n'existe pas sur disque :
 
 | Patch | Ce qu'il change vraiment | Nous concerne |
 |---|---|---|
+| 🔴 `AllianceChatHotkeySelector` | **réécrit l'immédiat du `cmp` du préfixe d'alliance** (`80 BD 84 FE FF FF 23` @ `0x00c7a894`) : Moonlight a choisi **`^` (0x5E)**, pas `#` — c'est ce qui rend le `#` aux **charcommands rAthena** (`#pseudo @cmd`) | 🔴 envoi de la chatbox : lire l'octet à `0x00c7a89a` (`ReadSendPrefixChars`), JAMAIS `'#'` en dur |
 | `UnlimitedChatRepeat` | force un `JMP` dans `IsSameSentence` (limite de répétition d'envoi, `$chatFloodLimit` ignoré) | chatbox |
 | `RestoreChatFocus` | **NOP sur l'appel `SetFocusEdit`** : la saisie garde le focus même en cliquant ailleurs | ⚠ notre gestion du focus ENTRÉE / battle mode |
 | `EnableUnknCmds` | `CSession::GetNoParamTalkType` rend `TT_NORMAL` au lieu de `TT_UNKNOWN`, + `chatStartOffset` | ⚠ nos `/commandes` |

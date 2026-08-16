@@ -799,7 +799,7 @@
 "Exporter en GIF": "Export as GIF"
 "Ecrit un GIF par emote dans « emotes_export »,\na cote de l'executable. Pour Discord.": "Writes one GIF per emote into « emotes_export »,\nnext to the executable. For Discord."
 "Destinataire du chuchotement.\nClic droit : les récents.": "Whisper recipient.\nRight click: the recent ones."
-"Où part ce que tu écris.\nEn tête de phrase, sans toucher au réglage :\n  % groupe (ou Ctrl)   $ guilde (ou Alt)   # alliés (ou Verr.Maj)\nLe préfixe RENVOIE au public quand c'est déjà le canal choisi.": "Where what you type goes.\nAt the start of a sentence, without touching the setting:\n  % party (or Ctrl)   $ guild (or Alt)   # allies (or Caps Lock)\nThe prefix sends it BACK to public when that channel is already the one selected."
+"Où part ce que tu écris.\nEn tête de phrase, sans toucher au réglage :\n  %c groupe (ou Ctrl)   %c guilde (ou Alt)   %c alliés (ou Verr.Maj)\nLe préfixe RENVOIE au public quand c'est déjà le canal choisi.": "Where what you type goes.\nAt the start of a sentence, without touching the setting:\n  %c party (or Ctrl)   %c guild (or Alt)   %c allies (or Caps Lock)\nThe prefix sends it BACK to public when that channel is already the one selected."
 "%s\nLecture seule.": "%s\nRead only."
 "Emotes et emoji.\nUne emote part SEULE, en clair (« :smile: ») : tout le monde la lit.\nUn emoji, lui, s'ajoute à ta phrase.": "Emotes and emoji.\nAn emote goes out ON ITS OWN, in plain text (« :smile: »): everyone reads it.\nAn emoji, on the other hand, is added to your sentence."
 "Renommer le canal — Entrée pour valider.": "Rename the channel — Enter to confirm."

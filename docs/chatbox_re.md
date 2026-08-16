@@ -1036,6 +1036,15 @@ Un lien Moonlight reste donc lisible par un client vanille.
   ⇒ `ResolveSendCommand` (chat_window.cc) rejoue le case 0 en C++ :
   * préfixe de tête RETIRÉ du message, `%` groupe / `$` guilde / `#` alliés, et
     Ctrl / Alt / Verr.Maj **enfoncées** font la même chose (0x00c7a85d) ;
+  * 🔴🔴 **les trois caractères se LISENT DANS L'EXE**, ils ne se codent pas en
+    dur : le patch WARP `AllianceChatHotkeySelector` réécrit l'immédiat du `cmp`
+    de l'alliance et **Moonlight l'a posé sur `^`**, précisément pour rendre le
+    `#` aux charcommands rAthena (`#pseudo @cmd`). L'IDB est un exe VANILLA et
+    montre encore 0x23 ; le croire a cassé les charcommands le 2026-08-16.
+    Immédiats : `0x00c7a7eb` (`%`), `0x00c7a822` (`$`), `0x00c7a89a` (alliance) ;
+  * les tests sont **deux** et non trois branches : « `%` sinon `$` », puis
+    l'alliance sur le caractère D'ORIGINE — deux bascules peuvent donc s'armer si
+    le patch pose le même caractère sur deux canaux, et un seul est retiré ;
   * un préfixe seul (« % ») n'envoie RIEN — le natif compare la longueur à 1 ;
   * la bascule **quitte** le canal quand c'est déjà celui de `g_ChatInputTargetMode`
     (« $ » en mode Guilde → public) ; elle ne DÉSIGNE un canal qu'au mode « Tous »
