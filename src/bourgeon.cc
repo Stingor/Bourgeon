@@ -62,6 +62,7 @@
 #include "features/windows/entity_context_menu.h"
 #include "features/windows/entity_inspector.h"
 #include "features/windows/monster_info_window.h"
+#include "features/windows/navigation_window.h"
 #include "features/fx/style_sync.h"
 #include "features/windows/palette_editor.h"
 #include "features/windows/pet_window.h"
@@ -141,6 +142,7 @@ CharacterSheet* Bourgeon::character_sheet() { return character_sheet_; }
 LoginParade* Bourgeon::login_parade() { return login_parade_; }
 ItemDescWindow* Bourgeon::item_desc() { return item_desc_; }
 MonsterInfoWindow* Bourgeon::monster_info() { return monster_info_; }
+NavigationWindow* Bourgeon::navigation_window() { return navigation_window_; }
 PetWindow* Bourgeon::pet_window() { return pet_window_; }
 PaletteEditor* Bourgeon::palette_editor() { return palette_editor_; }
 EntityContextMenu* Bourgeon::entity_context_menu() {
@@ -935,6 +937,15 @@ void Bourgeon::LoadPlugins() {
     auto monster_info = std::make_unique<MonsterInfoWindow>();
     monster_info_ = monster_info.get();
     plugins_.emplace_back(std::move(monster_info));
+
+    // Navigation ImGui (chercher une carte / un NPC / un monstre, puis se faire
+    // guider). Elle REMPLACE les quatre fenêtres natives — la 203 et ses
+    // satellites 306 / 314 / 229 — qui sont détruites au tick, et pilote le
+    // moteur `CNavigation` (0x015C3090) sans rien en réimplémenter.
+    // Cf. docs/navigation_re.md.
+    auto navigation_window = std::make_unique<NavigationWindow>();
+    navigation_window_ = navigation_window.get();
+    plugins_.emplace_back(std::move(navigation_window));
 
     // Fiche de pet : remplace UIPetInfoWnd (88) et son menu de commandes (260).
     // Avant le menu contextuel, dont l'entrée « Statut du pet » aboutit ici par

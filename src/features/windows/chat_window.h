@@ -305,6 +305,35 @@ class ChatWindow : public Plugin {
   // plafond, pour la même raison : un message de chat a une longueur bornée.
   bool AppendItemLink(void* info);
 
+  // Poser un lien de NAVIGATION : « va à cet endroit ». Balise `<NAVIL>`, et
+  // c'est la seule de la famille qui soit NATIVE — le client la reconnaît dans
+  // `UIRichTextBox_OnMsg` et rappelle son pathfinder au clic. Aucun détour
+  // maison n'est donc nécessaire, et un joueur sans Bourgeon suit le lien.
+  //
+  // 🔴 Elle est insérée TELLE QUELLE, visible, sans mécanique de substitution à
+  // l'envoi : c'est exactement ce que fait le bouton « Share » du natif, qui
+  // pose la balite brute dans la barre et laisse le joueur valider. Y ajouter un
+  // libellé lisible la rendrait plus jolie chez nous et ILLISIBLE chez les
+  // autres, puisque c'est le texte envoyé qui voyage.
+  //
+  // Les coordonnées sont encodées en base 62 (`0123456789a-zA-Z`), poids faible
+  // d'abord, sur deux caractères — la forme qu'attend le client.
+  // `x`/`y` à 0 = « la carte entière ».
+  bool AppendNaviLink(const char* map_name, int x, int y);
+
+  // Poser un lien de RECHERCHE de navigation : « [Carte: Prontera] »,
+  // « [PNJ: Kari] », « [Monstre: Poring] ». Balise `<NAVS>famille:terme</NAVS>`,
+  // à NOUS — le client n'a rien de tel, et il ne pouvait rien avoir : un PNJ et
+  // un monstre n'ont pas de position unique, donc pas de `<NAVIL>` possible.
+  //
+  // `kind` est un `links::NaviKind`. Le terme est le nom INTERNE pour une carte
+  // (seule identité indépendante de la langue) et le nom affiché sinon.
+  //
+  // ⚠ Le libellé lisible est composé chez le LECTEUR, comme pour un lien de
+  // réglage : c'est pourquoi cette balise passe par la mécanique de
+  // substitution à l'envoi plutôt que d'être insérée nue comme `<NAVIL>`.
+  bool AppendNaviSearchLink(uint8_t kind, const char* term_utf8);
+
   // Idem pour un MONSTRE. Le client ne sait pas nommer un monstre (le nom ne vient
   // ni de mob_db, qu'il n'a pas, ni du paquet de la fiche) : c'est l'appelant qui
   // le fournit — la fiche de monstre et la table des drops l'ont tous deux — et la
@@ -455,7 +484,17 @@ class ChatWindow : public Plugin {
     // retrouve nulle part une fois son porteur hors de vue, et un lien qui meurt
     // quand la personne change de carte vaut moins que pas de lien (même règle
     // que `kRecipe` sur une recette absente).
-    enum LinkKind : uint8_t { kNone = 0, kItem, kMob, kUrl, kPlayer, kRecipe, kSetting, kStyle };
+    // `kNavi` est le LIEU d'un `<NAVIL>` — la balise du bouton « Share » de la
+    // navigation, que le client natif rend cliquable de son côté. Le clic lance
+    // le guidage ; c'est le seul lien dont l'action MET LE JEU EN MOUVEMENT.
+    // `kNaviSearch` est une RECHERCHE de navigation (« [Carte: Prontera] »,
+    // « [PNJ: Kari] ») : balise à nous, libellé composé chez le lecteur, et le
+    // clic ouvre le panneau dessus. C'est le seul lien capable de désigner un
+    // PNJ ou un monstre par son LIEU — ni l'un ni l'autre n'a de position unique.
+    enum LinkKind : uint8_t {
+      kNone = 0, kItem, kMob, kUrl, kPlayer, kRecipe, kSetting, kStyle, kNavi,
+      kNaviSearch
+    };
     std::string text;      // UTF-8, prêt pour ImGui
     uint32_t    color = 0; // 0 = couleur par défaut de la ligne
     // Balisage **gras** / *italique*, la syntaxe de Discord — donc un message
@@ -482,6 +521,17 @@ class ChatWindow : public Plugin {
     // posée QUE si cette version la reconnaît — sinon le fragment n'est pas un
     // lien du tout (le texte reste lisible, il ne mène simplement nulle part).
     std::string setting_key;
+    // kNavi : le nom INTERNE de la carte et la position, telles que la balise les
+    // porte. `(0, 0)` = la carte entière — c'est ce que le partage écrit quand la
+    // destination est un lieu et non un point.
+    std::string navi_map;
+    int         navi_x = 0;
+    int         navi_y = 0;
+    // kNaviSearch : ce qu'on cherche et dans quelle famille (`links::NaviKind`).
+    // Pour une carte, c'est le nom INTERNE — la seule identité qui ne dépende
+    // pas de la langue de l'expéditeur.
+    std::string navi_term;
+    uint8_t     navi_kind = 0;
     // kStyle : le code de style, tel qu'il a voyagé, et le pseudo de son auteur.
     // Le code est ce que `palette_cache::EncodeShare` produit — la même chaîne
     // que le presse-papiers.
@@ -1078,6 +1128,8 @@ class ChatWindow : public Plugin {
     std::string setting_key;  // kSetting
     std::string style_code;   // kStyle : le code, tel qu'il partira
     std::string style_owner;  // kStyle : le pseudo affiché
+    std::string navi_term;    // kNaviSearch : le terme, tel qu'il partira
+    uint8_t     navi_kind = 0;
     // La balise RELUE, pour que le lien posé dans la saisie soit déjà un objet
     // cliquable — c'est ce que fait le natif, qui accroche un vrai bouton sur sa
     // ligne de saisie (`UIItemTagButton`) plutôt que d'y écrire du texte mort.

@@ -18,6 +18,7 @@
 #include "features/windows/craft_atlas.h"           // cible d'un lien de recette
 #include "features/windows/item_desc_window.h"      // itemdesc::OpenItemDbPage
 #include "features/windows/monster_info_window.h"   // fiche d'un monstre
+#include "features/windows/navigation_window.h"     // cible d'un lien de lieu
 #include "imgui.h"
 #include "ui/ro_imgui.h"                            // ro::SetHoverCursor
 #include "utils/i18n.h"
@@ -190,16 +191,21 @@ void DrawUrlPreviewStatus(const std::string& url,
 
 // La fiche en jeu, avec repli sur le site quand elle est désactivée : un lien qui
 // ne fait RIEN est pire qu'un lien qui fait autre chose de sensé.
-void OpenMobSheet(uint32_t mob_id) {
+void OpenMobSheet(uint32_t mob_id, bool by_view) {
   if (mob_id == 0) return;
   MonsterInfoWindow* sheet = Bourgeon::Instance().monster_info();
   if (sheet == nullptr || !sheet->imgui_enabled_) {
+    // ⚠ Le repli web ne sait PAS traiter une classe de sprite : la page du
+    // bestiaire s'indexe sur mob_db. On l'ouvre quand même — les deux
+    // coïncident sauf pour les monstres qui empruntent une apparence, et ne
+    // rien faire serait un lien mort dans tous les cas.
     OpenMobDbPage(mob_id);
     return;
   }
-  // by_view = false : l'id d'un lien vient de mob_db, ce n'est pas une classe de
-  // sprite (un monstre déguisé porterait celle d'un autre).
-  sheet->Open(mob_id, /*by_view=*/false);
+  // `by_view` : l'identité vient-elle des données de navigation (ou du skill
+  // Sense) plutôt que de mob_db ? Seul le serveur sait résoudre — la fiche le
+  // relaie dans sa demande.
+  sheet->Open(mob_id, by_view);
 }
 
 void QueueCommand(const char* utf8) {
@@ -243,6 +249,12 @@ Target FromMob(uint32_t mob_id, int rank, const char* name_utf8) {
   t.mob_rank = static_cast<uint8_t>((rank < 0 || rank > 2) ? 0 : rank);
   if (name_utf8 != nullptr) t.mob_name = name_utf8;
   t.label = t.mob_name;
+  return t;
+}
+
+Target FromMobView(uint32_t view_class, int rank, const char* name_utf8) {
+  Target t = FromMob(view_class, rank, name_utf8);
+  t.mob_by_view = t.valid();
   return t;
 }
 
@@ -304,6 +316,76 @@ Target FromStyle(const char* code, const char* owner_utf8) {
   return t;
 }
 
+Target FromNavi(const char* map_name, int x, int y) {
+  Target t;
+  if (map_name == nullptr || map_name[0] == '\0') return t;
+  t.kind     = Target::kNavi;
+  t.navi_map = map_name;
+  t.navi_x   = x;
+  t.navi_y   = y;
+  // Le nom AFFICHÉ, résolu chez le lecteur : l'expéditeur peut jouer dans une
+  // autre langue, et un lieu se nomme différemment d'un client à l'autre. Repli
+  // sur le nom interne si le client ne connaît pas la carte — un lien illisible
+  // vaut mieux qu'un lien invisible.
+  const std::string shown = NavigationWindow::MapLabel(map_name);
+  char buf[128];
+  if (x > 0 && y > 0)
+    std::snprintf(buf, sizeof(buf), "<%s %d,%d>", shown.c_str(), x, y);
+  else
+    std::snprintf(buf, sizeof(buf), "<%s>", shown.c_str());
+  t.label = buf;
+  return t;
+}
+
+// Ce qu'on CHERCHE réellement, à partir du terme transporté.
+//
+// 🔴 Une CARTE voyage sous son nom INTERNE, jamais sous son nom affiché, et ce
+// n'est pas un détail de forme :
+//  · c'est la seule identité stable — le nom affiché dépend de la langue du
+//    client, donc un lien composé chez un anglophone ne désignerait rien chez
+//    son lecteur ;
+//  · c'est aussi le seul que le moteur accepte pour un GUIDAGE. Un lien qui
+//    saurait se chercher mais pas s'atteindre serait à moitié cassé.
+// Le nom affiché est donc reconstruit ICI, des deux côtés : pour le libellé et
+// pour la recherche, que le moteur mène sur les noms affichés de ses résultats.
+//
+// Un PNJ et un monstre n'ont pas ce problème : leur nom EST leur identité, il
+// n'en existe pas d'autre dans les données de navigation.
+//
+// Interne au module : elle n'a pas à figurer dans l'en-tête, les appelants
+// n'ayant jamais besoin de la forme brute autrement que par le libellé.
+static std::string NaviSearchTermShown(NaviKind kind, const char* term_utf8) {
+  if (term_utf8 == nullptr || term_utf8[0] == '\0') return std::string();
+  if (kind != NaviKind::kMap) return term_utf8;
+  return NavigationWindow::MapLabel(term_utf8);
+}
+
+std::string NaviSearchLabel(NaviKind kind, const char* term_utf8) {
+  if (term_utf8 == nullptr || term_utf8[0] == '\0') return std::string();
+  // Traduit ICI, chez celui qui regarde — même règle que `SettingLabel`.
+  const char* head = (kind == NaviKind::kMap)   ? i18n::Tr("Carte")
+                     : (kind == NaviKind::kNpc) ? i18n::Tr("PNJ")
+                                                : i18n::Tr("Monstre");
+  char buf[160];
+  std::snprintf(buf, sizeof(buf), "[%s: %s]", head,
+                NaviSearchTermShown(kind, term_utf8).c_str());
+  return buf;
+}
+
+Target FromNaviSearch(NaviKind kind, const char* term_utf8) {
+  Target t;
+  if (term_utf8 == nullptr || term_utf8[0] == '\0') return t;
+  // Un terme portant un chevron couperait la balise en deux à la relecture.
+  if (std::strchr(term_utf8, '<') != nullptr ||
+      std::strchr(term_utf8, '>') != nullptr)
+    return t;
+  t.kind      = Target::kNaviSearch;
+  t.navi_term = term_utf8;
+  t.navi_kind = static_cast<uint8_t>(kind);
+  t.label     = NaviSearchLabel(kind, term_utf8);
+  return t;
+}
+
 void OpenDescription(const Target& target) {
   switch (target.kind) {
     case Target::kItem: {
@@ -315,7 +397,7 @@ void OpenDescription(const Target& target) {
                                       static_cast<int>(mouse.y));
       break;
     }
-    case Target::kMob: OpenMobSheet(target.mob_id); break;
+    case Target::kMob: OpenMobSheet(target.mob_id, target.mob_by_view); break;
     case Target::kRecipe: {
       // L'équivalent de « consulter » pour une recette : l'Atlas, ouvert sur la
       // fiche du produit. Rien de natif ici, donc rien à différer — l'Atlas est
@@ -343,6 +425,30 @@ void OpenDescription(const Target& target) {
       // quel OnRenderUI.
       if (auto* mu = Bourgeon::Instance().moonlight_ui())
         mu->OpenSettingTarget(target.setting_key.c_str());
+      break;
+    }
+    case Target::kNaviSearch: {
+      // Une recherche n'a pas de description non plus : on l'OUVRE. C'est le
+      // panneau ImGui, donc rien à différer — il se contente de poser un terme
+      // que son propre tick consommera.
+      if (auto* nav = Bourgeon::Instance().navigation_window()) {
+        const NaviKind kind = static_cast<NaviKind>(target.navi_kind);
+        nav->OpenSearch(NaviSearchTermShown(kind, target.navi_term.c_str()).c_str(),
+                        kind == NaviKind::kMob);
+      }
+      break;
+    }
+    case Target::kNavi: {
+      // Un lieu n'a pas de description : ce qu'on veut d'un lieu partagé, c'est
+      // Y ALLER. La navigation arme son intention et la joue au tick suivant —
+      // le moteur est natif, l'appeler d'ici figerait le client.
+      //
+      // ⚠ On n'ouvre PAS le panneau au passage. Suivre un lien du chat, c'est
+      // continuer à lire le chat pendant que le guidage s'affiche sur la carte ;
+      // déplier une fenêtre par-dessus prendrait la place de ce qu'on lisait. Le
+      // panneau reste au menu contextuel, pour qui veut voir l'itinéraire.
+      if (auto* nav = Bourgeon::Instance().navigation_window())
+        nav->GoTo(target.navi_map.c_str(), target.navi_x, target.navi_y);
       break;
     }
     case Target::kPlayer: {
@@ -414,6 +520,11 @@ bool PostToChat(const Target& target) {
   if (target.kind == Target::kStyle)
     return chat->AppendStyleLink(target.style_code.c_str(),
                                  target.style_owner.c_str());
+  if (target.kind == Target::kNavi)
+    return chat->AppendNaviLink(target.navi_map.c_str(), target.navi_x,
+                                target.navi_y);
+  if (target.kind == Target::kNaviSearch)
+    return chat->AppendNaviSearchLink(target.navi_kind, target.navi_term.c_str());
   return false;
 }
 
@@ -466,7 +577,7 @@ void HoverPreview(const Target& target) {
   }
   if (target.kind == Target::kMob) {
     if (MonsterInfoWindow* sheet = Bourgeon::Instance().monster_info())
-      sheet->DrawHoverPreview(target.mob_id);
+      sheet->DrawHoverPreview(target.mob_id, target.mob_by_view);
     return;
   }
   if (target.kind == Target::kRecipe) {
@@ -536,6 +647,46 @@ void HoverPreview(const Target& target) {
       DimText("%s", i18n::Tr(name));
     ImGui::Spacing();
     DimText(i18n::Tr("Clic : ouvrir ce réglage"));
+    ImGui::EndTooltip();
+    ImGui::PopStyleColor();
+    return;
+  }
+  if (target.kind == Target::kNaviSearch) {
+    ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
+    ImGui::BeginTooltip();
+    const NaviKind kind = static_cast<NaviKind>(target.navi_kind);
+    ImGui::TextUnformatted(
+        NaviSearchTermShown(kind, target.navi_term.c_str()).c_str());
+    ImGui::Separator();
+    // Une CARTE se montre : son plan répond à la question mieux que son nom. Un
+    // PNJ ou un monstre, non — c'est justement parce qu'ils n'ont pas de lieu
+    // unique qu'on partage une recherche plutôt qu'un point.
+    if (kind == NaviKind::kMap) {
+      NavigationWindow::DrawMapThumbnail(target.navi_term.c_str(), ro::Px(160.0f));
+      DimText("%s", target.navi_term.c_str());  // le nom interne, utile en commande
+    }
+    DimText(i18n::Tr("Clic : chercher dans la navigation"));
+    ImGui::EndTooltip();
+    ImGui::PopStyleColor();
+    return;
+  }
+  if (target.kind == Target::kNavi) {
+    // Le PLAN de la carte, comme dans le volet de détail de la navigation : c'est
+    // la seule chose qui réponde à « c'est où, ça ? » sans quitter le chat. Le
+    // nom affiché est déjà dans le libellé du lien, mais on le répète ici parce
+    // que le tooltip peut être lu loin du fragment (ligne longue, repli).
+    ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
+    ImGui::BeginTooltip();
+    ImGui::TextUnformatted(NavigationWindow::MapLabel(target.navi_map.c_str()).c_str());
+    ImGui::Separator();
+    NavigationWindow::DrawMapThumbnail(target.navi_map.c_str(), ro::Px(160.0f));
+    if (target.navi_x > 0 && target.navi_y > 0)
+      DimText("%s  (%d, %d)", target.navi_map.c_str(), target.navi_x,
+              target.navi_y);
+    else
+      DimText("%s", target.navi_map.c_str());
+    ImGui::Spacing();
+    DimText(i18n::Tr("Clic : lancer le guidage"));
     ImGui::EndTooltip();
     ImGui::PopStyleColor();
     return;
@@ -629,10 +780,25 @@ void DrawMenu(const char* popup_id, const Target& target) {
         break;
       }
       case Target::kMob: {
-        if (ImGui::MenuItem(i18n::Tr("Fiche du monstre"))) OpenMobSheet(target.mob_id);
+        if (ImGui::MenuItem(i18n::Tr("Fiche du monstre"))) OpenDescription(target);
         if (ImGui::MenuItem(i18n::Tr("Bestiaire du site"))) OpenMobDbPage(target.mob_id);
         if (ImGui::MenuItem(i18n::Tr("Lien dans le chat"))) PostToChat(target);
         ImGui::Separator();
+        // ── Où le trouver ────────────────────────────────────────────────────
+        // Le pendant de la fiche : elle dit CE QUE c'est, la navigation dit OÙ.
+        // La recherche part sur le NOM et non sur l'id — c'est ce que le moteur
+        // compare, ses données ne portent aucun id de mob_db.
+        //
+        // Deux entrées et pas une : ouvrir chez SOI n'est pas la même chose que
+        // poser la question à quelqu'un d'autre.
+        if (!target.mob_name.empty()) {
+          const Target search =
+              FromNaviSearch(NaviKind::kMob, target.mob_name.c_str());
+          if (ImGui::MenuItem(i18n::Tr("Où le trouver"))) OpenDescription(search);
+          if (ImGui::MenuItem(i18n::Tr("Lien « où le trouver » dans le chat")))
+            PostToChat(search);
+          ImGui::Separator();
+        }
         if (ImGui::MenuItem("@mobinfo")) {
           std::snprintf(cmd, sizeof(cmd), "@mobinfo %u", target.mob_id);
           QueueCommand(cmd);
@@ -696,6 +862,59 @@ void DrawMenu(const char* popup_id, const Target& target) {
       case Target::kSetting: {
         if (ImGui::MenuItem(i18n::Tr("Ouvrir ce réglage"))) OpenDescription(target);
         if (ImGui::MenuItem(i18n::Tr("Lien dans le chat"))) PostToChat(target);
+        break;
+      }
+      case Target::kNaviSearch: {
+        if (ImGui::MenuItem(i18n::Tr("Chercher dans la navigation")))
+          OpenDescription(target);
+        // Une CARTE se sait aussi rejoindre : la recherche mène au panneau, le
+        // guidage y va. Un PNJ ou un monstre n'a pas de position unique, donc
+        // rien à proposer ici — c'est toute la raison d'être de ce genre-là.
+        if (target.navi_kind == static_cast<uint8_t>(NaviKind::kMap)) {
+          if (ImGui::MenuItem(i18n::Tr("Y aller"))) {
+            if (auto* nav = Bourgeon::Instance().navigation_window())
+              nav->GoTo(target.navi_term.c_str(), 0, 0);
+          }
+        }
+        if (ImGui::MenuItem(i18n::Tr("Copier le nom")))
+          ImGui::SetClipboardText(target.navi_term.c_str());
+        if (ImGui::MenuItem(i18n::Tr("Lien dans le chat"))) PostToChat(target);
+        break;
+      }
+      case Target::kNavi: {
+        if (ImGui::MenuItem(i18n::Tr("Y aller"))) OpenDescription(target);
+        // Le panneau, pour qui veut VOIR l'itinéraire plutôt que le suivre à
+        // l'aveugle — le geste gauche, lui, laisse le chat en place exprès.
+        //
+        // 🔴 Le guidage part AUSSI, et ce n'est pas un doublon du geste gauche :
+        // la recherche est un PARI. Elle porte sur le nom affiché, or celui que
+        // rend la DB de cartes du client n'est pas forcément celui que
+        // `Navi_Data_Map` donne aux résultats du moteur — les deux tables sont
+        // traduites séparément. Un pari perdu laisserait une liste vide ; avec
+        // l'itinéraire, le panneau montre au moins la route, qui est ce qu'on
+        // venait y voir.
+        if (ImGui::MenuItem(i18n::Tr("Ouvrir la navigation"))) {
+          if (auto* nav = Bourgeon::Instance().navigation_window()) {
+            nav->OpenSearch(NavigationWindow::MapLabel(target.navi_map.c_str()).c_str(),
+                            /*monsters_only=*/false);
+            nav->GoTo(target.navi_map.c_str(), target.navi_x, target.navi_y);
+          }
+        }
+        // Le nom INTERNE, celui qui sert dans une commande (`@go`, `@warp`) ou
+        // dans un script — le nom affiché n'y est accepté nulle part.
+        if (ImGui::MenuItem(i18n::Tr("Copier le nom de la carte")))
+          ImGui::SetClipboardText(target.navi_map.c_str());
+        ImGui::Separator();
+        // ── DEUX partages, et ils ne disent pas la même chose ────────────────
+        //  · le lieu (`<NAVIL>`) dit « VA LÀ » : balise du client, donc suivie
+        //    même par un joueur sans Bourgeon, mais figée sur un point ;
+        //  · la recherche (`[Carte: …]`) dit « REGARDE CETTE CARTE » : elle
+        //    ouvre le panneau du lecteur dessus, ce que la première ne fait pas.
+        // Les deux sont offerts parce que les deux intentions existent, et le
+        // libellé de chaque entrée dit laquelle on choisit.
+        if (ImGui::MenuItem(i18n::Tr("Lien dans le chat"))) PostToChat(target);
+        if (ImGui::MenuItem(i18n::Tr("Lien de recherche dans le chat")))
+          PostToChat(FromNaviSearch(NaviKind::kMap, target.navi_map.c_str()));
         break;
       }
       case Target::kStyle: {

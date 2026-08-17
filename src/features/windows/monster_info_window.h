@@ -67,7 +67,10 @@ class MonsterInfoWindow : public Plugin {
   // fois par monstre, `RequestInfo` porte sa propre garde) ; en attendant,
   // l'infobulle le dit. N'ouvre NI ne change la fiche affichée — survoler n'est
   // pas cliquer.
-  void DrawHoverPreview(uint32_t mob_id);
+  // `by_view` a le même sens qu'à `Open` : l'id est une classe de SPRITE. Il
+  // part dans la demande au serveur, sans quoi une fiche demandée depuis les
+  // données de navigation resterait « inconnue » indéfiniment.
+  void DrawHoverPreview(uint32_t mob_id, bool by_view = false);
 
   // Rejoue HORS frame ImGui l'ouverture de la description d'une compétence
   // (chemin natif MakeWindow + OnMsg). Appelée par Bourgeon::OnProcessInput,

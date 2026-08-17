@@ -50,6 +50,7 @@
 #include "features/windows/make_item_window.h"
 #include "features/windows/entity_context_menu.h"
 #include "features/windows/monster_info_window.h"
+#include "features/windows/navigation_window.h"
 #include "features/windows/pet_window.h"
 #include "features/windows/weapon_refine_window.h"
 #include "features/windows/trade_window.h"
@@ -711,6 +712,21 @@ const moonlight_ui::SettingDesc kCraftAtlasSettings[] = {
 };
 
 // Fiche de monstre (remplace « Monster Info », id 0x4D, ouverte par Sense).
+// ⚠ Les trois options d'itinéraire (services / avion / scrolls) ne sont PAS
+// persistées, parce qu'elles ne sont plus réglables : la fenêtre force les trois
+// bits à chaque tick. Sur Moonlight, « services Kafra » désigne le Warp Agent —
+// gratuit, partout, et seul moyen d'atteindre ce qui n'est pas relié à pied ;
+// l'avion et les scrolls y sont désuets. Cf. `kAllRouteOptions`.
+// ⚠ « navigation_route_icon » (1..8), en revanche, EST persisté — et c'est un
+// défaut du client qu'on comble : sa fenêtre de sélection écrit dans le moteur
+// et nulle part ailleurs, donc le joueur repose son choix à chaque session.
+const moonlight_ui::SettingDesc kNavigationSettings[] = {
+    {"navigation_imgui", SType::kBool,
+     MLUI_FIELD(navigation_window, imgui_enabled_), MLUI_LITERAL(bool, false)},
+    {"navigation_route_icon", SType::kInt,
+     MLUI_FIELD(navigation_window, route_icon_), MLUI_LITERAL(int, 1)},
+};
+
 // « monsterinfo_imgui » est basculé en GROUPE par SetModernInterface : défaut OFF.
 const moonlight_ui::SettingDesc kMonsterInfoSettings[] = {
     {"monsterinfo_imgui", SType::kBool, MLUI_FIELD(monster_info, imgui_enabled_),
@@ -1393,6 +1409,13 @@ void SetModernInterface(bool on) {
   // une fenêtre que rien ne détruit plus. Cf. docs/pet_re.md §12.
   if (auto* pet_window = Bourgeon::Instance().pet_window())
     pet_window->imgui_enabled_ = on;
+  // La navigation suit le groupe : elle DÉTRUIT quatre fenêtres natives (203 et
+  // ses satellites 306 / 314 / 229), et ses résultats sont des LIENS vers la
+  // fiche de monstre ci-dessus — elle-même du groupe. L'activer seule laisserait
+  // des liens modernes menant à une fenêtre native ; la laisser seule éteinte
+  // ferait ouvrir par la fiche moderne une navigation que rien ne remplace.
+  if (auto* navigation_window = Bourgeon::Instance().navigation_window())
+    navigation_window->imgui_enabled_ = on;
   // 🔴 LE MENU ÉCHAP ET SA TABLE DES RACCOURCIS NE SONT PAS DANS CE GROUPE, et ce
   // n'est pas un oubli : ils sont ON PAR DÉFAUT pour tout le monde (cf. leurs
   // descripteurs). Un menu enterré sous une fenêtre du jeu est un menu cassé, et
@@ -1441,6 +1464,8 @@ bool DrawModernInterfaceCheckbox(bool* enabled, const char* window_help) {
       "  • Refine d'arme (compétence Upgrade Weapon du Whitesmith)\n"
       "  • Fiche de monstre (compétence Sense), avec sprite animé, drops et\n"
       "    lieux d'apparition\n"
+      "  • Navigation : elle remplace les QUATRE fenêtres natives (recherche,\n"
+      "    itinéraire, choix de trace, aide) par un seul panneau\n"
       "  • Menu du clic droit sur une entité\n"
       "La case des autres sections reflète donc le même état.\n\n");
   help += window_help;
@@ -1512,6 +1537,7 @@ void MoonlightUi::LoadSettings() {
     moonlight_ui::ReadSettings(ui, kRefineSettings);
     moonlight_ui::ReadSettings(ui, kMakeItemSettings);
     moonlight_ui::ReadSettings(ui, kCraftAtlasSettings);
+    moonlight_ui::ReadSettings(ui, kNavigationSettings);
     moonlight_ui::ReadSettings(ui, kMonsterInfoSettings);
     moonlight_ui::ReadSettings(ui, kPetWindowSettings);
     moonlight_ui::ReadSettings(ui, kEntityContextMenuSettings);
@@ -1669,6 +1695,7 @@ void MoonlightUi::WriteSettingsFile() {
   moonlight_ui::WriteSettings(out, kRefineSettings);
   moonlight_ui::WriteSettings(out, kMakeItemSettings);
   moonlight_ui::WriteSettings(out, kCraftAtlasSettings);
+  moonlight_ui::WriteSettings(out, kNavigationSettings);
   moonlight_ui::WriteSettings(out, kMonsterInfoSettings);
   moonlight_ui::WriteSettings(out, kPetWindowSettings);
   moonlight_ui::WriteSettings(out, kEntityContextMenuSettings);

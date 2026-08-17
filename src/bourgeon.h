@@ -46,6 +46,7 @@ class CharacterSheet;
 class LoginParade;
 class ItemDescWindow;
 class MonsterInfoWindow;
+class NavigationWindow;
 class PetWindow;
 class PaletteEditor;
 class EntityContextMenu;
@@ -119,6 +120,9 @@ class Bourgeon {
   LoginParade* login_parade();
   ItemDescWindow* item_desc();
   MonsterInfoWindow* monster_info();
+  // Navigation ImGui. Exposée pour l'action de raccourci `win_navigation`, pour
+  // le hook qui route la native 203, et pour les liens de lieu du chat.
+  NavigationWindow* navigation_window();
   PetWindow* pet_window();
   // Éditeur de couleurs du personnage (Alt+P). Exposé pour que la feuille de
   // perso puisse l'ouvrir : c'est là que le joueur regarde son apparence.
@@ -305,6 +309,7 @@ class Bourgeon {
   Rojeweled* rojeweled_ = nullptr;      // non-owning, lifetime tied to plugins_
   ItemDescWindow* item_desc_ = nullptr;       // non-owning, lifetime tied to plugins_
   MonsterInfoWindow* monster_info_ = nullptr;  // non-owning, lifetime tied to plugins_
+  NavigationWindow* navigation_window_ = nullptr;  // non-owning, idem
   PetWindow* pet_window_ = nullptr;            // non-owning, lifetime tied to plugins_
   PaletteEditor* palette_editor_ = nullptr;    // idem
   EntityContextMenu* entity_context_menu_ = nullptr;  // idem

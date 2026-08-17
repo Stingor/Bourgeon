@@ -13,6 +13,8 @@
 // un en-tête bien plus lourd.
 
 #include <cstdint>
+#include <cstdio>   // _snprintf_s (MapDisplayName recolle l'extension .rsw)
+#include <cstring>  // strncpy_s (idem : on recopie la chaîne du client)
 #include <excpt.h>  // __try/__except des accesseurs gardés (même choix que uiwnd.h)
 
 namespace rag {
@@ -208,5 +210,39 @@ constexpr uintptr_t kGameOperatorDeleteAddr = 0x00dbbc7f;  // __cdecl(ptr)
 // celle-ci. Une seule fonction, deux portes d'entrée — tout le monde passe
 // désormais par l'adresse réelle.
 constexpr uintptr_t kStdStringDtorAddr = 0x004f08f0;
+
+// ── Nom LISIBLE d'un lieu ────────────────────────────────────────────────────
+// « Prontera » pour `prontera`, « PvP : Room Copass » pour `pvp_n_3-5` — le nom
+// que la grande carte native met en titre. `Social_GetMapDisplayName` est
+// __stdcall et prend un `const char*` : rien à marshaler, contrairement à la
+// plupart des accesseurs du client.
+//
+// 🔴 Elle attend le nom AVEC son extension `.rsw` — c'est `sub_D9AB80`
+// (0x00d9ab80) qui la recolle avant d'appeler, et sans elle la table ne trouve
+// rien. Le résultat pointe dans la DB de cartes du client : on le RECOPIE tout
+// de suite plutôt que de garder le pointeur.
+//
+// Ici plutôt que chez son premier appelant (la minimap) parce que le second est
+// arrivé : un lien de navigation posté dans le chat doit s'afficher avec le nom
+// que le joueur lit partout ailleurs, pas avec l'identifiant de la carte.
+constexpr uintptr_t kMapDisplayNameAddr = 0x00d5bcf0;
+
+inline bool MapDisplayName(const char* map_no_ext, char* out, size_t cap) {
+  if (out == nullptr || cap == 0) return false;
+  out[0] = '\0';
+  __try {
+    if (!map_no_ext || !map_no_ext[0]) return false;
+    char with_ext[80];
+    _snprintf_s(with_ext, sizeof(with_ext), _TRUNCATE, "%s.rsw", map_no_ext);
+    using Fn = const char*(__stdcall*)(const char*);
+    const char* name = reinterpret_cast<Fn>(kMapDisplayNameAddr)(with_ext);
+    if (!name || !name[0]) return false;
+    strncpy_s(out, cap, name, _TRUNCATE);
+    return true;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    out[0] = '\0';
+    return false;
+  }
+}
 
 }  // namespace rag

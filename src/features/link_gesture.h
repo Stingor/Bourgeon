@@ -47,7 +47,23 @@ struct Target {
   // kStyle — le STYLE d'un joueur : couleurs de corps, palette de cheveux,
   // coiffure. Le geste gauche en montre un APERÇU (un pantin le portant), le
   // menu propose de l'essayer ou d'en copier le code.
-  enum Kind : uint8_t { kNone = 0, kItem, kMob, kUrl, kPlayer, kRecipe, kSetting, kStyle };
+  // kNavi — un LIEU du monde, tel qu'un `<NAVIL>` de chat le transporte. Le
+  // geste gauche n'ouvre aucune description : il LANCE LE GUIDAGE, ce qui est la
+  // seule chose qu'on veuille faire d'un lieu que quelqu'un vient de partager.
+  //
+  // kNaviSearch — une RECHERCHE dans la navigation : « [Carte: Prontera] »,
+  // « [PNJ: Kari] », « [Monstre: Poring] ». 🔴 Ce n'est PAS un doublon de kNavi,
+  // et la différence est celle entre montrer un point et montrer une question :
+  //  · kNavi désigne un endroit PRÉCIS et y envoie tout de suite. Sa balise est
+  //    celle du client, donc tout le monde la lit — mais elle ne sait dire qu'un
+  //    couple carte + coordonnées ;
+  //  · kNaviSearch désigne ce qu'on CHERCHE, et ouvre le panneau dessus. C'est
+  //    le seul moyen de partager un PNJ ou un monstre — ni l'un ni l'autre n'a
+  //    de position unique, et aucune balise native ne les transporte.
+  enum Kind : uint8_t {
+    kNone = 0, kItem, kMob, kUrl, kPlayer, kRecipe, kSetting, kStyle, kNavi,
+    kNaviSearch
+  };
   uint8_t kind = kNone;
 
   // kItem — la balise RELUE, pas seulement l'id : elle porte le refine, les
@@ -60,6 +76,18 @@ struct Target {
   uint32_t mob_id = 0;
   uint8_t  mob_rank = 0;  // 0 = normal, 1 = boss, 2 = MVP
   std::string mob_name;   // UTF-8
+  // 🔴 `mob_id` est-il une classe de SPRITE plutôt qu'un id de mob_db ? C'est le
+  // cas de tout ce qui vient des données de navigation (`write_spawn` écrit
+  // `vd.look[LOOK_BASE]`) et du skill Sense. Seul le SERVEUR sait faire la
+  // correspondance inverse — le client n'a pas mob_db — d'où ce drapeau, que la
+  // fiche et l'aperçu relaient dans leur demande.
+  //
+  // ⚠ Les deux coïncident pour l'écrasante majorité des monstres, et diffèrent
+  // pour ceux qui empruntent l'apparence d'un autre. Les actions qui exigent un
+  // VRAI id (la page du bestiaire, `@whodrops`, un lien `<MOBL>` posté) restent
+  // donc offertes, mais elles désignent alors le monstre DE L'APPARENCE. Le
+  // corriger demanderait un aller-retour serveur pour un cas marginal.
+  bool mob_by_view = false;
 
   std::string url;    // kUrl
 
@@ -74,6 +102,20 @@ struct Target {
   // un numéro ne décrirait que l'ordre d'UNE version de Bourgeon. En-têtes et
   // sections partagent le même espace de clés (cf. iface::DestLabel).
   std::string setting_key;
+
+  // kNavi — le nom INTERNE de la carte (« pay_fild10 »), le seul que le moteur
+  // de navigation accepte ; le nom affiché est reconstruit LOCALEMENT pour le
+  // libellé, chacun devant lire le lieu dans sa propre langue. `(0, 0)` = la
+  // carte entière, le cas ordinaire d'un lieu partagé.
+  std::string navi_map;
+  int         navi_x = 0;
+  int         navi_y = 0;
+
+  // kNaviSearch — ce qu'on cherche, et dans quelle famille. Le TERME est le nom
+  // AFFICHÉ (« Prontera », « Kari ») : c'est lui que le moteur compare, le nom
+  // interne d'une carte n'y trouverait rien.
+  std::string navi_term;
+  uint8_t     navi_kind = 0;  // cf. links::NaviKind
 
   // kStyle — le CODE en entier, et le pseudo de son auteur.
   //
@@ -98,6 +140,10 @@ Target FromItemId(uint32_t item_id, const char* label_utf8);
 // à rien vaut moins que pas de lien.
 Target FromRecipe(uint32_t item_id, const char* label_utf8);
 Target FromMob(uint32_t mob_id, int rank, const char* name_utf8);
+// Le même monstre, désigné par sa classe de SPRITE. C'est la seule identité que
+// portent les données de navigation et le skill Sense ; le serveur fait la
+// correspondance inverse. Voir `Target::mob_by_view` pour ce que ça implique.
+Target FromMobView(uint32_t view_class, int rank, const char* name_utf8);
 Target FromUrl(const char* url);
 // Le pseudo d'un joueur (UTF-8). ⚠ Le clic GAUCHE n'ouvre pas de description —
 // un joueur n'en a pas — mais PRÉPARE le chuchotement : le pseudo dans la box
@@ -109,6 +155,29 @@ Target FromPlayer(const char* name_utf8);
 // le code est illisible ou d'une version périmée — même règle qu'une recette
 // absente : un lien qui n'ouvrirait rien vaut moins que pas de lien.
 Target FromStyle(const char* code, const char* owner_utf8);
+
+// Un LIEU, par le nom INTERNE de sa carte. `(0, 0)` = la carte entière. Le
+// libellé est composé ici, dans la langue de CELUI QUI LIT : « <Prontera> », ou
+// « <Prontera 150,150> » si la position est précise. Cible vide sans nom de
+// carte — le reste est validé par le moteur au moment de partir.
+Target FromNavi(const char* map_name, int x, int y);
+
+// La famille d'une recherche de navigation. Elle décide du libellé, de la
+// pastille de filtre allumée à l'ouverture, et de ce que montre le survol.
+enum class NaviKind : uint8_t { kMap = 0, kNpc, kMob };
+
+// Une RECHERCHE de navigation, par le nom AFFICHÉ de ce qu'on cherche. Le
+// libellé est composé ici et dans la langue du LECTEUR — « [Carte: Prontera] »,
+// « [PNJ: Kari] », « [Monstre: Poring] ». Cible vide sans terme.
+//
+// ⚠ Le terme voyage tel quel, y compris ses espaces : c'est un nom de créature
+// ou de lieu, pas un identifiant. Seuls les chevrons sont refusés — ils
+// couperaient la balise en deux à la relecture.
+Target FromNaviSearch(NaviKind kind, const char* term_utf8);
+
+// Le libellé VISIBLE d'une recherche, composé localement (même règle que
+// `SettingLabel` : un « [Carte: ] » anglophone n'impose rien à son lecteur).
+std::string NaviSearchLabel(NaviKind kind, const char* term_utf8);
 
 // Le libellé VISIBLE d'un lien de réglage : « [Réglage: Objet obtenu] ». Composé
 // LOCALEMENT, jamais transmis tout fait — chacun le lit dans SA langue, et le

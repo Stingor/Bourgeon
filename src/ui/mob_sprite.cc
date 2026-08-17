@@ -23,11 +23,47 @@ namespace {
 // sort avant). Rend une chaîne CP949, ou « » si classId est hors table.
 constexpr uintptr_t kJobResName = 0x00d5bb40;
 constexpr uintptr_t kJobNameCtx = 0x015fa3c0;
-// Gabarit de chemin du client, en CP949 : "몬스터\%s.spr".
-// 🔴 On le lit DANS le binaire plutôt que de l'écrire ici : nos sources sont en
-// UTF-8, un littéral coréen y serait encodé en UTF-8 et ne désignerait aucun
-// dossier du GRF. On lui retire son « .spr » : sprite_view veut une base.
-constexpr uintptr_t kFmtSpr = 0x0103181c;
+
+// ── LE DOSSIER DÉPEND DE LA PLAGE D'ID, ce n'est pas « monstre » partout ─────
+//
+// 🔴 C'est le défaut qui faisait qu'un PNJ n'affichait JAMAIS son sprite : on
+// collait le gabarit « monstre » à tout le monde, donc un PNJ était cherché dans
+// `몬스터\` où il n'a jamais été, et l'échec silencieux retombait sur le plan de
+// la carte. Le client, lui, dispatche — `CActorSprite_BuildMonsterBodyPath`
+// (0x00d339c0), dont le nom d'origine ment : c'est le constructeur de chemin de
+// TOUT corps NON-JOUEUR, et il choisit son gabarit ainsi :
+//
+//   Job_IsNpcOrPortalId(id)  -> NPC\%s          (PNJ et portails)
+//   id ∈ [6017, 6046]        -> 인간족\몸통\%s  (humains à nom PLAT, sans sexe)
+//   id ∈ [6001, 6052]        -> homun\%s        (homoncules)
+//   sinon                    -> 몬스터\%s        (le cas monstre ordinaire)
+//
+// L'ordre compte : les deux plages se recouvrent, et la branche « humain » est
+// testée en premier — elle prime donc sur homun de 6017 à 6046.
+//
+// ⚠ Le corps d'un JOUEUR ne passe PAS par là (il a ses propres gabarits, avec
+// race, sexe et costume). Rien à en tirer ici : ui/doll.h s'en charge.
+//
+// 🔴 Les gabarits sont LUS DANS LE BINAIRE plutôt qu'écrits ici : nos sources
+// sont en UTF-8, et un littéral coréen y serait encodé en UTF-8 — il ne
+// désignerait aucun dossier du GRF. On leur retire leur « .spr » plus bas,
+// sprite_view voulant une base sans extension.
+constexpr uintptr_t kFmtSprMonster = 0x0103181c;  // 몬스터\%s.spr
+constexpr uintptr_t kFmtSprNpc     = 0x0108f960;  // NPC\%s.spr
+constexpr uintptr_t kFmtSprHuman   = 0x010940d0;  // 인간족\몸통\%s.spr
+constexpr uintptr_t kFmtSprHomun   = 0x010940f8;  // homun\%s.spr
+
+// `bool __stdcall(int)` : `id >= 45 && id < 1000 || id - 10001 <= 0x270D`. Deux
+// comparaisons qu'il serait tentant de recopier — mais recopier, c'est figer une
+// borne que la prochaine version d'exe peut déplacer sans qu'on le voie.
+constexpr uintptr_t kFnIsNpcOrPortalId = 0x00d71ec0;
+
+// Bornes des deux plages spéciales, telles que le dispatcher les teste. Elles
+// n'ont pas d'équivalent appelable : ce sont des immédiats dans son code.
+constexpr int kFlatHumanFirst = 6017;
+constexpr int kFlatHumanLast  = 6046;  // 6017 + 0x1D
+constexpr int kHomunFirst     = 6001;
+constexpr int kHomunLast      = 6052;  // 6001 + 0x33
 
 using JobResNameFn = const char* (__fastcall*)(void*, void*, unsigned, int);
 
@@ -70,7 +106,25 @@ bool IsModelResName(const char* name) {
   return n > 4 && _stricmp(name + n - 4, ".gr2") == 0;
 }
 
-// Chemin VFS complet SANS extension, ex. `data\sprite\몬스터\Chocho`.
+// Le gabarit de chemin de cette classe-là, tel que le dispatcher natif le
+// choisirait. Voir le bloc de constantes ci-dessus pour les quatre cas.
+const char* SprFormatFor(int class_id) {
+  bool is_npc = false;
+  __try {
+    using IsNpcFn = bool(__stdcall*)(int);
+    is_npc = reinterpret_cast<IsNpcFn>(kFnIsNpcOrPortalId)(class_id);
+  } __except (EXCEPTION_EXECUTE_HANDLER) { is_npc = false; }
+  if (is_npc) return reinterpret_cast<const char*>(kFmtSprNpc);
+  // Testée AVANT homun, comme dans le natif : les deux plages se recouvrent.
+  if (class_id >= kFlatHumanFirst && class_id <= kFlatHumanLast)
+    return reinterpret_cast<const char*>(kFmtSprHuman);
+  if (class_id >= kHomunFirst && class_id <= kHomunLast)
+    return reinterpret_cast<const char*>(kFmtSprHomun);
+  return reinterpret_cast<const char*>(kFmtSprMonster);
+}
+
+// Chemin VFS complet SANS extension, ex. `data\sprite\몬스터\Chocho` pour un
+// monstre, `data\sprite\NPC\4_M_01` pour un PNJ.
 //
 // 🔴 `data\sprite\`, PAS `data\`. Le gabarit du client est relatif à la racine
 // des SPRITES, et deux couches natives le complètent successivement :
@@ -79,12 +133,12 @@ bool IsModelResName(const char* name) {
 // (0x00573340) ajoute « data\ ». On court-circuite les deux, donc on pose les
 // deux — ne mettre que « data\ » rendait « fichier introuvable » sur TOUS les
 // monstres.
-void BasePathFor(const char* name, char* out, size_t out_size) {
+void BasePathFor(int class_id, const char* name, char* out, size_t out_size) {
   char tail[256];
   // ⚠ `std::snprintf` et non `_snprintf_s` : le gabarit n'est pas un littéral
   // (il est lu dans le binaire du client), et la famille sécurisée déclenche
   // alors C4774.
-  std::snprintf(tail, sizeof(tail), reinterpret_cast<const char*>(kFmtSpr), name);
+  std::snprintf(tail, sizeof(tail), SprFormatFor(class_id), name);
   // Retire le « .spr » final : sprite_view rajoute les deux extensions.
   const size_t n = std::strlen(tail);
   if (n > 4) tail[n - 4] = '\0';
@@ -119,7 +173,7 @@ bool LoadMobSprite(int class_id, MobSpriteRes* res) {
   }
 
   char base[352];
-  BasePathFor(name, base, sizeof(base));
+  BasePathFor(class_id, name, base, sizeof(base));
   const bool ok = LoadSprite(base, &res->sprite);
   res->failed = !ok;
   return ok;

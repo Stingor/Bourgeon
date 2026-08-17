@@ -20,6 +20,7 @@
 #include "features/windows/game_settings.h"    // hide-native-at-creation (réglages 0x271E)
 #include "features/windows/hotkey_settings.h"  // hide-native-at-creation (raccourcis 156)
 #include "features/windows/macro_window.h"     // hide-native-at-creation (macros 86)
+#include "features/windows/navigation_window.h"  // hide-native-at-creation (navi 203 + 3)
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 
@@ -246,6 +247,24 @@ void* __fastcall MakeWindowHook(void* mgr, void* edx, int windowID) {
     if (windowID == 94 || windowID == 79 || windowID == 80) {
       if (auto* mk = Bourgeon::Instance().make_item_window())
         mk->HideNativeAtCreation(win);
+    }
+    // La NAVIGATION : la principale (UINavigationV4Wnd 203) et ses trois
+    // satellites — itinéraire (314), sélecteur d'icône de trace (306) et aide
+    // (229). Elle naît encore pour de bon : bouton 430 du menu d'icônes,
+    // raccourci clavier, ou le moteur lui-même. Sa création EST donc la demande
+    // du joueur, et le panneau bascule ici pendant que OnTick détruit.
+    //
+    // 🔴 Elle n'émet AUCUN paquet — vérifié sur toute la plage de sa classe —
+    // donc ni devoir de naissance ni devoir de mort à rejouer, contrairement à
+    // la rédaction de courrier (0x108). La détruire au tick est sans effet de
+    // bord.
+    //
+    // Les trois satellites ne naissent que sur ordre de la 203, qui n'existe
+    // plus : leur cas est un filet de sécurité, et il ne route rien.
+    if (windowID == 203 || windowID == 306 || windowID == 314 ||
+        windowID == 229) {
+      if (auto* nav = Bourgeon::Instance().navigation_window())
+        nav->HandleNativeCreation(win, windowID);
     }
     // Échoppe joueur : la COMPOSITION (vente 0x29, achat 0xAE) ET la grille des
     // objets disponibles (0x2A/0xAF) sont remplacées par VendingWindow, qui les

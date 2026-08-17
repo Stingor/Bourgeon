@@ -2501,6 +2501,108 @@ void ChatWindow::ParseUtf8(const std::string& text, Line* out) const {
       p = tag_end;
       continue;
     }
+    // Lien de LIEU — balise du CLIENT : `<NAVIL><carte><4 car. base 62></NAVIL>`.
+    //
+    // C'est ce qu'écrit le bouton « Share » de la navigation, natif comme nôtre
+    // (cf. AppendNaviLink). Elle circule donc déjà entre joueurs, et un client
+    // sans Bourgeon la rend cliquable de son côté : ne pas la reconnaître ici
+    // était une régression pure de la chatbox ImGui.
+    //
+    // 🔴 Le corps ne porte AUCUN séparateur. Les quatre DERNIERS caractères sont
+    // les coordonnées — deux pour x, deux pour y, en base 62 poids faible d'abord
+    // (`Cstr_EncodeBase62` 0x007FBCE0 : la sortie fait toujours deux caractères
+    // sous 62², et une coordonnée de carte est bornée par 512). Tout ce qui
+    // précède est le nom INTERNE de la carte, lequel contient lui-même des
+    // caractères base 62 — d'où la découpe par la FIN, la seule qui ne soit pas
+    // ambiguë.
+    //
+    // ⚠ Le nom AFFICHÉ n'est pas dans la balise et n'a pas à y être : chacun le
+    // résout dans SA langue (links::FromNavi), comme pour un lien de réglage.
+    if (*p == '<' && (end - p) >= 8 && std::strncmp(p, "<NAVIL>", 7) == 0) {
+      const char* body  = p + 7;
+      const char* close = SearchSub(body, end, "</NAVIL>");
+      // Au moins un caractère de nom, plus les quatre de coordonnées.
+      if (close != nullptr && close - body >= 5) {
+        static const char kBase62[] =
+            "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        auto digit = [](char c) -> int {
+          const char* hit = std::strchr(kBase62, c);
+          return (hit != nullptr && c != '\0')
+                     ? static_cast<int>(hit - kBase62)
+                     : -1;
+        };
+        const char* coords = close - 4;
+        const int d0 = digit(coords[0]), d1 = digit(coords[1]);
+        const int d2 = digit(coords[2]), d3 = digit(coords[3]);
+        // Une balise dont la queue n'est pas du base 62 n'en est pas une : on la
+        // laisse au texte ordinaire plutôt que d'inventer des coordonnées.
+        if (d0 >= 0 && d1 >= 0 && d2 >= 0 && d3 >= 0) {
+          const std::string map(body, coords);
+          links::Target place =
+              links::FromNavi(map.c_str(), d0 + d1 * 62, d2 + d3 * 62);
+          if (place.valid()) {
+            flush();
+            Run link;
+            link.kind     = Run::kNavi;
+            link.navi_map = map;
+            link.navi_x   = place.navi_x;
+            link.navi_y   = place.navi_y;
+            // Le libellé est composé par la CIBLE : nom affiché résolu chez le
+            // lecteur, position seulement si elle est précise.
+            link.text = place.label;
+            out->runs.push_back(link);
+          }
+          p = close + 8;
+          continue;
+        }
+      }
+    }
+    // RECHERCHE de navigation — balise à NOUS : `<NAVS>famille:terme</NAVS>`.
+    //
+    // La famille est un `links::NaviKind` (0 carte, 1 PNJ, 2 monstre), le terme
+    // est le DERNIER champ — donc libre de contenir espaces et ponctuation, ce
+    // dont un nom de créature ne se prive pas.
+    //
+    // 🔴 Aucun libellé de repli n'est transporté, contrairement à `<SETL>`, et
+    // c'est délibéré : la balise reste lisible telle quelle pour un client sans
+    // Bourgeon (« <NAVS>0:prontera</NAVS> » dit déjà ce dont on parle), et un
+    // repli traduit par l'EXPÉDITEUR imposerait sa langue au lecteur. Le libellé
+    // visible se compose ici, à partir de la famille et du terme.
+    if (*p == '<' && (end - p) >= 7 && std::strncmp(p, "<NAVS>", 6) == 0) {
+      const char* body  = p + 6;
+      const char* close = SearchSub(body, end, "</NAVS>");
+      if (close != nullptr) {
+        const char* c1 = static_cast<const char*>(std::memchr(body, ':', close - body));
+        if (c1 != nullptr) {
+          const int kind = std::atoi(std::string(body, c1).c_str());
+          const std::string term(c1 + 1, close);
+          // Une famille inconnue vient d'un Bourgeon plus récent : on ne devine
+          // pas, le fragment redevient du texte. Même règle qu'une destination
+          // de réglage inconnue.
+          const bool known = kind >= 0 &&
+                             kind <= static_cast<int>(links::NaviKind::kMob);
+          links::Target search;
+          if (known && !term.empty())
+            search = links::FromNaviSearch(static_cast<links::NaviKind>(kind),
+                                           term.c_str());
+          if (search.valid()) {
+            flush();
+            Run link;
+            link.kind      = Run::kNaviSearch;
+            link.navi_term = term;
+            link.navi_kind = static_cast<uint8_t>(kind);
+            link.text      = search.label;
+            out->runs.push_back(link);
+          } else if (!term.empty()) {
+            current.text += '[';
+            current.text += term;
+            current.text += ']';
+          }
+          p = close + 7;
+          continue;
+        }
+      }
+    }
     // Lien de MONSTRE — balise à NOUS : `<MOBL>id:rang:nom</MOBL>`.
     //
     // 🔴 Le nom voyage DANS la balise, et ce n'est pas de la commodité : le client
@@ -6350,6 +6452,11 @@ links::Target ChatWindow::TargetOf(const Run& run) const {
     case Run::kSetting: return links::FromSetting(run.setting_key.c_str());
     case Run::kStyle:
       return links::FromStyle(run.style_code.c_str(), run.style_owner.c_str());
+    case Run::kNavi:
+      return links::FromNavi(run.navi_map.c_str(), run.navi_x, run.navi_y);
+    case Run::kNaviSearch:
+      return links::FromNaviSearch(static_cast<links::NaviKind>(run.navi_kind),
+                                   run.navi_term.c_str());
     default: return links::Target{};
   }
 }
@@ -6368,6 +6475,9 @@ links::Target ChatWindow::TargetOf(const PendingLink& link) const {
   if (link.kind == Run::kSetting) return links::FromSetting(link.setting_key.c_str());
   if (link.kind == Run::kStyle)
     return links::FromStyle(link.style_code.c_str(), link.style_owner.c_str());
+  if (link.kind == Run::kNaviSearch)
+    return links::FromNaviSearch(static_cast<links::NaviKind>(link.navi_kind),
+                                 link.navi_term.c_str());
   return links::FromItem(link.item, link.display.c_str());
 }
 
@@ -6700,6 +6810,51 @@ bool ChatWindow::AppendSettingLink(const char* key) {
   return true;
 }
 
+// Poser un lien de RECHERCHE de navigation : « [Carte: Prontera] ».
+//
+// Même mécanique que `<SETL>` — libellé lisible dans la saisie, balise
+// substituée à l'envoi — et pour la même raison : le libellé se compose chez le
+// LECTEUR, dans SA langue. Ce qui voyage est la famille et le terme, rien de
+// plus.
+//
+// ⚠ Le terme part tel quel, y compris ses espaces : c'est le DERNIER champ de la
+// balise, donc libre de tout contenir sauf un chevron (`FromNaviSearch` le
+// refuse en amont, une balise coupée en deux ne se relit pas).
+bool ChatWindow::AppendNaviSearchLink(uint8_t kind, const char* term_utf8) {
+  if (!imgui_enabled_ || !input_bar_) return false;
+  if (term_utf8 == nullptr || term_utf8[0] == '\0') return false;
+
+  PruneItemLinks();
+  if (static_cast<int>(item_links_.size()) >= kMaxItemLinks) return false;
+
+  const std::string display =
+      links::NaviSearchLabel(static_cast<links::NaviKind>(kind), term_utf8);
+  if (display.empty()) return false;
+
+  char wire[192];
+  const int written = std::snprintf(wire, sizeof(wire), "<NAVS>%u:%s</NAVS>",
+                                    static_cast<unsigned>(kind), term_utf8);
+  if (written <= 0 || written >= static_cast<int>(sizeof(wire))) return false;
+
+  const size_t used = std::strlen(input_);
+  std::string insert = display;
+  insert += ' ';
+  if (used + insert.size() + 1 > sizeof(input_)) return false;
+  std::memcpy(input_ + used, insert.c_str(), insert.size() + 1);
+  NotifyInputEdited();  // 🔴 sinon le champ ACTIF réécrit son propre texte par-dessus
+
+  PendingLink pending;
+  pending.wire      = wire;
+  pending.display   = display;
+  pending.kind      = Run::kNaviSearch;
+  pending.navi_term = term_utf8;
+  pending.navi_kind = kind;
+  item_links_.push_back(std::move(pending));
+  if (battle_mode_) input_open_ = true;
+  focus_input_next_ = true;
+  return true;
+}
+
 // Poser le lien d'un STYLE : « [Style: Pseudo] ».
 //
 // 🔴 Le CODE part en entier dans la balise, contrairement à tous les autres
@@ -6765,13 +6920,50 @@ bool ChatWindow::AppendStyleLink(const char* code, const char* owner_utf8) {
   return true;
 }
 
-// Poser le lien d'un MONSTRE. Même mécanique que pour un objet : le libellé
-// lisible dans la saisie, la balise mise de côté et substituée à l'envoi.
+// Poser le lien d'un LIEU — la balise du bouton « Share » de la navigation.
 //
-// ⚠ Le nom vient de l'APPELANT et repart tel quel dans la balise. C'est voulu :
-// le client est incapable de nommer un monstre — ni mob_db ni le paquet de la
-// fiche ne le lui donnent — donc seul celui qui affiche déjà le nom (la fiche,
-// la table des drops) peut le fournir, et il doit voyager avec le lien.
+// 🔴 La balise part TELLE QUELLE dans la saisie, sans libellé lisible et sans
+// PendingLink à substituer à l'envoi, contrairement à `<MOBL>` ou `<ITMR>`. Ce
+// n'est pas une simplification : `<NAVIL>` est une balise du CLIENT, que tout le
+// monde rend cliquable — la mettre de côté pour l'échanger à l'envoi n'aurait
+// rien apporté, et le natif écrit exactement la même chose (SafeShareToChat).
+// Le joueur voit donc la balise brute dans sa barre, comme avec le bouton natif.
+bool ChatWindow::AppendNaviLink(const char* map_name, int x, int y) {
+  if (!imgui_enabled_ || !input_bar_) return false;
+  if (map_name == nullptr || map_name[0] == '\0') return false;
+
+  // Base 62, poids faible d'abord. Mesuré sur `Cstr_EncodeBase62`
+  // (`0x007FBCE0`) : la boucle ne reboucle qu'au-delà de 62², donc pour une
+  // coordonnée de carte — bornée par 512 — la sortie fait TOUJOURS deux
+  // caractères. On reproduit cette forme-là, pas le cas général.
+  static const char kBase62[] =
+      "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  auto encode = [](int value, char* out) {
+    if (value < 0) value = 0;
+    if (value > 3843) value = 3843;  // au-delà, le natif écrirait 3 caractères
+    out[0] = kBase62[value % 62];
+    out[1] = kBase62[value / 62];
+  };
+
+  char coords[5] = {0};
+  encode(x, coords);
+  encode(y, coords + 2);
+
+  char tag[128];
+  const int written = std::snprintf(tag, sizeof(tag), "<NAVIL>%s%s</NAVIL> ",
+                                    map_name, coords);
+  if (written <= 0 || written >= static_cast<int>(sizeof(tag))) return false;
+
+  const size_t used = std::strlen(input_);
+  if (used + static_cast<size_t>(written) + 1 > sizeof(input_)) return false;
+  std::memcpy(input_ + used, tag, static_cast<size_t>(written) + 1);
+  NotifyInputEdited();  // 🔴 sinon le champ ACTIF réécrit son propre texte par-dessus
+
+  if (battle_mode_) input_open_ = true;
+  focus_input_next_ = true;
+  return true;
+}
+
 bool ChatWindow::AppendMobLink(uint32_t mob_id, int rank, const char* name_utf8) {
   if (!imgui_enabled_ || !input_bar_) return false;
   if (mob_id == 0 || name_utf8 == nullptr || name_utf8[0] == '\0') return false;

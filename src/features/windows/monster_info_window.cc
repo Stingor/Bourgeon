@@ -1548,9 +1548,9 @@ static bool          g_link_menu_open = false;
 // pendant qu'une autre fiche est ouverte ne doit pas lui arracher son sprite.
 static ro::MobSpriteRes g_preview_sprite;
 
-void MonsterInfoWindow::DrawHoverPreview(uint32_t mob_id) {
+void MonsterInfoWindow::DrawHoverPreview(uint32_t mob_id, bool by_view) {
   if (mob_id == 0) return;
-  RequestInfo(mob_id, /*by_view=*/false);  // garde interne : une seule demande
+  RequestInfo(mob_id, by_view);  // garde interne : une seule demande
   const MobInfo& mob = cache_[mob_id];
 
   ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(0, 0, 0, 255));  // fond clair
@@ -1742,11 +1742,47 @@ void MonsterInfoWindow::DrawSpawnsTab(MobInfo& mob) {
     }
     for (const Spawn* s : view) {
       ImGui::TableNextRow();
-      ImGui::TableNextColumn(); ImGui::Text("%s", s->map.c_str());
+      ImGui::TableNextColumn();
+
+      // La carte est un LIEN de lieu, exactement celui que le chat transporte :
+      // gauche = lancer le guidage, droite = le menu (navigation, copier le nom),
+      // Maj+clic = poser le lien dans la barre de chat. C'est le sens « la fiche
+      // sait QUOI, la navigation sait OÙ », et il ne coûte rien de plus qu'une
+      // cible — tout le reste est déjà écrit dans links::.
+      //
+      // ⚠ Le nom INTERNE reste affiché, pas le nom traduit. C'est lui qui sert
+      // dans une commande (`@go`, `@warp`) et dans une conversation entre
+      // joueurs, et c'est aussi sur lui que trie la colonne — afficher l'un et
+      // trier sur l'autre donnerait un ordre incompréhensible. Le nom lisible et
+      // le plan de la carte sont au survol.
+      const ImVec4 kMapLink(0.10f, 0.30f, 0.85f, 1.0f);
+      ImGui::TextColored(kMapLink, "%s", s->map.c_str());
+      const bool map_hovered = ImGui::IsItemHovered();
+      if (map_hovered) {
+        const ImVec2 mn = ImGui::GetItemRectMin();
+        const ImVec2 mx = ImGui::GetItemRectMax();
+        ImGui::GetWindowDrawList()->AddLine(ImVec2(mn.x, mx.y), ImVec2(mx.x, mx.y),
+                                            ImGui::GetColorU32(kMapLink));
+      }
+      // `(0, 0)` : le joueur veut se rendre SUR LA CARTE, pas sur une cellule —
+      // un spawn n'a de toute façon aucune position fixe.
+      const links::Target place = links::FromNavi(s->map.c_str(), 0, 0);
+      if (map_hovered) links::HoverPreview(place);
+      if (links::Gestures(place, map_hovered)) {
+        g_link_menu = place;
+        g_link_menu_open = true;  // ouvert hors de la table (cf. la déclaration)
+      }
+
       ImGui::TableNextColumn(); ImGui::Text("%u", s->qty);
     }
     ImGui::EndTable();
   }
+  if (g_link_menu_open) {
+    g_link_menu_open = false;
+    ImGui::OpenPopup("##mi_link_menu");
+  }
+  links::DrawMenu("##mi_link_menu", g_link_menu);
+  Label(i18n::Tr("Clic sur une carte : s'y faire guider. Maj+clic : la partager dans le chat."));
   Label(i18n::Tr("Les spawns d'instance et les invocations de script ne sont pas comptés."));
 }
 

@@ -194,30 +194,12 @@ void* ActiveGameMode() {
 // Nom LISIBLE d'un lieu — « PvP : Room Copass » pour `pvp_n_3-5`. C'est le
 // premier `%s` du titre de la grande carte native.
 //
-// `Social_GetMapDisplayName` est `__stdcall` et prend un `const char*` : rien à
-// marshaler, contrairement à la plupart des accesseurs du client. 🔴 Elle attend
-// le nom AVEC son extension `.rsw` — c'est `sub_D9AB80` (0x00d9ab80) qui la
-// recolle avant d'appeler, et sans elle la table ne trouve rien.
-//
-// Le résultat pointe dans la DB de cartes du client ; on le recopie tout de
-// suite plutôt que de garder le pointeur.
-constexpr uintptr_t kMapDisplayName = 0x00d5bcf0;
-
+// La RE a DÉMÉNAGÉ dans `rag::MapDisplayName` (ragnarok/globals.h) le jour où un
+// second appelant est apparu — les liens de navigation du chat, qui doivent
+// afficher le nom que le joueur lit ailleurs. Rien n'a changé de comportement,
+// seulement le lieu de l'adresse.
 bool MapDisplayName(const char* map_no_ext, char* out, size_t cap) {
-  out[0] = '\0';
-  __try {
-    if (!map_no_ext || !map_no_ext[0]) return false;
-    char with_ext[80];
-    _snprintf_s(with_ext, sizeof(with_ext), _TRUNCATE, "%s.rsw", map_no_ext);
-    using Fn = const char*(__stdcall*)(const char*);
-    const char* name = reinterpret_cast<Fn>(kMapDisplayName)(with_ext);
-    if (!name || !name[0]) return false;
-    strncpy_s(out, cap, name, _TRUNCATE);
-    return true;
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-    out[0] = '\0';
-    return false;
-  }
+  return rag::MapDisplayName(map_no_ext, out, cap);
 }
 
 // Nom de la carte courante, sans extension.

@@ -9,6 +9,7 @@
 #include "features/windows/craft_atlas.h"
 #include "features/windows/game_menu.h"
 #include "features/windows/hotkey_settings.h"
+#include "features/windows/navigation_window.h"
 #include "features/staff_gate.h"  // IsStaff (actions réservées)
 #include "features/windows/palette_editor.h"
 #include "features/windows/staff_tools.h"
@@ -54,6 +55,13 @@ const Action kActions[] = {
     {"win_bank",         "Banque",                  ActionGroup::kWindows, 0, 0, 0},
     {"win_game_menu",    "Menu du jeu",             ActionGroup::kWindows, 0, 0, 0},
     {"win_hotkeys",      "Raccourcis clavier",      ActionGroup::kTools,   0, 0, 0},
+    // Navigation. ⚠ Elle reste à 0 alors que sa native (203) EST routée, et ce
+    // n'est pas un oubli : `native_window_id` passe par `MakeWindow`, dont notre
+    // hook fait une BASCULE. Or le panneau ne s'ouvre que si l'interface moderne
+    // est active ; éteinte, `MakeWindow(203)` rendrait la fenêtre native, et ce
+    // raccourci-ci n'a alors rien à ouvrir. Le chemin direct marche dans les deux
+    // cas — cf. `Invoke`, qui refuse proprement quand le panneau est absent.
+    {"win_navigation",   "Navigation",              ActionGroup::kWindows, 0, 0, 0},
     {"tool_craft_atlas", "Atlas des recettes",      ActionGroup::kTools,   0, 0, 0},
     {"tool_palette",     "Style du personnage",     ActionGroup::kTools,   0, 0, 0},
     // Établi du staff. Le seul membre du catalogue à être gaté : il ne s'affiche
@@ -132,6 +140,13 @@ bool Invoke(const char* id) {
   if (std::strcmp(id, "win_hotkeys") == 0) {
     if (auto* hotkeys_window = bourgeon.hotkey_settings()) {
       hotkeys_window->OpenFromMenu();
+      return true;
+    }
+    return false;
+  }
+  if (std::strcmp(id, "win_navigation") == 0) {
+    if (auto* navigation = bourgeon.navigation_window()) {
+      navigation->Toggle();
       return true;
     }
     return false;
