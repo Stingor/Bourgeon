@@ -401,19 +401,35 @@ void ScreenFx::OnTick() {
     PatchVtableSlot(0x01047d7c, 0x00, reinterpret_cast<void*>(0x009eb410), reinterpret_cast<void*>(&Hooked_GsDtor), &g_gs_orig_dtor);
   }
 
+  // 🔴 Ces deux globaux ne nous appartiennent PAS : le moteur les écrit lui
+  // aussi, et pas seulement au démarrage.
+  //   - OptionInfo_LoadAndApplyAll (0x00d759f0) pose l'outdoor à 480 ou 400
+  //     selon le drapeau /zoom (GameSettings_GetFlag(0xf1)) au chargement.
+  //   - GameSettingsCmd_ZoomOut_OnOff (0x006918c0) le RÉÉCRIT à chaque bascule
+  //     de la commande **/zoom** en jeu — c'est là que vit le patch WARP
+  //     `ZoomMax`, qui gonfle ces deux immédiats.
+  // Réécrire à chaque tick une base capturée une fois pour toutes annulait donc
+  // /zoom (et ZoomMax avec) 100 ms après la frappe, y compris option DÉCOCHÉE,
+  // puisque la branche « désactivé » restaurait elle aussi sa base. On n'écrit
+  // plus que si l'option est active, et on RE-BASE dès que la valeur lue n'est
+  // plus celle qu'on avait posée : c'est le moteur qui vient de parler, sa
+  // valeur devient la nouvelle référence à multiplier.
   auto* max_out = reinterpret_cast<float*>(0x012291c0);  // g_cam_zoomMaxOutdoor
   auto* max_in  = reinterpret_cast<float*>(0x012291c4);  // g_cam_zoomMaxIndoor
-  if (!zoom_base_ok_) {  // capture stock defaults once (after OptionInfo load)
-    zoom_base_out_ = *max_out;
-    zoom_base_in_  = *max_in;
-    zoom_base_ok_  = true;
-  }
   if (zoom_enabled_) {
-    *max_out = zoom_base_out_ * zoom_factor_;
-    *max_in  = zoom_base_in_  * zoom_factor_;
-  } else {
-    *max_out = zoom_base_out_;
-    *max_in  = zoom_base_in_;
+    if (!zoom_applied_ || *max_out != zoom_written_out_) zoom_base_out_ = *max_out;
+    if (!zoom_applied_ || *max_in  != zoom_written_in_)  zoom_base_in_  = *max_in;
+    zoom_written_out_ = zoom_base_out_ * zoom_factor_;
+    zoom_written_in_  = zoom_base_in_  * zoom_factor_;
+    *max_out = zoom_written_out_;
+    *max_in  = zoom_written_in_;
+    zoom_applied_ = true;
+  } else if (zoom_applied_) {
+    // On vient d'être décoché : rendre la main UNE fois — et seulement sur ce
+    // qui porte encore notre valeur, pour ne pas piétiner un /zoom entre-temps.
+    if (*max_out == zoom_written_out_) *max_out = zoom_base_out_;
+    if (*max_in  == zoom_written_in_)  *max_in  = zoom_base_in_;
+    zoom_applied_ = false;
   }
 
   // Wheel zoom step (responsiveness): scale the .rdata step constants read by the
@@ -425,8 +441,12 @@ void ScreenFx::OnTick() {
     zoom_step_base2_ = *step2;
     zoom_step_ok_ = true;
   }
-  PatchFloatRO(step1, zoom_enabled_ ? zoom_step_base1_ * zoom_speed_ : zoom_step_base1_);
-  PatchFloatRO(step2, zoom_enabled_ ? zoom_step_base2_ * zoom_speed_ : zoom_step_base2_);
+  // .rdata : personne d'autre que nous n'y écrit — mais n'y toucher que quand la
+  // valeur voulue diffère évite deux VirtualProtect toutes les 100 ms pour rien.
+  const float want1 = zoom_enabled_ ? zoom_step_base1_ * zoom_speed_ : zoom_step_base1_;
+  const float want2 = zoom_enabled_ ? zoom_step_base2_ * zoom_speed_ : zoom_step_base2_;
+  if (*step1 != want1) PatchFloatRO(step1, want1);
+  if (*step2 != want2) PatchFloatRO(step2, want2);
 
   // ── Game Settings window (CUIGameSettingsUI, id 0x271e): persist position ─────
   // Hooked_GsSetPos (the SetPos vtable hook above) makes the restore flicker-free

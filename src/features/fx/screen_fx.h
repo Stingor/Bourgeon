@@ -93,14 +93,18 @@ class ScreenFx : public Plugin {
   // ── Camera zoom-out extension ────────────────────────────────────────────
   // Camera_ApplyViewDistanceClamp (0x00c82340) clamps the zoom to the engine's
   // max view-distance globals g_cam_zoomMaxOutdoor (0x012291c0) / Indoor
-  // (0x012291c4). We capture their post-OptionInfo-load defaults once, then each
-  // tick set them to default * zoom_factor_ to allow zooming out further.
+  // (0x012291c4). 🔴 Le moteur les réécrit AUSSI — à chaque bascule de la
+  // commande /zoom (0x006918c0), là où vit le patch WARP `ZoomMax`. On ne les
+  // touche donc que si l'option est active, et zoom_base_* est RE-CAPTURÉ dès
+  // que la valeur lue n'est plus zoom_written_* (= le moteur a écrit).
   bool  zoom_enabled_      = false;
   float zoom_factor_       = 1.0f;   // 1.0 = stock, up to ~2.5 (max view distance)
   float zoom_speed_        = 1.0f;   // wheel step multiplier 1..4 (responsiveness)
-  bool  zoom_base_ok_      = false;  // max-clamp base captured?
-  float zoom_base_out_     = 0.0f;
+  bool  zoom_applied_      = false;  // notre valeur est-elle en place ?
+  float zoom_base_out_     = 0.0f;   // dernière valeur vue DU MOTEUR
   float zoom_base_in_      = 0.0f;
+  float zoom_written_out_  = 0.0f;   // dernière valeur écrite PAR NOUS
+  float zoom_written_in_   = 0.0f;
   // Wheel step constants DAT_01091520 / 01091528 (.rdata, read by the wheel-zoom
   // handler FUN_00c7d4f0); scaled by zoom_speed_ so each notch moves further.
   bool  zoom_step_ok_      = false;
