@@ -239,6 +239,18 @@ class EntityContextMenu : public Plugin {
     // chat moderne est éteint — c'est pour ça qu'ils portent AUSSI ce code.
     kWhisperBar,    // écrit le nom dans la box « Pseudo » de la barre principale
     kWhisperWindow, // ouvre la conversation 1:1
+    // ── Poser un lien dans la barre de chat ─────────────────────────────────
+    // « Linker » ce qu'on a sous le curseur. Les deux ne portent PAS la même
+    // balise, parce qu'ils ne désignent pas la même chose :
+    //  · un MONSTRE se désigne lui-même (`<MOBL>`, avec son nom et son rang) —
+    //    le lecteur ouvre sa fiche, voit ses drops, ses spawns ;
+    //  · un PNJ n'a pas d'identité qui voyage : ni fiche, ni id stable d'un
+    //    redémarrage à l'autre. Ce qu'on partage de lui, c'est OÙ LE TROUVER,
+    //    donc une recherche de navigation (`[PNJ: …]`).
+    // Aucune des deux n'envoie quoi que ce soit : la balise est posée dans la
+    // barre, le joueur relit et valide — comme le « Share » de la navigation.
+    kChatLinkMob,
+    kChatLinkNpc,
     // ── Outillage NPC, niveau de groupe >= 99 (cf. l'en-tête) ────────────────
     // Trois CZ 0x0F25, une par action. Elles ne portent AUCUN code natif : le
     // client n'a jamais rien su faire de tel.

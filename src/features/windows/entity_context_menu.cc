@@ -11,6 +11,7 @@
 #include "features/moonlight_ui/moonlight_ui.h"  // SaveSettings (case de blocage)
 #include "features/staff_gate.h"
 #include "features/systems/bourgeon_opcodes.h"  // CZ 0x0F25 (outillage NPC admin)
+#include "features/link_gesture.h"  // CanPostToChat / NaviKind (liens de chat)
 #include "features/windows/chat_window.h"  // TargetWhisper / OpenWhisperWindowByAid
 #include "features/windows/entity_inspector.h"
 #include "features/windows/monster_info_window.h"
@@ -1106,6 +1107,10 @@ void EntityContextMenu::BuildItems() {
     case Kind::kMonster:
       add(i18n::Tr("Attaquer"), 0, Local::kAttack);
       add(i18n::Tr("Fiche du monstre"), 0, Local::kMonsterInfo, true);
+      // Le lien de chat n'est proposé que s'il y a une barre pour l'accueillir :
+      // promettre un geste qui ne peut rien faire est pire que de se taire.
+      if (links::CanPostToChat())
+        add(i18n::Tr("Linker ce monstre"), 0, Local::kChatLinkMob);
       add(i18n::Tr("Copier le nom"), 0, Local::kCopyName);
       break;
     case Kind::kNpc: {
@@ -1115,6 +1120,12 @@ void EntityContextMenu::BuildItems() {
       // blocage vise le clic accidentel, pas la volonté de parler. Elle envoie
       // CZ_CONTACTNPC directement, sans repasser par le routeur détourné.
       if (target_job_ != kJobPortal) add(i18n::Tr("Interagir"), 0, Local::kTalkToNpc);
+      // ⚠ Pas sur un PORTAIL, et pas sur un anonyme : le lien est une RECHERCHE
+      // par le nom, et un warp n'en a pas d'utile. Chercher « » ouvrirait le
+      // panneau sur rien.
+      if (target_job_ != kJobPortal && !target_name_.empty() &&
+          links::CanPostToChat())
+        add(i18n::Tr("Linker ce NPC"), 0, Local::kChatLinkNpc);
       add(i18n::Tr("Copier le nom"), 0, Local::kCopyName, true);
       // La case de blocage, seulement sur les NPC dont le GID est épinglé : les
       // autres changent d'identifiant à chaque redémarrage du map-server, une
@@ -1481,6 +1492,29 @@ void EntityContextMenu::FlushPending() {
       // `by_view` : le quad porte une classe de SPRITE, pas un id de mob_db —
       // exactement le cas du skill Sense, que la fiche sait déjà résoudre.
       if (auto* mi = Bourgeon::Instance().monster_info()) mi->Open(arg, true);
+      return;
+    case Local::kChatLinkMob:
+      // ⚠ L'id posté est la classe de SPRITE (`arg`), la seule identité que
+      // porte un acteur à l'écran — le client n'a pas mob_db. Les deux
+      // coïncident pour l'écrasante majorité des monstres ; pour ceux qui
+      // empruntent l'apparence d'un autre, le lien désignera le monstre DE
+      // L'APPARENCE. Le corriger imposerait un aller-retour serveur avant de
+      // pouvoir poser un lien, pour un cas marginal.
+      //
+      // Rang 0 : un acteur du monde ne dit pas s'il est MVP (le drapeau est
+      // dans mob_db, côté serveur). Le badge apparaîtra chez le lecteur s'il
+      // ouvre la fiche, qui, elle, le sait.
+      if (auto* chat = Bourgeon::Instance().chat_window())
+        chat->AppendMobLink(arg, 0, target_name_.c_str());
+      return;
+    case Local::kChatLinkNpc:
+      // Une RECHERCHE, pas un lieu : les coordonnées de CET exemplaire ne
+      // valent que pour lui, et beaucoup de PNJ sont posés à plusieurs endroits
+      // sous le même nom. C'est aussi la seule forme qui survive à un
+      // redémarrage du map-server, où les GID changent.
+      if (auto* chat = Bourgeon::Instance().chat_window())
+        chat->AppendNaviSearchLink(
+            static_cast<uint8_t>(links::NaviKind::kNpc), target_name_.c_str());
       return;
     case Local::kTalkToNpc: {
       uint8_t packet[7] = {};

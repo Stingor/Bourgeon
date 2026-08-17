@@ -2994,3 +2994,5 @@
 "Clic droit : menu · Maj+clic : lien dans le chat": "Clic derecho: menú · Mayús+clic: enlace en el chat"
 "Trace du guidage au sol": "Rastro de la guía en el suelo"
 "Tapez un nom de carte, de PNJ ou de monstre : la recherche se relance à la frappe, sans rien demander au serveur.\n\nChoisissez un résultat pour voir ses détails, puis « Y aller » pour être guidé. Le chemin passe par le Warp Agent quand la marche ne suffit pas.\n\nClic droit sur un résultat : le menu. Maj+clic : le lien dans le chat.": "Escribe el nombre de un mapa, un PNJ o un monstruo: la búsqueda se relanza al teclear, sin consultar al servidor.\n\nElige un resultado para ver sus detalles y pulsa «Ir allí» para que te guíe. La ruta usa el Warp Agent cuando andando no basta.\n\nClic derecho en un resultado: el menú. Mayús+clic: el enlace en el chat."
+"Linker ce monstre": "Enlazar este monstruo"
+"Linker ce NPC": "Enlazar este PNJ"
