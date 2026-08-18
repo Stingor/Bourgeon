@@ -1835,27 +1835,50 @@ void StorageWindow::OnRenderUI() {
     // Filtre masqué : on le vide pour ne pas cacher silencieusement des items.
     filter.Clear();
   }
-  std::string desc = i18n::Tr("Raccourcis storage\n\n"
-                     "- Clic gauche sur un item : retrait (Maj = tout le stack ; 1 seul = direct ;\n"
-                     "  pile = menu contextuel : Vers l'inventaire 1 / tout / quantité)\n"
-                     "- Ctrl + clic gauche : (dé)marquer l'item comme favori (onglet Favoris)\n"
-                     "- Clic droit : menu contextuel (dont Ajouter / Retirer des favoris)\n"
-                     "- Ctrl + clic droit : description\n"
-                     "- Alt / Maj + clic droit : retrait rapide du stack complet vers l'inventaire\n"
-                     "- Glisser un item du viewer -> inventaire : retrait ; -> cart : storage vers cart\n"
-                     "- Glisser un item d'inventaire / cart sur le viewer : dépôt / cart vers storage\n"
-                     "- Glisser un item sur l'onglet Favoris : l'y ajoute ; sur un autre onglet : l'en retire\n"
-                     "- Entrée : valide la quantité (défaut = stack entier)\n"
-                     "- Survol d'un item : description (si activé dans Interface > Storage)\n"
-                     "- Clic sur un en-tête de colonne : tri ; combo Sous-type : filtre fin\n"
-                     "  (onglets de catégorie et sous-type : désactivables dans les options)\n"
-                     "- Glisser un en-tête de colonne : la déplacer (ordre retenu ; clic droit\n"
-                     "  sur un en-tête pour remettre l'ordre d'origine)\n"
-                     "- Colonnes, filtre et survol : Moonlight > Interface de jeu > Storage\n"
-                     "- Onglets de storage (option) : bascule vers un entrepôt alternatif\n"
-                     "- Clic droit sur un onglet de storage : le renommer / lui donner une icône\n"
-                     "- Glisser un item sur un onglet de storage : lui assigner SON icône\n"
-                     "- Bouton Quitter / X : ferme le storage");
+  // ── 🔴 UNE LIGNE PAR CLÉ i18n, JAMAIS LE PAVÉ ENTIER ──────────────────────
+  // Ce texte était UNE clé de 1372 caractères. Or **YAML plafonne une clé simple
+  // à 1024** — yaml-cpp l'applique comme les autres (simplekey.cpp:116) — et
+  // au-delà c'est le catalogue ENTIER qui cesse de parser : `i18n.cc` vide alors
+  // sa table et toute l'interface repasse en français, sans autre trace qu'un
+  // LogDiag. Celle-ci survivait grâce à la forme explicite `? clé / : valeur`
+  // posée à la main dans les catalogues, ce qui tenait mais ne protégeait de
+  // rien : la même liste a fait tomber l'infobulle « Interface moderne ».
+  //
+  // Découpée, chaque ligne se traduit isolément et en ajouter une ne périme plus
+  // la traduction des seize autres.
+  static const char* const kStorageShortcuts[] = {
+      "- Clic gauche sur un item : retrait (Maj = tout le stack ; 1 seul = direct ;\n"
+      "  pile = menu contextuel : Vers l'inventaire 1 / tout / quantité)",
+      "- Ctrl + clic gauche : (dé)marquer l'item comme favori (onglet Favoris)",
+      "- Clic droit : menu contextuel (dont Ajouter / Retirer des favoris)",
+      "- Ctrl + clic droit : description",
+      "- Alt / Maj + clic droit : retrait rapide du stack complet vers l'inventaire",
+      "- Glisser un item du viewer -> inventaire : retrait ; -> cart : storage vers cart",
+      "- Glisser un item d'inventaire / cart sur le viewer : dépôt / cart vers storage",
+      "- Glisser un item sur l'onglet Favoris : l'y ajoute ; sur un autre onglet : l'en retire",
+      "- Entrée : valide la quantité (défaut = stack entier)",
+      "- Survol d'un item : description (si activé dans Interface > Storage)",
+      "- Clic sur un en-tête de colonne : tri ; combo Sous-type : filtre fin\n"
+      "  (onglets de catégorie et sous-type : désactivables dans les options)",
+      "- Glisser un en-tête de colonne : la déplacer (ordre retenu ; clic droit\n"
+      "  sur un en-tête pour remettre l'ordre d'origine)",
+      "- Colonnes, filtre et survol : Moonlight > Interface de jeu > Storage",
+      "- Onglets de storage (option) : bascule vers un entrepôt alternatif",
+      "- Clic droit sur un onglet de storage : le renommer / lui donner une icône",
+      "- Glisser un item sur un onglet de storage : lui assigner SON icône",
+      "- Bouton Quitter / X : ferme le storage",
+  };
+
+  std::string desc = i18n::Tr("Raccourcis storage");
+  desc += "\n\n";
+  // Séparateur ENTRE les lignes, pas après : le pavé d'origine ne se terminait
+  // pas par un saut, et une ligne vide en fin d'infobulle se verrait.
+  bool first_shortcut = true;
+  for (const char* shortcut : kStorageShortcuts) {
+    if (!first_shortcut) desc += '\n';
+    desc += i18n::Tr(shortcut);
+    first_shortcut = false;
+  }
 
   // Onglet EFFECTIF : « Tout » (index 0) quand les filtres par type sont
   // désactivés. `cur_tab_` n'est PAS écrasé — le choix du joueur l'attend

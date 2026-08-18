@@ -1517,33 +1517,51 @@ bool DrawModernInterfaceCheckbox(bool* enabled, const char* window_help) {
   }
   // Liste du groupe : SOURCE UNIQUE de l'infobulle (le code, lui, a la sienne
   // juste au-dessus, dans SetModernInterface).
-  std::string help =
-      i18n::Tr("Interrupteur GLOBAL — ces fenêtres s'activent ENSEMBLE, pas de mixe (tout "
-      "ImGui ou tout natif) :\n"
-      "  • Inventaire (et le sertissage de cartes)\n"
-      "  • Cart\n"
-      "  • Storage (Kafra, guilde, premium)\n"
-      "  • Barres d'action\n"
-      "  • Échange joueur-joueur\n"
-      "  • Courrier (RODEX)\n"
-      "  • Shop joueur (vending, buying store et achat chez un vendeur)\n"
-      "  • Feuille de personnage (Alt+F), grimoire compris : l'icône « Skill » et\n"
-      "    Alt+S ouvrent son onglet Grimoire au lieu de la fenêtre native\n"
-      "  • Vote Shop et shops PNJ\n"
-      "  • Banque de zeny (Ctrl+B), ouverte aussi par le sac de zeny du footer\n"
-      "    de l'inventaire\n"
-      "  • Refine d'arme (compétence Upgrade Weapon du Whitesmith)\n"
-      "  • Fiche de monstre (compétence Sense), avec sprite animé, drops et\n"
-      "    lieux d'apparition\n"
-      "  • Navigation : elle remplace les QUATRE fenêtres natives (recherche,\n"
-      "    itinéraire, choix de trace, aide) par un seul panneau\n"
-      "  • Menu du clic droit sur une entité\n"
-      "  • Chatbox (canaux, filtres, liens riches)\n"
-      "  • Dialogue NPC (texte, menus, prompts)\n"
-      "  • Descriptions d'objet et de compétence (panneaux techniques)\n"
-      "  • Fenêtre de lecture des livres\n"
-      "  • Minimap (le radar d'origine est remplacé)\n"
-      "La case des autres sections reflète donc le même état.\n\n");
+  // ── 🔴 UNE PHRASE PAR CLÉ, JAMAIS LE PAVÉ ENTIER ──────────────────────────
+  // Ce texte était UNE SEULE clé i18n de 1184 caractères, la liste des fenêtres
+  // comprise. Or **YAML plafonne une clé simple à 1024 caractères** — yaml-cpp
+  // l'applique comme les autres (simplekey.cpp:116) — et au-delà c'est le
+  // catalogue ENTIER qui cesse de parser, pas seulement cette entrée. i18n.cc
+  // vide alors sa table : toute l'interface repasse en français, sans autre
+  // trace qu'un LogDiag. Le seuil a été franchi en ajoutant une ligne à la
+  // liste, et personne n'a rien vu passer.
+  //
+  // La liste est donc composée d'ITEMS COURTS, chacun sa clé. Elle peut grandir
+  // indéfiniment sans jamais réapprocher la limite, chaque entrée se traduit
+  // isolément, et une ligne ajoutée ne périme plus la traduction des autres.
+  static const char* const kGroupMembers[] = {
+      "Inventaire (et le sertissage de cartes)",
+      "Cart",
+      "Storage (Kafra, guilde, premium)",
+      "Barres d'action",
+      "Échange joueur-joueur",
+      "Courrier (RODEX)",
+      "Shop joueur (vending, buying store et achat chez un vendeur)",
+      "Feuille de personnage (Alt+F), grimoire compris",
+      "Vote Shop et shops PNJ",
+      "Banque de zeny (Ctrl+B)",
+      "Refine d'arme (compétence Upgrade Weapon du Whitesmith)",
+      "Fiche de monstre (compétence Sense)",
+      "Navigation (elle remplace les quatre fenêtres natives)",
+      "Menu du clic droit sur une entité",
+      "Chatbox (canaux, filtres, liens riches)",
+      "Dialogue NPC (texte, menus, prompts)",
+      "Descriptions d'objet et de compétence",
+      "Fenêtre de lecture des livres",
+      "Minimap (le radar d'origine est remplacé)",
+  };
+
+  std::string help = i18n::Tr(
+      "Interrupteur GLOBAL — ces fenêtres s'activent ENSEMBLE, pas de mixe "
+      "(tout ImGui ou tout natif) :");
+  help += '\n';
+  for (const char* member : kGroupMembers) {
+    help += "  • ";
+    help += i18n::Tr(member);
+    help += '\n';
+  }
+  help += i18n::Tr("La case des autres sections reflète donc le même état.");
+  help += "\n\n";
   help += window_help;
   ImGui::SameLine();
   HelpMarker(help.c_str());
