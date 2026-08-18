@@ -66,6 +66,10 @@ class IntegrityCheck : public Plugin {
 
   static constexpr uint16_t kOpcodeToServer   = bopcodes::kIntegrity;   // CZ: SHA-256 + MachineGuid
   static constexpr uint16_t kOpcodeKickNotice = bopcodes::kKickNotice;  // ZC: outdated-client notice
+  // ZC_BOURGEON_SETTINGS — la réponse du serveur à notre poignée de main : le
+  // grant (clif_bourgeon_grant_verified) la pousse toujours en premier lieu.
+  // C'est notre ACCUSÉ DE RÉCEPTION — cf. acked_ ci-dessous.
+  static constexpr uint16_t kOpcodeSettings   = bopcodes::kSettings;
 
   // ZC_ACCEPT_ENTER — the server's clif_authok, sent exactly once per zone-server
   // session (initial login AND after a character change). We observe it to re-arm
@@ -80,6 +84,21 @@ class IntegrityCheck : public Plugin {
   // Delay must match the server-side add_timer value in clif_parse_bourgeon_integrity.
   static constexpr uint32_t kKickDelayMs = 5000;
 
+  // ── Renvoi jusqu'à RÉPONSE ─────────────────────────────────────────────────
+  // 🔴 « Envoyé » ne suffit pas. Au premier login d'une session, notre CZ part
+  // pendant la transition char→map et peut mourir en route (session map pas
+  // encore prête) : SendPacket réussit LOCALEMENT, le serveur ne voit rien, et
+  // comme rien ne renvoyait, le gate staff et tous les pushes du grant restaient
+  // absents jusqu'au relog — mesuré trois fois avant d'être compris (journal du
+  // 2026-08-18 : ni « reglages recus » ni UiCaps à la 1re entrée, les deux au
+  // relog). L'accusé de réception est la PREMIÈRE réponse du serveur : les
+  // settings (grant) ou le kick-notice (refus). Tant qu'aucune n'est arrivée, on
+  // renvoie toutes les kRetryMs, borné à kMaxAttempts envois par session.
+  // Le renvoi est sans danger : clif_parse_bourgeon_integrity est idempotent
+  // (le grant ne fait que re-pousser les mêmes états).
+  static constexpr uint32_t kRetryMs     = 3000;
+  static constexpr int      kMaxAttempts = 5;
+
   bool TryComputeHash();        // computes hash_, returns true on success
   static bool ReadMachineGuid(char out[37]);
 
@@ -90,6 +109,12 @@ class IntegrityCheck : public Plugin {
   bool sent_              = false;  // already sent for the current game session
   bool in_game_           = false;
   bool popup_pending_     = false;
+  // Le serveur a répondu (settings OU kick-notice) pour la session en cours.
+  // Écrit depuis le fil recv, lu par OnTick — même convention que sent_/in_game_
+  // juste au-dessus (bool nu, un retard d'une frame est sans conséquence).
+  bool acked_             = false;
+  int  attempts_          = 0;      // envois cette session (borne kMaxAttempts)
+  uint32_t last_send_ms_  = 0;      // GetTickCount du dernier envoi
   uint32_t kick_notice_tick_ = 0;
 
   // Full path of the discovered patcher executable; empty if none was found (the

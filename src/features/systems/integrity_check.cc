@@ -226,6 +226,10 @@ IntegrityCheck::IntegrityCheck() {
   // character change), not just once per process. Passive — the game's own
   // handler still runs.
   Bourgeon::Instance().RegisterObserveOpcode(kOpcodeAcceptEnter, 0);
+  // L'accusé de réception du handshake (cf. kRetryMs dans le .h). Déjà enregistré
+  // par MoonlightUi et UiCaps — l'enregistrement est un ensemble, le redemander
+  // ne dédouble rien, et ce plugin ne doit pas dépendre d'un autre pour exister.
+  Bourgeon::Instance().RegisterRecvOpcode(kOpcodeSettings);
 
   if (!TryComputeHash())
     LogError("[Integrity] failed to compute self checksum at startup — will retry on game entry");
@@ -244,8 +248,10 @@ IntegrityCheck::IntegrityCheck() {
 void IntegrityCheck::OnModeSwitch(ModeMgr::ModeType mode_type,
                                   const char* /*map*/) {
   if (mode_type == ModeMgr::ModeType::kLogin) {
-    in_game_ = false;
-    sent_    = false;
+    in_game_  = false;
+    sent_     = false;
+    acked_    = false;
+    attempts_ = 0;
     return;
   }
   if (mode_type != ModeMgr::ModeType::kGame) return;
@@ -260,8 +266,22 @@ void IntegrityCheck::OnModeSwitch(ModeMgr::ModeType mode_type,
 }
 
 void IntegrityCheck::OnTick() {
-  // Retry sending if OnModeSwitch's SendPacket failed (socket not ready yet).
-  if (!in_game_ || sent_) return;
+  if (!in_game_) return;
+  // 🔴 « Envoyé » n'est pas « répondu ». Le CZ du premier login part pendant la
+  // transition char→map et peut mourir en route sans que SendPacket le sache :
+  // tant que le serveur n'a répondu ni par les settings ni par un kick-notice,
+  // on ré-arme et on renvoie. LogDiag et pas LogInfo : en nominal la première
+  // tentative suffit et ce chemin se TAIT ; chaque renvoi est l'anormal qu'on
+  // veut voir au journal.
+  if (sent_ && !acked_ && attempts_ < kMaxAttempts &&
+      static_cast<uint32_t>(GetTickCount()) - last_send_ms_ >= kRetryMs) {
+    LogDiag(
+        "[Integrity] pas de reponse du serveur {} ms apres l'envoi — on "
+        "renvoie la poignee de main (tentative {}/{})",
+        kRetryMs, attempts_ + 1, kMaxAttempts);
+    sent_ = false;
+  }
+  if (sent_) return;
   if (!have_hash_ && !TryComputeHash()) return;
   if (SendChecksum())
     sent_ = true;
@@ -278,10 +298,14 @@ bool IntegrityCheck::SendChecksum() {
     std::memset(buf + 4 + kHashLen, 0, kGuidLen);
   *reinterpret_cast<int32_t*>(buf + 4 + kHashLen + kGuidLen) = patch_index_;
   const bool ok = Bourgeon::Instance().SendPacket(buf, sizeof(buf));
-  if (ok)
-    /* LogInfo("[Integrity] checksum + MachineGuid sent") */;
-  else
+  if (ok) {
+    // Tenue du renvoi-jusqu'à-réponse (cf. OnTick) : chaque envoi RÉUSSI arme le
+    // délai de réponse et consomme une tentative.
+    last_send_ms_ = static_cast<uint32_t>(GetTickCount());
+    ++attempts_;
+  } else {
     LogError("[Integrity] SendPacket failed — will retry on next tick");
+  }
   return ok;
 }
 
@@ -293,11 +317,22 @@ void IntegrityCheck::OnRecvPacket(uint16_t opcode, const uint8_t* /*data*/,
     // reliably re-fire a login->game mode switch but the server still expects a
     // fresh CZ_BOURGEON_INTEGRITY per session. We just received a packet on this
     // socket, so it is connected; the actual send happens on the next OnTick.
-    in_game_ = true;
-    sent_    = false;
+    in_game_  = true;
+    sent_     = false;
+    acked_    = false;
+    attempts_ = 0;
+    return;
+  }
+  if (opcode == kOpcodeSettings) {
+    // Le grant du serveur : notre poignée de main est arrivée et a été traitée.
+    // Fin des renvois pour cette session.
+    acked_ = true;
     return;
   }
   if (opcode == kOpcodeKickNotice) {
+    // Refus, mais RÉPONSE quand même : le serveur nous a vus, renvoyer ne ferait
+    // que re-déclencher le même verdict pendant le sursis de 5 s.
+    acked_ = true;
     // LogInfo("[Integrity] kick-notice received — showing update popup");
     kick_notice_tick_ = static_cast<uint32_t>(GetTickCount());
     popup_pending_ = true;

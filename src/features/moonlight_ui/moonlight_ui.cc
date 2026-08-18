@@ -1997,6 +1997,12 @@ void MoonlightUi::HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t le
   // réglage 26 : les deux donnent exactement le même « Staff Tools » absent, et
   // se corrigent à des endroits opposés (serveur ou client). Une ligne par
   // paquet, et ils sont rares — le login, puis les échos de changement.
+  //
+  // C'est cette ligne qui a fini par trancher (journal du 2026-08-18) : à la
+  // première entrée elle N'APPARAISSAIT PAS — le paquet n'arrivait pas, parce
+  // que le CZ d'intégrité du client mourait dans la transition char→map et que
+  // rien ne le renvoyait. Résolu dans IntegrityCheck : renvoi de la poignée de
+  // main jusqu'à RÉPONSE (ce paquet-ci, ou un kick-notice), cf. kRetryMs.
   {
     int level = -1;
     for (uint16_t i = 0; i < setting_count; ++i)
