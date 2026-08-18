@@ -1579,7 +1579,12 @@ void Minimap::OnRenderUI() {
 // ── Réglages ─────────────────────────────────────────────────────────────────
 
 void Minimap::DrawSettings() {
-  g_needs_save |= ro::RoCheckbox(i18n::Tr("Minimap Bourgeon"), &g_cfg.enabled);
+  // Plus de case d'activation : la minimap suit le groupe « Interface moderne »
+  // depuis le 2026-08-18 (SetModernInterface écrit g_cfg.enabled — le tester
+  // revient à tester le groupe). Les réglages fins restent, grisés hors groupe.
+  ImGui::TextDisabled(
+      "%s", i18n::Tr("Suivent l'interface moderne — l'interrupteur est en tête "
+                     "d'« Interface de jeu »."));
 
   ImGui::BeginDisabled(!g_cfg.enabled);
 

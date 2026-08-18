@@ -1481,6 +1481,12 @@ void SetModernInterface(bool on) {
     item_desc->show_skill_panel() = on;
     item_desc->show_book_panel()  = on;
   }
+  // La minimap suit le groupe (2026-08-18) : son radar remplace le natif
+  // (replace_native vaut true par défaut — le laisser réglable sert à
+  // comparer), et son menu ouvre la grande carte et la carte du monde comme
+  // les icônes du menu moderne.
+  if (auto* minimap = Bourgeon::Instance().minimap())
+    minimap->config().enabled = on;
   // 🔴 LE MENU ÉCHAP ET SA TABLE DES RACCOURCIS NE SONT PAS DANS CE GROUPE, et ce
   // n'est pas un oubli : ils sont ON PAR DÉFAUT pour tout le monde (cf. leurs
   // descripteurs). Un menu enterré sous une fenêtre du jeu est un menu cassé, et
@@ -1536,6 +1542,7 @@ bool DrawModernInterfaceCheckbox(bool* enabled, const char* window_help) {
       "  • Dialogue NPC (texte, menus, prompts)\n"
       "  • Descriptions d'objet et de compétence (panneaux techniques)\n"
       "  • Fenêtre de lecture des livres\n"
+      "  • Minimap (le radar d'origine est remplacé)\n"
       "La case des autres sections reflète donc le même état.\n\n");
   help += window_help;
   ImGui::SameLine();
@@ -1689,6 +1696,7 @@ void MoonlightUi::PostLoadApply() {
   // suivent le groupe sans jamais voter.
   auto* chat           = Bourgeon::Instance().chat_window();
   auto* npc_dialog     = Bourgeon::Instance().npc_dialog_window();
+  auto* minimap        = Bourgeon::Instance().minimap();
   SetModernInterface((inventory && inventory->imgui_enabled_) ||
                      (storage && storage->imgui_enabled_) ||
                      (skill_bar && skill_bar->enabled_) ||
@@ -1698,7 +1706,8 @@ void MoonlightUi::PostLoadApply() {
                      (cashshop && cashshop->imgui_enabled_) ||
                      (shop && shop->imgui_enabled_) ||
                      (chat && chat->imgui_enabled_) ||
-                     (npc_dialog && npc_dialog->imgui_enabled_));
+                     (npc_dialog && npc_dialog->imgui_enabled_) ||
+                     (minimap && minimap->config().enabled));
 
   if (auto* status_icons = Bourgeon::Instance().status_icons()) status_icons->MarkDirty();
   if (auto* screen_fx = Bourgeon::Instance().screen_fx())
