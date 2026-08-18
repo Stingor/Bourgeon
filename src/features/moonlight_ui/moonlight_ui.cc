@@ -2382,6 +2382,11 @@ void MoonlightUi::OnRenderUI() {
     // pour que les liens déjà posés dans le chat continuent d'ouvrir la bonne
     // chose ; c'est `gslink` qui la résout désormais.
 
+    // ── Gameplay ─────────────────────────────────────────────────────────────
+    // Entre l'interface et les commandes : ce qui change la MANIERE DE JOUER
+    // — precision du ciblage, quick cast, enregistreur GIF.
+    DrawGameplayPanel();
+
     // ── Commands Settings ────────────────────────────────────────────────────
     DrawCommandsPanel();
 

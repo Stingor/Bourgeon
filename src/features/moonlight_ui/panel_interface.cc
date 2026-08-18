@@ -103,6 +103,7 @@ constexpr PanelHeader kPanelHeaders[] = {
     {"dps",         "DPS Meter",         false},
     {"minigames",   "Mini-jeux",         false},
     {"interface",   "Interface de jeu",  false},
+    {"gameplay",    "Gameplay",          false},
     {"commands",    "Commands Settings", false},
 };
 

@@ -312,7 +312,6 @@ bool EmitCast(void* cmode, void* actor, int mode, int skill, int level,
 // Conditions communes au premier lancement et à chaque répétition.
 bool QuickCast::CanCastNow() const {
   if (!ground_enabled_ && !target_enabled_) return false;
-  if (!IsStaff()) return false;
   if (Bourgeon::Instance().client().timestamp() != 20250716) return false;
   if (!Bourgeon::Instance().IsGameActive() ||
       Bourgeon::Instance().IsMapLoading())
@@ -428,7 +427,7 @@ void QuickCast::OnUseItemSlot(int region, int slot, uint32_t nameid) {
   // servi à cette activation-là et ne doit pas resservir plus tard.
   const unsigned long vk = TakePendingKey();
 
-  if (!item_enabled_ || !IsStaff()) return;
+  if (!item_enabled_) return;
   if (Bourgeon::Instance().client().timestamp() != 20250716) return;
   if (vk == 0) return;  // clic sur la case : une seule utilisation, rien à répéter
 
@@ -448,7 +447,7 @@ void QuickCast::UpdateItemRepeat() {
     item_vk_ = 0;
     return;
   }
-  if (!item_enabled_ || !IsStaff()) { item_vk_ = 0; return; }
+  if (!item_enabled_) { item_vk_ = 0; return; }
   // Jeu passé au second plan (alt-tab la touche enfoncée) : elle ne s'adresse
   // plus à lui. On arrête net plutôt que de vider le sac en arrière-plan.
   if (!GameHasFocus()) { item_vk_ = 0; return; }
@@ -462,8 +461,13 @@ void QuickCast::UpdateItemRepeat() {
     return;  // chargement de carte : on patiente, la touche est toujours tenue
 
   const uint32_t now = GetTickCount();
-  const uint32_t period =
-      item_repeat_ms_ > 0 ? static_cast<uint32_t>(item_repeat_ms_) : 0;
+  // Étage de DROIT, pas d'interface : le plancher joueur s'applique ici, sur la
+  // période effective, pour qu'un yaml édité à la main ne le contourne pas. Le
+  // staff garde les 20 ms que son serveur honore ; pour tout le monde, en
+  // dessous de 100 ms le serveur répond de toute façon « veuillez patienter ».
+  const int floor_ms = IsStaff() ? 20 : 100;
+  const int wanted_ms = (item_repeat_ms_ > floor_ms) ? item_repeat_ms_ : floor_ms;
+  const uint32_t period = static_cast<uint32_t>(wanted_ms);
   if (now - last_item_ms_ < period) return;
 
   // Le rejeu appartient à la barre : elle seule sait ce que la case porte
@@ -540,21 +544,39 @@ void QuickCast::DrawSettings() {
       "rien : une seule utilisation, comme avant.\n\n"
       "Attention : chaque répétition CONSOMME un objet — dont le dernier."));
   if (item_enabled_) {
+    // Le plancher dépend du DROIT, pas de la fenêtre qui affiche : 20 ms pour
+    // le staff (son serveur descend jusque-là), 100 ms pour tout le monde.
+    // L'application réelle est dans UpdateItemRepeat — ce clamp-ci ne fait que
+    // remettre l'AFFICHAGE dans la plage, un yaml édité à la main compris.
+    const int item_floor = IsStaff() ? 20 : 100;
+    if (item_repeat_ms_ < item_floor) item_repeat_ms_ = item_floor;
     ImGui::SetNextItemWidth(ro::Px(160.0f));
-    if (mui::WheelSliderInt(i18n::Tr("Cadence objet (ms)"), &item_repeat_ms_, 20, 1000))
+    if (mui::WheelSliderInt(i18n::Tr("Cadence objet (ms)"), &item_repeat_ms_,
+                            item_floor, 1000))
       save = true;
     if (ImGui::IsItemDeactivatedAfterEdit()) save = true;
     ImGui::SameLine();
-    mui::HelpMarker(
-        i18n::Tr("Période de répétition des objets. Elle est SÉPARÉE de celle des "
-        "compétences parce que ce n'est pas le même frein : ici c'est le "
-        "serveur qui fixe le minimum entre deux objets.\n\n"
-        "Pour le staff, ce minimum est de 20 ms — le serveur descend "
-        "l'intervalle à cette valeur au-dessus du niveau de groupe 40, au lieu "
-        "des 325 ms habituels. Le curseur va donc jusque-là.\n\n"
-        "En dessous, rien ne va plus vite : le serveur refuse et répond "
-        "« veuillez patienter » dans le chat. En pratique, la vraie limite est "
-        "la fréquence d'images du client."));
+    if (IsStaff()) {
+      mui::HelpMarker(
+          i18n::Tr("Période de répétition des objets. Elle est SÉPARÉE de celle des "
+          "compétences parce que ce n'est pas le même frein : ici c'est le "
+          "serveur qui fixe le minimum entre deux objets.\n\n"
+          "Pour le staff, ce minimum est de 20 ms — le serveur descend "
+          "l'intervalle à cette valeur au-dessus du niveau de groupe 40, au lieu "
+          "des 325 ms habituels. Le curseur va donc jusque-là.\n\n"
+          "En dessous, rien ne va plus vite : le serveur refuse et répond "
+          "« veuillez patienter » dans le chat. En pratique, la vraie limite est "
+          "la fréquence d'images du client."));
+    } else {
+      mui::HelpMarker(
+          i18n::Tr("Période de répétition des objets, séparée de celle des "
+          "compétences parce que le frein n'est pas le même : c'est le SERVEUR "
+          "qui fixe l'intervalle minimal entre deux objets — 325 ms en temps "
+          "normal, davantage en PvP sur les soins.\n\n"
+          "Régler plus vite que lui ne consomme rien de plus : il refuse et "
+          "répond « veuillez patienter » dans le chat. Ce curseur ne descend "
+          "pas sous 100 ms."));
+    }
   }
 
   if (save) {

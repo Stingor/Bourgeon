@@ -8,11 +8,13 @@
 
 #include "features/plugin.h"
 
-// ── Enregistreur de zone → GIF (staff) ───────────────────────────────────────
+// ── Enregistreur de zone → GIF ──────────────────────────────────────────────
 // L'outil de capture de Windows, en jeu : on trace une zone à la souris une fois,
 // elle est mémorisée, et une touche enregistre ce qui s'y passe pendant quelques
-// secondes. Le résultat est un GIF animé dans <jeu>\screenshot, destiné aux
-// tutoriels qui présentent les fonctionnalités du serveur.
+// secondes. Le résultat est un GIF animé dans <jeu>\screenshot — né pour les
+// tutoriels du staff, ouvert à TOUS les joueurs depuis 2026-08-18 (section
+// « Gameplay » du panneau Moonlight) : montrer une scène vaut mieux que la
+// décrire, pour un rapport de bug comme pour se vanter d'un MVP.
 //
 // TROIS raccourcis, tous facultatifs : l'un lance et arrête l'enregistrement, le
 // deuxième prend UNE image fixe de la même zone (un PNG, sans décompte : ce que
@@ -60,8 +62,11 @@ class ZoneRecorder : public Plugin {
   void OnTick() override;
   void OnModeSwitch(ModeMgr::ModeType mode_type, const char* map_name) override;
 
-  // Contrôles du panneau « Staff Tools » (pas de fenêtre propre).
-  void DrawSettings();
+  // Contrôles du panneau (pas de fenêtre propre). Deux vues sur le même état :
+  // Staff Tools appelle sans argument et garde le curseur « Largeur max » nu ;
+  // la section « Gameplay » du panneau joueur passe true et propose trois
+  // tailles nommées à la place — même champ dessous, les vues restent d'accord.
+  void DrawSettings(bool player_view = false);
 
   // ── Accès pour la persistance (moonlight_ui) ──────────────────────────────
   int& zone_x()   { return zone_x_; }

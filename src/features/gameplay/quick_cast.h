@@ -5,8 +5,14 @@
 #include "features/plugin.h"
 
 // QuickCast — lancer une compétence en UNE action, et enchaîner tant que la
-// touche reste enfoncée (opt-in, réservé au STAFF). La répétition vaut aussi
-// pour les cases d'OBJET de la barre de raccourcis (voir le bloc dédié plus bas).
+// touche reste enfoncée (opt-in). La répétition vaut aussi pour les cases
+// d'OBJET de la barre de raccourcis (voir le bloc dédié plus bas).
+//
+// ⚠ OUVERT AUX JOUEURS depuis 2026-08-18 (section « Gameplay » du panneau
+// Moonlight ; il était réservé au staff avant). Une seule chose distingue les
+// deux droits : le PLANCHER de la cadence objet — 20 ms pour le staff, 100 ms
+// pour tout le monde — appliqué dans UpdateItemRepeat sur la période EFFECTIVE,
+// pour qu'un yaml édité à la main ne le contourne pas.
 //
 // Nativement, une compétence de zone ou ciblée demande DEUX actions : la touche
 // arme le « mode ciblage » (curseur de visée), puis le CLIC résout la souris et
@@ -98,13 +104,14 @@
 //  • chaque répétition CONSOMME. La boucle s'arrête d'elle-même dès que la case
 //    change ou que le sac est vide, mais elle ne demande rien avant d'ouvrir la
 //    dernière boîte.
-//  • le SERVEUR fixe l'intervalle minimal entre deux objets, et il est BAS ICI.
+//  • le SERVEUR fixe l'intervalle minimal entre deux objets.
 //    `item_use_interval` vaut 325 ms sur Moonlight (500 de plus en PvP sur les
 //    soins), MAIS `pc_useitem` le ramène à **20 ms au-dessus du niveau de groupe
-//    40** (patch maison « opti spam de branch en gm », src/map/pc.cpp). Or cette
-//    option est réservée au staff, donc niveau >= 80 : ses utilisateurs ont
-//    TOUJOURS le plancher à 20 ms. D'où une cadence séparée de celle des sorts —
-//    ce n'est pas le même frein — et une plage qui descend jusque-là.
+//    40** (patch maison « opti spam de branch en gm », src/map/pc.cpp). D'où une
+//    cadence séparée de celle des sorts — ce n'est pas le même frein — et une
+//    plage qui descend à 20 ms pour le staff. Les joueurs, eux, ont un plancher
+//    CLIENT de 100 ms (cf. l'avertissement d'en-tête) : plus vite ne ferait que
+//    marteler un serveur qui refuse.
 //    En pratique la limite devient la FRAME du client (~16 ms à 60 fps), d'où le
 //    battement par frame plutôt qu'un OnTick bridé.
 //
@@ -150,7 +157,9 @@ class QuickCast : public Plugin {
   void OnRenderUI() override;
   void OnModeSwitch(ModeMgr::ModeType mode_type, const char* map_name) override;
 
-  // Panneau de configuration (section « Staff Tools » de MoonlightUi).
+  // Panneau de configuration — le MÊME pour les deux fenêtres qui l'affichent
+  // (Staff Tools et la section « Gameplay » du panneau joueur) : c'est le DROIT
+  // qui change les bornes et les textes (IsStaff), pas la fenêtre.
   void DrawSettings();
 
   // Accesseurs pour la persistance (bourgeon_settings.yaml via MoonlightUi).

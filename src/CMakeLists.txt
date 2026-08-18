@@ -49,6 +49,7 @@ set(BOURGEON_FILES
 	"features/moonlight_ui/panel_rules.cc"
 	"features/moonlight_ui/panel_commands.cc"
 	"features/moonlight_ui/panel_fun.cc"
+	"features/moonlight_ui/panel_gameplay.cc"
 	"features/moonlight_ui/item_desc_probe.cc"
 	"features/moonlight_ui/panel_interface.cc"
 	"features/moonlight_ui/settings_table.cc"

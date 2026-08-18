@@ -5,6 +5,7 @@
 #include <shellapi.h>     // ShellExecuteA (« Ouvrir le dossier »)
 #include <shlobj_core.h>  // DROPFILES (CF_HDROP) ; tire ole2.h -> DROPEFFECT_COPY
 
+#include <cstdlib>  // std::abs (choix de taille du GIF)
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
@@ -299,7 +300,7 @@ void ZoneRecorder::PumpState() {
 }
 
 bool ZoneRecorder::ArmRecording() {
-  if (state_ != State::kIdle || !IsStaff()) return false;
+  if (state_ != State::kIdle) return false;
   last_status_.clear();
   last_status_tick_ = GetTickCount();
   clip_msg_ = nullptr;
@@ -541,7 +542,6 @@ void ZoneRecorder::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
 }
 
 void ZoneRecorder::OnKeyDown(unsigned long vkey, int, int) {
-  if (!IsStaff()) return;
   // ProcessPushButton ne transmet que la touche principale : les modificateurs se
   // lisent sur l'état clavier du message en cours (cf. player_jump).
   const bool ctrl  = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
@@ -595,10 +595,6 @@ void ZoneRecorder::OnKeyDown(unsigned long vkey, int, int) {
 
 void ZoneRecorder::OnRenderUI() {
   PumpState();
-  if (!IsStaff()) {
-    if (state_ == State::kSelecting) CancelAll();  // droit perdu en cours de session
-    return;
-  }
   switch (state_) {
     case State::kSelecting: DrawSelectionOverlay(); break;
     case State::kCountdown:
@@ -837,7 +833,7 @@ size_t ZoneRecorder::EstimatedBytes() const {
 }
 
 // ── Panneau « Staff Tools » ──────────────────────────────────────────────────
-void ZoneRecorder::DrawSettings() {
+void ZoneRecorder::DrawSettings(bool player_view) {
   bool save = false;
 
   if (g_imgui_dx7_active) {
@@ -906,12 +902,48 @@ void ZoneRecorder::DrawSettings() {
   };
   slider(i18n::Tr("Images / s"), &fps_, 5, 20);
   slider(i18n::Tr("Durée (s)"), &duration_s_, 1, 15);
-  slider(i18n::Tr("Largeur max"), &max_width_, 160, 1280);
-  SameLine();
-  HelpMarker(
-      i18n::Tr("La zone est réduite à cette largeur (proportions gardées) avant d'entrer "
-      "dans le GIF. C'est le réglage qui pèse le plus lourd : la mémoire et la "
-      "taille du fichier montent avec le CARRÉ de la largeur."));
+  if (player_view) {
+    // « Largeur max : 640 » ne dit rien à qui ne pense pas en pixels. La vue
+    // joueur choisit dans TROIS tailles nommées, qui posent les mêmes valeurs
+    // dans le même champ — le staff garde le curseur libre à côté, et les deux
+    // vues restent d'accord (la plus proche est affichée).
+    static const struct { const char* label; int width; } kGifSizes[] = {
+        {"Légère (320 px)",  320},
+        {"Moyenne (480 px)", 480},
+        {"Grande (640 px)",  640},
+    };
+    int sel = 0;
+    for (int i = 1; i < 3; ++i)
+      if (std::abs(max_width_ - kGifSizes[i].width) <
+          std::abs(max_width_ - kGifSizes[sel].width))
+        sel = i;
+    ImGui::SetNextItemWidth(ro::Px(160.0f));
+    if (ro::RoBeginCombo(i18n::Tr("Taille du GIF"),
+                         i18n::Tr(kGifSizes[sel].label))) {
+      for (int i = 0; i < 3; ++i) {
+        const bool selected = (sel == i);
+        if (ImGui::Selectable(i18n::Tr(kGifSizes[i].label), selected)) {
+          max_width_ = kGifSizes[i].width;
+          save = true;
+        }
+        if (selected) ImGui::SetItemDefaultFocus();
+      }
+      ro::RoEndCombo();
+    }
+    SameLine();
+    HelpMarker(
+        i18n::Tr("La taille du fichier : la zone filmée est réduite à cette largeur "
+        "avant d'entrer dans le GIF.\n\nMoyenne passe partout. Grande donne un "
+        "GIF plus net mais nettement plus lourd — le poids monte avec le CARRÉ "
+        "de la taille."));
+  } else {
+    slider(i18n::Tr("Largeur max"), &max_width_, 160, 1280);
+    SameLine();
+    HelpMarker(
+        i18n::Tr("La zone est réduite à cette largeur (proportions gardées) avant d'entrer "
+        "dans le GIF. C'est le réglage qui pèse le plus lourd : la mémoire et la "
+        "taille du fichier montent avec le CARRÉ de la largeur."));
+  }
   slider(i18n::Tr("Délai avant départ (s)"), &start_delay_s_, 0, 5);
   SameLine();
   HelpMarker(i18n::Tr("Le temps de refermer ce panneau et de te placer avant que ça tourne."));

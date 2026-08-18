@@ -437,6 +437,10 @@ class MoonlightUi : public Plugin {
   // .cc du dossier, pas ici. Voir features/moonlight_ui/internal.h.
   void DrawCommandsPanel();
   void DrawFunPanels();
+  // Section « Gameplay » (panel_gameplay.cc) : precision du ciblage,
+  // Quick cast et enregistreur GIF — les QOL qui touchent au JEU, entre
+  // l'interface et les commandes serveur.
+  void DrawGameplayPanel();
   void DrawAlootOverlay();
   // Affichages pilotés par ce panneau mais dessinés HORS de lui : ils survivent à
   // sa fermeture, et sont donc appelés sur les DEUX chemins de rendu.
