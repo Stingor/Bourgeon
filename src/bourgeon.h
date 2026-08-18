@@ -30,6 +30,7 @@ class CartViewer;
 class BankWindow;
 class GameMenu;
 class StaffTools;
+class CharDiagnostics;
 class HotkeySettings;
 class MacroWindow;
 class GameSettings;
@@ -97,6 +98,9 @@ class Bourgeon {
   BankWindow* bank_window();
   GameMenu* game_menu();
   StaffTools* staff_tools();
+  // Fiche technique du personnage (staff). Exposée pour le bouton qui l'ouvre,
+  // dans « Staff Tools ».
+  CharDiagnostics* char_diagnostics();
   HotkeySettings* hotkey_settings();
   MacroWindow* macro_window();
   GameSettings* game_settings();
@@ -282,6 +286,7 @@ class Bourgeon {
   BankWindow* bank_window_ = nullptr;          // non-owning, lifetime tied to plugins_
   GameMenu* game_menu_ = nullptr;              // non-owning, lifetime tied to plugins_
   StaffTools* staff_tools_ = nullptr;          // non-owning, lifetime tied to plugins_
+  CharDiagnostics* char_diagnostics_ = nullptr;  // idem
   HotkeySettings* hotkey_settings_ = nullptr;  // non-owning, lifetime tied to plugins_
   MacroWindow* macro_window_ = nullptr;        // non-owning, lifetime tied to plugins_
   GameSettings* game_settings_ = nullptr;      // non-owning, lifetime tied to plugins_

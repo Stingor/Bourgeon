@@ -71,6 +71,8 @@
 #include "features/patches/equip_tweaks.h"
 #include "features/patches/window_pos_tweaks.h"
 #include "features/fx/weapon_dual_sprites.h"
+#include "features/patches/pick_quad_tweaks.h"
+#include "features/windows/char_diagnostics.h"
 #include "features/fx/spr_effect_lab.h"
 #include "features/fx/ground_paint.h"
 #include "ragnarok/ui_window_mgr.h"
@@ -477,6 +479,39 @@ const moonlight_ui::SettingDesc kBugReportSettings[] = {
 const moonlight_ui::SettingDesc kWeaponSpriteSettings[] = {
     {"weapon_dual_sprites_staff", SType::kBool,
      MLUI_FIELD(weapon_dual_sprites, enabled()), MLUI_LITERAL(bool, true)},
+};
+
+// Zones cliquables. Le detour, lui, est pose une fois au demarrage quoi qu'il
+// arrive : ces deux cles ne pilotent que ce qu'il FAIT, pas s'il existe.
+// Resolveurs ecrits a la main plutot que MLUI_FIELD : ces reglages vivent dans
+// leur namespace, pas derriere un accesseur de Bourgeon.
+const moonlight_ui::SettingDesc kPickQuadSettings[] = {
+    {"pickquad_shrink_negative_gid", SType::kBool,
+     []() -> void* { return &pick_quad::shrink_negative_gid(); },
+     MLUI_LITERAL(bool, true)},
+    // 🔴 CLÉ RENOMMÉE (ex-pickquad_negative_gid_percent) : le défaut livré est
+    // passé de 0 à 25 % — le rétrécissement du clone de déguisement devient un
+    // correctif GLOBAL, plus un réglage d'atelier. Les yaml déjà écrits portent
+    // l'ancienne clé avec son 0 explicite ; changer le seul défaut n'aurait donc
+    // rien changé pour personne. La clé neuve n'existe dans aucun fichier : tout
+    // le monde prend 25 une fois, puis le staff garde son curseur.
+    {"pickquad_ghost_percent", SType::kInt,
+     []() -> void* { return &pick_quad::negative_gid_percent(); },
+     MLUI_LITERAL(int, 25)},
+    // Diviseur JOUEUR de la taille minimale des zones cliquables (0 = réglage
+    // du client, s = divisé par 2^s ; les mêmes crans que le patch WARP
+    // TighterClickArea). Section « Gameplay » du panneau.
+    {"pickquad_min_shift", SType::kInt,
+     []() -> void* { return &pick_quad::min_shift(); },
+     MLUI_LITERAL(int, 0)},
+    // Taille minimale forcee. Defaut ETEINT : ecrire cette globale masquerait
+    // ce qu'un patch pose sur l'exe y met. -1 = « prendre celle du client », que
+    // seul le client connait -- il n'y a donc pas de litteral juste a ecrire ici.
+    {"pickquad_min_size_enabled", SType::kBool,
+     MLUI_FIELD(char_diagnostics, pick_min_enabled()),
+     MLUI_LITERAL(bool, false)},
+    {"pickquad_min_size_px", SType::kInt,
+     MLUI_FIELD(char_diagnostics, pick_min_size()), MLUI_LITERAL(int, -1)},
 };
 
 // Inventaire ImGui. Le placement libre (inventory_layout) est un CONTENEUR :
@@ -1512,6 +1547,7 @@ void MoonlightUi::LoadSettings() {
     moonlight_ui::ReadSettings(ui, kItemDescSettings);
     moonlight_ui::ReadSettings(ui, kBugReportSettings);
     moonlight_ui::ReadSettings(ui, kWeaponSpriteSettings);
+    moonlight_ui::ReadSettings(ui, kPickQuadSettings);
     moonlight_ui::ReadSettings(ui, MoonlightUiOwnSettings::kChat);
 
     moonlight_ui::ReadSettings(ui, kDpsSettings);
@@ -1651,6 +1687,7 @@ void MoonlightUi::WriteSettingsFile() {
   moonlight_ui::WriteSettings(out, kItemDescSettings);
   moonlight_ui::WriteSettings(out, kBugReportSettings);
   moonlight_ui::WriteSettings(out, kWeaponSpriteSettings);
+  moonlight_ui::WriteSettings(out, kPickQuadSettings);
   moonlight_ui::WriteSettings(out, MoonlightUiOwnSettings::kChat);
   moonlight_ui::WriteSettings(out, kDpsSettings);
 

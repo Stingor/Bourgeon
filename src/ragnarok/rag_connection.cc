@@ -6,6 +6,7 @@
 
 #include "bourgeon.h"
 #include "features/systems/net_ping.h"  // horodatage de la demande d'heure
+#include "features/windows/char_diagnostics.h"  // compteur des envois du joueur
 #include "features/windows/npc_dialog_window.h"
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
@@ -534,6 +535,13 @@ bool RagConnection::SendPacketHook(int packet_len, char* packet) {
   // XOR natif n'agit qu'APRÈS nous, sur le premier mot).
   if (packet_len >= 2 && packet != nullptr)
     NetPing::NoteSend(*reinterpret_cast<uint16_t*>(packet), packet_len);
+
+  // [diag] Compte les demandes d'action du JOUEUR (skill, attaque). Même point
+  // d'observation et même raison que le ping : c'est le seul endroit qui voie ce
+  // qui part vraiment, et nos propres envois le contournent. Deux incréments
+  // atomiques, sans lecture de mémoire de jeu — cf. CharDiagnostics::NoteSend.
+  if (packet_len >= 2 && packet != nullptr)
+    CharDiagnostics::NoteSend(*reinterpret_cast<uint16_t*>(packet));
 
   // Map-load end: the client sends CZ_NOTIFY_ACTORINIT (0x007d, a 2-byte packet)
   // once the new map has finished loading and it is ready — clear the loading

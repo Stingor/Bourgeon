@@ -6,7 +6,9 @@
 #include "features/fx/zone_recorder.h"
 #include "features/gameplay/quick_cast.h"
 #include "features/moonlight_ui/moonlight_ui.h"
+#include "features/windows/char_diagnostics.h"
 #include "features/overlays/entity_names.h"
+#include "features/patches/pick_quad_tweaks.h"
 #include "features/staff_gate.h"
 #include "imgui.h"
 #include "ui/ro_imgui.h"
@@ -76,6 +78,101 @@ void StaffTools::OnRenderUI() {
   if (!begun) { ro::EndRoWindow(); return; }
 
   mui::PushStyleCompact();
+
+  // ── Fiche technique du personnage ──────────────────────────────────────────
+  // En tête, parce que c'est ce qu'on ouvre le plus souvent quand on débogue un
+  // comportement de combat : elle répond à « quels nombres mon client
+  // applique-t-il », là où la feuille de perso répond à « qu'est-ce que je
+  // gagne à monter une stat ».
+  mui::SeparatorText(i18n::Tr("Diagnostic du personnage"));
+  if (auto* diag = Bourgeon::Instance().char_diagnostics()) {
+    if (ro::RoButton(i18n::Tr("Ouvrir la fiche technique"))) diag->Open();
+    ImGui::SameLine();
+    // L'aide de la fiche technique, collée au bouton qu'elle décrit. Elle
+    // traînait après le bloc du curseur, donc sur la ligne du réglage voisin
+    // quand celui-ci ne dessinait rien.
+    mui::HelpMarker(
+        i18n::Tr("Toutes les stats du personnage joué TELLES QUE LE CLIENT LES "
+                 "CONNAÎT, y compris les valeurs techniques que l'interface du "
+                 "jeu ne montre jamais : le délai d'attaque en millisecondes "
+                 "(amotion) derrière l'ASPD, le recul encaissé (dmotion) lu sur "
+                 "les paquets de coups, la vitesse de déplacement, et la cadence "
+                 "réelle du .act en train d'être joué.\n\n"
+                 "Sous déguisement, elle montre le sprite RÉELLEMENT joué et la "
+                 "durée que ses animations donnent à l'attaque — c'est-à-dire ce "
+                 "que le personnage subit à l'écran, pas ce que la classe "
+                 "laisserait croire."));
+    ImGui::SameLine();
+    // Contour des zones cliquables : indépendant de la fenêtre, parce qu'on
+    // l'observe justement en regardant la scène.
+    ro::RoCheckbox(i18n::Tr("Contour des zones cliquables"),
+                   &diag->show_pick_boxes());
+    ImGui::SameLine();
+    mui::HelpMarker(
+        i18n::Tr("Dessine les rectangles ÉCRAN dont le client se sert pour "
+                 "savoir sur QUOI la souris pointe — ce ne sont pas les "
+                 "positions au sol, et c'est le rectangle le plus « devant » "
+                 "qui gagne le clic, quel que soit son propriétaire.\n\n"
+                 "Jaune épais = celui que le clic prendrait maintenant, avec "
+                 "son AID. Rose = le vôtre. Vert = acteur, bleu = PNJ de "
+                 "carte, orange = unité de compétence.\n\n"
+                 "À regarder quand une compétence part sur la mauvaise cible, "
+                 "ou ne part pas alors que le curseur semble bien placé."));
+
+    // Précision du picking : le client gonfle tout petit rectangle à un minimum.
+    if (diag->pick_min_default() > 0) {
+      if (ro::RoCheckbox(i18n::Tr("Forcer la zone cliquable minimale"),
+                         &diag->pick_min_enabled()))
+        Persist();
+      ImGui::SameLine();
+      mui::HelpMarker(
+          i18n::Tr("Décochée, Bourgeon ne touche PAS à la valeur du client — "
+                   "c'est l'état à choisir pour mesurer le jeu tel quel, ou "
+                   "pour vérifier ce que fait un patch posé sur "
+                   "l'exécutable.\n\nCochée, la valeur du curseur est "
+                   "réécrite à chaque image."));
+      // Le TÉMOIN : ce que le client a calculé, relevé avant toute écriture de
+      // notre part. C'est lui qui dit si un patch posé sur l'exe a mordu — et
+      // il doit rester lisible quand la case est décochée, justement parce que
+      // c'est là qu'on mesure.
+      ImGui::SameLine();
+      ImGui::TextDisabled(i18n::Tr("client : %d px"), diag->pick_min_default());
+    }
+    if (diag->pick_min_default() > 0 && diag->pick_min_enabled()) {
+      // 🔴 La borne haute est LE DÉFAUT DU CLIENT, pas une constante. Il vaut
+      // `largeur_fenêtre / 640 × 40` — 110 px en 1760 de large, bien au-delà des
+      // 64 codés en dur au départ : le curseur ne pouvait alors QUE descendre,
+      // et toucher la poignée faisait chuter la valeur sans retour possible.
+      // Curseur à fond = comportement d'origine, dans toutes les résolutions.
+      int px = diag->pick_min_size();
+      const int px_max = (diag->pick_min_default() > 64)
+                             ? diag->pick_min_default()
+                             : 64;
+      ImGui::SetNextItemWidth(ro::Px(160.0f));
+      if (mui::WheelSliderInt(i18n::Tr("Zone cliquable minimale (px)"), &px, 4,
+                              px_max))
+        diag->pick_min_size() = px;
+      if (ImGui::IsItemDeactivatedAfterEdit()) Persist();
+      ImGui::SameLine();
+      char tip[420];
+      _snprintf_s(tip, sizeof(tip), _TRUNCATE,
+                  i18n::Tr("Le client ÉLARGIT toute zone cliquable plus petite "
+                           "que ce nombre de pixels, pour qu'un petit sprite "
+                           "reste attrapable. Défaut de ce client : %d px.\n\n"
+                           "Baisser resserre le ciblage — deux entités "
+                           "voisines cessent de se disputer le même clic. "
+                           "Trop bas, les petits monstres deviennent "
+                           "difficiles à viser.\n\n"
+                           "⚠ Sans effet sur un GROS sprite : son rectangle "
+                           "vient de son dessin, pas de ce minimum."),
+                  diag->pick_min_default());
+      mui::HelpMarker(tip);
+    }
+  }
+
+  // Le fantôme au GID négatif — même sujet que le contour ci-dessus, puisqu'on
+  // le DÉBUSQUE avec, et corrigé au même endroit du client.
+  pick_quad::DrawSettings();
 
   mui::SeparatorText(i18n::Tr("Noms des entités"));
   if (auto* entity_names = Bourgeon::Instance().entity_names())

@@ -27,10 +27,12 @@
 #include "features/moonlight_ui/moonlight_ui.h"
 #include "features/patches/status_tweaks.h"
 #include "features/patches/berserk_chat_unlock.h"
+#include "features/patches/pick_quad_tweaks.h"
 #include "features/patches/inventory_tweaks.h"
 #include "features/windows/inventory_viewer.h"
 #include "features/windows/bank_window.h"
 #include "features/windows/game_menu.h"
+#include "features/windows/char_diagnostics.h"
 #include "features/windows/staff_tools.h"
 #include "features/windows/game_settings.h"
 #include "features/windows/hotkey_settings.h"
@@ -122,6 +124,7 @@ CartViewer* Bourgeon::cart_viewer() { return cart_viewer_; }
 BankWindow* Bourgeon::bank_window() { return bank_window_; }
 GameMenu* Bourgeon::game_menu() { return game_menu_; }
 StaffTools* Bourgeon::staff_tools() { return staff_tools_; }
+CharDiagnostics* Bourgeon::char_diagnostics() { return char_diagnostics_; }
 HotkeySettings* Bourgeon::hotkey_settings() { return hotkey_settings_; }
 MacroWindow* Bourgeon::macro_window() { return macro_window_; }
 GameSettings* Bourgeon::game_settings() { return game_settings_; }
@@ -756,6 +759,7 @@ void Bourgeon::LoadPlugins() {
   }
   plugins_.emplace_back(std::make_unique<StatusTweaks>());
   plugins_.emplace_back(std::make_unique<BerserkChatUnlock>());
+  plugins_.emplace_back(std::make_unique<PickQuadTweaks>());
   plugins_.emplace_back(std::make_unique<InventoryTweaks>());
   {
     auto inventory_viewer = std::make_unique<InventoryViewer>();
@@ -795,6 +799,14 @@ void Bourgeon::LoadPlugins() {
     auto staff_tools = std::make_unique<StaffTools>();
     staff_tools_ = staff_tools.get();
     plugins_.emplace_back(std::move(staff_tools));
+
+    // Fiche technique du personnage joué (staff). Juste après les outils du
+    // staff : c'est de là, et de là seulement, qu'elle s'ouvre. Son constructeur
+    // s'abonne à ZC_NOTIFY_ACT / ZC_NOTIFY_SKILL en OBSERVATION — aucun handler
+    // natif remplacé, aucun paquet revendiqué.
+    auto char_diagnostics = std::make_unique<CharDiagnostics>();
+    char_diagnostics_ = char_diagnostics.get();
+    plugins_.emplace_back(std::move(char_diagnostics));
   }
   {
     // Table des raccourcis (« Shortcut Settings », id 156). Écriture comprise :

@@ -63,6 +63,8 @@ set(BOURGEON_FILES
 	"features/windows/cart_viewer.h"
 	"features/windows/cashshop_window.cc"
 	"features/windows/cashshop_window.h"
+	"features/windows/char_diagnostics.cc"
+	"features/windows/char_diagnostics.h"
 	"features/windows/char_select.cc"
 	"features/windows/char_select.h"
 	"features/windows/char_select_layout.cc"
@@ -123,6 +125,8 @@ set(BOURGEON_FILES
 	# patches/
 	"features/patches/berserk_chat_unlock.cc"
 	"features/patches/berserk_chat_unlock.h"
+	"features/patches/pick_quad_tweaks.cc"
+	"features/patches/pick_quad_tweaks.h"
 	"features/patches/chat.cc"
 	"features/patches/chat.h"
 	"features/patches/chat_bg.cc"
