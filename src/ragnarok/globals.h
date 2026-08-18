@@ -211,6 +211,33 @@ constexpr uintptr_t kGameOperatorDeleteAddr = 0x00dbbc7f;  // __cdecl(ptr)
 // désormais par l'adresse réelle.
 constexpr uintptr_t kStdStringDtorAddr = 0x004f08f0;
 
+// ── Carte COURANTE, telle que le client la nomme ─────────────────────────────
+// Le global que le client injecte lui-même dans son gabarit de minimap
+// (`유저인터페이스\map\%s.bmp`, UIMiniMapWnd_DrawContent @0x00962441). Rendu SANS
+// extension : le global la porte parfois (`prontera.rsw`), et aucun appelant
+// n'en veut.
+//
+// ⚠ C'est la source du CLIENT, pas la nôtre. La minimap lui préfère le
+// `map_name` que lui passe OnModeSwitch — sa propre plomberie, dont elle répond
+// — et ne retombe ici qu'à défaut. Un appelant qui n'a pas ce fil (la
+// navigation) se contente de celle-ci.
+constexpr uintptr_t kCurrentMapNameAddr = 0x015fb9ac;
+
+inline bool CurrentMapName(char* out, size_t cap) {
+  if (out == nullptr || cap == 0) return false;
+  out[0] = '\0';
+  __try {
+    const char* name = reinterpret_cast<const char*>(kCurrentMapNameAddr);
+    if (!name || !name[0]) return false;
+    strncpy_s(out, cap, name, _TRUNCATE);
+    if (char* dot = strrchr(out, '.')) *dot = '\0';
+    return out[0] != '\0';
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    out[0] = '\0';
+    return false;
+  }
+}
+
 // ── Nom LISIBLE d'un lieu ────────────────────────────────────────────────────
 // « Prontera » pour `prontera`, « PvP : Room Copass » pour `pvp_n_3-5` — le nom
 // que la grande carte native met en titre. `Social_GetMapDisplayName` est

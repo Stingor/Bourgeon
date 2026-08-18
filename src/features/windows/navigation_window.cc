@@ -932,6 +932,25 @@ void NavigationWindow::OnRenderUI() {
     ImGui::EndTooltip();
   }
 
+  // ── « Ici », en un bouton ──────────────────────────────────────────────────
+  // La question la plus courante devant une navigation n'est pas « où est
+  // Prontera » mais « qu'est-ce qu'il y a ICI » — quels PNJ, quels monstres, sur
+  // la carte où je me trouve. Le natif ne sait pas y répondre : il faut savoir
+  // comment sa carte s'appelle et le taper.
+  //
+  // La recherche part sur le nom AFFICHÉ, jamais sur le nom interne : c'est ce
+  // que le moteur compare dans ses résultats.
+  {
+    char current_map[64];
+    const bool have_map = rag::CurrentMapName(current_map, sizeof(current_map));
+    ImGui::BeginDisabled(!have_map);
+    if (ro::RoButton(i18n::Tr("Rechercher la map actuelle")) && have_map)
+      OpenSearch(MapLabel(current_map).c_str(), /*monsters_only=*/false);
+    ImGui::EndDisabled();
+    if (have_map && ImGui::IsItemHovered())
+      ImGui::SetTooltip("%s  (%s)", MapLabel(current_map).c_str(), current_map);
+  }
+
   ImGui::Separator();
 
   // ── Deux volets : la liste à gauche, le détail à droite ────────────────────

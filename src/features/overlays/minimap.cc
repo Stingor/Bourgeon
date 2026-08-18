@@ -31,12 +31,9 @@ namespace {
 
 // ── Adresses du client 20250716 ──────────────────────────────────────────────
 
-// Nom de la carte courante, SANS extension. C'est le global que le client
-// lui-même injecte dans son gabarit `유저인터페이스\map\%s.bmp`
-// (UIMiniMapWnd_DrawContent @0x00962441) : le prendre ici, plutôt que de
-// retailler le `map_name` de OnModeSwitch, garantit qu'on demande le MÊME
-// fichier que la grande carte native.
-constexpr uintptr_t kCurMapNameAddr = 0x015fb9ac;
+// (Le global du nom de carte courante vit désormais dans `rag::CurrentMapName`
+// — la navigation en a eu besoin à son tour. Même adresse, même retrait
+// d'extension : on demande toujours le MÊME fichier que la grande carte native.)
 
 // CGameMode -> monde -> { acteur du joueur, info de carte }.
 // Relevés dans Scene_WorldPosToCellXY (0x00c6ac10) et sub_C6AEF0 (0x00c6aef0),
@@ -223,16 +220,9 @@ bool CurrentMapName(char* out, size_t cap) {
     if (out[0] != '\0') return true;
   }
 
-  __try {
-    const char* s = reinterpret_cast<const char*>(kCurMapNameAddr);
-    if (s && s[0] != '\0') {
-      strncpy_s(out, cap, s, _TRUNCATE);
-      if (char* dot = strrchr(out, '.')) *dot = '\0';
-      return out[0] != '\0';
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
-
-  return false;
+  // Le global du client, second choix — la RE a déménagé dans rag:: le jour où
+  // la navigation en a eu besoin elle aussi.
+  return rag::CurrentMapName(out, cap);
 }
 
 // ── Les trois cartes de marqueurs de CGameMode ───────────────────────────────
