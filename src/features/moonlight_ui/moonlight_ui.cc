@@ -441,12 +441,20 @@ const moonlight_ui::SettingDesc kDpsSettings[] = {
 // la valeur déclarée dans item_desc_window.h : il valait 0 dans le repli
 // d'écriture, ce qui ramenait silencieusement l'ancrage en haut-gauche.
 const moonlight_ui::SettingDesc kItemDescSettings[] = {
-    {"itemdesc_show_item",  SType::kBool, MLUI_FIELD(item_desc, show_item_panel()),
-     MLUI_LITERAL(bool, true)},
-    {"itemdesc_show_skill", SType::kBool, MLUI_FIELD(item_desc, show_skill_panel()),
-     MLUI_LITERAL(bool, true)},
-    {"itemdesc_show_book",  SType::kBool, MLUI_FIELD(item_desc, show_book_panel()),
-     MLUI_LITERAL(bool, true)},
+    // 🔴 CLÉS RENOMMÉES (ex itemdesc_show_item / _show_skill / _show_book,
+    // défaut true) : les trois panneaux ont rejoint le groupe « Interface
+    // moderne » le 2026-08-18, dont TOUS les membres ont false pour défaut. Les
+    // yaml déjà écrits portent l'ancienne clé à true, choix explicite ou pas —
+    // la garder aurait mis les descriptions modernes au milieu d'une interface
+    // native (le mixe supprimé), et la verser au OU de réconciliation aurait
+    // basculé tout le monde en moderne au premier chargement. Clés neuves,
+    // défaut du groupe, et c'est SetModernInterface qui les écrit.
+    {"itemdesc_imgui",  SType::kBool, MLUI_FIELD(item_desc, show_item_panel()),
+     MLUI_LITERAL(bool, false)},
+    {"skilldesc_imgui", SType::kBool, MLUI_FIELD(item_desc, show_skill_panel()),
+     MLUI_LITERAL(bool, false)},
+    {"bookwnd_imgui",   SType::kBool, MLUI_FIELD(item_desc, show_book_panel()),
+     MLUI_LITERAL(bool, false)},
     {"itemdesc_book_page1", SType::kBool, MLUI_FIELD(item_desc, book_reset_page()),
      MLUI_LITERAL(bool, true)},
     {"itemdesc_compare",    SType::kBool, MLUI_FIELD(item_desc, cmp_show_equipped()),
@@ -831,9 +839,12 @@ const moonlight_ui::SettingDesc kOptInWindowSettings[] = {
      MLUI_LITERAL(bool, false)},
     {"rodex_imgui", SType::kBool, MLUI_FIELD(rodex_window, imgui_enabled_),
      MLUI_LITERAL(bool, false)},
-    // Chatbox ImGui (phase 1 : écoute, la native reste). Clés préfixées
-    // « chatwnd_ » : « chat_* » appartient déjà à ChatTweaks, qui règle le chat
-    // NATIF — les deux jeux d'options coexistent tant que les deux chats existent.
+    // Chatbox ImGui. Clés préfixées « chatwnd_ » : « chat_* » appartient déjà à
+    // ChatTweaks, qui règle le chat NATIF — les deux jeux d'options coexistent
+    // tant que les deux chats existent. Depuis le 2026-08-18 la bascule est
+    // écrite par SetModernInterface (membre du groupe) ; la clé garde son nom,
+    // son défaut n'a pas changé, et elle VOTE à la réconciliation (elle a eu sa
+    // case isolée).
     {"chatwnd_imgui", SType::kBool, MLUI_FIELD(chat_window, imgui_enabled_),
      MLUI_LITERAL(bool, false)},
     {"chatwnd_timestamps", SType::kBool, MLUI_FIELD(chat_window, timestamps()),
@@ -1451,6 +1462,25 @@ void SetModernInterface(bool on) {
   // ferait ouvrir par la fiche moderne une navigation que rien ne remplace.
   if (auto* navigation_window = Bourgeon::Instance().navigation_window())
     navigation_window->imgui_enabled_ = on;
+  // La chatbox suit le groupe (2026-08-18) : elle DÉTRUIT la fenêtre de chat
+  // native, et ses lignes portent les liens riches (items, réglages, fiches)
+  // qui ouvrent les fenêtres modernes ci-dessus — un lien vers une fiche
+  // d'item moderne dans un chat au milieu d'une interface native serait le
+  // mixe qu'on a supprimé.
+  if (auto* chat_window = Bourgeon::Instance().chat_window())
+    chat_window->imgui_enabled_ = on;
+  // Le dialogue NPC aussi : ses menus déclenchent shops et fabrications — des
+  // fenêtres du groupe — et il cache les fenêtres natives qu'il remplace.
+  if (auto* npc_dialog_window = Bourgeon::Instance().npc_dialog_window())
+    npc_dialog_window->imgui_enabled_ = on;
+  // Et les descriptions (panneau technique item, panneau skill, livre) : elles
+  // s'ouvrent depuis l'inventaire, le grimoire et les fiches modernes, et la
+  // fenêtre de livre native s'afficherait SOUS l'overlay.
+  if (auto* item_desc = Bourgeon::Instance().item_desc()) {
+    item_desc->show_item_panel()  = on;
+    item_desc->show_skill_panel() = on;
+    item_desc->show_book_panel()  = on;
+  }
   // 🔴 LE MENU ÉCHAP ET SA TABLE DES RACCOURCIS NE SONT PAS DANS CE GROUPE, et ce
   // n'est pas un oubli : ils sont ON PAR DÉFAUT pour tout le monde (cf. leurs
   // descripteurs). Un menu enterré sous une fenêtre du jeu est un menu cassé, et
@@ -1502,6 +1532,10 @@ bool DrawModernInterfaceCheckbox(bool* enabled, const char* window_help) {
       "  • Navigation : elle remplace les QUATRE fenêtres natives (recherche,\n"
       "    itinéraire, choix de trace, aide) par un seul panneau\n"
       "  • Menu du clic droit sur une entité\n"
+      "  • Chatbox (canaux, filtres, liens riches)\n"
+      "  • Dialogue NPC (texte, menus, prompts)\n"
+      "  • Descriptions d'objet et de compétence (panneaux techniques)\n"
+      "  • Fenêtre de lecture des livres\n"
       "La case des autres sections reflète donc le même état.\n\n");
   help += window_help;
   ImGui::SameLine();
@@ -1647,6 +1681,14 @@ void MoonlightUi::PostLoadApply() {
   auto* character_sheet = Bourgeon::Instance().character_sheet();
   auto* cashshop       = Bourgeon::Instance().cashshop_window();
   auto* shop           = Bourgeon::Instance().npc_shop_window();
+  // Chatbox et dialogue NPC : entrés dans le groupe le 2026-08-18, ils ont eu
+  // leur case isolée — qui les avait activés seuls passe donc tout moderne.
+  // ⚠ Les DESCRIPTIONS n'entrent PAS dans ce OU : leurs anciennes clés avaient
+  // true pour DÉFAUT, les lire aurait basculé TOUT LE MONDE en moderne au
+  // premier chargement. Leurs clés ont été renommées (défaut false), et elles
+  // suivent le groupe sans jamais voter.
+  auto* chat           = Bourgeon::Instance().chat_window();
+  auto* npc_dialog     = Bourgeon::Instance().npc_dialog_window();
   SetModernInterface((inventory && inventory->imgui_enabled_) ||
                      (storage && storage->imgui_enabled_) ||
                      (skill_bar && skill_bar->enabled_) ||
@@ -1654,7 +1696,9 @@ void MoonlightUi::PostLoadApply() {
                      (rodex && rodex->imgui_enabled_) ||
                      (character_sheet && character_sheet->imgui_enabled_) ||
                      (cashshop && cashshop->imgui_enabled_) ||
-                     (shop && shop->imgui_enabled_));
+                     (shop && shop->imgui_enabled_) ||
+                     (chat && chat->imgui_enabled_) ||
+                     (npc_dialog && npc_dialog->imgui_enabled_));
 
   if (auto* status_icons = Bourgeon::Instance().status_icons()) status_icons->MarkDirty();
   if (auto* screen_fx = Bourgeon::Instance().screen_fx())

@@ -7193,12 +7193,14 @@ bool ChatWindow::DrawSettings() {
   // ses propres « Icônes d'objets » et son horodatage. Deux widgets de même
   // libellé dans une même fenêtre, c'est le même ID — ImGui le signale par une
   // fenêtre d'erreur rouge, et l'un des deux devient inutilisable.
-  changed |= ro::RoCheckbox(i18n::Tr("Chatbox ImGui###chatwnd_on"), &imgui_enabled_);
-  ImGui::SameLine();
-  HelpMarker(
-      i18n::Tr("Remplacement de la chatbox : mêmes canaux, mêmes filtres et même chemin "
-      "d'envoi que le client. La fenêtre native reste ouverte à côté tant que la "
-      "bascule complète n'est pas faite."));
+  // Plus de case d'activation : la chatbox suit le groupe « Interface moderne »
+  // depuis le 2026-08-18 (SetModernInterface l'écrit — ses lignes portent les
+  // liens riches qui ouvrent les fenêtres du groupe). Les réglages fins restent,
+  // grisés hors groupe pour qu'aucun bouton inerte ne se laisse tourner.
+  ImGui::TextDisabled(
+      "%s", i18n::Tr("Suivent l'interface moderne — l'interrupteur est en tête "
+                     "d'« Interface de jeu »."));
+  ImGui::BeginDisabled(!ModernInterfaceEnabled());
   changed |= ro::RoCheckbox(i18n::Tr("Ligne de saisie###chatwnd_input"), &input_bar_);
   // ⚠ Le verrouillage de la géométrie N'EST PLUS ICI : il y en a un par fenêtre,
   // et ce panneau ne sait pas de laquelle il parlerait. Il vit dans le menu
@@ -7442,5 +7444,6 @@ bool ChatWindow::DrawSettings() {
     // mais chaque onglet continuerait de proposer « Réafficher » pour du vide.
     for (Channel& channel : channels_) channel.clear_seq = 0;
   }
+  ImGui::EndDisabled();  // BeginDisabled(!ModernInterfaceEnabled()) d'entrée
   return changed;
 }

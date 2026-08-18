@@ -3814,22 +3814,16 @@ void ItemDescWindow::RenderBookWindow() {
 bool ItemDescWindow::DrawSettings() {
   bool changed = false;
   TextUnformatted(i18n::Tr("Descriptions modernes des items et skills."));
-
-  changed |= ro::RoCheckbox(i18n::Tr("Panneau technique des items"), &show_item_panel());
-  SameLine(); HelpMarker(
-      i18n::Tr("Affiche le panneau enrichi description d'un ITEM.\n"
-      "Clic droit item"));
-
-  changed |= ro::RoCheckbox(i18n::Tr("Panneau technique des skills"), &show_skill_panel());
-  SameLine(); HelpMarker(
-      i18n::Tr("Affiche le panneau enrichi à côté de la description d'un SKILL.\n"
-      "Clic droit dans le grimoire"));
-
-  changed |= ro::RoCheckbox(i18n::Tr("Fenêtre de livre moderne"), &show_book_panel());
-  SameLine(); HelpMarker(
-      i18n::Tr("Redessine la fenêtre de lecture des livres en ImGui (texte "
-      "sélectionnable, pages à la molette).\n"
-      "OFF : fenêtre native, qui s'affiche SOUS l'interface moderne."));
+  // Plus de cases d'activation ici : les trois panneaux (item, skill, livre)
+  // suivent le groupe « Interface moderne » depuis le 2026-08-18 — ils
+  // s'ouvrent depuis l'inventaire, le grimoire et les fiches modernes, un mixe
+  // n'aurait pas de sens. Restent les réglages FINS, grisés hors groupe pour
+  // qu'on voie qu'ils existent sans pouvoir tourner un bouton inerte.
+  const bool modern = ModernInterfaceEnabled();
+  ImGui::TextDisabled(
+      "%s", i18n::Tr("Suivent l'interface moderne — l'interrupteur est en tête "
+                     "d'« Interface de jeu »."));
+  ImGui::BeginDisabled(!modern);
 
   changed |= ro::RoCheckbox(i18n::Tr("Livres : ouvrir à la première page"),
                             &book_reset_page());
@@ -3852,6 +3846,7 @@ bool ItemDescWindow::DrawSettings() {
       SameLine(); HelpMarker(i18n::Tr("Décalage depuis le curseur (molette au survol pour ajuster)."));
     Unindent();
   }
+  ImGui::EndDisabled();
   return changed;
 }
 

@@ -1520,13 +1520,14 @@ void NpcDialogWindow::DrawInput() {
 // que l'appel et la décision de sauvegarder.
 bool NpcDialogWindow::DrawSettings() {
   bool changed = false;
-  changed |= ro::RoCheckbox(i18n::Tr("Dialogue NPC ImGui"), &imgui_enabled_);
-  ImGui::SameLine();
-  HelpMarker(
-      i18n::Tr("Remplace le dialogue / menu / prompt NPC natif par un overlay ImGui "
-      "(texte en couleur, menu à navigation clavier : flèches + Entrée, "
-      "touches 1-9). Opt-in ; la fenêtre native est cachée quand c'est actif."));
-
+  // Plus de case d'activation : le dialogue NPC suit le groupe « Interface
+  // moderne » depuis le 2026-08-18 (ses menus déclenchent shops et fabrications,
+  // des fenêtres du groupe). Le réglage fin reste, grisé hors groupe —
+  // imgui_enabled_ est écrit par SetModernInterface, donc le tester revient à
+  // tester le groupe.
+  ImGui::TextDisabled(
+      "%s", i18n::Tr("Suivent l'interface moderne — l'interrupteur est en tête "
+                     "d'« Interface de jeu »."));
   ImGui::BeginDisabled(!imgui_enabled_);
   changed |= ro::RoCheckbox(i18n::Tr("Barre de recherche du menu"), &menu_search_);
   ImGui::SameLine();

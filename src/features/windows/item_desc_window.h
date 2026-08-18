@@ -98,8 +98,8 @@ class ItemDescWindow : public Plugin {
   void OnRenderUI() override;   // dessine un panneau placeholder par fenêtre ouverte
   void OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
 
-  // Toggles runtime indépendants (persistés par MoonlightUi) : panneau item
-  // et/ou panneau skill peuvent être désactivés séparément.
+  // Écrits ENSEMBLE par SetModernInterface (groupe « Interface moderne ») ;
+  // les accesseurs restent pour la persistance et pour le groupe.
   bool& show_item_panel()  { return show_item_panel_; }
   bool& show_skill_panel() { return show_skill_panel_; }
   // Fenêtre de LIVRE reproduite en ImGui (sinon : fenêtre native, sous l'overlay).
@@ -300,9 +300,12 @@ class ItemDescWindow : public Plugin {
   // item_cell.h → item_desc_window.h → link_gesture.h → item_cell.h laisserait
   // `itemcell::ChatLink` non déclaré au moment où link_gesture.h s'en sert.
 
-  bool       show_item_panel_  = true;  // panneau technique pour les items
-  bool       show_skill_panel_ = true;  // panneau technique pour les skills
-  bool       show_book_panel_  = true;  // fenêtre de livre reproduite en ImGui
+  // 🔴 MEMBRES DU GROUPE « Interface moderne » depuis le 2026-08-18 : défaut
+  // false comme tout le groupe, et c'est SetModernInterface qui les écrit —
+  // ils n'ont plus de case individuelle.
+  bool       show_item_panel_  = false;  // panneau technique pour les items
+  bool       show_skill_panel_ = false;  // panneau technique pour les skills
+  bool       show_book_panel_  = false;  // fenêtre de livre reproduite en ImGui
   bool       book_reset_page_  = true;  // livre ouvert page 1 (sinon : signet natif)
   bool       cmp_show_equipped_ = true; // toggle : afficher la colonne « Équipé »
   bool       desc_spawn_at_cursor_ = true;  // ouverture : true = près de la souris,
