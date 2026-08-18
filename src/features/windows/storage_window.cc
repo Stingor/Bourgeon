@@ -2017,10 +2017,19 @@ void StorageWindow::OnRenderUI() {
     ImGui::TableSetupColumn(i18n::Tr("ID"), ImGuiTableColumnFlags_WidthFixed |
                                       col_opt(show_id_col_),
                             ro::Px(60.0f));
+    // L'en-tête triable réclame son libellé PLUS la flèche de tri (FontSize ×
+    // 0.65 + FramePadding.x, cf. TableHeader d'ImGui) et le CellPadding des
+    // deux bords ; l'ancienne largeur figée sert de plancher.
+    const ImGuiStyle& hdr_st = ImGui::GetStyle();
+    const float sort_arrow_w =
+        std::floor(ImGui::GetFontSize() * 0.65f + hdr_st.FramePadding.x);
+    const float slots_col_w =
+        std::max(ro::Px(24.0f), ImGui::CalcTextSize(i18n::Tr("Slots")).x +
+                                    sort_arrow_w + hdr_st.CellPadding.x * 2.0f);
     ImGui::TableSetupColumn(i18n::Tr("Slots"), ImGuiTableColumnFlags_WidthFixed |
                                          ImGuiTableColumnFlags_PreferSortDescending |
                                          col_opt(show_slots_col_),
-                            ro::Px(24.0f));
+                            slots_col_w);
     ImGui::TableSetupColumn(i18n::Tr("Qté"), ImGuiTableColumnFlags_WidthFixed |
                                        ImGuiTableColumnFlags_PreferSortDescending,
                             ro::Px(36.0f));
