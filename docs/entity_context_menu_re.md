@@ -83,8 +83,8 @@ traverse ce pipeline exactement comme un vrai clic.
 
 | cat | posée par | signifie |
 |---|---|---|
-| **0** | `CActorSprite_SubmitNameplateQuad` 0x00c588b0 | acteur ordinaire : **joueur, monstre, NPC-acteur** |
-| **1** | `NpcActor_SubmitNameplateQuad` 0x00d1da70 | **NPC de map** (le PNJ cliquable classique) |
+| **0** | `CActorSprite_SubmitNameplateQuad` 0x00c588b0 | acteur ordinaire : **joueur, monstre, NPC** — les vrais NPC de map (CNpc, vtable 0x010939D4) passent par ICI |
+| **1** | `CItem_SubmitNameplateQuad` 0x00d1da70 | 🔴 **OBJET AU SOL**, et rien d'autre (voir l'encadré 2026-08-19) |
 | **2** | `SkillUnitActor_SubmitNameplateQuad` 0x00db4d60 | **unité de compétence** (trap, warp posé, plante…) |
 | **3** | `CActorSprite…` si type d'acteur `+0x314 == 7` | 🔴 **le PET** (voir l'encadré) |
 | **4** | `CActorSprite…` si `Job_IsSpecialUnitId(job)` ou type ∈ {9,10,13,14} | **homoncule / mercenaire / élémentaire** (🔴 *pas* le pet) |
@@ -98,8 +98,42 @@ traverse ce pipeline exactement comme un vrai clic.
 pet du §5.4b l'exige justement (`+0x314 == 7`). ✅ Vérifié live : l'acteur du pet porte
 `+0x314 == 0x07`, et sa vtable (`CNpc`, `0x010939D4`) porte bien
 `CActorSprite_SubmitNameplateQuad` à vt+0x14 — donc c'est ce chemin-là, donc cat 3.
-Un objet au sol porte `objecttype == 2` et retombe dans le `else`, soit la cat **0**
-(⚠ non vérifié live). Détail complet : [`pet_re.md`](pet_re.md) §2.2.
+Détail complet : [`pet_re.md`](pet_re.md) §2.2.
+
+🔴 **Correction 2026-08-19 — la catégorie 1 est l'OBJET AU SOL, pas le NPC de map**
+(vérifié LIVE, x32dbg + Red Potion jetée ; l'hypothèse « objet au sol = cat 0 » du
+paragraphe précédent était fausse). Le producteur 0x00d1da70, baptisé ici
+`NpcActor_SubmitNameplateQuad` par erreur, est **`vt+0x14` de la classe `CItem`**
+(RTTI `.?AVCItem@@`, vtable **0x010932AC**) : il écrit `quad[8] = 1` en dur, ainsi que
+
+- `quad[6]` (AID) = **`CItem+0x17C`**, l'AID du flooritem (< 2 000 000) ;
+- `quad[7]` (job) = la **CONSTANTE `0x7D03`** (32003) — jamais un job réel.
+
+Les vrais NPC de map (CNpc, vtable 0x010939D4) portent `CActorSprite_SubmitNameplateQuad`
+à vt+0x14 et sortent donc en **cat 0**, classés ensuite au job / au prédicat
+hostile-ou-spécial. C'est cette confusion qui donnait aux drops le menu d'un NPC.
+
+**La classe `CItem`** (RE live 2026-08-19) :
+
+- les CItem vivent dans **leur propre liste** du gestionnaire d'acteurs :
+  `actorMgr+0x18` (liste MSVC à sentinelle, nœud `{next@0, prev@4, CItem*@8}`) —
+  ni dans celle de `ActorListFindByGid` (+0x10, NPC/mobs), ni seulement dans la
+  liste de rendu (+0x08, où ils figurent AUSSI) ;
+- champs, remplis par sa méthode d'init **0x00d1d390** (vérifiés live sur une
+  Red Potion : 501 / 1 / 501 / 4796) :
+  `+0x158` = `std::string` du nom reçu (l'ITID en décimal), `+0x170` = nameid
+  tronqué uint16 (`atoi` du nom), `+0x174` = octet **identifié**, `+0x178` =
+  **nameid complet**, `+0x17C` = **AID** ;
+- le nom de plaque vient de **`0x00d5afc0`** `__thiscall(g_Session 0x015FA3C0,
+  idstr, identified) → char*` — « identifié » compris : un équipement non
+  identifié rend son nom générique ;
+- le **clic gauche natif** sur un CItem (branche cat 1 de `CursorMgr_UpdateHover`,
+  @0x00c792d6, table 0x00c79590) n'agit que sur `LButtonState == 1` et hors
+  ciblage (`gm+0x408 == 0`) : il envoie `OnMsg(0, 0x12, 0, aid, 0…)` (13 args)
+  à l'acteur du JOUEUR — `[[gm+0xCC]+0x2C]`, vtable+0x8 — dont l'IA fait le
+  trajet puis émet CZ_ITEM_PICKUP. Le clic DROIT natif ne fait RIEN sur un CItem.
+  Les deux tables de saut par catégorie d'`UpdateHover` : survol 0x00C7948C
+  (cat 1 → 0x00c78757, curseur 9), clic 0x00C79590 (cat 1 → 0x00c792d6).
 
 ### Prédicats de classe employés partout
 

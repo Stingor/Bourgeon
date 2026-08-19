@@ -113,8 +113,8 @@ d'acteur) — **chacune n'insère qu'un rectangle**, aucun texte :
 
 | Adresse | Classe | id (quad[6]) | catégorie pick (quad[8]) |
 |---|---|---|---|
-| `0x00c588b0` | `CActorSprite_SubmitNameplateQuad` (joueur/mob) | `this+0x110` (AID) | 0 / 3 / 4 |
-| `0x00d1da70` | `NpcActor_SubmitNameplateQuad` | `this+0x17c` | 1 |
+| `0x00c588b0` | `CActorSprite_SubmitNameplateQuad` (joueur/mob/**NPC** — CNpc 0x010939D4 la porte aussi) | `this+0x110` (AID) | 0 / 3 / 4 |
+| `0x00d1da70` | `CItem_SubmitNameplateQuad` — 🔴 **OBJET AU SOL** (corrigé 2026-08-19 ; l'ancien nom `NpcActor_…` était faux) | `this+0x17c` (AID du flooritem) ; job = constante **0x7D03** | 1 |
 | `0x00db4d60` | `SkillUnitActor_SubmitNameplateQuad` | `this+0x410` | 2 |
 
 **Quad** = 10 floats : `[0..5]` rect écran (clampé à une taille mini
@@ -238,8 +238,12 @@ Overrides appliqués dans `GameMode_BuildActorNameLabel` :
   Couleur bleu clair `0xC3C3FF`. *Confirmé live* : entrée dict GID `0x068ebc57`
   = « `100Def-Mdef Large Boss` ».
 - **NPC** : nom fourni au spawn (`GameMode_OnRecv_ActorSpawn_Named` →
-  `CNameDict_SetName`). Pick via `NpcActor_SubmitNameplateQuad` (catégorie 1).
-  Certains NPC « cliquables » reçoivent un `Actor_AttachFloatingWidget`.
+  `CNameDict_SetName`). 🔴 Pick via `CActorSprite_SubmitNameplateQuad`
+  (catégorie **0**, corrigé 2026-08-19) — la catégorie 1 est celle des OBJETS AU
+  SOL. Certains NPC « cliquables » reçoivent un `Actor_AttachFloatingWidget`.
+- **Objets au sol** : classe `CItem` (vtable `0x010932AC`), leur propre liste à
+  `actorMgr+0x18` ; nameid complet à `CItem+0x178`, identifié à `+0x174`, AID à
+  `+0x17C`. Détail : `entity_context_menu_re.md` §3 (encadré 2026-08-19).
 - **Unités de skill / warp** : `SkillUnitActor_SubmitNameplateQuad` (catégorie 2).
 - **Joueurs masqués (WoE)** : le builder force le nom `"??????"`.
 
@@ -272,7 +276,7 @@ whisper/party/guilde/trade (via `MsgStringTable`).
 | `0x012135f0` | `g_NameplatePickQuadTree` (quadtree de picking) |
 | `0x00a79610` | `NameplateQueue_Insert` (= `TileQuadTree_Insert`) |
 | `0x00c588b0` | `CActorSprite_SubmitNameplateQuad` (joueur/mob, vtable+0x14) |
-| `0x00d1da70` | `NpcActor_SubmitNameplateQuad` |
+| `0x00d1da70` | `CItem_SubmitNameplateQuad` (ex-`NpcActor_…`, corrigé 2026-08-19) |
 | `0x00db4d60` | `SkillUnitActor_SubmitNameplateQuad` |
 | `GameMode+0x160` | dictionnaire `std::map<GID, CNameInfo>` (conteneur vtable `0xfd9188`) |
 | `0x005a0d30` | `CNameDict_GetOrCreateEntry` |

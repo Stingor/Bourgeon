@@ -214,11 +214,14 @@ class EntityContextMenu : public Plugin {
     kHomunculus,  // SON homoncule
     kMercenary,   // SON mercenaire
     kSkillUnit,   // une unité de compétence posée
-    // 🔴 Pas de `kGroundItem` : aucune catégorie de pick ne vaut « objet au
-    // sol ». La 3 est celle du PET (cf. `kPickPet` dans le .cc) ; un objet au
-    // sol porte `objecttype == 2` et sort en catégorie 0, donc classé au job
-    // comme n'importe quel acteur. La valeur existait pour recevoir la 3, et
-    // c'est précisément ce qui interceptait le menu du pet.
+    // 🔴 La catégorie 1 du quad de pick signifie « objet au sol », et rien
+    // d'autre (RE live 2026-08-19) : seul `CItem_SubmitNameplateQuad`
+    // (0x00d1da70) l'écrit — les vrais NPC passent par le producteur de
+    // CActorSprite (cat 0/3/4). Ce que la doc appelait
+    // « NpcActor_SubmitNameplateQuad » était en réalité la méthode de CItem :
+    // classé `kNpc`, un objet au sol recevait « Interagir » et l'outillage
+    // admin des NPC.
+    kGroundItem,  // un objet au sol (CItem)
     kOther,
   };
 
@@ -257,6 +260,18 @@ class EntityContextMenu : public Plugin {
     kNpcReloadFile, // recharger le fichier de script d'où vient ce NPC
     kNpcUnload,     // décharger ce NPC et ses duplicates (confirmation)
     kNpcMoveHere,   // le poser sur notre case
+    // ── Objet au sol ─────────────────────────────────────────────────────────
+    // Le natif n'a JAMAIS eu de menu ici (son clic droit ne fait rien sur un
+    // CItem) : tout est local. Les entrées à IDENTITÉ (description, lien,
+    // alootid, commandes @) sont grisées tant que l'objet n'est pas identifié —
+    // un équipement tombé d'un monstre ne dit pas encore ce qu'il est, et le
+    // menu n'a pas à le dire à sa place.
+    kPickupItem,    // rejoue le clic gauche natif : approche puis ramassage
+    kItemDesc,      // fenêtre de description (différée, comme un lien de chat)
+    kChatLinkItem,  // pose la balise <ITEML> dans la barre de chat
+    kAlootToggle,   // case « ramassage automatique » (liste @alootid du compte)
+    kCmdItemInfo,   // @iteminfo <id> par le pipeline complet du chat
+    kCmdWhoDrops,   // @whodrops <id> — idem
   };
 
   // Le nom de la famille de la cible, tel qu'il s'affiche en tête du menu — et
@@ -296,6 +311,10 @@ class EntityContextMenu : public Plugin {
   // Bascule le blocage de la cible courante, le dit dans le chat et demande la
   // sauvegarde des réglages.
   void ToggleNpcBlock(uint32_t gid);
+  // Bascule la présence de cet item dans la liste de ramassage automatique
+  // (@alootid). La liste vit dans MoonlightUi, qui la tient synchronisée avec le
+  // serveur — la même que l'overlay de description et le menu des liens.
+  void ToggleAloot(uint32_t nameid);
 
   // ── État du menu affiché ──────────────────────────────────────────────────
   bool     open_        = false;
@@ -317,6 +336,10 @@ class EntityContextMenu : public Plugin {
   bool     target_is_friend_ = false;  // déjà dans notre liste d'amis
   bool     target_chat_blocked_ = false;  // déjà dans notre liste d'ignorés
   uint32_t target_guild_id_  = 0;
+  // Objet au sol : relevés dans le CItem à l'ouverture (liste actorMgr+0x18).
+  // `0` = introuvable — l'objet a pu disparaître entre le pick et l'ouverture.
+  uint32_t target_item_id_        = 0;      // nameid (CItem+0x178)
+  bool     target_item_identified_ = false; // CItem+0x174
   std::vector<Item> items_;
 
   // ── Action en attente, rejouée par FlushPending ───────────────────────────

@@ -11,6 +11,7 @@
 #include "features/moonlight_ui/moonlight_ui.h"  // SaveSettings (case de blocage)
 #include "features/staff_gate.h"
 #include "features/systems/bourgeon_opcodes.h"  // CZ 0x0F25 (outillage NPC admin)
+#include "features/item_cell.h"     // ChatLink / DeferDescFromChatLink (objet au sol)
 #include "features/link_gesture.h"  // CanPostToChat / NaviKind (liens de chat)
 #include "features/windows/chat_window.h"  // TargetWhisper / OpenWhisperWindowByAid
 #include "features/windows/entity_inspector.h"
@@ -202,16 +203,56 @@ constexpr int kActor_Type = 0x314;
 // 🔴 La catégorie 3, c'est le PET — pas un objet au sol. Il n'existe que TROIS
 // producteurs de quads (les trois xrefs de `NameplateQueue_Insert` 0x00a79610),
 // et le seul qui écrive 3 est `CActorSprite_SubmitNameplateQuad` @0x00c58c48,
-// sous la condition `acteur+0x314 == 7`, c'est-à-dire `CLIF_BL_PET`. Un objet
-// au sol porte `objecttype == 2`, retombe dans le `else` et sort donc en
-// catégorie 0 : AUCUN quad ne vaut « objet au sol ». Le nom d'origine de cette
-// constante — corrigé dans docs le 2026-08-06, ici seulement maintenant — a
-// coûté tout le menu du pet, capté par un `return kGroundItem` posé AVANT que
-// le test du pet ne soit atteint.
-constexpr int kPickNpc        = 1;
+// sous la condition `acteur+0x314 == 7`, c'est-à-dire `CLIF_BL_PET`.
+//
+// 🔴 La catégorie 1, c'est l'OBJET AU SOL — pas le NPC de map (RE live
+// 2026-08-19, x32dbg sur une Red Potion jetée). Le producteur 0x00d1da70, que la
+// doc appelait « NpcActor_SubmitNameplateQuad », est en réalité `vt+0x14` de la
+// classe **CItem** (RTTI `.?AVCItem@@`, vtable 0x010932AC) — les vrais NPC
+// (CNpc, vtable 0x010939D4) portent le producteur de CActorSprite et sortent en
+// catégorie 0, classés ensuite au job. Le quad d'un CItem est sans ambiguïté :
+//   +0x18 (aid) = CItem+0x17C (l'AID du flooritem, alloué sous 2 000 000)
+//   +0x1c (job) = la CONSTANTE 0x7D03 — jamais un job réel
+//   +0x20 (cat) = 1
+// C'est cette confusion qui donnait aux objets au sol le menu d'un NPC,
+// « Interagir » et outillage admin compris.
+constexpr int kPickGroundItem = 1;
 constexpr int kPickSkillUnit  = 2;
 constexpr int kPickPet        = 3;
 constexpr int kPickSpecial    = 4;  // homoncule / mercenaire / élémentaire
+
+// ── L'objet au sol : la classe CItem (RE live 2026-08-19) ────────────────────
+// Les CItem vivent dans leur PROPRE liste du gestionnaire d'acteurs — pas celle
+// que parcourt `ActorListFindByGid` (+0x10, NPC/mobs), ni la liste de rendu
+// (+0x08, tout ce qui se dessine). Liste à sentinelle MSVC : nœud {next@0,
+// prev@4, CItem*@8}, tête = le pointeur stocké à mgr+0x18.
+// Champs du CItem, remplis par sa méthode d'init (0x00d1d390, vérifiés live sur
+// une Red Potion : 501 / 1 / 501 / 4796) :
+//   +0x170 = nameid tronqué en uint16 (le client fait `atoi` du nom reçu)
+//   +0x174 = octet « identifié » (un équipement tombé d'un monstre vaut 0)
+//   +0x178 = nameid COMPLET — celui qu'on lit
+//   +0x17c = AID du flooritem, celui que porte le quad de pick
+constexpr int kActorMgr_ItemList = 0x18;
+constexpr int kItem_NameId       = 0x178;
+constexpr int kItem_Identified   = 0x174;
+constexpr int kItem_Aid          = 0x17c;
+constexpr int kItemWalkGuard     = 256;  // MAX_FLOORITEM par carte est bien plus bas
+
+// L'acteur du JOUEUR, celui à qui le client adresse ses ordres de déplacement.
+// C'est `[[gm+0xCC]+0x2C]` — l'adresse exacte que lit la branche « clic gauche
+// sur la catégorie 1 » de `CursorMgr_UpdateHover` (@0x00c792e8).
+constexpr int kActorMgr_OwnActor = 0x2c;
+
+// « Va jusqu'à cette cible et agis » : le message 0x12 de l'IA de l'acteur
+// (vtable+0x8), avec l'AID en quatrième argument et tout le reste à zéro —
+// mot pour mot ce qu'émet le clic gauche natif sur un objet au sol
+// (@0x00c792d6). C'est l'IA qui fait MARCHER le personnage jusqu'à l'objet
+// avant d'envoyer CZ_ITEM_PICKUP : rejouer ce message rejoue tout le trajet.
+constexpr int kOwnActorMsg_GoAct = 0x12;
+
+// (Le nom AFFICHÉ vient d'itemcell::NameById — la DB de descriptions du client.
+// ⚠ Ne pas employer `ItemIdStr_ToResourceName` 0x00d5afc0, que l'init de CItem
+// appelle : elle rend le nom de RESSOURCE, celui du sprite, en coréen.)
 
 // §6.3 — codes d'action natifs (ceux qu'on rejoue).
 constexpr int kCodeDeal        = 4;
@@ -290,6 +331,11 @@ using GetEntryFn   = void*  (__thiscall*)(void*, uint32_t);
 using DispatchFn   = int    (__thiscall*)(void*, int, int, int, int, int);
 using ClickFn      = int    (__thiscall*)(void*, uint32_t, int);
 using FindActorFn  = void*  (__thiscall*)(void*, uint32_t);
+// L'OnMsg de l'IA d'un acteur (vtable+0x8) : treize entiers après `this`, comme
+// au site d'appel natif — le client pousse treize zéros et n'en relit que
+// quelques-uns selon le message.
+using ActorOnMsgFn = int    (__thiscall*)(void*, int, int, int, int, int, int,
+                                          int, int, int, int, int, int, int);
 using ShowMenuFn   = int    (__fastcall*)(void*, void*, int, int);
 // ⚠ Ordre des arguments : le natif est `__thiscall(this, blocked, quad)` — le
 // drapeau « une fenêtre native mange la souris » d'abord, le quad de pick
@@ -524,6 +570,53 @@ bool RunNativeActorClick(uint32_t aid) {
     void* game_mode = ReadGlobalPtr(rag::kActiveModePtr);
     if (!game_mode) return false;
     reinterpret_cast<ClickFn>(kPostActorClickAction)(game_mode, aid, 1);
+    return true;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
+// Le CItem que désigne cet AID, lu dans la liste des objets au sol. Rend false
+// si l'objet n'y est plus — quelqu'un a pu le ramasser entre le clic et cette
+// frame, et le menu doit alors le dire plutôt que d'afficher n'importe quoi.
+// ⚠ SEH ⇒ aucun objet C++ ici.
+bool ReadGroundItem(void* game_mode, uint32_t aid, uint32_t* nameid,
+                    bool* identified) {
+  __try {
+    const uint8_t* mgr = Read<const uint8_t*>(game_mode, kGm_ActorMgr);
+    if (!mgr) return false;
+    void* const* sentinel = Read<void* const*>(mgr, kActorMgr_ItemList);
+    if (!sentinel) return false;
+    void* const* node = reinterpret_cast<void* const*>(*sentinel);
+    for (int guard = 0; node && node != sentinel && guard < kItemWalkGuard;
+         ++guard) {
+      const uint8_t* item = reinterpret_cast<const uint8_t*>(node[2]);
+      if (item && Read<uint32_t>(item, kItem_Aid) == aid) {
+        *nameid     = Read<uint32_t>(item, kItem_NameId);
+        *identified = Read<uint8_t>(item, kItem_Identified) != 0;
+        return true;
+      }
+      node = reinterpret_cast<void* const*>(*node);
+    }
+    return false;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
+// Le clic gauche du client sur un objet au sol, à l'identique : « va jusqu'à
+// lui et agis » à l'IA de NOTRE acteur, qui gère l'approche puis émet
+// CZ_ITEM_PICKUP. Même garde que le natif : pas pendant un ciblage — le clic
+// appartiendrait alors au sort, pas au ramassage.
+bool RunNativePickupItem(uint32_t aid) {
+  __try {
+    void* game_mode = ReadGlobalPtr(rag::kActiveModePtr);
+    if (!game_mode) return false;
+    if (Read<int>(game_mode, kGm_TargetingMode) != 0) return false;
+    const uint8_t* mgr = Read<const uint8_t*>(game_mode, kGm_ActorMgr);
+    if (!mgr) return false;
+    void* own = Read<void*>(mgr, kActorMgr_OwnActor);
+    if (!own) return false;
+    void** vtable = *reinterpret_cast<void***>(own);
+    reinterpret_cast<ActorOnMsgFn>(vtable[2])(own, 0, kOwnActorMsg_GoAct, 0,
+                                              static_cast<int>(aid), 0, 0, 0, 0,
+                                              0, 0, 0, 0, 0);
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
@@ -809,7 +902,23 @@ bool EntityContextMenu::OnNativeContextMenu(void* game_mode, const int* quad,
   target_job_  = job;
   target_cat_  = cat;
   kind_        = kind;
-  target_name_ = EntityName(game_mode, aid);
+  target_item_id_         = 0;
+  target_item_identified_ = false;
+  if (kind == Kind::kGroundItem) {
+    // 🔴 Pas de EntityName ici : le dictionnaire des plaques ne connaît que des
+    // acteurs, et un GID inconnu déclencherait une DEMANDE au serveur pour un
+    // flooritem. Le nom vient de la DB de descriptions (itemcell::NameById,
+    // UTF-8, jamais nul) — mais SEULEMENT si l'objet est identifié : c'est le
+    // VRAI nom, et le jeu cache encore celui d'un équipement tombé non
+    // identifié. En-tête anonyme sinon (« Objet au sol (aid) »), comme pour
+    // toute entité sans nom.
+    ReadGroundItem(game_mode, aid, &target_item_id_, &target_item_identified_);
+    target_name_.clear();
+    if (target_item_id_ != 0 && target_item_identified_)
+      target_name_ = itemcell::NameById(target_item_id_);
+  } else {
+    target_name_ = EntityName(game_mode, aid);
+  }
 
   // Ce que la cible est DÉJÀ : le menu grise ce qui n'aurait aucun sens plutôt
   // que de le retirer (le natif, lui, retirait l'entrée — le joueur ne pouvait
@@ -846,7 +955,11 @@ EntityContextMenu::Kind EntityContextMenu::ClassifyTarget(void* game_mode,
   // scripté sous forme de joueur porte un job de joueur — le cas qui a servi de
   // référence pendant la RE).
   if (category == kPickSkillUnit) return Kind::kSkillUnit;
-  if (category == kPickNpc) return Kind::kNpc;
+  // 🔴 Seul CItem émet la catégorie 1 (cf. le bloc des catégories) : c'est un
+  // objet au sol, PAS un NPC — l'ancienne lecture donnait aux drops le menu
+  // d'un NPC, « Interagir » et outillage admin compris. Les vrais NPC arrivent
+  // en catégorie 0 et se classent plus bas, au job ou au prédicat natif.
+  if (category == kPickGroundItem) return Kind::kGroundItem;
 
   // Ses propres compagnons, avant tout test de job : ce sont les seuls cas où le
   // natif ouvrait autre chose qu'un menu de joueur.
@@ -987,6 +1100,15 @@ void EntityContextMenu::ToggleNpcBlock(uint32_t gid) {
   }
   SayToChat(line);
   if (auto* ui = Bourgeon::Instance().moonlight_ui()) ui->SaveSettings();
+}
+
+void EntityContextMenu::ToggleAloot(uint32_t nameid) {
+  auto* mu = Bourgeon::Instance().moonlight_ui();
+  if (!mu || nameid == 0) return;
+  // Aucune ligne de chat ici : MoonlightUi notifie le serveur, dont la réponse
+  // (ajouté / retiré / liste pleine) revient déjà par le canal des atcommands.
+  if (mu->IsAlootId(nameid)) mu->RemoveAlootId(nameid);
+  else                       mu->AddAlootId(nameid);
 }
 
 // ── Construction des entrées ─────────────────────────────────────────────────
@@ -1148,6 +1270,57 @@ void EntityContextMenu::BuildItems() {
       }
       break;
     }
+    case Kind::kGroundItem: {
+      // Le natif n'a JAMAIS eu de menu ici : son clic droit sur un CItem ne
+      // fait rien du tout. Tout est donc local — et calqué sur le menu d'un
+      // LIEN d'item (table des drops de la fiche de monstre), qui est la même
+      // question posée ailleurs : « cet objet, qu'est-ce que j'en fais ? ».
+      add(i18n::Tr("Ramasser"), 0, Local::kPickupItem, false, false,
+          i18n::Tr("Comme le clic gauche : le personnage s'approche et ramasse. "
+                   "Le serveur revalide la distance et le droit de butin."));
+      // 🔴 Les entrées qui RÉVÈLENT l'identité sont grisées quand elle n'est
+      // pas encore connue : un équipement tombé d'un monstre arrive NON
+      // IDENTIFIÉ, sa plaque montre le nom générique, et le menu n'a pas à
+      // trahir ce que le jeu cache encore. Grisées et non retirées — la règle
+      // de ce menu : dire pourquoi plutôt que faire disparaître.
+      const bool known = target_item_id_ != 0 && target_item_identified_;
+      const char* why_hidden =
+          (target_item_id_ == 0)
+              ? i18n::Tr("Objet illisible : il vient sans doute d'être ramassé.")
+              : i18n::Tr("Objet non identifié : le jeu ne dit pas encore ce que c'est.");
+      add(i18n::Tr("Description"), 0, Local::kItemDesc);
+      if (!known) disable_last(why_hidden);
+      if (links::CanPostToChat()) {
+        add(i18n::Tr("Linker cet objet"), 0, Local::kChatLinkItem);
+        if (!known) disable_last(why_hidden);
+      }
+      // Ramassage automatique : la MÊME liste que l'overlay de description et
+      // le menu des liens (elle vit dans MoonlightUi, synchronisée serveur) —
+      // surtout pas une seconde copie qui divergerait.
+      if (Bourgeon::Instance().moonlight_ui()) {
+        Item aloot;
+        aloot.label     = i18n::Tr("Ramassage automatique###ctxmenu_aloot");
+        aloot.local     = Local::kAlootToggle;
+        aloot.toggle    = true;
+        aloot.checked   = known && Bourgeon::Instance().moonlight_ui()->IsAlootId(
+                                       target_item_id_);
+        aloot.separator = true;
+        aloot.disabled  = !known;
+        aloot.tip = known
+                        ? i18n::Tr("La liste @alootid du compte — la même que dans la "
+                                   "description et les liens : ces objets vont droit "
+                                   "dans l'inventaire quand ils tombent pour vous.")
+                        : why_hidden;
+        items_.push_back(std::move(aloot));
+      }
+      // Commandes serveur, par le pipeline COMPLET du chat (mêmes règles qu'une
+      // ligne tapée) : leur réponse revient dans le chat.
+      add("@iteminfo", 0, Local::kCmdItemInfo, true);
+      if (!known) disable_last(why_hidden);
+      add("@whodrops", 0, Local::kCmdWhoDrops);
+      if (!known) disable_last(why_hidden);
+      break;
+    }
     case Kind::kPet:
       add(i18n::Tr("Statut du pet"), kCodePetStatus);
       add(i18n::Tr("Nourrir"), kCodePetFeed);
@@ -1265,6 +1438,7 @@ const char* EntityContextMenu::KindLabel(Kind kind) {
     case Kind::kHomunculus: return "Homoncule";
     case Kind::kMercenary:  return "Mercenaire";
     case Kind::kSkillUnit:  return i18n::Tr("Unité");
+    case Kind::kGroundItem: return i18n::Tr("Objet au sol");
     default:                return i18n::Tr("Entité");
   }
 }
@@ -1329,15 +1503,29 @@ void EntityContextMenu::DrawPopup() {
       if (item.separator && i != 0) ImGui::Separator();
       // Une case à cocher bascule un ÉTAT : elle ne se « choisit » pas et ne
       // ferme donc pas le menu — on doit pouvoir cocher, puis parler au NPC dans
-      // la foulée. Rien n'est différé ici : ToggleNpcBlock ne fait qu'écrire une
-      // ligne de chat, la seule commande native sans danger en pleine frame.
+      // la foulée. Rien n'est différé ici : ToggleNpcBlock n'écrit qu'une ligne
+      // de chat (la seule commande native sans danger en pleine frame) et
+      // ToggleAloot un paquet Bourgeon — une écriture socket, comme le fait déjà
+      // le menu des liens d'item au même endroit d'une frame.
       if (item.toggle) {
         bool checked = item.checked;
-        if (ro::RoCheckbox(item.label.c_str(), &checked)) {
-          ToggleNpcBlock(target_aid_);
-          items_[i].checked = checked;
+        if (item.disabled) ImGui::BeginDisabled();
+        const bool flipped = ro::RoCheckbox(item.label.c_str(), &checked);
+        if (item.disabled) ImGui::EndDisabled();
+        if (flipped) {
+          if (item.local == Local::kAlootToggle) {
+            ToggleAloot(target_item_id_);
+            // L'état vrai est celui de la LISTE, pas celui de la case : l'ajout
+            // peut être refusé (liste pleine), et la case doit alors retomber.
+            if (auto* mu = Bourgeon::Instance().moonlight_ui())
+              items_[i].checked = mu->IsAlootId(target_item_id_);
+          } else {
+            ToggleNpcBlock(target_aid_);
+            items_[i].checked = checked;
+          }
         }
-        if (!item.tip.empty() && ImGui::IsItemHovered())
+        if (!item.tip.empty() &&
+            ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
           ImGui::SetTooltip("%s", item.tip.c_str());
         continue;
       }
@@ -1394,7 +1582,10 @@ void EntityContextMenu::Choose(const Item& item) {
   pending_aid_   = target_aid_;
   pending_code_  = item.code;
   pending_local_ = item.local;
-  pending_arg_   = target_job_;
+  // L'argument accompagne l'AID : le job pour la fiche de monstre et les liens,
+  // le NAMEID pour un objet au sol — son « job » de quad est la sentinelle
+  // 0x7D03, qui ne désigne rien.
+  pending_arg_   = (kind_ == Kind::kGroundItem) ? target_item_id_ : target_job_;
 }
 
 // ── Confirmation ─────────────────────────────────────────────────────────────
@@ -1554,6 +1745,45 @@ void EntityContextMenu::FlushPending() {
     case Local::kNpcMoveHere:
       SendNpcAdmin(aid, kNpcAdminMoveToMe);
       return;
+    // ── Objet au sol ──────────────────────────────────────────────────────────
+    case Local::kPickupItem:
+      if (!RunNativePickupItem(aid))
+        LogDiag("[EntityContextMenu] ramassage refuse (objet {})", aid);
+      return;
+    case Local::kItemDesc: {
+      // Le même chemin qu'un lien de chat : ARMÉ ici, joué par
+      // itemcell::FlushDeferredDesc — qui tourne APRÈS nous dans le même
+      // OnProcessInput (bourgeon.cc), donc au relâchement du clic, comme les
+      // viewers. L'id de BASE seulement : un objet au sol n'a ni refine ni
+      // cartes à montrer — le serveur ne les transmet pas dans le spawn.
+      itemcell::ChatLink link;
+      link.id = arg;
+      const ImVec2 mouse = ImGui::GetIO().MousePos;
+      itemcell::DeferDescFromChatLink(link, static_cast<int>(mouse.x),
+                                      static_cast<int>(mouse.y));
+      return;
+    }
+    case Local::kChatLinkItem: {
+      // La balise est POSÉE dans la barre, jamais envoyée : le joueur relit et
+      // valide — même règle que « Linker ce monstre ».
+      itemcell::ChatLink link;
+      link.id = arg;
+      if (auto* chat = Bourgeon::Instance().chat_window())
+        chat->AppendItemLinkFromLink(link);
+      return;
+    }
+    case Local::kCmdItemInfo:
+    case Local::kCmdWhoDrops: {
+      // Par le pipeline COMPLET du client (mêmes règles qu'une ligne tapée) :
+      // la réponse du serveur revient dans le chat.
+      char cmd[48];
+      std::snprintf(cmd, sizeof(cmd), "%s %u",
+                    local == Local::kCmdItemInfo ? "@iteminfo" : "@whodrops",
+                    arg);
+      if (auto* chat = Bourgeon::Instance().chat_window())
+        chat->QueueCommand(cmd);
+      return;
+    }
     // ── Les deux chuchotements ────────────────────────────────────────────────
     // 🔴 Pas de `return` quand le chat moderne refuse : on TOMBE sur le code natif
     // 20, que ces deux entrées portent justement pour ça. Sans lui, « Chuchoter »
@@ -1574,6 +1804,11 @@ void EntityContextMenu::FlushPending() {
             chat->OpenWhisperWindowByAid(ro::Utf8ToWire(target_name_.c_str()), aid))
           return;
       break;
+    case Local::kAlootToggle:
+      // Une CASE, jouée dans DrawPopup — jamais empilée. `return` et non
+      // `break` : la sortie du switch rejoue un code NATIF, et celui d'une
+      // case vaut 0.
+      return;
     case Local::kNone:
       break;
   }
@@ -1594,8 +1829,8 @@ bool EntityContextMenu::DrawSettings() {
   ImGui::SameLine();
   HelpMarker(
       i18n::Tr("Le client n'ouvrait de menu que sur un joueur, son pet, son homoncule ou "
-      "son mercenaire. Coché, le menu s'ouvre aussi sur les monstres et les "
-      "NPC."));
+      "son mercenaire. Coché, le menu s'ouvre aussi sur les monstres, les NPC "
+      "et les objets au sol (ramasser, description, ramassage automatique)."));
 
   // Sous-réglage : sans « toutes les entités », le menu ne s'ouvre de toute
   // façon jamais sur soi. Grisée plutôt que masquée — une case qui disparaît ne
