@@ -1072,6 +1072,24 @@ celui de `CNavigation_GetResult` / `CNavigation_Search` / `SelectResult` /
 passe donc **`full = 0`**, ce qui arrête le guidage sans effacer la recherche du
 joueur sous ses yeux.
 
+### 10.6 🔴 Une destination sur la carte courante n'a AUCUNE étape
+
+Piège coûteux, rencontré en jeu : les « étapes » d'un itinéraire sont les
+**liens à franchir entre cartes**. Quand la cible est sur la carte où l'on se
+trouve déjà, il n'y en a aucun — `GetStepCount` rend **0** alors que
+`CNavigation_RefreshOnMapEnter` a parfaitement calculé le chemin en cellules et
+allumé `+0x117C`.
+
+Conclure à l'échec sur « pas d'étapes » affichait donc un bandeau
+« aucun chemin » **par-dessus une trace au sol et un tracé de minimap bien
+vivants**. Le seul témoin fiable est l'ÉTAT DU MOTEUR : `+0x117C`, l'état de
+suivi `+0x125C`, et le nombre d'étapes — les trois, pas un seul.
+
+⚠ Et **pas** le nom de carte visé (`+0x110C`) : un échec ne le remet pas à
+zéro, donc une cible périmée suffirait à masquer le bandeau. Pour la même
+raison, on éteint `+0x117C` **avant** de lancer une tentative : il ne témoigne
+alors que de celle-là.
+
 ### 10.6 Ce que Bourgeon en fait
 
 `NavigationWindow::RouteCellPath(out, max)` recopie le chemin **décimé aux

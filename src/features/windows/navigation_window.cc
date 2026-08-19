@@ -608,6 +608,15 @@ bool SafeStopGuidance() {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
+// Le drapeau de trace, remis à zéro. Le moteur le rallume lui-même quand il a
+// calculé un chemin : l'éteindre avant une tentative en fait le témoin de cette
+// tentative-là, et de rien d'autre.
+void SafeClearTrailFlag() {
+  __try {
+    *reinterpret_cast<uint8_t*>(Nav() + kOffTrailActive) = 0;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
 // Y a-t-il une trace au sol posée ? Sonde minimale — le drapeau du moteur et un
 // vecteur non vide — pour ne pas parcourir tout le chemin à chaque frame juste
 // pour savoir s'il existe.
@@ -957,6 +966,12 @@ void NavigationWindow::PumpIntents() {
 
   if (go_.armed) {
     const char flags = kAllRouteOptions;
+    // 🔴 Ardoise propre AVANT l'appel. Le moteur remet lui-même `+0x117C` à 0 en
+    // entrant dans son recalcul — mais seulement s'il y arrive : un refus en
+    // amont (cellule impraticable, `BuildRoute` rend -97) laisse la trace de
+    // l'itinéraire PRÉCÉDENT allumée, et elle témoignerait alors pour une
+    // tentative qui n'a jamais eu lieu.
+    SafeClearTrailFlag();
     int verdict =
         SafeGoTo(go_.map.c_str(), go_.type, flags, go_.x, go_.y, go_.mob_id);
     // Repli : viser une cellule, c'est parier qu'elle est praticable. Les
@@ -964,24 +979,44 @@ void NavigationWindow::PumpIntents() {
     // bloquée (décor, comptoir, PNJ posé sur un mur). Plutôt que de renvoyer le
     // joueur à un « aucun chemin » mensonger — la carte, elle, est joignable —
     // on retombe sur la destination large, ce que le natif ne fait jamais.
-    if (verdict == 0 && go_.type == kGoWithCoords)
-      verdict = SafeGoTo(go_.map.c_str(), kGoMapOnly, flags, 0, 0, 0);
+    // ⚠ Les DEUX témoins doivent dire non. Le verdict seul ne suffit pas :
+    // il vaut 0 pour une destination sur la carte courante, pourtant réussie —
+    // élargir alors à la carte entière détruirait le guidage précis qu'on vient
+    // d'obtenir vers le PNJ.
+    if (verdict == 0 && !SafeTrailActive() && go_.type == kGoWithCoords)
+      SafeGoTo(go_.map.c_str(), kGoMapOnly, flags, 0, 0, 0);
     // On garde la demande telle quelle : c'est elle qu'on rejouera si le joueur
     // accepte d'élargir les moyens de transport. La rejouer à l'identique évite
     // de redemander au joueur de resélectionner sa cible.
     last_go_ = go_;
     go_ = GoIntent{};
     RefreshRoute();
-    // 🔴 Le verdict de la native NE SUFFIT PAS. Elle peut rendre 1 — la cible a
-    // bien été posée — sans qu'aucun itinéraire ne soit publié, et le joueur
-    // restait alors devant un « Aucun itinéraire en cours » qui ne lui apprenait
-    // rien. On tranche donc sur le RÉSULTAT observable : pas d'étapes et pas de
-    // guidage en cours, c'est un échec, quoi qu'en dise le retour.
-    // Le cas est loin d'être rare : hors des cartes reliées à pied, la seule
-    // liaison est le Warp Agent, déclaré en type 204 — que le pathfinder REFUSE
-    // tant que « services Kafra » est éteint. C'est précisément là que le
-    // bandeau doit proposer de réessayer.
-    no_route_ = verdict == 0 || (route_.empty() && !following_);
+    // 🔴🔴 UNE DESTINATION SUR LA CARTE COURANTE N'A AUCUNE ÉTAPE, ET CE N'EST
+    // PAS UN ÉCHEC. Les étapes d'un itinéraire sont les LIENS à franchir entre
+    // cartes ; quand il n'y en a pas à franchir, `GetStepCount` rend 0 — alors
+    // que `CNavigation_RefreshOnMapEnter` a parfaitement calculé le chemin en
+    // cellules et allumé sa trace. Le bandeau rouge s'affichait donc par-dessus
+    // une trace au sol et un tracé de minimap bien vivants : le bug rapporté sur
+    // gonryun, un PNJ de la carte où l'on se trouve déjà.
+    //
+    // Le verdict de la native ne rattrape rien : on savait déjà qu'elle peut
+    // rendre 1 sans publier d'itinéraire, et rien ne dit qu'elle rende 1 ici.
+    //
+    // On tranche donc sur l'ÉTAT DU MOTEUR, et sur lui seul — trois lectures
+    // fraîches, aucune dérivée de nos miroirs :
+    //  · le drapeau `+0x117C`, celui-là même qui autorise le rendu au sol ; il
+    //    vient d'être remis à zéro juste avant l'appel, il ne témoigne donc que
+    //    de CETTE tentative ;
+    //  · l'état de suivi ;
+    //  · le nombre d'étapes.
+    // 🔴 Surtout PAS `route_` : `RefreshRoute` y ajoute le nom de la carte visée
+    // lu en `+0x110C`, qu'un échec ne remet pas à zéro — une cible périmée
+    // suffirait à masquer le bandeau.
+    //
+    // Le vrai échec reste fréquent et mérite son bandeau : hors des cartes
+    // reliées à pied, la seule liaison est le Warp Agent, déclaré en type 204 —
+    // que le pathfinder REFUSE tant que « services Kafra » est éteint.
+    no_route_ = !SafeTrailActive() && !following_ && SafeStepCount() == 0;
   }
 
 }
@@ -1004,6 +1039,12 @@ void NavigationWindow::ReadOptions() {
   // retombait silencieusement à zéro entre deux recherches.
   // Elles sont persistées dans les réglages et reposées dans le moteur à
   // l'ouverture du panneau.
+  //
+  // ⚠ Cette relecture est un simple accès mémoire, JAMAIS un appel natif :
+  // `Toggle` peut venir d'une frame ImGui. La vérité sur `following_` est posée
+  // par `RefreshRoute`, qui tourne à chaque tick sans attendre l'ouverture du
+  // panneau ; on la relit ici pour que l'ouverture n'affiche pas un tick de
+  // retard.
   int32_t follow = 0;
   if (SafeReadInt(kOffFollowState, &follow)) following_ = follow != 0;
 }
@@ -1065,6 +1106,12 @@ void NavigationWindow::RefreshResults() {
 }
 
 void NavigationWindow::RefreshRoute() {
+  // L'état de suivi d'abord, et ICI plutôt que dans `ReadOptions` : celui-ci ne
+  // tourne que panneau ouvert, si bien que `following_` avait un tick de retard
+  // au moment où `PumpIntents` en tirait un verdict.
+  int32_t follow = 0;
+  following_ = SafeReadInt(kOffFollowState, &follow) && follow != 0;
+
   route_.clear();
   const int steps = SafeStepCount();
   for (int i = 0; i < steps && i < 64; ++i) {
@@ -1736,7 +1783,7 @@ void NavigationWindow::DrawRoute() {
     // se termine sur la carte courante n'a aucune étape à énumérer, et c'est le
     // cas ordinaire. Le bouton d'arrêt vivait dans l'autre branche — il était
     // donc introuvable exactement quand on en avait le plus besoin.
-    ImGui::TextDisabled("%s", following_
+    ImGui::TextDisabled("%s", IsGuidanceActive()
                                   ? i18n::Tr("Guidage en cours, sans étape à afficher.")
                                   : i18n::Tr("Aucun itinéraire en cours."));
   } else {
