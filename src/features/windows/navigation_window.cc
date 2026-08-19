@@ -1095,6 +1095,14 @@ void NavigationWindow::RefreshResults() {
       entry.name = ToUtf8(label);
       entry.map  = ToUtf8(map_name);
       if (entry.name.empty()) entry.name = entry.map;
+      // 🔴 Le bornage par carte se fait ICI, sur NOTRE miroir, jamais sur le
+      // moteur : son vecteur de résultats est partagé avec la fenêtre native, et
+      // le tronquer lui ferait afficher notre liste. Insensible à la casse — le
+      // nom vient du graphe d'un côté et du global du client de l'autre, et rien
+      // ne garantit qu'ils s'accordent dessus.
+      if (!search_map_.empty() &&
+          _stricmp(entry.map.c_str(), search_map_.c_str()) != 0)
+        continue;
       if (group.entries.empty()) {
         group.name = entry.name;
         group.type = entry.type;
@@ -1207,6 +1215,11 @@ void NavigationWindow::OnRenderUI() {
     // attend le clic sur la loupe ou la touche Entrée.
     pending_term_ = input_;
     dirty_        = !pending_term_.empty();
+    // 🔴 Taper LIBÈRE le bornage. Il vient d'un lien de chat, donc d'une question
+    // précise (« ce Warp Agent-là ») ; dès que le joueur écrit sa propre
+    // recherche, la question est la sienne, et un bornage hérité lui cacherait
+    // des résultats sans lui dire pourquoi.
+    search_map_.clear();
     if (pending_term_.empty()) groups_.clear();
   }
 
@@ -1290,6 +1303,27 @@ void NavigationWindow::OnRenderUI() {
       ImGui::SetTooltip("%s", i18n::Tr("Les PNJ et les monstres déclarés sur cette carte."));
   }
 
+  // ── Le BORNAGE, quand un lien de chat en a posé un ─────────────────────
+  // 🔴 Une liste tronquée sans explication est un bug aux yeux du joueur : il
+  // cherche « Warp Agent », en voit un seul, et croit que les autres n'existent
+  // pas. On DIT donc pourquoi, et on offre de lever le bornage sur place — c'est
+  // aussi la seule façon de passer de « celui-ci » à « tous les autres ».
+  if (!search_map_.empty()) {
+    ImGui::TextDisabled("%s", i18n::Tr("Limité à cette carte :"));
+    ImGui::SameLine();
+    ImGui::TextUnformatted(MapLabel(search_map_.c_str()).c_str());
+    ImGui::SameLine();
+    if (ro::RoButton(i18n::Tr("Partout"))) {
+      search_map_.clear();
+      // Il faut REJOUER la recherche : le bornage est appliqué à la recopie du
+      // moteur, et rien ne recopie tant qu'on ne le lui demande pas.
+      dirty_ = !pending_term_.empty();
+    }
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("%s",
+                        i18n::Tr("Chercher ce nom sur toutes les cartes."));
+  }
+
   ImGui::Separator();
 
   // ── Deux volets : la liste à gauche, le détail à droite ────────────────────
@@ -1312,7 +1346,8 @@ void NavigationWindow::OnRenderUI() {
   ro::EndRoWindow();
 }
 
-void NavigationWindow::OpenSearch(const char* term_utf8, bool monsters_only) {
+void NavigationWindow::OpenSearch(const char* term_utf8, bool monsters_only,
+                                  const char* map_filter) {
   if (!term_utf8 || !*term_utf8) return;
   // ⚠ Le placement par defaut n'est redemande QUE si la fenetre etait fermee.
   // Plusieurs boutons du panneau appellent cette methode : la reposer a chaque
@@ -1323,6 +1358,7 @@ void NavigationWindow::OpenSearch(const char* term_utf8, bool monsters_only) {
   pending_term_ = input_;
   dirty_        = true;   // consommée par PumpIntents, hors frame
   filter_       = monsters_only ? kShowMob : kShowAll;
+  search_map_   = (map_filter != nullptr) ? map_filter : "";
   // La sélection d'avant appartient aux résultats d'avant.
   sel_group_ = -1;
   sel_entry_ = -1;
@@ -1358,7 +1394,10 @@ void NavigationWindow::ShowMapContents(const char* map_name) {
   dirty_ = false;
   pending_term_.clear();
   input_[0] = '\0';
-  filter_    = kShowAll;
+  filter_     = kShowAll;
+  // Le contenu d'une carte n'est pas une recherche bornée : on construit la
+  // liste nous-mêmes, `RefreshResults` ne repassera pas dessus.
+  search_map_.clear();
   sel_group_ = -1;
   sel_entry_ = -1;
   groups_.clear();
@@ -1489,7 +1528,11 @@ links::Target NavigationWindow::TargetOf(const Entry& entry) const {
     // peut en partager, c'est OÙ LE CHERCHER. D'où une recherche et non un lieu
     // — ses coordonnées ne valent que pour CET exemplaire, et beaucoup de PNJ
     // sont posés en plusieurs endroits sous le même nom.
-    return links::FromNaviSearch(links::NaviKind::kNpc, entry.name.c_str());
+    // 🔴 Avec SA carte : le nom seul désigne un RÔLE, pas un exemplaire. Un
+    // « Warp Agent » partagé sans contexte renvoie les trente-huit du serveur,
+    // et le lecteur ne peut pas deviner lequel on lui montrait.
+    return links::FromNaviSearch(links::NaviKind::kNpc, entry.name.c_str(),
+                                 entry.map.c_str());
   }
   return links::FromNavi(entry.map.c_str(), 0, 0);
 }

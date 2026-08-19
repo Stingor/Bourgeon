@@ -116,6 +116,18 @@ struct Target {
   // interne d'une carte n'y trouverait rien.
   std::string navi_term;
   uint8_t     navi_kind = 0;  // cf. links::NaviKind
+  //
+  // 🔴 Le CONTEXTE de la recherche : la carte où l'auteur du lien a vu ce qu'il
+  // partage. Il réutilise `navi_map` ci-dessus — même nature, même règle : nom
+  // INTERNE, jamais le nom affiché.
+  //
+  // Sans lui, « Linker ce NPC » sur un Warp Agent renvoyait les TRENTE-HUIT
+  // Warp Agent du serveur, et le lecteur devait deviner lequel était le bon : un
+  // nom de PNJ n'est pas une identité, c'est un RÔLE, dupliqué partout.
+  //
+  // Vide = sans contexte, la recherche porte sur tout le monde. C'est le cas
+  // normal d'un MONSTRE (on veut justement tous ses lieux d'apparition) et d'une
+  // CARTE (elle est déjà son propre lieu).
 
   // kStyle — le CODE en entier, et le pseudo de son auteur.
   //
@@ -173,11 +185,17 @@ enum class NaviKind : uint8_t { kMap = 0, kNpc, kMob };
 // ⚠ Le terme voyage tel quel, y compris ses espaces : c'est un nom de créature
 // ou de lieu, pas un identifiant. Seuls les chevrons sont refusés — ils
 // couperaient la balise en deux à la relecture.
-Target FromNaviSearch(NaviKind kind, const char* term_utf8);
+// `map_utf8` est le CONTEXTE (nom interne de carte), pour les PNJ dont le nom
+// est porté par plusieurs exemplaires éparpillés. Nul ou vide = sans contexte.
+Target FromNaviSearch(NaviKind kind, const char* term_utf8,
+                      const char* map_utf8 = nullptr);
 
 // Le libellé VISIBLE d'une recherche, composé localement (même règle que
 // `SettingLabel` : un « [Carte: ] » anglophone n'impose rien à son lecteur).
-std::string NaviSearchLabel(NaviKind kind, const char* term_utf8);
+// Avec un contexte de carte, il le NOMME : « [PNJ: Warp Agent (Gonryun)] ».
+// C'est ce qui distingue deux liens homonymes dans le fil du chat.
+std::string NaviSearchLabel(NaviKind kind, const char* term_utf8,
+                            const char* map_utf8 = nullptr);
 
 // Le libellé VISIBLE d'un lien de réglage : « [Réglage: Objet obtenu] ». Composé
 // LOCALEMENT, jamais transmis tout fait — chacun le lit dans SA langue, et le

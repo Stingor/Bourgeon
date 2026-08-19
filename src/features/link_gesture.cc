@@ -359,19 +359,30 @@ static std::string NaviSearchTermShown(NaviKind kind, const char* term_utf8) {
   return NavigationWindow::MapLabel(term_utf8);
 }
 
-std::string NaviSearchLabel(NaviKind kind, const char* term_utf8) {
+std::string NaviSearchLabel(NaviKind kind, const char* term_utf8,
+                            const char* map_utf8) {
   if (term_utf8 == nullptr || term_utf8[0] == '\0') return std::string();
   // Traduit ICI, chez celui qui regarde — même règle que `SettingLabel`.
   const char* head = (kind == NaviKind::kMap)   ? i18n::Tr("Carte")
                      : (kind == NaviKind::kNpc) ? i18n::Tr("PNJ")
                                                 : i18n::Tr("Monstre");
-  char buf[160];
-  std::snprintf(buf, sizeof(buf), "[%s: %s]", head,
-                NaviSearchTermShown(kind, term_utf8).c_str());
+  char buf[224];
+  // 🔴 Le contexte est NOMMÉ dans le libellé, pas seulement transporté. Deux
+  // « [PNJ: Warp Agent] » côte à côte dans le fil seraient indiscernables, alors
+  // qu'ils ne mènent pas au même endroit — et c'est justement le défaut qu'on
+  // corrige. Le nom de la carte est reconstruit en AFFICHÉ, comme partout.
+  if (map_utf8 != nullptr && map_utf8[0] != '\0')
+    std::snprintf(buf, sizeof(buf), "[%s: %s (%s)]", head,
+                  NaviSearchTermShown(kind, term_utf8).c_str(),
+                  NavigationWindow::MapLabel(map_utf8).c_str());
+  else
+    std::snprintf(buf, sizeof(buf), "[%s: %s]", head,
+                  NaviSearchTermShown(kind, term_utf8).c_str());
   return buf;
 }
 
-Target FromNaviSearch(NaviKind kind, const char* term_utf8) {
+Target FromNaviSearch(NaviKind kind, const char* term_utf8,
+                      const char* map_utf8) {
   Target t;
   if (term_utf8 == nullptr || term_utf8[0] == '\0') return t;
   // Un terme portant un chevron couperait la balise en deux à la relecture.
@@ -381,7 +392,15 @@ Target FromNaviSearch(NaviKind kind, const char* term_utf8) {
   t.kind      = Target::kNaviSearch;
   t.navi_term = term_utf8;
   t.navi_kind = static_cast<uint8_t>(kind);
-  t.label     = NaviSearchLabel(kind, term_utf8);
+  // ⚠ Le contexte est un nom INTERNE de carte : ni chevron (il couperait la
+  // balise), ni espace ni deux-points (il occupe un champ du MILIEU de la
+  // balise, contrairement au terme, qui est le dernier et peut tout contenir).
+  // Un nom interne n'a jamais rien de tout ça ; le refuser plutôt que
+  // l'échapper garde la balise triviale à relire.
+  if (map_utf8 != nullptr && map_utf8[0] != '\0' &&
+      std::strpbrk(map_utf8, "<>: \t") == nullptr)
+    t.navi_map = map_utf8;
+  t.label = NaviSearchLabel(kind, term_utf8, t.navi_map.c_str());
   return t;
 }
 
@@ -438,7 +457,12 @@ void OpenDescription(const Target& target) {
         // vient d'une AUTRE table que la sienne et sa ponctuation casse les
         // tokens (« Gonryun, the Hermit Land (Kunlun) » ne trouvait rien).
         const NaviKind kind = static_cast<NaviKind>(target.navi_kind);
-        nav->OpenSearch(target.navi_term.c_str(), kind == NaviKind::kMob);
+        // Le CONTEXTE part avec le terme : sans lui, un lien vers le Warp Agent
+        // de Gonryun ouvrait la liste des trente-huit, ce qui ne répond pas à
+        // la question posée. Vide, la recherche reste globale — le cas d'un
+        // monstre, dont on veut justement TOUS les lieux d'apparition.
+        nav->OpenSearch(target.navi_term.c_str(), kind == NaviKind::kMob,
+                        target.navi_map.c_str());
       }
       break;
     }
@@ -528,7 +552,8 @@ bool PostToChat(const Target& target) {
     return chat->AppendNaviLink(target.navi_map.c_str(), target.navi_x,
                                 target.navi_y);
   if (target.kind == Target::kNaviSearch)
-    return chat->AppendNaviSearchLink(target.navi_kind, target.navi_term.c_str());
+    return chat->AppendNaviSearchLink(target.navi_kind, target.navi_term.c_str(),
+                                      target.navi_map.c_str());
   return false;
 }
 
@@ -661,7 +686,15 @@ void HoverPreview(const Target& target) {
     const NaviKind kind = static_cast<NaviKind>(target.navi_kind);
     ImGui::TextUnformatted(
         NaviSearchTermShown(kind, target.navi_term.c_str()).c_str());
+    // Le contexte, nommé puis montré : c'est la réponse à « lequel ? », et le
+    // plan de la carte la donne mieux que son nom.
+    if (!target.navi_map.empty())
+      DimText("%s", NavigationWindow::MapLabel(target.navi_map.c_str()).c_str());
     ImGui::Separator();
+    if (!target.navi_map.empty() && kind != NaviKind::kMap) {
+      NavigationWindow::DrawMapThumbnail(target.navi_map.c_str(), ro::Px(160.0f));
+      DimText("%s", target.navi_map.c_str());  // le nom interne, utile en commande
+    }
     // Une CARTE se montre : son plan répond à la question mieux que son nom. Un
     // PNJ ou un monstre, non — c'est justement parce qu'ils n'ont pas de lieu
     // unique qu'on partage une recherche plutôt qu'un point.
@@ -878,6 +911,18 @@ void DrawMenu(const char* popup_id, const Target& target) {
           if (ImGui::MenuItem(i18n::Tr("Y aller"))) {
             if (auto* nav = Bourgeon::Instance().navigation_window())
               nav->GoTo(target.navi_term.c_str(), 0, 0);
+          }
+        } else if (!target.navi_map.empty()) {
+          // Avec un contexte, un PNJ REDEVIENT un lieu : on sait sur quelle
+          // carte le chercher, donc on sait où aller. Sans contexte, non —
+          // c'est toute la raison d'être de ce genre de lien.
+          if (ImGui::MenuItem(i18n::Tr("Y aller"))) {
+            if (auto* nav = Bourgeon::Instance().navigation_window())
+              nav->GoTo(target.navi_map.c_str(), 0, 0);
+          }
+          if (ImGui::MenuItem(i18n::Tr("Voir ce qu'il y a là-bas"))) {
+            if (auto* nav = Bourgeon::Instance().navigation_window())
+              nav->ShowMapContents(target.navi_map.c_str());
           }
         }
         if (ImGui::MenuItem(i18n::Tr("Copier le nom")))

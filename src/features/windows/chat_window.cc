@@ -2557,11 +2557,19 @@ void ChatWindow::ParseUtf8(const std::string& text, Line* out) const {
         }
       }
     }
-    // RECHERCHE de navigation — balise à NOUS : `<NAVS>famille:terme</NAVS>`.
+    // RECHERCHE de navigation — balise à NOUS :
+    // `<NAVS>famille:carte:terme</NAVS>`.
     //
     // La famille est un `links::NaviKind` (0 carte, 1 PNJ, 2 monstre), le terme
     // est le DERNIER champ — donc libre de contenir espaces et ponctuation, ce
     // dont un nom de créature ne se prive pas.
+    //
+    // 🔴 La CARTE au milieu est le contexte : « ce Warp Agent-là, celui de
+    // Gonryun ». Elle est facultative et souvent vide (un monstre se cherche
+    // partout, une carte est déjà son propre lieu), et un nom interne de carte
+    // ne contient jamais d'espace — c'est ce qui permet de la distinguer d'un
+    // terme à deux-points sans casser les balises à deux champs déjà posées
+    // dans le fil.
     //
     // 🔴 Aucun libellé de repli n'est transporté, contrairement à `<SETL>`, et
     // c'est délibéré : la balise reste lisible telle quelle pour un client sans
@@ -2575,7 +2583,19 @@ void ChatWindow::ParseUtf8(const std::string& text, Line* out) const {
         const char* c1 = static_cast<const char*>(std::memchr(body, ':', close - body));
         if (c1 != nullptr) {
           const int kind = std::atoi(std::string(body, c1).c_str());
-          const std::string term(c1 + 1, close);
+          // Le champ du milieu, s'il est là : un second deux-points dont le
+          // segment qui précède ne porte aucun blanc. Sinon tout ce qui suit le
+          // premier deux-points est le terme, comme avant.
+          const char* tbegin = c1 + 1;
+          std::string map;
+          const char* c2 =
+              static_cast<const char*>(std::memchr(tbegin, ':', close - tbegin));
+          if (c2 != nullptr &&
+              std::string(tbegin, c2).find_first_of(" \t") == std::string::npos) {
+            map.assign(tbegin, c2);
+            tbegin = c2 + 1;
+          }
+          const std::string term(tbegin, close);
           // Une famille inconnue vient d'un Bourgeon plus récent : on ne devine
           // pas, le fragment redevient du texte. Même règle qu'une destination
           // de réglage inconnue.
@@ -2584,13 +2604,17 @@ void ChatWindow::ParseUtf8(const std::string& text, Line* out) const {
           links::Target search;
           if (known && !term.empty())
             search = links::FromNaviSearch(static_cast<links::NaviKind>(kind),
-                                           term.c_str());
+                                           term.c_str(), map.c_str());
           if (search.valid()) {
             flush();
             Run link;
             link.kind      = Run::kNaviSearch;
             link.navi_term = term;
             link.navi_kind = static_cast<uint8_t>(kind);
+            // Le contexte RETENU, pas celui qui a été lu : `FromNaviSearch`
+            // refuse un nom de carte mal formé, et le run doit dire la même
+            // chose que la cible qu'il reconstruira.
+            link.navi_map  = search.navi_map;
             link.text      = search.label;
             out->runs.push_back(link);
           } else if (!term.empty()) {
@@ -6456,7 +6480,7 @@ links::Target ChatWindow::TargetOf(const Run& run) const {
       return links::FromNavi(run.navi_map.c_str(), run.navi_x, run.navi_y);
     case Run::kNaviSearch:
       return links::FromNaviSearch(static_cast<links::NaviKind>(run.navi_kind),
-                                   run.navi_term.c_str());
+                                   run.navi_term.c_str(), run.navi_map.c_str());
     default: return links::Target{};
   }
 }
@@ -6477,7 +6501,7 @@ links::Target ChatWindow::TargetOf(const PendingLink& link) const {
     return links::FromStyle(link.style_code.c_str(), link.style_owner.c_str());
   if (link.kind == Run::kNaviSearch)
     return links::FromNaviSearch(static_cast<links::NaviKind>(link.navi_kind),
-                                 link.navi_term.c_str());
+                                 link.navi_term.c_str(), link.navi_map.c_str());
   return links::FromItem(link.item, link.display.c_str());
 }
 
@@ -6820,20 +6844,36 @@ bool ChatWindow::AppendSettingLink(const char* key) {
 // ⚠ Le terme part tel quel, y compris ses espaces : c'est le DERNIER champ de la
 // balise, donc libre de tout contenir sauf un chevron (`FromNaviSearch` le
 // refuse en amont, une balise coupée en deux ne se relit pas).
-bool ChatWindow::AppendNaviSearchLink(uint8_t kind, const char* term_utf8) {
+//
+// 🔴 La CARTE de contexte s'intercale entre les deux, et le champ est écrit même
+// vide. C'est elle qui fait la différence entre « le Warp Agent » et « le Warp
+// Agent DE GONRYUN » : sans elle, le lecteur recevait les trente-huit d'un coup.
+bool ChatWindow::AppendNaviSearchLink(uint8_t kind, const char* term_utf8,
+                                      const char* map_utf8) {
   if (!imgui_enabled_ || !input_bar_) return false;
   if (term_utf8 == nullptr || term_utf8[0] == '\0') return false;
 
   PruneItemLinks();
   if (static_cast<int>(item_links_.size()) >= kMaxItemLinks) return false;
 
-  const std::string display =
-      links::NaviSearchLabel(static_cast<links::NaviKind>(kind), term_utf8);
+  // ⚠ Le contexte occupe un champ du MILIEU : il ne peut porter ni blanc (le
+  // lecteur s'en sert pour le distinguer d'un terme à deux-points), ni
+  // deux-points, ni chevron. Un nom interne de carte n'a jamais rien de tout ça ;
+  // on le refuse plutôt que de l'échapper, pour que la balise reste triviale à
+  // relire.
+  const char* map = map_utf8;
+  if (map != nullptr &&
+      (map[0] == '\0' || std::strpbrk(map, "<>: \t") != nullptr))
+    map = nullptr;
+
+  const std::string display = links::NaviSearchLabel(
+      static_cast<links::NaviKind>(kind), term_utf8, map);
   if (display.empty()) return false;
 
-  char wire[192];
-  const int written = std::snprintf(wire, sizeof(wire), "<NAVS>%u:%s</NAVS>",
-                                    static_cast<unsigned>(kind), term_utf8);
+  char wire[256];
+  const int written = std::snprintf(wire, sizeof(wire), "<NAVS>%u:%s:%s</NAVS>",
+                                    static_cast<unsigned>(kind),
+                                    map != nullptr ? map : "", term_utf8);
   if (written <= 0 || written >= static_cast<int>(sizeof(wire))) return false;
 
   const size_t used = std::strlen(input_);
@@ -6849,6 +6889,7 @@ bool ChatWindow::AppendNaviSearchLink(uint8_t kind, const char* term_utf8) {
   pending.kind      = Run::kNaviSearch;
   pending.navi_term = term_utf8;
   pending.navi_kind = kind;
+  pending.navi_map  = map != nullptr ? map : "";
   item_links_.push_back(std::move(pending));
   if (battle_mode_) input_open_ = true;
   focus_input_next_ = true;

@@ -1512,9 +1512,21 @@ void EntityContextMenu::FlushPending() {
       // valent que pour lui, et beaucoup de PNJ sont posés à plusieurs endroits
       // sous le même nom. C'est aussi la seule forme qui survive à un
       // redémarrage du map-server, où les GID changent.
-      if (auto* chat = Bourgeon::Instance().chat_window())
-        chat->AppendNaviSearchLink(
-            static_cast<uint8_t>(links::NaviKind::kNpc), target_name_.c_str());
+      // 🔴 AVEC LA CARTE. Un nom de PNJ n'est pas une identité, c'est un RÔLE :
+      // le serveur pose trente-huit « Warp Agent », et un lien qui ne porte que
+      // le nom les désigne tous à la fois. Le lecteur recevait donc une liste
+      // où rien ne distinguait celui dont on lui parlait.
+      //
+      // La carte COURANTE est la bonne référence : on partage ce qu'on a sous
+      // les yeux. Illisible (écran de chargement, hors du monde), le lien part
+      // sans contexte plutôt que de mentir sur le lieu.
+      if (auto* chat = Bourgeon::Instance().chat_window()) {
+        char map[64];
+        const bool has_map = rag::CurrentMapName(map, sizeof(map));
+        chat->AppendNaviSearchLink(static_cast<uint8_t>(links::NaviKind::kNpc),
+                                   target_name_.c_str(),
+                                   has_map ? map : nullptr);
+      }
       return;
     case Local::kTalkToNpc: {
       uint8_t packet[7] = {};

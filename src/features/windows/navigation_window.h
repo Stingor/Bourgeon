@@ -92,7 +92,18 @@ class NavigationWindow : public Plugin {
   // « Poring » noierait le résultat sous les cartes et les PNJ homonymes.
   // ⚠ La recherche part au tick suivant, jamais ici : le moteur est natif et
   // l'appelant est presque toujours en pleine frame ImGui.
-  void OpenSearch(const char* term_utf8, bool monsters_only);
+  //
+  // 🔴 `map_filter` BORNE le résultat à une carte. Un nom de PNJ n'est pas une
+  // identité : c'est un RÔLE, et le serveur en pose trente-huit sous le nom
+  // « Warp Agent ». Chercher ce nom sans contexte rend donc trente-huit lignes
+  // indiscernables, dont aucune ne répond à la question posée — « celui-là,
+  // celui que je viens de voir ». Le lien de chat transporte donc la carte de
+  // son auteur, et elle arrive ici.
+  //
+  // Nul ou vide = pas de bornage. C'est le cas normal d'un monstre (on veut
+  // justement tous ses lieux d'apparition) et d'une carte.
+  void OpenSearch(const char* term_utf8, bool monsters_only,
+                  const char* map_filter = nullptr);
 
   // ── La native vient de naître : on prend sa place ──────────────────────────
   // Appelée par le hook MakeWindow (features/patches/window_pos_tweaks.cc) pour
@@ -303,6 +314,15 @@ class NavigationWindow : public Plugin {
   int filter_ = -1;
 
   std::vector<Group> groups_;
+
+  // La carte à laquelle les résultats sont BORNÉS, nom interne, vide si aucun
+  // bornage. Appliquée dans `RefreshResults`, donc à chaque relecture du moteur :
+  // le bornage survit à un changement de pastille, qui ne relance pas la
+  // recherche.
+  //
+  // ⚠ Elle vit CHEZ NOUS et pas dans le moteur : le natif partage son vecteur de
+  // résultats avec nous, et y toucher lui ferait afficher notre liste tronquée.
+  std::string search_map_;
 
   // ── Sélection : la liste à gauche, le détail à droite ─────────────────────
   // Le natif éclate la tâche sur quatre fenêtres et n'offre AUCUN détail : sa

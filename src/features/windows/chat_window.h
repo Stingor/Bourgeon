@@ -332,7 +332,13 @@ class ChatWindow : public Plugin {
   // ⚠ Le libellé lisible est composé chez le LECTEUR, comme pour un lien de
   // réglage : c'est pourquoi cette balise passe par la mécanique de
   // substitution à l'envoi plutôt que d'être insérée nue comme `<NAVIL>`.
-  bool AppendNaviSearchLink(uint8_t kind, const char* term_utf8);
+  //
+  // `map_utf8` est le CONTEXTE : la carte où l'auteur a vu ce qu'il partage.
+  // Nul ou vide = sans contexte. Il occupe un champ du MILIEU de la balise
+  // (`<NAVS>famille:carte:terme</NAVS>`), le terme restant le dernier — seule
+  // façon de laisser celui-ci contenir espaces et ponctuation.
+  bool AppendNaviSearchLink(uint8_t kind, const char* term_utf8,
+                            const char* map_utf8 = nullptr);
 
   // Idem pour un MONSTRE. Le client ne sait pas nommer un monstre (le nom ne vient
   // ni de mob_db, qu'il n'a pas, ni du paquet de la fiche) : c'est l'appelant qui
@@ -532,6 +538,10 @@ class ChatWindow : public Plugin {
     // pas de la langue de l'expéditeur.
     std::string navi_term;
     uint8_t     navi_kind = 0;
+    // Le CONTEXTE de la recherche, s'il y en a un : le nom interne de la carte
+    // où l'auteur a vu ce qu'il partage. Il réutilise `navi_map` ci-dessus —
+    // même nature, même règle. Sans lui, « [PNJ: Warp Agent] » désigne les
+    // trente-huit du serveur à la fois.
     // kStyle : le code de style, tel qu'il a voyagé, et le pseudo de son auteur.
     // Le code est ce que `palette_cache::EncodeShare` produit — la même chaîne
     // que le presse-papiers.
@@ -1130,6 +1140,7 @@ class ChatWindow : public Plugin {
     std::string style_owner;  // kStyle : le pseudo affiché
     std::string navi_term;    // kNaviSearch : le terme, tel qu'il partira
     uint8_t     navi_kind = 0;
+    std::string navi_map;     // … et sa carte de contexte, si elle existe
     // La balise RELUE, pour que le lien posé dans la saisie soit déjà un objet
     // cliquable — c'est ce que fait le natif, qui accroche un vrai bouton sur sa
     // ligne de saisie (`UIItemTagButton`) plutôt que d'y écrire du texte mort.
