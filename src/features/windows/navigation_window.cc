@@ -72,6 +72,28 @@ constexpr uintptr_t kStdStringAssign   = 0x004F1940;  // __thiscall(this, src, l
 constexpr uintptr_t kStdStringDtor     = 0x004F08F0;  // __thiscall(this)
 constexpr uintptr_t kStdStringCtorCStr = 0x004E5330;  // __thiscall(this, cstr)
 
+// ── Le CONTENU d'une carte : ses PNJ et ses spawns ──────────────────────────
+//
+// Un `CNaviNode` porte trois vecteurs consécutifs (ctor 0x00B24AC0). Leur rôle
+// se lit dans `sub_B26E50` (0x00B26E50) — la fonction qui verse le contenu d'une
+// carte dans les résultats — laquelle les parcourt sous le MÊME code de filtre
+// que nos pastilles :
+//
+//   +0x44 / +0x48  vecteur des PNJ      (filtre 2)
+//   +0x50 / +0x54  vecteur des SPAWNS   (filtre 3)
+//   +0x5C / +0x60  le troisième, non employé ici
+//
+// 🔴 On LIT ces vecteurs, on n'appelle pas `sub_B26E50` : elle écrirait dans le
+// vecteur de résultats du moteur, que la fenêtre native et notre miroir se
+// partagent. Lire ne peut rien casser, et nos groupes sont construits de toute
+// façon — c'est le même travail sans le risque.
+//
+// Le nœud lui-même vient de `CNavigation::FindMapByName`, qui balaie le vecteur
+// de cartes en comparant les noms.
+constexpr int       kOffNodeNpcsBegin  = 0x44;
+constexpr int       kOffNodeMobsBegin  = 0x50;
+constexpr uintptr_t kFnFindMapByName   = 0x00B20CE0;  // __thiscall(nav, name)
+
 // ── L'icône de TRACE du guidage (la fenêtre native 306) ─────────────────────
 //
 // Le guidage sème au sol une texture animée le long du chemin, et le client en
@@ -97,12 +119,56 @@ constexpr uintptr_t kStdStringCtorCStr = 0x004E5330;  // __thiscall(this, cstr)
 // ⚠ Le natif ne PERSISTE ce choix nulle part : ses deux fonctions n'ont qu'un
 // appelant chacune, le handler de la fenêtre 306, et aucun n'écrit de fichier.
 // Le joueur le repose donc à chaque session — un défaut qu'on corrige en le
-// rangeant dans nos réglages. (Indice fort, pas preuve : la recherche
-// exhaustive des accès à `+0x1344` n'a pas pu être menée à son terme.)
+// rangeant dans nos réglages. (Vérifié depuis : `+0x1344` n'a que QUATRE sites,
+// le constructeur, ce setter, la reconstruction des chemins et une écriture de
+// registre — laquelle n'est appelée de nulle part.)
 constexpr int       kOffRouteIcon        = 0x1344;
 constexpr uintptr_t kFnSetRouteIcon      = 0x00B34AE0;  // __thiscall(nav, n)
 constexpr uintptr_t kFnRebuildRoutePaths = 0x00B37D80;  // __thiscall(nav)
 constexpr int       kRouteIconCount      = 8;
+
+// ── LE TRACÉ EXACT, CELLULE PAR CELLULE (§10 de la doc) ───────────────────
+//
+// 🔴 Ce qu'on croyait absent est ici. `CNavigation_BuildCellPath` (0x00B2FC30)
+// lance l'A★ de déplacement du client (`Pathfind_AStarSearch`, 0x00A777B0) sur
+// la .gat de la carte COURANTE et range sa sortie dans un `std::vector` du
+// moteur. Le renderer au sol (0x00B31C40, appelé chaque frame par la scène 3D et
+// non par une fenêtre) ne fait que relire ce vecteur.
+//
+// Élément de 16 octets, mesuré sur `Pathfind_ReconstructPath` (0x00A77660) :
+//   +0  int x       cellule
+//   +4  int y
+//   +8  int dir     0..7 · 0=+Y 1=-X+Y 2=-X 3=-X-Y 4=-Y 5=+X-Y 6=+X 7=+X+Y
+//   +12 int t_ms    temps de marche cumulé (inexploitable ici : le guidage
+//                   passe une vitesse de 1, pas celle du personnage)
+// La reconstruction remonte la chaîne des parents depuis l'ARRIVÉE en écrivant
+// à l'envers : la suite est donc ordonnée DÉPART → ARRIVÉE.
+//
+// 🔴 `dir` est la direction qui MÈNE À cette cellule. Le natif pose donc en `k`
+// la flèche de `k+1` — sans quoi la dernière case pointerait dans le vide.
+//
+// Un TROISIÈME vecteur existe à +0x1294, les mêmes cellules déjà projetées en
+// pixels d'un carré 128 × 128 : c'est la preuve que le natif dessine bien
+// l'itinéraire sur SA minimap. On ne s'en sert pas — quantifié à 128 pixels, il
+// s'effondre dès qu'on zoome, alors que les cellules restent exactes.
+constexpr int kOffCellPathBegin = 0x1164;  // vector<PathCell 16o> : begin
+constexpr int kOffCellPathEnd   = 0x1168;  // … end
+constexpr int kOffTrailActive   = 0x117C;  // bool : la trace au sol est posée
+constexpr size_t kPathCellSize   = 16;
+constexpr size_t kPathCellOffDir = 8;
+// Plafond de sécurité sur le nombre de cellules PARCOURUES. Une diagonale de la
+// plus grande carte du jeu en fait moins de mille ; au-delà, c'est que le
+// vecteur a été lu pendant une réallocation et non qu'il est long.
+constexpr size_t kPathCellMax    = 4096;
+
+// L'ARRÊT du guidage, tel que le natif le fait (bouton d'annulation de la 203,
+// 0x005AA21F) : deux drapeaux à zéro puis `CNavigation::ClearRoute`.
+// ⚠ Le natif passe `full = 1`, ce qui détruit AUSSI le vecteur de résultats de
+// recherche (+0x10F0) — sa listbox se recharge, la nôtre non. On passe donc 0 :
+// l'itinéraire (cartes, cellules, points minimap), le drapeau de trace et le
+// rendu au sol sont nettoyés, la recherche du joueur reste à l'écran.
+constexpr int       kOffGuideFlag = 0x1254;  // lu par la carte du monde
+constexpr uintptr_t kFnClearRoute = 0x00B2F080;  // __thiscall(nav, bool full)
 
 // ── Les quatre fenêtres natives que ce panneau remplace (§2 de la doc) ──────
 // La principale et ses trois satellites. Le natif éclate la tâche sur les
@@ -116,6 +182,7 @@ constexpr int kNativeWndRoute = 314;  // UINavigationRuideWnd
 // Slots virtuels d'un CNavi_Object (le NPC ou le monstre d'un résultat), tels
 // que les emploient Navi_FormatResultLabel et Navi_FormatMemberLabel :
 constexpr int kVtDisplayName = 5;  // +0x14 : son nom affiché
+constexpr int kVtObjectPos   = 7;  // +0x1C : sa cellule {x, y} (CNavi_Object_GetPos)
 constexpr int kVtMapNode     = 8;  // +0x20 : le NŒUD CARTE qui le porte
 
 // ── Champs d'un CNavi_Object (ctor 0x00B24BF0, 0x7C octets) ──────────────────
@@ -219,6 +286,7 @@ struct ByValueString {
 using Search_t       = char(__thiscall*)(void*);
 using GetResult_t    = void*(__thiscall*)(void*, NativeResult*, int);
 using SelectResult_t = char(__thiscall*)(void*);
+using ClearRoute_t   = int(__thiscall*)(void*, char);
 using StepCount_t    = int(__thiscall*)(void*);
 using GetStep_t      = void*(__thiscall*)(void*, int);
 using NodeName_t     = const char*(__thiscall*)(void*);
@@ -306,6 +374,77 @@ struct ObjectFacts {
   // liste ; il ouvre la porte à montrer la bête elle-même.
   int sprite_class = 0;
 };
+
+// Lit un `CNavi_Object` du vecteur d'une carte — le pendant de `SafeGetResult`
+// quand on tient déjà l'objet au lieu de passer par une recherche.
+//
+// `is_mob` décide de la lecture des deux derniers champs : ils portent le NIVEAU
+// et les stats sur un monstre, les COORDONNÉES sur un PNJ. Ce n'est pas une
+// commodité, c'est le format du `.lub` (cf. `kObjLevelOrX`) — se tromper ici
+// affiche des coordonnées à la place d'un niveau, sans rien qui le signale.
+bool SafeReadObject(void* object, bool is_mob, char* label, size_t label_size,
+                    ObjectFacts* facts) {
+  label[0] = '\0';
+  *facts   = ObjectFacts{};
+  __try {
+    if (!object) return false;
+    auto** vtable = *reinterpret_cast<void***>(object);
+    const char* name =
+        reinterpret_cast<NodeName_t>(vtable[kVtDisplayName])(object);
+    if (name) std::strncpy(label, name, label_size - 1);
+
+    const auto* fields = static_cast<const uint8_t*>(object);
+    const int32_t packed = *reinterpret_cast<const int32_t*>(fields + kObjPacked);
+    facts->subtype = *reinterpret_cast<const int32_t*>(fields + kObjSubtype);
+    if (is_mob) {
+      facts->amount       = (packed >> 16) & 0xFFFF;
+      facts->sprite_class = packed & 0xFFFF;
+      facts->level = *reinterpret_cast<const int32_t*>(fields + kObjLevelOrX);
+      facts->stats = *reinterpret_cast<const int32_t*>(fields + kObjStatsOrY);
+    } else {
+      // 🔴 PAS de masque 16 bits sur un PNJ : un portail de warp y vaut 99999,
+      // que masquer transformerait en un sprite pris au hasard.
+      facts->sprite_class = packed;
+      facts->x = *reinterpret_cast<const int32_t*>(fields + kObjLevelOrX);
+      facts->y = *reinterpret_cast<const int32_t*>(fields + kObjStatsOrY);
+    }
+    return label[0] != '\0';
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
+// Le nœud d'une carte, par son nom INTERNE. nullptr si le graphe ne la connaît
+// pas.
+// 🔴 Elle prend un `const char*` NU, pas une `std::string` par valeur —
+// contrairement à `SearchRoute` et à `ShareToChat`, ses voisines immédiates. Sa
+// comparaison est un `strcmp` sur le nom interne du nœud (`sub_B25750`).
+// Lui passer une string par valeur empile 24 octets là où elle en attend 4 : la
+// pile part, et l'appel rend n'importe quoi — le symptôme observé était un
+// bouton qui « ne fait rien ».
+void* SafeFindMapNode(const char* map_name) {
+  __try {
+    if (!map_name || !*map_name) return nullptr;
+    using FindMap_t = void*(__thiscall*)(void*, const char*);
+    return reinterpret_cast<FindMap_t>(kFnFindMapByName)(Nav(), map_name);
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
+}
+
+// Les objets d'un des deux vecteurs du nœud. `out` reçoit les pointeurs bruts ;
+// c'est l'appelant qui les lit, sous SON `__try`.
+int SafeNodeObjects(void* node, int begin_offset, void** out, int max_out) {
+  int count = 0;
+  __try {
+    if (!node) return 0;
+    const auto* fields = static_cast<const uint8_t*>(node);
+    auto* const* begin =
+        *reinterpret_cast<void** const*>(fields + begin_offset);
+    auto* const* end =
+        *reinterpret_cast<void** const*>(fields + begin_offset + 4);
+    if (!begin || !end || end < begin) return 0;
+    for (auto* const* it = begin; it != end && count < max_out; ++it)
+      if (*it) out[count++] = *it;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return count; }
+  return count;
+}
 
 bool SafeGetResult(int index, NativeResult* out, char* label, size_t label_size,
                    char* map_name, size_t map_size, ObjectFacts* facts) {
@@ -453,12 +592,76 @@ int SafeRouteIcon() {
 // sa branche d'index invalide qui efface la cible et nettoie l'affichage.
 bool SafeStopGuidance() {
   __try {
+    // D'abord la CIBLE : remettre la sélection à -1 puis rappeler SelectResult
+    // efface le nom de destination (+0x110C), donc notre bandeau.
     *reinterpret_cast<int32_t*>(Nav() + kOffFollowState) = 0;
     *reinterpret_cast<int32_t*>(Nav() + kOffSelGroup)    = -1;
     *reinterpret_cast<int32_t*>(Nav() + kOffSelMember)   = 0;
     reinterpret_cast<SelectResult_t>(kFnSelectResult)(Nav());
+    // Puis l'ITINÉRAIRE lui-même. Sans cet appel, effacer la cible ne suffisait
+    // pas : le chemin en cellules survivait, le drapeau +0x117C restait à 1, et
+    // le client continuait à semer ses traces au sol pour une destination que
+    // le joueur venait d'abandonner.
+    *reinterpret_cast<uint8_t*>(Nav() + kOffGuideFlag) = 0;
+    reinterpret_cast<ClearRoute_t>(kFnClearRoute)(Nav(), 0);
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
+// Y a-t-il une trace au sol posée ? Sonde minimale — le drapeau du moteur et un
+// vecteur non vide — pour ne pas parcourir tout le chemin à chaque frame juste
+// pour savoir s'il existe.
+bool SafeTrailActive() {
+  __try {
+    if (*reinterpret_cast<const uint8_t*>(Nav() + kOffTrailActive) == 0) return false;
+    const uint8_t* begin =
+        *reinterpret_cast<const uint8_t* const*>(Nav() + kOffCellPathBegin);
+    const uint8_t* end =
+        *reinterpret_cast<const uint8_t* const*>(Nav() + kOffCellPathEnd);
+    return begin != nullptr && end > begin;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
+// Le chemin en CELLULES, décimé aux changements de direction. Rend le nombre de
+// points écrits, 0 si aucun guidage n'est actif sur cette carte.
+//
+// 🔴 Lecture SOUS `__try` de bout en bout : ces bornes sont un `std::vector` du
+// client, que le moteur peut réallouer entre deux frames (recalcul à l'entrée
+// de carte, ou quand le joueur s'écarte de plus de dix cellules).
+size_t SafeReadCellPath(NavigationWindow::PathPoint* out, size_t max) {
+  if (!out || max == 0) return 0;
+  __try {
+    if (*reinterpret_cast<const uint8_t*>(Nav() + kOffTrailActive) == 0) return 0;
+    const uint8_t* begin =
+        *reinterpret_cast<const uint8_t* const*>(Nav() + kOffCellPathBegin);
+    const uint8_t* end =
+        *reinterpret_cast<const uint8_t* const*>(Nav() + kOffCellPathEnd);
+    if (!begin || end <= begin) return 0;
+    const size_t bytes = static_cast<size_t>(end - begin);
+    if (bytes % kPathCellSize != 0) return 0;
+    const size_t count = bytes / kPathCellSize;
+    if (count < 2 || count > kPathCellMax) return 0;
+
+    size_t n        = 0;
+    int    last_dir = -1;
+    for (size_t i = 0; i < count; ++i) {
+      const uint8_t* cell = begin + i * kPathCellSize;
+      const int dir = *reinterpret_cast<const int32_t*>(cell + kPathCellOffDir);
+      // On ne garde que les COINS : le premier point, le dernier, et ceux où la
+      // direction change. Entre deux coins la trajectoire est une droite, que la
+      // ligne brisée restitue au pixel près — et un chemin de huit cents
+      // cellules tient alors en une trentaine de points.
+      const bool keep = (i == 0) || (i == count - 1) || (dir != last_dir);
+      last_dir = dir;
+      if (!keep) continue;
+      if (n >= max) break;  // tronqué : on garde la portion PROCHE du joueur
+      out[n].x   = *reinterpret_cast<const int32_t*>(cell);
+      out[n].y   = *reinterpret_cast<const int32_t*>(cell + 4);
+      out[n].dir = dir;
+      ++n;
+    }
+    return n < 2 ? 0 : n;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
 }
 
 // Lit une `std::string` MSVC posée à `offset` dans le moteur. Layout : 16 octets
@@ -504,6 +707,40 @@ bool SafeStepName(int index, char* out, size_t out_size) {
     if (!name) return false;
     std::strncpy(out, name, out_size - 1);
     return true;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
+// La CELLULE d'une étape : le point de sortie à rejoindre sur cette carte-là.
+//
+// Par le slot virtuel `+0x1C` (`CNavi_Object_GetPos` 0x00B26CD0), qui rend un
+// couple {x, y} lu en `+0x44`/`+0x48`. C'est bien ce que le natif emploie pour
+// placer sa flèche de destination (branche « type 2 ou 6 » de 0x00B37F50).
+//
+// 🔴 Ces deux champs CHANGENT DE SENS selon l'objet : sur un MONSTRE ils portent
+// le niveau et les stats empaquetées (cf. `kObjLevelOrX`). Une étape d'itinéraire
+// est un point de passage — un warp — donc jamais un monstre ; c'est ce qui rend
+// la lecture légitime ici, et c'est aussi pourquoi elle ne doit PAS être
+// réemployée sur un résultat de recherche quelconque.
+//
+// La convention de retour est celle de MSVC pour une struct rendue par valeur :
+// l'appelé reçoit un tampon caché et rend son adresse.
+bool SafeStepPos(int index, int* out_x, int* out_y) {
+  *out_x = 0;
+  *out_y = 0;
+  __try {
+    void* step = reinterpret_cast<GetStep_t>(kFnGetStep)(Nav(), index);
+    if (!step) return false;
+    auto** vtable = *reinterpret_cast<void***>(step);
+    using GetPos_t = int32_t*(__thiscall*)(void*, int32_t*);
+    int32_t point[2] = {0, 0};
+    const int32_t* got =
+        reinterpret_cast<GetPos_t>(vtable[kVtObjectPos])(step, point);
+    if (!got) return false;
+    *out_x = got[0];
+    *out_y = got[1];
+    // (0, 0) = le moteur n'a pas de point pour cette étape : ne rien dessiner
+    // vaut mieux qu'un marqueur au coin de la carte.
+    return *out_x > 0 && *out_y > 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
@@ -650,9 +887,18 @@ void NavigationWindow::OnTick() {
 
   PumpIntents();
 
+  // 🔴 L'itinéraire est relu MÊME PANNEAU FERMÉ, et ce n'est pas du zèle : la
+  // minimap y lit le point de sortie de la carte courante, et c'est justement
+  // fermé qu'on la regarde. Le miroir servait auparavant au seul volet
+  // d'itinéraire, d'où sa place après la garde.
+  //
+  // Le coût est celui d'un `GetStepCount` et de deux appels virtuels par étape,
+  // une fois par tick (~100 ms) et seulement quand une route existe — le compte
+  // est nul le reste du temps.
+  RefreshRoute();
+
   if (!open_) return;
   ReadOptions();
-  RefreshRoute();
 }
 
 void NavigationWindow::PumpIntents() {
@@ -824,7 +1070,10 @@ void NavigationWindow::RefreshRoute() {
   for (int i = 0; i < steps && i < 64; ++i) {
     char name[64];
     if (!SafeStepName(i, name, sizeof(name))) continue;
-    route_.push_back(ToUtf8(name));
+    RouteStep step;
+    step.map     = ToUtf8(name);
+    step.has_pos = SafeStepPos(i, &step.x, &step.y);
+    route_.push_back(std::move(step));
   }
 
   // 🔴 La destination, que le moteur ne compte PAS parmi les étapes : chacune
@@ -840,8 +1089,14 @@ void NavigationWindow::RefreshRoute() {
     std::string dest = ToUtf8(target);
     // Une cible déjà en fin de liste ne se répète pas : c'est le cas quand on
     // navigue vers un point de la carte où l'on arrive.
-    if (!dest.empty() && (route_.empty() || route_.back() != dest))
-      route_.push_back(std::move(dest));
+    if (!dest.empty() && (route_.empty() || route_.back().map != dest)) {
+      RouteStep last;
+      last.map = std::move(dest);
+      // Pas de `has_pos` : la destination n'est la source d'aucun lien, donc le
+      // moteur ne lui associe pas de point de sortie. La minimap n'a rien à y
+      // marquer — on y est déjà arrivé.
+      route_.push_back(std::move(last));
+    }
   }
 }
 
@@ -849,13 +1104,26 @@ void NavigationWindow::RefreshRoute() {
 void NavigationWindow::OnRenderUI() {
   if (!imgui_enabled_ || !open_) return;
 
+  // 🔴 `FirstUseEver` pour la POSITION aussi, pas `Always`. Avec `Always`, toute
+  // frame où `need_pos_` était armé RAMENAIT la fenêtre en haut à gauche — et
+  // les boutons qui appellent `OpenSearch` ou `ShowMapContents` l'armaient,
+  // depuis l'intérieur de la fenêtre. Elle sautait donc sous le curseur au
+  // premier clic, et sa position n'était jamais conservée.
+  //
+  // Avec `FirstUseEver`, ImGui pose ces valeurs à la première apparition puis
+  // laisse la position vivre sa vie — et la persiste sous l'identifiant stable
+  // `###bourgeon_navigation`, donc elle survit d'une ouverture à l'autre comme
+  // d'une session à l'autre.
   if (need_pos_) {
     const ImGuiViewport* vp = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(
         ImVec2(vp->WorkPos.x + ro::Px(40.0f), vp->WorkPos.y + ro::Px(90.0f)),
-        ImGuiCond_Always);
+        ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2(ro::Px(430.0f), ro::Px(470.0f)),
                              ImGuiCond_FirstUseEver);
+    // Au premier plan : la fenêtre vient d'être demandée (raccourci, lien de
+    // chat, fiche de monstre), elle ne doit pas s'ouvrir sous une autre.
+    ImGui::SetNextWindowFocus();
     need_pos_ = false;
   }
 
@@ -944,11 +1212,35 @@ void NavigationWindow::OnRenderUI() {
     char current_map[64];
     const bool have_map = rag::CurrentMapName(current_map, sizeof(current_map));
     ImGui::BeginDisabled(!have_map);
+    // 🔴 Le nom INTERNE, jamais le nom affiché — mesuré, pas supposé. La
+    // recherche du moteur (`sub_B27330`) compare le terme à la concaténation
+    // « nom_interne + espace + nom_affiché » de chaque carte, et son analyseur
+    // découpe la saisie en TOKENS sur les espaces. Or :
+    //  · le nom affiché que rend le client (« Gonryun, the Hermit Land
+    //    (Kunlun) ») vient de sa DB de cartes, pas de `Navi_Data_Map` que le
+    //    moteur emploie — les deux tables sont traduites séparément ;
+    //  · même s'il coïncidait, ses virgules et ses parenthèses partiraient dans
+    //    les tokens et ne correspondraient à rien.
+    // Symptôme observé : Gonryun ne se trouvait pas elle-même. Le nom interne,
+    // lui, est TOUJOURS dans la chaîne comparée.
     if (ro::RoButton(i18n::Tr("Rechercher la map actuelle")) && have_map)
-      OpenSearch(MapLabel(current_map).c_str(), /*monsters_only=*/false);
+      OpenSearch(current_map, /*monsters_only=*/false);
     ImGui::EndDisabled();
     if (have_map && ImGui::IsItemHovered())
       ImGui::SetTooltip("%s  (%s)", MapLabel(current_map).c_str(), current_map);
+
+    // ── Le CONTENU de la carte, qui n'est pas une recherche ─────────────────
+    // Chercher le nom d'une carte rend la carte ; ça ne dit pas ce qu'il y a
+    // DESSUS. Ce bouton-ci liste ses PNJ et ses spawns, ce que le moteur ne sait
+    // pas faire — sa recherche compare un terme à des noms, jamais une carte à
+    // son contenu. Deux boutons parce que ce sont deux questions.
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!have_map);
+    if (ro::RoButton(i18n::Tr("Voir ce qu'il y a ici")) && have_map)
+      ShowMapContents(current_map);
+    ImGui::EndDisabled();
+    if (have_map && ImGui::IsItemHovered())
+      ImGui::SetTooltip("%s", i18n::Tr("Les PNJ et les monstres déclarés sur cette carte."));
   }
 
   ImGui::Separator();
@@ -975,8 +1267,11 @@ void NavigationWindow::OnRenderUI() {
 
 void NavigationWindow::OpenSearch(const char* term_utf8, bool monsters_only) {
   if (!term_utf8 || !*term_utf8) return;
-  open_     = true;
-  need_pos_ = true;
+  // ⚠ Le placement par defaut n'est redemande QUE si la fenetre etait fermee.
+  // Plusieurs boutons du panneau appellent cette methode : la reposer a chaque
+  // fois la faisait sauter en haut a gauche sous le curseur du joueur.
+  if (!open_) need_pos_ = true;
+  open_ = true;
   std::snprintf(input_, sizeof(input_), "%s", term_utf8);
   pending_term_ = input_;
   dirty_        = true;   // consommée par PumpIntents, hors frame
@@ -1003,6 +1298,102 @@ void NavigationWindow::HandleNativeCreation(void* win, int window_id) {
   if (open_) { open_ = false; return; }
   open_     = true;
   need_pos_ = true;
+}
+
+void NavigationWindow::ShowMapContents(const char* map_name) {
+  if (!map_name || !*map_name) return;
+  if (!open_) need_pos_ = true;  // meme regle que OpenSearch : ne pas la deplacer
+  open_ = true;
+  // 🔴 La recherche en cours est ANNULÉE, pas complétée : `dirty_` armé
+  // relancerait le moteur au tick suivant et écraserait ce qu'on vient de
+  // construire. On vide aussi la saisie, pour que l'écran ne montre pas un
+  // terme qui ne correspond à rien de ce qui est affiché.
+  dirty_ = false;
+  pending_term_.clear();
+  input_[0] = '\0';
+  filter_    = kShowAll;
+  sel_group_ = -1;
+  sel_entry_ = -1;
+  groups_.clear();
+
+  void* node = SafeFindMapNode(map_name);
+  if (node == nullptr) return;
+
+  // Deux groupes, dans l'ordre où on les cherche : les PNJ (à qui l'on parle),
+  // puis les monstres (que l'on chasse).
+  struct Bucket {
+    int  offset;
+    int  type;
+    bool is_mob;
+  };
+  const Bucket buckets[] = {{kOffNodeNpcsBegin, kTypeNpc, false},
+                            {kOffNodeMobsBegin, kTypeMob, true}};
+
+  for (const Bucket& bucket : buckets) {
+    // Plafond DUR : une carte de ville dépasse la centaine de PNJ, et une liste
+    // sans borne pourrait grossir avec les données du serveur.
+    static constexpr int kMaxPerBucket = 512;
+    void* objects[kMaxPerBucket];
+    const int count =
+        SafeNodeObjects(node, bucket.offset, objects, kMaxPerBucket);
+    if (count <= 0) continue;
+
+    Group group;
+    group.type = bucket.type;
+    group.name = bucket.is_mob ? i18n::Tr("Monstres") : "NPC";
+    for (int i = 0; i < count; ++i) {
+      char label[128];
+      ObjectFacts facts;
+      if (!SafeReadObject(objects[i], bucket.is_mob, label, sizeof(label), &facts))
+        continue;
+      Entry entry;
+      entry.type         = bucket.type;
+      entry.name         = ToUtf8(label);
+      entry.map          = map_name;
+      entry.subtype      = facts.subtype;
+      entry.level        = facts.level;
+      entry.amount       = facts.amount;
+      entry.stats        = facts.stats;
+      entry.sprite_class = facts.sprite_class;
+      entry.x            = facts.x;
+      entry.y            = facts.y;
+      entry.is_mvp       = facts.subtype == kSubMvp;
+      entry.is_shop      = facts.subtype == kSubShop;
+      group.entries.push_back(std::move(entry));
+    }
+    if (!group.entries.empty()) groups_.push_back(std::move(group));
+  }
+}
+
+bool NavigationWindow::RouteExitOnMap(const char* map_name, int* out_x,
+                                      int* out_y) const {
+  if (!map_name || !*map_name || !out_x || !out_y) return false;
+  for (const RouteStep& step : route_) {
+    if (!step.has_pos) continue;
+    // Comparaison insensible à la casse : le nom vient d'un côté du moteur
+    // (`CNaviNode::GetName`) et de l'autre du global du client, et rien ne
+    // garantit qu'ils s'accordent sur la casse.
+    if (_stricmp(step.map.c_str(), map_name) != 0) continue;
+    *out_x = step.x;
+    *out_y = step.y;
+    return true;
+  }
+  return false;
+}
+
+size_t NavigationWindow::RouteCellPath(PathPoint* out, size_t max) const {
+  return SafeReadCellPath(out, max);
+}
+
+bool NavigationWindow::IsGuidanceActive() const {
+  // Trois témoins, parce qu'ils ne s'allument pas ensemble :
+  //  · `route_` porte les étapes d'un itinéraire MULTI-CARTES ; il est vide quand
+  //    la destination est sur la carte courante — le cas le plus fréquent, et
+  //    précisément celui où le bouton d'arrêt manquait ;
+  //  · `following_` reflète +0x125C, l'état de suivi du moteur ;
+  //  · la trace au sol elle-même, dernier recours : un guidage posé par un
+  //    `navigateto` scripté la sème avant même que notre miroir ait tourné.
+  return following_ || !route_.empty() || SafeTrailActive();
 }
 
 void NavigationWindow::GoTo(const char* map_name, int x, int y) {
@@ -1341,6 +1732,10 @@ void NavigationWindow::DrawRoute() {
         "%s",
         i18n::Tr("Aucune liaison connue ne mène jusque-là."));
   } else if (route_.empty()) {
+    // 🔴 « Pas d'étapes » ne veut PAS dire « pas de guidage » : un itinéraire qui
+    // se termine sur la carte courante n'a aucune étape à énumérer, et c'est le
+    // cas ordinaire. Le bouton d'arrêt vivait dans l'autre branche — il était
+    // donc introuvable exactement quand on en avait le plus besoin.
     ImGui::TextDisabled("%s", following_
                                   ? i18n::Tr("Guidage en cours, sans étape à afficher.")
                                   : i18n::Tr("Aucun itinéraire en cours."));
@@ -1348,10 +1743,15 @@ void NavigationWindow::DrawRoute() {
     std::string line;
     for (size_t i = 0; i < route_.size(); ++i) {
       if (i) line += "  >  ";
-      line += route_[i];
+      line += route_[i].map;
     }
     ImGui::TextWrapped("%s", line.c_str());
+  }
+  if (IsGuidanceActive()) {
     if (ro::RoButton(i18n::Tr("Arrêter le guidage"))) stop_armed_ = true;
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("%s",
+                        i18n::Tr("Efface l'itinéraire et les traces au sol."));
     ImGui::SameLine();
   }
   DrawRouteIconPicker();

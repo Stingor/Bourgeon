@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>  // size_t (RouteCellPath)
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -132,6 +133,75 @@ class NavigationWindow : public Plugin {
   // le connaît pas — jamais une chaîne vide, pour qu'un libellé de lien reste
   // toujours lisible.
   static std::string MapLabel(const char* map_name);
+
+  // ── Ce que la MINIMAP a besoin de savoir de l'itinéraire ──────────────────
+  //
+  // Un itinéraire est une suite de CARTES : sur celle où l'on se trouve, la
+  // seule chose utile est « par où sortir ». C'est ce que rend cette méthode —
+  // la cellule du point de passage de l'étape courante.
+  //
+  // ⚠ Elle ne dit rien du chemin À L'INTÉRIEUR de la carte : c'est l'affaire de
+  // `RouteCellPath` ci-dessous. Elle reste utile comme REPLI — entre le clic et
+  // le premier pas, le moteur n'a pas encore calculé son chemin local, et une
+  // direction vaut mieux que rien.
+  //
+  // Rend false s'il n'y a pas d'itinéraire, si la carte courante n'y figure
+  // pas, ou si l'étape n'a pas de point publié (le cas de la destination
+  // finale : on y est arrivé, il n'y a plus de sortie à prendre).
+  bool RouteExitOnMap(const char* map_name, int* out_x, int* out_y) const;
+
+  // ── LE TRACÉ EXACT, CELLULE PAR CELLULE ───────────────────────────────────
+  //
+  // 🔴 Correction d'une affirmation antérieure : le chemin à l'intérieur de la
+  // carte EXISTE bel et bien sous forme de liste, et le moteur le tient tout
+  // prêt. Mesuré dans `CNavigation_BuildCellPath` (0x00B2FC30, docs §10) :
+  // l'A★ de déplacement du client tourne sur la .gat de la carte courante et
+  // écrit sa sortie dans un `std::vector` de `CNavigation`, chaque élément
+  // valant `{ int x; int y; int dir; int t_ms; }` et la suite étant ordonnée
+  // DÉPART → ARRIVÉE. C'est CETTE liste que le natif sème au sol en
+  // `navi_grid<jeu>_<dir>.tga`, une cellule sur deux.
+  //
+  // Le natif la projette même déjà en espace minimap (un second vecteur, en
+  // pixels d'un carré 128 × 128) — mais quantifiée à ce carré, donc inutilisable
+  // au zoom. On lit les CELLULES et on applique notre propre transformation.
+  //
+  // Rend le nombre de points écrits. La suite est DÉCIMÉE : on ne garde que le
+  // premier point, le dernier, et ceux où la direction change — la ligne brisée
+  // obtenue passe exactement par les mêmes cellules, en dix à quarante points au
+  // lieu de plusieurs centaines. Rend 0 s'il n'y a pas de guidage actif.
+  //
+  // ⚠ Le moteur ne recalcule ce chemin qu'à l'entrée de carte et quand le joueur
+  // s'en écarte assez pour qu'aucune trace ne soit plus visible (± 10 cellules).
+  // La ligne peut donc partir d'un point qu'on a quitté : c'est le comportement
+  // du natif, pas un défaut de lecture.
+  struct PathPoint {
+    int x   = 0;
+    int y   = 0;
+    int dir = 0;  // 0..7, PAIR = orthogonal · IMPAIR = diagonale
+  };
+  size_t RouteCellPath(PathPoint* out, size_t max) const;
+
+  // Y a-t-il quelque chose à arrêter ? Vrai dès qu'un guidage est en cours,
+  // qu'il traverse plusieurs cartes ou qu'il se termine sur celle-ci — c'est ce
+  // second cas que le bouton d'arrêt manquait, `route_` étant alors vide.
+  bool IsGuidanceActive() const;
+
+  // ── Le CONTENU d'une carte, sans passer par une recherche ─────────────────
+  // « Qu'est-ce qu'il y a ici ? » — tous les PNJ et tous les spawns déclarés
+  // pour cette carte, groupés par nature. Le moteur ne sait pas répondre à ça :
+  // sa recherche compare un TERME à des noms, jamais une carte à son contenu.
+  // On lit donc directement les deux vecteurs du nœud (cf. le .cc).
+  //
+  // ⚠ Remplit nos groupes SANS toucher au vecteur de résultats du moteur : la
+  // fenêtre native le partage, et l'écraser lui ferait afficher notre liste.
+  // Conséquence assumée : la recherche suivante remplacera cet affichage, comme
+  // n'importe quel autre résultat.
+  void ShowMapContents(const char* map_name);
+
+  // Reste-t-il des étapes après celle de cette carte ? La minimap le dit au
+  // joueur : un marqueur « sortie » et un marqueur « vous êtes arrivé » ne
+  // veulent pas dire la même chose.
+  bool IsFollowingRoute() const { return following_ || !route_.empty(); }
 
   // ── Settings PERSISTANTS (bourgeon_settings.yaml) ──────────────────────────
   // « navigation_imgui » : basculé en GROUPE par SetModernInterface, donc défaut
@@ -272,8 +342,18 @@ class NavigationWindow : public Plugin {
   // jamais depuis la frame.
   bool route_icon_armed_ = false;
 
-  std::vector<std::string> route_;   // noms de carte des étapes
-  bool                     following_ = false;
+  // Une étape de l'itinéraire : la carte traversée, et le POINT DE SORTIE à
+  // rejoindre dessus. Les coordonnées ne sont pas toujours connues (le moteur
+  // n'en publie pas pour la destination finale, qui n'est la source d'aucun
+  // lien) — d'où `has_pos`, qui distingue « pas de point » de « (0, 0) ».
+  struct RouteStep {
+    std::string map;
+    int  x = 0;
+    int  y = 0;
+    bool has_pos = false;
+  };
+  std::vector<RouteStep> route_;
+  bool                   following_ = false;
 
 
   GoIntent go_;

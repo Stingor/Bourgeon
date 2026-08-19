@@ -9,6 +9,7 @@
 
 #include "imgui.h"
 #include "bourgeon.h"
+#include "features/windows/navigation_window.h"  // le point de sortie de l'itinéraire
 #include "d3d9/d3d9_hook.h"  // Overlay_SetTextureFilter
 #include "features/moonlight_ui/moonlight_ui.h"
 #include "ragnarok/globals.h"
@@ -89,6 +90,12 @@ constexpr int kNativeRadarWndId = 14;
 // pour « UINaviSearchWnd » : il ne vaut pas une mesure.
 constexpr int kWorldMapWndId   = 140;   // 0x8C, UIRoMapWnd
 constexpr int kNavigationWndId = 203;   // 0xCB, UINavigationV4Wnd
+
+// Plafond de points du TRACÉ d'itinéraire. Ce ne sont pas les cellules du
+// chemin mais ses COINS : `RouteCellPath` décime aux changements de direction,
+// et un chemin de plusieurs centaines de cellules en tient une trentaine. 256
+// laisse donc une marge confortable même pour un labyrinthe.
+constexpr size_t kMaxPathPoints = 256;
 
 // ── Le veto du dessin natif ──────────────────────────────────────────────────
 //
@@ -1318,11 +1325,112 @@ void Minimap::OnRenderUI() {
           }
         }
 
-        // ── Le joueur, EN DERNIER : rien ne doit le recouvrir ──────────────
         // Position du joueur DANS la portion affichée, pas dans la carte.
         const float mu = (u1 > u0) ? (cu - u0) / (u1 - u0) : 0.5f;
         const float mv = (v1 > v0) ? (cv - v0) / (v1 - v0) : 0.5f;
         const ImVec2 at(p0.x + mu * draw_w, p0.y + mv * draw_h);
+
+        // ── L'ITINÉRAIRE : LE TRACÉ EXACT, CELLULE PAR CELLULE ───────────
+        //
+        // 🔴 Correction d'une affirmation antérieure de ce fichier : le chemin
+        // à l'intérieur de la carte EXISTE bien sous forme de liste, et le
+        // moteur la tient toute prête. `CNavigation` fait tourner l'A★ de
+        // déplacement du client sur la .gat et garde sa sortie — c'est cette
+        // suite de cellules que le natif sème au sol en `navi_grid`. Voir
+        // `NavigationWindow::RouteCellPath` et docs/navigation_re.md §10.
+        //
+        // Le natif la projette déjà sur SA minimap, mais quantifiée à un carré
+        // de 128 pixels : à ce prix le tracé se ratatine dès qu'on zoome. On
+        // repart donc des cellules et on applique NOTRE cadrage.
+        //
+        // C'est aussi ce qui manquait vraiment au natif : ses traces au sol ne
+        // se voient qu'une fois dessus, donc elles aident à SUIVRE un chemin,
+        // jamais à le TROUVER. Ici il est visible en entier.
+        //
+        // Dessiné APRÈS tous les marqueurs et AVANT le joueur : la ligne doit
+        // passer par-dessus les icônes de ville pour rester lisible, mais rien
+        // ne doit recouvrir la flèche du joueur.
+        if (have_map) {
+          auto* nav = Bourgeon::Instance().navigation_window();
+          if (nav != nullptr && nav->imgui_enabled_) {
+            // Ambre, la couleur du guidage dans le reste de Bourgeon. Doublée
+            // d'un liséré sombre : une ligne claire seule disparaît sur les
+            // cartes de ville, qui le sont aussi.
+            const ImU32 kRouteDark = IM_COL32(0x20, 0x18, 0x08, 0xB0);
+            const ImU32 kRouteCol  = IM_COL32(0xFF, 0xC8, 0x4A, 0xE0);
+            const float eh = (half * 0.5f < 3.0f) ? 3.0f : half * 0.5f;
+
+            // Cellule -> écran SANS test de cadrage, contrairement à
+            // `CellToScreen`. Une ligne brisée ne se découpe pas point par
+            // point : on la laisse sortir du cadre et c'est la clip rect de la
+            // draw list qui la taille, ce qui garde aux segments d'entrée et de
+            // sortie leur pente exacte.
+            auto CellToScreenRaw = [&](int cx, int cy) -> ImVec2 {
+              const float fu = static_cast<float>(cx) /
+                               static_cast<float>(snap.cells_w);
+              const float fv = (static_cast<float>(snap.cells_h) -
+                                static_cast<float>(cy)) /
+                               static_cast<float>(snap.cells_h);
+              const float su = (u1 > u0) ? (fu - u0) / (u1 - u0) : 0.5f;
+              const float sv = (v1 > v0) ? (fv - v0) / (v1 - v0) : 0.5f;
+              return ImVec2(p0.x + su * draw_w, p0.y + sv * draw_h);
+            };
+
+            // Un point d'arrivée hors cadrage garde ainsi sa DIRECTION au lieu
+            // de disparaître — c'est justement au zoom qu'on en a besoin.
+            auto ClampToFrame = [&](ImVec2 raw) {
+              float ex = raw.x, ey = raw.y;
+              if (ex < p0.x + eh) ex = p0.x + eh;
+              if (ex > p1.x - eh) ex = p1.x - eh;
+              if (ey < p0.y + eh) ey = p0.y + eh;
+              if (ey > p1.y - eh) ey = p1.y - eh;
+              return ImVec2(ex, ey);
+            };
+            // L'arrivée : un losange, forme qu'aucun autre marqueur de la
+            // minimap n'emploie (les mémos sont des ronds, les viewpoints des
+            // croix, les quêtes et le boss des bitmaps).
+            auto DrawGoal = [&](ImVec2 c) {
+              const ImVec2 diamond[4] = {ImVec2(c.x, c.y - eh), ImVec2(c.x + eh, c.y),
+                                         ImVec2(c.x, c.y + eh), ImVec2(c.x - eh, c.y)};
+              dl->AddConvexPolyFilled(diamond, 4, kRouteCol);
+              dl->AddPolyline(diamond, 4, kRouteDark, ImDrawFlags_Closed, 1.5f);
+            };
+
+            // Statiques : la fonction de rendu est déjà profonde et ces deux
+            // tableaux pèsent 5 Kio. Sans risque, une frame ImGui étant seule
+            // sur son fil.
+            static NavigationWindow::PathPoint s_cells[kMaxPathPoints];
+            static ImVec2                      s_pts[kMaxPathPoints];
+            const size_t np = nav->RouteCellPath(s_cells, kMaxPathPoints);
+
+            if (np >= 2) {
+              for (size_t k = 0; k < np; ++k)
+                s_pts[k] = CellToScreenRaw(s_cells[k].x, s_cells[k].y);
+              dl->PushClipRect(p0, p1, true);
+              dl->AddPolyline(s_pts, static_cast<int>(np), kRouteDark,
+                              ImDrawFlags_None, 3.0f);
+              dl->AddPolyline(s_pts, static_cast<int>(np), kRouteCol,
+                              ImDrawFlags_None, 1.5f);
+              dl->PopClipRect();
+              DrawGoal(ClampToFrame(s_pts[np - 1]));
+            } else {
+              // Repli : pas de chemin en cellules, mais une étape publiée pour
+              // cette carte. Le moteur ne recalcule le chemin local qu'à
+              // l'entrée de carte et quand le joueur s'en écarte — entre le clic
+              // et le premier pas il n'y a encore rien à tracer, et une
+              // DIRECTION vaut mieux que rien.
+              int exit_x = 0, exit_y = 0;
+              if (nav->RouteExitOnMap(map, &exit_x, &exit_y)) {
+                const ImVec2 goal = ClampToFrame(CellToScreenRaw(exit_x, exit_y));
+                dl->AddLine(at, goal, kRouteDark, 3.0f);
+                dl->AddLine(at, goal, kRouteCol, 1.5f);
+                DrawGoal(goal);
+              }
+            }
+          }
+        }
+
+        // ── Le joueur, EN DERNIER : rien ne doit le recouvrir ──────────────
         // Nom distinct de la teinte de la carte juste au-dessus : deux `tint`
         // imbriqués passeraient en avertissement de masquage.
         const ImU32 marker_col = RgbToImU32(g_cfg.marker_tint);

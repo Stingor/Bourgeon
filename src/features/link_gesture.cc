@@ -337,17 +337,16 @@ Target FromNavi(const char* map_name, int x, int y) {
   return t;
 }
 
-// Ce qu'on CHERCHE réellement, à partir du terme transporté.
+// Le libellé LISIBLE d'un terme de recherche.
 //
 // 🔴 Une CARTE voyage sous son nom INTERNE, jamais sous son nom affiché, et ce
 // n'est pas un détail de forme :
 //  · c'est la seule identité stable — le nom affiché dépend de la langue du
 //    client, donc un lien composé chez un anglophone ne désignerait rien chez
 //    son lecteur ;
-//  · c'est aussi le seul que le moteur accepte pour un GUIDAGE. Un lien qui
-//    saurait se chercher mais pas s'atteindre serait à moitié cassé.
-// Le nom affiché est donc reconstruit ICI, des deux côtés : pour le libellé et
-// pour la recherche, que le moteur mène sur les noms affichés de ses résultats.
+//  · c'est le seul que le moteur accepte pour un GUIDAGE ;
+//  · c'est aussi le seul qui se CHERCHE de façon fiable (voir plus bas).
+// Le nom lisible est donc reconstruit ICI, mais pour l'AFFICHAGE seulement.
 //
 // Un PNJ et un monstre n'ont pas ce problème : leur nom EST leur identité, il
 // n'en existe pas d'autre dans les données de navigation.
@@ -432,9 +431,14 @@ void OpenDescription(const Target& target) {
       // panneau ImGui, donc rien à différer — il se contente de poser un terme
       // que son propre tick consommera.
       if (auto* nav = Bourgeon::Instance().navigation_window()) {
+        // 🔴 Le terme TRANSPORTÉ, tel quel — surtout pas sa version lisible.
+        // Pour une carte c'est le nom interne, et c'est le seul que le moteur
+        // retrouve : sa recherche compare « nom_interne + espace + nom_affiché »
+        // en découpant la saisie en tokens sur les espaces, or le nom lisible
+        // vient d'une AUTRE table que la sienne et sa ponctuation casse les
+        // tokens (« Gonryun, the Hermit Land (Kunlun) » ne trouvait rien).
         const NaviKind kind = static_cast<NaviKind>(target.navi_kind);
-        nav->OpenSearch(NaviSearchTermShown(kind, target.navi_term.c_str()).c_str(),
-                        kind == NaviKind::kMob);
+        nav->OpenSearch(target.navi_term.c_str(), kind == NaviKind::kMob);
       }
       break;
     }
@@ -886,22 +890,28 @@ void DrawMenu(const char* popup_id, const Target& target) {
         // Le panneau, pour qui veut VOIR l'itinéraire plutôt que le suivre à
         // l'aveugle — le geste gauche, lui, laisse le chat en place exprès.
         //
-        // 🔴 Le guidage part AUSSI, et ce n'est pas un doublon du geste gauche :
-        // la recherche est un PARI. Elle porte sur le nom affiché, or celui que
-        // rend la DB de cartes du client n'est pas forcément celui que
-        // `Navi_Data_Map` donne aux résultats du moteur — les deux tables sont
-        // traduites séparément. Un pari perdu laisserait une liste vide ; avec
-        // l'itinéraire, le panneau montre au moins la route, qui est ce qu'on
-        // venait y voir.
+        // 🔴 La recherche part sur le nom INTERNE. Le moteur compare le terme à
+        // « nom_interne + espace + nom_affiché » en découpant la saisie en
+        // tokens : le nom lisible échouerait deux fois, venant d'une autre table
+        // que la sienne et portant une ponctuation qui casse les tokens.
+        //
+        // Le guidage part AUSSI, et ce n'est pas un doublon du geste gauche : il
+        // garantit que le panneau montre quelque chose d'utile même si la carte
+        // manque au graphe.
         if (ImGui::MenuItem(i18n::Tr("Ouvrir la navigation"))) {
           if (auto* nav = Bourgeon::Instance().navigation_window()) {
-            nav->OpenSearch(NavigationWindow::MapLabel(target.navi_map.c_str()).c_str(),
-                            /*monsters_only=*/false);
+            nav->OpenSearch(target.navi_map.c_str(), /*monsters_only=*/false);
             nav->GoTo(target.navi_map.c_str(), target.navi_x, target.navi_y);
           }
         }
         // Le nom INTERNE, celui qui sert dans une commande (`@go`, `@warp`) ou
         // dans un script — le nom affiché n'y est accepté nulle part.
+        // Ce qu'il y a SUR la carte, par opposition à « y aller ». C'est la
+        // question qu'on se pose devant un lieu qu'on ne connaît pas.
+        if (ImGui::MenuItem(i18n::Tr("Voir ce qu'il y a là-bas"))) {
+          if (auto* nav = Bourgeon::Instance().navigation_window())
+            nav->ShowMapContents(target.navi_map.c_str());
+        }
         if (ImGui::MenuItem(i18n::Tr("Copier le nom de la carte")))
           ImGui::SetClipboardText(target.navi_map.c_str());
         ImGui::Separator();

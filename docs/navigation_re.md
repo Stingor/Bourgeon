@@ -954,3 +954,131 @@ enveloppes sans `std::string` ni `std::vector`.
 2. Router `MakeWindow(203)` (+ 306 / 314 / 229) vers le panneau.
 3. Le confort : tri par distance, historique, marquage des MVP (type `301`)
    croisé avec [[project_mvp_tracker]].
+
+## 10. Le TRACÉ AU SOL — et la liste de cellules qu'il cache
+
+> **Ce chapitre corrige une affirmation antérieure de ce document.** On y lisait
+> que le chemin à l'intérieur d'une carte « n'existe nulle part sous forme de
+> liste » et qu'un itinéraire n'était qu'une suite de CARTES. C'était une
+> supposition, pas une mesure : la liste existe, elle est cellule par cellule, et
+> `CNavigation` la garde toute prête.
+
+### 10.1 Comment on l'a trouvée
+
+Le fil conducteur était le jeu d'icônes de la trace (§ précédent, `+0x1344`).
+Ses huit chemins d'animation vivent en `+0x1180`, mais **aucune recherche
+d'immédiat `0x1180` ne trouve leur lecteur** — piège à connaître :
+
+- `find type=immediate` d'IDA ne voit **que les vrais opérandes immédiats**,
+  jamais un déplacement de référence mémoire. `mov [ecx+1344h], eax` est
+  invisible à cette recherche ; `search_text` sur le listing, borné par plage,
+  les voit tous et va vite ;
+- et de toute façon le lecteur n'écrit pas `0x1180` : le compilateur a replié
+  `this + 24*dir + 4480` en `this + 8*(3*dir + 560)`.
+
+Le vrai chemin d'accès était la liste des références à `g_Navigation`
+(`0x015C3090`, 170 xrefs) : elle contient `CScene_RenderCellsAndCursor`
+(`0x00A7B0A0`), c'est-à-dire le rendu de la SCÈNE 3D, pas une fenêtre.
+
+### 10.2 Les trois fonctions
+
+| Adresse | Nom donné | Rôle |
+|---|---|---|
+| `0x00B31C40` | `CNavigation_RenderGroundTrail` | pose les traces au sol, **chaque frame**, appelée par `CScene_RenderCellsAndCursor` |
+| `0x00B2FC30` | `CNavigation_BuildCellPath` | lance l'A★ de déplacement du client et **remplit les deux listes** |
+| `0x00B2D760` | `CNavigation_RefreshOnMapEnter` | recalcule tout à l'entrée d'une carte |
+
+🔴 Le rendu de la trace ne dépend d'**aucune fenêtre**. Tuer les quatre natives
+(§2) ne l'éteint pas — c'est pourquoi la trace au sol continue de fonctionner
+sous l'interface moderne, et pourquoi il faut un vrai `ClearRoute` pour l'arrêter.
+
+### 10.3 `CNavigation_BuildCellPath` — la source du tracé
+
+```
+bool __thiscall CNavigation_BuildCellPath(nav, int sx, int sy, int dx, int dy, bool fill_minimap)
+```
+
+Appelle `Pathfind_AStarSearch` (`0x00A777B0`) sur la **.gat de la carte
+courante** — le même A★ que le déplacement du personnage, donc le tracé suit
+réellement le relief et contourne les obstacles — puis remplit **deux** listes :
+
+**a) le chemin en CELLULES**, `nav+0x1164 / +0x1168 / +0x116C` (begin / end / cap).
+Élément de **16 octets**, layout mesuré sur `Pathfind_ReconstructPath`
+(`0x00A77660`) :
+
+| Offset | Type | Sens |
+|---|---|---|
+| `+0` | `int` | `x` de la cellule |
+| `+4` | `int` | `y` de la cellule |
+| `+8` | `int` | `dir` **0..7** · `0`=+Y `1`=−X+Y `2`=−X `3`=−X−Y `4`=−Y `5`=+X−Y `6`=+X `7`=+X+Y · **impair = diagonale** |
+| `+12` | `int` | temps de marche cumulé (ms) — inexploitable ici, le guidage passe une vitesse de `1` |
+
+La reconstruction remonte la chaîne des parents depuis l'ARRIVÉE en écrivant à
+l'envers : **la suite est ordonnée départ → arrivée**. `dir` est la direction qui
+MÈNE À la cellule, d'où le décalage à l'affichage (ci-dessous).
+
+Le conteneur n'est pas un simple `vector` : `+0x1170` (int, remis à 0),
+`+0x1174 / +0x1178` (float) = la position **sous-cellule** du départ, et
+`+0x117C` (bool) = **la trace est active**. C'est ce dernier qui garde tout.
+
+**b) le chemin en pixels MINIMAP**, `nav+0x1294 / +0x1298 / +0x129C`.
+Élément de 8 octets `{int mx; int my;}`, doublons supprimés, calculé par
+
+```
+s = Minimap_FitScaleAndOffset(&offX, &offY, node.width, node.height, 124.0f)
+mx = (int)(x * s + offX)
+my = (int)(126.0f - (y * s + offY))
+```
+
+puis `(*(vt+152))(minimap_wnd)` pour la faire redessiner.
+
+🔴 **Le natif dessine donc bien l'itinéraire sur sa minimap**, cellule par
+cellule. Mais dans un carré de 128 pixels figé : au zoom, la liste est
+inutilisable. C'est pourquoi Bourgeon repart des CELLULES (`+0x1164`).
+
+### 10.4 `CNavigation_RenderGroundTrail` — ce que le natif en fait
+
+- gardée par `+0x117C` ;
+- **une cellule sur deux** (`index += 2`) ;
+- la flèche posée en `k` porte la direction de `k+1` — sinon la dernière
+  pointerait dans le vide ;
+- 🔴 **ne dessine que les cellules à ±10 du joueur.** C'est LE défaut : la trace
+  aide à *suivre* un chemin, jamais à le *trouver* ;
+- animation de chasse : `(timeGetTime()%1000)/100 == index/2` → alpha `0xEF` au
+  lieu de `0x9A` ;
+- si **aucune** cellule n'est visible, relance `CNavigation_BuildCellPath` depuis
+  la position courante — c'est le seul recalcul en cours de marche. Le début du
+  tracé traîne donc jusqu'à dix cellules derrière le joueur : normal, pas un
+  défaut de lecture.
+
+### 10.5 L'ARRÊT du guidage
+
+`CNavigation_ClearRoute` @ `0x00B2F080`, `__thiscall(nav, bool full)`.
+Vide le chemin de cartes (`+0x1150/+0x1154`), le chemin de cellules (`+0x1164`),
+la liste minimap (`+0x1294`), remet `+0x117C` à 0 et détache le rendu au sol
+(`+0x1140`).
+
+Le bouton d'annulation du natif (`0x005AA21F`) fait :
+
+```
+dword [g_Navigation+0x125C] = 0    // état de suivi
+byte  [g_Navigation+0x1254] = 0    // témoin lu par la carte du monde
+ClearRoute(g_Navigation, 1)
+```
+
+⚠ **`full = 1` détruit AUSSI le vecteur de résultats de recherche** (`+0x10F0`,
+celui de `CNavigation_GetResult` / `CNavigation_Search` / `SelectResult` /
+`RebuildResultGroups`). La listbox native se recharge, la nôtre non : Bourgeon
+passe donc **`full = 0`**, ce qui arrête le guidage sans effacer la recherche du
+joueur sous ses yeux.
+
+### 10.6 Ce que Bourgeon en fait
+
+`NavigationWindow::RouteCellPath(out, max)` recopie le chemin **décimé aux
+changements de direction** — premier point, dernier point, et chaque coin. Entre
+deux coins la trajectoire est une droite, que la ligne brisée restitue au pixel
+près : un chemin de huit cents cellules tient en une trentaine de points.
+
+La minimap ImGui (`features/overlays/minimap.cc`) le trace en entier, sous sa
+propre transformation cellule → écran, donc **exact à tous les niveaux de zoom**
+et **visible sur toute sa longueur**, là où le natif n'en montre que dix cellules.
