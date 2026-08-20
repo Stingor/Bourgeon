@@ -5,6 +5,7 @@
 #include <cstring>
 
 #include "bourgeon.h"
+#include "features/overlays/target_frame.h"  // ciblage clavier
 #include "features/windows/bank_window.h"
 #include "features/windows/craft_atlas.h"
 #include "features/windows/game_menu.h"
@@ -64,6 +65,12 @@ const Action kActions[] = {
     {"win_navigation",   "Navigation",              ActionGroup::kWindows, 0, 0, 0},
     {"tool_craft_atlas", "Atlas des recettes",      ActionGroup::kTools,   0, 0, 0},
     {"tool_palette",     "Style du personnage",     ActionGroup::kTools,   0, 0, 0},
+    // Ciblage clavier. 🔴 AUCUN défaut n'est proposé (`default_vk = 0`), et c'est
+    // délibéré : la touche qui vient à l'esprit — Tab — sert déjà au client
+    // (bascule du chat), et poser un défaut qui vole une touche du jeu est le
+    // genre de cadeau qu'on passe sa vie à retirer. Le joueur choisit.
+    {"target_cycle_next", "Cible suivante",         ActionGroup::kTools,   0, 0, 0},
+    {"target_cycle_prev", "Cible précédente",       ActionGroup::kTools,   0, 0, 0},
     // Établi du staff. Le seul membre du catalogue à être gaté : il ne s'affiche
     // même pas dans l'écran des raccourcis d'un joueur ordinaire.
     {"tool_staff",       "Staff Tools",             ActionGroup::kTools,   0, 0, 0, true},
@@ -157,6 +164,20 @@ bool Invoke(const char* id) {
   }
   if (std::strcmp(id, "tool_palette") == 0) {
     if (auto* palette = bourgeon.palette_editor()) { palette->Toggle(); return true; }
+    return false;
+  }
+  // Ciblage clavier : le HUD de cible porte la mécanique (il tient déjà la cible
+  // courante), et il pose la sélection NATIVE — donc la flèche du jeu suit.
+  // `false` quand il n'y a rien à cibler : le raccourci reste silencieux plutôt
+  // que de faire semblant.
+  if (std::strcmp(id, "target_cycle_next") == 0) {
+    if (auto* target_frame = bourgeon.target_frame())
+      return target_frame->CycleTarget(true);
+    return false;
+  }
+  if (std::strcmp(id, "target_cycle_prev") == 0) {
+    if (auto* target_frame = bourgeon.target_frame())
+      return target_frame->CycleTarget(false);
     return false;
   }
   if (std::strcmp(id, "tool_staff") == 0) {

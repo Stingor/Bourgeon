@@ -11,6 +11,7 @@
 
 #include "bourgeon.h"
 #include "features/overlays/basic_info.h"
+#include "features/overlays/target_frame.h"
 #include "features/patches/chat.h"
 #include "features/windows/character_sheet.h"
 #include "features/windows/entity_context_menu.h"
@@ -572,6 +573,40 @@ void WritePortraitLayout(YAML::Emitter& out) {
         << YAML::Key << (prefix + "tscale")   << YAML::Value << element.text_scale;
     WriteArgbKey(out, prefix + "bg", element.bg);
     WriteArgbKey(out, prefix + "fg", element.fg);
+  }
+}
+
+void ReadTargetLayout(const YAML::Node& ui) {
+  auto* target_frame = Bourgeon::Instance().target_frame();
+  if (!target_frame) return;
+  for (int i = 0; i < TargetFrame::kElemCount; ++i) {
+    const std::string prefix =
+        std::string("target_") + TargetFrame::kElemKeys[i] + "_";
+    auto& elem = target_frame->elems_[i];
+    elem.show = ui[prefix + "show"].as<bool>(elem.show);
+    elem.rect.x = ui[prefix + "x"].as<int>(elem.rect.x);
+    elem.rect.y = ui[prefix + "y"].as<int>(elem.rect.y);
+    elem.rect.w = ui[prefix + "w"].as<int>(elem.rect.w);
+    elem.rect.h = ui[prefix + "h"].as<int>(elem.rect.h);
+    ReadArgbKey(ui, prefix + "bg", elem.bg);
+    ReadArgbKey(ui, prefix + "fg", elem.fg);
+  }
+}
+
+void WriteTargetLayout(YAML::Emitter& out) {
+  auto* target_frame = Bourgeon::Instance().target_frame();
+  if (!target_frame) return;
+  for (int i = 0; i < TargetFrame::kElemCount; ++i) {
+    const std::string prefix =
+        std::string("target_") + TargetFrame::kElemKeys[i] + "_";
+    const auto& elem = target_frame->elems_[i];
+    out << YAML::Key << (prefix + "show") << YAML::Value << elem.show
+        << YAML::Key << (prefix + "x")    << YAML::Value << elem.rect.x
+        << YAML::Key << (prefix + "y")    << YAML::Value << elem.rect.y
+        << YAML::Key << (prefix + "w")    << YAML::Value << elem.rect.w
+        << YAML::Key << (prefix + "h")    << YAML::Value << elem.rect.h;
+    WriteArgbKey(out, prefix + "bg", elem.bg);
+    WriteArgbKey(out, prefix + "fg", elem.fg);
   }
 }
 

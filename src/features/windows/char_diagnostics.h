@@ -285,8 +285,23 @@ class CharDiagnostics : public Plugin {
 
 // Opcodes SORTANTS comptés (cf. CharDiagnostics::NoteSend). Ceux du chantier
 // « latence des compétences » : le skill sur cible, le skill au sol, l'attaque.
+//
+// 🔴 CE SONT LES OPCODES QUE LE CLIENT ÉCRIT DANS SON TAMPON, pas ceux que le
+// serveur voit sur le fil. `SendPacketHook` observe le tampon AVANT le brouillage
+// natif du premier mot : ce sont donc bien ces valeurs-là qu'il faut comparer.
+// Vérifié à l'octet, aux sites de construction, dans le dispatch de CGameMode :
+//
+//   0x00C8DE53 : `mov eax, 438h` -> [buf+0]=0x0438, +2 niveau, +4 id, +6 GID (10 o)
+//   0x00C8F807 : `mov eax, 437h` -> [buf+0]=0x0437, +2 GID, +6 action    (7 o)
+//
+// ⚠ NE PAS « corriger » ces valeurs d'après `clif_packetdb.hpp` de moonlight : le
+// serveur y attend 0x089b et 0x088e (bloc `PACKETVER >= 20130320`), et l'écart est
+// normal — c'est le brouillage natif qui traduit. Le piège est réel : il a été
+// tendu et évité de justesse le 2026-08-20. Le repère qui trompe est
+// `CZ:WalkToXY`, que le client écrit DÉJÀ en 0x0881 (valeur remaniée) : le
+// client mélange les deux générations, paquet par paquet.
 namespace char_diag {
-constexpr uint16_t kCzUseSkill       = 0x0438;  // CZ_USE_SKILL
-constexpr uint16_t kCzUseSkillGround = 0x0af4;  // CZ_USE_SKILL_TOGROUND
-constexpr uint16_t kCzRequestAct     = 0x0437;  // CZ_REQUEST_ACT (attaque)
+constexpr uint16_t kCzUseSkill       = 0x0438;  // CZ_USE_SKILL          (10 o)
+constexpr uint16_t kCzUseSkillGround = 0x0af4;  // CZ_USE_SKILL_TOGROUND (11 o)
+constexpr uint16_t kCzRequestAct     = 0x0437;  // CZ_REQUEST_ACT        (7 o)
 }  // namespace char_diag

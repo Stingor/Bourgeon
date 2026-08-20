@@ -24,6 +24,7 @@
 #include "features/systems/discord_relay.h"
 #include "features/overlays/basic_info.h"
 #include "features/overlays/dps_meter.h"
+#include "features/overlays/target_frame.h"
 #include "features/overlays/menu_icons.h"
 #include "features/overlays/status_icon_bar.h"
 #include "features/overlays/minimap.h"
@@ -825,6 +826,41 @@ const moonlight_ui::SettingDesc kEntityContextMenuSettings[] = {
 
 // Fenêtres ImGui opt-in restantes + pose de l'avatar de la feuille de perso.
 const moonlight_ui::SettingDesc kOptInWindowSettings[] = {
+    // HUD de CIBLE. Il ne remplace aucune native — le client n'a jamais eu de
+    // « target frame » — mais il appartient au même écosystème que le reste du
+    // groupe : il se règle ici et bascule avec lui.
+    // ⚠ La GÉOMÉTRIE des cinq cadres ne passe PAS par cette table (un tableau
+    // d'éléments ne se décrit pas par l'adresse d'un champ) : elle est lue et
+    // écrite par ReadTargetLayout / WriteTargetLayout, comme les barres de
+    // Basic Info et le portrait.
+    {"target_frame", SType::kBool, MLUI_FIELD(target_frame, enabled_),
+     MLUI_LITERAL(bool, false)},
+    {"target_locked", SType::kBool, MLUI_FIELD(target_frame, locked_),
+     MLUI_LITERAL(bool, false)},
+    {"target_border", SType::kBool, MLUI_FIELD(target_frame, border_),
+     MLUI_LITERAL(bool, false)},
+    {"target_sticky", SType::kBool, MLUI_FIELD(target_frame, sticky_),
+     MLUI_LITERAL(bool, true)},
+    {"target_layout_mode", SType::kBool, MLUI_FIELD(target_frame, layout_mode_),
+     MLUI_LITERAL(bool, false)},
+    {"target_rounding", SType::kFloat, MLUI_FIELD(target_frame, rounding_),
+     MLUI_LITERAL(float, 4.0f)},
+    {"target_text_scale", SType::kFloat, MLUI_FIELD(target_frame, text_scale_),
+     MLUI_LITERAL(float, 1.0f)},
+    {"target_text_mode", SType::kInt, MLUI_FIELD(target_frame, text_mode_),
+     MLUI_LITERAL(int, 2)},
+    {"target_portrait_dir", SType::kInt, MLUI_FIELD(target_frame, portrait_dir_),
+     MLUI_LITERAL(int, 0)},
+    {"target_portrait_anim", SType::kInt, MLUI_FIELD(target_frame, portrait_anim_),
+     MLUI_LITERAL(int, 0)},
+    {"target_portrait_animate", SType::kBool,
+     MLUI_FIELD(target_frame, portrait_animate_), MLUI_LITERAL(bool, true)},
+    {"target_cycle_wrap", SType::kBool, MLUI_FIELD(target_frame, cycle_wrap_),
+     MLUI_LITERAL(bool, true)},
+    {"target_native_marker", SType::kBool,
+     MLUI_FIELD(target_frame, native_marker_), MLUI_LITERAL(bool, true)},
+    {"target_click_no_attack", SType::kBool,
+     MLUI_FIELD(target_frame, click_no_attack_), MLUI_LITERAL(bool, false)},
     {"cashshop_imgui", SType::kBool, MLUI_FIELD(cashshop_window, imgui_enabled_),
      MLUI_LITERAL(bool, false)},
     {"shop_imgui",  SType::kBool, MLUI_FIELD(npc_shop_window, imgui_enabled_),
@@ -1382,6 +1418,12 @@ MoonlightUi::MoonlightUi() {
 // en un point unique toutes les fenêtres modernes interdépendantes. Chaque plugin
 // garde son propre flag, mais il n'est plus jamais basculé isolément.
 void SetModernInterface(bool on) {
+  // La fenêtre de cible ne remplace rien : elle AJOUTE ce que le client n'a
+  // jamais su montrer (les points de vie et de SP de ce qu'on vise). Elle est
+  // dans le groupe parce qu'elle vit du même écosystème — et elle garde sa
+  // propre case, comme les autres membres.
+  if (auto* target_frame = Bourgeon::Instance().target_frame())
+    target_frame->enabled_ = on;
   if (auto* inventory_viewer = Bourgeon::Instance().inventory_viewer())
     inventory_viewer->imgui_enabled_ = on;
   // Le cart suit l'inventaire : les deux s'échangent des objets par glisser, et
@@ -1619,6 +1661,7 @@ void MoonlightUi::LoadSettings() {
     moonlight_ui::ReadSettings(ui, kPortraitSettings);
     moonlight_ui::ReadBarLayout(ui);
     moonlight_ui::ReadPortraitLayout(ui);
+    moonlight_ui::ReadTargetLayout(ui);
     moonlight_ui::ReadSettings(ui, MoonlightUiOwnSettings::kGrid);
     moonlight_ui::ReadWindowPositions(ui);
     moonlight_ui::ReadMenuIcons(ui);
@@ -1774,6 +1817,7 @@ void MoonlightUi::WriteSettingsFile() {
   // Portrait de statut (même plugin) : scalaires puis disposition par élément.
   moonlight_ui::WriteSettings(out, kPortraitSettings);
   moonlight_ui::WritePortraitLayout(out);
+  moonlight_ui::WriteTargetLayout(out);
   moonlight_ui::WriteMenuIcons(out);
 
   moonlight_ui::WriteSettings(out, kStatusIconSettings);
@@ -2378,6 +2422,13 @@ void MoonlightUi::OnRenderUI() {
   if (auto* basic_info = Bourgeon::Instance().basic_info();
       basic_info && basic_info->geometry_dirty_) {
     basic_info->geometry_dirty_ = false;
+    SaveSettings();
+  }
+
+  // Idem pour les cinq cadres du HUD de cible (posé à la fin d'un glissement).
+  if (auto* target_frame = Bourgeon::Instance().target_frame();
+      target_frame && target_frame->geometry_dirty_) {
+    target_frame->geometry_dirty_ = false;
     SaveSettings();
   }
 

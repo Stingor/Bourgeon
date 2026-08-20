@@ -73,6 +73,28 @@ int CaptureMainVk();
 // capture, les seconds ne sont pas des touches principales.
 int CaptureAnyVk();
 
+// Le jeu de touches des actions de BOURGEON : `CaptureMainVk` plus **Tab**.
+//
+// 🔴 Tab n'y était pas, et son absence n'était pas un choix : c'était le filet de
+// sécurité « ne pas offrir une touche que le jeu ne route pas ». Vérification
+// faite dans le binaire, il la route :
+//   · `Game_MainWndProc` (0x00DB8100) ne teste JAMAIS VK 9 — aucune comparaison à
+//     9 dans toute la fonction — donc Tab descend jusqu'à
+//     `UIWindowMgr_OnKeyDown` (0x00A471E0), c'est-à-dire jusqu'à notre hook ;
+//   · là, le case 9 tombe dans le dispatch des raccourcis du CLIENT
+//     (`UIWindowMgr_DispatchHotkeyBehavior`), où RIEN n'est lié à Tab — le
+//     ciblage clavier n'existe pas nativement (docs/target_system_re.md).
+//
+// Et quand la barre de chat a le focus, `HotkeyDispatch::OnKeyDown` s'efface de
+// lui-même (`NativeTextInputHasFocus`) : Tab y retrouve son rôle de saisie. Il
+// n'y a donc rien à confisquer, et la touche reste au client quand il en a
+// l'usage.
+//
+// ⚠ Les autres touches de `kExtendedKeys` restent hors du jeu des actions : les
+// flèches appartiennent au déplacement, Entrée et Espace au « bouton par défaut »
+// des fenêtres (0x00A47317), Échap au menu et à l'annulation.
+int CaptureActionVk();
+
 // Libellé lisible du combo : « Ctrl+Maj+F1 », « Espace », « (aucun) ».
 void Label(int vkey, bool ctrl, bool alt, bool shift, char* out, int cap);
 

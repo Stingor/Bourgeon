@@ -6,6 +6,7 @@
 
 #include "bourgeon.h"
 #include "features/systems/net_ping.h"  // horodatage de la demande d'heure
+#include "features/overlays/target_frame.h"     // cible d'un sort -> HUD de cible
 #include "features/windows/char_diagnostics.h"  // compteur des envois du joueur
 #include "features/windows/npc_dialog_window.h"
 #include "utils/hooking/hook_manager.h"
@@ -563,6 +564,29 @@ bool RagConnection::SendPacketHook(int packet_len, char* packet) {
   if (packet_len == 8 && packet != nullptr &&
       *reinterpret_cast<uint16_t*>(packet) == 0x0439) {
     Bourgeon::Instance().NotifyItemUse(*reinterpret_cast<uint16_t*>(packet + 2));
+  }
+
+  // [HUD de cible] Observation PURE du sort qui part. CZ_USE_SKILL
+  // (`char_diag::kCzUseSkill`, 10 octets : <lv>.W <id>.W <targetGID>.L) est le
+  // seul endroit qui porte la cible d'un cast.
+  //
+  // 🔴 Il le faut parce que le client, lui, ne l'enregistre PAS toujours : sa
+  // sélection (`CGameMode+0xF4`) ne s'écrit qu'au clic sur une cible « valide »
+  // (`0x00C79D3C`), et un CADAVRE n'en est pas une — on ressuscite un mort sans
+  // que rien ne bouge côté client. Le paquet, lui, porte le GID.
+  //
+  // ⚠ Les sorts AU SOL ne passent pas par ici, et c'est voulu :
+  // CZ_USE_SKILL_TOGROUND (`char_diag::kCzUseSkillGround`, 11 octets) porte des
+  // COORDONNÉES, pas un GID — un Storm Gust ne désigne personne. La cible
+  // affichée reste donc celle d'avant, ce qui est le comportement juste : un
+  // sort de zone ne « cible » pas.
+  //
+  // L'opcode est en clair ici (le XOR natif n'agit qu'APRÈS nous), et nos propres
+  // envois contournent ce hook : ce qu'on voit est un geste du JOUEUR.
+  if (packet_len == 10 && packet != nullptr &&
+      *reinterpret_cast<uint16_t*>(packet) == char_diag::kCzUseSkill) {
+    if (auto* target_frame = Bourgeon::Instance().target_frame())
+      target_frame->NoteSkillTarget(*reinterpret_cast<uint32_t*>(packet + 6));
   }
 
   // [NPC dialog ImGui] Quand l'overlay NPC est actif, on JETTE les CZ de dialogue

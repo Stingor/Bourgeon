@@ -112,6 +112,12 @@ const std::string kYamlConfiguration = R"(
     OnUpdate: 0x00c74a80
     ProcessInput: 0x00c86740
     ProcessInputArgs: 5
+    # GameMode_PostActorClickAction : ce que le clic sur une entite ARME sur
+    # l'acteur du joueur (message 10 -> action en attente +0x500, cible +0x514).
+    # C'est de cet armement que decoulent l'approche ET le coup ; la selection,
+    # elle, est deja ecrite par l'appelant. Optionnel : absent, le reglage
+    # « le clic cible sans attaquer » n'empeche que le coup.
+    PostActorClickAction: 0x00c753a0
   CScene:
     RenderCellsAndCursor: 0x00a7b0a0
 )";

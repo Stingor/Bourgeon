@@ -101,6 +101,11 @@ void WriteBarLayout(YAML::Emitter& out);
 // Disposition du portrait par élément : portrait_<élément>_{show,x,y,w,h,rounding,bg,fg}.
 void ReadPortraitLayout(const YAML::Node& ui);
 void WritePortraitLayout(YAML::Emitter& out);
+// Les cinq cadres du HUD de cible (position, taille, couleurs, on/off).
+// Même forme que les barres et le portrait : un tableau d'éléments ne se
+// décrit pas par l'adresse d'un champ, donc il ne passe pas par la table.
+void ReadTargetLayout(const YAML::Node& ui);
+void WriteTargetLayout(YAML::Emitter& out);
 
 // Barres de raccourcis : skillbarN_* (3 barres fixes) + skillbar_itemN (contenu
 // persisté de la barre d'items).

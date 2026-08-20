@@ -19,8 +19,14 @@
 //                          plus loin »)
 //   4. envoi             = acteur joueur -> vtable+8 (Actor_OnMsg 0x00d473b0),
 //                          message 0x11 (x, y) = « marche vers cette cellule ».
-//                          Ce message construit le CZ:WalkToXY (0x0881) via
-//                          CMode::SendMsg(0x8a) avec le throttle natif de 50 ms.
+//                          Ce message construit la demande de marche via
+//                          CMode::SendMsg(0x8a), avec le throttle natif de 50 ms.
+//                          ⚠ Dans le TAMPON du client l'opcode est **0x035F**
+//                          (`mov eax, 35Fh` en 0x00C8F865, 5 octets : opcode +
+//                          x/y/dir empaquetes) ; c'est le SERVEUR qui lit
+//                          0x0881, apres le brouillage natif du premier mot.
+//                          Cette ligne annoncait 0x0881 : la valeur etait celle
+//                          du packet_db, pas celle qu'on voit dans SendPacketHook.
 //
 // Aucun paquet n'est fabriqué à la main et aucune position n'est écrite : le
 // serveur reste maître du déplacement, exactement comme un clic souris. Tenir

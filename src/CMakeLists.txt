@@ -165,6 +165,10 @@ set(BOURGEON_FILES
 	"features/overlays/quest_tracker.h"
 	"features/overlays/skill_bar.cc"
 	"features/overlays/skill_bar.h"
+	"ui/hud_frame.cc"
+	"ui/hud_frame.h"
+	"features/overlays/target_frame.cc"
+	"features/overlays/target_frame.h"
 	"features/overlays/status_icon_bar.cc"
 	"features/overlays/status_icon_bar.h"
 

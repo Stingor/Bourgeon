@@ -492,7 +492,8 @@ bool HotkeySettings::RunCapture(const Row& row) {
   // déjà deux rôles qu'aucun raccourci ne doit pouvoir lui prendre : annuler la
   // capture ici, et ouvrir le menu du jeu partout ailleurs. Le verrou tient à
   // deux endroits — ce test, qui la consomme avant tout le reste, et
-  // `hotkeys::CaptureMainVk` qui ne rend que lettres, chiffres, F1-F12 et Espace.
+  // `hotkeys::CaptureActionVk` qui ne rend que lettres, chiffres, F1-F12, Espace
+  // et Tab.
   if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
     CancelCapture();
     return false;
@@ -510,7 +511,7 @@ bool HotkeySettings::RunCapture(const Row& row) {
   // Le déplacement, lui, prend le jeu LARGE : ses touches par défaut sont les
   // flèches, et c'est un usage à la manette, pas un raccourci de commande.
   const bool own = (row.kind != RowKind::kClient);
-  const int vkey = (own && row.kind != RowKind::kMove) ? hotkeys::CaptureMainVk()
+  const int vkey = (own && row.kind != RowKind::kMove) ? hotkeys::CaptureActionVk()
                                                       : hotkeys::CaptureAnyVk();
   if (vkey == 0) return false;
 

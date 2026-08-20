@@ -20,6 +20,7 @@
 #include "features/systems/image_preview.h"
 #include "features/overlays/basic_info.h"
 #include "features/overlays/dps_meter.h"
+#include "features/overlays/target_frame.h"
 #include "features/overlays/menu_icons.h"
 #include "features/systems/integrity_check.h"
 #include "features/systems/ui_caps.h"
@@ -99,6 +100,7 @@ Bourgeon::Bourgeon()
 RagnarokClient& Bourgeon::client() { return client_; }
 DiscordRelay* Bourgeon::discord_relay() { return discord_relay_; }
 DpsMeter*     Bourgeon::dps_meter()     { return dps_meter_; }
+TargetFrame*  Bourgeon::target_frame()  { return target_frame_; }
 BasicInfo* Bourgeon::basic_info() { return basic_info_; }
 MenuIcons* Bourgeon::menu_icons()  { return menu_icons_; }
 StatusIconBar* Bourgeon::status_icons() { return status_icons_; }
@@ -1041,6 +1043,14 @@ void Bourgeon::LoadPlugins() {
     auto dps = std::make_unique<DpsMeter>();
     dps_meter_ = dps.get();
     plugins_.emplace_back(std::move(dps));
+  }
+  {
+    // Fenêtre de cible : elle lit la sélection native (CGameMode+0xF4), la même
+    // que la petite flèche du jeu, et interroge le serveur pour ce que le client
+    // ne peut pas savoir (le SP d'une entité tierce).
+    auto target_frame = std::make_unique<TargetFrame>();
+    target_frame_ = target_frame.get();
+    plugins_.emplace_back(std::move(target_frame));
   }
   {
     auto basic_info = std::make_unique<BasicInfo>();

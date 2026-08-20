@@ -45,6 +45,7 @@ constexpr uint16_t kReqEntityProps = 0x0F22;  // CZ_BOURGEON_REQ_ENTITY_PROPS (p
 constexpr uint16_t kUiCaps      = 0x0F24;  // CZ_BOURGEON_UI_CAPS (ce que l'interface moderne SAIT AFFICHER)
 constexpr uint16_t kNpcAdmin    = 0x0F25;  // CZ_BOURGEON_NPC_ADMIN (recharger/décharger/déplacer un NPC — ADMIN)
 constexpr uint16_t kStyle       = 0x0F26;  // CZ_BOURGEON_STYLE (style choisi : couleurs de corps, palette de cheveux, coiffure)
+constexpr uint16_t kReqTargetInfo = 0x0F29;  // CZ_BOURGEON_TARGET_INFO (état de l'entité ciblée ; réémis tant que la fenêtre de cible est ouverte)
 
 // --- ZC : serveur -> client (livrés par le reader-hook) ---------------------
 constexpr uint16_t kKickNotice  = 0x0F03;  // ex-0x0BFA  ZC_BOURGEON_KICK_NOTICE
@@ -69,6 +70,7 @@ constexpr uint16_t kChannelList    = 0x0F21;  // ZC_BOURGEON_CHANNEL_LIST (canau
 constexpr uint16_t kEntityProps    = 0x0F23;  // ZC_BOURGEON_ENTITY_PROPS (liste clé/valeur décrivant une entité — STAFF)
 constexpr uint16_t kStyles         = 0x0F27;  // ZC_BOURGEON_STYLES (styles des joueurs en vue — LOT)
 constexpr uint16_t kStyleOpen      = 0x0F28;  // ZC_BOURGEON_STYLE_OPEN (un NPC ouvre/ferme l'éditeur de style)
+constexpr uint16_t kTargetInfo     = 0x0F2A;  // ZC_BOURGEON_TARGET_INFO (PV/SP/niveau/race/élément de la cible ; SP introuvable autrement)
 
 // --- PROCHAIN OPCODE LIBRE : la valeur de kNextFree ci-dessous ---------------
 // Pour ajouter un opcode custom : prendre la valeur ci-dessous, l'incrémenter,
@@ -76,6 +78,6 @@ constexpr uint16_t kStyleOpen      = 0x0F28;  // ZC_BOURGEON_STYLE_OPEN (un NPC 
 // Aucune vérification de collision nécessaire : toute la plage 0x0F00..0x0FFF
 // est hors de la table du client (garantie flag=-1 = variable). Champ libre.
 // (0x0F00/0x0F01 libérés — anciennes valeurs tech data avant regroupement.)
-constexpr uint16_t kNextFree    = 0x0F29;
+constexpr uint16_t kNextFree    = 0x0F2B;
 
 }  // namespace bopcodes

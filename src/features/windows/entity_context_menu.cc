@@ -13,6 +13,7 @@
 #include "features/systems/bourgeon_opcodes.h"  // CZ 0x0F25 (outillage NPC admin)
 #include "features/item_cell.h"     // ChatLink / DeferDescFromChatLink (objet au sol)
 #include "features/link_gesture.h"  // CanPostToChat / NaviKind (liens de chat)
+#include "features/overlays/target_frame.h"  // masquer la fenêtre de cible
 #include "features/windows/chat_window.h"  // TargetWhisper / OpenWhisperWindowByAid
 #include "features/windows/entity_inspector.h"
 #include "features/windows/monster_info_window.h"
@@ -1347,6 +1348,20 @@ void EntityContextMenu::BuildItems() {
       break;
   }
 
+  // ── Fenêtre de cible ───────────────────────────────────────────────────────
+  // Proposée UNIQUEMENT quand la fenêtre est réellement affichée pour cette
+  // entité : une entrée « masquer » sur une fenêtre absente n'apprendrait rien
+  // et ferait douter de ce qui est ouvert. Elle ne coupe pas la fonction — le
+  // prochain ciblage la ramène ; l'interrupteur, lui, est dans les réglages.
+  if (auto* target_frame = Bourgeon::Instance().target_frame()) {
+    if (target_frame->IsShownFor(target_aid_)) {
+      add(i18n::Tr("Masquer la fenêtre de cible"), 0, Local::kHideTargetFrame, true,
+          false,
+          i18n::Tr("Pour cette cible seulement : elle revient dès que vous en "
+                   "désignez une autre."));
+    }
+  }
+
   if (!staff) return;
 
   // ── Section staff ──────────────────────────────────────────────────────────
@@ -1679,6 +1694,9 @@ void EntityContextMenu::FlushPending() {
       if (auto* insp = Bourgeon::Instance().entity_inspector())
         insp->Open(aid, arg, target_cat_, KindLabel(kind_));
       return;
+    case Local::kHideTargetFrame:
+      if (auto* tf = Bourgeon::Instance().target_frame()) tf->HideForGid(aid);
+      return;
     case Local::kMonsterInfo:
       // `by_view` : le quad porte une classe de SPRITE, pas un id de mob_db —
       // exactement le cas du skill Sense, que la fiche sait déjà résoudre.
@@ -1729,6 +1747,12 @@ void EntityContextMenu::FlushPending() {
       return;
     }
     case Local::kAttack:
+      // 🔴 Ordre EXPLICITE : il doit frapper même si « le clic cible sans
+      // attaquer » est coché. Sans cette dispense, l'entrée de menu emprunterait
+      // le même chemin natif que le clic et serait annulée avec lui — ce qui
+      // s'est vu : « Attaquer » ne faisait plus rien.
+      if (auto* tf = Bourgeon::Instance().target_frame())
+        tf->NoteExplicitAttack(aid);
       if (!RunNativeActorClick(aid))
         LogDiag("[EntityContextMenu] clic acteur refuse (cible {})", aid);
       return;

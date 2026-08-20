@@ -111,6 +111,14 @@ int CaptureMainVk() {
   return 0;
 }
 
+int CaptureActionVk() {
+  if (const int vkey = CaptureMainVk()) return vkey;
+  // Tab : routée par le jeu, libre de tout usage natif hors saisie. Cf. le
+  // header pour la démonstration.
+  if (ImGui::IsKeyPressed(ImGuiKey_Tab, false)) return VK_TAB;
+  return 0;
+}
+
 int CaptureAnyVk() {
   if (const int vkey = CaptureMainVk()) return vkey;
   for (const KeyVk& entry : kExtendedKeys) {

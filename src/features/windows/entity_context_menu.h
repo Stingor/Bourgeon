@@ -272,6 +272,11 @@ class EntityContextMenu : public Plugin {
     kAlootToggle,   // case « ramassage automatique » (liste @alootid du compte)
     kCmdItemInfo,   // @iteminfo <id> par le pipeline complet du chat
     kCmdWhoDrops,   // @whodrops <id> — idem
+    // ── Fenêtre de cible ─────────────────────────────────────────────────────
+    // Masque la fenêtre de cible POUR CETTE ENTITÉ. Elle revient d'elle-même au
+    // prochain changement de cible : c'est un « pas celle-ci », pas un
+    // interrupteur global (celui-là est dans les réglages).
+    kHideTargetFrame,
   };
 
   // Le nom de la famille de la cible, tel qu'il s'affiche en tête du menu — et

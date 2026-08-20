@@ -48,6 +48,7 @@
 #include "features/windows/rodex_window.h"
 #include "features/overlays/skill_bar.h"
 #include "features/overlays/status_icon_bar.h"
+#include "features/overlays/target_frame.h"
 #include "features/windows/storage_window.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
@@ -117,6 +118,7 @@ constexpr IfaceEntry kIfaceSections[] = {
     {MoonlightUi::kIfaceSkillBar,    "skill_bar",    "Barre d'action"},
     {MoonlightUi::kIfaceBasicInfo,   "basic_info",   "Basic Info"},
     {MoonlightUi::kIfaceCastBar,     "cast_bar",     "Barre d'incantation"},
+    {MoonlightUi::kIfaceTargetFrame, "target_frame", "Fenêtre de cible"},
     {MoonlightUi::kIfaceChat,        "chat",         "Chat"},
     {MoonlightUi::kIfaceMenuIcons,   "menu_icons",   "Icônes du menu"},
     {MoonlightUi::kIfaceStatusIcons, "status_icons", "Icônes de statut"},
@@ -592,6 +594,17 @@ void MoonlightUi::DrawInterfacePanel() {
           cast->DrawSettings();
         else
           ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
+      }
+
+      // ── Fenêtre de cible (TargetFrame) ───────────────────────────────────
+      // Elle suit la sélection native — la même que la petite flèche blanche du
+      // jeu — et complète ce que le client ignore par une requête serveur.
+      if (iface_nav_ == kIfaceTargetFrame) {
+        if (auto* target_frame = Bourgeon::Instance().target_frame()) {
+          if (target_frame->DrawSettings()) SaveSettings();
+        } else {
+          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
+        }
       }
 
       // ── Chat Settings ────────────────────────────────────────────────────
