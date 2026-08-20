@@ -1357,8 +1357,8 @@ void EntityContextMenu::BuildItems() {
     if (target_frame->IsShownFor(target_aid_)) {
       add(i18n::Tr("Masquer la fenêtre de cible"), 0, Local::kHideTargetFrame, true,
           false,
-          i18n::Tr("Pour cette cible seulement : elle revient dès que vous en "
-                   "désignez une autre."));
+          i18n::Tr("Pour cette cible seulement : elle revient dès que tu en "
+                   "désignes une autre."));
     }
   }
 
