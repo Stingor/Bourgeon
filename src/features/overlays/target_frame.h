@@ -332,6 +332,13 @@ class TargetFrame : public Plugin {
   // Émet CZ 0x0F29 si le délai est écoulé.
   void PollServer();
 
+  // Redemande le nom de la cible (CZ_REQNAME). 🔴 Le client s'interdit de
+  // redemander un GID pendant 10 s, et on peut cibler plus vite que la réponse
+  // n'arrive — surtout si l'entité vient d'être recréée (Cloaking, @hide,
+  // retour dans AREA_SIZE). Sans ce rappel, le nom reste « inconnu » jusqu'à dix
+  // secondes, y compris pour le nameplate du jeu.
+  void RequestTargetName();
+
   // ── Cible suivie ──────────────────────────────────────────────────────────
   uint32_t gid_        = 0;      // 0 = aucune cible affichée
   bool     hidden_     = false;  // masqué à la main POUR CE GID
@@ -341,6 +348,7 @@ class TargetFrame : public Plugin {
   // rallumage, en boucle. L'abandon se lève dès que l'entité a quitté le monde
   // du client : ce qui reviendra ensuite sera un nouvel acteur.
   unsigned last_poll_   = 0;     // GetTickCount du dernier CZ 0x0F29
+  unsigned name_retry_ms_ = 0;   // GetTickCount du dernier CZ_REQNAME de rappel
 
   // ── Détection du GESTE de ciblage ─────────────────────────────────────────
   // Posé par un clic, un cyclage clavier ou un sort qui part ; consommé au rendu

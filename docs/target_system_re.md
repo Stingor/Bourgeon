@@ -369,6 +369,19 @@ le GID pendant **10 s** pour ne pas le redemander.
 > seconde dans une file vidée à raison d'une par frame. Plus on réclamait le nom,
 > plus il tardait. Une seule interrogation par frame, quatre lectures dedans.
 
+**Et ça ne suffisait pas.** La fenêtre anti-répétition de 10 s se retourne contre
+nous dès qu'on cible vite : si l'entité a été **recréée** entre-temps (Cloaking,
+`@hide`, sortie puis retour dans AREA_SIZE), son entrée de dictionnaire repart
+vide alors que l'interdiction, elle, court toujours. Le nom reste alors inconnu
+**jusqu'à dix secondes** — et le nameplate du jeu au-dessus du sprite est vide lui
+aussi : le client n'a rien, et ne demande rien.
+
+> ✅ Le HUD **redemande lui-même** : `TargetFrame::RequestTargetName` envoie
+> `CZ_REQNAME 0x0368` (6 o, `[op:2][gid:4]`, le paquet du client à l'octet près)
+> toutes les 700 ms tant que le nom manque. La réponse est traitée par le client
+> comme n'importe quelle autre : c'est SON dictionnaire qui se remplit, donc le
+> nameplate natif se répare avec le nôtre.
+
 ### Ce qu'on ne montre pas d'un JOUEUR
 
 Le HUD sert à jauger un adversaire, pas à l'auditer. Deux retraits volontaires :

@@ -150,6 +150,13 @@ constexpr uint8_t kKnownKind  = 8;
 // HUD est réellement affiché.
 constexpr unsigned kPollMs = 400;
 
+// CZ_REQNAME : « qui est ce GID ? ». 6 octets, [op:2][gid:4] — c'est exactement
+// ce que le client construit lui-même en `0x005A1A4E` et envoie en `0x005A1A5F`.
+constexpr uint16_t kCzReqName = 0x0368;
+// Notre propre cadence de relance. Plus lente qu'une frame, plus rapide que la
+// fenêtre d'interdiction du client (10 s) : c'est tout l'intérêt.
+constexpr unsigned kNameRetryMs = 700;
+
 // ── Termes de jeu : en anglais, comme partout dans l'interface ──────────────
 // (Les libellés d'interface, eux, passent par i18n::Tr.)
 const char* const kRaceNames[] = {
@@ -466,6 +473,7 @@ void TargetFrame::Reset(uint32_t gid) {
   gid_ = gid;
   hidden_ = false;
   last_poll_ = 0;
+  name_retry_ms_ = 0;
   name_[0] = party_[0] = guild_[0] = rank_[0] = '\0';
   is_mob_ = is_player_ = false;
   srv_valid_ = false;
@@ -736,6 +744,32 @@ void TargetFrame::HandlePacket(uint16_t opcode, const uint8_t* data,
   srv_valid_  = true;
 }
 
+// Redemande le nom de la cible au serveur.
+//
+// 🔴 Pourquoi le refaire nous-mêmes alors que le client le fait déjà : parce
+// qu'il ne le refait PAS. `CNameDict_Tick_FlushNameRequests` (`0x005A1920`) note
+// chaque GID demandé et **s'interdit de le redemander pendant 10 000 ms**. Or on
+// peut cibler plus vite que la réponse n'arrive — et si l'entité a été recréée
+// entre-temps (Cloaking, `@hide`, sortie puis retour dans AREA_SIZE), son entrée
+// de dictionnaire est repartie vide alors que l'interdiction, elle, court
+// toujours. Le nom reste alors « inconnu » jusqu'à dix secondes, et le nameplate
+// du jeu au-dessus du sprite est vide lui aussi : le client n'a rien, et ne
+// demande rien.
+//
+// Le paquet est celui du client, à l'octet près. La réponse (ZC_ACK_REQNAME) est
+// traitée par le client comme n'importe quelle autre : c'est SON dictionnaire qui
+// se remplit, et le nameplate natif se répare avec le nôtre.
+void TargetFrame::RequestTargetName() {
+  const unsigned now = GetTickCount();
+  if (name_retry_ms_ != 0 && (now - name_retry_ms_) < kNameRetryMs) return;
+  name_retry_ms_ = now;
+
+  uint8_t packet[6];
+  *reinterpret_cast<uint16_t*>(packet + 0) = kCzReqName;
+  *reinterpret_cast<uint32_t*>(packet + 2) = gid_;
+  Bourgeon::Instance().SendPacket(packet, sizeof(packet));
+}
+
 void TargetFrame::PollServer() {
   const unsigned now = GetTickCount();
   if (last_poll_ != 0 && (now - last_poll_) < kPollMs) return;
@@ -826,6 +860,9 @@ void TargetFrame::DrawHud() {
     ReadNameField(name_entry, kName_Party, party_, sizeof(party_));
     ReadNameField(name_entry, kName_Guild, guild_, sizeof(guild_));
     ReadNameField(name_entry, kName_Rank,  rank_,  sizeof(rank_));
+    // Toujours rien ? On le redemande, parce que le client ne le fera pas avant
+    // dix secondes. Cf. RequestTargetName.
+    if (name_[0] == '\0') RequestTargetName();
 
     const unsigned job = static_cast<unsigned>(ReadActorInt(actor, kAct_BaseJob));
     is_mob_ = IsMonsterJob(job);
