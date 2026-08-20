@@ -314,6 +314,8 @@
 "Masque la fenêtre native \"Basic Info\".": "Hides the native \"Basic Info\" window."
 "Barres d'info": "Info bars"
 "Afficher les barres": "Show the bars"
+"Masquer les barres HP/SP sous mon personnage": "Hide the HP/SP bars under my character"
+"Masque les deux petites jauges HP/SP que le client dessine sous les pieds de TON personnage dans le monde.\nCelles des autres joueurs et des monstres ne bougent pas.": "Hides the two small HP/SP gauges the client draws under YOUR character's feet in the world.\nThose of other players and monsters are left alone."
 "Affiche/cache chaque barre indépendamment.": "Shows/hides each bar independently."
 "Verrouiller les barres": "Lock the bars"
 "Verrouillée : les barres ne bougent plus et laissent passer les clics au jeu.\nDéverrouillée : glissez-les pour les déplacer, tirez le coin pour redimensionner.": "Locked: the bars no longer move and let clicks through to the game.\nUnlocked: drag them to move them, pull a corner to resize."

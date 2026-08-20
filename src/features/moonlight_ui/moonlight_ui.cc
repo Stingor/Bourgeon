@@ -1016,6 +1016,10 @@ const moonlight_ui::SettingDesc kBasicInfoSettings[] = {
      MLUI_LITERAL(bool, false)},
     {"expbar_sticky",   SType::kBool,  MLUI_FIELD(basic_info, sticky_),
      MLUI_LITERAL(bool, false)},
+    // Jauges HP/SP natives sous le personnage (UIPcGage) : indépendant de
+    // `expbar_visible`, on masque le client sans forcément le remplacer.
+    {"expbar_hide_own_gage", SType::kBool,
+     MLUI_FIELD(basic_info, hide_own_pc_gage_), MLUI_LITERAL(bool, false)},
     {"expbar_text",     SType::kInt,   MLUI_FIELD(basic_info, text_mode_),
      MLUI_LITERAL(int, 1)},
     {"expbar_vertical", SType::kBool,  MLUI_FIELD(basic_info, vertical_),

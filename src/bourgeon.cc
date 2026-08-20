@@ -313,6 +313,12 @@ void Bourgeon::OnGameFrame() {
   // fenêtre du menu (carte du monde, navigation) : une fenêtre lourde ouverte
   // depuis OnTick tombe sur une frame quelconque, et plante par intermittence.
   if (auto* mm = minimap()) mm->OnGameFramePulse();
+
+  // Jauges HP/SP natives sous le personnage (`UIPcGage`) : encore la même
+  // raison. Le masquage doit précéder le dessin du jeu, et le natif recrée sa
+  // jauge sans prévenir — au rythme d'OnTick (~100 ms) elle réapparaîtrait
+  // plusieurs frames à chaque fois.
+  if (auto* bi = basic_info()) bi->OnGameFramePulse();
 }
 
 // 🔴 Le décodage des paquets, rejoué sur le fil PRINCIPAL pour tous les modules.

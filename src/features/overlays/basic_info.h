@@ -43,6 +43,12 @@ class BasicInfo : public Plugin {
   void OnModeSwitch(ModeMgr::ModeType mode_type, const char* map_name) override;
   void OnRenderUI() override;
   void OnTick() override;  // enforces the "hide native Basic Info" option
+  // Battement par FRAME (Bourgeon::OnGameFrame), hors frame ImGui : masque les
+  // jauges HP/SP natives sous le personnage. 🔴 Pas dans OnTick — celui-ci est
+  // bridé à ~100 ms, et le natif RECRÉE sa jauge (msg 34) sans prévenir : elle
+  // resterait visible plusieurs frames à chaque réapparition. Même raison que
+  // la barre d'incantation (features/overlays/cast_bar.cc).
+  void OnGameFramePulse();
   // Observe ZC 0x0A3B (ZC_EQUIPMENT_EFFECT / hat effects) pour SUIVRE les effets de
   // chapeau (.str) actifs sur le JOUEUR (aid == propre aid) : status=1 ajoute, 0 retire.
   // 🔴 Ne fait que COPIER : `own_hat_effects_` et la table d'ordinaux sont écrites
@@ -117,6 +123,10 @@ class BasicInfo : public Plugin {
   bool  border_       = true;   // draw the 1px dark outline around each bar
   float rounding_     = 4.0f;   // corner rounding of the drawn bars (0..16)
   float bg_color_[4]  = {0.05f, 0.05f, 0.07f, 0.70f};  // shared background + alpha
+  // Masque les deux jauges HP/SP que le client accroche SOUS notre propre
+  // sprite (`UIPcGage`, acteur+0x488). Indépendant de `bars_visible_` : cacher
+  // celles du client et n'en afficher aucune est un choix légitime.
+  bool  hide_own_pc_gage_ = false;
 
   // The alignment grid moved to a shared AlignGrid owned by MoonlightUi
   // (Bourgeon::Instance().moonlight_ui()->grid_); bars read it for snapping.
@@ -238,6 +248,13 @@ class BasicInfo : public Plugin {
   // be restored when the option is turned off.
   bool bi_pinned_off_ = false;
   int  bi_saved_x_ = 0, bi_saved_y_ = 0;
+
+  // Idem pour les jauges HP/SP sous le personnage : tant que l'option est
+  // active, OnTick re-masque la `UIPcGage` du joueur (le natif en recrée une à
+  // chaque msg 34) ; à la décoche, on la rend visible UNE fois. On ne la force
+  // pas à `visible` chaque frame — le natif a ses propres raisons de la cacher,
+  // et les lui reprendre ferait apparaître des barres qu'il ne montrait pas.
+  bool own_gage_hidden_ = false;
 
   // Nearest magnetic alignment of value `v` (extent `ext`) on one axis to any
   // other shown bar's edges, within the snap threshold; else returns `v`.

@@ -2403,6 +2403,16 @@ bool BasicInfo::DrawSettings() {
 
   SeparatorText(i18n::Tr("Barres d'info"));
   changed |= ro::RoCheckbox(i18n::Tr("Afficher les barres"), &bars_visible_);
+
+  // Hors du BeginDisabled : masquer les jauges du client ne dépend pas de nos
+  // barres à nous. Ne rien afficher du tout est un choix qui se défend.
+  changed |= ro::RoCheckbox(i18n::Tr("Masquer les barres HP/SP sous mon personnage"),
+                            &hide_own_pc_gage_);
+  SameLine(); HelpMarker(
+      i18n::Tr("Masque les deux petites jauges HP/SP que le client dessine sous "
+      "les pieds de TON personnage dans le monde.\n"
+      "Celles des autres joueurs et des monstres ne bougent pas."));
+
   ImGui::BeginDisabled(!bars_visible_);
   Indent();
     for (int i = 0; i < BasicInfo::kBarCount; ++i) {
@@ -2606,6 +2616,38 @@ void BasicInfo::OnRenderUI() {
 }
 
 namespace {
+// ── Jauges HP/SP natives SOUS le personnage (`UIPcGage`, acteur+0x488) ───────
+// Le client accroche à chaque acteur une `UIPcGage` (vftable `0x0102bca0`, 0xB0
+// o, deux jauges : haute `+0xA0/+0xA4`, basse `+0xA8/+0xAC`, `+0x9C` = mode
+// double barre) posée sous les pieds — créée par le msg 34, détruite par le msg
+// 35. RE complète dans docs/entity_chat_balloon_re.md §8.
+//
+// 🔴 On la MASQUE (drapeau `+0x28`), on ne la détruit pas : c'est le natif qui
+// la crée et la nourrit, et le msg 35 lui appartient (mêmes raisons que la
+// barre d'incantation, cf. features/overlays/cast_bar.cc).
+// 🔴 Le joueur local n'est PAS dans la std::list d'acteurs : il vit à part, à
+// `actorMgr+0x2C` — c'est ce que résout `GetOwnActorLive`.
+constexpr int kAct_PcGage = 0x488;
+
+// Pose la visibilité de la jauge du joueur local. Renvoie true si une jauge
+// était bien là (donc si l'écriture a eu lieu) : hors jeu, ou tant que le natif
+// n'en a pas créé, il n'y a rien à masquer.
+bool SetOwnPcGageVisible(bool visible) {
+  void* actor = GetOwnActorLive();
+  if (!actor) return false;
+  __try {
+    void* gage =
+        *reinterpret_cast<void**>(reinterpret_cast<uint8_t*>(actor) + kAct_PcGage);
+    if (!gage) return false;
+    uiwnd::SetVisible(gage, visible);
+    return true;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    // Acteur libéré entre-temps (changement de carte) : sa jauge est partie
+    // avec lui, il n'y a plus rien à masquer.
+    return false;
+  }
+}
+
 // ── Hide native Basic Info PRE-RENDER via its msg-0x22 handler ───────────────
 // UIBasicInfoWnd (id 0) vtable 0x0103e35c. Its OnMsg is vtable+0x94; MakeWindow's
 // id-0 case calls it with msg 0x22 (layout-restore) DURING creation, before the
@@ -2827,6 +2869,28 @@ void BasicInfo::HandlePacket(uint16_t opcode, const uint8_t* data,
       own_hat_effects_.erase(it);
       g_ez_frozen_valid = false;  // bbox FIT à recalculer pour ce qui reste
     }
+  }
+}
+
+// Jauges HP/SP natives sous le personnage — battement par FRAME, en TÊTE de
+// frame, avant que le jeu ne dessine.
+//
+// 🔴 Le natif recrée sa `UIPcGage` (msg 34) sans nous prévenir : le masquage
+// doit être REJOUÉ à chaque frame, pas tenu par une comptabilité de ce qu'on a
+// masqué — celle-ci oublierait toujours un cas (mort, changement de carte,
+// entrée/sortie de groupe). Écrire un drapeau déjà à la bonne valeur ne coûte
+// qu'un stockage.
+//
+// ⚠ Mais on n'écrit `visible` QUE dans le sens du masquage : rendre la jauge
+// visible de force à chaque frame reprendrait au client ses propres raisons de
+// la cacher. À la décoche, `own_gage_hidden_` la rend visible UNE fois.
+void BasicInfo::OnGameFramePulse() {
+  if (Bourgeon::Instance().client().timestamp() != 20250716) return;
+  if (hide_own_pc_gage_) {
+    if (SetOwnPcGageVisible(false)) own_gage_hidden_ = true;
+  } else if (own_gage_hidden_) {
+    SetOwnPcGageVisible(true);
+    own_gage_hidden_ = false;
   }
 }
 
