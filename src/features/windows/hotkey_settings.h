@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "features/hotkey_actions.h"  // hotkeys::Binding (les liaisons de Bourgeon)
+#include "features/hotkey_util.h"     // hotkeys::ConflictOwner (le détenteur d'un combo)
 #include "features/plugin.h"
 #include "ragnarok/user_hotkey.h"
 
@@ -40,11 +41,20 @@
 // (`hotkeys::Conflict`), en rejouant sa règle : les catégories 0 et 3 sont deux
 // pages de la même barre et ont le droit de partager une touche.
 //
-// ⚠ DIVERGENCE ASSUMÉE : sur collision, le natif propose de VOLER la touche à son
-// propriétaire (MsgStringTable 1489) ; nous refusons en le nommant. Voler efface
-// une affectation que le joueur ne regardait pas — le reste de Bourgeon (saut,
-// presets d'équipement) refuse déjà, et un écran de raccourcis n'est pas
-// l'endroit où inventer une seconde convention.
+// 🔴 SUR COLLISION, ON VOLE LA TOUCHE — comme le natif (MsgStringTable 1489), et
+// contrairement à ce que cette fenêtre faisait jusqu'au 2026-08-21. Refuser en
+// nommant le détenteur laissait le joueur devant un travail que l'écran savait
+// faire : retrouver la ligne coupable, la délier, revenir, recommencer. Pire, la
+// touche restait à l'ancienne fonction alors que le joueur venait de la donner à
+// une autre — c'est très exactement ce qui a été remonté.
+// L'affectation est donc écrite ET l'ancienne déliée dans la même passe, avec une
+// ligne d'information qui NOMME la victime : `hotkeys::FindConflicts` rend
+// l'identité de chaque détenteur, `ReleaseConflict` va le délier chez lui.
+// Un seul combat reste refusé : **Alt+F**, qui n'appartient à aucune ligne
+// remappable (il ouvre la fiche) et n'a donc rien à céder.
+// ⚠ Les autres écrans de Bourgeon (saut dans panel_fun, presets d'équipement)
+// refusent toujours : ils n'ont pas la table sous les yeux, donc pas de quoi
+// montrer ce qu'ils viennent d'effacer.
 //
 // ⚠ CE QUE LE NATIF SAIT ENCORE FAIRE ET PAS NOUS : remettre les touches par
 // DÉFAUT (son bouton Reset, `StageDefaultBindings`). D'où le bouton qui l'ouvre.
@@ -183,12 +193,26 @@ class HotkeySettings : public Plugin {
   int     capture_command_  = -1;  // kClient
   int     capture_index_    = -1;  // kAction / kMove
   char    capture_error_[224] = {0};
+  // Le VOL, lui, n'est pas une erreur : il a réussi. Mais il a effacé une
+  // affectation que le joueur ne regardait pas — parfois même une qui n'a aucune
+  // ligne dans cette table (un preset d'équipement, une touche de l'enregistreur
+  // de zone). Il DOIT donc être dit, et dit en nommant la victime, sinon le
+  // réglage disparu passerait pour une panne.
+  char    capture_note_[320] = {0};
 
   // Liaison d'une ligne de BOURGEON (action, saut, déplacement), lue et écrite au
   // même endroit pour les trois — l'écran n'a ainsi qu'un chemin de capture.
   // Écrire persiste immédiatement (SaveSettings est anti-rebondi).
   hotkeys::Binding ReadOwnBinding(const Row& row) const;
   void             WriteOwnBinding(const Row& row, const hotkeys::Binding& binding);
+
+  // Retire la touche à son détenteur actuel — le VOL, tel que le natif le
+  // pratique. Chaque monde se délie chez lui : les commandes du client par une
+  // entrée sans `KEY1` (mise en file, cf. `PendingWrite`), les nôtres en écrivant
+  // une liaison vide dans le réglage qui la porte. Renvoie false pour ce qu'on ne
+  // sait pas délier — l'appelant refuse alors l'affectation plutôt que de laisser
+  // deux fonctions sur une frappe.
+  bool ReleaseConflict(const hotkeys::ConflictOwner& owner);
 
   // Menu contextuel de la colonne « touche choisie » : retirer la surcharge, une
   // ligne à la fois, là où le natif ne sait que réinitialiser les quatre
@@ -208,14 +232,19 @@ class HotkeySettings : public Plugin {
   // (feedback_no_native_cmd_during_imgui_frame). Posée au rendu, consommée au
   // tick. Les liaisons Bourgeon, elles, sont du C++ pur et s'écrivent sur place.
   struct PendingWrite {
-    bool valid = false;
     int  category = -1;
     int  command_index = -1;
     int  key1 = 0;  // touche principale, VK Windows ; 0 = effacer
     int  key2 = 0;  // modificateur, 0 s'il n'y en a pas
     char label[128] = {0};  // le champ EXE, repassé tel quel au Lua
   };
-  PendingWrite pending_write_;
+  // 🔴 UNE FILE, ET PAS UNE SEULE ÉCRITURE EN ATTENTE : voler une touche en
+  // demande DEUX d'un coup — délier le détenteur, puis affecter le demandeur. La
+  // seconde écraserait la première si elles se partageaient une case. Le tick les
+  // passe toutes, puis grave le fichier UNE fois.
+  std::vector<PendingWrite> pending_writes_;
+  void QueueClientWrite(int category, int command_index, int key1, int key2,
+                        const char* label);
 
   char filter_[64] = {0};
 

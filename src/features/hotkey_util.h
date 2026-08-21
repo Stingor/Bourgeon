@@ -6,9 +6,19 @@
 // Plusieurs fonctionnalités laissent le joueur choisir sa touche : les presets
 // d'équipement de la fiche de personnage, le saut, l'enregistreur de zone et les
 // actions du catalogue (hotkey_actions). Elles partagent ici la capture du combo,
-// son libellé et — le point qui compte — le CONTRÔLE DE CONFLIT : un combo déjà
-// pris est refusé en nommant son propriétaire. Sans ce contrôle la même touche
-// déclencherait deux actions à la fois, sans que rien ne l'explique au joueur.
+// son libellé et — le point qui compte — le CONTRÔLE DE CONFLIT : sans lui, la
+// même touche déclencherait deux actions à la fois, sans que rien ne l'explique
+// au joueur.
+//
+// Il se lit sous DEUX formes, et le choix n'est pas cosmétique :
+//   · `Conflict` ne rend qu'une PHRASE — de quoi refuser en nommant le
+//     propriétaire. C'est ce que font les écrans qui n'ont pas la table des
+//     raccourcis sous les yeux (le saut, les presets, l'enregistreur de zone) :
+//     ils ne pourraient pas montrer ce qu'ils viennent d'effacer.
+//   · `FindConflicts` rend l'IDENTITÉ de chaque détenteur — de quoi aller lui
+//     RETIRER la touche. C'est ce que fait la table des raccourcis, comme le
+//     natif : refuser y laissait la touche à l'ancienne fonction alors que le
+//     joueur venait de la donner à une autre.
 //
 // 🔴 LE CONTRÔLE TRAVERSE LES DEUX MONDES. Il inspecte aussi les raccourcis du
 // CLIENT, et les QUATRE catégories de `UserKeys.lua` — pas seulement les deux
@@ -103,6 +113,40 @@ void Label(int vkey, bool ctrl, bool alt, bool shift, char* out, int cap);
 bool Conflict(int vkey, bool ctrl, bool alt, bool shift, Owner self, int self_index,
               char* what, int cap);
 
+// ── Le propriétaire d'un combo, DÉSIGNÉ et pas seulement nommé ───────────────
+//
+// `Conflict` ne rend qu'une phrase : de quoi refuser, pas de quoi agir. La table
+// des raccourcis, elle, VOLE la touche à son détenteur (c'est ce que fait le
+// natif) et a donc besoin de savoir à QUI la retirer. D'où cette forme longue,
+// qui porte l'identité — assez pour aller délier la ligne concernée.
+struct ConflictOwner {
+  Owner owner = Owner::kNone;
+  // Le `self_index` de ce propriétaire, dans le sens qu'impose son `owner` :
+  // index de preset, slot de déplacement, index d'action, kZoneRecKey*… Pour une
+  // commande du client c'est `ClientSelf(category, command_index)`, mais les deux
+  // champs suivants la donnent déjà décomposée.
+  int  index = -1;
+  int  category = -1;       // kClientCommand
+  int  command_index = -1;  // kClientCommand
+  // Le champ `EXE` de la commande du client : c'est LUI qui identifie l'entrée
+  // côté Lua, il faut le repasser tel quel pour la délier.
+  char label[128] = {0};
+  // Le libellé humain, déjà traduit — « le saut », « l'action « X » »…
+  char what[128] = {0};
+  // 🔴 Faux = combo RÉSERVÉ, qui n'appartient à aucune ligne remappable et ne se
+  // vole donc pas (Alt+F, qui ouvre la fiche). L'appelant doit refuser.
+  bool releasable = true;
+};
+
+// Tous les propriétaires du combo (le demandeur exclu), dans la limite de
+// `max_out`. Renvoie leur nombre — 0 quand la touche est libre.
+//
+// ⚠ Il peut y en avoir PLUSIEURS : les catégories 0 et 3 sont deux pages de la
+// même barre et ont le droit de partager une touche, et un état hérité peut très
+// bien porter deux détenteurs. Voler à un seul en laisserait un debout.
+int FindConflicts(int vkey, bool ctrl, bool alt, bool shift, Owner self, int self_index,
+                  ConflictOwner* out, int max_out);
+
 // Une zone de saisie NATIVE a le focus (chat, message privé, montant de vente…) :
 // la frappe est un caractère, pas un raccourci. Réplique la garde de
 // UIWindowMgr_OnKeyDown (0x00a471e0). Vit ici parce que TOUT raccourci global doit
@@ -118,5 +162,25 @@ bool NativeTextInputHasFocus();
 // repliée) au lieu de laisser les raccourcis morts jusqu'au redémarrage.
 void PingCapture();
 bool CaptureInProgress();
+
+// ── La frappe est PRISE par une action de Bourgeon ───────────────────────────
+//
+// 🔴 CONFISQUER LA FRAPPE EST POSSIBLE, contrairement à ce qui a longtemps été
+// écrit ici. `OnKeyDown` vient bien du jeu (notre hook de `ProcessPushButton`),
+// mais ce hook DÉCIDE d'appeler ou non le handler natif : lui rendre `true`
+// avale la touche. Le chemin manquant n'était que celui-ci — un drapeau posé par
+// le dispatch, relevé par le hook juste après.
+//
+// À quoi ça sert : le contrôle de collision refuse à une action toute touche
+// qu'une commande du CLIENT utilise, mais il ne voit que les commandes
+// REMAPPABLES. Le client en a d'autres (les douze index que
+// `UserHotkey_RowToCommandIndex` saute pour la catégorie Interface — la tipbox
+// d'Alt+D en est), et rien n'empêchait alors une frappe de nourrir les deux
+// mondes : l'action ET la fenêtre du jeu, ensemble, à chaque appui.
+//
+// `ClaimKey` se pose pendant `OnKeyDown` ; `TakeKeyClaim` le relève ET le remet à
+// zéro — un seul lecteur, juste après la diffusion de la frappe.
+void ClaimKey();
+bool TakeKeyClaim();
 
 }  // namespace hotkeys

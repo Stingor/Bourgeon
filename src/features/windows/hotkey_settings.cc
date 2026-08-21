@@ -6,14 +6,17 @@
 #include <cctype>
 #include <cstdio>
 #include <cstring>
+#include <iterator>  // std::size (taille de la liste de détenteurs d'un combo)
 
 #include "bourgeon.h"
+#include "features/fx/zone_recorder.h"        // ses 3 touches, volables comme les autres
 #include "features/gameplay/keyboard_move.h"  // les 8 touches de déplacement
 #include "features/gameplay/player_jump.h"    // la touche de saut
 #include "features/hotkey_actions.h"
 #include "features/hotkey_util.h"
 #include "features/staff_gate.h"  // IsStaff (actions réservées)
 #include "features/moonlight_ui/moonlight_ui.h"
+#include "features/windows/character_sheet.h"  // EquipPreset (raccourci d'un preset)
 #include "imgui.h"
 #include "ragnarok/msgstring.h"
 #include "ragnarok/ui_window_mgr.h"  // UIM_PUSHINTOCHATHISTORY (retour de /bm)
@@ -189,6 +192,7 @@ void HotkeySettings::Close() {
   // fenêtre fermée… jusqu'au prochain PingCapture, qui n'aurait jamais lieu.
   CancelCapture();
   capture_error_[0] = '\0';
+  capture_note_[0]  = '\0';
 }
 
 void HotkeySettings::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
@@ -223,21 +227,30 @@ void HotkeySettings::OnTick() {
     return;
   }
 
-  // Écriture d'une commande du client, posée par la capture au rendu.
-  if (pending_write_.valid) {
-    const PendingWrite write = pending_write_;
-    pending_write_ = PendingWrite();
-    if (userhotkey::WriteBinding(write.category, write.command_index, write.key1,
-                                 write.key2, write.label)) {
-      // 🔴 Le fichier n'est PAS le seul destinataire : `UserHotkey_SaveToTable`
-      // (0x0059EEF0) rebâtit la charge `/userconfig/save` DEPUIS LE LUA à la
-      // sortie propre. Écrire par ce pont suffit donc à se retrouver dans la
-      // synchro par compte — aucun drapeau « modifié » à lever.
-      userhotkey::Save();
-    } else {
-      LogDiag("HotkeySettings: ecriture refusee (cat={} cmd={})", write.category,
-              write.command_index);
+  // Écritures des commandes du client, posées par la capture au rendu. Elles
+  // partent TOUTES dans le même tick : voler une touche en demande deux (délier
+  // le détenteur, affecter le demandeur), et les laisser à un tick d'écart
+  // ferait exister une frame où la touche n'est nulle part — ou, si le joueur
+  // referme entre les deux, ne la lui rendrait jamais.
+  if (!pending_writes_.empty()) {
+    const std::vector<PendingWrite> writes = pending_writes_;
+    pending_writes_.clear();
+    bool wrote = false;
+    for (const PendingWrite& write : writes) {
+      if (userhotkey::WriteBinding(write.category, write.command_index, write.key1,
+                                   write.key2, write.label)) {
+        wrote = true;
+      } else {
+        LogDiag("HotkeySettings: ecriture refusee (cat={} cmd={})", write.category,
+                write.command_index);
+      }
     }
+    // 🔴 Le fichier n'est PAS le seul destinataire : `UserHotkey_SaveToTable`
+    // (0x0059EEF0) rebâtit la charge `/userconfig/save` DEPUIS LE LUA à la
+    // sortie propre. Écrire par ce pont suffit donc à se retrouver dans la
+    // synchro par compte — aucun drapeau « modifié » à lever. UNE fois pour la
+    // rafale : c'est un fichier disque.
+    if (wrote) userhotkey::Save();
     rows_dirty_ = true;
     return;
   }
@@ -399,9 +412,105 @@ void HotkeySettings::WriteOwnBinding(const Row& row, const hotkeys::Binding& bin
       }
       break;
     case RowKind::kClient:
-      return;  // celles-là passent par pending_write_, pas par ici
+      return;  // celles-là passent par la file d'écritures, pas par ici
   }
   if (auto* ui = Bourgeon::Instance().moonlight_ui()) ui->SaveSettings();
+}
+
+void HotkeySettings::QueueClientWrite(int category, int command_index, int key1,
+                                      int key2, const char* label) {
+  PendingWrite write;
+  write.category = category;
+  write.command_index = command_index;
+  write.key1 = key1;
+  write.key2 = key2;
+  std::snprintf(write.label, sizeof(write.label), "%s", label ? label : "");
+  pending_writes_.push_back(write);
+}
+
+// ── Le VOL d'une touche ──────────────────────────────────────────────────────
+//
+// Chaque monde se délie chez lui. Une seule règle commune : après ça, la touche
+// ne doit plus appartenir à personne d'autre — sinon on aurait écrit la nouvelle
+// affectation ET laissé l'ancienne, exactement le défaut qu'on corrige.
+bool HotkeySettings::ReleaseConflict(const hotkeys::ConflictOwner& owner) {
+  switch (owner.owner) {
+    case hotkeys::Owner::kClientCommand:
+      // Entrée SANS `KEY1` : la commande cesse vraiment de répondre. Ne PAS se
+      // contenter d'omettre l'entrée — l'absence laisse au contraire agir la
+      // touche d'origine (les trois états, docs/game_option_re.md §4.9).
+      if (owner.command_index < 0) return false;
+      QueueClientWrite(owner.category, owner.command_index, 0, 0, owner.label);
+      return true;
+
+    case hotkeys::Owner::kAction:
+      hotkeys::SetBinding(owner.index, hotkeys::Binding());
+      break;
+
+    case hotkeys::Owner::kJump:
+      if (auto* jump = Bourgeon::Instance().player_jump()) {
+        jump->key_vk()    = 0;
+        jump->key_ctrl()  = false;
+        jump->key_alt()   = false;
+        jump->key_shift() = false;
+      }
+      break;
+
+    case hotkeys::Owner::kKeyboardMove:
+      if (auto* keyboard_move = Bourgeon::Instance().keyboard_move()) {
+        if (owner.index < 0 || owner.index >= KeyboardMove::kMoveKeyCount) return false;
+        keyboard_move->keys_[owner.index] = 0;
+      }
+      break;
+
+    case hotkeys::Owner::kZoneRecorder:
+      if (auto* zone_recorder = Bourgeon::Instance().zone_recorder()) {
+        switch (owner.index) {
+          case hotkeys::kZoneRecKeyRecord:
+            zone_recorder->key_vk() = 0;
+            zone_recorder->key_ctrl() = zone_recorder->key_alt() =
+                zone_recorder->key_shift() = false;
+            break;
+          case hotkeys::kZoneRecKeySelect:
+            zone_recorder->sel_key_vk() = 0;
+            zone_recorder->sel_key_ctrl() = zone_recorder->sel_key_alt() =
+                zone_recorder->sel_key_shift() = false;
+            break;
+          case hotkeys::kZoneRecKeyShot:
+            zone_recorder->shot_key_vk() = 0;
+            zone_recorder->shot_key_ctrl() = zone_recorder->shot_key_alt() =
+                zone_recorder->shot_key_shift() = false;
+            break;
+          default: return false;
+        }
+      }
+      break;
+
+    case hotkeys::Owner::kEquipPreset:
+      if (auto* character_sheet = Bourgeon::Instance().character_sheet()) {
+        std::vector<EquipPreset>& presets = character_sheet->equip_presets();
+        if (owner.index < 0 || owner.index >= static_cast<int>(presets.size()))
+          return false;
+        EquipPreset& preset = presets[owner.index];
+        preset.hotkey_vk    = 0;
+        preset.hotkey_ctrl  = false;
+        preset.hotkey_alt   = false;
+        preset.hotkey_shift = false;
+      }
+      break;
+
+    // 🔴 Combo RÉSERVÉ (Alt+F) : il n'appartient à aucun réglage, il n'y a rien à
+    // délier. L'appelant a déjà refusé sur `releasable`, mais on ne rend pas
+    // « fait » pour autant — un jour un nouveau propriétaire non libérable
+    // apparaîtra, et il doit buter ici plutôt que de passer.
+    case hotkeys::Owner::kNone:
+      return false;
+  }
+
+  // Les cinq mondes de Bourgeon vivent dans le MÊME yaml : une seule sauvegarde
+  // les couvre tous (elle est anti-rebondie).
+  if (auto* ui = Bourgeon::Instance().moonlight_ui()) ui->SaveSettings();
+  return true;
 }
 
 // ── Menu contextuel d'une ligne ──────────────────────────────────────────────
@@ -435,16 +544,11 @@ bool HotkeySettings::DrawRowMenu(const Row& row) {
   // au contraire la touche d'origine agir.
   if (ImGui::MenuItem(i18n::Tr("Retirer la touche"), nullptr, false,
                       row.binding.assigned || row.binding.key_code1 != 0)) {
-    pending_write_.valid = true;
-    pending_write_.category = row.category;
-    pending_write_.command_index = row.binding.command_index;
     // 0/0 = « aucune touche », la convention du pont — le Lua écrit alors une
     // entrée sans `KEY1`.
-    pending_write_.key1 = 0;
-    pending_write_.key2 = 0;
-    std::snprintf(pending_write_.label, sizeof(pending_write_.label), "%s",
-                  row.binding.label);
+    QueueClientWrite(row.category, row.binding.command_index, 0, 0, row.binding.label);
     capture_error_[0] = '\0';
+    capture_note_[0]  = '\0';
     wrote = true;
   }
 
@@ -466,6 +570,7 @@ bool HotkeySettings::IsCapturing(const Row& row) const {
 void HotkeySettings::BeginCapture(const Row& row) {
   capturing_ = true;
   capture_error_[0] = '\0';
+  capture_note_[0]  = '\0';
   capture_kind_     = row.kind;
   capture_index_    = row.index;
   capture_category_ = row.category;
@@ -542,7 +647,6 @@ bool HotkeySettings::RunCapture(const Row& row) {
     return false;
   }
 
-  char what[96];
   hotkeys::Owner owner = hotkeys::Owner::kClientCommand;
   int self_index = hotkeys::ClientSelf(row.category, row.binding.command_index);
   switch (row.kind) {
@@ -551,10 +655,62 @@ bool HotkeySettings::RunCapture(const Row& row) {
     case RowKind::kMove:   owner = hotkeys::Owner::kKeyboardMove;  self_index = row.index; break;
     case RowKind::kClient: break;
   }
-  if (hotkeys::Conflict(vkey, ctrl, alt, shift, owner, self_index, what, sizeof(what))) {
-    std::snprintf(capture_error_, sizeof(capture_error_),
-                  i18n::Tr("Déjà utilisé par %s — choisis une autre touche."), what);
+
+  // 🔴 ON VOLE LA TOUCHE À QUI LA DÉTIENT, comme le natif. Refuser laissait la
+  // touche à l'ancienne fonction alors que le joueur venait de la donner à une
+  // autre — et lui laissait le travail de retrouver la ligne coupable.
+  //
+  // La liste est DIMENSIONNÉE LARGE et son débordement est traité : une touche
+  // peut avoir plusieurs détenteurs (les catégories 0 et 3 sont deux pages de la
+  // même barre), et n'en délier qu'une partie laisserait le doublon debout —
+  // exactement le défaut qu'on corrige. Si on n'a pas pu tous les voir, on
+  // refuse plutôt que de voler à moitié.
+  hotkeys::ConflictOwner owners[16];
+  const int owner_count = hotkeys::FindConflicts(
+      vkey, ctrl, alt, shift, owner, self_index, owners, static_cast<int>(std::size(owners)));
+  if (owner_count > static_cast<int>(std::size(owners))) {
+    std::snprintf(capture_error_, sizeof(capture_error_), "%s",
+                  i18n::Tr("Cette touche est prise par trop de fonctions à la fois : "
+                           "libère-en quelques-unes d'abord."));
     return false;
+  }
+  for (int i = 0; i < owner_count; ++i) {
+    if (owners[i].releasable) continue;
+    std::snprintf(capture_error_, sizeof(capture_error_),
+                  i18n::Tr("Réservé à %s : cette touche n'est pas réattribuable."),
+                  owners[i].what);
+    return false;
+  }
+  // Libérer AVANT d'affecter : les écritures du client partent en file, dans cet
+  // ordre, et une commande déliée puis réaffectée dans la même passe (ce que fait
+  // un joueur qui déplace une touche d'une ligne à l'autre) doit finir affectée.
+  char note[320] = {0};
+  for (int i = 0; i < owner_count; ++i) {
+    if (!ReleaseConflict(owners[i])) {
+      std::snprintf(capture_error_, sizeof(capture_error_),
+                    i18n::Tr("Déjà utilisé par %s, et je ne sais pas la lui retirer."),
+                    owners[i].what);
+      // On jette les libérations du client encore en file — rien n'a été écrit.
+      // ⚠ Celles de NOS réglages, déjà appliquées, ne se reprennent pas : le seul
+      // échec possible est un index devenu invalide, cas où la liaison visée
+      // n'existe de toute façon plus.
+      pending_writes_.clear();
+      return false;
+    }
+    const int used = static_cast<int>(std::strlen(note));
+    std::snprintf(note + used, sizeof(note) - used, "%s%s", used ? ", " : "",
+                  owners[i].what);
+  }
+  if (note[0]) {
+    char combo[64];
+    hotkeys::Label(vkey, ctrl, alt, shift, combo, sizeof(combo));
+    // ⚠ Tournure choisie pour les libellés de `FindConflicts`, qui commencent
+    // TOUS par un article (« le saut », « l'action « X » ») : « retirée à %s »
+    // aurait donné « à le saut ».
+    std::snprintf(capture_note_, sizeof(capture_note_),
+                  i18n::Tr("%s était utilisé par %s — touche reprise."), combo, note);
+  } else {
+    capture_note_[0] = '\0';
   }
 
   if (own) {
@@ -566,13 +722,8 @@ bool HotkeySettings::RunCapture(const Row& row) {
     WriteOwnBinding(row, binding);
   } else {
     // Différée au tick : ces deux ponts appellent le Lua du client.
-    pending_write_.valid = true;
-    pending_write_.category = row.category;
-    pending_write_.command_index = row.binding.command_index;
-    pending_write_.key1 = vkey;
-    pending_write_.key2 = ModifierVk(ctrl, alt, shift);
-    std::snprintf(pending_write_.label, sizeof(pending_write_.label), "%s",
-                  row.binding.label);
+    QueueClientWrite(row.category, row.binding.command_index, vkey,
+                     ModifierVk(ctrl, alt, shift), row.binding.label);
   }
 
   CancelCapture();
@@ -714,6 +865,7 @@ void HotkeySettings::OnRenderUI() {
           // attente d'une touche, et le premier appui la lui donnerait.
           CancelCapture();
           capture_error_[0] = '\0';
+          capture_note_[0]  = '\0';
           RefreshRows();
         }
         ImGui::EndTabItem();
@@ -846,7 +998,9 @@ void HotkeySettings::OnRenderUI() {
         if (ImGui::IsItemHovered()) {
           ImGui::SetTooltip("%s",
                             i18n::Tr("Clic : choisir une touche (Échap annule).  "
-                                     "Clic droit : retirer la touche."));
+                                     "Clic droit : retirer la touche.  "
+                                     "Une touche déjà prise est retirée à son "
+                                     "ancienne fonction."));
         }
         wrote = DrawRowMenu(entry);
       }
@@ -861,6 +1015,12 @@ void HotkeySettings::OnRenderUI() {
   // réponse à une action du joueur, elle ne doit pas se lire en second.
   if (capture_error_[0]) {
     ImGui::TextColored(ImVec4(0.75f, 0.10f, 0.10f, 1.0f), "%s", capture_error_);
+  } else if (capture_note_[0]) {
+    // Le VOL a réussi : ce n'est donc pas une erreur, mais ce n'est pas non plus
+    // une banalité. La touche vient d'être retirée à quelqu'un — parfois à un
+    // réglage qui n'a aucune ligne ici (un preset d'équipement, une touche de
+    // l'enregistreur de zone). Sans cette ligne, il disparaîtrait sans un mot.
+    ImGui::TextColored(ImVec4(0.85f, 0.62f, 0.15f, 1.0f), "%s", capture_note_);
   } else if (rows_.empty()) {
     ImGui::TextColored(kSecondaryText, "%s",
                        i18n::Tr("Aucun raccourci dans cet onglet."));

@@ -1689,8 +1689,9 @@ entre 2 et 3 boutons. Un joueur mort qui verrait « Character Select » et pas
 ✅ **Soldé** : le contrôle de collision (`MsgString(1489)`) est
 `UIHotKeyWnd_ValidateKeyCombo` `0x008DC890` — §4.9. Le remappage est porté :
 `HotkeySettings` écrit par `userhotkey::WriteBinding` + `Save`, contrôle la
-collision en C++ (`hotkeys::Conflict`, exemption 0↔3 comprise) et refuse au lieu
-de voler la touche. Le **[Reset]** reste le travail du natif — faute d'équivalent
+collision en C++ (`hotkeys::FindConflicts`, exemption 0↔3 comprise) et **VOLE la
+touche** comme le natif — cf. « Le vol de la touche » ci-dessous. Le **[Reset]**
+reste le travail du natif — faute d'équivalent
 à `GetOriginalHotKeyInfo` — mais `DriveResetDefaults` le lui fait faire **fenêtre
 INVISIBLE** (deux commandes, 363 puis 184, puis destruction) : le joueur ne la
 voit jamais.
@@ -1735,9 +1736,79 @@ l'interface moderne — tout passe par les ponts du client. Clés yaml :
 ✅ **Soldé** : le contrôle de collision (`MsgString(1489)`) est
 `UIHotKeyWnd_ValidateKeyCombo` `0x008DC890` — §4.9. Le remappage est porté :
 `HotkeySettings` écrit par `userhotkey::WriteBinding` + `Save`, contrôle la
-collision en C++ (`hotkeys::Conflict`, exemption 0↔3 comprise) et refuse au lieu
-de voler la touche. Ne reste au natif que son **[Reset]**, faute d'équivalent à
-`GetOriginalHotKeyInfo` de notre côté.
+collision en C++ (`hotkeys::FindConflicts`, exemption 0↔3 comprise) et **VOLE la
+touche** à son détenteur, comme le natif. Ne reste au natif que son **[Reset]**,
+faute d'équivalent à `GetOriginalHotKeyInfo` de notre côté.
+
+### Le vol de la touche (2026-08-21)
+
+🔴 **Jusqu'à cette date, notre fenêtre REFUSAIT une touche déjà prise** — elle
+nommait le détenteur et s'arrêtait là. Remonté par l'utilisateur : la touche
+restait à l'ancienne fonction alors qu'il venait de la donner à une autre, et
+c'était à lui de retrouver la ligne coupable, la délier, revenir, recommencer.
+Le natif, lui, propose de la voler (`MsgString(1489)`).
+
+Désormais l'affectation écrit **et** délie l'ancienne, dans la même passe :
+
+- `hotkeys::FindConflicts` rend l'**identité** de chaque détenteur (`ConflictOwner` :
+  monde, index, et pour une commande du client sa catégorie, son index de commande
+  et son champ `EXE`) — là où `hotkeys::Conflict` ne rendait qu'une phrase. Ce
+  dernier existe toujours pour les écrans qui refusent encore (le saut dans
+  `panel_fun`, les presets d'équipement, l'enregistreur de zone) : ils n'ont pas la
+  table sous les yeux, donc pas de quoi montrer ce qu'ils viennent d'effacer.
+- **TOUS** les détenteurs sont libérés, pas seulement le premier : une touche peut en
+  avoir plusieurs, et n'en délier qu'un laisserait le doublon debout.
+- `HotkeySettings::ReleaseConflict` délie chacun **chez lui** : entrée sans `KEY1`
+  pour une commande du client (l'ABSENCE d'entrée laisserait au contraire agir la
+  touche d'origine, cf. les trois états §4.9), liaison vide dans le yaml pour une
+  action Bourgeon, le saut, une touche de déplacement, un preset d'équipement ou
+  une touche de l'enregistreur de zone.
+- 🔴 **Les écritures du client passent par une FILE** (`pending_writes_`), pas par
+  une case unique : voler en demande deux d'un coup (délier, puis affecter), et la
+  seconde écrasait la première. Le tick les passe toutes, puis `Save()` **une**
+  fois.
+- Le vol est **DIT** : une ligne nomme la victime, y compris quand c'est un réglage
+  qui n'a aucune ligne dans cette table (preset d'équipement, enregistreur de
+  zone) — sans quoi il disparaîtrait sans un mot.
+- Un seul cas reste **refusé** : **Alt+F**, qui ouvre la fiche de personnage. Il
+  n'appartient à aucune ligne remappable, il n'a donc rien à céder
+  (`ConflictOwner::releasable`).
+
+### Le clavier pendant une capture, et les douze commandes invisibles (2026-08-21)
+
+Deux défauts remontés le même jour, une seule racine : **une frappe pouvait
+nourrir les deux mondes à la fois**.
+
+🔴 **Pendant la capture.** Choisir Alt+D pour une action l'affectait ET ouvrait
+la tipbox du client au passage. C'est le devoir de la fenêtre native qui n'avait
+pas été repris : tant que `0x9C` vit, `UIWindowMgr_OnKeyDown` (**0x00A47201**)
+détourne et consomme TOUT le clavier. Nous la détruisons, donc il nous revient.
+Le seul endroit d'où l'on puisse encore couper le dispatch du jeu est le hook de
+`ProcessPushButton` (**0x00A471E0**, la même fonction) : `ProcessPushButtonHook`
+rend **`true`** — donc « consommée » — dès que
+`Bourgeon::IsHotkeyCaptureActive()`, avant même de diffuser la frappe aux
+plugins. ImGui, lui, la reçoit par le WndProc de son backend : la capture n'en
+est pas privée.
+
+🔴🔴 **À l'usage, et c'est le vrai trou : le contrôle de collision ne voit que
+les commandes REMAPPABLES.** `UserHotkey_RowToCommandIndex` en **saute douze**
+pour la catégorie Interface (§4.4 : 30, 33, 34, 36, 43, 45, 53, 58, 62, 64, 65,
+66), et la tipbox d'**Alt+D** en fait partie. Elles ne sont dans aucune ligne, donc
+`FindConflicts` ne peut pas les voir, donc l'affectation passait **sans un mot** —
+et à chaque appui l'action ET la fenêtre du jeu partaient ensemble.
+
+Remède : **la frappe liée est confisquée au client**. `HotkeyDispatch::OnKeyDown`
+pose `hotkeys::ClaimKey()` quand une action prend la touche ; le hook la relève
+juste après (`TakeHotkeyActionClaim`) et rend `true` au lieu d'appeler le handler
+natif. ⚠ Le commentaire de `hotkey_dispatch.h` affirmait l'inverse — « il n'y a
+rien à avaler, c'est structurel » — au motif que `OnKeyDown` vient du jeu. C'est
+justement ce qui le rend possible : **ce hook décide d'appeler ou non le natif**,
+et nous sommes servis AVANT lui.
+
+⚠ Conséquence assumée : sur une telle touche, **l'action gagne** et la commande
+non remappable du client ne part plus. C'est ce que le joueur demande en la
+choisissant ; l'inverse (refuser Alt+D) lui interdirait une touche que la table
+ne sait même pas nommer.
 
 ---
 

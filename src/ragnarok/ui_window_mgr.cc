@@ -82,7 +82,29 @@ bool UIWindowMgr::ProcessPushButtonHook(unsigned long vkey, int new_key,
   // during the HUD churn. Return true = "handled/consumed" so the key is dropped.
   if (Bourgeon::Instance().IsMapLoading()) return true;
 
+  // 🔴 REMAPPAGE EN COURS : la frappe sert à CHOISIR une touche, pas à agir. On
+  // l'avale ici — avant `FireKeyDown` (nos plugins) comme avant le handler natif,
+  // qui route les raccourcis du CLIENT vers `DispatchHotkeyBehavior`. Sans ça,
+  // choisir Alt+D pour un raccourci l'affectait ET ouvrait la tipbox du jeu au
+  // passage (constaté en jeu le 2026-08-21).
+  //
+  // C'est le devoir que la fenêtre native remplissait seule : tant que 0x9C vit,
+  // `UIWindowMgr_OnKeyDown` détourne TOUT le clavier vers elle. Nous la
+  // détruisons, donc il nous revient — et ce hook est le dernier endroit d'où on
+  // puisse encore couper le dispatch du jeu. ImGui, lui, reçoit la frappe par le
+  // WndProc du backend : la capture n'en est pas privée.
+  if (Bourgeon::Instance().IsHotkeyCaptureActive()) return true;
+
   Bourgeon::Instance().FireKeyDown(vkey, new_key, accurate_key);
+
+  // 🔴 UNE ACTION DE BOURGEON A PRIS LA FRAPPE : le client ne doit pas la voir.
+  // Sans ce test, une touche liée à une action partait AUSSI vers
+  // `DispatchHotkeyBehavior` — invisible tant que la touche n'était prise par
+  // rien d'autre chez le client, criant dès qu'elle l'était (Alt+D ouvrait la
+  // tipbox en plus de l'action). Le contrôle de collision ne pouvait pas
+  // l'empêcher : il ne voit que les commandes REMAPPABLES, et le client en garde
+  // douze qui ne le sont pas.
+  if (Bourgeon::Instance().TakeHotkeyActionClaim()) return true;
 
   return ProcessPushButtonRef(this, vkey, new_key, accurate_key);
 }

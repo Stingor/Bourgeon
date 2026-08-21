@@ -250,6 +250,25 @@ class Bourgeon {
   bool IsMapLoading() const;
   void SetMapLoading(bool loading);
 
+  // 🔴 Une capture de touche est en cours dans l'interface : la frappe sert à
+  // REMAPPER, elle ne doit RIEN déclencher — ni chez nous, ni chez le client.
+  // C'est le devoir que la fenêtre native remplissait toute seule : tant qu'elle
+  // vit, `UIWindowMgr_OnKeyDown` (0x00A47201) détourne et consomme tout le
+  // clavier. Nous la détruisons, donc ce devoir nous revient, et le seul endroit
+  // d'où on puisse encore couper le dispatch du JEU est le hook de
+  // `ProcessPushButton` — après, la commande est déjà partie. Sans lui, choisir
+  // Alt+D pour une action ouvrait AUSSI la tipbox du client au passage.
+  //
+  // Vit ici parce que `ragnarok/` ne connaît pas les features et n'a pas à les
+  // connaître : Bourgeon tient les deux bouts, comme pour `RouteChatLine`.
+  bool IsHotkeyCaptureActive() const;
+
+  // Une action de Bourgeon vient de prendre la frappe diffusée par `FireKeyDown` :
+  // le hook clavier doit la CONFISQUER au lieu de la passer au handler natif.
+  // Relève le drapeau ET le remet à zéro — un seul lecteur, juste après la
+  // diffusion. Voir `hotkeys::ClaimKey`.
+  bool TakeHotkeyActionClaim();
+
   // Game-world gate. RenderUI() draws plugin ImGui windows only while the game
   // world is the actively-updating mode (CGameMode). At the login and
   // character-select screens CGameMode::OnUpdate does not run, so no plugin

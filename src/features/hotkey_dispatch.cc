@@ -38,6 +38,12 @@ void HotkeyDispatch::OnKeyDown(unsigned long vkey, int, int) {
     if (!hotkeys::BindingAt(i).Matches(static_cast<int>(vkey), ctrl, alt, shift))
       continue;
     pending_action_ = i;
+    // 🔴 ET ON CONFISQUE LA FRAPPE : le hook qui nous l'a passée s'apprête à
+    // appeler le handler natif, qui la routerait vers `DispatchHotkeyBehavior`.
+    // Le contrôle de collision ne voit que les commandes REMAPPABLES du client ;
+    // les autres (la tipbox d'Alt+D, par exemple) partaient donc EN MÊME TEMPS
+    // que l'action — constaté en jeu le 2026-08-21.
+    hotkeys::ClaimKey();
     return;
   }
 }

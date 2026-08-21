@@ -31,6 +31,11 @@ int ReadInt(uintptr_t addr) {
 // Frame ImGui du dernier PingCapture ; très négatif = aucune capture connue.
 int g_capture_frame = -1000;
 
+// Posé quand une action de Bourgeon prend la frappe en cours, relevé aussitôt
+// après par le hook clavier. Pas d'atomique : les deux vivent dans le même
+// appel, sur le fil du message (`ProcessPushButtonHook`).
+bool g_key_claimed = false;
+
 // ── Touches hors lettres / chiffres / F1-F12 / Espace ────────────────────────
 // L'INVERSE de la table du backend Win32 d'ImGui (VK -> ImGuiKey). Elle est donc
 // indépendante de la disposition du clavier : le backend classe par code VIRTUEL,
@@ -148,15 +153,35 @@ void Label(int vkey, bool ctrl, bool alt, bool shift, char* out, int cap) {
   std::snprintf(out, cap, "%s%s", mods, (key_name && key_name[0]) ? key_name : "?");
 }
 
-bool Conflict(int vkey, bool ctrl, bool alt, bool shift, Owner self, int self_index,
-              char* what, int cap) {
-  if (cap > 0) what[0] = '\0';
-  if (vkey == 0) return false;
+// Ajoute un propriétaire à la liste. Le compteur avance MÊME quand la liste est
+// pleine : l'appelant apprend ainsi qu'il en reste, plutôt que d'en laisser un
+// debout en croyant les avoir tous libérés.
+static void AddConflictOwner(ConflictOwner* out, int max_out, int* count, Owner owner,
+                             int index, const char* what) {
+  if (out && *count < max_out) {
+    ConflictOwner& entry = out[*count];
+    entry = ConflictOwner();
+    entry.owner = owner;
+    entry.index = index;
+    std::snprintf(entry.what, sizeof(entry.what), "%s", (what && what[0]) ? what : "?");
+  }
+  ++*count;
+}
 
-  // Réservé : Alt+F ouvre/ferme la fiche de personnage elle-même.
+int FindConflicts(int vkey, bool ctrl, bool alt, bool shift, Owner self, int self_index,
+                  ConflictOwner* out, int max_out) {
+  int count = 0;
+  if (vkey == 0) return 0;
+  if (max_out < 0) max_out = 0;
+
+  // Réservé : Alt+F ouvre/ferme la fiche de personnage elle-même. Seul cas NON
+  // libérable — cette touche n'appartient à aucune ligne d'aucune table, il n'y a
+  // donc rien à délier, et rien à voler.
   if (vkey == 'F' && alt && !ctrl && !shift) {
-    std::snprintf(what, cap, i18n::Tr("l'ouverture de la fiche (Alt+F)"));
-    return true;
+    AddConflictOwner(out, max_out, &count, Owner::kNone, -1,
+                     i18n::Tr("l'ouverture de la fiche (Alt+F)"));
+    if (out && count <= max_out) out[count - 1].releasable = false;
+    return count;
   }
 
   // a) Un preset d'équipement du personnage courant (le sien exclu).
@@ -168,8 +193,10 @@ bool Conflict(int vkey, bool ctrl, bool alt, bool shift, Owner self, int self_in
       const EquipPreset& preset = presets[i];
       if (preset.cid == cid && preset.hotkey_vk == vkey && preset.hotkey_ctrl == ctrl &&
           preset.hotkey_alt == alt && preset.hotkey_shift == shift) {
-        std::snprintf(what, cap, i18n::Tr("le preset « %s »"), preset.name.c_str());
-        return true;
+        char what[128];
+        std::snprintf(what, sizeof(what), i18n::Tr("le preset « %s »"),
+                      preset.name.c_str());
+        AddConflictOwner(out, max_out, &count, Owner::kEquipPreset, i, what);
       }
     }
   }
@@ -179,8 +206,7 @@ bool Conflict(int vkey, bool ctrl, bool alt, bool shift, Owner self, int self_in
     if (auto* player_jump = Bourgeon::Instance().player_jump()) {
       if (player_jump->key_vk() == vkey && player_jump->key_ctrl() == ctrl &&
           player_jump->key_alt() == alt && player_jump->key_shift() == shift) {
-        std::snprintf(what, cap, i18n::Tr("le saut"));
-        return true;
+        AddConflictOwner(out, max_out, &count, Owner::kJump, -1, i18n::Tr("le saut"));
       }
     }
   }
@@ -215,8 +241,8 @@ bool Conflict(int vkey, bool ctrl, bool alt, bool shift, Owner self, int self_in
       if (self == Owner::kZoneRecorder && zone_key.index == self_index) continue;
       if (zone_key.vkey == vkey && zone_key.ctrl == ctrl && zone_key.alt == alt &&
           zone_key.shift == shift) {
-        std::snprintf(what, cap, "%s", zone_key.what);
-        return true;
+        AddConflictOwner(out, max_out, &count, Owner::kZoneRecorder, zone_key.index,
+                         zone_key.what);
       }
     }
   }
@@ -234,8 +260,8 @@ bool Conflict(int vkey, bool ctrl, bool alt, bool shift, Owner self, int self_in
         for (int slot = 0; slot < KeyboardMove::kMoveKeyCount; ++slot) {
           if (self == Owner::kKeyboardMove && slot == self_index) continue;
           if (keyboard_move->keys_[slot] != vkey) continue;
-          std::snprintf(what, cap, i18n::Tr("le déplacement au clavier"));
-          return true;
+          AddConflictOwner(out, max_out, &count, Owner::kKeyboardMove, slot,
+                           i18n::Tr("le déplacement au clavier"));
         }
       }
     }
@@ -246,11 +272,13 @@ bool Conflict(int vkey, bool ctrl, bool alt, bool shift, Owner self, int self_in
   for (int i = 0; i < ActionCount(); ++i) {
     if (self == Owner::kAction && i == self_index) continue;
     if (!BindingAt(i).Matches(vkey, ctrl, alt, shift)) continue;
-    std::snprintf(what, cap, i18n::Tr("l'action « %s »"), i18n::Tr(ActionAt(i).label_fr));
-    return true;
+    char what[128];
+    std::snprintf(what, sizeof(what), i18n::Tr("l'action « %s »"),
+                  i18n::Tr(ActionAt(i).label_fr));
+    AddConflictOwner(out, max_out, &count, Owner::kAction, i, what);
   }
 
-  // e) Un raccourci du CLIENT — les QUATRE catégories, pas seulement les deux
+  // f) Un raccourci du CLIENT — les QUATRE catégories, pas seulement les deux
   // barres de raccourcis.
   //
   // 🔴 CE CONTRÔLE TRAVERSE LES DEUX MONDES, et il le doit. Les commandes
@@ -304,12 +332,33 @@ bool Conflict(int vkey, bool ctrl, bool alt, bool shift, Owner self, int self_in
       // Le libellé du client est déjà en UTF-8 et layout-aware : on le rend tel
       // quel plutôt qu'un vague « un raccourci natif », pour que le joueur sache
       // QUOI aller changer.
-      std::snprintf(what, cap, i18n::Tr("le raccourci du jeu « %s »"),
+      char what[128];
+      std::snprintf(what, sizeof(what), i18n::Tr("le raccourci du jeu « %s »"),
                     binding.label[0] ? binding.label : "?");
-      return true;
+      AddConflictOwner(out, max_out, &count, Owner::kClientCommand,
+                       ClientSelf(category, binding.command_index), what);
+      // 🔴 Le VOL a besoin de la commande DÉCOMPOSÉE et de son champ `EXE` : c'est
+      // ce couple-là qu'attend `ChangeUserHotKey` pour écrire l'entrée sans `KEY1`
+      // qui la délie. Le `self_index` encodé ne suffirait pas — le libellé n'en
+      // fait pas partie, et sans lui le Lua n'identifie pas la ligne.
+      if (out && count <= max_out) {
+        ConflictOwner& entry = out[count - 1];
+        entry.category = category;
+        entry.command_index = binding.command_index;
+        std::snprintf(entry.label, sizeof(entry.label), "%s", binding.label);
+      }
     }
   }
-  return false;
+  return count;
+}
+
+bool Conflict(int vkey, bool ctrl, bool alt, bool shift, Owner self, int self_index,
+              char* what, int cap) {
+  if (cap > 0) what[0] = '\0';
+  ConflictOwner first;
+  if (FindConflicts(vkey, ctrl, alt, shift, self, self_index, &first, 1) <= 0) return false;
+  if (cap > 0) std::snprintf(what, cap, "%s", first.what);
+  return true;
 }
 
 // Offsets du gestionnaire de fenêtres natif (client 20250716) :
@@ -345,6 +394,14 @@ bool NativeTextInputHasFocus() {
 
 void PingCapture() {
   if (ImGui::GetCurrentContext() != nullptr) g_capture_frame = ImGui::GetFrameCount();
+}
+
+void ClaimKey() { g_key_claimed = true; }
+
+bool TakeKeyClaim() {
+  const bool claimed = g_key_claimed;
+  g_key_claimed = false;
+  return claimed;
 }
 
 bool CaptureInProgress() {

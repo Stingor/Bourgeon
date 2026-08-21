@@ -11,6 +11,7 @@
 #include "ui/ro_widgets.h"  // mui::WheelGateNewFrame (verrou molette anti-défilement)
 #include "ui/window_clamp.h"
 #include "ui/window_zorder.h"
+#include "features/hotkey_util.h"  // CaptureInProgress (gel du clavier au remappage)
 #include "features/systems/auto_login.h"
 #include "features/systems/moonlight_auth.h"
 #include "features/windows/char_select.h"
@@ -459,6 +460,16 @@ bool Bourgeon::IsMapLoading() const {
   // signal (CZ_NOTIFY_ACTORINIT 0x007d) can't permanently lock UI/input.
   return (GetTickCount() - map_loading_since_ms_.load()) <= 20000u;
 }
+
+bool Bourgeon::IsHotkeyCaptureActive() const {
+  // Le drapeau est un BATTEMENT, pas un booléen posé/retiré : l'écran qui capture
+  // le rafraîchit à chaque frame, et la capture expire d'elle-même dès qu'il
+  // cesse d'être dessiné (onglet quitté, fenêtre repliée). Un clavier gelé ne
+  // peut donc pas survivre à l'écran qui l'a gelé.
+  return hotkeys::CaptureInProgress();
+}
+
+bool Bourgeon::TakeHotkeyActionClaim() { return hotkeys::TakeKeyClaim(); }
 
 void Bourgeon::NotifyGameUpdate() {
   // Per-frame heartbeat from GameMode::OnUpdateHook — CGameMode::OnUpdate only
