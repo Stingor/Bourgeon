@@ -51,7 +51,15 @@
 // Réglages persistés (scalaires nus, pour que moonlight_ui les sérialise sans
 // rien connaître des internes — même contrat que QuestTrackerConfig).
 struct ItemObtainToastConfig {
-  bool enabled = true;  // interrupteur maître : masque le natif + dessine le nôtre
+  // 🔴 OPT-IN, OFF par défaut. Ce module AGIT : il MASQUE la fenêtre native 58
+  // pour prendre sa place. Tant que le joueur ne l'a pas allumé, le client garde
+  // son bandeau d'origine (convention « opt-in = ce qui agit »).
+  //
+  // ⚠ La clé persistée a été RENOMMÉE à cette occasion (2026-08-21) :
+  // `itemtoast_enabled` → `itemtoast_replace_native`. Le yaml est réécrit EN ENTIER
+  // à chaque sauvegarde, donc tout le monde portait déjà l'ancienne clé à true :
+  // changer le seul défaut n'aurait rien changé pour personne.
+  bool enabled = false;  // interrupteur maître : masque le natif + dessine le nôtre
 
   // Empilement. Le natif est bloqué à 1 ; au-delà, chaque ligne a sa propre
   // durée de vie et la pile se referme quand la plus vieille expire.
