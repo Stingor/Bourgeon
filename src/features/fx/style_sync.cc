@@ -814,18 +814,47 @@ void StyleSync::ForgetPreviousCharacter() {
   if (cid == g_session_cid) return;  // le cas de très loin le plus fréquent
   const uint32_t precedent = g_session_cid;
   g_session_cid = cid;
-  if (precedent == 0) return;        // première entrée en jeu de la session
 
-  // 🔴 On ne touche PAS à l'injection ici, et surtout pas via `ClearRecipe` :
-  // celui-ci rendrait à l'acteur le chemin de palette mémorisé, qui est à cet
-  // instant celui du personnage PRÉCÉDENT. On repeindrait le nouveau avec la
-  // couleur de vêtement de son prédécesseur — le contraire du but.
-  //
-  // La purge de l'injection se fait au CHAR-SELECT (`ForgetLocalActor`), au seul
-  // moment où l'acteur n'existe pas et où il n'y a donc rien à ménager. Ce
-  // qu'on fait ici n'est que le rattrapage de nos propres registres, au cas où
-  // ce passage aurait été manqué.
   const uint32_t gid = OwnGid();
+
+  // ── 🔴🔴 L'INJECTION HÉRITÉE, et pourquoi elle survivait ───────────────────
+  //
+  // Le GID vaut l'AID : d'un personnage à l'autre du même compte, c'est le MÊME
+  // acteur du point de vue de tout ce que nous tenons. Une recette posée pour le
+  // précédent reste donc appliquée au suivant — et le suivant n'a rien pour la
+  // chasser s'il n'a pas de style à lui. Symptôme rapporté le 2026-08-16, et il
+  // portait sa propre explication : le défaut ne se produisait QUE sur un
+  // personnage sans couleurs. Avec des couleurs, `SetRecipe` remplaçait le bloc
+  // et masquait tout.
+  //
+  // 🔴 Deux gardes se sont dérobées ensemble, et il fallait les deux pour voir
+  // le bug :
+  //   * la sortie « première entrée en jeu de la session » ci-dessus — or
+  //     `ForgetLocalActor` remet `g_session_cid` à zéro au char-select, donc TOUT
+  //     retour en jeu ressemble à une première entrée ;
+  //   * la purge du char-select elle-même, gardée par `ActorAlive`, qui relit un
+  //     GID dans une mémoire fraîchement libérée : elle peut parfaitement encore
+  //     y trouver la bonne valeur et conclure que l'acteur vit toujours.
+  //
+  // Le changement de `char_id` est, lui, un signal FRANC : il ne dépend d'aucun
+  // battement ni d'aucune mémoire libérée. C'est donc ici que la purge doit
+  // vivre, et non plus seulement au char-select.
+  //
+  // ⚠ `ResetActor` et pas `ClearRecipe` : ce dernier rendrait à l'acteur le
+  // chemin de palette MÉMORISÉ, qui est à cet instant celui du personnage
+  // précédent — on repeindrait le nouveau avec la couleur de vêtement de son
+  // prédécesseur. `ResetActor` fait RECALCULER les chemins par le natif, depuis
+  // l'état courant de l'acteur.
+  //
+  // ⚠ Et seulement s'il y a quelque chose à défaire : sur une entrée en jeu
+  // normale, purger le registre natif ferait perdre le chemin de palette capturé,
+  // donc construire la prochaine base sur le sprite nu — c'est-à-dire diverger
+  // des autres clients pour le même personnage.
+  if (gid != 0 && fx::palette_inject::HasRecipe(gid))
+    fx::palette_inject::ResetActor(gid);
+
+  if (precedent == 0 && gid == 0) return;
+
   if (gid != 0) {
     // Ces états portent sur le corps du personnage PRÉCÉDENT : les laisser
     // ferait juger le nouveau sur l'analyse de l'ancien.

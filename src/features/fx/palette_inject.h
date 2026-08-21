@@ -75,6 +75,27 @@ void ClearRecipe(uint32_t gid);
 // compte, rien ne distinguait les deux sans cet appel.
 void ForgetActor(uint32_t gid);
 
+// Rend cet acteur à son apparence NATIVE, alors qu'il est encore vivant : on
+// oublie tout ce qu'on savait de lui, et on laisse le client recalculer ses
+// chemins de palette depuis son état courant.
+//
+// 🔴 Ce n'est ni `ClearRecipe` ni `ForgetActor`, et l'écart compte :
+//   * `ClearRecipe` rend à l'acteur le chemin natif MÉMORISÉ. Après un
+//     changement de personnage, ce chemin est celui du PRÉCÉDENT — on repeindrait
+//     le nouveau avec la couleur de vêtement de son prédécesseur.
+//   * `ForgetActor` ne touche à aucun acteur, ce qui suppose qu'il n'existe plus.
+//     Employé sur un acteur vivant, il le laisse porter `bourgeon\<gid>.pal`
+//     alors que le bloc vient de disparaître : palette introuvable, table vide,
+//     CORPS ENTIÈREMENT NOIR.
+//
+// Ici l'acteur EXISTE et doit rester juste. On purge, puis on fait REBÂTIR les
+// chemins par le natif — la même leçon que `ClearHairPalette` : un chemin
+// mémorisé se périme, un chemin recalculé depuis l'acteur, jamais.
+//
+// ⚠ À appeler depuis le FIL DE RENDU : on écrit dans un acteur et on appelle du
+// code du jeu.
+void ResetActor(uint32_t gid);
+
 // ── Couleur de CHEVEUX ──────────────────────────────────────────────────────
 //
 // 🔴 Bien plus simple que le corps, et pour une raison de fond : une palette de

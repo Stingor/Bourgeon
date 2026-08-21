@@ -390,6 +390,23 @@ bool PushHairPalette(uint32_t gid, void* actor) {
   return true;
 }
 
+// Rend la couleur de vêtement d'origine à un acteur dont on avait forcé la
+// sienne. Isolée pour le SEH, comme les autres accès aux objets natifs.
+//
+// 🔴 Le test `== 1` n'est pas de la superstition : le forçage ne part JAMAIS que
+// d'une couleur nulle (c'est sa condition), donc notre marque est toujours ce 1.
+// Écrire sans vérifier écraserait la vraie couleur d'un AUTRE personnage — le
+// GID valant l'AID, l'entrée qu'on purge a très bien pu être posée pour son
+// prédécesseur, dont la couleur d'origine ne veut rien dire ici.
+void RestoreForcedColor(void* actor, bool forcee, int origine) {
+  if (!actor || !forcee || origine < 0) return;
+  __try {
+    int* p = reinterpret_cast<int*>(reinterpret_cast<char*>(actor) +
+                                    kOffActorClothesColor);
+    if (*p == 1) *p = origine;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
 // La couleur de vêtement portée par l'acteur, ou -1 si illisible.
 int ReadActorClothesColor(void* actor) {
   __try {
@@ -759,6 +776,81 @@ void ForgetActor(uint32_t gid) {
   g_hair.erase(gid);
   // ⚠ Aucun acteur n'est touché, et c'est la condition d'emploi : celui qu'on
   // oublie n'existe plus, son pointeur mémorisé ne vaut plus rien.
+}
+
+// Fait rebâtir les deux chemins par le natif, sous SEH.
+//
+// 🔴 Isolée pour deux raisons qui se cumulent : MSVC refuse `__try` dans une
+// fonction qui déroule des objets C++ (C2712), et ce que l'on appelle ici n'est
+// pas une simple écriture mais du CODE DU JEU. L'acteur a été revalidé (GID
+// relu) juste avant, mais entre un changement de personnage et la première frame
+// en jeu, le pointeur mémorisé peut désigner un objet que le client vient de
+// détruire — et un objet mort dont la mémoire garde par hasard le bon GID
+// passerait la revalidation.
+void SafeRebuildPaths(void* actor) {
+  if (!actor) return;
+  __try {
+    Hooked_RebuildBodyPalettePath(actor, nullptr);
+    Hooked_RebuildHeadPalette(actor, nullptr);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    // L'acteur n'était plus là : il n'y a rien à remettre d'aplomb, et notre
+    // registre a déjà été purgé par l'appelant.
+  }
+}
+
+void ResetActor(uint32_t gid) {
+  if (gid == 0) return;
+
+  // Ce qu'on sait de lui, relevé AVANT de l'oublier : le pointeur d'acteur (que
+  // `KnownActor` revalide) et le sort de sa couleur de vêtement.
+  void* actor = KnownActor(gid);
+  int couleur_origine = -1;
+  bool couleur_forcee = false;
+  bool avait_recette = false;
+  {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    auto np = g_native_paths.find(gid);
+    if (np != g_native_paths.end()) {
+      couleur_origine = np->second.clothes_color;
+      couleur_forcee = np->second.color_forced;
+    }
+    auto it = g_recipes.find(gid);
+    if (it != g_recipes.end()) {
+      // Le bloc part à la retraite, jamais au tas : le cache d'atlas du client
+      // garde son ADRESSE en clé (cf. l'en-tête de `g_retired`).
+      Retire(std::move(it->second.block));
+      g_recipes.erase(it);
+      avait_recette = true;
+    }
+    g_hair.erase(gid);
+    g_miss_signale.erase(gid);
+    // 🔴 L'entrée native part ENTIÈREMENT, `color_forced` compris — sans quoi le
+    // personnage suivant se verrait refuser la capture de SON chemin et
+    // hériterait de la base de son prédécesseur.
+    g_native_paths.erase(gid);
+  }
+
+  if (!actor) return;  // acteur mort : il n'y a plus rien à remettre d'aplomb
+
+  // La couleur d'abord : c'est elle qui décide du chemin que le natif va
+  // produire juste après.
+  RestoreForcedColor(actor, couleur_forcee, couleur_origine);
+
+  // 🔴 Puis on fait RECALCULER les deux chemins depuis l'état COURANT de
+  // l'acteur. Reposer un chemin mémorisé serait plus simple et faux : après un
+  // changement de personnage, c'est celui du précédent.
+  //
+  // 🔴🔴 Et par la fonction DÉTOURNÉE, pas par le trampoline. Le détour fait
+  // deux choses que le natif seul ne fait pas : il RECAPTURE le chemin natif
+  // (possible ici, `color_forced` venant d'être effacé) et il constate qu'il n'y
+  // a plus de recette, donc n'écrit pas le nôtre. Passer par le trampoline
+  // laisserait `g_native_paths` vide, et la prochaine base serait construite sur
+  // le sprite nu — donc différente de celle des autres clients, pour le même
+  // personnage.
+  SafeRebuildPaths(actor);
+
+  if (avait_recette)
+    LogDiag("[palette] gid={} remis au natif (acteur vivant)", gid);
 }
 
 bool NativePalettePath(uint32_t gid, char* out, size_t out_size) {
