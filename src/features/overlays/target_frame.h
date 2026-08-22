@@ -161,6 +161,17 @@ class TargetFrame : public Plugin {
   // décider de l'attaquer, et le HUD se remplirait pour rien.
   bool  cycle_wrap_ = true;         // revenir au premier après le dernier
 
+  // ── Une pause remet le cycle à zéro ───────────────────────────────────────
+  // Le cyclage sert à DEUX choses qui ne demandent pas la même règle : parcourir
+  // ce qu'il y a autour (appuis rapprochés — il faut avancer), et prendre une
+  // cible (appui isolé — on veut la plus proche). Sans remise à zéro, le second
+  // usage héritait de la position laissée par le premier : on rappuyait après un
+  // combat et on repartait au cinquième monstre.
+  //
+  // Ce délai est la SEULE chose qui distingue les deux intentions. 0 = jamais de
+  // remise à zéro, le cycle se souvient indéfiniment.
+  int   cycle_reset_ms_ = 1000;
+
   // ── La flèche de ciblage du jeu ───────────────────────────────────────────
   // 🔴 Le petit triangle blanc n'est PAS piloté par la seule sélection `+0xF4`.
   // `GameMode_UpdateSelectedTargetNameLabel` commence par un verrou :
@@ -282,6 +293,12 @@ class TargetFrame : public Plugin {
   // `CGameMode+0x28` (l'engagement SOURIS), pas par `+0xF4` : c'est
   // `WantsSelectionMarker` qui le rend au ciblage clavier.
   bool CycleTarget(bool forward);
+
+  // Cible le monstre le PLUS PROCHE à l'écran, sans rien parcourir. Le cyclage
+  // sert à explorer ; celle-ci sert à engager — c'est le geste qu'on refait
+  // trente fois par combat, et le faire passer par un cycle dont on ne sait plus
+  // où il en est est exactement ce qu'on veut éviter.
+  bool TargetNearest();
 
   // ── Ce que le dispatch de messages du mode appelle ────────────────────────
   // Vrai si la flèche de ciblage du jeu doit être posée sur NOTRE cible ; remplit
@@ -436,10 +453,20 @@ class TargetFrame : public Plugin {
   uint32_t last_click_aid_ = 0;
   unsigned last_click_ms_  = 0;
 
+  // Pose `gid` comme cible clavier : sélection native + geste de ciblage, et
+  // horodatage du cycle. Le point de passage COMMUN de CycleTarget et
+  // TargetNearest — deux façons d'écrire la sélection auraient divergé.
+  bool ApplyKeyboardTarget(void* game_mode, uint32_t gid);
+
+  // GetTickCount du dernier ciblage clavier, pour la remise à zéro du cycle.
+  unsigned last_cycle_ms_ = 0;
+
   // Clic reçu par un cadre, en attente d'être rejoué hors frame ImGui (cf.
   // `OnGameFramePulse`). 0 = rien en attente. Un seul clic mémorisé : deux
   // appuis dans la même frame, ça n'existe pas.
   uint32_t proxy_click_gid_ = 0;
+  // Idem pour le clic DROIT, qui ouvre le menu contextuel de l'entité.
+  uint32_t proxy_menu_gid_  = 0;
 
   // ── Ce que le client sait, relu à chaque frame ────────────────────────────
   char     name_[64]  = {0};

@@ -898,7 +898,40 @@ bool EntityContextMenu::OnNativeContextMenu(void* game_mode, const int* quad,
     return true;
   }
   // Reste le seul état encore possible : le relâchement, qui ouvre le menu.
+  FillTargetAndOpen(game_mode, aid, job, cat, kind);
+  return true;
+}
 
+// Ouvre le menu sur une entité DÉSIGNÉE AUTREMENT QUE PAR LA SOURIS — le clic
+// droit sur un cadre du HUD de cible, qui se comporte comme l'entité elle-même.
+//
+// 🔴 Les gardes de CONTEXTE de `OnNativeContextMenu` (état des boutons, quad de
+// pick, fenêtre native sous le curseur, neutralisation du clic droit) n'ont
+// aucun sens ici : elles servent à décider si un clic droit du MONDE nous
+// appartient. Celui-ci nous appartient par construction — il a été reçu par
+// notre propre cadre, et ImGui l'a déjà retiré au jeu.
+//
+// 🔴 Le gate « toutes les entités » est également sauté, et c'est délibéré : il
+// existe pour ne pas AVALER un clic droit du monde là où le client n'ouvrait
+// rien. Sur le HUD, le geste est sans ambiguïté — on vise un cadre qui n'a pas
+// d'autre usage — et le refuser laisserait un clic droit mort sans rien dire
+// pourquoi. Reste `imgui_enabled_` : sans lui, il n'y a pas de menu du tout.
+bool EntityContextMenu::OpenForEntity(void* game_mode, uint32_t aid,
+                                      uint32_t job, int cat) {
+  if (!imgui_enabled_ || !game_mode || aid == 0) return false;
+  const Kind kind = ClassifyTarget(game_mode, aid, job, cat);
+  if (kind == Kind::kNone) return false;
+  if (kind == Kind::kSelf && !self_menu_) return false;
+  FillTargetAndOpen(game_mode, aid, job, cat, kind);
+  return request_open_;
+}
+
+// Le corps commun aux deux entrées : relever ce qu'il faut savoir de la cible,
+// construire les entrées, demander l'ouverture. Extrait pour que les deux
+// chemins ne puissent pas diverger — c'est ici que vivent le nom, l'objet au
+// sol, l'appartenance et la liste d'amis.
+void EntityContextMenu::FillTargetAndOpen(void* game_mode, uint32_t aid,
+                                          uint32_t job, int cat, Kind kind) {
   target_aid_  = aid;
   target_job_  = job;
   target_cat_  = cat;
@@ -939,11 +972,10 @@ bool EntityContextMenu::OnNativeContextMenu(void* game_mode, const int* quad,
   }
 
   BuildItems();
-  if (items_.empty()) return true;
+  if (items_.empty()) return;
 
   request_open_ = true;
   request_tick_ = GetTickCount();
-  return true;
 }
 
 EntityContextMenu::Kind EntityContextMenu::ClassifyTarget(void* game_mode,

@@ -168,6 +168,20 @@ class EntityContextMenu : public Plugin {
   // (le natif ne doit alors rien construire).
   bool OnNativeContextMenu(void* game_mode, const int* quad, int blocked);
 
+  // Ouvre le menu sur une entité désignée AUTREMENT QUE PAR LA SOURIS du monde :
+  // aujourd'hui, le clic droit sur un cadre du HUD de cible, qui se comporte
+  // comme l'entité elle-même. `cat` est la catégorie de pick (0 = acteur).
+  //
+  // 🔴 Saute les gardes de contexte du clic droit du monde (état des boutons,
+  // quad, neutralisation) : elles servent à décider si un clic nous appartient,
+  // et celui-ci nous appartient par construction — ImGui l'a déjà retiré au jeu.
+  // Saute aussi « toutes les entités » : sur le HUD, le geste est sans
+  // ambiguïté, et le refuser laisserait un clic droit mort sans dire pourquoi.
+  //
+  // 🔴 À appeler HORS frame ImGui : elle lit des structures natives et construit
+  // les entrées. Rend true si un menu va s'ouvrir.
+  bool OpenForEntity(void* game_mode, uint32_t aid, uint32_t job, int cat);
+
   // ── Blocage du clic sur un NPC à identifiant fixe (cf. l'en-tête) ──────────
 
   // Ce GID est-il celui d'un NPC épinglé par `moon/npc_fixed_id.yml` ? La plage
@@ -304,6 +318,12 @@ class EntityContextMenu : public Plugin {
   // Construit `items_` d'après la cible déjà retenue (kind_, target_*).
   void BuildItems();
   Kind ClassifyTarget(void* game_mode, uint32_t aid, uint32_t job, int category) const;
+
+  // Le corps commun aux deux entrées (clic droit du monde, clic droit du HUD) :
+  // relever ce qu'il faut savoir de la cible, construire les entrées, demander
+  // l'ouverture. Extrait pour que les deux chemins ne divergent pas.
+  void FillTargetAndOpen(void* game_mode, uint32_t aid, uint32_t job, int cat,
+                         Kind kind);
   void Choose(const Item& item);
   // Le popup du menu lui-même. Extrait d'OnRenderUI pour que la modale de
   // confirmation, elle, soit dessinée à CHAQUE frame — y compris celles où le

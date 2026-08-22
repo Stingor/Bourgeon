@@ -13,6 +13,7 @@
 #include "features/fx/palette_inject.h"     // ActorBodySpritePath (3e/4e classes)
 #include "features/moonlight_ui/moonlight_ui.h"  // grille d'alignement partagée
 #include "features/systems/bourgeon_opcodes.h"
+#include "features/windows/entity_context_menu.h"  // clic droit sur un cadre
 #include "ragnarok/globals.h"
 #include "ui/doll.h"        // portrait d'un JOUEUR (pantin composé)
 #include "ui/hud_frame.h"   // le cadre libre, commun aux HUD
@@ -121,6 +122,18 @@ constexpr int kAct_ScreenY    = 0xb0;   //  int, Y écran projeté
 constexpr int kAct_Nameplate  = 0xa5;   //  byte, l'acteur participe au nameplate
 // Le natif refuse le marqueur sur un PORTAIL, et lui seul.
 constexpr unsigned kJobPortal = 45;
+// Catégorie du quad de picking d'un ACTEUR (1 = objet au sol, 2 = unité de
+// compétence, 3 = pet). Notre cible en est toujours un : le HUD ne suit que des
+// entités du monde.
+constexpr int kPickCategoryActor = 0;
+
+// Type de curseur « attaque » (l'épée) dans `cursors.act`. C'est celui que le
+// natif pose lui-même sur une entité attaquable : `CursorMgr_SetType(this, 5)`
+// en `0x00C7571E`, relevé pendant la RE de l'engagement souris. On le REDEMANDE
+// au survol d'un cadre actif — un cadre qui se comporte comme le monstre doit
+// aussi en avoir l'air, sans quoi rien ne distingue à l'œil un cadre qui frappe
+// d'un cadre qui affiche.
+constexpr int kRoCursorAttack = 5;
 // Options d'état de l'entité, lues par la virtuelle vtable+0x34 de l'acteur.
 // `Option_IsCloak` (0x00D71140) n'est qu'un `& 4` sur ce mot.
 constexpr int      kActorVt_GetOptions = 0x34;
@@ -559,7 +572,7 @@ void TargetFrame::Reset(uint32_t gid) {
   srv_race_ = srv_ele_ = srv_ele_lv_ = srv_size_ = srv_boss_ = 0;
 }
 
-// ── Cyclage au clavier ──────────────────────────────────────────────────────
+// ── Cyclage au clavier ──────────────────────────────────────────
 
 namespace {
 
@@ -570,27 +583,23 @@ struct CycleCandidate {
   float    dist2;
 };
 
-}  // namespace
-
-bool TargetFrame::CycleTarget(bool forward) {
-  // Le mode éteint, le raccourci ne fait rien : c'est le prix d'un interrupteur
-  // maître honnête, et le panneau le dit noir sur blanc.
-  if (!enabled_) return false;
-  void* gm = ActiveGameMode();
-  if (!gm) return false;
-
-  CycleCandidate found[kMaxCycleTargets];
+// Balaie la liste d'acteurs du client et retient les monstres CIBLABLES : vivants,
+// participant au nameplate, et À L'ÉCRAN. Rend leur nombre (0 si rien).
+//
+// 🔴 Le filtre est le JOB, pas une plage de GID. Les identifiants sont attribués
+// par le serveur et changent de bornes d'une installation à l'autre ; la classe,
+// elle, dit ce que l'entité EST.
+//
+// ⚠ SEH ⇒ aucun objet C++ ici. Le balayage ne fait que LIRE : la liste du client
+// n'est jamais modifiée.
+int CollectScreenTargets(void* gm, CycleCandidate* out, int max) {
   int count = 0;
-  uint32_t own_gid = 0;
-
-  // Le balayage lit des structures natives : il est sous SEH, et il ne fait que
-  // LIRE — la liste du client n'est jamais modifiée.
   __try {
     void* actor_mgr = Read<void*>(gm, kGm_ActorMgr);
-    if (!actor_mgr) return false;
+    if (!actor_mgr) return 0;
     void* own = Read<void*>(actor_mgr, kAm_OwnPlayer);
-    if (!own) return false;
-    own_gid = Read<uint32_t>(own, kAct_Aid);
+    if (!own) return 0;
+    const uint32_t own_gid = Read<uint32_t>(own, kAct_Aid);
     const float own_x = Read<float>(own, kAct_PosX);
     const float own_z = Read<float>(own, kAct_PosZ);
 
@@ -598,18 +607,14 @@ bool TargetFrame::CycleTarget(bool forward) {
     const float screen_w = io.DisplaySize.x;
     const float screen_h = io.DisplaySize.y;
     void* sentinel = Read<void*>(actor_mgr, kAm_ListHead);
-    if (!sentinel) return false;
+    if (!sentinel) return 0;
     void* node = Read<void*>(sentinel, 0);  // premier nœud
     int guard = 0;
-    while (node && node != sentinel && count < kMaxCycleTargets &&
-           ++guard < 4096) {
+    while (node && node != sentinel && count < max && ++guard < 4096) {
       void* actor = Read<void*>(node, kNode_Actor);
       node = Read<void*>(node, 0);
       if (!actor) continue;
 
-      // 🔴 Le filtre est le JOB, pas une plage de GID. Les identifiants sont
-      // attribués par le serveur et changent de bornes d'une installation à
-      // l'autre ; la classe, elle, dit ce que l'entité EST.
       const unsigned job = Read<uint32_t>(actor, kAct_BaseJob);
       if (!IsMonsterJob(job)) continue;
       // Vivant, et visible : un cadavre ou un monstre masqué ne se cible pas au
@@ -626,44 +631,125 @@ bool TargetFrame::CycleTarget(bool forward) {
           sy >= static_cast<int>(screen_h))
         continue;
 
-      // La distance ne filtre plus rien : elle ne sert qu'à ORDONNER le cycle.
       const float dx = Read<float>(actor, kAct_PosX) - own_x;
       const float dz = Read<float>(actor, kAct_PosZ) - own_z;
-      const float d2 = dx * dx + dz * dz;
 
-      found[count].gid = Read<uint32_t>(actor, kAct_Aid);
-      found[count].dist2 = d2;
-      if (found[count].gid != 0 && found[count].gid != own_gid) ++count;
+      out[count].gid = Read<uint32_t>(actor, kAct_Aid);
+      out[count].dist2 = dx * dx + dz * dz;
+      if (out[count].gid != 0 && out[count].gid != own_gid) ++count;
     }
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    return 0;
+  }
+  return count;
+}
+
+// Tri par distance croissante. Le cycle part TOUJOURS du plus proche, et l'ordre
+// ne dépend pas de celui, arbitraire, de la liste du client — sans quoi deux
+// passages successifs ne donneraient pas la même suite.
+void SortByDistance(CycleCandidate* a, int count) {
+  for (int i = 1; i < count; ++i) {
+    const CycleCandidate key = a[i];
+    int j = i - 1;
+    while (j >= 0 && a[j].dist2 > key.dist2) {
+      a[j + 1] = a[j];
+      --j;
+    }
+    a[j + 1] = key;
+  }
+}
+
+// 🔴 On pose la sélection NATIVE. C'est elle que lit
+// `GameMode_UpdateSelectedTargetNameLabel` à chaque frame pour afficher le nom
+// flottant et la flèche ; l'écrire donne donc à la cible clavier exactement le
+// même retour visuel qu'un clic. `+0xF8` est remis à zéro dans la foulée, comme
+// le fait le chemin natif du clic (0x00C79D3C).
+bool WriteNativeSelection(void* gm, uint32_t gid) {
+  __try {
+    *reinterpret_cast<uint32_t*>(reinterpret_cast<char*>(gm) + kGm_Selection) = gid;
+    *reinterpret_cast<uint32_t*>(reinterpret_cast<char*>(gm) + kGm_Selection + 4) = 0;
+    return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     return false;
   }
+}
 
+}  // namespace
+
+// Pose `gid` comme cible clavier : sélection native + geste de ciblage.
+//
+// Un cyclage EST un geste de ciblage, au même titre qu'un clic : il désigne, et
+// c'est cette désignation — pas la sélection native — qui allume le HUD.
+bool TargetFrame::ApplyKeyboardTarget(void* gm, uint32_t gid) {
+  if (gid == 0) return false;
+  if (!WriteNativeSelection(gm, gid)) return false;
+  pending_gesture_gid_ = gid;
+  last_cycle_ms_ = GetTickCount();
+  return true;
+}
+
+bool TargetFrame::TargetNearest() {
+  // Le mode éteint, le raccourci ne fait rien : c'est le prix d'un interrupteur
+  // maître honnête, et le panneau le dit noir sur blanc.
+  if (!enabled_) return false;
+  void* gm = ActiveGameMode();
+  if (!gm) return false;
+
+  CycleCandidate found[kMaxCycleTargets];
+  const int count = CollectScreenTargets(gm, found, kMaxCycleTargets);
   if (count == 0) return false;
 
-  // Tri par distance croissante : le cycle part TOUJOURS du plus proche, et
-  // l'ordre ne dépend pas de celui, arbitraire, de la liste du client — sans quoi
-  // deux passages successifs ne donneraient pas la même suite.
-  for (int a = 1; a < count; ++a) {
-    const CycleCandidate key = found[a];
-    int b = a - 1;
-    while (b >= 0 && found[b].dist2 > key.dist2) {
-      found[b + 1] = found[b];
-      --b;
-    }
-    found[b + 1] = key;
-  }
+  // Un seul candidat à trouver : le minimum suffit, un tri complet serait du
+  // travail jeté.
+  int best = 0;
+  for (int i = 1; i < count; ++i)
+    if (found[i].dist2 < found[best].dist2) best = i;
+  return ApplyKeyboardTarget(gm, found[best].gid);
+}
+
+bool TargetFrame::CycleTarget(bool forward) {
+  // Le mode éteint, le raccourci ne fait rien : c'est le prix d'un interrupteur
+  // maître honnête, et le panneau le dit noir sur blanc.
+  if (!enabled_) return false;
+  void* gm = ActiveGameMode();
+  if (!gm) return false;
+
+  CycleCandidate found[kMaxCycleTargets];
+  const int count = CollectScreenTargets(gm, found, kMaxCycleTargets);
+  if (count == 0) return false;
+  SortByDistance(found, count);
+
+  // ── Une pause REMET LE CYCLE À ZÉRO ────────────────────────────────
+  // Le cyclage sert à DEUX choses qui ne demandent pas la même règle : parcourir
+  // ce qu'il y a autour (appuis rapprochés, il faut avancer), et prendre une
+  // cible (appui isolé, on veut la plus proche). Sans remise à zéro, le second
+  // usage héritait de la position laissée par le premier : on rappuyait après
+  // un combat et on repartait au cinquième monstre.
+  //
+  // Le délai fait la différence entre les deux, et lui seul. À 0, jamais de
+  // remise à zéro : le cycle se souvient indéfiniment, comme avant.
+  const unsigned now = GetTickCount();
+  const bool restart = cycle_reset_ms_ > 0 &&
+                       (last_cycle_ms_ == 0 ||
+                        (now - last_cycle_ms_) >
+                            static_cast<unsigned>(cycle_reset_ms_));
 
   // Où en est-on ? La cible courante est celle du HUD ; si elle n'est plus dans
   // la liste (morte, hors écran, jamais ciblée), on repart du plus proche.
   int current = -1;
-  const uint32_t shown = gid_;
-  for (int i = 0; i < count; ++i) {
-    if (found[i].gid == shown) { current = i; break; }
+  if (!restart) {
+    const uint32_t shown = gid_;
+    for (int i = 0; i < count; ++i) {
+      if (found[i].gid == shown) { current = i; break; }
+    }
   }
 
   int next;
-  if (current < 0) {
+  if (restart) {
+    // ⚠ Le plus proche, quel que soit le SENS demandé. « Précédente » après une
+    // pause veut dire « reprends la main », pas « donne-moi le plus lointain ».
+    next = 0;
+  } else if (current < 0) {
     next = forward ? 0 : count - 1;
   } else {
     next = current + (forward ? 1 : -1);
@@ -676,25 +762,7 @@ bool TargetFrame::CycleTarget(bool forward) {
     }
   }
 
-  const uint32_t target = found[next].gid;
-  if (target == 0) return false;
-
-  // 🔴 On pose la sélection NATIVE. C'est elle que lit
-  // `GameMode_UpdateSelectedTargetNameLabel` à chaque frame pour afficher le nom
-  // flottant et la flèche ; l'écrire donne donc à la cible clavier exactement le
-  // même retour visuel qu'un clic. `+0xF8` est remis à zéro dans la foulée, comme
-  // le fait le chemin natif du clic (0x00C79D3C).
-  __try {
-    *reinterpret_cast<uint32_t*>(reinterpret_cast<char*>(gm) + kGm_Selection) = target;
-    *reinterpret_cast<uint32_t*>(reinterpret_cast<char*>(gm) + kGm_Selection + 4) = 0;
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-    return false;
-  }
-
-  // Un cyclage EST un geste de ciblage, au même titre qu'un clic : il désigne, et
-  // c'est cette désignation — pas la sélection native — qui allume le HUD.
-  pending_gesture_gid_ = target;
-  return true;
+  return ApplyKeyboardTarget(gm, found[next].gid);
 }
 
 void TargetFrame::NoteExplicitAttack(uint32_t gid) {
@@ -1291,7 +1359,16 @@ void TargetFrame::DrawElements(void* game_mode, void* actor) {
     // appel qui peut ouvrir une boîte de message (surcharge de poids) et
     // relancer le tick du mode — interdit entre NewFrame et Render. Cf.
     // OnGameFramePulse.
-    if (clicks.left) proxy_click_gid_ = gid_;
+    // Le curseur du jeu prend l'épée : un cadre qui se comporte comme le monstre
+    // doit aussi en avoir l'air. Consommé par le hook de rendu du curseur à la
+    // frame suivante, comme pour tous les widgets du toolkit.
+    if (clicks.hovered) ro::SetHoverCursor(kRoCursorAttack);
+
+    if (clicks.left)  proxy_click_gid_ = gid_;
+    // Le clic DROIT ouvre le menu contextuel de l'entité, comme sur son sprite.
+    // Même différé, et pour une raison de plus : la construction du menu lit le
+    // dictionnaire de noms et la liste d'amis.
+    if (clicks.right) proxy_menu_gid_ = gid_;
 
     if (moved) geometry_dirty_ = true;  // MoonlightUi persiste, une fois
   }
@@ -1300,9 +1377,11 @@ void TargetFrame::DrawElements(void* game_mode, void* actor) {
 // ── Le clic reçu par un cadre, rejoué hors frame ImGui ──────────────────────
 
 void TargetFrame::OnGameFramePulse() {
-  if (proxy_click_gid_ == 0) return;
-  const uint32_t gid = proxy_click_gid_;
+  if (proxy_click_gid_ == 0 && proxy_menu_gid_ == 0) return;
+  const uint32_t gid  = proxy_click_gid_;
+  const uint32_t menu = proxy_menu_gid_;
   proxy_click_gid_ = 0;
+  proxy_menu_gid_  = 0;
 
   if (!enabled_ || !proxy_click_) return;
   auto& bourgeon = Bourgeon::Instance();
@@ -1313,6 +1392,22 @@ void TargetFrame::OnGameFramePulse() {
 
   void* gm = ActiveGameMode();
   if (!gm) return;
+
+  // ── Clic DROIT : le menu contextuel de l'entité ───────────────────────────
+  // Le cadre est une copie du sprite, donc il en porte aussi le menu. C'est
+  // `EntityContextMenu` qui décide de ce qu'il contient et de ce qu'il grise —
+  // on ne lui donne que la cible.
+  if (menu != 0) {
+    void* actor = FindActor(menu);
+    if (actor) {
+      if (auto* ctx = bourgeon.entity_context_menu())
+        ctx->OpenForEntity(gm, menu,
+                           static_cast<uint32_t>(ReadActorInt(actor, kAct_BaseJob)),
+                           kPickCategoryActor);
+    }
+  }
+
+  if (gid == 0) return;
   // La cible a pu disparaître entre le clic et ce battement (elle est morte, on
   // l'a perdue de vue) : cliquer un GID qui n'existe plus n'a pas de sens.
   if (!FindActor(gid)) return;
@@ -1321,6 +1416,22 @@ void TargetFrame::OnGameFramePulse() {
   // que le natif va consulter. Il n'a de toute façon pas pu changer entre les
   // deux — rien n'arme une compétence pendant que la souris descend.
   const int skill_mode = ReadSkillTargetMode(gm);
+
+  // 🔴 Sur un CADRE, un seul clic attaque — même sous « le clic cible sans
+  // attaquer ». Ce réglage existe parce qu'un clic DANS LE MONDE est ambigu :
+  // on désigne souvent une entité sans vouloir l'engager, et le double-clic
+  // sert à lever le doute. Ici il n'y a aucun doute à lever — la cible est déjà
+  // désignée, le cadre n'a pas d'autre usage, et il a fallu viser un rectangle
+  // de HUD pour l'atteindre. Exiger un second clic ne protégerait de rien et
+  // ferait passer le cadre pour cassé.
+  //
+  // Même dispense que « Attaquer » du menu contextuel, et pour la même raison :
+  // c'est un ordre EXPLICITE. Elle dure ce que dure l'attaque — une attaque est
+  // une suite de demandes, en laisser passer une ne ferait qu'un coup.
+  //
+  // ⚠ Seulement quand rien n'est armé : une compétence a son propre chemin dans
+  // `PostActorClickAction`, que le réglage ne bloque de toute façon pas.
+  if (skill_mode == 0) NoteExplicitAttack(gid);
 
   if (!RunActorClick(gm, gid)) return;
 
@@ -1447,8 +1558,10 @@ bool TargetFrame::DrawSettings() {
   SameLine();
   HelpMarker(i18n::Tr(
       "Cliquer un cadre du HUD revient à cliquer l'entité elle-même : attaque, "
-      "compétence ciblée armée, double-clic — tout se comporte à l'identique, "
-      "parce que c'est le même chemin du client qui est rejoué.\n\n⚠ Un cadre "
+      "compétence ciblée armée — c'est le même chemin du client qui est "
+      "rejoué.\n\nUn SEUL clic attaque, même si « le clic cible sans attaquer » "
+      "est coché : ce réglage lève l'ambiguïté d'un clic dans le monde, et il "
+      "n'y en a aucune sur un cadre — la cible est déjà désignée.\n\n⚠ Un cadre "
       "qui agit REPREND LA SOURIS au jeu tant que le curseur est dessus : ni "
       "clic vers le sol derrière, ni rotation de caméra. Il ne le fait que "
       "quand il y a une cible ET que le clic aurait un sens — un sort de zone "
@@ -1469,12 +1582,28 @@ bool TargetFrame::DrawSettings() {
   Separator();
   SeparatorText(i18n::Tr("Ciblage au clavier"));
   TextWrapped(i18n::Tr(
-      "Deux actions à lier dans l'écran des raccourcis : « Cible suivante » et "
-      "« Cible précédente ». Elles passent d'un monstre à l'autre parmi ceux qui "
-      "sont à l'écran, du plus proche au plus loin. Tab et Maj+Tab conviennent "
-      "bien, et restent au chat tant que la barre de saisie a le focus."));
+      "Trois actions à lier dans l'écran des raccourcis : « Cible suivante », "
+      "« Cible précédente » et « Cible la plus proche ». Les deux premières "
+      "passent d'un monstre à l'autre parmi ceux qui sont à l'écran, du plus "
+      "proche au plus loin ; la troisième prend directement le plus proche, sans "
+      "rien parcourir. Tab et Maj+Tab conviennent bien, et restent au chat tant "
+      "que la barre de saisie a le focus."));
   changed |= ro::RoCheckbox(i18n::Tr("Boucler après la dernière cible"),
                             &cycle_wrap_);
+
+  ImGui::PushItemWidth(160.0f);
+  changed |= WheelSliderInt(i18n::Tr("Reprendre au plus proche après (ms)"),
+                            &cycle_reset_ms_, 0, 5000);
+  ImGui::PopItemWidth();
+  SameLine();
+  HelpMarker(i18n::Tr(
+      "Passé ce délai sans cycler, le prochain appui repart du monstre le plus "
+      "proche au lieu de continuer où le cycle en était.\n\nC'est ce qui sépare "
+      "les deux usages du cyclage : enchaîner les appuis pour PARCOURIR ce qu'il "
+      "y a autour, ou appuyer une fois pour PRENDRE une cible. Sans ce délai, le "
+      "second héritait de la position laissée par le premier — on rappuyait "
+      "après un combat et on repartait au cinquième monstre.\n\n0 = jamais : le "
+      "cycle se souvient indéfiniment."));
 
   Separator();
   SeparatorText(i18n::Tr("Cadres"));

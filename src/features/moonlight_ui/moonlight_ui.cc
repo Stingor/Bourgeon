@@ -859,6 +859,8 @@ const moonlight_ui::SettingDesc kOptInWindowSettings[] = {
      MLUI_FIELD(target_frame, portrait_animate_), MLUI_LITERAL(bool, true)},
     {"target_cycle_wrap", SType::kBool, MLUI_FIELD(target_frame, cycle_wrap_),
      MLUI_LITERAL(bool, true)},
+    {"target_cycle_reset_ms", SType::kInt,
+     MLUI_FIELD(target_frame, cycle_reset_ms_), MLUI_LITERAL(int, 1000)},
     {"target_native_marker", SType::kBool,
      MLUI_FIELD(target_frame, native_marker_), MLUI_LITERAL(bool, true)},
     {"target_click_no_attack", SType::kBool,

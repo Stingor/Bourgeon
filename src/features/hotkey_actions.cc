@@ -82,6 +82,10 @@ const Action kActions[] = {
     // de le laisser en dur dans `BugReport` — invisible à l'écran des raccourcis,
     // donc introuvable et surtout impossible à déplacer quand il tombe sur la
     // touche d'autre chose. Le contrôle de collision le voit maintenant comme
+    // Et l'action qu'on refait trente fois par combat : engager le plus proche,
+    // sans rien parcourir. Le cyclage sert à EXPLORER, celle-ci à ENGAGER — les
+    // confondre obligeait à deviner où le cycle en était resté.
+    {"target_nearest",    "Cible la plus proche",   ActionGroup::kTools,   0, {}},
     // n'importe quelle autre liaison.
     {"tool_bug_report",   "Signaler un bug",       ActionGroup::kTools,   0,
      {'B', /*ctrl=*/true, /*alt=*/true, /*shift=*/false}},
@@ -231,3 +235,8 @@ bool Invoke(const char* id) {
 }
 
 }  // namespace hotkeys
+  if (std::strcmp(id, "target_nearest") == 0) {
+    if (auto* target_frame = bourgeon.target_frame())
+      return target_frame->TargetNearest();
+    return false;
+  }
