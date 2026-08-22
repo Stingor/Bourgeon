@@ -28,7 +28,7 @@ l'erreur qui coûte cher.
 |---|---|---|---|
 | `CGameMode+0xF0` | `this[60]` | **cible de travail** : celle sur laquelle le clic maintenu agit | très courte, cf. §2 |
 | `CGameMode+0xF4` | `this[61]` | **sélection** : AID de la dernière entité cliquée | jusqu'au changement de map, cf. §3 |
-| `CGameMode+0xF8` | `this[62]` | drapeau remis à 0 à chaque clic sur acteur | — |
+| `CGameMode+0xF8` | `this[62]` | 🔴 **geste de souris libre** : le maintien en cours n'a pas été capturé par un acteur (§2 ter) | du clic au relâchement |
 | `CGameMode+0x5B0` | `this[364]` | action **forcée** (Ctrl / option `0x6D`) : empêche l'oubli de `+0xF0` | — |
 | `CGameMode+0x28` | `this[10]` | 🔴 **engagement souris** : verrou du nom flottant ET de la flèche (§4 bis) | très courte, cf. §2 bis |
 
@@ -102,6 +102,51 @@ Ce qu'il gate :
 > 🔴 **Et forcer `+0x28` est un remède pire que le mal** : le curseur « attaque »
 > se colle sur tout l'écran, réécrit chaque frame. La bonne prise est ailleurs —
 > §4 bis, « ce que Bourgeon en fait ».
+
+---
+
+## 2 ter. `+0xF8` — le geste de souris libre
+
+🔴 **Le champ qui n'a rien à voir avec ce que son nom laissait croire**, et dont
+l'écriture par imitation a coûté un bug en jeu (2026-08-22).
+
+Il ne dit pas « on vient de cliquer ». Il dit : **le maintien de bouton en cours
+n'a pas été capturé par un acteur**. Relevé exhaustif des accès sur
+`0x00C60000`-`0x00CA0000` :
+
+| Site | Geste |
+|---|---|
+| `0x00C76538` `GameMode_ProcessMouseWorldInput` | **= 1** au RELÂCHEMENT du bouton gauche (`g_Mouse_LButtonState == 3`) |
+| `0x00C6BE2A` `GameMode_OnEnterMapSetup` | **= 1** à l'entrée de carte |
+| `0x00C75641`, `0x00C77622`, `0x00C78E75`, `0x00C79049`, `0x00C791D6`, `0x00C79D42`, `0x00C79DDB` | **= 0** — les sept sites de clic ou de survol **sur acteur** |
+| `0x00C76236` `GameMode_GroundClick_RequestMove` | **lu** (cf. ci-dessous) |
+| `0x00C785E9` `CursorMgr_UpdateHover` | **lu** : à zéro, la branche d'action est sautée |
+
+### Ce que sa lecture décide : la marche au bouton MAINTENU
+
+Dans `GameMode_GroundClick_RequestMove`, les deux chemins ne se ressemblent pas :
+
+```c
+if ( ...+1280 || g_Mouse_LButtonState != 2 ) {   // appui FRAIS
+    if ( g_Mouse_LButtonState != 1 ) return param_1;
+    v43 = g_Mouse_RButtonState == 2;             // +0xF8 jamais consulté
+} else {                                          // bouton MAINTENU
+    if ( !v42 ) return param_1;                   // cadence : 600 ms (this+0xD8)
+    v43 = *((_DWORD *)this + 62) == 0;            // +0xF8
+}
+if ( !v43 ) { /* ... la demande de marche ... */ }
+```
+
+La marche maintenue n'est donc ré-émise **que si `+0xF8 != 0`** — c'est ce qui
+empêche un clic maintenu de continuer à courir vers le sol pendant qu'on tape un
+monstre. L'appui **frais** ne le regarde pas : un geste cassé se répare toujours
+en relâchant puis recliquant, ce qui masque complètement la cause.
+
+> ⚠ **Leçon** : imiter un chemin natif « à l'identique » n'est sûr que si l'on
+> sait ce que chaque écriture VEUT DIRE. Ici les deux écritures voisines
+> (`+0xF4` puis `+0xF8`) répondent à deux questions différentes — quelle cible,
+> et dans quel état est le geste de souris — et le clavier n'a d'affaire qu'avec
+> la première.
 
 ---
 
@@ -450,9 +495,17 @@ ressemble, il n'y a donc rien à intercepter — tout est à nous.
 | Ordre | tri par distance, pour que deux passages donnent la **même** suite — l'ordre de la liste du client est arbitraire |
 | Reprise | si la cible courante n'est plus dans la liste, le cycle repart du plus proche |
 
-`CycleTarget` écrit la sélection **native** (`CGameMode+0xF4`, puis `+0xF8 = 0`
-comme le fait le chemin natif du clic `0x00C79D3C`) : la cible clavier est donc
-la même que celle d'un clic pour tout ce qui lit ce champ.
+`CycleTarget` écrit la sélection **native** (`CGameMode+0xF4`, et **rien d'autre**) :
+la cible clavier est donc la même que celle d'un clic pour tout ce qui lit ce champ.
+
+> 🔴🔴 **Correction du 2026-08-22 — `+0xF8` ne doit PAS être écrit.** Cette page
+> disait ici qu'on le remettait à zéro « comme le fait le chemin natif du clic ».
+> C'était vrai du code et faux du raisonnement : ce champ ne décrit pas le clic,
+> il décrit le **geste de souris en cours** (§2 ter). Le mettre à zéro faisait
+> croire au client que le maintien du bouton avait été capturé par un acteur —
+> et **la marche au clic maintenu s'arrêtait net dès qu'on prenait une cible au
+> clavier**, jusqu'à un relâchement suivi d'un nouvel appui. Vu en jeu, et
+> introuvable par la lecture : rien, dans le cyclage, ne parle de déplacement.
 
 > ⚠ **Correction du 2026-08-20.** Cette page affirmait ici qu'écrire `+0xF4`
 > suffisait à faire suivre la flèche du jeu. **C'est faux**, et ça s'est vu en
@@ -729,6 +782,25 @@ entité, et elle choisit d'après le ciblage armé (`CGameMode+0x408`) :
 | `0` (rien d'armé) | message **10** — approche puis attaque (la file `+0x500`/`+0x514` du §4) |
 | `2` ou `4` (cible) | messages **41** puis **90** — la compétence `+0x40C` part sur ce GID, au niveau `+0x414` |
 | `1`, `3`, `5` | **rien** |
+
+> 🔴 **`param_2` décide UNE FOIS vs EN CONTINU — et les valeurs sont
+> INVERSÉES : `0` = continu, `1` = une seule fois.** Il finit dans `+0x500`, que
+> `Actor_ProcessPendingAction_Tick` relance alors toutes les **450 ms** au lieu
+> de 1200. Règle du natif, relevée au site de clic sur un monstre dans
+> `CursorMgr_UpdateHover` :
+>
+> ```
+> continu = !GameSession_IsAgitZone() && (Ctrl tenu || GameSettings_GetFlag(0x6D))
+> PostActorClickAction(this, gid, continu ? 0 : 1) ;  puis  this+0x5B0 = continu
+> ```
+>
+> `0x6D` est l'identifiant TALKTYPE de l'option **`/nc`** (no-control). En zone
+> de siège (`*(CGameMode+0xCC) + 0x4C`, posé par `ZC_NOTIFY_MAPPROPERTY = 3`) le
+> natif REFUSE le continu, Ctrl ou `/nc` ou non.
+>
+> ⏱ **Piège payé** : le clic rejoué depuis le HUD de cible figeait ce paramètre
+> à `1`. Le cadre ignorait donc `/nc` et Ctrl là où le clic sur le sprite les
+> respecte — la « copie du sprite » s'arrêtait au GID.
 
 En tête, une seule garde, et elle n'a rien à voir avec le ciblage : au-delà de
 **90 % de poids** (`g_Weight` / `g_MaxWeight`), elle affiche `MsgString 0x133`

@@ -14,6 +14,7 @@
 #include "features/moonlight_ui/moonlight_ui.h"  // grille d'alignement partagée
 #include "features/systems/bourgeon_opcodes.h"
 #include "features/windows/entity_context_menu.h"  // clic droit sur un cadre
+#include "ragnarok/game_settings.h"  // gamesettings::IsOn (le drapeau /nc)
 #include "ragnarok/globals.h"
 #include "ui/doll.h"        // portrait d'un JOUEUR (pantin composé)
 #include "ui/hud_frame.h"   // le cadre libre, commun aux HUD
@@ -39,9 +40,35 @@ constexpr uintptr_t kActorFindByGid = 0x00d806a0;
 // approche/attaque quand rien n'est armé, lancement de la compétence sur la
 // cible en modes 2 et 4. Rien à imiter : on la rappelle avec notre GID.
 constexpr uintptr_t kPostActorClickAction = 0x00c753a0;
-// Le `type` du clic, tel que le natif le passe sur une entité ordinaire. Il
-// finit dans l'action en attente de l'acteur (`+0x500`).
-constexpr int kClickTypeNormal = 1;
+// ── Le `type` du clic : UNE FOIS, ou EN CONTINU ─────────────────────────────
+// 🔴 Ce paramètre n'est pas décoratif : il finit dans l'action en attente de
+// l'acteur (`+0x500`), que `Actor_ProcessPendingAction_Tick` relance ensuite
+// toutes les 450 ms au lieu de 1200. C'est LUI qui fait la différence entre
+// « je frappe une fois » et « je frappe tant que la cible tient debout ».
+//
+// ⏱ Il était figé à 1 (une fois) : le clic sur un cadre ignorait donc `/nc` et
+// Ctrl, alors que le clic sur le sprite les respecte. La règle du natif, relevée
+// au site de clic sur un monstre dans `CursorMgr_UpdateHover` :
+//
+//     continu = !GameSession_IsAgitZone() && (Ctrl tenu || /nc actif)
+//     PostActorClickAction(this, gid, continu ? 0 : 1)
+//
+// ⚠ Et les valeurs sont INVERSÉES par rapport à l'intuition : **0 = continu**,
+// **1 = une seule fois**.
+constexpr int kClickTypeContinuous = 0;
+constexpr int kClickTypeOnce       = 1;
+
+// `/nc` (no-control) dans la table d'options du client : identifiant TALKTYPE
+// que le natif interroge par `GameSettings_GetFlag(0x6D)` à chaque clic.
+// (`gamesettings::IsOn` rend la valeur AFFICHÉE ; `0x6D` ne fait pas partie des
+// cinq options rangées à l'envers, les deux coïncident donc.)
+constexpr int kOptNoCtrl = 0x6d;
+
+// Carte de SIÈGE : `*(CGameMode+0xCC) + 0x4C`, posé par ZC_NOTIFY_MAPPROPERTY
+// de valeur 3 (MAPPROPERTY_AGITZONE). Le natif y refuse l'attaque continue,
+// Ctrl ou `/nc` ou non. Lu plutôt qu'appelé (`GameSession_IsAgitZone` 0x00D8EC00
+// ne fait que cette déréférence) : une lecture ne peut pas se tromper d'ABI.
+constexpr int kScene_AgitZone = 0x4c;
 
 // `CMode::SendMsg`, par la vtable du mode (index 6 = vtable+0x18). Le message
 // 0x47 quitte le mode ciblage : le pipeline souris natif l'émet après un
@@ -347,13 +374,21 @@ int ReadSkillTargetMode(void* game_mode) {
 // Rejoue le clic natif sur une entité, avec NOTRE GID. Cf. kPostActorClickAction :
 // c'est la fonction qui porte tout le sens du clic, y compris le lancement d'une
 // compétence armée. Rend true si l'appel a eu lieu.
-bool RunActorClick(void* game_mode, uint32_t gid) {
+bool RunActorClick(void* game_mode, uint32_t gid, int click_type) {
   __try {
     if (!game_mode || gid == 0) return false;
     using ClickFn = int(__thiscall*)(void*, uint32_t, int);
-    reinterpret_cast<ClickFn>(kPostActorClickAction)(game_mode, gid,
-                                                     kClickTypeNormal);
+    reinterpret_cast<ClickFn>(kPostActorClickAction)(game_mode, gid, click_type);
     return true;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
+// Sommes-nous sur une carte de siège ? Cf. kScene_AgitZone.
+bool OnAgitZone(void* game_mode) {
+  __try {
+    if (!game_mode) return false;
+    void* scene = Read<void*>(game_mode, kGm_ActorMgr);
+    return scene && Read<int32_t>(scene, kScene_AgitZone) != 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
@@ -662,12 +697,30 @@ void SortByDistance(CycleCandidate* a, int count) {
 // 🔴 On pose la sélection NATIVE. C'est elle que lit
 // `GameMode_UpdateSelectedTargetNameLabel` à chaque frame pour afficher le nom
 // flottant et la flèche ; l'écrire donne donc à la cible clavier exactement le
-// même retour visuel qu'un clic. `+0xF8` est remis à zéro dans la foulée, comme
-// le fait le chemin natif du clic (0x00C79D3C).
+// même retour visuel qu'un clic.
+//
+// 🔴🔴 MAIS ON N'ÉCRIT PAS `+0xF8`, ET CE N'EST PAS UN OUBLI. Le chemin natif du
+// clic le remet à zéro juste après `+0xF4` (0x00C79D3C) ; l'avoir imité a coûté un
+// bug que rien ne reliait au ciblage — **prendre une cible au clavier COUPAIT LA
+// MARCHE au clic maintenu**, et il fallait relâcher puis recliquer pour repartir
+// (remonté en jeu le 2026-08-22).
+//
+// Ce champ n'est pas le « drapeau remis à 0 au clic » que cette page et la doc
+// croyaient : il dit **« le maintien de souris en cours n'a PAS été capturé par un
+// acteur »**. Relevé exhaustif de ses accès sur 0x00C60000-0x00CA0000 :
+//   · mis à **1** au RELÂCHEMENT du bouton gauche (`GameMode_ProcessMouseWorldInput`
+//     0x00C76538, `g_Mouse_LButtonState == 3`) et à l'entrée de carte (0x00C6BE2A) ;
+//   · mis à **0** par les sept sites de clic ou de survol SUR ACTEUR ;
+//   · **lu** par le chemin « bouton maintenu » de `GameMode_GroundClick_RequestMove`
+//     (0x00C76236) : la demande de marche n'est ré-émise que si `+0xF8 != 0`. Le
+//     chemin « appui FRAIS » ne le consulte jamais — d'où la réparation au reclic,
+//     qui est ce qui rendait le symptôme si difficile à rattacher à sa cause.
+//
+// Un cyclage clavier ne capture aucun geste de souris. Il n'a donc rien à écrire
+// là : le seul champ qui porte la CIBLE est `+0xF4`.
 bool WriteNativeSelection(void* gm, uint32_t gid) {
   __try {
     *reinterpret_cast<uint32_t*>(reinterpret_cast<char*>(gm) + kGm_Selection) = gid;
-    *reinterpret_cast<uint32_t*>(reinterpret_cast<char*>(gm) + kGm_Selection + 4) = 0;
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     return false;
@@ -1433,7 +1486,19 @@ void TargetFrame::OnGameFramePulse() {
   // `PostActorClickAction`, que le réglage ne bloque de toute façon pas.
   if (skill_mode == 0) NoteExplicitAttack(gid);
 
-  if (!RunActorClick(gm, gid)) return;
+  // Une fois, ou en continu ? La MÊME règle que le clic sur le sprite (cf.
+  // kClickTypeContinuous) : un cadre qui se comporte comme l'entité doit aussi
+  // obéir à `/nc` et à Ctrl. Sans effet sur une compétence armée — le natif
+  // ignore ce paramètre dans cette branche — mais on le calcule quand même
+  // plutôt que de figer une valeur qui redeviendrait fausse le jour où l'un des
+  // deux chemins changerait.
+  const bool continuous =
+      !OnAgitZone(gm) && ((GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0 ||
+                          gamesettings::IsOn(kOptNoCtrl));
+
+  if (!RunActorClick(gm, gid,
+                     continuous ? kClickTypeContinuous : kClickTypeOnce))
+    return;
 
   // Compétence lancée : on désarme le ciblage, comme le fait le pipeline souris
   // natif après un lancement. Sans cela, le curseur de visée resterait armé et
