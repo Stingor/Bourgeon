@@ -97,8 +97,9 @@ NOIR_SOMME = 24
 # `kWireVersion` (Bourgeon style_sync.h). Une recette d'une AUTRE version est
 # JETÉE, jamais réinterprétée : la v6 a changé le CLASSEMENT des rampes, donc le
 # rang 3 d'hier ne désigne plus la même pièce du costume. Migrer repeindrait les
-# bottes en couleur de cape.
-VERSION_STOCKAGE = 6
+# bottes en couleur de cape. La v7 y a ajouté la CLÉ DE CORPS : une recette v6 ne
+# dit à quel corps elle se rattache, donc rien ne dirait où l'appliquer.
+VERSION_STOCKAGE = 7
 
 
 def _octet(x):
@@ -484,28 +485,42 @@ def appliquer(palette, rampes, recette):
 # hasard — sans erreur nulle part. Le site appelle donc CE fichier, qui est la
 # référence contre laquelle le C++ est validé croisé.
 def decoder_stocke(valeur):
-    """« <version>:<palette>:<cheveux>:<coiffure>:<80 hex> » → dict, ou None.
+    """« <version>:<corps sur 8 hex>:<palette>:<cheveux>:<coiffure>:<80 hex> » → dict.
 
     Rend None sur TOUTE version autre que `VERSION_STOCKAGE`, sur une longueur
     fausse, ou sur un caractère non hexadécimal. Même règle que le serveur et le
     client : une recette qu'on ne sait pas relire est JETÉE, jamais devinée.
 
-    Le dict porte `palette_id`, `cheveux_id`, `coiffure` (−1 = « rien imposé »)
-    et `reglages`, prêt pour `appliquer`.
+    Le dict porte `corps` (`ro::BodySpriteKey`, le condensé du chemin du `.spr`
+    auquel cette recette se rattache), `palette_id`, `cheveux_id`, `coiffure`
+    (−1 = « rien imposé ») et `reglages`, prêt pour `appliquer`.
+
+    🔴 `corps` n'est PAS choisi ici : l'appelant a déjà décidé quelle variante
+    il voulait, et un `.spr` lui a été donné sur la ligne de commande. On ne
+    vérifie donc pas que la clé correspond à ce sprite — c'est le CHOIX de la
+    variante, et il appartient à celui qui sait quel corps il dessine (le site
+    pour ses vignettes, `palette_cache::Load` dans le jeu).
     """
     if not valeur:
         return None
     bouts = valeur.split(":")
-    if len(bouts) != 5:
+    if len(bouts) != 6:
         return None
     try:
-        version, palette_id, cheveux_id, coiffure = (int(x) for x in bouts[:4])
+        version = int(bouts[0])
+        corps = int(bouts[1], 16)
+        palette_id, cheveux_id, coiffure = (int(x) for x in bouts[2:5])
     except ValueError:
         return None
     if version != VERSION_STOCKAGE:
         return None
+    # Exactement huit chiffres hexadécimaux, et jamais la clé nulle — même règle
+    # qu'au serveur (`bourgeon_style_from_hex`) : 0 vaut « corps inconnu » et ne
+    # désignerait la variante de personne.
+    if len(bouts[1]) != 8 or corps == 0:
+        return None
 
-    hexa = bouts[4].strip()
+    hexa = bouts[5].strip()
     # 5 octets par rampe : teinte int16 LE, sat int8, lum int8, absolu uint8.
     attendu = RAMPES_MAX * 5 * 2
     if len(hexa) != attendu:
@@ -535,6 +550,7 @@ def decoder_stocke(valeur):
 
     return {
         "version": version,
+        "corps": corps,
         "palette_id": palette_id,
         "cheveux_id": cheveux_id,
         "coiffure": coiffure,
@@ -701,16 +717,22 @@ def _motif_recette(valeur):
     if not valeur:
         return "chaîne vide"
     bouts = valeur.split(":")
-    if len(bouts) != 5:
-        return "%d champs au lieu de 5" % len(bouts)
+    if len(bouts) != 6:
+        return "%d champs au lieu de 6" % len(bouts)
     try:
         version = int(bouts[0])
     except ValueError:
         return "version « %s » non numérique" % bouts[0][:16]
     if version != VERSION_STOCKAGE:
         return "version %d, cet outil lit la %d" % (version, VERSION_STOCKAGE)
+    try:
+        corps = int(bouts[1], 16)
+    except ValueError:
+        corps = 0
+    if len(bouts[1]) != 8 or corps == 0:
+        return "clé de corps « %s » invalide" % bouts[1][:16]
     attendu = RAMPES_MAX * 5 * 2
-    hexa = bouts[4].strip()
+    hexa = bouts[5].strip()
     if len(hexa) != attendu:
         return "%d caractères hexa au lieu de %d" % (len(hexa), attendu)
     return "caractère non hexadécimal, ou champ non numérique"
