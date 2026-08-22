@@ -46,6 +46,7 @@ constexpr uint16_t kUiCaps      = 0x0F24;  // CZ_BOURGEON_UI_CAPS (ce que l'inte
 constexpr uint16_t kNpcAdmin    = 0x0F25;  // CZ_BOURGEON_NPC_ADMIN (recharger/décharger/déplacer un NPC — ADMIN)
 constexpr uint16_t kStyle       = 0x0F26;  // CZ_BOURGEON_STYLE (style choisi : couleurs de corps, palette de cheveux, coiffure)
 constexpr uint16_t kReqTargetInfo = 0x0F29;  // CZ_BOURGEON_TARGET_INFO (état de l'entité ciblée ; réémis tant que la fenêtre de cible est ouverte)
+constexpr uint16_t kPlayerAdmin = 0x0F2B;  // CZ_BOURGEON_PLAYER_ADMIN (outillage staff sur un joueur : venir, mute, jail, ban, points d'event)
 
 // --- ZC : serveur -> client (livrés par le reader-hook) ---------------------
 constexpr uint16_t kKickNotice  = 0x0F03;  // ex-0x0BFA  ZC_BOURGEON_KICK_NOTICE
@@ -78,6 +79,6 @@ constexpr uint16_t kTargetInfo     = 0x0F2A;  // ZC_BOURGEON_TARGET_INFO (PV/SP/
 // Aucune vérification de collision nécessaire : toute la plage 0x0F00..0x0FFF
 // est hors de la table du client (garantie flag=-1 = variable). Champ libre.
 // (0x0F00/0x0F01 libérés — anciennes valeurs tech data avant regroupement.)
-constexpr uint16_t kNextFree    = 0x0F2B;
+constexpr uint16_t kNextFree    = 0x0F2C;
 
 }  // namespace bopcodes

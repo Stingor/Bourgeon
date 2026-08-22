@@ -377,7 +377,7 @@ le bloc vide `0x00c892dc` (no-op).
 | **31** | pet : retour à l'œuf | **`SendMsg(0x96, 3)`** |
 | **32** | pet : retirer l'accessoire | **`SendMsg(0x96, 4)`** |
 | **33** | pet : statut | **`SendMsg(0x96, 0)`** + bascule la fenêtre **0x58** |
-| **34** | GID (admin) | `sprintf("%s : %d (GID) : %s")` → ligne de **chat** |
+| **34** | GID (admin) | `sprintf("%s : %d (GID)")` → ligne de **chat** (locale). 🔴 **IRREJOUABLE**, voir §10.4 |
 | **35** | journal de blocage | `MakeWindow(0x67)` + `OnMsg(0x22, aid)` |
 | **36** | adoption | **`SendMsg(0xB3, aid)`** |
 | **37** | homoncule : statut | **`SendMsg(0xB8, 0)`** + bascule la fenêtre **0x71** |
@@ -387,7 +387,7 @@ le bloc vide `0x00c892dc` (no-op).
 | **41** | mercenaire : stand by | acteur `dword_15FF9C8` → `vtable+0xCC(cmd 9, 1)` |
 | **42** | voir l'équipement | **paquet CZ `0x02D6`** `[opcode:2][aid:4]` |
 | **44** | retirer tout l'équipement | garde admin, puis **paquet CZ `0x07F5`** `[opcode:2][aid:4]` |
-| **57** | copier le « C-Code » | `GlobalAlloc`/`GlobalLock` → **presse-papier Windows** |
+| **57** | copier le « C-Code » | `ActorList_FindByGID(gm+0x2E0)` → RTTI `CGameActor`→`CPc` → `vt+0xA8` → `Aid_FormatObfuscated` → `GlobalAlloc`/`GlobalLock` → **presse-papier**, puis « C-Code copied to clipboard » au chat. ⚠ Ce n'est que l'**AID obscurci** (le `[xxxx]` des fenêtres RO) — pas repris dans le menu ImGui, « Copier l'AID » donne le vrai |
 | **58** | envoyer un courrier | **`SendMsg(0x10C, name)`** |
 | **63** | signaler un joueur | `MakeWindow(0x2715)` |
 | **65** | fermer l'échoppe | **paquet CZ `0x0AF9`** `[opcode:2][aid:4]` |
@@ -634,3 +634,188 @@ Options de configuration lues sur ce chemin : `0x69` (attaque au clic simple),
    `npc_unload()` libère l'entrée de `npc_path_db` : **`nd` et `nd->path` sont morts
    après l'appel**. Le chemin est copié dans un tampon local avant, et `nd` mis à
    `nullptr`.
+
+---
+
+## 10. Outillage JOUEUR du staff — le port de `#gmclicdroit` (CZ 0x0F2B)
+
+### 10.1 Ce qui existait, et pourquoi il fallait s'en séparer
+
+Moonlight **détournait `CZ_EQUIPWIN_MICROSCOPE` (0x02d6)**, le paquet du bouton
+« voir l'équipement ». Dans `clif_parse_ViewPlayerEquip` :
+
+```c
+else if( pc_get_group_level(sd) >= 80 ) {
+    struct atcmd_binding_data *binding = get_atcommandbind_byname("@gmclicdroit");
+    ...  npc_do_atcmd_event(sd, "@gmclicdroit", param, binding->npc_event);
+}
+```
+
+Au-delà du niveau de groupe 80, le clic n'affichait donc pas l'équipement : il
+ouvrait un NPC caché, `#gmclicdroit` (`moon/atcommands.npc`), dont le dialogue
+servait de menu GM — dix entrées : voir l'équipement, points d'event, faire venir
+le joueur, `@nuke`, assis/debout, mute, kick, jail, bannir.
+
+Trois problèmes, tous structurels :
+
+1. 🔴 **Le staff était le SEUL à ne pas pouvoir regarder un équipement.** La
+   fonction que le paquet nomme était devenue inaccessible à ceux qui en ont le
+   plus besoin — et rien à l'écran ne disait pourquoi.
+2. 🔴 **Le script était déjà mort.** Son en-tête appelait `getuserid()`,
+   `getvote()` et `getuniqueid()` : aucune des trois n'existe dans les sources
+   moonlight actuelles (ni `src/map/`, ni `src/custom/script.inc`). C'étaient des
+   buildins de l'ancien serveur, perdus au portage.
+3. **Un menu en dialogue NPC ne peut pas dire pourquoi.** Pas d'infobulle, pas
+   d'entrée grisée, pas de confirmation : `select()` propose, et c'est tout.
+
+### 10.2 Ce qui le remplace
+
+Les dix entrées vivent dans le **sous-menu « Outils du staff »** du menu
+contextuel ImGui, avec le reste de la section staff (§9). Le paquet 0x02d6 a
+retrouvé son rôle : `clif_parse_ViewPlayerEquip` ne fait plus que la vérification
+d'origine (`show_equip` ou la permission `view_equipment`, que le groupe 80
+possède dans `conf/import/groups.yml`).
+
+Les actions partent en **CZ 0x0F2B `CZ_BOURGEON_PLAYER_ADMIN`** :
+`[op:2][len:2][aid:4][action:1][param:4]`, gate serveur `>= 80`.
+
+| action | valeur | ce que fait le serveur |
+|---|---|---|
+| `COME_HERE` | 0 | le relève s'il est assis, puis `unit_delay_walktobl_timer` vers le demandeur |
+| `SIT_STAND` | 1 | `@sitstand <nom>` (bascule) |
+| `EVENT_POINTS` | 2 | `pc_getcash`/`pc_paycash` sur la monnaie kafra, `param` borné à ±50 |
+| `MUTE` | 3 | `@mute 60 <nom>` |
+| `UNMUTE` | 4 | `@unmute <nom>` |
+| `JAIL_TOGGLE` | 5 | `@jail` ou `@unjail <nom>`, selon `SC_JAILED` |
+| `NUKE` | 6 | `@nuke <nom>` |
+| `BLOCK` | 7 | `@block <nom>` — bannit le **compte** |
+
+🔴 **Le serveur REJOUE les atcommands, il ne les réimplémente pas.** Il résout le
+nom depuis l'AID puis passe la ligne à `is_atcommand(fd, sd, line, 1)`, exactement
+comme si le staff l'avait tapée : même table de permissions
+(`conf/import/groups.yml`), mêmes refus, mêmes messages, même `log_atcommand`.
+Réécrire les contrôles dans le handler aurait créé une **seconde autorité**, qui
+aurait fini par diverger de la première — et un bouton qui agit là où la commande
+refuse est un trou.
+
+⚠ `is_atcommand` rend `false` quand elle n'a **rien** fait (permission de groupe
+absente, ou commande coupée par un dialogue NPC en cours) : elle se tait, parce
+que le chat était censé afficher la ligne comme un message ordinaire. Le handler
+doit donc dire lui-même pourquoi le bouton n'a rien produit.
+
+⚠ Les deux actions **sans atcommand équivalente** empruntent quand même leur
+droit à une commande existante plutôt que d'inventer un seuil de plus :
+`COME_HERE` → `pc_can_use_command(sd, "recall", …)` (c'est la même prérogative,
+en marchant au lieu de téléporter) ; `EVENT_POINTS` → `"points"` (l'atcommand
+`@points` existe mais agit sur *soi* ; sa forme charcommand `#points` n'est
+ouverte à aucun groupe).
+
+### 10.3 Décisions de conception
+
+🔴 **« Rendre muet » et « rendre la parole » sont DEUX entrées, pas une bascule.**
+Le client ignore si la cible porte `SC_NOCHAT` — le NPC, lui, le lisait côté
+serveur avec `getstatus()` — et un joueur muet **reste dans le monde, à côté de
+celui qui clique** : une bascule aurait rendu la parole à qui venait d'être puni
+par quelqu'un d'autre. `@mute 60` n'est d'ailleurs pas l'inverse d'`@unmute` :
+elle **ajoute** 60 minutes au compteur de manières (`manner -= 60`), donc appliquée
+deux fois elle prolonge. Ce sont deux opérations, pas deux moitiés d'un état.
+
+🔴 **La prison, elle, tient en UNE entrée**, et l'argument décisif est
+géographique : `pc_jail` téléporte sur `MAP_JAIL` (`sec_pri`). Un joueur
+emprisonné n'est donc visible **que depuis la prison** — or on ne peut cliquer
+droit que sur ce qu'on a à l'écran. Dans le monde, la cible n'est jamais
+emprisonnée ; dans `sec_pri`, elle l'est toujours. Les deux sens ne sont **jamais
+disponibles en même temps**, et une entrée sur deux aurait toujours été morte. Le
+serveur lit `SC_JAILED` et rejoue `@jail` ou `@unjail` — chacune revérifie l'état
+(`msg 118` / `msg 119`) **et sa propre permission de groupe**, qu'un « Guard »
+peut avoir dans un sens et pas dans l'autre.
+
+`sitstand` reste une bascule pour une troisième raison : c'est l'atcommand maison
+qui l'est déjà, et se tromper d'état n'y coûte rien.
+
+⚠ **Pas d'entrée « expulser » en 0x0F2B.** Le menu natif en a déjà une (code 28 →
+`CZ_GM_KICK` 0x00cc), et `clif_parse_GMKick` rejoue le même `@kick <nom>` avec les
+mêmes droits (clif.cpp). Ouvrir un second chemin vers la même commande n'aurait
+rien apporté.
+
+⚠ **Le solde de points d'event n'est PAS dans le menu.** Le client ne le connaît
+pas, et l'aller-retour qu'il faudrait ferait attendre devant une modale vide. Il
+est ajouté à la fiche **PC de l'inspecteur** (CZ 0x0F22 / ZC 0x0F23), avec les
+votes (`cashPoints`) — le canal serveur→client qui existait déjà pour ça. La
+modale ne demande qu'un **delta**, borné à ±50 comme le NPC.
+
+⚠ **« Votes » de l'inspecteur ≠ « Vote » du NPC.** Le NPC lisait un compteur de
+votes venu du **site** (`getvote(getuniqueid(...))`, buildin disparu) ; la fiche
+montre `cashPoints`, la monnaie de vote **en jeu** — celle que `@votes` manipule.
+Proche, mais pas la même grandeur.
+
+**Bannir passe par une confirmation.** C'est la seule action du sous-menu qui ne
+se défait pas depuis le jeu : le mute expire, la prison s'ouvre, le kick se
+relogue. `@block` retire un compte entier, et le serveur ne pose aucune question.
+
+### 10.4 🔴 Le code natif **34** est IRREJOUABLE — ce qui borne la règle du §9.2
+
+Relevé statique (2026-08-22), branche 34 du dispatcher `@0x00c88cb0` :
+
+```asm
+cmp   dword_15FF8F0, 10h            ; capacité de la std::string globale
+mov   eax, offset dword_15FF8DC     ; ... son buffer SSO
+push  dword ptr [edi+2E0h]          ; %d = gm+0x2E0 = l'AID de la cible
+cmovnb eax, dword_15FF8DC
+push  eax                           ; %s = la std::string GLOBALE
+push  offset "%s : %d (GID)"
+lea   eax, [ebp-154Ch]
+push  eax
+call  Cstr_sprintf
+mov   esi, dword_159B80C            ; le manager de chat
+call  sub_A70950 / sub_A6EA10(buf)  ; -> historique de chat
+```
+
+Rien ne part au serveur : c'est une ligne **locale**, dans son propre historique.
+
+⚠ **Le `%s` vient d'une globale de TRAVAIL** (`0x015FF8DC`), partagée avec
+d'autres écrans du client — `BookBookmark_Load`, `UIBookWnd_OnMsg` et une dizaine
+d'autres l'écrivent. Ce qui la remplit avec le nom de la cible, c'est
+`GameMode_ShowEntityContextMenu` **en fabriquant le libellé** de cette ligne de
+menu (`"%s : %d (GID) : %s"`, `@0x00c6f96f`, juste avant de pousser le code 34
+dans le vecteur).
+
+🔴 **Or ce menu-là, Bourgeon le tue.** La globale n'est donc jamais remplie sur
+notre chemin : rejouer le code 34 aurait imprimé le bon AID sous un **nom
+périmé**, celui qu'un autre écran y avait laissé. Un identifiant juste attaché à
+un mauvais nom est pire qu'une entrée absente.
+
+⇒ **La leçon, qui vaut bien au-delà de ce code.** Le §9.2 dit « rejouer, ne pas
+réécrire » ; voici sa condition exacte : **un code n'est rejouable que s'il lit sa
+matière dans le `CGameMode`**, c'est-à-dire dans ce que nous posons nous-mêmes
+(`gm+0x2E0`, le vecteur `gm+0x1CC`). Dès qu'il dépend d'un état que seule la
+*construction du menu natif* produit — et le libellé en fait partie — le rejeu
+est faux, **silencieusement**.
+
+⚠ **Deux codes seulement ont été mesurés à ce jour** : le **34** (irrejouable,
+ci-dessus) et le **57** (rejouable — `push [edi+2E0h]` puis
+`ActorList_FindByGID`, @0x00c88f68). Pour les autres, le §6.3 décrit ce qu'ils
+FONT, pas d'où ils tirent leur cible : **la vérification reste à faire code par
+code, avant d'en ajouter un au menu.** Le soupçon porte d'abord sur les deux
+entrées à *libellé formaté* — les seules du §5.4a sans identifiant de msgstring,
+donc les seules dont le libellé fabrique quelque chose ; l'une des deux (34) s'est
+justement révélée irrejouable.
+
+⇒ **Aucune des deux n'existe dans le menu ImGui**, et pour la même raison de
+fond : « Copier l'identité de pick » donne déjà `nom | AID (décimal et hexa) | job
+| catégorie de pick`, soit strictement plus que `« nom : AID (GID) »` **et** que
+l'AID obscurci du C-Code. Deux entrées de moins dans un sous-menu qui en porte
+déjà dix-sept.
+
+### 10.5 Côté client
+
+Le rendu du sous-menu est un `ImGui::BeginMenu` **à l'intérieur du popup** : ImGui
+gère l'ouverture au survol, le placement à droite (ou à gauche si l'écran manque)
+et la fermeture en chaîne — `CloseCurrentPopup()` appelée depuis l'intérieur
+referme **aussi** le menu parent, ce qui est exactement ce qu'on veut quand une
+action est choisie.
+
+Les entrées staff portent un drapeau `Item::submenu` et **se suivent sans trou**
+dans `items_` : le rendu ouvre le sous-menu à la première et le referme à la
+dernière. Une entrée de joueur glissée au milieu se retrouverait *dans* le
+sous-menu.

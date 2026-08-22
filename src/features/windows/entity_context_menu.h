@@ -35,6 +35,16 @@
 // droits de guilde, boîtes de confirmation (nourrir le pet), consentement PvP.
 // Le jour où le client change un paquet, on suit sans rien toucher.
 //
+// 🔴 CE QUI BORNE LA RÈGLE : un code n'est rejouable que s'il lit sa matière
+// dans `CGameMode` — c'est-à-dire dans ce que NOUS posons (`gm+0x2E0`, le
+// vecteur). Le code **34** (« Afficher le GID dans le chat ») ne le fait pas :
+// il formate son nom depuis une std::string GLOBALE de travail (`0x015FF8DC`,
+// partagée avec les signets du livre et d'autres écrans), que seule la
+// construction du LIBELLÉ par `GameMode_ShowEntityContextMenu` remplit avec le
+// bon nom — or ce menu-là, on le tue. Rejoué, il aurait affiché le bon AID sous
+// le nom qu'un autre écran avait laissé là. Mesuré au désassemblage, consigné
+// dans docs §10.4. À vérifier pour tout code qu'on ajoute ici.
+//
 // 🔴 HORS frame ImGui. Certaines de ces actions ouvrent une modale BLOQUANTE
 // (nourrir le pet / l'homoncule) qui relance le tick du mode : l'action choisie
 // est empilée pendant le rendu et rejouée depuis `Bourgeon::OnProcessInput`,
@@ -59,6 +69,47 @@
 // de pick). Ce menu-là est un outil de débogage, pas une fonctionnalité de
 // joueur — il ne s'ouvre que sous le réglage staff, et les identifiants
 // (AID/GID) ne figurent que dans la section staff, quelle que soit la cible.
+//
+// ── Le SOUS-MENU « Outils du staff » ─────────────────────────────────────────
+// Tout ce qui est réservé au staff vit dans UN sous-menu, pas à plat : il y a
+// désormais une vingtaine d'entrées, et les mêler aux six actions de joueur
+// aurait noyé « Proposer un échange » au milieu de « Bannir le compte ». Le
+// sous-menu se replie tout seul pour qui n'est pas staff — il n'est même pas
+// construit (cf. `IsStaff()` dans BuildItems).
+//
+// ── Outillage JOUEUR : ce que faisait le NPC `#gmclicdroit` ──────────────────
+// 🔴 Moonlight détournait CZ 0x02d6 (« voir l'équipement ») : au-delà du niveau
+// de groupe 80, le serveur n'affichait pas l'équipement mais ouvrait un NPC
+// caché, `#gmclicdroit`, dont le dialogue servait de menu GM. Deux dégâts : le
+// staff était le SEUL à ne pas pouvoir regarder un équipement, et le menu vivait
+// dans un script que trois commandes disparues (`getuserid`, `getvote`,
+// `getuniqueid`) avaient de toute façon fini par casser.
+//
+// Ces actions sont maintenant des entrées du sous-menu staff, et le paquet
+// 0x02d6 a retrouvé son rôle. Elles partent en **CZ 0x0F2B**, où le SERVEUR
+// résout le nom depuis l'AID puis rejoue l'atcommand correspondante : la
+// permission de groupe (conf/groups.yml) reste la seule autorité, et son verdict
+// — réussite comme refus — revient dans le chat par le canal des atcommands.
+//
+// ⚠ « Rendre muet » et « rendre la parole » sont DEUX entrées, pas une bascule.
+// Le client ne sait pas si la cible porte SC_NOCHAT, et un joueur muet reste dans
+// le monde à côté de celui qui clique : une bascule aurait rendu la parole à qui
+// venait d'être puni par quelqu'un d'autre. `@mute 60` n'est d'ailleurs pas
+// l'inverse d'`@unmute` — elle AJOUTE 60 minutes au compteur de manières.
+//
+// 🔴 La PRISON, en revanche, est UNE seule entrée. `pc_jail` téléporte sur
+// `MAP_JAIL` : un joueur emprisonné n'est visible que depuis la prison, et on ne
+// clique droit que sur ce qu'on a à l'écran. Dans le monde la cible n'est jamais
+// emprisonnée, dans `sec_pri` elle l'est toujours — une entrée sur deux aurait
+// donc toujours été morte. Le serveur lit SC_JAILED et rejoue `@jail` ou
+// `@unjail`, chacune avec sa propre permission de groupe.
+//
+// « Asseoir / relever » est une bascule pour une autre raison encore : c'est
+// l'atcommand maison qui l'est, et se tromper d'état n'y coûte rien.
+//
+// ⚠ Pas d'entrée « expulser » en 0x0F2B : le menu natif en a déjà une (code 28),
+// et `clif_parse_GMKick` rejoue le même `@kick` avec les mêmes droits. On la
+// rejoue plutôt que d'ouvrir un second chemin vers la même commande.
 //
 // ── Outillage NPC de l'ADMINISTRATEUR (niveau de groupe >= 99) ───────────────
 // Trois actions de plus quand le NPC est visé par un compte admin : recharger le
@@ -274,6 +325,18 @@ class EntityContextMenu : public Plugin {
     kNpcReloadFile, // recharger le fichier de script d'où vient ce NPC
     kNpcUnload,     // décharger ce NPC et ses duplicates (confirmation)
     kNpcMoveHere,   // le poser sur notre case
+    // ── Outillage JOUEUR du staff (cf. l'en-tête) ───────────────────────────
+    // Un CZ 0x0F2B par action, sans code natif : le client n'a jamais rien su
+    // faire de tel — c'était un dialogue NPC. L'ordre suit celui du menu, du
+    // plus anodin au plus définitif.
+    kPlayerComeHere,    // le faire marcher jusqu'à nous
+    kPlayerSitStand,    // @sitstand : bascule assis / debout
+    kPlayerEventPoints, // ouvre la saisie du delta, puis l'envoie
+    kPlayerMute,        // @mute 60
+    kPlayerUnmute,      // @unmute
+    kPlayerJail,        // @jail / @unjail, le serveur choisit le sens
+    kPlayerNuke,        // @nuke
+    kPlayerBlock,       // @block : bannit le COMPTE (confirmation)
     // ── Objet au sol ─────────────────────────────────────────────────────────
     // Le natif n'a JAMAIS eu de menu ici (son clic droit ne fait rien sur un
     // CItem) : tout est local. Les entrées à IDENTITÉ (description, lien,
@@ -312,8 +375,18 @@ class EntityContextMenu : public Plugin {
     // pas le menu (on veut pouvoir cocher puis parler au NPC dans la foulée).
     bool  toggle    = false;
     bool  checked   = false;
+    // Cette ligne va dans le SOUS-MENU « Outils du staff » au lieu du corps du
+    // menu. Les entrées marquées se suivent sans trou : le rendu ouvre le
+    // sous-menu à la première et le referme à la dernière.
+    bool  submenu   = false;
     std::string tip;                  // infobulle, vide = aucune
   };
+
+  // Dessine la ligne `index`. Rend true si le menu doit se FERMER (une action a
+  // été choisie) — une case à cocher, elle, ne ferme rien.
+  // Extraite pour que le corps du menu et le sous-menu staff dessinent leurs
+  // lignes avec le MÊME code : deux copies auraient divergé au premier ajout.
+  bool DrawItem(size_t index);
 
   // Construit `items_` d'après la cible déjà retenue (kind_, target_*).
   void BuildItems();
@@ -329,6 +402,15 @@ class EntityContextMenu : public Plugin {
   // confirmation, elle, soit dessinée à CHAQUE frame — y compris celles où le
   // menu est fermé, c'est-à-dire toutes celles où la question est posée.
   void DrawPopup();
+  // Le titre-identifiant de la modale de confirmation, pour la question `which`.
+  //
+  // 🔴 Le titre VISIBLE dépend de la question, l'identité ImGui NON : seul ce qui
+  // suit `###` est haché. Une seule modale sert donc les trois questions, et les
+  // trois endroits qui la nomment (ouverture, dessin, test « déjà ouverte »)
+  // s'accordent sans avoir à passer le même libellé.
+  //
+  // Membre et non fonction libre : elle nomme `Local`, qui est privé.
+  static const char* ConfirmModalId(Local which);
   // La confirmation des actions destructrices. Dessinée à la RACINE de la frame,
   // pas dans le popup du menu : celui-ci est fermé au moment du clic, et une
   // modale ouverte depuis un popup mourant avec lui ne s'afficherait jamais.
@@ -372,6 +454,10 @@ class EntityContextMenu : public Plugin {
   uint32_t pending_aid_   = 0;
   Local    pending_local_ = Local::kNone;
   uint32_t pending_arg_   = 0;       // job (fiche de monstre), aid (parler)…
+  // Le champ `param` du CZ 0x0F2A. Signé, contrairement à `pending_arg_` : le
+  // seul usage à ce jour est un delta de points d'event, qui se retire autant
+  // qu'il se donne.
+  int32_t  pending_param_ = 0;
 
   // ── Confirmation en attente ───────────────────────────────────────────────
   // La cible est recopiée ici : le menu peut se rouvrir sur autre chose pendant
@@ -381,6 +467,10 @@ class EntityContextMenu : public Plugin {
   Local       confirm_local_   = Local::kNone;
   uint32_t    confirm_aid_     = 0;
   std::string confirm_name_;
+  // Le delta saisi dans la modale des points d'event. Remis à zéro à chaque
+  // ouverture : un don ne se répète pas par inadvertance parce que le champ
+  // avait gardé la valeur du précédent.
+  int         confirm_points_  = 0;
 
   bool all_entities_  = false;
   bool self_menu_     = true;

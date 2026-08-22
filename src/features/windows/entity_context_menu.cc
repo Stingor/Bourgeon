@@ -10,7 +10,7 @@
 #include "bourgeon.h"
 #include "features/moonlight_ui/moonlight_ui.h"  // SaveSettings (case de blocage)
 #include "features/staff_gate.h"
-#include "features/systems/bourgeon_opcodes.h"  // CZ 0x0F25 (outillage NPC admin)
+#include "features/systems/bourgeon_opcodes.h"  // CZ 0x0F25 (NPC admin), 0x0F2B (joueur)
 #include "features/item_cell.h"     // ChatLink / DeferDescFromChatLink (objet au sol)
 #include "features/link_gesture.h"  // CanPostToChat / NaviKind (liens de chat)
 #include "features/overlays/target_frame.h"  // masquer la fenêtre de cible
@@ -273,7 +273,10 @@ constexpr int kCodePetPerform  = 30;
 constexpr int kCodePetToEgg    = 31;
 constexpr int kCodePetUnequip  = 32;
 constexpr int kCodePetStatus   = 33;
-constexpr int kCodeShowGid     = 34;
+// ⚠ Pas de constante pour le code **34** (« Afficher le GID dans le chat ») : ce
+// menu ne le porte pas. « Copier l'identité de pick » dit déjà tout ce qu'il
+// disait, et davantage. Il était en plus IRREJOUABLE — cf. l'en-tête, section
+// « Rejouer plutôt que réécrire », et docs §10.4.
 constexpr int kCodeChatBanLog  = 35;
 constexpr int kCodeAdopt       = 36;
 constexpr int kCodeHomunStatus = 37;
@@ -283,7 +286,11 @@ constexpr int kCodeMercStatus  = 40;
 constexpr int kCodeMercStandBy = 41;
 constexpr int kCodeViewEquip   = 42;
 constexpr int kCodeFullStrip   = 44;
-constexpr int kCodeCopyCCode   = 57;
+// ⚠ Pas de constante pour le code **57** (« Copier le C-Code ») non plus. Il
+// était rejouable, lui — mesuré : `ActorList_FindByGID(gm+0x2E0)` → RTTI vers
+// `CPc` → `vt+0xA8` → `Aid_FormatObfuscated` → presse-papier. Mais ce qu'il
+// copie n'est que l'AID OBSCURCI, la forme entre crochets que le client affiche
+// à côté des noms ; « Copier l'AID » donne le vrai, juste au-dessus.
 constexpr int kCodeSendMail    = 58;
 constexpr int kCodeReportUser  = 63;
 // ⛔ Code 65 (« Close stall », CZ 0x0AF9) VOLONTAIREMENT absent : moonlight ne
@@ -302,13 +309,30 @@ constexpr uint8_t kNpcAdminReloadFile = 0;
 constexpr uint8_t kNpcAdminUnload     = 1;
 constexpr uint8_t kNpcAdminMoveToMe   = 2;
 
-// Le titre-identifiant de la modale de confirmation. Fonction et non constante :
-// la partie visible est traduite, seul ce qui suit `###` fait l'identité ImGui —
-// et les trois endroits qui la nomment (ouverture, dessin, test « déjà ouverte »)
-// doivent citer exactement la même chaîne.
-const char* ConfirmModalId() {
-  return i18n::Tr("Décharger ce NPC###bourgeon_ctxmenu_confirm");
-}
+// ── CZ_BOURGEON_PLAYER_ADMIN (0x0F2B) ────────────────────────────────────────
+// [op:2][len:2][aid:4][action:1][param:4]. Miroir EXACT de
+// `e_bourgeon_player_admin_action` côté moonlight (packets_struct.hpp) : les deux
+// listes bougent ensemble et les valeurs ne se réordonnent pas.
+constexpr uint8_t kPlayerAdminComeHere    = 0;
+constexpr uint8_t kPlayerAdminSitStand    = 1;
+constexpr uint8_t kPlayerAdminEventPoints = 2;
+constexpr uint8_t kPlayerAdminMute        = 3;
+constexpr uint8_t kPlayerAdminUnmute      = 4;
+constexpr uint8_t kPlayerAdminJailToggle  = 5;
+constexpr uint8_t kPlayerAdminNuke        = 6;
+constexpr uint8_t kPlayerAdminBlock       = 7;
+
+// Le pas d'un don de points d'event, repris tel quel du NPC qu'il remplace. Le
+// serveur reborne de son côté : ceci ne fait que cadrer la saisie.
+constexpr int kEventPointsStep = 50;
+
+// Les deux couleurs du menu, définies UNE fois parce qu'elles servent désormais
+// à trois endroits (les lignes, le titre du sous-menu, la modale) : l'ocre de ce
+// qui n'est pas offert au joueur, et le rouge de ce qui retire quelque chose au
+// monde. Le rouge l'emporte sur l'ocre.
+const ImVec4 kStaffColor (0.62f, 0.28f, 0.10f, 1.0f);
+const ImVec4 kDangerColor(0.75f, 0.13f, 0.13f, 1.0f);
+
 
 void SendNpcAdmin(uint32_t gid, uint8_t action) {
   uint8_t packet[9];
@@ -316,6 +340,20 @@ void SendNpcAdmin(uint32_t gid, uint8_t action) {
   *reinterpret_cast<uint16_t*>(packet + 2) = static_cast<uint16_t>(sizeof(packet));
   *reinterpret_cast<uint32_t*>(packet + 4) = gid;
   packet[8] = action;
+  Bourgeon::Instance().SendPacket(packet, sizeof(packet));
+}
+
+// `param` ne sert aujourd'hui qu'au delta de points d'event ; il part quand même
+// à chaque action, pour que la taille du paquet reste FIXE — c'est ainsi que le
+// serveur le déclare (`parseable_packet(..., sizeof(...))`), et une taille
+// variable aurait imposé de le déclarer autrement des deux côtés.
+void SendPlayerAdmin(uint32_t aid, uint8_t action, int32_t param = 0) {
+  uint8_t packet[13];
+  *reinterpret_cast<uint16_t*>(packet + 0) = bopcodes::kPlayerAdmin;
+  *reinterpret_cast<uint16_t*>(packet + 2) = static_cast<uint16_t>(sizeof(packet));
+  *reinterpret_cast<uint32_t*>(packet + 4) = aid;
+  packet[8] = action;
+  *reinterpret_cast<int32_t*>(packet + 9) = param;
   Bourgeon::Instance().SendPacket(packet, sizeof(packet));
 }
 
@@ -1396,17 +1434,32 @@ void EntityContextMenu::BuildItems() {
 
   if (!staff) return;
 
-  // ── Section staff ──────────────────────────────────────────────────────────
+  // ── Section staff, dans son SOUS-MENU ──────────────────────────────────────
   // Gate SERVEUR (niveau de groupe >= 80). Les trois entrées marquées « client
   // admin » ont EN PLUS une garde dans le dispatcher natif : sans notre AID dans
   // le clientinfo.xml, le client les rejette en silence — on ne les propose donc
   // pas plutôt que d'offrir un bouton mort (docs §4.2).
-  bool first = true;
+  //
+  // Tout ce qui suit porte `submenu` : le rendu ouvre « Outils du staff » à la
+  // première de ces lignes et le referme à la dernière. Elles se suivent donc
+  // sans trou — une entrée de joueur glissée au milieu casserait la traînée et
+  // se retrouverait DANS le sous-menu.
+  //
+  // ⚠ Le séparateur d'une entrée staff sépare À L'INTÉRIEUR du sous-menu ; c'est
+  // le sous-menu lui-même qui porte celui du corps du menu. `sep` arme donc le
+  // suivant, au lieu du `first` d'avant qui n'en posait qu'un seul, tout en haut.
+  bool sep = false;
   auto add_staff = [&](const char* label, int code, Local local = Local::kNone,
-                       const char* tip = nullptr) {
-    add(label, code, local, first, true, tip);
-    first = false;
+                       const char* tip = nullptr, bool danger = false,
+                       bool confirm = false) {
+    add(label, code, local, sep, true, tip);
+    items_.back().submenu = true;
+    items_.back().danger  = danger;
+    items_.back().confirm = confirm;
+    sep = false;
   };
+  // Ouvre un groupe : la prochaine entrée staff sera précédée d'un trait.
+  auto staff_group = [&]() { sep = true; };
 
   // L'identifiant seul, puis l'identité brute de ce que le pick a désigné : AID,
   // job et catégorie. C'est exactement ce qu'on va chercher au débogueur quand
@@ -1426,18 +1479,69 @@ void EntityContextMenu::BuildItems() {
   add_staff(i18n::Tr("Copier l'identité de pick"), 0, Local::kCopyPickInfo);
 
   if (kind_ == Kind::kPlayer) {
-    // Le « C-Code » est un identifiant de diagnostic (le natif le pose dans le
-    // presse-papier) : même famille que l'AID, même place.
-    add_staff(i18n::Tr("Copier le C-Code"), kCodeCopyCCode);
-    add_staff(i18n::Tr("Afficher le GID dans le chat"), kCodeShowGid);
-    add_staff(i18n::Tr("Expulser (kick)"), kCodeKick, Local::kNone,
-              i18n::Tr("Le serveur revalide la permission avant d'agir."));
     add_staff(i18n::Tr("Journal des blocages de chat"), kCodeChatBanLog);
+
+    // ── Le confort : déplacer et poser la cible ─────────────────────────────
+    // Rien de puni ici. C'est ce qu'on fait pendant un event : rassembler du
+    // monde, asseoir une file d'attente. Le serveur emprunte leur droit à
+    // `recall` et `sitstand` — voir clif_parse_bourgeon_player_admin.
+    staff_group();
+    add_staff(i18n::Tr("Le faire venir ici"), 0, Local::kPlayerComeHere,
+              i18n::Tr("Il MARCHE jusqu'à vous — il n'est pas téléporté : le "
+                       "trajet reste visible pour lui comme pour les autres.\n"
+                       "Sur votre carte seulement, et seulement s'il existe un "
+                       "chemin. Le serveur le relève d'abord s'il est assis."));
+    add_staff(i18n::Tr("L'asseoir ou le relever"), 0, Local::kPlayerSitStand,
+              i18n::Tr("Une bascule : le serveur regarde dans quelle position il "
+                       "est et pose l'autre."));
+    add_staff(i18n::Tr("Points d'event…"), 0, Local::kPlayerEventPoints,
+              i18n::Tr("Donne ou retire des points d'event (la monnaie kafra), au "
+                       "plus 50 à la fois.\n"
+                       "Le solde actuel n'est PAS ici : il se lit dans "
+                       "« Propriétés… », que le serveur renseigne."),
+              false, /*confirm=*/true);
+
+    // ── La parole ───────────────────────────────────────────────────────────
+    // 🔴 Deux entrées, pas une bascule. Le client ignore si la cible porte
+    // SC_NOCHAT, et un joueur muet reste dans le monde à côté de celui qui
+    // clique : une bascule aurait rendu la parole à qui venait d'être puni par
+    // quelqu'un d'autre. `@mute 60` n'est d'ailleurs pas l'inverse d'`@unmute` —
+    // elle AJOUTE 60 minutes. (La prison, elle, tient en UNE entrée : voir
+    // l'en-tête.)
+    staff_group();
+    add_staff(i18n::Tr("Le rendre muet (60 min)"), 0, Local::kPlayerMute,
+              i18n::Tr("Ajoute 60 minutes de silence. Appliqué deux fois, il "
+                       "prolonge — ce n'est pas un interrupteur."));
+    add_staff(i18n::Tr("Lui rendre la parole"), 0, Local::kPlayerUnmute);
     if (client_admin) {
       add_staff(i18n::Tr("Retirer tout l'équipement"), kCodeFullStrip);
       add_staff(i18n::Tr("Point de manière +"), kCodeMannerPlus);
       add_staff(i18n::Tr("Point de manière -"), kCodeMannerMinus);
     }
+
+    // ── Ce qui punit ────────────────────────────────────────────────────────
+    // En rouge, et en dernier : on ne clique pas là par erreur en visant la
+    // ligne du dessus. « Expulser » est le code NATIF 28 — `clif_parse_GMKick`
+    // rejoue déjà `@kick`, inutile d'ouvrir un second chemin.
+    staff_group();
+    add_staff(i18n::Tr("Le foudroyer"), 0, Local::kPlayerNuke,
+              i18n::Tr("@nuke : une explosion sur sa case. Il meurt, avec la "
+                       "pénalité de mort habituelle."),
+              /*danger=*/true);
+    add_staff(i18n::Tr("Expulser (kick)"), kCodeKick, Local::kNone,
+              i18n::Tr("Le serveur revalide la permission avant d'agir."),
+              /*danger=*/true);
+    add_staff(i18n::Tr("L'emprisonner ou le libérer"), 0, Local::kPlayerJail,
+              i18n::Tr("Une bascule : le serveur regarde s'il est déjà en prison "
+                       "et fait l'inverse.\n"
+                       "Un joueur emprisonné vit sur sec_pri — hors de cette "
+                       "carte, cette entrée ne peut que l'y envoyer. Sans durée : "
+                       "pour une peine bornée, @jailfor."),
+              /*danger=*/true);
+    add_staff(i18n::Tr("Bannir le compte…"), 0, Local::kPlayerBlock,
+              i18n::Tr("@block : bannissement DÉFINITIF du compte, pas du "
+                       "personnage. Tous ses personnages tombent avec lui."),
+              /*danger=*/true, /*confirm=*/true);
   }
 
   // ── Outillage NPC de l'administrateur ──────────────────────────────────────
@@ -1450,24 +1554,28 @@ void EntityContextMenu::BuildItems() {
   if (kind_ == Kind::kNpc && IsAdmin()) {
     // Le rechargement en premier : c'est le geste courant (on vient d'éditer le
     // script), et le seul des trois qui ne retire rien.
+    staff_group();
     add(i18n::Tr("Recharger son fichier de script"), 0, Local::kNpcReloadFile,
-        true, true,
+        sep, true,
         i18n::Tr("Recharge le FICHIER d'où vient ce NPC, pas seulement lui : tous "
                  "les NPC déclarés dans ce fichier sont déchargés puis relus, et "
                  "leurs événements OnInit rejoués.\n"
                  "Les mapflags et les monstres posés directement par le script ne "
                  "sont PAS retirés — ils s'ajouteront à ceux déjà en place.\n"
                  "Le serveur dit dans le chat ce qu'il a fait."));
+    items_.back().submenu = true;
     add(i18n::Tr("Déplacer ici"), 0, Local::kNpcMoveHere, false, true,
         i18n::Tr("Pose le NPC sur votre case. Rien n'est enregistré : il "
                  "retrouvera sa position d'origine au prochain rechargement de "
                  "son fichier ou du serveur."));
+    items_.back().submenu = true;
     Item unload;
     unload.label   = i18n::Tr("Décharger ce NPC…");
     unload.local   = Local::kNpcUnload;
     unload.staff   = true;
     unload.danger  = true;
     unload.confirm = true;
+    unload.submenu = true;
     unload.tip = i18n::Tr(
         "Retire ce NPC du monde pour TOUS les joueurs connectés, avec ses "
         "duplicates. Il faudra recharger son fichier pour le faire revenir.");
@@ -1507,7 +1615,7 @@ void EntityContextMenu::OnRenderUI() {
     // test, un clic droit dans le monde appellerait `OpenPopup` au même niveau de
     // pile et REMPLACERAIT la modale — la question posée disparaîtrait sans
     // réponse, et sans que rien ne le dise.
-    if (!stale && !ImGui::IsPopupOpen(ConfirmModalId())) {
+    if (!stale && !ImGui::IsPopupOpen(ConfirmModalId(confirm_local_))) {
       open_ = true;
       ImGui::OpenPopup("##bourgeon_entity_ctx");
       // 🔴 La position vient d'ImGui, PAS des globaux souris du client
@@ -1545,61 +1653,44 @@ void EntityContextMenu::DrawPopup() {
     }
     ImGui::Separator();
 
-    for (size_t i = 0; i < items_.size(); ++i) {
-      const Item& item = items_[i];
-      if (item.separator && i != 0) ImGui::Separator();
-      // Une case à cocher bascule un ÉTAT : elle ne se « choisit » pas et ne
-      // ferme donc pas le menu — on doit pouvoir cocher, puis parler au NPC dans
-      // la foulée. Rien n'est différé ici : ToggleNpcBlock n'écrit qu'une ligne
-      // de chat (la seule commande native sans danger en pleine frame) et
-      // ToggleAloot un paquet Bourgeon — une écriture socket, comme le fait déjà
-      // le menu des liens d'item au même endroit d'une frame.
-      if (item.toggle) {
-        bool checked = item.checked;
-        if (item.disabled) ImGui::BeginDisabled();
-        const bool flipped = ro::RoCheckbox(item.label.c_str(), &checked);
-        if (item.disabled) ImGui::EndDisabled();
-        if (flipped) {
-          if (item.local == Local::kAlootToggle) {
-            ToggleAloot(target_item_id_);
-            // L'état vrai est celui de la LISTE, pas celui de la case : l'ajout
-            // peut être refusé (liste pleine), et la case doit alors retomber.
-            if (auto* mu = Bourgeon::Instance().moonlight_ui())
-              items_[i].checked = mu->IsAlootId(target_item_id_);
-          } else {
-            ToggleNpcBlock(target_aid_);
-            items_[i].checked = checked;
-          }
-        }
-        if (!item.tip.empty() &&
-            ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-          ImGui::SetTooltip("%s", item.tip.c_str());
+    // Le corps du menu d'abord, puis le sous-menu staff d'un bloc : les entrées
+    // qui le composent se suivent (cf. BuildItems), donc dès qu'on en rencontre
+    // une, on les tient toutes jusqu'à la fin.
+    bool close = false;
+    for (size_t i = 0; i < items_.size() && !close;) {
+      if (!items_[i].submenu) {
+        if (items_[i].separator && i != 0) ImGui::Separator();
+        close = DrawItem(i);
+        ++i;
         continue;
       }
-      // Le rouge l'emporte sur l'ocre du staff : une entrée qui RETIRE quelque
-      // chose au monde doit se distinguer de celles qui ne font que lire.
-      if (item.danger) {
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.75f, 0.13f, 0.13f, 1.0f));
-      } else if (item.staff) {
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.62f, 0.28f, 0.10f, 1.0f));
+
+      // ── « Outils du staff » ────────────────────────────────────────────────
+      // 🔴 `BeginMenu` et pas un second popup : ImGui gère lui-même l'ouverture
+      // au survol, le placement à droite (ou à gauche si l'écran manque) et la
+      // fermeture en chaîne — `CloseCurrentPopup` appelée depuis l'intérieur
+      // referme AUSSI le menu parent, ce qui est exactement ce qu'on veut quand
+      // une action est choisie.
+      ImGui::Separator();
+      ImGui::PushStyleColor(ImGuiCol_Text, kStaffColor);
+      const bool opened = ImGui::BeginMenu(i18n::Tr("Outils du staff"));
+      ImGui::PopStyleColor();
+      size_t j = i;
+      if (opened) {
+        for (; j < items_.size() && items_[j].submenu && !close; ++j) {
+          // Pas de garde `j != 0` ici : la première entrée du sous-menu n'est
+          // jamais marquée (BuildItems part de `sep = false`), et si elle
+          // l'était le trait serait de toute façon inoffensif en tête de menu.
+          if (items_[j].separator) ImGui::Separator();
+          close = DrawItem(j);
+        }
+        ImGui::EndMenu();
       }
-      if (item.disabled) ImGui::BeginDisabled();
-      const bool clicked = ImGui::Selectable(
-          item.label.c_str(), false, ImGuiSelectableFlags_NoAutoClosePopups);
-      if (item.disabled) ImGui::EndDisabled();
-      if (item.danger || item.staff) ImGui::PopStyleColor();
-      // 🔴 `AllowWhenDisabled` : sans ce drapeau, une entrée grisée ne compte pas
-      // comme survolée — et c'est justement celle dont il faut dire POURQUOI.
-      if (!item.tip.empty() &&
-          ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-        ImGui::SetTooltip("%s", item.tip.c_str());
-      }
-      if (clicked) {
-        Choose(item);
-        ImGui::CloseCurrentPopup();
-        open_ = false;
-        break;
-      }
+      // Replié — ou interrompu par un clic — il reste à sauter ce qu'on n'a pas
+      // dessiné : sans ça, la traînée staff repasserait dans la boucle et
+      // rouvrirait un second sous-menu à chaque ligne restante.
+      while (j < items_.size() && items_[j].submenu) ++j;
+      i = j;
     }
     ImGui::EndPopup();
   } else {
@@ -1607,6 +1698,68 @@ void EntityContextMenu::DrawPopup() {
     open_ = false;
   }
   ImGui::PopStyleVar(2);
+}
+
+// Le dessin d'UNE ligne, partagé par le corps du menu et le sous-menu staff.
+// Rend true quand le menu doit se fermer — c'est-à-dire quand une action a été
+// choisie. Le séparateur, lui, appartient à l'appelant : lui seul sait si la
+// ligne ouvre son bloc ou le menu tout entier.
+bool EntityContextMenu::DrawItem(size_t index) {
+  const Item& item = items_[index];
+  // Une case à cocher bascule un ÉTAT : elle ne se « choisit » pas et ne ferme
+  // donc pas le menu — on doit pouvoir cocher, puis parler au NPC dans la
+  // foulée. Rien n'est différé ici : ToggleNpcBlock n'écrit qu'une ligne de chat
+  // (la seule commande native sans danger en pleine frame) et ToggleAloot un
+  // paquet Bourgeon — une écriture socket, comme le fait déjà le menu des liens
+  // d'item au même endroit d'une frame.
+  if (item.toggle) {
+    bool checked = item.checked;
+    if (item.disabled) ImGui::BeginDisabled();
+    const bool flipped = ro::RoCheckbox(item.label.c_str(), &checked);
+    if (item.disabled) ImGui::EndDisabled();
+    if (flipped) {
+      if (item.local == Local::kAlootToggle) {
+        ToggleAloot(target_item_id_);
+        // L'état vrai est celui de la LISTE, pas celui de la case : l'ajout
+        // peut être refusé (liste pleine), et la case doit alors retomber.
+        if (auto* mu = Bourgeon::Instance().moonlight_ui())
+          items_[index].checked = mu->IsAlootId(target_item_id_);
+      } else {
+        ToggleNpcBlock(target_aid_);
+        items_[index].checked = checked;
+      }
+    }
+    if (!item.tip.empty() &&
+        ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+      ImGui::SetTooltip("%s", item.tip.c_str());
+    return false;
+  }
+  // Le rouge l'emporte sur l'ocre du staff : une entrée qui RETIRE quelque
+  // chose au monde doit se distinguer de celles qui ne font que lire.
+  if (item.danger) {
+    ImGui::PushStyleColor(ImGuiCol_Text, kDangerColor);
+  } else if (item.staff) {
+    ImGui::PushStyleColor(ImGuiCol_Text, kStaffColor);
+  }
+  if (item.disabled) ImGui::BeginDisabled();
+  const bool clicked = ImGui::Selectable(
+      item.label.c_str(), false, ImGuiSelectableFlags_NoAutoClosePopups);
+  if (item.disabled) ImGui::EndDisabled();
+  if (item.danger || item.staff) ImGui::PopStyleColor();
+  // 🔴 `AllowWhenDisabled` : sans ce drapeau, une entrée grisée ne compte pas
+  // comme survolée — et c'est justement celle dont il faut dire POURQUOI.
+  if (!item.tip.empty() &&
+      ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+    ImGui::SetTooltip("%s", item.tip.c_str());
+  }
+  if (!clicked) return false;
+  Choose(item);
+  // 🔴 Depuis un sous-menu, `CloseCurrentPopup` remonte la chaîne et referme
+  // AUSSI le menu parent : c'est le comportement d'ImGui pour les popups de
+  // type menu, et c'est celui qu'on veut — le geste est terminé.
+  ImGui::CloseCurrentPopup();
+  open_ = false;
+  return true;
 }
 
 // ── Exécution ────────────────────────────────────────────────────────────────
@@ -1620,6 +1773,10 @@ void EntityContextMenu::Choose(const Item& item) {
     confirm_local_   = item.local;
     confirm_aid_     = target_aid_;
     confirm_name_    = target_name_;
+    // 🔴 La saisie repart de zéro à chaque ouverture. Gardée d'une fois sur
+    // l'autre, un « +50 » resterait armé et partirait sur le joueur suivant
+    // d'un simple « Appliquer » — un don qu'on n'a pas voulu.
+    confirm_points_  = 0;
     confirm_request_ = true;
     return;
   }
@@ -1636,19 +1793,32 @@ void EntityContextMenu::Choose(const Item& item) {
 }
 
 // ── Confirmation ─────────────────────────────────────────────────────────────
-// Une seule modale, parce qu'il n'y a aujourd'hui qu'une action à confirmer. Le
-// `switch` sur `confirm_local_` est là pour que la deuxième n'ait pas à
-// réinventer le mécanisme.
+// Une seule modale ImGui pour toutes les questions : seul le titre VISIBLE change
+// (cf. `ConfirmModalId`), et le `switch` sur `confirm_local_` décide de ce qui
+// s'y dessine. Trois questions à ce jour — décharger un NPC, bannir un compte,
+// et la saisie d'un don de points d'event, qui n'est pas une confirmation mais
+// emprunte le même mécanisme parce qu'elle pose la même sorte de pause.
+const char* EntityContextMenu::ConfirmModalId(Local which) {
+  switch (which) {
+    case Local::kPlayerBlock:
+      return i18n::Tr("Bannir ce compte###bourgeon_ctxmenu_confirm");
+    case Local::kPlayerEventPoints:
+      return i18n::Tr("Points d'event###bourgeon_ctxmenu_confirm");
+    default:
+      return i18n::Tr("Décharger ce NPC###bourgeon_ctxmenu_confirm");
+  }
+}
+
 void EntityContextMenu::DrawConfirmModal() {
   if (confirm_request_) {
     confirm_request_ = false;
-    ImGui::OpenPopup(ConfirmModalId());
+    ImGui::OpenPopup(ConfirmModalId(confirm_local_));
   }
-  if (!ro::BeginRoPopupModal(ConfirmModalId())) return;
+  if (!ro::BeginRoPopupModal(ConfirmModalId(confirm_local_))) return;
 
   switch (confirm_local_) {
     case Local::kNpcUnload: {
-      const ImVec4 red(0.75f, 0.13f, 0.13f, 1.0f);
+      const ImVec4& red = kDangerColor;
       const ImVec4 gray(0.35f, 0.35f, 0.35f, 1.0f);
       char who[96];
       FormatNpcLabel(confirm_aid_,
@@ -1681,6 +1851,76 @@ void EntityContextMenu::DrawConfirmModal() {
       if (ro::RoButton(i18n::Tr("Annuler"), 100.0f, 0.0f)) ImGui::CloseCurrentPopup();
       break;
     }
+    // ── Bannir un compte ────────────────────────────────────────────────────
+    // La SEULE action du sous-menu staff qui ne se défait pas depuis le jeu :
+    // le mute expire, la prison s'ouvre, le kick se relogue. Celle-ci retire un
+    // compte entier, et le serveur ne posera aucune question de son côté.
+    case Local::kPlayerBlock: {
+      const ImVec4& red = kDangerColor;
+      const ImVec4 gray(0.35f, 0.35f, 0.35f, 1.0f);
+      const char* who = confirm_name_.empty() ? i18n::Tr("(nom inconnu)")
+                                              : confirm_name_.c_str();
+      ImGui::TextColored(red, i18n::Tr("Bannir le compte de %s ?"), who);
+      ImGui::Spacing();
+      // ⚠ Sauts de ligne EXPLICITES, pas `TextWrapped` : la modale est en
+      // AlwaysAutoResize, et un texte qui se replie sur une largeur qu'il fixe
+      // lui-même fait osciller la fenêtre d'une frame à l'autre.
+      ImGui::Text("%s",
+          i18n::Tr("C'est le COMPTE qui tombe, pas ce personnage : tous\n"
+                   "les autres personnages du même compte deviennent\n"
+                   "inaccessibles, et le bannissement n'a pas de fin."));
+      ImGui::Spacing();
+      ImGui::TextColored(gray, "%s",
+          i18n::Tr("Pour le lever : @unblock <nom du personnage>.\n"
+                   "Pour une sanction qui expire, préférez @ban."));
+      ImGui::Spacing();
+      if (ro::RoButton(i18n::Tr("Bannir"), 110.0f, 0.0f)) {
+        pending_aid_   = confirm_aid_;
+        pending_code_  = 0;
+        pending_local_ = Local::kPlayerBlock;
+        ImGui::CloseCurrentPopup();
+      }
+      ImGui::SameLine();
+      if (ro::RoButton(i18n::Tr("Annuler"), 100.0f, 0.0f)) ImGui::CloseCurrentPopup();
+      break;
+    }
+    // ── Points d'event ──────────────────────────────────────────────────────
+    // Pas une confirmation mais une SAISIE : elle emprunte le même mécanisme
+    // parce qu'elle pose la même sorte de pause — le menu se ferme, la question
+    // reste. Le solde actuel n'est volontairement pas affiché : le client ne le
+    // connaît pas, et l'aller-retour qu'il faudrait pour l'obtenir ferait
+    // attendre devant une modale vide. Il se lit dans « Propriétés… ».
+    case Local::kPlayerEventPoints: {
+      const ImVec4 gray(0.35f, 0.35f, 0.35f, 1.0f);
+      const char* who = confirm_name_.empty() ? i18n::Tr("(nom inconnu)")
+                                              : confirm_name_.c_str();
+      ImGui::Text(i18n::Tr("Points d'event de %s"), who);
+      ImGui::Spacing();
+      ro::RoSliderInt(i18n::Tr("à donner###ctxmenu_points"), &confirm_points_,
+                      -kEventPointsStep, kEventPointsStep, "%+d");
+      ImGui::Spacing();
+      ImGui::TextColored(gray, "%s",
+          i18n::Tr("Négatif pour retirer. Ctrl+clic sur la barre pour taper\n"
+                   "la valeur. Le serveur reborne, et refuse de faire\n"
+                   "descendre le solde sous zéro.\n"
+                   "Le solde actuel se lit dans « Propriétés… »."));
+      ImGui::Spacing();
+      // Zéro ne fait rien : le bouton reste visible et grisé plutôt que de
+      // partir en paquet que le serveur refusera avec « indiquez un montant ».
+      const bool nothing = (confirm_points_ == 0);
+      if (nothing) ImGui::BeginDisabled();
+      if (ro::RoButton(i18n::Tr("Appliquer"), 110.0f, 0.0f)) {
+        pending_aid_   = confirm_aid_;
+        pending_code_  = 0;
+        pending_local_ = Local::kPlayerEventPoints;
+        pending_param_ = confirm_points_;
+        ImGui::CloseCurrentPopup();
+      }
+      if (nothing) ImGui::EndDisabled();
+      ImGui::SameLine();
+      if (ro::RoButton(i18n::Tr("Annuler"), 100.0f, 0.0f)) ImGui::CloseCurrentPopup();
+      break;
+    }
     default:
       // Sécurité : une confirmation sans question n'a rien à faire à l'écran.
       ImGui::CloseCurrentPopup();
@@ -1698,6 +1938,10 @@ void EntityContextMenu::FlushPending() {
 
   const uint32_t aid = pending_aid_;
   const uint32_t arg = pending_arg_;
+  // Consommé comme le reste : une valeur qui survivrait à son action repartirait
+  // avec la suivante.
+  const int32_t param = pending_param_;
+  pending_param_ = 0;
 
   switch (local) {
     case Local::kCopyName:
@@ -1712,9 +1956,9 @@ void EntityContextMenu::FlushPending() {
     case Local::kCopyPickInfo: {
       char buffer[192];
       snprintf(buffer, sizeof(buffer),
-               i18n::Tr("%s | AID %u (0x%08X) | job %u | categorie de pick %d"),
+               i18n::Tr("%s | AID %u (0x%08X) | job %u"),
                target_name_.empty() ? i18n::Tr("(nom inconnu)") : target_name_.c_str(),
-               aid, aid, arg, target_cat_);
+               aid, aid, arg);
       ImGui::SetClipboardText(buffer);
       return;
     }
@@ -1800,6 +2044,35 @@ void EntityContextMenu::FlushPending() {
       return;
     case Local::kNpcMoveHere:
       SendNpcAdmin(aid, kNpcAdminMoveToMe);
+      return;
+    // ── Outillage JOUEUR du staff (CZ 0x0F2B) ─────────────────────────────────
+    // Aucun compte rendu ici non plus : le serveur rejoue l'atcommand
+    // correspondante et SON verdict — agi, ou refusé faute de permission de
+    // groupe — revient dans le chat. Le dire nous-mêmes, c'est promettre une
+    // action avant de savoir si elle a eu lieu.
+    case Local::kPlayerComeHere:
+      SendPlayerAdmin(aid, kPlayerAdminComeHere);
+      return;
+    case Local::kPlayerSitStand:
+      SendPlayerAdmin(aid, kPlayerAdminSitStand);
+      return;
+    case Local::kPlayerEventPoints:
+      SendPlayerAdmin(aid, kPlayerAdminEventPoints, param);
+      return;
+    case Local::kPlayerMute:
+      SendPlayerAdmin(aid, kPlayerAdminMute);
+      return;
+    case Local::kPlayerUnmute:
+      SendPlayerAdmin(aid, kPlayerAdminUnmute);
+      return;
+    case Local::kPlayerJail:
+      SendPlayerAdmin(aid, kPlayerAdminJailToggle);
+      return;
+    case Local::kPlayerNuke:
+      SendPlayerAdmin(aid, kPlayerAdminNuke);
+      return;
+    case Local::kPlayerBlock:
+      SendPlayerAdmin(aid, kPlayerAdminBlock);
       return;
     // ── Objet au sol ──────────────────────────────────────────────────────────
     case Local::kPickupItem:
