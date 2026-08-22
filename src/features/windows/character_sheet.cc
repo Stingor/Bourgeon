@@ -739,6 +739,23 @@ void SendGuildChangePosition(uint32_t aid, uint32_t cid, int positionId) {
   *reinterpret_cast<uint32_t*>(pkt + 12) = static_cast<uint32_t>(positionId);
   Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
 }
+// Transfère la DIRECTION de la guilde. Même paquet que ci-dessus, avec position 0 :
+// c'est ce zéro que le serveur traduit en guild_gm_change (clif_parse_GuildChangeMemberPosition).
+// Il n'exige que le drapeau maître et le CHAR id de la cible — l'account id est ignoré
+// sur ce chemin, mais le natif le remplit : on fait pareil. Aucun besoin que le membre
+// soit connecté. Refus possibles : guerre de guildes (guild_leaderchange_woe: no),
+// dernier transfert trop récent (guild_leaderchange_delay) et instance de guilde en
+// cours ; les deux premiers reviennent en clif_msg, le dernier est MUET.
+void SendGuildChangeMaster(uint32_t aid, uint32_t cid) {
+  if (cid == 0) return;
+  uint8_t pkt[16];
+  *reinterpret_cast<uint16_t*>(pkt + 0)  = kOpGuildChangePos;
+  *reinterpret_cast<uint16_t*>(pkt + 2)  = 16;  // longueur totale (en-tête 4 + 1 entrée de 12)
+  *reinterpret_cast<uint32_t*>(pkt + 4)  = aid;
+  *reinterpret_cast<uint32_t*>(pkt + 8)  = cid;
+  *reinterpret_cast<uint32_t*>(pkt + 12) = 0;   // position 0 = transfert de la direction
+  Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
+}
 // Crée une guilde. Le serveur ignore le char id transmis (il utilise la session) mais
 // le natif le remplit : on fait pareil. Il exige un Emperium en inventaire
 // (battle_config.guild_emperium_check) et refuse sur une carte « guildlock » ; la
@@ -5285,6 +5302,25 @@ void CharacterSheet::DrawGuildTab() {
           const bool target_is_master =
               gi.master_name[0] && _stricmp(m.name, gi.master_name) == 0;
           const bool target_is_self = !own_name.empty() && _stricmp(m.name, own_name.c_str()) == 0;
+          // « Transférer la direction » : le seul geste qui envoie la position 0 de
+          // CZ 0x0155 — c'est un transfert de guilde, pas un changement de rang, d'où
+          // son absence du sous-menu « Changer de poste » (qui part de l'id 1).
+          // Le poste 0 identifie le maître aussi sûrement que son nom : master_name
+          // peut manquer tant que ZC_GUILD_INFO n'est pas arrivé.
+          if (is_master && !target_is_master && !target_is_self && m.position_id != 0) {
+            ImGui::Separator();
+            // Ouverture DIFFÉRÉE comme l'expulsion : ici la pile d'ID est celle du menu
+            // contextuel, un OpenPopup n'y matcherait pas le modal ouvert par l'onglet.
+            if (ImGui::MenuItem(i18n::Tr("Transférer la direction…"))) {
+              guild_gm_aid_ = m.aid;
+              guild_gm_cid_ = m.cid;
+              std::strncpy(guild_gm_name_, m.name, sizeof(guild_gm_name_) - 1);
+              guild_gm_name_[sizeof(guild_gm_name_) - 1] = '\0';
+              guild_gm_confirm_[0] = '\0';
+              guild_gm_ask_ = true;
+              ImGui::CloseCurrentPopup();
+            }
+          }
           if (can_expel && !target_is_master && !target_is_self) {
             ImGui::Separator();
             // L'ouverture du modal est DIFFÉRÉE : ici la pile d'ID est celle du menu
@@ -5444,6 +5480,10 @@ void CharacterSheet::DrawGuildTab() {
     guild_rel_del_ask_ = false;
     ImGui::OpenPopup(i18n::Tr("Rompre la relation###bourgeon_guild_relation"));
   }
+  if (guild_gm_ask_) {
+    guild_gm_ask_ = false;
+    ImGui::OpenPopup(i18n::Tr("Transférer la direction###bourgeon_guild_gm"));
+  }
   // Le dossier est relu à CHAQUE ouverture : on y dépose justement un fichier juste
   // avant de venir le choisir.
   if (guild_emblem_ask_) {
@@ -5564,6 +5604,46 @@ void CharacterSheet::DrawGuildTab() {
       guild_last_req_ = 0;
       ImGui::CloseCurrentPopup();
     }
+    ImGui::SameLine();
+    if (ro::RoButton(i18n::Tr("Annuler"), 100.0f, 0.0f)) ImGui::CloseCurrentPopup();
+    ro::EndRoPopupModal();
+  }
+
+  // Le transfert est SANS RETOUR depuis le client : le paquet parti, on n'est plus
+  // maître, et seul le nouveau peut rendre la direction. Même garde-fou que pour la
+  // dissolution — le nom retapé.
+  if (ro::BeginRoPopupModal(i18n::Tr("Transférer la direction###bourgeon_guild_gm"))) {
+    ImGui::TextColored(kRed, i18n::Tr("Faire de %s le maître de « %s » ?"),
+                       guild_gm_name_, gi.name);
+    ImGui::TextColored(kGray,
+                       i18n::Tr("Tu perds le poste de maître sur-le-champ : postes, emblème,\n"
+                       "annonce, invitations et dissolution passent à ce membre.\n"
+                       "Lui seul pourra te rendre la direction."));
+    ImGui::Spacing();
+    ImGui::TextColored(kBlack, i18n::Tr("Le serveur refusera si :"));
+    ImGui::BulletText(i18n::Tr("une guerre de guildes est en cours ;"));
+    ImGui::BulletText(i18n::Tr("le précédent transfert est trop récent (délai serveur) ;"));
+    ImGui::BulletText(i18n::Tr("une instance de guilde est en cours — refus SANS message."));
+    ImGui::Spacing();
+    ImGui::TextColored(kGray, i18n::Tr("Retape le nom du membre pour confirmer :"));
+    ImGui::SetNextItemWidth(ro::Px(240.0f));
+    // Indice STATIQUE, pas guild_gm_name_ : le nom vient du client en CP949 et l'indice
+    // est rendu en UTF-8. La comparaison, elle, reste CP949 contre CP949.
+    ro::InputTextCp949WithHint("##cs_guild_gm", i18n::Tr("Nom exact du membre"),
+                               guild_gm_confirm_, sizeof(guild_gm_confirm_));
+    ImGui::Spacing();
+    const bool gm_name_matches =
+        guild_gm_name_[0] && std::strcmp(guild_gm_confirm_, guild_gm_name_) == 0;
+    ImGui::BeginDisabled(!gm_name_matches);
+    if (ro::RoButton(i18n::Tr("Transférer"), 110.0f, 0.0f)) {
+      SendGuildChangeMaster(guild_gm_aid_, guild_gm_cid_);
+      guild_status_ =
+          std::string(guild_gm_name_) + i18n::Tr(" : transfert de la direction envoyé.");
+      guild_gm_confirm_[0] = '\0';
+      guild_last_req_ = 0;  // le roster ET le drapeau maître changent
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndDisabled();
     ImGui::SameLine();
     if (ro::RoButton(i18n::Tr("Annuler"), 100.0f, 0.0f)) ImGui::CloseCurrentPopup();
     ro::EndRoPopupModal();

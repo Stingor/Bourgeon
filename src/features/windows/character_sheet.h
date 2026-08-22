@@ -303,6 +303,12 @@ class CharacterSheet : public Plugin {
   // Nom de guilde retapé pour confirmer la dissolution : @breakguild ne demande AUCUNE
   // confirmation côté serveur, la seule barrière est celle qu'on met ici.
   char     guild_break_confirm_[32] = {};
+  // Transfert de la direction (position 0 de CZ 0x0155) : cible en attente de
+  // confirmation, et nom du membre retapé — le serveur, lui, ne demande rien.
+  bool     guild_gm_ask_ = false;       // ouverture différée du modal de transfert
+  uint32_t guild_gm_aid_ = 0, guild_gm_cid_ = 0;
+  char     guild_gm_name_[32] = {};
+  char     guild_gm_confirm_[32] = {};
   std::string guild_status_;            // retour UI de la dernière action guilde
   // Création de guilde (sans guilde) : nom saisi + dernier code renvoyé par le serveur
   // (ZC 0x0167 ; -1 = pas de réponse en attente).
