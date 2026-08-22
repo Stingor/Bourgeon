@@ -406,8 +406,9 @@ void MoonlightUi::DrawInterfacePanel() {
       changed |= ro::RoCheckbox(i18n::Tr("Afficher le bouton « Signaler un bug »"), &br->enabled());
       SameLine(); HelpMarker(
           i18n::Tr("Affiche le bouton de rapport de bug dans les fenêtres de "
-          "description (item/skill) et le dialogue PNJ, et active le "
-          "raccourci Ctrl+Alt+B. Décoche pour tout désactiver."));
+          "description (item/skill) et le dialogue PNJ, et active l'action clavier "
+          "« Signaler un bug » (Ctrl+Alt+B par défaut, réglable dans les "
+          "raccourcis). Décoche pour tout désactiver."));
     }
 
     if (changed) SaveSettings();

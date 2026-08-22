@@ -301,8 +301,11 @@ void HotkeySettings::RefreshRows() {
   // Les lignes de Bourgeon, rendues dans la MÊME struct que les commandes du
   // client : le libellé traduit prend la place du champ EXE, le libellé de combo
   // celle du nom de touche. Le dessin et la recherche n'ont donc qu'un chemin.
+  // Le défaut est un `hotkeys::Binding` et non une simple touche : le rapport de
+  // bug est livré sur Ctrl+Alt+B, et la colonne « touche d'origine » doit montrer
+  // le combo entier — un VK seul y aurait affiché « B », c'est-à-dire faux.
   auto add_own = [this](RowKind kind, int index, const char* label,
-                        int default_vk = 0) {
+                        hotkeys::Binding fallback = {}) {
     Row entry;
     entry.tab   = kTabBourgeon;
     entry.kind  = kind;
@@ -310,11 +313,12 @@ void HotkeySettings::RefreshRows() {
     entry.binding.command_index = index;
     std::snprintf(entry.binding.label, sizeof(entry.binding.label), "%s", label);
     // La colonne « touche d'origine » garde son sens ici : ce à quoi on revient.
-    if (default_vk != 0) {
-      entry.fallback.key_code1 = default_vk;
+    if (fallback.vk != 0) {
+      entry.fallback.key_code1 = fallback.vk;
+      entry.fallback.key_code2 = ModifierVk(fallback.ctrl, fallback.alt, fallback.shift);
       entry.fallback.assigned  = true;
-      hotkeys::Label(default_vk, false, false, false, entry.fallback.key_name,
-                     sizeof(entry.fallback.key_name));
+      hotkeys::Label(fallback.vk, fallback.ctrl, fallback.alt, fallback.shift,
+                     entry.fallback.key_name, sizeof(entry.fallback.key_name));
     }
     const hotkeys::Binding binding = ReadOwnBinding(entry);
     entry.binding.key_code1 = binding.vk;
@@ -354,14 +358,15 @@ void HotkeySettings::RefreshRows() {
     static const KeyboardMove kDefaults;
     for (int slot = 0; slot < KeyboardMove::kMoveKeyCount; ++slot)
       add_own(RowKind::kMove, slot, i18n::Tr(kMoveLabels[slot]),
-              kDefaults.keys_[slot]);
+              hotkeys::Binding{kDefaults.keys_[slot]});
   }
 
   for (int i = 0; i < hotkeys::ActionCount(); ++i) {
     // Une action réservée ne se montre PAS à qui ne peut pas s'en servir : une
     // ligne réglable qui ne déclenche rien vaut moins qu'une ligne absente.
     if (hotkeys::ActionAt(i).staff_only && !IsStaff()) continue;
-    add_own(RowKind::kAction, i, i18n::Tr(hotkeys::ActionAt(i).label_fr));
+    add_own(RowKind::kAction, i, i18n::Tr(hotkeys::ActionAt(i).label_fr),
+            hotkeys::ActionAt(i).default_binding);
   }
 }
 

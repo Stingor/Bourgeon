@@ -221,6 +221,12 @@ void BugReport::TitleBarButton(const Context& ctx) {
 }
 
 void BugReport::Open(const Context& ctx) {
+  // 🔴 UNE MODALE DÉJÀ OUVERTE NE SE REMPLACE PAS : `Open` efface `msg_buf_`, donc
+  // un second appel jetterait le message que le joueur est en train d'écrire. Le
+  // raccourci portait ce test chez lui (`!modal_open_`) tant qu'il était câblé
+  // dans la frame ; il est ici depuis qu'il vient du catalogue d'actions, ce qui
+  // le rend valable pour TOUS les appelants.
+  if (modal_open_) return;
   ctx_ = ctx;
   msg_buf_[0] = '\0';
   want_open_ = true;
@@ -260,14 +266,12 @@ void BugReport::SendReport(const Context& ctx, const std::string& message) {
 // --- Rendu -----------------------------------------------------------------
 
 void BugReport::OnRenderUI() {
-  // Raccourci global Ctrl+Alt+B : rapport générique (uniquement si le jeu a le
-  // focus clavier ImGui et qu'aucune modale n'est déjà ouverte).
-  ImGuiIO& io = ImGui::GetIO();
-  if (enabled_ && !modal_open_ && io.KeyCtrl && io.KeyAlt &&
-      ImGui::IsKeyPressed(ImGuiKey_B, false)) {
-    Open(GenericContext());
-  }
-
+  // 🔴 PLUS DE RACCOURCI CÂBLÉ ICI. Ctrl+Alt+B se lisait dans cette frame, en dur :
+  // il ne figurait donc dans aucune liste, ne se déplaçait pas, et le contrôle de
+  // collision de l'écran des raccourcis ne le voyait pas — une touche donnée à
+  // autre chose partait avec lui. Le combo est passé au catalogue
+  // (`hotkeys::tool_bug_report`, même défaut Ctrl+Alt+B), qui l'affiche et le
+  // remappe comme les autres et appelle `Open` par le dispatch clavier.
   if (want_open_) {
     ImGui::OpenPopup(i18n::Tr("Signaler un bug###bug_report_modal"));
     want_open_ = false;

@@ -20,7 +20,12 @@
 // renvoie ZC_BOURGEON_BUG_REPORT_ACK (0x0F14) → toast in-game.
 //
 // Points d'entrée v1 : description item, description skill, dialogue NPC, et un
-// raccourci global (Ctrl+Alt+B) qui ouvre un rapport générique.
+// raccourci global qui ouvre un rapport générique.
+//
+// 🔴 CE RACCOURCI N'EST PAS CÂBLÉ ICI. Il vit dans le catalogue des actions
+// (`hotkeys::tool_bug_report`, features/hotkey_actions.h), qui garde Ctrl+Alt+B
+// comme défaut mais le rend visible et remappable dans l'écran des raccourcis —
+// ce qu'un `IsKeyPressed` posé dans notre frame ne pouvait pas offrir.
 
 class BugReport : public Plugin {
  public:
@@ -81,7 +86,8 @@ class BugReport : public Plugin {
   static Context GenericContext();
 
   // Opt-out global (persisté par MoonlightUi) : désactive les boutons contextuels
-  // « Signaler un bug » ET le raccourci Ctrl+Alt+B.
+  // « Signaler un bug » ET l'action clavier (relu par `hotkeys::Invoke`, qui
+  // refuse alors d'ouvrir la modale).
   bool& enabled() { return enabled_; }
 
  private:

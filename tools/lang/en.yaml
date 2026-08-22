@@ -216,7 +216,7 @@
 "Les barres et les icônes s'alignent sur les cellules de la grille pendant le déplacement et le redimensionnement.": "Bars and icons line up on the grid cells while being moved and resized."
 "Couleur grille": "Grid colour"
 "Afficher le bouton « Signaler un bug »": "Show the \"Report a bug\" button"
-"Affiche le bouton de rapport de bug dans les fenêtres de description (item/skill) et le dialogue PNJ, et active le raccourci Ctrl+Alt+B. Décoche pour tout désactiver.": "Shows the bug report button in the description windows (item/skill) and the NPC dialogue, and enables the Ctrl+Alt+B shortcut. Untick to disable it all."
+"Affiche le bouton de rapport de bug dans les fenêtres de description (item/skill) et le dialogue PNJ, et active l'action clavier « Signaler un bug » (Ctrl+Alt+B par défaut, réglable dans les raccourcis). Décoche pour tout désactiver.": "Shows the bug report button in the description windows (item/skill) and the NPC dialogue, and enables the \"Report a bug\" keyboard action (Ctrl+Alt+B by default, remappable in the shortcuts). Untick to disable it all."
 "Aperçu — ces réglages appartiennent à l'interface moderne, qui est désactivée.": "Preview — these settings belong to the modern interface, which is disabled."
 "Activer l'interface moderne": "Enable the modern interface"
 "Réglages généraux": "General settings"

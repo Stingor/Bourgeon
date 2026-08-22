@@ -230,10 +230,12 @@ void WriteBlockedNpcs(YAML::Emitter& out) {
 }
 
 void ReadBourgeonHotkeys(const YAML::Node& ui) {
-  // Repart d'une table vierge : une action absente du fichier n'a AUCUN raccourci
-  // (le catalogue n'en propose aucun par défaut).
-  for (int i = 0; i < hotkeys::ActionCount(); ++i)
-    hotkeys::SetBinding(i, hotkeys::Binding());
+  // Repart de ce que propose le CATALOGUE, pas d'une table vierge : le fichier ne
+  // porte que les écarts. Une action sans défaut retrouve « aucune touche », celle
+  // qui en a un (le rapport de bug, sur Ctrl+Alt+B) retrouve le sien — y compris
+  // dans un yaml écrit avant que l'action existe, ce qui est exactement le cas de
+  // tous les fichiers déjà en circulation.
+  hotkeys::ResetBindingsToDefaults();
   const YAML::Node bindings = ui["bourgeon_hotkeys"];
   if (!bindings) return;
   for (const YAML::Node& entry : bindings) {
@@ -244,7 +246,10 @@ void ReadBourgeonHotkeys(const YAML::Node& ui) {
     binding.ctrl  = entry["ctrl"].as<bool>(false);
     binding.alt   = entry["alt"].as<bool>(false);
     binding.shift = entry["shift"].as<bool>(false);
-    if (binding.vk != 0) hotkeys::SetBinding(index, binding);
+    // 🔴 `vk == 0` EST UNE VALEUR, plus une entrée à ignorer. C'est le seul moyen
+    // d'écrire « le joueur a effacé la touche par défaut » : la sauter ferait
+    // repasser le défaut au redémarrage, et l'effacement ne tiendrait pas.
+    hotkeys::SetBinding(index, binding);
   }
 }
 
@@ -254,7 +259,10 @@ void WriteBourgeonHotkeys(YAML::Emitter& out) {
   out << YAML::Key << "bourgeon_hotkeys" << YAML::Value << YAML::BeginSeq;
   for (int i = 0; i < hotkeys::ActionCount(); ++i) {
     const hotkeys::Binding& binding = hotkeys::BindingAt(i);
-    if (binding.vk == 0) continue;
+    // Rien à dire d'une action sans touche ET sans défaut : c'est déjà ce que la
+    // relecture reconstruit. Mais une action à DÉFAUT qu'on a laissée vide doit
+    // s'écrire, sinon son absence se relit comme « remets le défaut ».
+    if (binding.vk == 0 && hotkeys::ActionAt(i).default_binding.vk == 0) continue;
     out << YAML::Flow << YAML::BeginMap;
     out << YAML::Key << "id"    << YAML::Value << hotkeys::ActionAt(i).id;
     out << YAML::Key << "vk"    << YAML::Value << binding.vk;

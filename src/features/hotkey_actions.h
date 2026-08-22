@@ -39,6 +39,20 @@ enum class ActionGroup {
   kTools,     // outils et confort
 };
 
+// Ce que le joueur a choisi, par-dessus le catalogue. `vk == 0` = aucune touche.
+// Déclaré AVANT `Action` parce que celui-ci s'en sert pour porter son défaut.
+struct Binding {
+  int  vk    = 0;
+  bool ctrl  = false;
+  bool alt   = false;
+  bool shift = false;
+
+  bool Matches(int other_vk, bool other_ctrl, bool other_alt, bool other_shift) const {
+    return vk != 0 && vk == other_vk && ctrl == other_ctrl && alt == other_alt &&
+           shift == other_shift;
+  }
+};
+
 struct Action {
   // 🔴 Identifiant STABLE : c'est la CLÉ de persistance. Il ne se traduit pas, ne
   // se renomme pas — le renommer efface le raccourci du joueur en silence.
@@ -49,10 +63,10 @@ struct Action {
   // > 0 : l'action se résume à `MakeWindow(id)`, que nos hooks interceptent.
   //   0 : action sans équivalent natif, traitée dans `Invoke`.
   int native_window_id;
-  // Raccourci proposé par défaut, 0 = aucun. `default_mod` est un VK de
-  // modificateur (VK_CONTROL / VK_SHIFT / VK_MENU) ou 0.
-  int default_vk;
-  int default_mod;
+  // Raccourci proposé par défaut, `vk == 0` = aucun. C'est un `Binding` entier et
+  // non un couple touche/modificateur : le rapport de bug est livré sur Ctrl+Alt+B,
+  // donc DEUX modificateurs, ce qu'un champ unique perdait en silence.
+  Binding default_binding;
   // 🔴 Réservé au STAFF : l'action ne s'exécute pas et ne s'AFFICHE pas chez un
   // joueur ordinaire. Le droit est relu à chaque fois, jamais mémorisé — le
   // niveau de groupe arrive au login et peut changer en cours de session.
@@ -79,20 +93,18 @@ int           IndexOf(const char* id);
 // basculerait par le nôtre — soit un aller-retour, c'est-à-dire un raccourci qui
 // ne fait RIEN, sans rien pour l'expliquer. Nos liaisons ne servent qu'à ce que
 // le client ne sait pas déclencher.
-struct Binding {
-  int  vk    = 0;
-  bool ctrl  = false;
-  bool alt   = false;
-  bool shift = false;
-
-  bool Matches(int other_vk, bool other_ctrl, bool other_alt, bool other_shift) const {
-    return vk != 0 && vk == other_vk && ctrl == other_ctrl && alt == other_alt &&
-           shift == other_shift;
-  }
-};
-
+//
+// 🔴 UNE ACTION À DÉFAUT S'ÉCRIT MÊME QUAND ELLE N'A PLUS DE TOUCHE. Le yaml ne
+// portait que les liaisons non vides, ce qui suffisait tant que le catalogue ne
+// proposait rien : absent voulait dire « rien ». Dès qu'un défaut existe, absent
+// veut dire « le défaut », et l'effacement du joueur ressusciterait au
+// redémarrage. `WriteBourgeonHotkeys` écrit donc aussi la ligne vide de ces
+// actions-là — c'est la seule façon de dire « non, vraiment aucune touche ».
 const Binding& BindingAt(int index);
 void           SetBinding(int index, const Binding& binding);
+// Remet TOUTES les liaisons sur ce que propose le catalogue. Point d'entrée de la
+// lecture du yaml : le fichier ne contient que les écarts, jamais l'état complet.
+void           ResetBindingsToDefaults();
 
 // Exécute l'action. Renvoie false si l'identifiant est inconnu ou si le module
 // concerné est absent.

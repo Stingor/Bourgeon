@@ -198,7 +198,7 @@
 "Les barres et les icônes s'alignent sur les cellules de la grille pendant le déplacement et le redimensionnement.": "Las barras y los iconos se alinean con las celdas de la rejilla al moverlos y redimensionarlos."
 "Couleur grille": "Color de la rejilla"
 "Afficher le bouton « Signaler un bug »": "Mostrar el botón \"Reportar un bug\""
-"Affiche le bouton de rapport de bug dans les fenêtres de description (item/skill) et le dialogue PNJ, et active le raccourci Ctrl+Alt+B. Décoche pour tout désactiver.": "Muestra el botón de reporte de bug en las ventanas de descripción (objeto/habilidad) y en el diálogo de NPC, y activa el atajo Ctrl+Alt+B. Desmarca para desactivarlo todo."
+"Affiche le bouton de rapport de bug dans les fenêtres de description (item/skill) et le dialogue PNJ, et active l'action clavier « Signaler un bug » (Ctrl+Alt+B par défaut, réglable dans les raccourcis). Décoche pour tout désactiver.": "Muestra el botón de reporte de bug en las ventanas de descripción (objeto/habilidad) y en el diálogo de NPC, y activa la acción de teclado \"Reportar un bug\" (Ctrl+Alt+B por defecto, reasignable en los atajos). Desmarca para desactivarlo todo."
 "Aperçu — ces réglages appartiennent à l'interface moderne, qui est désactivée.": "Vista previa — estos ajustes pertenecen a la interfaz moderna, que está desactivada."
 "Activer l'interface moderne": "Activar la interfaz moderna"
 "Réglages généraux": "Ajustes generales"
