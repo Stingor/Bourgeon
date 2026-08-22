@@ -87,6 +87,26 @@ constexpr int kProjectileJob    = 1495;
 // traite de toute façon toute valeur hors [1410, 22176] comme « flèche ».
 constexpr int kKeepNativeJob    = -1;
 
+// ── Notre propre sprite de projectile ───────────────────────────────────────
+// Emprunter le job d'un tireur du jeu donne SON projectile ; on remplace ensuite
+// le sprite par le nôtre, pour n'avoir plus à dépendre d'un fichier de Gravity —
+// et pour laisser au vrai STONE_SHOOTER le sien, ce qu'une réécriture de la
+// chaîne en .rdata (0x0109CC30) n'aurait pas permis.
+//
+// 🔴 Le chemin est en **CP949**, exactement dans la forme que le client garde en
+// .rdata : il part du dossier monstre (`몬스터` = B8 F3 BD BA C5 CD), sans
+// préfixe `data\sprite\`, et il porte son extension. Les octets sont écrits en
+// échappement hexadécimal : le fichier source est en UTF-8, y taper le mot
+// coréen produirait trois octets par caractère au lieu de deux.
+constexpr char kSprPropre[] = "\xB8\xF3\xBD\xBA\xC5\xCD\\baguette_shot.spr";
+constexpr char kActPropre[] = "\xB8\xF3\xBD\xBA\xC5\xCD\\baguette_shot.act";
+
+// `__thiscall(this, chemin)`, `retn 4` toutes les deux. Elles relâchent la
+// texture précédente avant de charger : les rappeler après le natif est un
+// échange propre, pas une fuite.
+constexpr uintptr_t kSetBodySpr = 0x00c58e90;  // CActorSprite_SetBodySprFromPath
+constexpr uintptr_t kSetBodyAct = 0x00c55bf0;  // CActorSprite_SetBodyActFromPath
+
 // ── Réglages du vol ──────────────────────────────────────────────────────────
 // Diviseur appliqué à l'horloge du projectile : 1 = vitesse native, 2 = deux
 // fois plus lent. Ralentir et durer plus longtemps sont ici la MÊME chose (cf.
@@ -347,6 +367,17 @@ OnMsgFn  g_onmsg_natif  = reinterpret_cast<OnMsgFn>(kArrowEffectOnMsg);
 
 uint8_t* Champs(void* self) { return static_cast<uint8_t*>(self); }
 
+using SetPathFn = int(__fastcall*)(void* self, void* edx, const char* chemin);
+
+// Déportée pour que le `__try` n'ait aucun objet à dérouler (MSVC C2712).
+void RemplacerSprite(void* self) {
+  __try {
+    reinterpret_cast<SetPathFn>(kSetBodySpr)(self, nullptr, kSprPropre);
+    reinterpret_cast<SetPathFn>(kSetBodyAct)(self, nullptr, kActPropre);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+  }
+}
+
 bool EstUneBaguette(void* self) {
   return *reinterpret_cast<const uint32_t*>(Champs(self) + kEffet_Marque) ==
          kMarqueBaguette;
@@ -365,9 +396,23 @@ int __fastcall OnMsgDetour(void* self, void* edx, int a0, int msg, int sous,
   if (sous == 0 && (msg == 14 || msg == 64)) {
     // `job_haut` est l'extension de signe du job (le client la teste lui-même
     // avant la plage [1410, 22176]) : un job négatif n'est pas le nôtre.
-    const bool notre = (msg == 14 && job_haut == 0 && job == kProjectileJob);
+    //
+    // 🔴 Le job ne suffit PAS à nous reconnaître : un vrai STONE_SHOOTER tire
+    // sous le même. D'où le jeton, posé au tir par Bourgeon_WandProjectileJob —
+    // qu'on se contente de LIRE ici, sans le consommer : son consommateur
+    // (Bourgeon_HeureEcheanceDegats) tourne plus loin dans le MÊME appel de
+    // CActorSprite_ProcessDamageAction, après ce message 14.
+    //
+    // Le mob emprunté garde donc son projectile, sa vitesse et son orientation.
+    const bool notre = (msg == 14 && job_haut == 0 && job == kProjectileJob
+                        && g_tir_baguette);
     *reinterpret_cast<uint32_t*>(Champs(self) + kEffet_Marque) =
         notre ? kMarqueBaguette : 0u;
+
+    // Le natif vient de poser le sprite du tireur emprunté ; on met le nôtre à
+    // la place.
+    if (notre)
+      RemplacerSprite(self);
 
     // L'attente avant départ se compte dans la MÊME unité que le temps de vol :
     // le recul du départ la rallongerait donc d'autant. On l'annule ici pour que

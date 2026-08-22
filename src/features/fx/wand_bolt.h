@@ -33,6 +33,18 @@
 // lit la classe d'arme de l'acteur source, donc les archers gardent leurs
 // flèches et les bardes leurs notes.
 //
+// ── Notre propre sprite ─────────────────────────────────────────────────────
+// Le job emprunté ne sert qu'à ENTRER dans la fabrique : une fois le projectile
+// né, son sprite est remplacé par `몬스터aguette_shot.spr` / `.act`. Le tireur
+// dont on emprunte le job garde donc le sien — ce qu'une réécriture de la chaîne
+// en .rdata (0x0109CC30) n'aurait pas permis.
+//
+// 🔴 Le job seul ne nous distingue pas : un vrai STONE_SHOOTER tire sous le même.
+// C'est le JETON posé au tir (`g_tir_baguette`) qui fait la différence, et il est
+// seulement LU dans OnMsg — son consommateur tourne plus loin dans le même appel
+// de `CActorSprite_ProcessDamageAction`. La marque, la lenteur et la rotation
+// suivent le même jeton : le mob emprunté n'est touché par rien.
+//
 // ── Le vol : vitesse et orientation ─────────────────────────────────────────
 //
 // Une fois le sprite emprunté, deux choses restent réglées pour une flèche.
