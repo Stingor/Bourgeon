@@ -113,6 +113,10 @@ class HotkeySettings : public Plugin {
   void RefreshRows();
 
   bool open_ = false;
+  // Dernière transition de carte vue par `OnTick` (cf. Bourgeon::MapLoadEpoch).
+  // Un écart signifie qu'un warp / @load a eu lieu : l'écran se referme avec le
+  // HUD natif, comme le fait la fenêtre du client.
+  uint32_t map_epoch_ = 0;
   bool need_pos_ = false;
   bool show_panel_ = true;
 

@@ -249,6 +249,13 @@ class Bourgeon {
   // bar every frame) and swallow keyboard input.
   bool IsMapLoading() const;
   void SetMapLoading(bool loading);
+  // Nombre de transitions de carte depuis le lancement (warp, @load, changement
+  // de serveur). Il ne sert pas à savoir SI l'on charge — `IsMapLoading` le dit —
+  // mais à constater qu'un chargement a EU LIEU depuis la dernière fois qu'on a
+  // regardé : c'est ce que veulent les écrans qui doivent se refermer avec le HUD
+  // natif (menu Échap, Game Settings, table des raccourcis), et que le seul état
+  // booléen leur ferait manquer sur un chargement plus court que leur battement.
+  uint32_t MapLoadEpoch() const { return map_load_epoch_.load(); }
 
   // 🔴 Une capture de touche est en cours dans l'interface : la frappe sert à
   // REMAPPER, elle ne doit RIEN déclencher — ni chez nous, ni chez le client.
@@ -353,6 +360,7 @@ class Bourgeon {
   bool draining_inboxes_ = false;
   std::atomic<bool> map_loading_{false};
   std::atomic<uint32_t> map_loading_since_ms_{0};  // GetTickCount at load start
+  std::atomic<uint32_t> map_load_epoch_{0};        // transitions de carte (fronts)
   std::atomic<uint32_t> last_game_update_ms_{0};   // GetTickCount of last CGameMode update (0 = never)
   std::vector<std::string> log_lines_;
   bool show_log_window_ = false;

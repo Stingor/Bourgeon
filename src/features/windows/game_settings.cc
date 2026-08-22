@@ -318,6 +318,26 @@ void GameSettings::OnTick() {
     return;
   }
 
+  // 🔴 Un warp / @load referme aussi cet écran. Le client, lui, démonte tout son
+  // HUD à l'entrée dans la carte suivante — sa fenêtre de réglages y passe avec le
+  // reste ; rester ouvert par-dessus la nouvelle carte est une survivance de
+  // notre côté, pas un comportement du jeu.
+  //
+  // Sur l'ÉPOQUE et non sur `IsMapLoading()` : ce dernier est un état, et un
+  // chargement plus court que le battement d'OnTick (100 ms) tiendrait entre deux
+  // regards — l'écran resterait alors ouvert, ce qui est précisément le bug.
+  const uint32_t map_epoch = Bourgeon::Instance().MapLoadEpoch();
+  if (map_epoch != map_epoch_) {
+    map_epoch_ = map_epoch;
+    if (open_) Close();
+  }
+  // Et tant que la carte charge, on ne touche à rien : pendant
+  // `CGameMode::EnterWorld` le HUD natif est détruit puis reconstruit, et c'est
+  // la fenêtre de tir où agir dessus a déjà coûté un use-after-free (cf.
+  // Bourgeon::IsMapLoading). Ce qui est en attente le reste et partira au premier
+  // tick d'après le chargement.
+  if (Bourgeon::Instance().IsMapLoading()) return;
+
   // Le réglage que le client ne sait pas retenir, réinjecté une fois par entrée
   // en jeu. `gamesettings::Count()` ne rend rien tant que le manager n'est pas
   // rempli : on attend qu'il le soit plutôt que d'écrire dans le vide.

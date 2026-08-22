@@ -469,7 +469,14 @@ void Bourgeon::AddLogLine(std::string log_line) {
 }
 
 void Bourgeon::SetMapLoading(bool loading) {
-  if (loading) map_loading_since_ms_.store(GetTickCount());
+  if (loading) {
+    map_loading_since_ms_.store(GetTickCount());
+    // Une TRANSITION de plus. Compter les fronts plutôt que de laisser chacun
+    // guetter `IsMapLoading()` : ce drapeau-là est un ÉTAT, et un @load plus
+    // court que le battement d'OnTick (100 ms) passerait entre deux regards.
+    // Un écran ouvert compare l'époque, pas l'état, et ne rate donc rien.
+    map_load_epoch_.fetch_add(1);
+  }
   map_loading_.store(loading);
 }
 
