@@ -344,7 +344,15 @@ class TargetFrame : public Plugin {
   // chemin du clic (le nôtre), mais la dispense du COUP reste valable pour ce
   // GID — sans quoi seule la première frappe partirait. Le prochain clic du
   // joueur sur une entité la referme.
-  void NoteExplicitAttack(uint32_t gid);
+  // `once` = la dispense se referme sur la PREMIÈRE demande qu'elle laisse
+  // passer, au lieu de rester ouverte pour ce GID.
+  //
+  // ⏱ Ajouté après coup : un simple clic sur un cadre du HUD héritait de la
+  // dispense DURABLE, conçue pour « Attaquer » du menu et pour le double-clic —
+  // deux gestes qui veulent explicitement l'attaque continue. Le clic simple, lui,
+  // veut UN coup, et se retrouvait avec un permis d'attaque illimité quoi que
+  // dise `/nc`. C'est l'appelant qui sait ce que le geste voulait dire.
+  void NoteExplicitAttack(uint32_t gid, bool once = false);
 
   // ── Ce que le hook de CMode::SendMsg appelle ──────────────────────────────
   // Vrai si une demande d'attaque de base doit être jetée en vol. Aucun autre
@@ -355,8 +363,16 @@ class TargetFrame : public Plugin {
   // Comme tout le reste du module, subordonnée à `enabled_` : l'interrupteur
   // « Activer le mode Ciblage + HUD » est un vrai maître, et le panneau grise ce
   // qu'il commande plutôt que de laisser croire à un réglage vivant.
-  bool SuppressBasicAttack(uint32_t target_gid) const {
-    if (target_gid != 0 && target_gid == explicit_attack_gid_) return false;
+  // ⚠ NON const : une dispense d'un seul coup se CONSOMME ici, sur la demande
+  // qu'elle laisse passer. C'est le seul endroit qui sache qu'elle a servi.
+  bool SuppressBasicAttack(uint32_t target_gid) {
+    if (target_gid != 0 && target_gid == explicit_attack_gid_) {
+      if (explicit_attack_once_) {
+        explicit_attack_gid_  = 0;
+        explicit_attack_once_ = false;
+      }
+      return false;
+    }
     return enabled_ && click_no_attack_;
   }
 
@@ -449,6 +465,8 @@ class TargetFrame : public Plugin {
   // et au DOUBLE-CLIC (cf. SuppressClickEngage).
   uint32_t explicit_attack_gid_     = 0;
   bool     explicit_engage_pending_ = false;
+  // La dispense ne vaut-elle que pour UN coup ? Cf. NoteExplicitAttack.
+  bool     explicit_attack_once_    = false;
   // Dernier engagement au clic, pour reconnaître le double.
   uint32_t last_click_aid_ = 0;
   unsigned last_click_ms_  = 0;

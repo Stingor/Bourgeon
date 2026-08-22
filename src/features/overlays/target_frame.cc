@@ -590,6 +590,7 @@ void TargetFrame::OnModeSwitch(ModeMgr::ModeType mode_type,
   was_engaged_ = false;
   explicit_attack_gid_ = 0;
   explicit_engage_pending_ = false;
+  explicit_attack_once_ = false;
 }
 
 void TargetFrame::Reset(uint32_t gid) {
@@ -818,9 +819,10 @@ bool TargetFrame::CycleTarget(bool forward) {
   return ApplyKeyboardTarget(gm, found[next].gid);
 }
 
-void TargetFrame::NoteExplicitAttack(uint32_t gid) {
+void TargetFrame::NoteExplicitAttack(uint32_t gid, bool once) {
   explicit_attack_gid_     = gid;
   explicit_engage_pending_ = (gid != 0);
+  explicit_attack_once_    = once;
 }
 
 bool TargetFrame::SuppressClickEngage(void* game_mode, uint32_t target_aid) {
@@ -854,12 +856,14 @@ bool TargetFrame::SuppressClickEngage(void* game_mode, uint32_t target_aid) {
   if (doubled) {
     // Dispense DURABLE pour ce GID, comme « Attaquer » du menu : l'attaque est
     // une suite de demandes, et n'en laisser passer qu'une ne ferait qu'un coup.
-    explicit_attack_gid_ = target_aid;
+    explicit_attack_gid_  = target_aid;
+    explicit_attack_once_ = false;
     return false;
   }
   // Un simple clic referme la dispense en cours : le joueur a repris la main, et
   // sa règle dit « cibler, pas frapper ».
-  explicit_attack_gid_ = 0;
+  explicit_attack_gid_  = 0;
+  explicit_attack_once_ = false;
   return true;
 }
 
@@ -1470,32 +1474,34 @@ void TargetFrame::OnGameFramePulse() {
   // deux — rien n'arme une compétence pendant que la souris descend.
   const int skill_mode = ReadSkillTargetMode(gm);
 
-  // 🔴 Sur un CADRE, un seul clic attaque — même sous « le clic cible sans
-  // attaquer ». Ce réglage existe parce qu'un clic DANS LE MONDE est ambigu :
-  // on désigne souvent une entité sans vouloir l'engager, et le double-clic
-  // sert à lever le doute. Ici il n'y a aucun doute à lever — la cible est déjà
-  // désignée, le cadre n'a pas d'autre usage, et il a fallu viser un rectangle
-  // de HUD pour l'atteindre. Exiger un second clic ne protégerait de rien et
-  // ferait passer le cadre pour cassé.
-  //
-  // Même dispense que « Attaquer » du menu contextuel, et pour la même raison :
-  // c'est un ordre EXPLICITE. Elle dure ce que dure l'attaque — une attaque est
-  // une suite de demandes, en laisser passer une ne ferait qu'un coup.
-  //
-  // ⚠ Seulement quand rien n'est armé : une compétence a son propre chemin dans
-  // `PostActorClickAction`, que le réglage ne bloque de toute façon pas.
-  if (skill_mode == 0) NoteExplicitAttack(gid);
-
-  // Une fois, ou en continu ? La MÊME règle que le clic sur le sprite (cf.
-  // kClickTypeContinuous) : un cadre qui se comporte comme l'entité doit aussi
-  // obéir à `/nc` et à Ctrl. Sans effet sur une compétence armée — le natif
-  // ignore ce paramètre dans cette branche — mais on le calcule quand même
-  // plutôt que de figer une valeur qui redeviendrait fausse le jour où l'un des
-  // deux chemins changerait.
+  // ── Une fois, ou en continu ? ─────────────────────────────────────────────
+  // La MÊME règle que le clic sur le sprite, relevée dans
+  // `CursorMgr_UpdateHover` : hors zone de siège, Ctrl tenu ou `/nc` actif.
   const bool continuous =
       !OnAgitZone(gm) && ((GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0 ||
                           gamesettings::IsOn(kOptNoCtrl));
 
+  // 🔴 Sur un CADRE, un seul clic attaque — même sous « le clic cible sans
+  // attaquer ». Ce réglage existe parce qu'un clic DANS LE MONDE est ambigu :
+  // on désigne souvent une entité sans vouloir l'engager, et le double-clic
+  // sert à lever le doute. Ici il n'y a aucun doute à lever — la cible est déjà
+  // désignée, et il a fallu viser un rectangle de HUD pour l'atteindre.
+  //
+  // ⏱ MAIS la dispense doit avoir la DURÉE du geste, et c'est ce qui manquait :
+  // elle était toujours DURABLE, comme celle de « Attaquer » du menu et du
+  // double-clic — deux gestes qui demandent explicitement l'attaque continue.
+  // Un simple clic héritait donc d'un permis d'attaque illimité, et le
+  // personnage frappait sans fin alors que `/nc` est éteint. Un coup demandé,
+  // un coup autorisé : `once` referme la dispense sur la demande qu'elle laisse
+  // passer.
+  //
+  // ⚠ Seulement quand rien n'est armé : une compétence a son propre chemin dans
+  // `PostActorClickAction`, que le réglage ne bloque de toute façon pas.
+  if (skill_mode == 0) NoteExplicitAttack(gid, /*once=*/!continuous);
+
+  // ⚠ Le `type` du clic, lui, ne décide PAS de ça — voir kClickTypeContinuous :
+  // il ne change que la cadence de relance de l'APPROCHE. On le passe quand même
+  // à l'identique du natif, pour que le cadre soit vraiment une copie du sprite.
   if (!RunActorClick(gm, gid,
                      continuous ? kClickTypeContinuous : kClickTypeOnce))
     return;

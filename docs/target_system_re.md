@@ -551,7 +551,7 @@ clic sur un monstre  (CursorMgr_UpdateHover, 0x00C78E5D)
           └── acteur du joueur, message 10  (Actor_OnMsg case 10, 0x00D47CF3)
                  └── +0x500 = 1 ou 5 (action EN ATTENTE), +0x514 = GID cible
                         └── Actor_ProcessPendingAction_Tick : distance, cadence
-                            de relance (450 ms si +0x500 == 5, sinon 1200 ms)
+                            de relance (1200 ms si +0x500 == 5, sinon 450 -- cf. 5 bis)
                                ├── hors de portée -> DEMANDE DE MARCHE
                                │      CMode::SendMsg(0x8a) -> 0x035F (5 o)
                                └── à portée       -> DEMANDE DE COUP
@@ -783,24 +783,44 @@ entité, et elle choisit d'après le ciblage armé (`CGameMode+0x408`) :
 | `2` ou `4` (cible) | messages **41** puis **90** — la compétence `+0x40C` part sur ce GID, au niveau `+0x414` |
 | `1`, `3`, `5` | **rien** |
 
-> 🔴 **`param_2` décide UNE FOIS vs EN CONTINU — et les valeurs sont
-> INVERSÉES : `0` = continu, `1` = une seule fois.** Il finit dans `+0x500`, que
-> `Actor_ProcessPendingAction_Tick` relance alors toutes les **450 ms** au lieu
-> de 1200. Règle du natif, relevée au site de clic sur un monstre dans
-> `CursorMgr_UpdateHover` :
+> 🔴 **`param_2` ne décide PAS « une fois » contre « en continu ».** Il
+> atterrit dans `+0x500` (`1` ou `5`) via le message d'acteur 10 — et dans
+> `Actor_ProcessPendingAction_Tick`, **`case 1:` et `case 5:` tombent dans le
+> MÊME bloc**. La seule chose que `1` vs `5` change est la cadence de relance de
+> la **marche d'approche** :
+>
+> ```
+> v5 = 1200 ; if (+0x500 != 5) v5 = 450 ;   // ms
+> ```
+>
+> ⚠ **Correction d'une note antérieure** de ce dossier, qui donnait cette
+> cadence à l'envers (« 450 ms si `+0x500 == 5` ») : c'est l'inverse.
+>
+> Le natif le calcule ainsi, hors zone de siège (`*(CGameMode+0xCC) + 0x4C`,
+> posé par `ZC_NOTIFY_MAPPROPERTY = 3`) :
 >
 > ```
 > continu = !GameSession_IsAgitZone() && (Ctrl tenu || GameSettings_GetFlag(0x6D))
 > PostActorClickAction(this, gid, continu ? 0 : 1) ;  puis  this+0x5B0 = continu
 > ```
 >
-> `0x6D` est l'identifiant TALKTYPE de l'option **`/nc`** (no-control). En zone
-> de siège (`*(CGameMode+0xCC) + 0x4C`, posé par `ZC_NOTIFY_MAPPROPERTY = 3`) le
-> natif REFUSE le continu, Ctrl ou `/nc` ou non.
+> `0x6D` est bien **`TT_NOCTRL_ON_OFF`** — vérifié dans la table de noms de l'exe
+> (`off_1008120`, index = valeur), et **pas** ce qu'annonce
+> `src/ragnarok/talktype.h`, décalé dans cette région (il place `TT_NOSHIFT` en
+> `0x6D` et `TT_NOCTRL` en `0x70`). La table de l'exe fait foi.
 >
-> ⏱ **Piège payé** : le clic rejoué depuis le HUD de cible figeait ce paramètre
-> à `1`. Le cadre ignorait donc `/nc` et Ctrl là où le clic sur le sprite les
-> respecte — la « copie du sprite » s'arrêtait au GID.
+> 🔴 **Ce qui limite vraiment une attaque à un coup** est ailleurs : l'acteur
+> n'émet qu'**une** demande puis se verrouille (`+0x50C = 1`, remis à 0 par la
+> suite du protocole), et le choix « un coup » / « en continu » se joue au
+> message **40** contre **29** selon `+0x508`.
+>
+> ⏱ **Piège payé, et ce n'était pas celui qu'on croyait.** Le clic rejoué depuis
+> le HUD figeait `param_2` à `1` — vrai défaut de fidélité, corrigé, mais SANS
+> effet sur le symptôme. L'attaque sans fin venait de la **dispense** que le HUD
+> demandait à `NoteExplicitAttack` : elle était DURABLE, comme pour « Attaquer »
+> du menu et le double-clic, qui veulent l'attaque continue. Un simple clic
+> héritait d'un permis illimité. La dispense a désormais la durée du geste —
+> `once` quand `/nc` est éteint et Ctrl relâché.
 
 En tête, une seule garde, et elle n'a rien à voir avec le ciblage : au-delà de
 **90 % de poids** (`g_Weight` / `g_MaxWeight`), elle affiche `MsgString 0x133`
