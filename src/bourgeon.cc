@@ -324,6 +324,23 @@ void Bourgeon::OnGameFrame() {
   // jauge sans prévenir — au rythme d'OnTick (~100 ms) elle réapparaîtrait
   // plusieurs frames à chaque fois.
   if (auto* bi = basic_info()) bi->OnGameFramePulse();
+
+  // ── Rejeu de commandes NATIVES, en fin de battement ───────────────────────
+  // Les deux suivantes ne se contentent pas de lire le client : elles lui
+  // parlent. D'où leur place ici — hors frame ImGui, et après les masquages
+  // ci-dessus, qui doivent précéder le dessin du jeu sans qu'un dispatch
+  // ré-entrant vienne s'intercaler au milieu.
+
+  // HUD de cible : le clic reçu par un cadre. Il rappelle
+  // `GameMode_PostActorClickAction`, un appel natif qui peut ouvrir une boîte
+  // de message (surcharge de poids) et relancer le tick du mode.
+  if (auto* tf = target_frame()) tf->OnGameFramePulse();
+
+  // QuickCast : le retrait du cercle de visée qu'une touche relâchée aurait
+  // laissé derrière elle. Il émet `CMode::SendMsg(0x47)` — le dispatcher que
+  // notre propre hook intercepte, donc à ne jamais jouer entre NewFrame() et
+  // Render(). C'est aussi pourquoi il n'est pas dans QuickCast::Update().
+  if (auto* qc = quick_cast()) qc->UpdateDisarm();
 }
 
 // 🔴 Le décodage des paquets, rejoué sur le fil PRINCIPAL pour tous les modules.

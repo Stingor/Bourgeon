@@ -87,7 +87,8 @@
 //
 // OPT-IN, et INTERRUPTEUR MAÎTRE : « Activer le mode Ciblage + HUD ». Éteint,
 // tout s'arrête — le HUD, la flèche, les raccourcis de ciblage, le clic sans
-// attaque — et le panneau grise ses réglages. Un réglage cliquable et sans effet
+// attaque, les cadres qui agissent, les sorts qui partent sur la cible — et le
+// panneau grise ses réglages. Un réglage cliquable et sans effet
 // est le pire des deux mondes : on croit l'avoir posé, rien ne le dit.
 // Clé de persistance « target_frame », membre du groupe « Interface moderne »
 // (défaut OFF, comme tout le groupe).
@@ -101,6 +102,11 @@ class TargetFrame : public Plugin {
   void OnRenderUI() override;
   void OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
   void OnModeSwitch(ModeMgr::ModeType mode_type, const char* map_name) override;
+
+  // Rejoue le clic reçu par un cadre. 🔴 Appelée par `Bourgeon::OnGameFrame`,
+  // donc HORS frame ImGui : c'est un appel natif, qui peut ouvrir une boîte de
+  // message (surcharge de poids) et relancer le tick du mode.
+  void OnGameFramePulse();
 
   // ── Les cinq cadres ───────────────────────────────────────────────────────
   // Chacun est indépendant : position, taille, couleurs, interrupteur. Comme les
@@ -188,6 +194,52 @@ class TargetFrame : public Plugin {
   // dispense que « Attaquer » du menu contextuel, et de même durée — l'attaque
   // est une suite de demandes, pas une seule.
   bool  click_no_attack_ = false;
+
+  // ── Les cadres SONT la cible ──────────────────────────────────────────────
+  // Cliquer un cadre du HUD revient à cliquer l'entité elle-même. Ce n'est pas
+  // une imitation : le clic rejoue `GameMode_PostActorClickAction`
+  // (`0x00C753A0`), la fonction que le clic natif sur une entité appelle, avec
+  // notre GID. Tout ce qui en découle vient donc du client, y compris nos
+  // propres règles — le réglage « cibler sans attaquer », sa dispense au
+  // double-clic, l'approche puis le coup.
+  //
+  // C'est cette fonction, et elle seule, qui décide de ce que « cliquer une
+  // entité » veut dire, selon le ciblage armé (`CGameMode+0x408`) :
+  //   · 0 (rien d'armé)     -> message d'acteur 10 : approche + attaque ;
+  //   · 2 / 4 (cible)       -> messages 41 puis 90 : la compétence part sur ce
+  //                            GID, exactement comme si on avait cliqué le
+  //                            sprite ;
+  //   · 1 (au sol)          -> RIEN. Un sort de zone vise une CASE, résolue
+  //                            ailleurs (sous le curseur). Un cadre n'est pas
+  //                            une case : il redevient clic-traversant dans ce
+  //                            mode, et le clic part au sol comme avant.
+  //   · 3 / 5               -> idem, le ciblage natif garde la main.
+  //
+  // 🔴 Un cadre qui agit REPREND LA SOURIS au jeu tant que le curseur est
+  // dessus — clic droit et molette compris, comme toute fenêtre ImGui. D'où
+  // l'opt-in, et d'où le fait qu'un cadre ne devienne cliquable QUE quand il
+  // y a une cible et que le clic aurait un sens.
+  //
+  // ⚠ L'action est mise en attente et rejouée dans `OnGameFramePulse`, hors de
+  // la frame ImGui : c'est un appel NATIF, qui peut ouvrir une boîte de message
+  // (surcharge de poids) et relancer le tick du mode.
+  bool  proxy_click_ = false;
+
+  // ── Les sorts ciblés partent sur la cible, sans la souris ─────────────────
+  // Le client demande DEUX gestes pour une compétence ciblée : la touche arme
+  // le mode ciblage, puis le clic désigne QUI. Coché, c'est la cible du HUD qui
+  // répond à la seconde question — la souris n'a plus à être sur l'entité, ni
+  // même sur le monde.
+  //
+  // 🔴 La souris garde la PRIORITÉ quand elle désigne vraiment quelqu'un : ce
+  // réglage COMBLE un vide (rien sous le curseur), il ne détourne pas une visée
+  // explicite. Un sort AU SOL n'est pas concerné — il vise une case.
+  //
+  // Le lancement lui-même reste celui de QuickCast (messages d'acteur du clic
+  // natif, puis `SendMsg(0x47)` pour désarmer), y compris sa répétition tant que
+  // la touche est tenue : la seule chose qui change est la RÉPONSE à « sur
+  // qui ? ». Cf. `SkillTargetGid`.
+  bool  cast_on_target_ = false;
 
   // Portrait : mêmes leviers que le portrait du joueur.
   int   portrait_dir_     = 0;     // orientation 0..7 (0 = de face)
@@ -305,6 +357,22 @@ class TargetFrame : public Plugin {
   // zone ne désignant personne.
   void NoteSkillTarget(uint32_t gid);
 
+  // ── Ce que QuickCast appelle ──────────────────────────────────────────────
+  // Le HUD propose-t-il sa cible aux compétences armées au clavier ? Sert de
+  // simple test d'opt-in : QuickCast s'autorise alors à travailler même quand la
+  // souris ne désigne pas le monde, puisqu'elle n'a plus rien à désigner.
+  bool CastsOnHudTarget() const { return enabled_ && cast_on_target_; }
+
+  // Le GID à viser pour ce mode de ciblage, ou 0 si le HUD n'a rien à proposer.
+  // Ne répond que pour les modes 2 (offensif) et 4 (soutien) : un sort au sol
+  // vise une case, pas une entité.
+  //
+  // 🔴 Les mêmes règles que la visée à la souris de QuickCast, parce qu'elles ne
+  // vivent PLUS dans le client : le chemin natif qui les portait
+  // (`CursorMgr_UpdateHover`) n'est pas emprunté. En offensif : jamais soi-même,
+  // jamais un joueur (PVP/GVG restent au clic manuel), jamais un cadavre.
+  uint32_t SkillTargetGid(int targeting_mode) const;
+
   // ── Ce que le menu contextuel de l'entité appelle ─────────────────────────
   // Masque le HUD pour la cible COURANTE (il revient au prochain changement de
   // cible). `gid` sert de garde : masquer depuis le menu d'une entité qui n'est
@@ -322,8 +390,9 @@ class TargetFrame : public Plugin {
   // le client.
   void DrawHud();
   // Les cinq cadres, une fois les données rassemblées. `actor` peut être nul :
-  // c'est le mode « placement » (aucune cible, on pose son HUD).
-  void DrawElements(void* actor);
+  // c'est le mode « placement » (aucune cible, on pose son HUD). `game_mode`
+  // sert à lire le ciblage armé, dont dépend le fait qu'un cadre soit cliquable.
+  void DrawElements(void* game_mode, void* actor);
 
   // Repart de zéro sur une nouvelle cible : on ne garde RIEN de l'ancienne, pas
   // même ses PV — les afficher sous le nouveau nom serait un mensonge muet.
@@ -366,6 +435,11 @@ class TargetFrame : public Plugin {
   // Dernier engagement au clic, pour reconnaître le double.
   uint32_t last_click_aid_ = 0;
   unsigned last_click_ms_  = 0;
+
+  // Clic reçu par un cadre, en attente d'être rejoué hors frame ImGui (cf.
+  // `OnGameFramePulse`). 0 = rien en attente. Un seul clic mémorisé : deux
+  // appuis dans la même frame, ça n'existe pas.
+  uint32_t proxy_click_gid_ = 0;
 
   // ── Ce que le client sait, relu à chaque frame ────────────────────────────
   char     name_[64]  = {0};

@@ -69,6 +69,41 @@
 // Modes de ciblage (CGameMode+0x408) : 0 aucun · 1 sol · 2 cible offensive · 3 ·
 // 4 soutien · 5 piège. Les modes 3 et 5 gardent le ciblage natif.
 //
+// ── DEUX sources de visée, et une priorité ──────────────────────────────────
+// La souris n'est plus la seule à pouvoir répondre à « sur qui ? » : le HUD de
+// cible peut proposer la sienne (son réglage « Les sorts ciblés partent sur la
+// cible », cf. TargetFrame::SkillTargetGid). La SOURIS garde la priorité quand
+// elle désigne vraiment quelqu'un — viser du curseur est un geste explicite, il
+// ne doit jamais se faire voler ; le HUD ne répond que dans le vide.
+//
+// 🔴 Conséquence sur les gardes : le test « le curseur désigne-t-il le monde ? »
+// a QUITTÉ CanCastNow pour EmitCast (MouseAimsAtWorld). Il ne concerne que les
+// visées à la souris — refuser de lancer sur la cible du HUD parce que le
+// curseur traîne sur une fenêtre serait le contraire de ce que le réglage
+// promet. Un sort AU SOL, lui, en dépend toujours : il vise une CELLULE, et le
+// curseur en est l'unique source.
+//
+// ── UNE TOUCHE NE LAISSE JAMAIS DE CERCLE DERRIÈRE ELLE ─────────────────────
+// ⏱ Vu en jeu : on relâche la touche et le cercle de visée reste armé. Ce n'est
+// pas qu'un défaut d'affichage — c'est un PIÈGE : le clic suivant, qui visait
+// autre chose, lance la compétence oubliée.
+//
+// Le natif arme toujours (case 0x48) ; QuickCast, lui, peut ne pas lancer —
+// cadence pas écoulée, compétence en cooldown, ou rien d'exploitable sous le
+// curseur. Deux réponses, complémentaires :
+//   · la RÉPÉTITION est armée même quand le premier lancement échoue, si bien
+//     qu'une cadence ou un cooldown qui se lève finit par lancer sans avoir à
+//     relâcher (avant, marteler deux touches de suite en perdait une, sans
+//     rien dire) ;
+//   · au RELÂCHEMENT, ce qui reste armé est retiré (UpdateDisarm).
+//
+// 🔴 Uniquement pour une visée armée par une TOUCHE, et dans un mode que
+// QuickCast prend en charge (ClaimsMode). Lancer une compétence en CLIQUANT sa
+// case de barre de raccourcis ne pose aucune touche : le déroulé natif « ça
+// arme, je clique ma cible » reste entier. C'est la voie qui subsiste pour
+// viser à la main ce que QuickCast refuse de viser tout seul — un JOUEUR en
+// mode offensif, notamment.
+//
 // ── RÉPÉTITION : pourquoi une boucle À NOUS est indispensable ───────────────
 // 🔴 Le client IGNORE l'auto-répétition clavier. Game_MainWndProc (0x00DB8100)
 // appelle UIWindowMgr_OnKeyDown avec un quatrième argument valant
@@ -154,6 +189,12 @@ class QuickCast : public Plugin {
   //    réglage cinq fois trop haut en donnant l'illusion de l'honorer.
   void UpdateItemRepeat();
 
+  // Retire le cercle de visée qu'une touche RELÂCHÉE a laissé derrière elle.
+  // 🔴 Appelée par Bourgeon::OnGameFrame, donc hors frame ImGui : elle émet
+  // CMode::SendMsg(0x47), le dispatcher que notre propre hook intercepte.
+  // Voir le corps pour ce qu'elle refuse de désarmer, et pourquoi.
+  void UpdateDisarm();
+
   void OnRenderUI() override;
   void OnModeSwitch(ModeMgr::ModeType mode_type, const char* map_name) override;
 
@@ -179,6 +220,11 @@ class QuickCast : public Plugin {
   // n'est plus enfoncée. Une action déclenchée AUTREMENT qu'au clavier n'a donc
   // rien à répéter.
   unsigned long TakePendingKey();
+
+  // Ce mode de visée est-il pris en charge par QuickCast ? Décide de qui est
+  // responsable du cercle : là où on ne prend pas la main, le déroulé natif
+  // « la touche arme, le clic lance » doit rester intact.
+  bool ClaimsMode(int mode) const;
 
   bool ground_enabled_ = false;  // sorts de zone : cast direct sous la souris
   bool target_enabled_ = false;  // sorts ciblés : cast direct sur le survolé
@@ -212,6 +258,14 @@ class QuickCast : public Plugin {
   // pour l'action qu'elle amène, c'est-à-dire dans la passe de message qui suit.
   unsigned long pending_vk_    = 0;
   uint32_t      pending_vk_ms_ = 0;
+
+  // Visée armée par une touche À NOUS, et pas encore retirée. `arm_vk_ == 0` =
+  // rien à surveiller. Séparé de `repeat_vk_` exprès : la répétition s'éteint
+  // dans Update() (passe UI), le désarmement dans UpdateDisarm() (passe frame,
+  // hors ImGui) — un seul état partagé entre les deux les ferait se voler le
+  // relâchement de touche.
+  unsigned long arm_vk_   = 0;
+  int           arm_mode_ = 0;
 
   // Lancement mémorisé, rejoué par Update() tant que `repeat_vk_` est enfoncée.
   // repeat_vk_ == 0 = pas de répétition en cours (déclenchement à la souris, par

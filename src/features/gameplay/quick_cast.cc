@@ -5,6 +5,7 @@
 #include "bourgeon.h"
 #include "features/moonlight_ui/moonlight_ui.h"
 #include "features/overlays/skill_bar.h"  // RepeatItemSlot (rejeu d'une case d'objet)
+#include "features/overlays/target_frame.h"  // la cible du HUD, comme source de visée
 #include "features/staff_gate.h"
 #include "imgui.h"
 #include "ragnarok/globals.h"
@@ -176,6 +177,21 @@ void* GetOwnActor(void* cmode) {
   return actor;
 }
 
+// ── La cible du HUD comme SOURCE DE VISÉE ───────────────────────────────────
+// Le HUD de cible sait qui le joueur a désigné en dernier ; quand il accepte de
+// le dire (réglage « Les sorts ciblés partent sur la cible »), une compétence
+// n'a plus besoin de la souris pour savoir sur qui partir. Toute la validation
+// est CHEZ LUI — c'est lui qui possède la cible, et les règles d'une cible
+// légale sont les mêmes que celles de PickTargetGid.
+bool HudCastArmed() {
+  auto* tf = Bourgeon::Instance().target_frame();
+  return tf != nullptr && tf->CastsOnHudTarget();
+}
+unsigned HudTargetGid(int mode) {
+  auto* tf = Bourgeon::Instance().target_frame();
+  return tf ? tf->SkillTargetGid(mode) : 0u;
+}
+
 // L'utilisateur vise-t-il le monde, ou une fenêtre native ? (Pas d'effet de bord :
 // simple hit-test.) Viser une fenêtre = il ne désigne pas le sol derrière.
 bool CursorOverNativeWindow() {
@@ -188,6 +204,21 @@ bool CursorOverNativeWindow() {
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     return true;  // dans le doute, on laisse le ciblage natif
   }
+}
+
+// La souris désigne-t-elle le MONDE ?
+//
+// 🔴 Séparé des gardes générales depuis que la visée peut venir d'ailleurs : ce
+// test ne concerne QUE les visées à la souris (la cellule d'un sort au sol, et
+// l'entité sous le curseur). La cible du HUD, elle, ne demande rien à la souris
+// — refuser de lancer parce que le curseur passe au-dessus d'une fenêtre serait
+// exactement le contraire de ce que ce réglage promet.
+bool MouseAimsAtWorld() {
+  // Notre interface : l'utilisateur ne désigne pas le monde derrière.
+  if (ImGui::GetCurrentContext() != nullptr && ImGui::GetIO().WantCaptureMouse)
+    return false;
+  if (CursorOverNativeWindow()) return false;
+  return true;
 }
 
 // Résout la cible sous le curseur pour les modes 2 (offensif) et 4 (soutien).
@@ -262,7 +293,7 @@ bool ReadTargetingState(void* cmode, int* mode, int* skill, int* level) {
 // que de les relire dans `cmode` — la répétition les rejoue alors que le ciblage
 // natif a justement été désarmé par le premier lancement.
 bool EmitCast(void* cmode, void* actor, int mode, int skill, int level,
-              bool ground_on, bool target_on) {
+              bool ground_on, bool target_on, bool mouse_on_world) {
   __try {
     // Compétence encore en cooldown : le serveur refuserait, inutile d'émettre.
     // C'est la VRAIE donnée, préférable à un délai deviné — mais elle ne couvre
@@ -277,7 +308,10 @@ bool EmitCast(void* cmode, void* actor, int mode, int skill, int level,
       return false;
 
     if (mode == 1) {  // sol
-      if (!ground_on) return false;
+      // Un sort de zone vise une CELLULE, et il n'y en a qu'une source : le
+      // curseur. Si celui-ci ne désigne pas le monde, il n'y a rien à viser —
+      // et rien que la cible du HUD puisse remplacer.
+      if (!ground_on || !mouse_on_world) return false;
       int x = -1, y = -1;
       using PickGround_t = uint8_t(__thiscall*)(void*, int*, int*);
       if ((reinterpret_cast<PickGround_t>(kPickGroundCellAddr)(cmode, &x, &y) &
@@ -290,8 +324,12 @@ bool EmitCast(void* cmode, void* actor, int mode, int skill, int level,
     }
 
     if (mode == 2 || mode == 4) {  // cible offensive / soutien
-      if (!target_on) return false;
-      const unsigned gid = PickTargetGid(mode);
+      // 🔴 La SOURIS d'abord, le HUD ensuite. Viser quelqu'un du curseur est un
+      // geste explicite : il ne doit jamais se faire voler par la cible du HUD.
+      // Le second n'intervient que là où le premier ne dit rien — curseur dans
+      // le vide, sur une fenêtre, ou visée à la souris tout simplement éteinte.
+      unsigned gid = (target_on && mouse_on_world) ? PickTargetGid(mode) : 0u;
+      if (gid == 0) gid = HudTargetGid(mode);
       if (gid == 0) return false;
       // ⚠ Le GID part en 64 bits avec un mot haut à ZÉRO, pas une extension de
       // signe : c'est ce que fait le natif, et un AID au bit 31 armé deviendrait
@@ -311,7 +349,9 @@ bool EmitCast(void* cmode, void* actor, int mode, int skill, int level,
 
 // Conditions communes au premier lancement et à chaque répétition.
 bool QuickCast::CanCastNow() const {
-  if (!ground_enabled_ && !target_enabled_) return false;
+  // Trois opt-in mènent ici, dont un qui n'est pas à nous : le HUD de cible peut
+  // fournir la visée à lui seul, QuickCast entièrement éteint par ailleurs.
+  if (!ground_enabled_ && !target_enabled_ && !HudCastArmed()) return false;
   if (Bourgeon::Instance().client().timestamp() != 20250716) return false;
   if (!Bourgeon::Instance().IsGameActive() ||
       Bourgeon::Instance().IsMapLoading())
@@ -320,11 +360,9 @@ bool QuickCast::CanCastNow() const {
   // physiquement, mais elle ne s'adresse plus à lui (cf. GameHasFocus). Sans
   // effet sur le premier lancement — il vient d'une frappe reçue par le jeu.
   if (!GameHasFocus()) return false;
-  // Curseur au-dessus de notre interface ou d'une fenêtre native : l'utilisateur
-  // ne désigne pas le monde derrière, on laisse le ciblage classique.
-  if (ImGui::GetCurrentContext() != nullptr && ImGui::GetIO().WantCaptureMouse)
-    return false;
-  if (CursorOverNativeWindow()) return false;
+  // ⚠ Le curseur n'est PLUS testé ici. Il ne conditionne que les visées à la
+  // souris, et c'est EmitCast qui les distingue désormais (MouseAimsAtWorld) :
+  // une visée par le HUD n'a que faire de l'endroit où le curseur se trouve.
   return true;
 }
 
@@ -351,6 +389,16 @@ unsigned long QuickCast::TakePendingKey() {
   return vk;
 }
 
+// Ce mode de visée est-il le NÔTRE ? C'est ce qui décide si une touche a le
+// droit de laisser un cercle derrière elle (cf. UpdateDisarm) : là où QuickCast
+// ne prend pas la main, le déroulé natif « la touche arme, le clic lance » doit
+// rester intact.
+bool QuickCast::ClaimsMode(int mode) const {
+  if (mode == 1) return ground_enabled_;
+  if (mode == 2 || mode == 4) return target_enabled_ || HudCastArmed();
+  return false;  // 3 et 5 : ciblage natif, on n'y touche pas
+}
+
 void QuickCast::OnEnterTargeting(void* cmode) {
   // Un 0x48 consomme la touche en attente, qu'il aboutisse ou non (cf.
   // TakePendingKey).
@@ -359,21 +407,51 @@ void QuickCast::OnEnterTargeting(void* cmode) {
 
   if (!CanCastNow()) return;
 
-  const uint32_t now = GetTickCount();
-  const uint32_t period = repeat_ms_ > 0 ? static_cast<uint32_t>(repeat_ms_) : 0;
-  if (last_cast_ms_ != 0 && now - last_cast_ms_ < period) return;
-
   void* actor = GetOwnActor(cmode);
   if (!actor) return;
 
+  // 🔴 L'état de ciblage est lu AVANT la cadence, et ce n'est pas cosmétique :
+  // c'est lui qui dit si le cercle qui vient d'apparaître nous appartient. Le
+  // refus par la cadence sortait autrefois d'ici sans rien noter — et laissait
+  // donc exactement le cercle orphelin que UpdateDisarm existe pour retirer.
   int mode = 0, skill = 0, level = 0;
   if (!ReadTargetingState(cmode, &mode, &skill, &level)) return;
-  if (!EmitCast(cmode, actor, mode, skill, level, ground_enabled_,
-                target_enabled_))
+  const bool claimed = ClaimsMode(mode);
+
+  // Une touche à NOUS vient d'armer une visée : on en devient responsable
+  // jusqu'à son relâchement. Sinon on lâche toute surveillance en cours — le
+  // cercle qui vient d'apparaître n'est pas le nôtre, et le précédent n'existe
+  // plus (un 0x48 remplace la visée armée).
+  if (vk != 0 && claimed) {
+    arm_vk_   = vk;
+    arm_mode_ = mode;
+  } else {
+    arm_vk_ = 0;
+  }
+
+  const uint32_t now = GetTickCount();
+  const uint32_t period = repeat_ms_ > 0 ? static_cast<uint32_t>(repeat_ms_) : 0;
+  const bool too_soon = last_cast_ms_ != 0 && now - last_cast_ms_ < period;
+
+  if (too_soon || !EmitCast(cmode, actor, mode, skill, level, ground_enabled_,
+                            target_enabled_, MouseAimsAtWorld())) {
+    // Rien n'est parti : cadence, cooldown, ou simplement rien de visé. On ARME
+    // QUAND MÊME la répétition — c'est ce qui permet à un lancement refusé sur
+    // l'instant d'aboutir sans relâcher : la cadence s'écoule, le cooldown
+    // tombe, ou le curseur arrive sur une cible. Sans cela, marteler deux
+    // touches de suite en perdait une, silencieusement.
+    if (vk != 0 && claimed) {
+      repeat_vk_    = vk;
+      repeat_mode_  = mode;
+      repeat_skill_ = skill;
+      repeat_level_ = level;
+    }
     return;
+  }
 
   last_cast_ms_ = now;
   LeaveTargeting(cmode);
+  arm_vk_ = 0;  // le cercle est déjà retiré, plus rien à surveiller
 
   // Armer la répétition — seulement si une touche fraîche, encore enfoncée, a
   // amené ce lancement (TakePendingKey s'en assure) : cela distingue le clavier
@@ -384,6 +462,53 @@ void QuickCast::OnEnterTargeting(void* cmode) {
     repeat_skill_ = skill;
     repeat_level_ = level;
   }
+}
+
+// ── Une touche QuickCast ne laisse jamais de cercle derrière elle ────────────
+//
+// ⏱ Symptôme vu en jeu : on relâche la touche et le cercle de visée reste armé.
+// Il n'est pas seulement inesthétique — c'est un PIÈGE : le prochain clic, qui
+// visait autre chose, lance la compétence oubliée.
+//
+// Il apparaît chaque fois que le natif a armé la visée (case 0x48) sans que
+// QuickCast ait pu lancer : cadence pas écoulée, compétence en cooldown, ou
+// curseur qui ne désigne rien d'exploitable. La répétition armée ci-dessus
+// rattrape les deux premiers dès qu'ils se lèvent ; le dernier, non — et de
+// toute façon il faut bien un état de sortie propre.
+//
+// 🔴 Ne vaut QUE pour une visée armée par une TOUCHE, et dans un mode que
+// QuickCast prend en charge. Deux exclusions délibérées :
+//   · lancer une compétence en CLIQUANT sa case de barre de raccourcis ne pose
+//     aucune touche (TakePendingKey rend 0) : le déroulé natif « ça arme, je
+//     clique ma cible » reste entier. C'est la voie qui reste pour viser à la
+//     main ce que QuickCast refuse de viser tout seul — un JOUEUR en mode
+//     offensif, notamment (cf. PickTargetGid) ;
+//   · les modes 3 et 5, que QuickCast ne touche pas.
+//
+// 🔴 Appelée depuis Bourgeon::OnGameFrame, donc HORS frame ImGui : elle émet
+// CMode::SendMsg, le dispatcher que notre propre hook intercepte — le jouer
+// entre NewFrame() et Render() ferait tourner OnProcessInput au milieu d'une
+// frame. C'est aussi pourquoi elle n'est pas dans Update().
+void QuickCast::UpdateDisarm() {
+  if (arm_vk_ == 0) return;
+  // Toujours enfoncée : le joueur n'a pas fini son geste.
+  if ((GetAsyncKeyState(static_cast<int>(arm_vk_)) & 0x8000) != 0) return;
+  const int armed_mode = arm_mode_;
+  arm_vk_ = 0;
+
+  void* cmode = GetGameMode();
+  if (!cmode) return;
+  if (!GetOwnActor(cmode)) return;  // valide aussi la vtable du mode
+
+  int mode = 0, skill = 0, level = 0;
+  // Plus rien d'armé : le lancement a fini par partir, ou le natif a désarmé
+  // tout seul. Rien à faire.
+  if (!ReadTargetingState(cmode, &mode, &skill, &level)) return;
+  // Autre chose est armé depuis : ce cercle-là n'est pas celui qu'on surveille,
+  // et l'effacer volerait au joueur une visée qu'il vient de demander.
+  if (mode != armed_mode) return;
+
+  LeaveTargeting(cmode);
 }
 
 void QuickCast::Update() {
@@ -418,7 +543,7 @@ void QuickCast::Update() {
   // est re-résolu (donc suivre un monstre du curseur enchaîne dessus). Si plus
   // rien n'est visé, on n'émet pas — mais on reste armé, le curseur peut revenir.
   if (EmitCast(cmode, actor, repeat_mode_, repeat_skill_, repeat_level_,
-               ground_enabled_, target_enabled_))
+               ground_enabled_, target_enabled_, MouseAimsAtWorld()))
     last_cast_ms_ = now;
 }
 
@@ -488,6 +613,9 @@ void QuickCast::OnModeSwitch(ModeMgr::ModeType mode_type,
   repeat_vk_  = 0;
   pending_vk_ = 0;
   item_vk_    = 0;
+  // Le mode qui portait la visée n'existe plus : il n'y a plus de cercle à
+  // retirer, et le `cmode` qu'on irait interroger ne serait pas le même.
+  arm_vk_     = 0;
 }
 
 void QuickCast::DrawSettings() {

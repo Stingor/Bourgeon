@@ -157,7 +157,7 @@ void HudBarText(ImDrawList* draw_list, ImVec2 p0, ImVec2 p1, const char* text) {
 }
 
 bool BeginHudFrame(const char* id, HudRect* rect, const HudFrameOpts& opts,
-                   bool* geometry_changed) {
+                   bool* geometry_changed, HudFrameClicks* clicks) {
   ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar |
                            ImGuiWindowFlags_NoScrollbar |
                            ImGuiWindowFlags_NoCollapse |
@@ -168,7 +168,9 @@ bool BeginHudFrame(const char* id, HudRect* rect, const HudFrameOpts& opts,
                            ImGuiWindowFlags_NoMove |    // déplacement conduit ici
                            ImGuiWindowFlags_NoResize |  // idem
                            kBackgroundWindowFlags;      // jamais devant une vraie fenêtre
-  if (opts.locked) flags |= ImGuiWindowFlags_NoInputs;  // fige + clic traversant
+  // Verrouillé = figé ET clic-traversant… SAUF si le cadre est déclaré
+  // cliquable : il reste figé, mais reprend la souris pour agir (cf. l'en-tête).
+  if (opts.locked && !opts.clickable) flags |= ImGuiWindowFlags_NoInputs;
 
   // La fenêtre est ré-épinglée sur la géométrie mémorisée à chaque frame : le
   // dessin, la zone cliquable et la poignée restent en phase.
@@ -320,6 +322,27 @@ bool BeginHudFrame(const char* id, HudRect* rect, const HudFrameOpts& opts,
       g_drag_group = 0;
       g_drag_id[0] = '\0';
     }
+  } else if (opts.clickable) {
+    // Cadre VERROUILLÉ mais actif : une seule zone cliquable couvrant tout, et
+    // aucune géométrie qui bouge. Un bouton plutôt qu'un simple test de survol,
+    // pour qu'ImGui possède vraiment l'appui — c'est ce qui empêche le clic
+    // d'atteindre le jeu par le WndProc, et donc de partir au sol derrière.
+    ImGui::SetCursorPos(ImVec2(0.0f, 0.0f));
+    ImGui::InvisibleButton("##hudframe_proxy", sz,
+                           ImGuiButtonFlags_MouseButtonLeft |
+                               ImGuiButtonFlags_MouseButtonRight);
+    if (clicks) {
+      clicks->hovered = ImGui::IsItemHovered();
+      clicks->left    = ImGui::IsItemClicked(ImGuiMouseButton_Left);
+      clicks->right   = ImGui::IsItemClicked(ImGuiMouseButton_Right);
+    }
+    // Le survol s'allume : sans lui, rien ne distingue un cadre qui AGIT d'un
+    // cadre qui se contente d'afficher, et le joueur ne peut pas savoir où son
+    // clic va partir.
+    if (ImGui::IsItemHovered()) highlight_edges = kEdgeL | kEdgeR | kEdgeT | kEdgeB;
+    // Le curseur repart d'où il était : tout le contenu se dessine ensuite en
+    // coordonnées absolues, mais autant ne rien laisser traîner.
+    ImGui::SetCursorPos(ImVec2(0.0f, 0.0f));
   }
 
   // Fond et liseré, sous le contenu.

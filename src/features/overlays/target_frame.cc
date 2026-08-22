@@ -32,6 +32,23 @@ namespace {
 // hors jeu, là où lire le pointeur de mode à la main tomberait sur celui du login.
 constexpr uintptr_t kActorFindByGid = 0x00d806a0;
 
+// `GameMode_PostActorClickAction(this, aid, type)` __thiscall : TOUT ce que le
+// clic gauche sur une entité produit. C'est elle qui traduit « on a cliqué ce
+// GID » en action, selon le ciblage armé (`CGameMode+0x408`) — armement d'une
+// approche/attaque quand rien n'est armé, lancement de la compétence sur la
+// cible en modes 2 et 4. Rien à imiter : on la rappelle avec notre GID.
+constexpr uintptr_t kPostActorClickAction = 0x00c753a0;
+// Le `type` du clic, tel que le natif le passe sur une entité ordinaire. Il
+// finit dans l'action en attente de l'acteur (`+0x500`).
+constexpr int kClickTypeNormal = 1;
+
+// `CMode::SendMsg`, par la vtable du mode (index 6 = vtable+0x18). Le message
+// 0x47 quitte le mode ciblage : le pipeline souris natif l'émet après un
+// lancement, et notre clic de cadre doit faire de même — sinon le curseur de
+// visée reste armé et le clic suivant relance la compétence.
+constexpr int kVtblSendMsgIndex   = 6;
+constexpr int kSendMsgLeaveTarget = 0x47;
+
 // `CNameDict_GetEntryOrRequest(dict, gid)` __thiscall : rend l'entrée si le nom
 // est connu, sinon met le GID en file de demande au serveur et rend une entrée
 // vide statique. C'est aussi ce qui fait ARRIVER les noms encore inconnus.
@@ -306,10 +323,68 @@ uint32_t ReadSelection(void* game_mode) {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0u; }
 }
 
+// Le mode de ciblage armé (`+0x408`) : 0 aucun · 1 sol · 2 cible offensive ·
+// 4 soutien · 3 et 5 gardent le ciblage natif.
+int ReadSkillTargetMode(void* game_mode) {
+  __try {
+    return game_mode ? Read<int32_t>(game_mode, kGm_SkillTargetMode) : 0;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+}
+
+// Rejoue le clic natif sur une entité, avec NOTRE GID. Cf. kPostActorClickAction :
+// c'est la fonction qui porte tout le sens du clic, y compris le lancement d'une
+// compétence armée. Rend true si l'appel a eu lieu.
+bool RunActorClick(void* game_mode, uint32_t gid) {
+  __try {
+    if (!game_mode || gid == 0) return false;
+    using ClickFn = int(__thiscall*)(void*, uint32_t, int);
+    reinterpret_cast<ClickFn>(kPostActorClickAction)(game_mode, gid,
+                                                     kClickTypeNormal);
+    return true;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
+// Quitte le mode ciblage, comme le fait le pipeline souris natif après un
+// lancement. Sans lui, le curseur de visée resterait armé.
+void LeaveSkillTargeting(void* game_mode) {
+  __try {
+    if (!game_mode) return;
+    using SendMsgFn = int(__thiscall*)(void*, int, int, int, int, int);
+    void** vtbl = *reinterpret_cast<void***>(game_mode);
+    if (!vtbl) return;
+    reinterpret_cast<SendMsgFn>(vtbl[kVtblSendMsgIndex])(
+        game_mode, kSendMsgLeaveTarget, 0, 0, 0, 0);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+  }
+}
+
 int ReadActorInt(void* actor, int off) {
   __try {
     return actor ? Read<int32_t>(actor, off) : 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+}
+
+// Ce GID est-il une cible LÉGALE pour une compétence armée dans ce mode ?
+//
+// 🔴 Les règles sont ici parce qu'elles ne sont nulle part ailleurs : le chemin
+// natif qui les portait (`CursorMgr_UpdateHover`) n'est pas emprunté quand la
+// visée ne vient pas de la souris. Ce sont exactement celles de
+// `QuickCast::PickTargetGid`, plus le refus du cadavre — la sélection du HUD,
+// elle, peut en garder un (un sort de résurrection le désigne).
+uint32_t ValidSkillTarget(uint32_t gid, int mode) {
+  __try {
+    void* actor = FindActor(gid);
+    if (!actor) return 0u;
+    if (ActorOptions(actor) & kOptionHiddenMask) return 0u;
+    const uint32_t own = OwnAid();
+    if (own != 0 && gid == own) return 0u;
+    if (mode == 2) {  // offensif
+      if (!IsMonsterJob(static_cast<unsigned>(Read<uint32_t>(actor, kAct_BaseJob))))
+        return 0u;    // un joueur reste au clic manuel (PVP/GVG)
+      if (Read<int32_t>(actor, kAct_State) == 3) return 0u;  // cadavre
+    }
+    return gid;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0u; }
 }
 
 // Recopie une `std::string` du client, SSO comprise. Rend false si le champ est
@@ -876,10 +951,10 @@ void TargetFrame::DrawHud() {
     PollServer();
   }
 
-  DrawElements(actor);
+  DrawElements(gm, actor);
 }
 
-void TargetFrame::DrawElements(void* actor) {
+void TargetFrame::DrawElements(void* game_mode, void* actor) {
   const AlignGrid* grid = nullptr;
   if (auto* mui = Bourgeon::Instance().moonlight_ui()) grid = &mui->grid_;
 
@@ -913,6 +988,19 @@ void TargetFrame::DrawElements(void* actor) {
   if (scale > 3.0f) scale = 3.0f;
   const float font_px = ImGui::GetFontSize() * scale;
 
+  // ── Les cadres agissent-ils comme la cible, CETTE frame ? ─────────────────
+  // Quatre conditions, et la dernière est la moins évidente : le clic ne prend
+  // la main que si CLIQUER L'ENTITÉ voudrait dire quelque chose. Un sort AU SOL
+  // (mode 1) vise une case, résolue sous le curseur — un cadre n'en est pas
+  // une, il redevient donc clic-traversant et le clic part au sol comme avant.
+  // Les modes 3 et 5 gardent le ciblage natif, même raisonnement.
+  //
+  // 🔴 Verrouillé seulement : cadres déverrouillés, le clic sert à les POSER.
+  const int skill_mode = ReadSkillTargetMode(game_mode);
+  const bool proxy_frames =
+      proxy_click_ && actor != nullptr && locked_ && gid_ != 0 &&
+      (skill_mode == 0 || skill_mode == 2 || skill_mode == 4);
+
   for (int i = 0; i < kElemCount; ++i) {
     Elem& elem = elems_[i];
     if (!elem.show) continue;
@@ -938,15 +1026,17 @@ void TargetFrame::DrawElements(void* actor) {
     opts.siblings = siblings;
     opts.index    = i;
     opts.sticky   = sticky_;
+    opts.clickable = proxy_frames;
 
     bool moved = false;
+    ro::HudFrameClicks clicks;
     char id[64];
     snprintf(id, sizeof(id), "##bourgeon_target_%s", kElemKeys[i]);
 
     // 🔴 C'est `elem.rect` LUI-MÊME qui est passé : le cadre écrit dedans, et
     // écrit aussi dans celui des frères en déplacement de bloc. Recopier dans un
     // temporaire ferait perdre le mouvement des frères.
-    if (ro::BeginHudFrame(id, &elem.rect, opts, &moved)) {
+    if (ro::BeginHudFrame(id, &elem.rect, opts, &moved, &clicks)) {
       const ImVec2 p0 = ImGui::GetWindowPos();
       const ImVec2 sz = ImGui::GetWindowSize();
       const ImVec2 p1(p0.x + sz.x, p0.y + sz.y);
@@ -1197,8 +1287,56 @@ void TargetFrame::DrawElements(void* actor) {
     }
     ro::EndHudFrame();
 
+    // Le clic est MIS EN ATTENTE, jamais joué ici : rejouer le clic natif est un
+    // appel qui peut ouvrir une boîte de message (surcharge de poids) et
+    // relancer le tick du mode — interdit entre NewFrame et Render. Cf.
+    // OnGameFramePulse.
+    if (clicks.left) proxy_click_gid_ = gid_;
+
     if (moved) geometry_dirty_ = true;  // MoonlightUi persiste, une fois
   }
+}
+
+// ── Le clic reçu par un cadre, rejoué hors frame ImGui ──────────────────────
+
+void TargetFrame::OnGameFramePulse() {
+  if (proxy_click_gid_ == 0) return;
+  const uint32_t gid = proxy_click_gid_;
+  proxy_click_gid_ = 0;
+
+  if (!enabled_ || !proxy_click_) return;
+  auto& bourgeon = Bourgeon::Instance();
+  if (bourgeon.client().timestamp() != 20250716) return;
+  // Mêmes gardes que partout ailleurs : c'est `DrawHud` qui tient `gid_` à
+  // jour, et il ne tourne ni pendant un chargement de carte, ni hors du monde.
+  if (bourgeon.IsMapLoading() || !bourgeon.IsGameActive()) return;
+
+  void* gm = ActiveGameMode();
+  if (!gm) return;
+  // La cible a pu disparaître entre le clic et ce battement (elle est morte, on
+  // l'a perdue de vue) : cliquer un GID qui n'existe plus n'a pas de sens.
+  if (!FindActor(gid)) return;
+
+  // Le ciblage est relu MAINTENANT, pas celui de la frame du clic : c'est lui
+  // que le natif va consulter. Il n'a de toute façon pas pu changer entre les
+  // deux — rien n'arme une compétence pendant que la souris descend.
+  const int skill_mode = ReadSkillTargetMode(gm);
+
+  if (!RunActorClick(gm, gid)) return;
+
+  // Compétence lancée : on désarme le ciblage, comme le fait le pipeline souris
+  // natif après un lancement. Sans cela, le curseur de visée resterait armé et
+  // le clic suivant relancerait la compétence.
+  if (skill_mode == 2 || skill_mode == 4) LeaveSkillTargeting(gm);
+}
+
+uint32_t TargetFrame::SkillTargetGid(int targeting_mode) const {
+  if (!enabled_ || !cast_on_target_) return 0u;
+  if (gid_ == 0 || hidden_) return 0u;
+  if (targeting_mode != 2 && targeting_mode != 4) return 0u;
+  // Les offsets sont ceux de CE build : ailleurs, on ne propose rien.
+  if (Bourgeon::Instance().client().timestamp() != 20250716) return 0u;
+  return ValidSkillTarget(gid_, targeting_mode);
 }
 
 // ── Panneau de réglages ─────────────────────────────────────────────────────
@@ -1214,7 +1352,8 @@ bool TargetFrame::DrawSettings() {
       "aussi longtemps. Tout s'éteint si la cible change, si elle s'éloigne "
       "hors de vue, ou par « Masquer la fenêtre de cible » dans le menu "
       "contextuel de l'entité.\n\nDécoché, TOUT ce qui suit s'arrête : le HUD, "
-      "la flèche, les raccourcis de ciblage et le clic sans attaque."));
+      "la flèche, les raccourcis de ciblage, le clic sans attaque, les cadres "
+      "qui agissent et les sorts qui partent sur la cible."));
 
   // 🔴 Un interrupteur MAÎTRE grise ce qu'il commande. Sans cela, un réglage
   // resterait cliquable et sans effet — le pire des deux mondes : on croit
@@ -1290,6 +1429,42 @@ bool TargetFrame::DrawSettings() {
       "Le délai du double-clic est celui de Windows.\n\nLes compétences ne sont "
       "pas concernées, ni les ordres au pet, à l'homoncule ou au mercenaire, ni "
       "s'asseoir."));
+
+  changed |= ro::RoCheckbox(i18n::Tr("Les sorts ciblés partent sur la cible"),
+                            &cast_on_target_);
+  SameLine();
+  HelpMarker(i18n::Tr(
+      "Une compétence ciblée demande normalement deux gestes : la touche arme "
+      "la visée, le clic désigne qui. Coché, c'est la cible du HUD qui répond — "
+      "la souris n'a plus à être sur l'entité.\n\nElle garde la priorité quand "
+      "elle désigne vraiment quelqu'un : ce réglage comble un vide, il ne "
+      "détourne pas une visée. Les sorts de zone ne sont pas concernés, ils "
+      "visent une case.\n\nComme tout QuickCast, maintenir la touche relance la "
+      "compétence sur la cible."));
+
+  changed |= ro::RoCheckbox(i18n::Tr("Les cadres agissent comme la cible"),
+                            &proxy_click_);
+  SameLine();
+  HelpMarker(i18n::Tr(
+      "Cliquer un cadre du HUD revient à cliquer l'entité elle-même : attaque, "
+      "compétence ciblée armée, double-clic — tout se comporte à l'identique, "
+      "parce que c'est le même chemin du client qui est rejoué.\n\n⚠ Un cadre "
+      "qui agit REPREND LA SOURIS au jeu tant que le curseur est dessus : ni "
+      "clic vers le sol derrière, ni rotation de caméra. Il ne le fait que "
+      "quand il y a une cible ET que le clic aurait un sens — un sort de zone "
+      "vise une case, le cadre lui laisse alors le passage.\n\nSans effet tant "
+      "que les cadres ne sont pas verrouillés : le clic sert alors à les "
+      "poser."));
+
+  // 🔴 Coché et sans effet, c'est exactement ce que le reste de ce panneau
+  // s'interdit. Tant que les cadres ne sont pas verrouillés, le clic leur sert
+  // à se faire poser : on le dit ici plutôt que dans une infobulle qu'on
+  // n'ouvre qu'en cas de doute. Ocre d'avertissement du projet.
+  if (proxy_click_ && !locked_) {
+    ImGui::TextColored(ImVec4(166 / 255.0f, 102 / 255.0f, 0.0f, 1.0f),
+                       i18n::Tr("Sans effet : les cadres ne sont pas "
+                                "verrouillés, le clic sert à les déplacer."));
+  }
 
   Separator();
   SeparatorText(i18n::Tr("Ciblage au clavier"));

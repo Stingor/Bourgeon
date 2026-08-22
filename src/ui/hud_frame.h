@@ -88,6 +88,24 @@ struct HudFrameOpts {
   bool  sticky   = true;
   float min_w    = 8.0f;     // taille minimale, en dessous de laquelle le
   float min_h    = 8.0f;     // redimensionnement s'arrête
+  // 🔴 Cadre CLIQUABLE bien que VERROUILLÉ : il garde sa géométrie figée, mais
+  // reprend la souris au jeu au lieu de la laisser passer. C'est la différence
+  // entre un HUD qui AFFICHE et un HUD dont on SE SERT.
+  //
+  // ⚠ La reprise est TOTALE, comme pour n'importe quelle fenêtre ImGui : le
+  // clic droit et la molette ne vont plus au jeu non plus tant que le curseur
+  // est dessus (le WndProc les bloque dès qu'une fenêtre ImGui non
+  // clic-traversante est sous le curseur). Un cadre cliquable est donc à
+  // n'allumer que quand il sert vraiment — l'appelant décide à chaque frame.
+  bool  clickable = false;
+};
+
+// Ce qu'un cadre CLIQUABLE (`opts.clickable`) a reçu cette frame. Rempli par
+// BeginHudFrame quand l'appelant en fournit un ; laissé à zéro sinon.
+struct HudFrameClicks {
+  bool hovered = false;
+  bool left    = false;  // appui gauche FRAIS sur le cadre
+  bool right   = false;  // appui droit  FRAIS sur le cadre
 };
 
 // Ouvre le cadre `id` (identifiant ImGui, donc stable et unique). Met à jour
@@ -97,8 +115,11 @@ struct HudFrameOpts {
 //
 // Renvoie true si le contenu doit être dessiné. `EndHudFrame` doit TOUJOURS être
 // appelé ensuite, y compris sur false (règle Begin/End d'ImGui).
+//
+// `clicks` ne sert qu'aux cadres cliquables ; nul, ou cadre non cliquable, il
+// n'est pas touché.
 bool BeginHudFrame(const char* id, HudRect* rect, const HudFrameOpts& opts,
-                   bool* geometry_changed);
+                   bool* geometry_changed, HudFrameClicks* clicks = nullptr);
 void EndHudFrame();
 
 // Texte CENTRÉ dans le cadre, à `px` pixels de haut, avec une ombre portée

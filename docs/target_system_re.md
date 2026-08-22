@@ -718,6 +718,107 @@ repasser par la souris.
 
 ---
 
+## 5 bis. « Cliquer une entité » tient dans UNE fonction
+
+`GameMode_PostActorClickAction` (`0x00C753A0`) ne fait pas que l'armement
+d'attaque du §4 : c'est **elle** qui porte tout le sens du clic gauche sur une
+entité, et elle choisit d'après le ciblage armé (`CGameMode+0x408`) :
+
+| `+0x408` | Ce qu'elle poste à l'acteur du joueur |
+|---|---|
+| `0` (rien d'armé) | message **10** — approche puis attaque (la file `+0x500`/`+0x514` du §4) |
+| `2` ou `4` (cible) | messages **41** puis **90** — la compétence `+0x40C` part sur ce GID, au niveau `+0x414` |
+| `1`, `3`, `5` | **rien** |
+
+En tête, une seule garde, et elle n'a rien à voir avec le ciblage : au-delà de
+**90 % de poids** (`g_Weight` / `g_MaxWeight`), elle affiche `MsgString 0x133`
+et **abandonne** — sauf pour les identifiants de compétence `10000` et `40000`.
+
+> 🔴 **Trois conséquences, toutes exploitées.**
+>
+> 1. La sélection (`+0xF4`/`+0xF0`) est écrite par l'**appelant**, avant cet
+>    appel : d'où « cibler sans engager » (§ *Cibler sans frapper*).
+> 2. Le mode `1` (au sol) n'y passe pas : un sort de zone est résolu ailleurs,
+>    à partir de la **cellule sous le curseur**. Cliquer un monstre avec un sort
+>    de zone armé ne le vise pas *lui*, ça vise sa case — et par le chemin du sol.
+> 3. **Il n'y a donc rien à imiter.** Rappeler cette fonction avec un GID à nous,
+>    c'est produire un clic sur cette entité, à l'identique — y compris nos
+>    propres règles, puisque le hook de Bourgeon est posé ici.
+
+### Les cadres du HUD comme COPIE de l'entité
+
+`TargetFrame` (réglage « Les cadres agissent comme la cible ») s'appuie
+entièrement là-dessus : un clic gauche sur n'importe lequel des cinq cadres
+rappelle `PostActorClickAction` avec le GID suivi. Attaque, approche, compétence
+ciblée armée, dispense du double-clic : tout tombe du client, aucune règle n'est
+réécrite.
+
+Deux points de mise en œuvre qui ne sont **pas** des détails :
+
+* **Le cadre doit reprendre la souris au jeu.** Un cadre de HUD verrouillé est
+  `NoInputs`, donc clic-traversant (`ui/hud_frame.h`) : le clic irait au sol
+  derrière. `HudFrameOpts::clickable` lève ce drapeau — le cadre reste figé mais
+  possède l'appui, et le WndProc cesse alors de transmettre le clic au jeu.
+  La reprise est **totale** (clic droit et molette compris) : c'est pourquoi un
+  cadre n'est cliquable que quand une cible est affichée **et** que le clic
+  voudrait dire quelque chose. En mode `1` il redevient traversant, exprès —
+  un sort de zone vise une case, et le cadre n'en est pas une.
+* **L'appel est différé hors frame ImGui** (`Bourgeon::OnGameFrame`) : la garde
+  de surcharge ci-dessus ouvre une boîte de message native, qui relance le tick
+  du mode. Jamais entre `NewFrame()` et `Render()`.
+
+Après un lancement en mode `2`/`4`, on émet `CMode::SendMsg(0x47)` — le pipeline
+souris natif le fait aussi, sans quoi le curseur de visée resterait armé et le
+clic suivant relancerait la compétence.
+
+### La cible du HUD comme SOURCE DE VISÉE (sans la souris)
+
+Réglage « Les sorts ciblés partent sur la cible ». Le lancement reste celui de
+QuickCast (messages d'acteur du clic natif) ; **seule la réponse à « sur qui ? »
+change** : `TargetFrame::SkillTargetGid` la fournit quand le quadtree de picking
+ne donne rien.
+
+| Règle | Pourquoi |
+|---|---|
+| la SOURIS d'abord, le HUD ensuite | viser du curseur est un geste explicite ; le comblement ne doit jamais voler une visée |
+| modes `2` et `4` seulement | un sort de zone vise une cellule, pas une entité |
+| offensif : jamais soi-même, jamais un joueur, jamais un cadavre | ces règles vivaient dans `CursorMgr_UpdateHover`, qui n'est **pas** emprunté ici (même dette que `QuickCast::PickTargetGid`) |
+
+> 🔴 Le test « le curseur désigne-t-il le monde ? » a dû **quitter**
+> `QuickCast::CanCastNow` pour `EmitCast`. Il ne vaut que pour les visées à la
+> souris : refuser de lancer sur la cible du HUD parce que le curseur traîne sur
+> une fenêtre aurait vidé le réglage de son sens. Le mode `1`, lui, en dépend
+> toujours — la cellule n'a pas d'autre source.
+
+### ⏱ Le cercle orphelin — une touche ne doit rien laisser derrière elle
+
+Le natif arme **toujours** au case `0x48`. QuickCast, lui, peut ne pas lancer :
+cadence pas écoulée, compétence en cooldown, ou rien d'exploitable sous le
+curseur. Le cercle de visée restait alors armé après le relâchement de la touche
+— et ce n'est pas un défaut d'affichage : **le clic suivant, qui visait autre
+chose, lançait la compétence oubliée**.
+
+Deux réponses, et il faut les deux :
+
+| | |
+|---|---|
+| la **répétition** est armée même quand le premier lancement échoue | une cadence ou un cooldown qui se lève finit par lancer sans relâcher. Avant, marteler deux touches de suite en **perdait une**, silencieusement : le refus par cadence sortait de `OnEnterTargeting` avant même d'avoir lu l'état de ciblage |
+| au **relâchement**, ce qui reste armé est retiré (`QuickCast::UpdateDisarm`) | il faut un état de sortie propre, y compris quand rien n'était visable |
+
+> 🔴 **Uniquement pour une visée armée par une TOUCHE**, et dans un mode que
+> QuickCast prend en charge (`ClaimsMode`). Lancer une compétence en **cliquant**
+> sa case de barre de raccourcis ne pose aucune touche (`TakePendingKey` rend 0) :
+> le déroulé natif « ça arme, je clique ma cible » reste entier. C'est la voie
+> qui subsiste pour viser à la main ce que QuickCast refuse de viser tout seul —
+> **un JOUEUR en mode offensif**, notamment.
+
+> ⚠ `UpdateDisarm` émet `CMode::SendMsg(0x47)`, c'est-à-dire le dispatcher que
+> notre propre hook intercepte : la jouer entre `NewFrame()` et `Render()` ferait
+> tourner `OnProcessInput` au milieu d'une frame ImGui. D'où sa place dans
+> `Bourgeon::OnGameFrame`, et **pas** dans `QuickCast::Update()`.
+
+---
+
 ## 6. Briques disponibles (toutes en lecture seule)
 
 | Rôle | Adresse | Signature / note |
