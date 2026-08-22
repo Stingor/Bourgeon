@@ -2432,12 +2432,22 @@ const char* MakeItemWindow::ProtoTitle() const {
   // La compétence n'est PAS dans le paquet (un même 0x01AD sert quatre métiers).
   // À défaut de l'avoir captée, on titre par ce que le paquet dit vraiment —
   // jamais par une devinette sur le contenu de la liste.
+  //
+  // ⚠ NOS DEUX REPLIS PASSENT PAR `Tr`, et il a fallu le corriger : ils rendaient
+  // « Fabrication » en dur, donc du français au-dessus d'une fenêtre anglaise ou
+  // espagnole. Le texte du CLIENT, lui, arrive déjà dans la bonne langue — c'est
+  // la table msgstring, traduite de son côté — d'où le contraste qui ne sautait
+  // aux yeux que sur le chemin de repli.
+  //
+  // 🔴 Le pointeur de `Tr` appartient au catalogue et meurt au prochain
+  // `SetLanguage` : c'est sûr ici parce que le seul appelant le consomme dans la
+  // frame (un `snprintf` immédiat). Ne pas le stocker.
   if (proto_ == Proto::kProduce) {
     const char* label = msgstr::Utf8(kMsgMakeList);  // « Manufacturing List »
     if (label[0]) return label;
-    return "Fabrication";
+    return i18n::Tr("Fabrication");
   }
-  return "Fabrication";
+  return i18n::Tr("Fabrication");
 }
 
 void MakeItemWindow::OnRenderUI() {
