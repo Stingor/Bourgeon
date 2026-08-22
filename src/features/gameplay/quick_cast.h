@@ -104,6 +104,14 @@
 // viser à la main ce que QuickCast refuse de viser tout seul — un JOUEUR en
 // mode offensif, notamment.
 //
+// 🔴 Mais « armée par une TOUCHE » ne veut PAS dire « une frappe fraîche à cet
+// instant ». ⏱ Mesuré au journal : maintenir la touche produit un SECOND `0x48`
+// ~500 ms plus tard, et `TakePendingKey` ne rend la touche qu'au PREMIER. Une
+// version antérieure lâchait donc la surveillance dès le premier lancement
+// réussi — et c'est ce second cercle, sans gardien, qui restait armé au
+// relâchement. La surveillance vit tant que la touche est physiquement TENUE,
+// pas tant qu'on la voit arriver.
+//
 // ── RÉPÉTITION : pourquoi une boucle À NOUS est indispensable ───────────────
 // 🔴 Le client IGNORE l'auto-répétition clavier. Game_MainWndProc (0x00DB8100)
 // appelle UIWindowMgr_OnKeyDown avec un quatrième argument valant

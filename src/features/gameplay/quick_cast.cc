@@ -419,15 +419,35 @@ void QuickCast::OnEnterTargeting(void* cmode) {
   const bool claimed = ClaimsMode(mode);
 
   // Une touche à NOUS vient d'armer une visée : on en devient responsable
-  // jusqu'à son relâchement. Sinon on lâche toute surveillance en cours — le
-  // cercle qui vient d'apparaître n'est pas le nôtre, et le précédent n'existe
-  // plus (un 0x48 remplace la visée armée).
-  if (vk != 0 && claimed) {
-    arm_vk_   = vk;
-    arm_mode_ = mode;
-  } else {
+  // jusqu'à son relâchement.
+  //
+  // 🔴 « À nous » ne veut PAS dire « une frappe fraîche à cet instant ».
+  // ⏱ Mesuré au journal : un appui maintenu produit un SECOND `0x48` ~500 ms
+  // plus tard (l'auto-répétition du système), et `TakePendingKey` ne rend la
+  // touche qu'au PREMIER. Le second arrivait donc avec `vk == 0` et n'était plus
+  // surveillé par personne — c'est exactement le cercle qui restait armé quand
+  // on relâchait. Tant qu'une touche à nous est encore tenue (`arm_vk_`), la
+  // visée qu'elle vient de réarmer reste la nôtre.
+  // ⚠ « Encore tenue », pas « déjà vue » : une touche relâchée dont
+  // `UpdateDisarm` n'a pas encore consommé le relâchement ne doit pas s'attribuer
+  // le cercle d'un lancement fait à la souris entre-temps.
+  const bool still_held =
+      arm_vk_ != 0 && (GetAsyncKeyState(static_cast<int>(arm_vk_)) & 0x8000) != 0;
+
+  if (claimed && (vk != 0 || still_held)) {
+    if (vk != 0) arm_vk_ = vk;
+    arm_mode_ = mode;  // le cercle courant est celui de CE mode
+  } else if (!claimed) {
+    // Le cercle qui vient d'apparaître n'est pas le nôtre : on lâche toute
+    // surveillance en cours.
     arm_vk_ = 0;
   }
+  // ⚠ Reste un cas SANS surveillance, et c'est voulu : mode à nous, aucune
+  // touche — le lancement vient d'un CLIC sur une case de la barre. Le déroulé
+  // natif « ça arme, je clique ma cible » y reste entier, et c'est la seule voie
+  // qui subsiste pour viser à la main ce que QuickCast refuse de viser tout seul
+  // (un JOUEUR en mode offensif). Son cercle attend donc un clic, comme chez le
+  // client.
 
   const uint32_t now = GetTickCount();
   const uint32_t period = repeat_ms_ > 0 ? static_cast<uint32_t>(repeat_ms_) : 0;
@@ -440,8 +460,14 @@ void QuickCast::OnEnterTargeting(void* cmode) {
     // l'instant d'aboutir sans relâcher : la cadence s'écoule, le cooldown
     // tombe, ou le curseur arrive sur une cible. Sans cela, marteler deux
     // touches de suite en perdait une, silencieusement.
-    if (vk != 0 && claimed) {
-      repeat_vk_    = vk;
+    // Même raison qu'au-dessus : si ce 0x48 n'est que le second d'un même
+    // geste (auto-répétition), la touche est celle qu'on surveille déjà.
+    // ⏱ C'est aussi ce qui récupérait un lancement PERDU : au journal, un second
+    // 0x48 refusé par la cadence n'armait aucune répétition, alors que la cible
+    // du HUD était bien là — le sort ne partait jamais.
+    const unsigned long key = vk != 0 ? vk : (still_held ? arm_vk_ : 0);
+    if (key != 0 && claimed) {
+      repeat_vk_    = key;
       repeat_mode_  = mode;
       repeat_skill_ = skill;
       repeat_level_ = level;
@@ -451,13 +477,19 @@ void QuickCast::OnEnterTargeting(void* cmode) {
 
   last_cast_ms_ = now;
   LeaveTargeting(cmode);
-  arm_vk_ = 0;  // le cercle est déjà retiré, plus rien à surveiller
+  // 🔴 ON GARDE `arm_vk_`. Le réflexe — « le cercle est parti, plus rien à
+  // surveiller » — était le bug : la touche est toujours tenue, elle réarmera
+  // une visée dans un instant, et il faut encore quelqu'un pour la retirer.
+  // `UpdateDisarm` ne fait rien quand il n'y a rien d'armé, donc le garder ne
+  // coûte rien ; le lâcher coûtait un cercle orphelin.
 
-  // Armer la répétition — seulement si une touche fraîche, encore enfoncée, a
-  // amené ce lancement (TakePendingKey s'en assure) : cela distingue le clavier
-  // d'un clic sur une case de la barre de raccourcis, qui ne doit rien répéter.
-  if (vk != 0) {
-    repeat_vk_    = vk;
+  // Armer la répétition — seulement si une touche encore enfoncée a amené ce
+  // lancement : cela distingue le clavier d'un clic sur une case de la barre de
+  // raccourcis, qui ne doit rien répéter. Même repli que plus haut : sur un
+  // `0x48` d'auto-répétition, la touche est celle qu'on surveille déjà.
+  const unsigned long held = vk != 0 ? vk : (still_held ? arm_vk_ : 0);
+  if (held != 0) {
+    repeat_vk_    = held;
     repeat_mode_  = mode;
     repeat_skill_ = skill;
     repeat_level_ = level;
@@ -497,8 +529,7 @@ void QuickCast::UpdateDisarm() {
   arm_vk_ = 0;
 
   void* cmode = GetGameMode();
-  if (!cmode) return;
-  if (!GetOwnActor(cmode)) return;  // valide aussi la vtable du mode
+  if (!cmode || !GetOwnActor(cmode)) return;  // valide aussi la vtable du mode
 
   int mode = 0, skill = 0, level = 0;
   // Plus rien d'armé : le lancement a fini par partir, ou le natif a désarmé
