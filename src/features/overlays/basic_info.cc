@@ -2616,36 +2616,64 @@ void BasicInfo::OnRenderUI() {
 }
 
 namespace {
-// ── Jauges HP/SP natives SOUS le personnage (`UIPcGage`, acteur+0x488) ───────
-// Le client accroche à chaque acteur une `UIPcGage` (vftable `0x0102bca0`, 0xB0
-// o, deux jauges : haute `+0xA0/+0xA4`, basse `+0xA8/+0xAC`, `+0x9C` = mode
-// double barre) posée sous les pieds — créée par le msg 34, détruite par le msg
-// 35. RE complète dans docs/entity_chat_balloon_re.md §8.
+// ── 🔴🔴 La barre HP/SP sous le personnage est `UIPlayerGage` ────────────
 //
-// 🔴 On la MASQUE (drapeau `+0x28`), on ne la détruit pas : c'est le natif qui
-// la crée et la nourrit, et le msg 35 lui appartient (mêmes raisons que la
-// barre d'incantation, cf. features/overlays/cast_bar.cc).
-// 🔴 Le joueur local n'est PAS dans la std::list d'acteurs : il vit à part, à
-// `actorMgr+0x2C` — c'est ce que résout `GetOwnActorLive`.
-constexpr int kAct_PcGage = 0x488;
+// ⏱ TROIS correctifs faux avant celui-ci, et chacun reposait sur une déduction
+// qui se tenait. Ce qui a fini par trancher, c'est la MESURE : lecture du
+// processus vivant, parcours de la liste de fenêtres du gestionnaire, relevé des
+// positions. Ce que la mesure dit, et que la lecture statique ne disait pas :
+//
+//   · l'acteur du joueur (`actorMgr+0x2C`) ne porte AUCUNE jauge — `+0x300`,
+//     `+0x424`, `+0x428`, `+0x488` sont tous nuls. Toutes les sondes de slots
+//     visaient donc du vide ;
+//   · la barre est une FENÊTRE AUTONOME de la liste du gestionnaire, mesurée à
+//     60×9 (deux barres empilées) et posée exactement sous les pieds
+//     (`x_perso - 30`) ;
+//   · sa classe n'est ni `UIPcGage` (`0x0102BCA0`) ni `UIMonsterGage`
+//     (`0x0102BE50`) mais **`UIPlayerGage`** — vtable **`0x0102BD78`**, ctor
+//     `0x00836530`. D'où l'échec du détour précédent : `UIPcGage_Paint` n'est
+//     JAMAIS appelée pour elle (point d'arrêt posé en jeu, jamais atteint).
+//
+// 🔴 On la trouve donc par sa VTABLE, pas par un offset d'acteur : c'est le
+// seul critère que la mesure valide, et il ne dépend d'aucune classe d'acteur.
+// La vtable n'a que deux xrefs dans tout le binaire (ctor + dtor) : cette classe
+// ne sert qu'à ça.
+//
+// ⚠ Et l'écriture de `+0x28` TIENT ici — vérifié en direct : le drapeau est resté
+// à 0 sur plusieurs lectures. Rien ne le réaffirme, contrairement aux jauges
+// d'ACTEUR (`+0x300`), que `CActorSprite_UpdateAttachedSprite` repose à chaque
+// frame. C'est pourquoi un simple battement suffit ici, sans détour — et c'est
+// exactement le genre de détail qu'on ne peut pas deviner.
+//
+// 🔴 On la MASQUE (drapeau `+0x28`), on ne la détruit pas : elle appartient au
+// client, qui la crée et la nourrit.
+constexpr uintptr_t kUIPlayerGageVtable = 0x0102bd78;
 
-// Pose la visibilité de la jauge du joueur local. Renvoie true si une jauge
-// était bien là (donc si l'écriture a eu lieu) : hors jeu, ou tant que le natif
-// n'en a pas créé, il n'y a rien à masquer.
-bool SetOwnPcGageVisible(bool visible) {
-  void* actor = GetOwnActorLive();
-  if (!actor) return false;
+// Pose la visibilité de toutes les fenêtres `UIPlayerGage`. Rend true si au
+// moins une a été touchée — hors jeu, ou avant sa création, il n'y a rien.
+//
+// ⚠ SEH ⇒ aucun objet C++ ici.
+bool SetPlayerGageVisible(bool visible) {
+  bool touched = false;
   __try {
-    void* gage =
-        *reinterpret_cast<void**>(reinterpret_cast<uint8_t*>(actor) + kAct_PcGage);
-    if (!gage) return false;
-    uiwnd::SetVisible(gage, visible);
-    return true;
+    void* sentinel = *reinterpret_cast<void**>(
+        reinterpret_cast<uint8_t*>(uiwnd::Mgr()) + uiwnd::kOffWindowList);
+    if (!sentinel) return false;
+    void* node = *reinterpret_cast<void**>(sentinel);
+    // Garde-fou de parcours : une liste corrompue ne doit pas faire tourner le
+    // client en rond. Elle en compte une douzaine en pratique.
+    for (int guard = 0; node && node != sentinel && guard < 256; ++guard) {
+      void* wnd = *(reinterpret_cast<void**>(node) + 2);
+      if (wnd && *reinterpret_cast<uintptr_t*>(wnd) == kUIPlayerGageVtable) {
+        uiwnd::SetVisible(wnd, visible);
+        touched = true;
+      }
+      node = *reinterpret_cast<void**>(node);
+    }
   } __except (EXCEPTION_EXECUTE_HANDLER) {
-    // Acteur libéré entre-temps (changement de carte) : sa jauge est partie
-    // avec lui, il n'y a plus rien à masquer.
-    return false;
+    return touched;
   }
+  return touched;
 }
 
 // ── Hide native Basic Info PRE-RENDER via its msg-0x22 handler ───────────────
@@ -2872,24 +2900,24 @@ void BasicInfo::HandlePacket(uint16_t opcode, const uint8_t* data,
   }
 }
 
-// Jauges HP/SP natives sous le personnage — battement par FRAME, en TÊTE de
-// frame, avant que le jeu ne dessine.
+// Barre HP/SP native sous le personnage (`UIPlayerGage`) — battement par FRAME,
+// en tête de frame, avant que le jeu ne dessine.
 //
-// 🔴 Le natif recrée sa `UIPcGage` (msg 34) sans nous prévenir : le masquage
-// doit être REJOUÉ à chaque frame, pas tenu par une comptabilité de ce qu'on a
-// masqué — celle-ci oublierait toujours un cas (mort, changement de carte,
-// entrée/sortie de groupe). Écrire un drapeau déjà à la bonne valeur ne coûte
-// qu'un stockage.
+// 🔴 REJOUÉ à chaque frame plutôt que tenu par une comptabilité : le client
+// détruit et recrée sa fenêtre sans prévenir (changement de carte, mort,
+// re-spawn), et une comptabilité oublierait toujours un cas. Réécrire un drapeau
+// déjà à la bonne valeur ne coûte qu'un stockage sur une liste d'une douzaine
+// d'entrées.
 //
-// ⚠ Mais on n'écrit `visible` QUE dans le sens du masquage : rendre la jauge
-// visible de force à chaque frame reprendrait au client ses propres raisons de
-// la cacher. À la décoche, `own_gage_hidden_` la rend visible UNE fois.
+// ⚠ On n'écrit `visible` QUE dans le sens du masquage. À la décoche,
+// `own_gage_hidden_` la rend visible UNE fois : la forcer à visible chaque frame
+// reprendrait au client ses propres raisons de la cacher.
 void BasicInfo::OnGameFramePulse() {
   if (Bourgeon::Instance().client().timestamp() != 20250716) return;
   if (hide_own_pc_gage_) {
-    if (SetOwnPcGageVisible(false)) own_gage_hidden_ = true;
+    if (SetPlayerGageVisible(false)) own_gage_hidden_ = true;
   } else if (own_gage_hidden_) {
-    SetOwnPcGageVisible(true);
+    SetPlayerGageVisible(true);
     own_gage_hidden_ = false;
   }
 }

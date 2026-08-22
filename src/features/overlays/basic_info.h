@@ -123,9 +123,19 @@ class BasicInfo : public Plugin {
   bool  border_       = true;   // draw the 1px dark outline around each bar
   float rounding_     = 4.0f;   // corner rounding of the drawn bars (0..16)
   float bg_color_[4]  = {0.05f, 0.05f, 0.07f, 0.70f};  // shared background + alpha
-  // Masque les deux jauges HP/SP que le client accroche SOUS notre propre
-  // sprite (`UIPcGage`, acteur+0x488). Indépendant de `bars_visible_` : cacher
-  // celles du client et n'en afficher aucune est un choix légitime.
+  // Masque les jauges HP/SP que le client accroche SOUS notre propre sprite
+  // (`UIPcGage`). Indépendant de `bars_visible_` : cacher celles du client et
+  // n'en afficher aucune est un choix légitime.
+  //
+  // 🔴🔴 DEUX pièges superposés, et il a fallu les deux pour que ça marche :
+  //   1. la jauge n'est PAS à un offset unique — le client a plusieurs classes
+  //      d'acteur, chacune range la sienne ailleurs (`+0x300`, `+0x428`,
+  //      `+0x470`, `+0x488`) ;
+  //   2. surtout, le drapeau de visibilité est une SORTIE, pas une entrée : le
+  //      natif le REPOSE à chaque frame. Écrire dedans depuis un battement de
+  //      frame ne pouvait pas tenir — c'est un DÉTOUR qu'il faut.
+  // Détail, adresses et chronologie dans `Hooked_UpdateAttachedSprite` (.cc) et
+  // docs/entity_chat_balloon_re.md §8.
   bool  hide_own_pc_gage_ = false;
 
   // The alignment grid moved to a shared AlignGrid owned by MoonlightUi
@@ -249,11 +259,10 @@ class BasicInfo : public Plugin {
   bool bi_pinned_off_ = false;
   int  bi_saved_x_ = 0, bi_saved_y_ = 0;
 
-  // Idem pour les jauges HP/SP sous le personnage : tant que l'option est
-  // active, OnTick re-masque la `UIPcGage` du joueur (le natif en recrée une à
-  // chaque msg 34) ; à la décoche, on la rend visible UNE fois. On ne la force
-  // pas à `visible` chaque frame — le natif a ses propres raisons de la cacher,
-  // et les lui reprendre ferait apparaître des barres qu'il ne montrait pas.
+  // Idem pour la barre HP/SP sous le personnage : tant que l'option est active,
+  // le battement de frame re-masque la `UIPlayerGage` (le client la recrée sans
+  // prévenir) ; à la décoche, on la rend visible UNE fois. On ne la force pas à
+  // `visible` chaque frame — le client a ses propres raisons de la cacher.
   bool own_gage_hidden_ = false;
 
   // Nearest magnetic alignment of value `v` (extent `ext`) on one axis to any

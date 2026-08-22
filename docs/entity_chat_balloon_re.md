@@ -317,6 +317,102 @@ envoie le **msg 145**, pas le 34. Piste à creuser :
 > rectangles, **aucun texte**. C'est le piège dans lequel on tombe si on suit la
 > mauvaise entrée de la table de sauts (§2).
 
+### 🔴🔴 `+0x488` n'est PAS « le » slot de la jauge — il y en a TROIS
+
+Le tableau ci-dessus décrit la classe d'acteur de BASE. Or le client n'en a pas
+une seule : **trois classes distinctes** portent chacune leur propre
+`Actor_OnMsg`, et le case `msg 34` y est rigoureusement identique **à l'offset
+près** — même `operator_new(0xB0)`, même `UIPcGage_ctor`, même
+`UIWindow_SetSize(60, 5)`, même `AddWindowToList`, même
+`SetGaugeBottom(0, 0)`, même position `(x-30, y + scale(12))` :
+
+| Fonction | Slot | Création | Note |
+|---|---|---|---|
+| `sub_D33020` | **`+0x428`** | `0x00D3364F` | gatée : `acteur+0x314` ni `0x0D` ni `0x0E` |
+| `sub_D3BAA0` | **`+0x470`** | `0x00D3BBB6` | |
+| `Actor_OnMsg_Base` `0x00D3C500` | `+0x488` | `0x00D3C605` | la classe de base — **pas** celle du joueur |
+
+> ⏱ **Payé en jeu (2026-08-22).** « Masquer les barres HP/SP sous mon
+> personnage » ne faisait rien : `BasicInfo` ne connaissait que `+0x488`, et la
+> jauge du joueur n'y est pas. Le masquage lui-même était correct depuis le
+> début — c'est **l'adresse** qui était fausse.
+>
+> 🔴 **Ne pas chercher « la bonne classe »** : elle change avec ce que le
+> personnage porte (monture, forme, costume). On sonde **les trois slots**, et
+> c'est la **vtable** (`0x0102bca0`) qui décide si l'objet trouvé est bien une
+> `UIPcGage`. Sans ce test la sonde écrirait dans un champ homonyme d'une autre
+> classe ; avec lui, elle est sûre par construction.
+>
+> ⚠ Le même piège attend `+0x264` (bulle), `+0x270` (incantation) et les autres
+> widgets « au-dessus de la tête » : rien ne dit que leurs offsets soient
+> communs aux trois classes. **À vérifier avant de s'y fier.**
+
+### 🔴🔴 Trois classes de jauge — et celle du JOUEUR n'est aucune des deux premières
+
+| Classe | vtable | ctor | Ce que c'est |
+|---|---|---|---|
+| `UIPcGage` | `0x0102BCA0` | `0x00836440` | jauge d'entité, **une seule barre** (les trois créations du `msg 34` appellent toutes `SetGaugeBottom(0, 0)`) |
+| `UIMonsterGage` | `0x0102BE50` | `0x008361B0` | **dérive** de `UIPcGage` ; son ctor pose `this[39] = 1`, soit `+0x9C` = **double barre**. Les barres de vie des monstres |
+| **`UIPlayerGage`** | **`0x0102BD78`** | **`0x00836530`** | **la barre HP/SP sous NOTRE personnage**. Mesurée en jeu : **60×9**, posée à `(x_perso - 30, y_perso + ~33)` |
+
+`UIPlayerGage` est rangée en **`acteur+0x424`** par `Actor_OnMsg_Variant2`
+(`0x00D33152`), sous la garde `sub_D8EAB0(g_UIWindowContextKey, acteur+0x110)` —
+donc pour **notre AID seulement**. Sa vtable n'a que **deux** xrefs dans tout le
+binaire (ctor + dtor) : cette classe ne sert qu'à ça.
+
+> ⏱ **TROIS correctifs faux avant le bon.** Chacun reposait sur une déduction
+> qui se tenait, et chacun a coûté un build à l'utilisateur :
+>
+> 1. « le slot est `+0x488` » — vrai pour la classe de BASE, mais le joueur n'y
+>    est pas ;
+> 2. « il y a trois slots, sondons-les » — vrai aussi (`+0x428`, `+0x470`,
+>    `+0x488`), et toujours à côté ;
+> 3. « la visibilité est réaffirmée chaque frame, il faut un détour » — vrai pour
+>    les jauges d'**acteur** (`+0x300`, cf. plus bas), et sans rapport avec
+>    celle-ci.
+>
+> 🔴 **Ce qui a tranché, c'est la MESURE**, pas une quatrième lecture statique :
+> lire le processus vivant, parcourir la liste de fenêtres du gestionnaire
+> (`UIWindowMgr+0x17C`), relever vtables et positions. La mesure a dit deux
+> choses qu'aucune déduction n'aurait données : **l'acteur du joueur
+> (`actorMgr+0x2C`) ne porte AUCUNE jauge** (`+0x300`, `+0x424`, `+0x428`,
+> `+0x488` tous nuls — l'objet propriétaire est une autre instance), et la barre
+> est une **fenêtre autonome** d'une troisième classe.
+>
+> ✅ **Remède vérifié de bout en bout** : parcourir la liste de fenêtres, trouver
+> celle dont la vtable est `UIPlayerGage`, écrire `0` dans son `+0x28`. Écriture
+> faite en direct dans le processus : la barre disparaît, et le drapeau **reste**
+> à 0 (rien ne le réaffirme). Un simple battement de frame suffit — aucun détour.
+>
+> 🔴 **La leçon** : quand une correction échoue **deux fois**, la prochaine étape
+> n'est pas une troisième hypothèse, c'est le débogueur.
+
+### ⚠ Les jauges d'ACTEUR, elles, sont réaffirmées à chaque frame
+
+Vrai, et sans rapport avec la barre du joueur — mais à connaître avant de
+masquer une jauge de **monstre** ou de membre de groupe.
+
+`CActorSprite_UpdateAttachedSprite` **`0x00C46B60`** — appelée à **chaque frame**
+pour chaque acteur, depuis `ActorAiClass_UpdatePerFrame` `0x00D314B0` et six
+autres — **repose** la visibilité du gage `+0x300` par un appel **virtuel**
+(`gage->vtable+0x38`, `__thiscall(gage, bool)`) :
+
+```
+visible =  GameSettings_GetFlag(0xD5)
+        && gage->+0x9C
+        && !Option_IsHide && !Option_IsCloak && !Option_IsInvisible
+        && dword_131F9F0 != 2
+```
+
+> ⚠ `0xD5` est **présumé** être l'option client « HP/SP Bar on/off » (une ligne
+> d'aide du catalogue msgstring mentionne `[Alt] + [End]`). **Non vérifié** — ne
+> pas s'en servir comme d'un fait.
+>
+> 🔴 Pour ces jauges-là, `Bourgeon::OnGameFrame` passe en **tête** de
+> `CGameMode::OnUpdate` et la mise à jour des acteurs **après** : une écriture de
+> `+0x28` depuis un battement ne tiendrait pas. Il faudrait un détour.
+
+
 ---
 
 ## 9. Vérification en direct ⏱
