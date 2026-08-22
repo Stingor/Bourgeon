@@ -5,6 +5,7 @@
 #include <cstring>
 
 #include "bourgeon.h"
+#include "features/hotkey_util.h"           // VkToImGuiKey
 #include "features/overlays/target_frame.h"  // ciblage clavier
 #include "features/windows/bank_window.h"
 #include "features/windows/craft_atlas.h"
@@ -15,6 +16,10 @@
 #include "features/systems/bug_report.h"  // la modale du rapport générique
 #include "features/windows/palette_editor.h"
 #include "features/windows/staff_tools.h"
+#include "imgui.h"
+// 🔴 `ConfigNavWindowingKey*` vit dans `ImGuiContext`, pas dans `ImGuiIO` : sans
+// cet en-tête, le champ n'existe pas de notre côté de la bibliothèque.
+#include "imgui_internal.h"
 #include "ragnarok/uiwnd.h"
 
 namespace hotkeys {
@@ -77,18 +82,32 @@ const Action kActions[] = {
     // qu'on passe sa vie à retirer. Le joueur choisit.
     {"target_cycle_next", "Cible suivante",         ActionGroup::kTools,   0, {}},
     {"target_cycle_prev", "Cible précédente",       ActionGroup::kTools,   0, {}},
+    // Et l'action qu'on refait trente fois par combat : engager le plus proche,
+    // sans rien parcourir. Le cyclage sert à EXPLORER, celle-ci à ENGAGER — les
+    // confondre obligeait à deviner où le cycle en était resté.
+    {"target_nearest",    "Cible la plus proche",   ActionGroup::kTools,   0, {}},
     // Rapport de bug. 🔴 SEULE ACTION À PORTER UN DÉFAUT : Ctrl+Alt+B est le combo
     // sous lequel elle a été livrée, et le catalogue le reprend tel quel plutôt que
     // de le laisser en dur dans `BugReport` — invisible à l'écran des raccourcis,
     // donc introuvable et surtout impossible à déplacer quand il tombe sur la
     // touche d'autre chose. Le contrôle de collision le voit maintenant comme
-    // Et l'action qu'on refait trente fois par combat : engager le plus proche,
-    // sans rien parcourir. Le cyclage sert à EXPLORER, celle-ci à ENGAGER — les
-    // confondre obligeait à deviner où le cycle en était resté.
-    {"target_nearest",    "Cible la plus proche",   ActionGroup::kTools,   0, {}},
     // n'importe quelle autre liaison.
     {"tool_bug_report",   "Signaler un bug",       ActionGroup::kTools,   0,
      {'B', /*ctrl=*/true, /*alt=*/true, /*shift=*/false}},
+    // Cyclage des fenêtres de Bourgeon. 🔴 SECONDE ACTION À DÉFAUT, et pour la même
+    // raison que le rapport de bug : Ctrl+Tab est un combo LIVRÉ, pas choisi. ImGui
+    // le tenait en dur (`NavUpdateWindowing`, actif même sans `NavEnableKeyboard`),
+    // donc invisible dans l'écran des raccourcis, exclu du contrôle de collision et
+    // impossible à déplacer. Le reprendre tel quel ne change rien pour qui s'en
+    // sert, et rend enfin la touche effaçable à qui la subit
+    // (feedback_ui_conventions : c'est justement pour n'avoir aucune clé à renommer).
+    //
+    // 🔴 Elle n'est pas exécutée par `Invoke` : `imgui_windowing` dit que son combo
+    // repart chez ImGui (cf. `ApplyImGuiWindowingChord`). Maj inverse le sens du
+    // cycle, ce qui est le geste d'origine et n'a donc pas de ligne à lui.
+    {"ui_cycle_windows", "Cycler entre les fenêtres", ActionGroup::kTools, 0,
+     {VK_TAB, /*ctrl=*/true, /*alt=*/false, /*shift=*/false}, /*staff_only=*/false,
+     /*imgui_windowing=*/true},
     // Établi du staff. Le seul membre du catalogue à être gaté : il ne s'affiche
     // même pas dans l'écran des raccourcis d'un joueur ordinaire.
     {"tool_staff",       "Staff Tools",             ActionGroup::kTools,   0, {}, true},
@@ -155,6 +174,40 @@ void ResetBindingsToDefaults() {
   for (int i = 0; i < kActionCount; ++i) g_bindings.items[i] = kActions[i].default_binding;
 }
 
+void ApplyImGuiWindowingChord() {
+  ImGuiContext* context = ImGui::GetCurrentContext();
+  // Le tick peut battre avant qu'ImGui existe : il n'y a alors rien à écrire, et
+  // le passage suivant reprendra l'état courant.
+  if (!context) return;
+
+  for (int i = 0; i < kActionCount; ++i) {
+    if (!kActions[i].imgui_windowing) continue;
+    const Binding& binding = g_bindings.items[i];
+    const ImGuiKey key = VkToImGuiKey(binding.vk);
+    const bool has_modifier = binding.ctrl || binding.alt || binding.shift;
+    // Aucune touche, touche qu'ImGui ne connaît pas, ou combo sans modificateur :
+    // on COUPE le cycleur au lieu de le laisser sur son défaut. Le dernier cas est
+    // refusé en amont par l'écran de réglage, mais un yaml écrit à la main peut
+    // très bien porter « Tab » tout court — et ImGui assérerait dessus.
+    if (key == ImGuiKey_None || !has_modifier) {
+      context->ConfigNavWindowingKeyNext = 0;
+      context->ConfigNavWindowingKeyPrev = 0;
+      return;
+    }
+    ImGuiKeyChord chord = static_cast<ImGuiKeyChord>(key);
+    if (binding.ctrl)  chord |= ImGuiMod_Ctrl;
+    if (binding.alt)   chord |= ImGuiMod_Alt;
+    if (binding.shift) chord |= ImGuiMod_Shift;
+    context->ConfigNavWindowingKeyNext = chord;
+    // Maj inverse le sens — sauf quand le joueur a DÉJÀ mis Maj dans son combo :
+    // « Prev » serait alors identique à « Next », et deux raccourcis identiques ne
+    // s'opposent pas (ImGui verrait les deux, et « Next » gagnerait à chaque fois).
+    // On renonce au sens inverse plutôt que de le laisser manger l'aller.
+    context->ConfigNavWindowingKeyPrev = binding.shift ? 0 : (chord | ImGuiMod_Shift);
+    return;
+  }
+}
+
 bool Invoke(const char* id) {
   const Action* action = FindAction(id);
   if (!action) return false;
@@ -162,6 +215,10 @@ bool Invoke(const char* id) {
   // dans le yaml quand le niveau de groupe change, et ne doit alors plus rien
   // déclencher.
   if (action->staff_only && !IsStaff()) return false;
+  // Rien à déclencher : c'est ImGui qui consomme le combo. Le dispatch ne devrait
+  // même pas nous appeler pour celle-là, mais un appel direct par identifiant ne
+  // doit pas tomber dans la cascade ci-dessous et en ressortir au hasard.
+  if (action->imgui_windowing) return false;
 
   // Le cas général : demander l'ouverture au client, et laisser nos hooks router
   // vers le panneau moderne. Un seul chemin, qui reste correct en interface
@@ -217,6 +274,11 @@ bool Invoke(const char* id) {
       return target_frame->CycleTarget(false);
     return false;
   }
+  if (std::strcmp(id, "target_nearest") == 0) {
+    if (auto* target_frame = bourgeon.target_frame())
+      return target_frame->TargetNearest();
+    return false;
+  }
   // Rapport de bug. `Open` ne fait que poser une demande traitée au frame suivant
   // (aucune commande native), mais on passe quand même par le tick comme tout le
   // monde. `enabled()` est l'opt-out global : coupé, l'action ne doit pas rouvrir
@@ -235,8 +297,3 @@ bool Invoke(const char* id) {
 }
 
 }  // namespace hotkeys
-  if (std::strcmp(id, "target_nearest") == 0) {
-    if (auto* target_frame = bourgeon.target_frame())
-      return target_frame->TargetNearest();
-    return false;
-  }

@@ -672,6 +672,22 @@ bool HotkeySettings::RunCapture(const Row& row) {
     return false;
   }
 
+  // 🔴 ET UN MODIFICATEUR OBLIGATOIRE pour le cycleur de fenêtres, qui n'est pas
+  // dispatché par nous mais REMIS à ImGui : là-bas le cycle se « tient » tant que
+  // le modificateur partagé reste enfoncé, et un combo qui n'en porte aucun fait
+  // ASSÉRER la bibliothèque (`IM_ASSERT(shared_mods != 0)` dans
+  // `NavUpdateWindowing`). Refuser au moment du choix vaut mieux qu'accepter une
+  // touche qui coupera la fonction en silence.
+  if (row.kind == RowKind::kAction &&
+      hotkeys::ActionAt(row.index).imgui_windowing &&
+      ModifierCount(ctrl, alt, shift) == 0) {
+    std::snprintf(capture_error_, sizeof(capture_error_), "%s",
+                  i18n::Tr("Ce raccourci demande au moins un modificateur (Ctrl, "
+                           "Alt ou Maj) : c'est en le maintenant qu'on passe d'une "
+                           "fenêtre à la suivante."));
+    return false;
+  }
+
   hotkeys::Owner owner = hotkeys::Owner::kClientCommand;
   int self_index = hotkeys::ClientSelf(row.category, row.binding.command_index);
   switch (row.kind) {

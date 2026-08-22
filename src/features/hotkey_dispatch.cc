@@ -37,6 +37,15 @@ void HotkeyDispatch::OnKeyDown(unsigned long vkey, int, int) {
   for (int i = 0; i < hotkeys::ActionCount(); ++i) {
     if (!hotkeys::BindingAt(i).Matches(static_cast<int>(vkey), ctrl, alt, shift))
       continue;
+    // 🔴 Action « rendue à ImGui » (le cycleur de fenêtres) : elle n'a PAS de
+    // créneau ici, parce qu'il n'y a rien à exécuter — ImGui a déjà reçu la même
+    // frappe par le WndProc, qui est un chemin SÉPARÉ de `ProcessPushButton`. On
+    // confisque quand même la touche au client, comme pour n'importe quelle autre
+    // liaison : c'est ce qui la lui retire vraiment.
+    if (hotkeys::ActionAt(i).imgui_windowing) {
+      hotkeys::ClaimKey();
+      return;
+    }
     pending_action_ = i;
     // 🔴 ET ON CONFISQUE LA FRAPPE : le hook qui nous l'a passée s'apprête à
     // appeler le handler natif, qui la routerait vers `DispatchHotkeyBehavior`.
@@ -49,6 +58,12 @@ void HotkeyDispatch::OnKeyDown(unsigned long vkey, int, int) {
 }
 
 void HotkeyDispatch::OnTick() {
+  // Le combo du cycleur de fenêtres est REPOUSSÉ dans ImGui, pas dispatché ici.
+  // Au tick plutôt qu'au seul moment du réglage : la lecture du yaml court avant
+  // qu'ImGui existe, et un point unique vaut mieux que trois appelants à ne pas
+  // oublier. Deux écritures tous les ~100 ms, dont on ne paie rien.
+  hotkeys::ApplyImGuiWindowingChord();
+
   if (pending_action_ < 0) return;
   const int index = pending_action_;
   pending_action_ = -1;

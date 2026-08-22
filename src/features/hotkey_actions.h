@@ -72,6 +72,13 @@ struct Action {
   // niveau de groupe arrive au login et peut changer en cours de session.
   // Dernier champ, avec un défaut : les entrées existantes n'ont pas à le citer.
   bool staff_only = false;
+  // 🔴 L'ACTION N'EST PAS EXÉCUTÉE PAR NOUS : son combo est REMIS À IMGUI, qui le
+  // consomme lui-même (cf. `ApplyImGuiWindowingChord` plus bas). `Invoke` n'a donc
+  // rien à en faire, et le dispatch ne lui réserve pas de créneau — il se contente
+  // de confisquer la frappe au client, comme pour n'importe quelle autre liaison.
+  // C'est un DRAPEAU et non une comparaison d'identifiant, pour que le dispatch et
+  // l'écran de réglage n'aient pas à connaître la chaîne.
+  bool imgui_windowing = false;
 };
 
 int           ActionCount();
@@ -112,6 +119,33 @@ void           ResetBindingsToDefaults();
 // ⚠ NE PAS APPELER DEPUIS UNE FRAME IMGUI : les actions ouvrent des fenêtres
 // natives, ce qui gèle le client en silence depuis `OnRenderUI`
 // (feedback_no_native_cmd_during_imgui_frame). L'appelant diffère au tick.
+//
+// ⚠ Sans effet sur une action `imgui_windowing` : celle-là n'a rien à déclencher,
+// c'est ImGui qui consomme son combo. `Invoke` rend false, comme pour un module
+// absent.
 bool Invoke(const char* id);
+
+// ── Le cycleur de fenêtres d'ImGui, rendu au catalogue ───────────────────────
+//
+// 🔴 CTRL+TAB EST ACTIF DANS IMGUI MÊME SANS `NavEnableKeyboard` — le flag n'est
+// pas posé ici, et pourtant le raccourci marche : `NavUpdateWindowing` le dit en
+// toutes lettres (« Note: enabled even without NavEnableKeyboard! »). C'était donc
+// une touche prise au client par une bibliothèque, que rien n'affichait et que
+// rien ne pouvait déplacer. Elle rejoint le catalogue, sur son combo d'origine.
+//
+// Le combo n'est pas dispatché par nous : on le REPOUSSE dans le contexte ImGui
+// (`ConfigNavWindowingKeyNext`/`Prev`, qui vivent dans `ImGuiContext`, pas dans
+// `ImGuiIO`). Aucun effet si le contexte n'existe pas encore.
+//
+// 🔴 UN MODIFICATEUR EST OBLIGATOIRE, et ce n'est pas un goût : ImGui « tient » le
+// cycle tant que le modificateur partagé par Next et Prev reste enfoncé, et il
+// ASSÈRE (`IM_ASSERT(shared_mods != 0)`) si le combo n'en porte aucun. L'écran de
+// réglage refuse donc ces combos-là ; ici, on se contente de couper.
+//
+// Appelée à CHAQUE TICK (`HotkeyDispatch::OnTick`, donc dès l'écran de login) et
+// pas aux seuls moments où la liaison change : idempotent, deux écritures tous les
+// ~100 ms, et surtout jamais désynchronisé — ni après la lecture du yaml, qui
+// court avant qu'ImGui existe, ni après un changement dans l'écran de réglage.
+void ApplyImGuiWindowingChord();
 
 }  // namespace hotkeys
