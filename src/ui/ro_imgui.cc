@@ -2458,15 +2458,43 @@ FittedLabel FitButtonLabel(const char* label, float avail_w) {
 
   // 2) Ça déborde même au plancher : couper au caractère et coller « ... ». Points
   //    ASCII, PAS le U+2026 : ce glyphe n'est pas garanti dans l'atlas.
+  const float full_w = f.width;  // le libellé ENTIER, à la taille retenue
   const float dots_w = font->CalcTextSizeA(f.size, FLT_MAX, 0.0f, "...").x;
   const char* stop = f.begin;
-  f.text_w = font->CalcTextSizeA(f.size, ImMax(1.0f, avail_w - dots_w), 0.0f,
-                                 f.begin, f.end, &stop)
-                 .x;
+  const float cut_w = font->CalcTextSizeA(f.size, ImMax(1.0f, avail_w - dots_w),
+                                          0.0f, f.begin, f.end, &stop)
+                          .x;
+  // 🔴 UNE ELLIPSE QUI NE GARDE RIEN EST PIRE QUE LE DÉBORDEMENT, et c'est un cas
+  // RÉEL, pas une précaution : le « + » carré des stats (large d'une hauteur de
+  // ligne, dont 12 px mangés par les caps de l'art) ne gardait AUCUN caractère et
+  // s'affichait « ... » — trois points plus larges que le signe qu'ils
+  // remplaçaient. Même verdict quand la coupe n'est pas plus étroite que le texte
+  // entier : on rend le libellé complet, quitte à mordre d'un ou deux pixels sur
+  // l'art. Un débordement discret dit encore ce que fait le bouton ; « ... » non.
+  if (stop == f.begin || cut_w + dots_w >= full_w) {
+    f.width = f.text_w = full_w;
+    return f;  // `ellipsis` reste faux : pas d'infobulle de troncature non plus
+  }
+  f.text_w = cut_w;
   f.end = stop;
   f.ellipsis = true;
   f.width = f.text_w + dots_w;
   return f;
+}
+
+// Place offerte au libellé d'un bouton : sa largeur, moins les caps de l'art (les
+// extrémités arrondies, où le texte n'a rien à faire) et la marge demandée.
+//
+// 🔴 PLANCHER À 60 % DE LA LARGEUR. Les caps sont d'une taille FIXE (6 px chacun
+// pour le grand bouton) : sur un bouton étroit — le « + » des stats, carré d'une
+// hauteur de ligne — ils mangeaient presque tout, et le libellé partait en
+// rétrécissement puis en coupe alors qu'il tenait très bien. Sous ce plancher, on
+// laisse donc le texte mordre sur les caps : à ces largeurs-là, l'art n'est plus
+// qu'un liseré, et un « + » lisible vaut mieux qu'un « + » à 65 %.
+//
+// Sans effet sur les boutons larges, où les caps ne pèsent presque rien.
+float ButtonLabelRoom(float w, float cap_l, float cap_r, float margin) {
+  return ImMax(w - cap_l - cap_r - margin, w * 0.60f);
 }
 
 // Faux-gras : ImGui n'a qu'une graisse chargée, on re-dessine le texte décalé d'un
@@ -2550,7 +2578,8 @@ bool RoButton(const char* label, float w, float h) {
   // les deux caps, moins 2 px pour ne pas coller à l'art. Surtout PAS les 12 px de
   // marge de la largeur auto : c'est du confort, pas de l'encombrement — les décompter
   // ici rapetissait des libellés qui tenaient très bien.
-  const FittedLabel fit = FitButtonLabel(label, w - capL - capR - Px(2.0f));
+  const FittedLabel fit =
+      FitButtonLabel(label, ButtonLabelRoom(w, capL, capR, Px(2.0f)));
 
   ImGui::PushID(label);
   const bool clicked = ImGui::InvisibleButton("##rb", ImVec2(w, h));
@@ -2623,7 +2652,7 @@ bool RoSmallButton(const char* label, float w, float h) {
   // l'art, il rétrécit (puis se coupe). Pas de marge de 2 px retirée ici, contrairement
   // au grand bouton : la largeur auto du petit vaut PILE texte + caps, en enlever
   // quoi que ce soit rapetisserait tous les petits boutons en taille automatique.
-  const FittedLabel fit = FitButtonLabel(label, w - capL - capR);
+  const FittedLabel fit = FitButtonLabel(label, ButtonLabelRoom(w, capL, capR, 0.0f));
 
   // Resserre le bouton contre le widget qui le précède SUR LA MÊME LIGNE (le skin
   // RO a déjà sa propre marge dans l'art, l'ItemSpacing d'ImGui l'éloigne trop).
