@@ -3015,6 +3015,7 @@
 "Quêtes": "Quests"
 "Boss (Convex Mirror)": "Boss (Convex Mirror)"
 "Le boss révélé par un Convex Mirror.\nHors du cadrage, l'icône se colle au bord de la carte\npour en donner la direction.": "The boss revealed by a Convex Mirror.\nOut of frame, the icon sticks to the map's edge\nto show its direction."
+"Le boss révélé par un Convex Mirror.\nHors du cadrage, l'icône se colle au bord de la carte\npour en donner la direction ; elle disparaît tant que le\nboss est mort (le client n'a plus de position à donner).": "The boss revealed by a Convex Mirror.\nOff-screen, the icon sticks to the edge of the map\nto give its direction; it disappears while the boss is\ndead (the client no longer has a position to give)."
 "Repères du serveur": "Server markers"
 "Les croix clignotantes que posent les NPC pour indiquer\nun lieu (commande de script « viewpoint »).": "The blinking crosses NPCs place to point out\na spot (the « viewpoint » script command)."
 "Les positions et les couleurs viennent du client, comme pour son propre\nradar : un marqueur n'apparaît que si le serveur a envoyé la position.": "Positions and colours come from the client, just like its own\nradar: a marker only appears once the server has sent the position."

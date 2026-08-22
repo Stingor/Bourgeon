@@ -2971,6 +2971,7 @@
 "Quêtes": "Misiones"
 "Boss (Convex Mirror)": "Boss (Convex Mirror)"
 "Le boss révélé par un Convex Mirror.\nHors du cadrage, l'icône se colle au bord de la carte\npour en donner la direction.": "El boss revelado por un Convex Mirror.\nFuera del encuadre, el icono se pega al borde del mapa\npara indicar su dirección."
+"Le boss révélé par un Convex Mirror.\nHors du cadrage, l'icône se colle au bord de la carte\npour en donner la direction ; elle disparaît tant que le\nboss est mort (le client n'a plus de position à donner).": "El jefe revelado por un Convex Mirror.\nFuera de encuadre, el icono se pega al borde del mapa\npara indicar su dirección; desaparece mientras el jefe\nestá muerto (el cliente ya no tiene una posición que dar)."
 "Repères du serveur": "Marcas del servidor"
 "Les croix clignotantes que posent les NPC pour indiquer\nun lieu (commande de script « viewpoint »).": "Las cruces parpadeantes que los NPC ponen para señalar\nun lugar (comando de script « viewpoint »)."
 "Les positions et les couleurs viennent du client, comme pour son propre\nradar : un marqueur n'apparaît que si le serveur a envoyé la position.": "Las posiciones y los colores vienen del cliente, igual que en su propio\nradar: un marcador solo aparece si el servidor ha enviado la posición."
