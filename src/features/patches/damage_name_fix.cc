@@ -4,7 +4,6 @@
 
 #include <cstdint>
 #include <cstring>
-#include <iterator>
 #include <unordered_map>
 
 #include "utils/log_console.h"
@@ -226,15 +225,9 @@ DamageNameFix::DamageNameFix() {
     return;
   }
 
-  int poses = 0;
-  for (uintptr_t site : kCopyEntityNameCalls) {
-    if (PatcherAppel(site, kCopyEntityName,
-                     reinterpret_cast<uintptr_t>(&CopyEntityNameDetour)))
-      ++poses;
-  }
-
-  // Une ligne, une fois par session. En nominal ce module doit ensuite se
-  // TAIRE : il tourne à chaque coup porté par qui que ce soit.
-  LogDiag("[DamageNameFix] actif : apprentissage au coup, restitution sur {}/{} site(s) du rejeu",
-          poses, static_cast<int>(std::size(kCopyEntityNameCalls)));
+  // Un site qui echoue se signale tout seul depuis PatcherAppel ; il n'y a
+  // rien a compter ici.
+  for (uintptr_t site : kCopyEntityNameCalls)
+    PatcherAppel(site, kCopyEntityName,
+                 reinterpret_cast<uintptr_t>(&CopyEntityNameDetour));
 }

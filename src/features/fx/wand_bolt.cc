@@ -5,7 +5,6 @@
 
 #include <cstdint>
 #include <cstring>
-#include <iterator>
 
 #include "utils/log_console.h"
 
@@ -207,8 +206,6 @@ using ItemIdToClassFn = int(__stdcall*)(int);
 // registre, là où passer par eax obligerait à le libérer.
 void* g_real_arrow_spawn = reinterpret_cast<void*>(kArrowSpawn);
 
-bool g_installed = false;
-
 // Écrit `n` octets de code, en ouvrant la page le temps de l'écriture.
 bool WriteCode(uintptr_t addr, const uint8_t* bytes, size_t n) {
   DWORD old_protect;
@@ -251,45 +248,24 @@ bool ItemIdToWeaponClass(int item_id, int* out) {
 // `extern "C"` pour que le nom soit résoluble depuis l'assembleur en ligne sans
 // dépendre de la décoration C++.
 extern "C" int Bourgeon_WandProjectileJob(void* pos) {
-  // Diagnostic : les premiers tirs seulement. En nominal ce module doit se
-  // TAIRE — on veut la preuve que le chemin est pris, pas un journal par coup.
-  static int diag_restants = 6;
-  const bool diag = diag_restants > 0;
-  if (diag) --diag_restants;
-
   int weapon = 0;
-  if (!ReadWeaponField(pos, &weapon)) {
-    if (diag)
-      LogDiag("[WandBolt] pos=0x{:08X} : lecture de l'arme IMPOSSIBLE (acces refuse)",
-              reinterpret_cast<uintptr_t>(pos));
+  if (!ReadWeaponField(pos, &weapon))
     return kKeepNativeJob;
-  }
-
-  const int weapon_brut = weapon;
 
   // Pour un joueur, le champ porte l'item id (LOOK_WEAPON) : c'est le cas
   // NORMAL, et il faut la même conversion que le client.
-  if (weapon > kWeaponClassMax && !ItemIdToWeaponClass(weapon, &weapon)) {
-    if (diag)
-      LogDiag("[WandBolt] arme brute {} : conversion item->classe IMPOSSIBLE", weapon_brut);
+  if (weapon > kWeaponClassMax && !ItemIdToWeaponClass(weapon, &weapon))
     return kKeepNativeJob;
-  }
 
   for (int wand_class : kWandClasses) {
     if (weapon == wand_class) {
-      if (diag)
-        LogDiag("[WandBolt] arme brute {} -> classe {} : BAGUETTE, job force a {}",
-                weapon_brut, weapon, kProjectileJob);
       // Le jeton que Bourgeon_HeureEcheanceDegats consommera quelques
-      // instructions plus loin, dans le même appel.
+      // instructions plus loin, dans le même appel — et que OnMsgDetour lit au
+      // passage pour ne toucher que NOTRE projectile.
       g_tir_baguette = true;
       return kProjectileJob;
     }
   }
-
-  if (diag)
-    LogDiag("[WandBolt] arme brute {} -> classe {} : pas une baguette, projectile natif garde",
-            weapon_brut, weapon);
   return kKeepNativeJob;
 }
 
@@ -481,8 +457,6 @@ uintptr_t PoserSlot(uintptr_t slot, uintptr_t attendu, uintptr_t detour) {
 }  // namespace
 
 WandBolt::WandBolt() {
-  int poses = 0;
-
   for (uintptr_t call_site : kArrowSpawnCalls) {
     // Chaque site doit être CELUI qu'on a lu : un `E8` dont la cible est bien
     // Arrow_SpawnProjectileToTarget. Sur toute autre disposition, on ne patche
@@ -504,21 +478,9 @@ WandBolt::WandBolt() {
     const int32_t new_rel = static_cast<int32_t>(
         reinterpret_cast<uintptr_t>(&ArrowSpawnDetour) - (call_site + 5));
     std::memcpy(patch + 1, &new_rel, sizeof(new_rel));
-    if (!WriteCode(call_site, patch, sizeof(patch))) {
+    if (!WriteCode(call_site, patch, sizeof(patch)))
       LogDiag("[WandBolt] page non ouvrable en 0x{:08X} : site IGNORE", call_site);
-      continue;
-    }
-    ++poses;
   }
-
-  g_installed = poses > 0;
-
-  // Une ligne, une fois par session : la preuve que les détours SONT en place,
-  // et surtout COMBIEN. Un seul site posé sur trois avait suffi à masquer le
-  // vrai problème — le détour existait, mais pas sur le chemin emprunté.
-  LogDiag("[WandBolt] {} detour(s) pose(s) sur {} site(s) -> 0x{:08X} (job de projectile : {})",
-          poses, static_cast<int>(std::size(kArrowSpawnCalls)),
-          reinterpret_cast<uintptr_t>(&ArrowSpawnDetour), kProjectileJob);
 
   // Vitesse et orientation : les deux slots de vtable, dans cet ORDRE. `Update`
   // n'est crocheté que si `OnMsg` l'a été, car c'est OnMsg qui écrit la marque ;
@@ -531,11 +493,8 @@ WandBolt::WandBolt() {
     const uintptr_t ancien_update =
         PoserSlot(kArrowEffectVtable + kSlotUpdate * 4, kArrowEffectUpdate,
                   reinterpret_cast<uintptr_t>(&UpdateDetour));
-    if (ancien_update) {
+    if (ancien_update)
       g_update_natif = reinterpret_cast<UpdateFn>(ancien_update);
-      LogDiag("[WandBolt] vol regle : lenteur x{:.2f}, rotation {:+d} deg",
-              kFacteurLenteur, kRotationDeg);
-    }
   }
 
   // Les dégâts, enfin, attendent la boulette. Rien à faire si on ne ralentit
@@ -562,7 +521,4 @@ WandBolt::WandBolt() {
     LogDiag("[WandBolt] site des degats 0x{:08X} : page non ouvrable", kDamageDueTimeCall);
     return;
   }
-
-  LogDiag("[WandBolt] degats differes de {} ms de plus (le client en differait deja {})",
-          kSupplementDegatsMs, kVolNatifMs);
 }
