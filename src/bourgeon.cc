@@ -28,6 +28,7 @@
 #include "features/systems/dx7_warning.h"
 #include "features/moonlight_ui/moonlight_ui.h"
 #include "features/patches/status_tweaks.h"
+#include "features/patches/damage_name_fix.h"
 #include "features/patches/berserk_chat_unlock.h"
 #include "features/patches/pick_quad_tweaks.h"
 #include "features/patches/inventory_tweaks.h"
@@ -49,6 +50,7 @@
 #include "features/fx/screen_fx.h"
 #include "features/fx/zone_recorder.h"
 #include "features/fx/weapon_layer.h"
+#include "features/fx/wand_bolt.h"
 #include "features/fx/weapon_dual_sprites.h"
 #include "features/fx/hat_effect_depth.h"
 #include "features/patches/skill_tree_tweaks.h"
@@ -777,6 +779,7 @@ void Bourgeon::LoadPlugins() {
     plugins_.emplace_back(std::move(chat_window));
   }
   plugins_.emplace_back(std::make_unique<StatusTweaks>());
+  plugins_.emplace_back(std::make_unique<DamageNameFix>());
   plugins_.emplace_back(std::make_unique<BerserkChatUnlock>());
   plugins_.emplace_back(std::make_unique<PickQuadTweaks>());
   plugins_.emplace_back(std::make_unique<InventoryTweaks>());
@@ -910,6 +913,7 @@ void Bourgeon::LoadPlugins() {
   }
   plugins_.emplace_back(std::make_unique<EquipTweaks>());
   plugins_.emplace_back(std::make_unique<WindowPosTweaks>());
+  plugins_.emplace_back(std::make_unique<WandBolt>());
   plugins_.emplace_back(std::make_unique<WeaponLayer>());
   {
     auto weapon_dual = std::make_unique<WeaponDualSprites>();

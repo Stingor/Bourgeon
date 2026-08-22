@@ -124,6 +124,8 @@ set(BOURGEON_FILES
 	"features/windows/craft_atlas.h"
 
 	# patches/
+	"features/patches/damage_name_fix.cc"
+	"features/patches/damage_name_fix.h"
 	"features/patches/berserk_chat_unlock.cc"
 	"features/patches/berserk_chat_unlock.h"
 	"features/patches/pick_quad_tweaks.cc"
@@ -201,6 +203,8 @@ set(BOURGEON_FILES
 	"features/fx/screen_fx.h"
 	"features/fx/spr_effect_lab.cc"
 	"features/fx/spr_effect_lab.h"
+	"features/fx/wand_bolt.cc"
+	"features/fx/wand_bolt.h"
 	"features/fx/weapon_dual_sprites.cc"
 	"features/fx/weapon_dual_sprites.h"
 	"features/fx/zone_recorder.cc"
