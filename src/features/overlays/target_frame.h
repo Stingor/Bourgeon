@@ -198,7 +198,7 @@ class TargetFrame : public Plugin {
   // `+0x514` = GID, posés par `GameMode_PostActorClickAction`), et pas de la
   // demande de coup, qui n'arrive qu'ensuite. Il faut donc couper aux DEUX
   // étages : l'armement (`SuppressClickEngage`) et le coup
-  // (`SuppressBasicAttack`).
+  // (`FilterBasicAttack`).
   //
   // ⚠ Le DOUBLE-CLIC, lui, ATTAQUE : deux engagements sur la même entité dans la
   // fenêtre de double-clic de Windows, c'est un ordre et non un ciblage. Même
@@ -354,6 +354,20 @@ class TargetFrame : public Plugin {
   // dise `/nc`. C'est l'appelant qui sait ce que le geste voulait dire.
   void NoteExplicitAttack(uint32_t gid, bool once = false);
 
+  // 🔴 Un vrai DOUBLE-CLIC dans le monde, détecté par le WndProc.
+  //
+  // ⏱ Mesuré au journal, flux de messages brut : un double-clic donne
+  // **DOWN, UP, DOWN, UP** — la fenêtre du jeu n'a pas `CS_DBLCLKS`, donc aucun
+  // `WM_LBUTTONDBLCLK` n'existe — et le SECOND `DOWN`, pourtant reçu, ne produit
+  // **aucun** appel à `GameMode_PostActorClickAction`. Le client n'en fait pas
+  // un appui frais.
+  //
+  // Le WndProc est donc le SEUL endroit où les deux appuis existent. Il y
+  // applique la règle de Windows (délai + tolérance de déplacement) et nous
+  // prévient ; on rejoue le clic au battement suivant, même chemin que le clic
+  // sur un cadre du HUD.
+  void NoteWorldDoubleClick() { world_dblclick_ = true; }
+
   // ── Ce que le hook de CMode::SendMsg appelle ──────────────────────────────
   // Vrai si une demande d'attaque de base doit être jetée en vol. Aucun autre
   // garde-fou n'est nécessaire : seules les actions 0 et 7 du message `0x89` sont
@@ -365,16 +379,21 @@ class TargetFrame : public Plugin {
   // qu'il commande plutôt que de laisser croire à un réglage vivant.
   // ⚠ NON const : une dispense d'un seul coup se CONSOMME ici, sur la demande
   // qu'elle laisse passer. C'est le seul endroit qui sache qu'elle a servi.
-  bool SuppressBasicAttack(uint32_t target_gid) {
-    if (target_gid != 0 && target_gid == explicit_attack_gid_) {
-      if (explicit_attack_once_) {
-        explicit_attack_gid_  = 0;
-        explicit_attack_once_ = false;
-      }
-      return false;
-    }
-    return enabled_ && click_no_attack_;
-  }
+  //
+  // `action` est le `p1` du message `0x89` : 0 = frapper UNE FOIS (DMG_NORMAL),
+  // 7 = frapper EN CONTINU (DMG_REPEAT). Il ne sert pas à décider — les deux
+  // sont filtrées de la même façon — mais à savoir CE QUI PART, ce qu'aucune
+  // lecture du code appelant ne dit.
+  // 🔴🔴 Rend l'action à laisser PARTIR, ou **-1** pour jeter la demande.
+  //
+  // ⏱ Ce n'était pas un simple prédicat, et c'est ce qui a fait échouer deux
+  // correctifs : le client émet **toujours l'action 7** (`DMG_REPEAT`), même
+  // quand rien ne demande une attaque continue. Or côté serveur,
+  // `clif_parse_ActionRequest_sub` fait `unit_attack(&sd, id, action_type != 0)`
+  // — **UN** paquet d'action 7 suffit donc à faire frapper sans fin. Laisser
+  // passer « une seule demande » ne limitait rien du tout ; il faut réécrire
+  // l'ACTION.
+  int FilterBasicAttack(uint32_t target_gid, int action);
 
   // Le GID visé par un sort qui part (CZ_USE_SKILL). 🔴 C'est le SEUL moyen de
   // suivre une cible que le client refuse de sélectionner : sa sélection
@@ -434,6 +453,21 @@ class TargetFrame : public Plugin {
   // Émet CZ 0x0F29 si le délai est écoulé.
   void PollServer();
 
+  // Un coup, ou sans fin ? La règle du NATIF (`CursorMgr_UpdateHover`) : hors
+  // zone de siège, Ctrl tenu ou `/nc` actif. Elle vaut pour tous nos gestes —
+  // le geste dit « attaque-le », le réglage dit comment.
+  static bool WantsContinuousAttack(void* game_mode);
+
+  // Engage l'attaque sur `gid` avec la durée demandée. Point de passage COMMUN du
+  // clic sur un cadre et du double-clic rejoué : deux copies de ce geste auraient
+  // divergé au premier correctif — c'est déjà arrivé ici.
+  void EngageAttack(void* game_mode, uint32_t gid, bool continuous);
+
+  // Rejoue le double-clic vu par le WndProc (cf. NoteWorldDoubleClick).
+  // 🔴 Appelée depuis OnGameFramePulse, donc hors frame ImGui : elle rejoue
+  // `GameMode_PostActorClickAction`.
+  void FlushWorldDoubleClick();
+
   // Redemande le nom de la cible (CZ_REQNAME). 🔴 Le client s'interdit de
   // redemander un GID pendant 10 s, et on peut cibler plus vite que la réponse
   // n'arrive — surtout si l'entité vient d'être recréée (Cloaking, @hide,
@@ -467,9 +501,11 @@ class TargetFrame : public Plugin {
   bool     explicit_engage_pending_ = false;
   // La dispense ne vaut-elle que pour UN coup ? Cf. NoteExplicitAttack.
   bool     explicit_attack_once_    = false;
-  // Dernier engagement au clic, pour reconnaître le double.
-  uint32_t last_click_aid_ = 0;
-  unsigned last_click_ms_  = 0;
+  // Un vrai double-clic Windows attend d'être rejoué (cf. NoteWorldDoubleClick).
+  bool world_dblclick_ = false;
+  // (Plus de compteur d'appels : mesuré impuissant — le client n'appelle
+  // `PostActorClickAction` qu'au PREMIER appui d'un double-clic. Cf.
+  // `NoteWorldDoubleClick`.)
 
   // Pose `gid` comme cible clavier : sélection native + geste de ciblage, et
   // horodatage du cycle. Le point de passage COMMUN de CycleTarget et

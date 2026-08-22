@@ -4,11 +4,13 @@
 #include <Windows.h>
 
 #include <array>
+#include <cstdlib>  // abs (tolerance de deplacement du double-clic)
 #include <iomanip>
 #include <sstream>
 
 #include "backends/imgui_impl_win32.h"
 #include "bourgeon.h"
+#include "features/overlays/target_frame.h"  // le vrai double-clic du monde
 #include "imgui/imgui_impl_dx7.h"
 #include "imgui_internal.h"
 #include "features/overlays/skill_bar.h"
@@ -748,7 +750,58 @@ static LRESULT CALLBACK WindowProcHook(HWND hwnd, UINT uMsg, WPARAM wParam,
     } else {
       // Press started outside ImGui — mark it so the up-event reaches the game.
       switch (uMsg) {
-        case WM_LBUTTONDOWN: case WM_LBUTTONDBLCLK: g_mouse_captured_by_game |= 1; break;
+        // ── 🔴 LE DOUBLE-CLIC SE DÉTECTE ICI, ET NULLE PART AILLEURS ───────
+        //
+        // ⏱ Mesuré au journal, flux de messages brut à l'appui : un double-clic
+        // sur une entité donne **DOWN, UP, DOWN, UP** — la fenêtre du jeu n'a pas
+        // `CS_DBLCLKS`, donc **aucun `WM_LBUTTONDBLCLK` n'existe** — et le SECOND
+        // `DOWN`, pourtant reçu ici sans problème, ne produit **aucun** appel à
+        // `GameMode_PostActorClickAction` : la machine à états de souris du client
+        // n'en fait pas un appui frais.
+        //
+        // Conséquence : compter les appels natifs ne peut PAS détecter un
+        // double-clic — on n'en voit qu'un appui sur deux, et deux appels
+        // rapprochés sont en réalité les PREMIERS appuis de deux double-clics
+        // successifs. C'est trait pour trait le « il faut en faire deux »
+        // rapporté en jeu, et aucun réglage de seuil n'y pouvait rien.
+        //
+        // Ici, les deux appuis sont visibles. On applique donc la règle de
+        // Windows elle-même : même délai (`GetDoubleClickTime`) et même
+        // tolérance de déplacement (`SM_C?DOUBLECLK`) que ce que le système
+        // aurait fait s'il avait envoyé le message.
+        case WM_LBUTTONDOWN: {
+          g_mouse_captured_by_game |= 1;
+          static unsigned last_down_ms = 0;
+          static int      last_down_x  = 0;
+          static int      last_down_y  = 0;
+          const unsigned  now = GetTickCount();
+          const int       x   = static_cast<int>(mx);
+          const int       y   = static_cast<int>(my);
+          const bool doubled =
+              last_down_ms != 0 && (now - last_down_ms) <= GetDoubleClickTime() &&
+              abs(x - last_down_x) <= GetSystemMetrics(SM_CXDOUBLECLK) &&
+              abs(y - last_down_y) <= GetSystemMetrics(SM_CYDOUBLECLK);
+          if (doubled) {
+            // On repart de zéro : un troisième appui ne doit pas se lire comme un
+            // nouveau double avec le deuxième.
+            last_down_ms = 0;
+            if (auto* tf = Bourgeon::Instance().target_frame())
+              tf->NoteWorldDoubleClick();
+          } else {
+            last_down_ms = now;
+            last_down_x  = x;
+            last_down_y  = y;
+          }
+          break;
+        }
+        // Gardé par sûreté : ce client-ci n'envoie pas ce message, mais une autre
+        // version (ou un autre style de classe) le ferait, et il vaut alors
+        // exactement le second appui détecté ci-dessus.
+        case WM_LBUTTONDBLCLK:
+          g_mouse_captured_by_game |= 1;
+          if (auto* tf = Bourgeon::Instance().target_frame())
+            tf->NoteWorldDoubleClick();
+          break;
         case WM_RBUTTONDOWN: case WM_RBUTTONDBLCLK: g_mouse_captured_by_game |= 2; break;
         case WM_MBUTTONDOWN: case WM_MBUTTONDBLCLK: g_mouse_captured_by_game |= 4; break;
         case WM_LBUTTONUP: g_mouse_captured_by_game &= ~1; break;

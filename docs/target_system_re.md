@@ -783,44 +783,77 @@ entité, et elle choisit d'après le ciblage armé (`CGameMode+0x408`) :
 | `2` ou `4` (cible) | messages **41** puis **90** — la compétence `+0x40C` part sur ce GID, au niveau `+0x414` |
 | `1`, `3`, `5` | **rien** |
 
-> 🔴 **`param_2` ne décide PAS « une fois » contre « en continu ».** Il
-> atterrit dans `+0x500` (`1` ou `5`) via le message d'acteur 10 — et dans
+> 🔴 **`param_2` ne décide PAS « une fois » contre « en continu ».** Il atterrit
+> dans `+0x508` (et `+0x500`) via le message d'acteur 10 — et dans
 > `Actor_ProcessPendingAction_Tick`, **`case 1:` et `case 5:` tombent dans le
 > MÊME bloc**. La seule chose que `1` vs `5` change est la cadence de relance de
-> la **marche d'approche** :
->
-> ```
-> v5 = 1200 ; if (+0x500 != 5) v5 = 450 ;   // ms
-> ```
->
-> ⚠ **Correction d'une note antérieure** de ce dossier, qui donnait cette
-> cadence à l'envers (« 450 ms si `+0x500 == 5` ») : c'est l'inverse.
->
-> Le natif le calcule ainsi, hors zone de siège (`*(CGameMode+0xCC) + 0x4C`,
-> posé par `ZC_NOTIFY_MAPPROPERTY = 3`) :
->
-> ```
-> continu = !GameSession_IsAgitZone() && (Ctrl tenu || GameSettings_GetFlag(0x6D))
-> PostActorClickAction(this, gid, continu ? 0 : 1) ;  puis  this+0x5B0 = continu
-> ```
->
-> `0x6D` est bien **`TT_NOCTRL_ON_OFF`** — vérifié dans la table de noms de l'exe
-> (`off_1008120`, index = valeur), et **pas** ce qu'annonce
-> `src/ragnarok/talktype.h`, décalé dans cette région (il place `TT_NOSHIFT` en
-> `0x6D` et `TT_NOCTRL` en `0x70`). La table de l'exe fait foi.
->
-> 🔴 **Ce qui limite vraiment une attaque à un coup** est ailleurs : l'acteur
-> n'émet qu'**une** demande puis se verrouille (`+0x50C = 1`, remis à 0 par la
-> suite du protocole), et le choix « un coup » / « en continu » se joue au
-> message **40** contre **29** selon `+0x508`.
->
-> ⏱ **Piège payé, et ce n'était pas celui qu'on croyait.** Le clic rejoué depuis
-> le HUD figeait `param_2` à `1` — vrai défaut de fidélité, corrigé, mais SANS
-> effet sur le symptôme. L'attaque sans fin venait de la **dispense** que le HUD
-> demandait à `NoteExplicitAttack` : elle était DURABLE, comme pour « Attaquer »
-> du menu et le double-clic, qui veulent l'attaque continue. Un simple clic
-> héritait d'un permis illimité. La dispense a désormais la durée du geste —
-> `once` quand `/nc` est éteint et Ctrl relâché.
+> la **marche d'approche** : `v5 = 1200 ; if (+0x500 != 5) v5 = 450 ;`
+> (⚠ une note antérieure de ce dossier donnait cette cadence à l'envers).
+
+### 🔴🔴 Ce qui décide vraiment « un coup » : l'ACTION du paquet
+
+**C'est le serveur qui tranche, et une seule ligne le dit** —
+`clif_parse_ActionRequest_sub`, `moonlight/src/map/clif.cpp` :
+
+```c
+unit_attack(&sd, target_id, action_type != 0);
+```
+
+| Action du `0x89` | `continuous` | Effet |
+|---|---|---|
+| `0` (`DMG_NORMAL`) | `false` | **un seul coup** |
+| `7` (`DMG_REPEAT`) | `true` | frappe **sans fin** |
+
+> ⏱ **Et le client met TOUJOURS 7**, même quand rien ne demande une attaque
+> continue. Conséquence directe, payée par deux correctifs faux : limiter le
+> NOMBRE de paquets qu'on laisse passer ne limite **rien** — un seul paquet
+> d'action 7 suffit. Il faut **réécrire l'action à 0**. C'est ce que fait
+> `TargetFrame::FilterBasicAttack`, qui a remplacé un prédicat « supprimer ou
+> non » par « quelle action laisser partir, ou -1 pour jeter ».
+
+La règle « continu » reste celle du natif (`CursorMgr_UpdateHover`) : hors zone
+de siège, **Ctrl tenu ou `/nc` actif**. `0x6D` est bien `TT_NOCTRL_ON_OFF`,
+vérifié dans la table de noms de l'exe (`off_1008120`, index = valeur) — et
+**pas** ce qu'annonce `src/ragnarok/talktype.h`, décalé dans cette région (il y
+place `TT_NOSHIFT`, et `TT_NOCTRL` en `0x70`). La table de l'exe fait foi.
+
+### 🔴🔴 Le double-clic : le client n'en voit qu'un appui sur deux
+
+⏱ **Mesuré au journal, flux de messages brut à l'appui.** Un double-clic sur une
+entité donne :
+
+```
+WM_LBUTTONDOWN   ->  1 appel a GameMode_PostActorClickAction
+WM_LBUTTONUP
+WM_LBUTTONDOWN   ->  AUCUN appel
+WM_LBUTTONUP
+```
+
+Deux faits, et aucun n'était devinable :
+
+1. **la fenêtre du jeu n'a pas `CS_DBLCLKS`** — `WM_LBUTTONDBLCLK` n'existe
+   simplement pas ici ;
+2. le **second `DOWN` arrive intact** au WndProc (`capture=false`, ImGui hors de
+   cause) et ne produit pourtant **aucun** appel natif : la machine à états de
+   souris du client n'en fait pas un appui frais.
+
+> 🔴 **Conséquence : compter les appels natifs ne peut PAS détecter un
+> double-clic.** On n'en voit qu'un appui sur deux, si bien que « deux appels
+> rapprochés » sont en réalité les **premiers appuis de deux double-clics
+> successifs**. C'est trait pour trait le « il faut en faire deux » rapporté en
+> jeu — et aucun réglage de seuil n'y pouvait rien, la mécanique était fausse,
+> pas son paramètre.
+
+**Remède** : la détection vit dans le **WndProc**, seul endroit où les deux appuis
+existent, et y applique la règle de Windows elle-même — `GetDoubleClickTime()`
+**et** la tolérance `SM_CXDOUBLECLK`/`SM_CYDOUBLECLK`. Le clic est ensuite rejoué
+au battement de frame suivant, par le même chemin que le clic sur un cadre du
+HUD (`TargetFrame::FlushWorldDoubleClick`).
+
+> ⚠ **Trois modèles faux se sont succédé sur ce seul chantier**, chacun démoli
+> par une mesure et aucun par de la lecture de code : « le type du clic décide
+> la durée », « un appui frais = un appel natif », « Windows envoie
+> `WM_LBUTTONDBLCLK` ». Sur ce sous-système, **instrumenter d'abord**.
 
 En tête, une seule garde, et elle n'a rien à voir avec le ciblage : au-delà de
 **90 % de poids** (`g_Weight` / `g_MaxWeight`), elle affiche `MsgString 0x133`

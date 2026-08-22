@@ -55,6 +55,9 @@ constexpr uintptr_t kPostActorClickAction = 0x00c753a0;
 //
 // ⚠ Et les valeurs sont INVERSÉES par rapport à l'intuition : **0 = continu**,
 // **1 = une seule fois**.
+// Actions du message `0x89`, telles que le SERVEUR les lit :
+// `unit_attack(&sd, id, action_type != 0)` — 0 = UN coup, 7 = sans fin.
+constexpr int kActionAttackOnce    = 0;
 constexpr int kClickTypeContinuous = 0;
 constexpr int kClickTypeOnce       = 1;
 
@@ -290,16 +293,8 @@ unsigned ActorOptions(void* actor) {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0u; }
 }
 
-// Fenêtre du double-clic. 🔴 Celle de WINDOWS, pas une constante à nous : le
-// joueur l'a réglée une fois pour tout son bureau, et un seuil maison ferait
-// mentir ce réglage. Bornée quand même — la valeur système est modifiable et
-// peut être absurde.
-unsigned DoubleClickWindowMs() {
-  const unsigned sys = GetDoubleClickTime();
-  if (sys < 200u) return 200u;
-  if (sys > 900u) return 900u;
-  return sys;
-}
+// (Le seuil de double-clic vit désormais dans le WndProc, avec la détection :
+// c'est la règle de Windows elle-même, délai ET tolérance de déplacement.)
 
 // L'engagement souris du mode (`+0x28`), lu sous SEH comme tout le reste.
 bool ReadEngaged(void* game_mode) {
@@ -827,9 +822,9 @@ void TargetFrame::NoteExplicitAttack(uint32_t gid, bool once) {
 
 bool TargetFrame::SuppressClickEngage(void* game_mode, uint32_t target_aid) {
   if (!enabled_) return false;
-  // L'ordre explicite du menu contextuel passe, et il ne consomme qu'un seul
-  // passage : le clic ordinaire qui suivra, fût-il sur la même entité, retombe
-  // sous la règle commune.
+  // L'ordre explicite (menu contextuel, cadre du HUD, double-clic rejoué) passe,
+  // et il ne consomme qu'un seul passage : le clic ordinaire qui suivra, fût-il
+  // sur la même entité, retombe sous la règle commune.
   if (explicit_engage_pending_) {
     explicit_engage_pending_ = false;
     return false;
@@ -840,31 +835,89 @@ bool TargetFrame::SuppressClickEngage(void* game_mode, uint32_t target_aid) {
   if (Bourgeon::Instance().client().timestamp() != 20250716) return false;
   if (!ClickEngagesAnAttack(game_mode, FindActor(target_aid))) return false;
 
-  // ── Le DOUBLE-CLIC attaque ────────────────────────────────────────────────
-  // Deuxième engagement sur la MÊME entité dans la fenêtre du système : c'est un
-  // ordre, pas un ciblage. Le natif n'appelle ceci qu'à chaque appui FRAIS
-  // (`g_Mouse_LButtonState == 1`, cf. `GameMode_RepeatActorAction`), donc un
-  // appui = un passage ici, et compter les passages compte bien les clics.
-  const unsigned now = GetTickCount();
-  const bool doubled = target_aid == last_click_aid_ && last_click_ms_ != 0 &&
-                       (now - last_click_ms_) <= DoubleClickWindowMs();
-  // Après un double, on repart de zéro : un troisième clic ne doit pas se lire
-  // comme un nouveau double avec le deuxième.
-  last_click_aid_ = doubled ? 0u : target_aid;
-  last_click_ms_  = now;
-
-  if (doubled) {
-    // Dispense DURABLE pour ce GID, comme « Attaquer » du menu : l'attaque est
-    // une suite de demandes, et n'en laisser passer qu'une ne ferait qu'un coup.
-    explicit_attack_gid_  = target_aid;
-    explicit_attack_once_ = false;
-    return false;
-  }
-  // Un simple clic referme la dispense en cours : le joueur a repris la main, et
-  // sa règle dit « cibler, pas frapper ».
+  // ── 🔴 Le double-clic ne se détecte PAS ici, et ne le peut pas ─────────
+  // ⏱ Mesuré : un double-clic sur une entité ne produit qu'UN SEUL passage dans
+  // cette fonction. Le second appui arrive pourtant intact au WndProc
+  // (`DOWN, UP, DOWN, UP`), mais la machine à états de souris du client n'en fait
+  // pas un appui frais et n'appelle donc pas `PostActorClickAction`. Compter les
+  // passages revenait à apparier les PREMIERS appuis de deux double-clics
+  // successifs — exactement le « il faut en faire deux » rapporté en jeu, et
+  // aucun réglage de seuil n'y pouvait rien.
+  //
+  // La détection vit donc dans le WndProc, seul endroit où les deux appuis
+  // existent (cf. `NoteWorldDoubleClick`).
+  //
+  // Il ne reste qu'une règle ici : un clic ordinaire CIBLE, et referme la
+  // dispense en cours — le joueur a repris la main.
   explicit_attack_gid_  = 0;
   explicit_attack_once_ = false;
   return true;
+}
+
+// ── Un coup, ou sans fin ? ───────────────────────────────────────────
+// La règle du natif, relevée au site de clic sur un monstre dans
+// `CursorMgr_UpdateHover`. Elle vaut pour TOUS nos gestes — cadre du HUD comme
+// double-clic rejoué : le geste dit « attaque-le », le réglage dit comment.
+bool TargetFrame::WantsContinuousAttack(void* game_mode) {
+  if (OnAgitZone(game_mode)) return false;  // zone de siège : jamais de continu
+  return (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0 ||
+         gamesettings::IsOn(kOptNoCtrl);
+}
+
+// Engage l'attaque sur `gid`, avec la durée que le réglage commande. Le point de
+// passage COMMUN du clic sur un cadre et du double-clic rejoué : deux copies de
+// ce geste auraient divergé au premier correctif.
+void TargetFrame::EngageAttack(void* game_mode, uint32_t gid, bool continuous) {
+  // 🔴 `once` referme la dispense sur la demande qu'elle laisse passer, et
+  // `FilterBasicAttack` réécrit alors l'action à 0 : sans ça le client envoie 7
+  // (DMG_REPEAT) et le serveur frappe sans fin.
+  NoteExplicitAttack(gid, /*once=*/!continuous);
+  RunActorClick(game_mode, gid,
+                continuous ? kClickTypeContinuous : kClickTypeOnce);
+}
+
+// Rejoue le double-clic détecté par le WndProc. Le client n'ayant pas fait du
+// second appui un appui frais, c'est à nous d'en faire une attaque — par le
+// MÊME chemin que le clic sur un cadre du HUD, `/nc` compris.
+void TargetFrame::FlushWorldDoubleClick() {
+  auto& bourgeon = Bourgeon::Instance();
+  // Sans « le clic cible sans attaquer », le premier appui a déjà engagé : il n'y
+  // a rien à rattraper, et rejouer ferait un doublon.
+  if (!enabled_ || !click_no_attack_) return;
+  if (bourgeon.client().timestamp() != 20250716) return;
+  if (bourgeon.IsMapLoading() || !bourgeon.IsGameActive()) return;
+
+  void* gm = ActiveGameMode();
+  if (!gm) return;
+  // La cible est celle que le PREMIER appui vient d'écrire (`+0xF4`).
+  const uint32_t sel = ReadSelection(gm);
+  void* actor = sel != 0 ? FindActor(sel) : nullptr;
+  if (!actor) return;
+  // Une compétence armée a son propre chemin, et un compagnon garde ses ordres.
+  if (ReadSkillTargetMode(gm) != 0) return;
+  if (!ClickEngagesAnAttack(gm, actor)) return;
+  // Dispense déjà ouverte pour cette cible : ne pas rejouer un clic de plus.
+  // (Cas d'un client qui enverrait AUSSI un `WM_LBUTTONDBLCLK` : les deux voies
+  // se déclencheraient, et une seule doit agir.)
+  if (explicit_attack_gid_ == sel) return;
+
+  EngageAttack(gm, sel, WantsContinuousAttack(gm));
+}
+
+int TargetFrame::FilterBasicAttack(uint32_t target_gid, int action) {
+  if (target_gid == 0 || target_gid != explicit_attack_gid_)
+    return (enabled_ && click_no_attack_) ? -1 : action;
+
+  const bool single = explicit_attack_once_;
+  if (single) {
+    explicit_attack_gid_  = 0;
+    explicit_attack_once_ = false;
+  }
+  // 🔴 C'est ICI que « un seul coup » devient vrai, et nulle part ailleurs. Le
+  // client a déjà mis 7 (DMG_REPEAT) dans le paquet ; le laisser partir tel quel
+  // fait frapper le serveur sans fin, quel que soit le nombre de paquets qu'on
+  // autorise — `unit_attack(&sd, id, action_type != 0)`.
+  return single ? kActionAttackOnce : action;
 }
 
 bool TargetFrame::WantsSelectionMarker(int* world_x, int* world_z) {
@@ -1434,6 +1487,10 @@ void TargetFrame::DrawElements(void* game_mode, void* actor) {
 // ── Le clic reçu par un cadre, rejoué hors frame ImGui ──────────────────────
 
 void TargetFrame::OnGameFramePulse() {
+  if (world_dblclick_) {
+    world_dblclick_ = false;
+    FlushWorldDoubleClick();
+  }
   if (proxy_click_gid_ == 0 && proxy_menu_gid_ == 0) return;
   const uint32_t gid  = proxy_click_gid_;
   const uint32_t menu = proxy_menu_gid_;
@@ -1475,36 +1532,25 @@ void TargetFrame::OnGameFramePulse() {
   const int skill_mode = ReadSkillTargetMode(gm);
 
   // ── Une fois, ou en continu ? ─────────────────────────────────────────────
-  // La MÊME règle que le clic sur le sprite, relevée dans
-  // `CursorMgr_UpdateHover` : hors zone de siège, Ctrl tenu ou `/nc` actif.
-  const bool continuous =
-      !OnAgitZone(gm) && ((GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0 ||
-                          gamesettings::IsOn(kOptNoCtrl));
+  const bool continuous = WantsContinuousAttack(gm);
 
-  // 🔴 Sur un CADRE, un seul clic attaque — même sous « le clic cible sans
-  // attaquer ». Ce réglage existe parce qu'un clic DANS LE MONDE est ambigu :
-  // on désigne souvent une entité sans vouloir l'engager, et le double-clic
-  // sert à lever le doute. Ici il n'y a aucun doute à lever — la cible est déjà
+  // 🔴 Sur un CADRE, un seul clic suffit — même sous « le clic cible sans
+  // attaquer ». Ce réglage existe parce qu'un clic DANS LE MONDE est ambigu : on
+  // désigne souvent une entité sans vouloir l'engager, et le double-clic sert à
+  // lever le doute. Ici il n'y a aucun doute à lever — la cible est déjà
   // désignée, et il a fallu viser un rectangle de HUD pour l'atteindre.
   //
-  // ⏱ MAIS la dispense doit avoir la DURÉE du geste, et c'est ce qui manquait :
-  // elle était toujours DURABLE, comme celle de « Attaquer » du menu et du
-  // double-clic — deux gestes qui demandent explicitement l'attaque continue.
-  // Un simple clic héritait donc d'un permis d'attaque illimité, et le
-  // personnage frappait sans fin alors que `/nc` est éteint. Un coup demandé,
-  // un coup autorisé : `once` referme la dispense sur la demande qu'elle laisse
-  // passer.
-  //
   // ⚠ Seulement quand rien n'est armé : une compétence a son propre chemin dans
-  // `PostActorClickAction`, que le réglage ne bloque de toute façon pas.
-  if (skill_mode == 0) NoteExplicitAttack(gid, /*once=*/!continuous);
-
-  // ⚠ Le `type` du clic, lui, ne décide PAS de ça — voir kClickTypeContinuous :
-  // il ne change que la cadence de relance de l'APPROCHE. On le passe quand même
-  // à l'identique du natif, pour que le cadre soit vraiment une copie du sprite.
-  if (!RunActorClick(gm, gid,
-                     continuous ? kClickTypeContinuous : kClickTypeOnce))
+  // `PostActorClickAction`, que le réglage ne bloque de toute façon pas. Le
+  // `type` du clic, lui, ne décide pas de la durée (cf. kClickTypeContinuous) :
+  // on le passe à l'identique du natif pour que le cadre soit vraiment une copie
+  // du sprite.
+  if (skill_mode == 0) {
+    EngageAttack(gm, gid, continuous);
+  } else if (!RunActorClick(gm, gid, continuous ? kClickTypeContinuous
+                                                : kClickTypeOnce)) {
     return;
+  }
 
   // Compétence lancée : on désarme le ciblage, comme le fait le pipeline souris
   // natif après un lancement. Sans cela, le curseur de visée resterait armé et

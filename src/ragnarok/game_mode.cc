@@ -148,10 +148,17 @@ static int __fastcall Hooked_ProcessInputMsg(void* ecx, void* edx, int msg,
   // joueurs.
   if (msg == kSendMsgActionRequest &&
       (p1 == kActionAttackOnce || p1 == kActionAttackContinuous)) {
+    // 🔴 On ne se contente plus de JETER : le client met TOUJOURS l'action 7
+    // (DMG_REPEAT) dans le paquet, et le serveur lit
+    // `unit_attack(sd, id, action != 0)` -- un seul paquet 7 fait frapper sans
+    // fin. Le filtre rend donc l'action a laisser partir, ou -1 pour jeter.
     auto* target_frame = Bourgeon::Instance().target_frame();
-    if (target_frame &&
-        target_frame->SuppressBasicAttack(static_cast<uint32_t>(p2)))
-      return 0;
+    if (target_frame) {
+      const int action =
+          target_frame->FilterBasicAttack(static_cast<uint32_t>(p2), p1);
+      if (action < 0) return 0;
+      p1 = action;
+    }
   }
 
   // [HUD de cible] Le jeu veut éteindre sa flèche : la rallumer sur NOTRE cible
