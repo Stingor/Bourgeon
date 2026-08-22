@@ -1764,6 +1764,21 @@ void MoonlightUi::PostLoadApply() {
   auto* chat           = Bourgeon::Instance().chat_window();
   auto* npc_dialog     = Bourgeon::Instance().npc_dialog_window();
   auto* minimap        = Bourgeon::Instance().minimap();
+
+  // 🔴 La fenêtre de cible ne remplace AUCUNE fenêtre native : c'est un HUD en
+  // PLUS. Or la réconciliation ci-dessous réécrit TOUS les membres du groupe —
+  // elle ranimait donc à chaque démarrage un HUD que le joueur avait
+  // explicitement éteint, et il suffisait qu'un SEUL autre membre soit moderne
+  // (l'inventaire, par exemple) pour que le vote passe au-dessus de son choix.
+  // Elle ne vote pas dans le OU ; elle ne doit pas non plus en subir l'écriture.
+  //
+  // On préserve donc la valeur qui vient d'être lue du yaml. Cocher « Interface
+  // moderne » l'allume toujours (SetModernInterface au CLIC, cf. panel), ce qui
+  // est le comportement voulu : seule la réconciliation au CHARGEMENT cesse de
+  // voter à la place du joueur.
+  auto* target_frame   = Bourgeon::Instance().target_frame();
+  const bool target_frame_choisi = target_frame && target_frame->enabled_;
+
   SetModernInterface((inventory && inventory->imgui_enabled_) ||
                      (storage && storage->imgui_enabled_) ||
                      (skill_bar && skill_bar->enabled_) ||
@@ -1775,6 +1790,8 @@ void MoonlightUi::PostLoadApply() {
                      (chat && chat->imgui_enabled_) ||
                      (npc_dialog && npc_dialog->imgui_enabled_) ||
                      (minimap && minimap->config().enabled));
+
+  if (target_frame) target_frame->enabled_ = target_frame_choisi;
 
   if (auto* status_icons = Bourgeon::Instance().status_icons()) status_icons->MarkDirty();
   if (auto* screen_fx = Bourgeon::Instance().screen_fx())
