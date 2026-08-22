@@ -126,9 +126,8 @@ struct IfaceEntry {
 // demanderait une comparaison qui plie les accents et respecte la locale, pour un
 // gain qui ne concerne pas la langue de référence.
 constexpr IfaceEntry kIfaceSections[] = {
-    {MoonlightUi::kIfaceCraftAtlas,  "craft_atlas",  "Atlas des recettes"},
     {MoonlightUi::kIfaceSkillBar,    "skill_bar",    "Barre d'action"},
-    {MoonlightUi::kIfaceCastBar,     "cast_bar",     "Barre d'incantation"},
+    {MoonlightUi::kIfaceCastBar,     "cast_bar",     "Barre de Cast"},
     {MoonlightUi::kIfaceBasicInfo,   "basic_info",   "Basic Info"},
     {MoonlightUi::kIfaceCart,        "cart",         "Cart"},
     {MoonlightUi::kIfaceChat,        "chat",         "Chat"},
@@ -144,6 +143,7 @@ constexpr IfaceEntry kIfaceSections[] = {
     {MoonlightUi::kIfaceContextMenu, "context_menu", "Menu contextuel"},
     {MoonlightUi::kIfaceMinimap,     "minimap",      "Minimap"},
     {MoonlightUi::kIfaceItemToast,   "item_toast",   "Objet obtenu"},
+    {MoonlightUi::kIfaceCraftAtlas,  "craft_atlas",  "Recettes"},
     {MoonlightUi::kIfaceRefine,      "refine",       "Refine"},
     {MoonlightUi::kIfaceSkin,        "skin",         "Skin RO"},
     {MoonlightUi::kIfaceStorage,     "storage",      "Storage"},

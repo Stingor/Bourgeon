@@ -2353,6 +2353,7 @@
 "Skill": "Skill"
 "Conso": "Usable"
 "Equip": "Equip"
+"Recettes": "Recipes"
 
 # Atlas des recettes (craft_atlas.cc) + son bouton dans la fenetre de fabrication.
 "Atlas des recettes": "Recipe Atlas"
@@ -2503,7 +2504,7 @@
 "Opacité de la bordure": "Border opacity"
 "Épaisseur de la bordure": "Border thickness"
 "%d,%d s": "%d.%d s"
-"Barre d'incantation": "Cast bar"
+"Barre de Cast": "Cast bar"
 "Ce que tu veux VOIR. Décocher ne rend pas la barre du client : le remplacement reste global, seule la barre affichée disparaît.": "What you want to SEE. Unchecking does not give the client's bar back: the replacement stays global, only the displayed bar goes away."
 "La barre du client fait 60×6 pixels, sans nom de compétence ni durée. Elle n'est pas détruite mais masquée : c'est son horloge qui alimente celle-ci.": "The client's bar is 60×6 pixels, with no skill name and no duration. It is not destroyed but hidden: its clock is what feeds this one."
 "Masquer la mienne au-dessus de ma tête": "Hide mine above my head"

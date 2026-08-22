@@ -2314,6 +2314,7 @@
 "Skill": "Skill"
 "Conso": "Usable"
 "Equip": "Equip"
+"Recettes": "Recetas"
 
 # Atlas de recetas (craft_atlas.cc) + su boton en la ventana de fabricacion.
 "Atlas des recettes": "Atlas de recetas"
@@ -2464,7 +2465,7 @@
 "Opacité de la bordure": "Opacidad del borde"
 "Épaisseur de la bordure": "Grosor del borde"
 "%d,%d s": "%d,%d s"
-"Barre d'incantation": "Barra de lanzamiento"
+"Barre de Cast": "Barra de lanzamiento"
 "Ce que tu veux VOIR. Décocher ne rend pas la barre du client : le remplacement reste global, seule la barre affichée disparaît.": "Lo que quieres VER. Desmarcar no devuelve la barra del cliente: el reemplazo sigue siendo global, solo desaparece la barra mostrada."
 "La barre du client fait 60×6 pixels, sans nom de compétence ni durée. Elle n'est pas détruite mais masquée : c'est son horloge qui alimente celle-ci.": "La barra del cliente mide 60×6 píxeles, sin nombre de habilidad ni duración. No se destruye sino que se oculta: su reloj es lo que alimenta esta."
 "Masquer la mienne au-dessus de ma tête": "Ocultar la mía sobre mi cabeza"
