@@ -114,29 +114,40 @@ struct IfaceEntry {
   const char* label;
 };
 
+// 🔴 ORDRE ALPHABÉTIQUE DU LIBELLÉ FRANÇAIS, et c'est un ordre FIGÉ, pas un tri.
+// La liste s'était construite par ordre d'arrivée des chantiers : personne ne
+// pouvait deviner où chercher « Fiche de pet », et chaque nouvelle section
+// empirait le cas. Ranger la table une fois suffit — rien n'indexe ce tableau, ni
+// la persistance (qui va par `key`) ni le rendu du contenu (qui va par `id`).
+//
+// ⚠ L'ordre suit le FRANÇAIS, y compris pour un joueur en anglais ou en espagnol,
+// où la liste n'est donc alphabétique qu'à peu près (« Cast bar » se lit sous
+// « Barre d'incantation »). C'est assumé : trier à l'affichage sur `i18n::Tr`
+// demanderait une comparaison qui plie les accents et respecte la locale, pour un
+// gain qui ne concerne pas la langue de référence.
 constexpr IfaceEntry kIfaceSections[] = {
+    {MoonlightUi::kIfaceCraftAtlas,  "craft_atlas",  "Atlas des recettes"},
     {MoonlightUi::kIfaceSkillBar,    "skill_bar",    "Barre d'action"},
-    {MoonlightUi::kIfaceBasicInfo,   "basic_info",   "Basic Info"},
     {MoonlightUi::kIfaceCastBar,     "cast_bar",     "Barre d'incantation"},
-    {MoonlightUi::kIfaceTargetFrame, "target_frame", "Fenêtre de cible"},
-    {MoonlightUi::kIfaceChat,        "chat",         "Chat"},
-    {MoonlightUi::kIfaceMenuIcons,   "menu_icons",   "Icônes du menu"},
-    {MoonlightUi::kIfaceStatusIcons, "status_icons", "Icônes de statut"},
-    {MoonlightUi::kIfaceQuest,       "quest",        "Suivi de quête"},
-    {MoonlightUi::kIfaceMinimap,     "minimap",      "Minimap"},
-    {MoonlightUi::kIfaceItemToast,   "item_toast",   "Objet obtenu"},
-    {MoonlightUi::kIfaceDesc,        "desc",         "Descriptions"},
-    {MoonlightUi::kIfaceSkin,        "skin",         "Skin RO"},
-    {MoonlightUi::kIfaceNpc,         "npc",          "Fenêtre NPC"},
-    {MoonlightUi::kIfaceStorage,     "storage",      "Storage"},
-    {MoonlightUi::kIfaceInventory,   "inventory",    "Inventaire"},
+    {MoonlightUi::kIfaceBasicInfo,   "basic_info",   "Basic Info"},
     {MoonlightUi::kIfaceCart,        "cart",         "Cart"},
-    {MoonlightUi::kIfaceRefine,      "refine",       "Refine"},
+    {MoonlightUi::kIfaceChat,        "chat",         "Chat"},
+    {MoonlightUi::kIfaceDesc,        "desc",         "Descriptions"},
     {MoonlightUi::kIfaceMakeItem,    "make_item",    "Fabrication"},
+    {MoonlightUi::kIfaceTargetFrame, "target_frame", "Fenêtre de cible"},
+    {MoonlightUi::kIfaceNpc,         "npc",          "Fenêtre NPC"},
     {MoonlightUi::kIfaceMonsterInfo, "monster_info", "Fiche de monstre"},
     {MoonlightUi::kIfacePet,         "pet",          "Fiche de pet"},
+    {MoonlightUi::kIfaceStatusIcons, "status_icons", "Icônes de statut"},
+    {MoonlightUi::kIfaceMenuIcons,   "menu_icons",   "Icônes du menu"},
+    {MoonlightUi::kIfaceInventory,   "inventory",    "Inventaire"},
     {MoonlightUi::kIfaceContextMenu, "context_menu", "Menu contextuel"},
-    {MoonlightUi::kIfaceCraftAtlas,  "craft_atlas",  "Atlas des recettes"},
+    {MoonlightUi::kIfaceMinimap,     "minimap",      "Minimap"},
+    {MoonlightUi::kIfaceItemToast,   "item_toast",   "Objet obtenu"},
+    {MoonlightUi::kIfaceRefine,      "refine",       "Refine"},
+    {MoonlightUi::kIfaceSkin,        "skin",         "Skin RO"},
+    {MoonlightUi::kIfaceStorage,     "storage",      "Storage"},
+    {MoonlightUi::kIfaceQuest,       "quest",        "Suivi de quête"},
 };
 // Message de static_assert : un LITTÉRAL. Il est lu à la compilation et
 // s'adresse au développeur — jamais i18n::Tr.
@@ -421,9 +432,9 @@ void MoonlightUi::DrawInterfacePanel() {
     // Dimensions dérivées du texte/style (pas de pixels fixes) : la liste garde
     // la largeur de sa plus longue entrée, bornée à 40 % de la place dispo pour
     // rester lisible sur fenêtre étroite.
-    // La mesure des 20 libellés ne dépend que de la POLICE et de la LANGUE : on la
-    // garde en cache au lieu de refaire 20 CalcTextSize à chaque frame, et on la
-    // réinvalide dès que l'une des deux bouge.
+    // La mesure des libellés ne dépend que de la POLICE et de la LANGUE : on la
+    // garde en cache au lieu de refaire un CalcTextSize par entrée à chaque frame,
+    // et on la réinvalide dès que l'une des deux bouge.
     //
     // 🔴 LA LANGUE FAIT PARTIE DE LA CLÉ, au même titre que la police. Sans elle,
     // la largeur restait celle de la langue affichée en premier : en passant de
