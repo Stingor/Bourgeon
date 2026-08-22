@@ -14,9 +14,9 @@ Serveur : fork rAthena `moonlight`, **pre-renewal**.
 > `BowTypeList` (`weapontable.lub`) est éditable dans le GRF : y ajouter
 > `WEAPONTYPE_ROD` suffit à faire tirer une baguette, **sans patcher l'exe, sans
 > Bourgeon, sans WARP**. ✅ **Vérifié en jeu le 2026-08-21** : une flèche part
-> bien à chaque coup de bâton. Toute la mécanique (portée, coût en SP, refus à 0 SP,
-> arrêt de l'auto-attaque) est **100 % serveur** et repose sur un précédent
-> rAthena déjà livré, `SU_SOULATTACK`.
+> bien à chaque coup de bâton. Toute la mécanique (portée, deux ratios de MATK
+> selon le SP) est **100 % serveur** et repose sur un précédent rAthena déjà
+> livré, `SU_SOULATTACK`.
 >
 > ⚠ **Le piège de ce sujet** : le projectile ne naît **pas** dans le traitement
 > de `ZC_NOTIFY_ACT`. Lire `CActorSprite_ProcessDamageAction` et n'y rien trouver
@@ -278,7 +278,7 @@ rance au changement d'arme).
 | 1 | Drapeau `special_state.wand_ranged` calculé depuis le weapontype | `pc.hpp:494` / `status.cpp` après 4527 |
 | 2 | Portée `+N` sur `W_STAFF`/`W_2HSTAFF` | `status.cpp:4509-4527` (patron `AC_VULTURE`) |
 | 3 | `BF_LONG` conditionnel | `battle.cpp:5348` |
-| 4 | Refus si SP insuffisant → `return ATK_NONE` | `battle.cpp:7203` |
+| 4 | ~~Refus si SP insuffisant~~ → **le SP module le ratio**, cf. §9 | `battle.cpp:7203` |
 | 5 | Prélèvement `status_charge(src, 0, cost)` | `battle.cpp:7431` |
 | 6 | Visuel serveur (voie B, §7) | `battle.cpp:7449` |
 
@@ -361,11 +361,10 @@ des 12 classes d'arme de type bâton. Le GRF n'est pas touché.
 
 | Fichier | Contenu |
 |---|---|
-| `battle.hpp` | champs `wand_shot_sp_cost`, `wand_shot_skill_id`, `wand_shot_matk_rate` |
+| `battle.hpp` | champs `wand_shot_sp_cost`, `wand_shot_skill_id`, `wand_shot_matk_rate`, `wand_shot_matk_rate_nosp` |
 | `battle.cpp` | prédicat `battle_is_wand_shot` (gate unique) |
-| `battle.cpp` | refus `ATK_NONE` + `USESKILL_FAIL_SP_INSUFFICIENT` quand le SP manque, en tête de `battle_weapon_attack` |
 | `battle.cpp` | dégâts magiques : `battle_calc_attack(BF_MAGIC, …)` dont le résultat **écrase** `wd.damage` |
-| `battle.cpp` | trois entrées dans la table `battle_data` |
+| `battle.cpp` | quatre entrées dans la table `battle_data` |
 | `skill.cpp:413` | garde `nullptr` dans `skill_get_range2` (cf. ci-dessous) |
 | `conf/import/battle_conf.txt` | `wand_shot_sp_cost: 3`, `wand_shot_skill_id: 192` |
 
@@ -431,17 +430,40 @@ non plus ne coupe ni ne corrige le critique.)*
 
 ### Réglages à chaud
 
-Les trois réglages sont de vrais `battle_config` : `@reloadbattleconf` les relit
+Les quatre réglages sont de vrais `battle_config` : `@reloadbattleconf` les relit
 **sans redémarrer ni recompiler**.
 
 | Réglage | Défaut | Rôle |
 |---|---|---|
 | `wand_shot_sp_cost` | 3 | SP par tir. **`0` éteint entièrement la fonctionnalité** |
 | `wand_shot_skill_id` | 192 | gabarit du calcul magique (`NPC_MAGICALATTACK`) |
-| `wand_shot_matk_rate` | 20 | puissance, en % du MATK plein |
-| `wand_shot_damage_delay` | 0 | ms avant que les PV ne tombent — le temps de vol de la boulette. À tenir d'accord avec le client (§11.7) |
+| `wand_shot_matk_rate` | 30 | puissance **avec** SP, en % du MATK plein |
+| `wand_shot_matk_rate_nosp` | 5 | puissance **à sec**, même unité |
 
-### ⚖ Pourquoi 20 % et pas 100 %
+### 🔴 Le SP n'est pas une condition, c'est un multiplicateur
+
+Le tir part **toujours**, et il est **toujours magique** : seule sa puissance
+change. `status_charge` étant un test-et-prélèvement atomique, un échec ne
+prélève rien et fait simplement retomber le coup au ratio « à sec ».
+
+```cpp
+const int32 wand_rate = status_charge(src, 0, battle_config.wand_shot_sp_cost)
+    ? battle_config.wand_shot_matk_rate
+    : battle_config.wand_shot_matk_rate_nosp;
+```
+
+C'est ce qui rend le reste cohérent, et ce n'est pas un détail de forme :
+
+* **`battle_is_wand_shot` garde UN seul sens** — « ce joueur porte un bâton ».
+  Ses deux lecteurs, le jet de critique et ce bloc, répondent la même chose sans
+  avoir à consulter le SP, alors que **le jet tombe avant le prélèvement**. Un
+  modèle où le SP déciderait de la *nature* du coup obligerait le prédicat à
+  lire le SP, sous peine de voir les deux diverger ;
+* **la portée ne pose plus de question** : le coup est un tir dans les deux cas,
+  9 cases restent 9 cases ;
+* **le joueur n'est jamais bloqué** — le grief qui avait fait écarter le refus.
+
+### ⚖ Pourquoi 30 % et pas 100 %
 
 Mesure du 2026-08-21 : `Staff` a l'ASPD de base la plus lente du Mage
 (`job_aspd.yml` : 700, contre 500 au poing), mais à **100 % du MATK** un wizard à
@@ -450,10 +472,10 @@ pour ~2,4 SP/s** — soit les trois quarts du DPS d'un Fire Bolt niveau 10, qui
 coûte lui 40+ SP et s'interrompt. Le tir ne remplaçait plus un filler mais les
 sorts de bas niveau.
 
-À 20 % (~80 DPS) il redevient ce qu'il doit être : le geste qu'on fait quand on
-n'a plus de SP. Et comme le ratio se règle à chaud, il est bien plus simple de
-le monter que de reprendre une puissance à laquelle les joueurs se seraient
-habitués.
+À **30 %** il reste un *filler* honnête tant qu'on a du SP ; à **5 %** il devient
+le geste qu'on fait quand on n'a plus rien — visible, mais qui ne remplace pas la
+potion. L'écart entre les deux est ce qui rend le SP intéressant à gérer : c'est
+lui qu'il faut doser, plus que la valeur haute. Les deux se règlent à chaud.
 
 ---
 
