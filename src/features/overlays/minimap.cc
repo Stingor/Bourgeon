@@ -513,6 +513,12 @@ int CollectTownIcons(const char* map_name, TownIcon* out, int cap) {
 
 // Cellule du boss révélé (Convex Mirror), false si aucun n'est connu.
 //
+// 🔴 Le drapeau reste ARMÉ quand le boss est MORT : le serveur annonce alors
+// la tombe (l'heure de réapparition) SANS position, et le client garde 0,0 dans
+// ses deux champs — d'où l'icône planquée au coin bas-gauche pendant toute
+// l'attente. On refuse cette cellule : 0,0 est le coin de la carte, jamais une
+// case où un boss se tient.
+//
 // ⚠ Fonction à part, et pas un `__try` posé dans le rendu : MSVC refuse le SEH
 // dans une fonction qui doit dérouler des objets C++ (C2712), et `OnRenderUI` en
 // manipule à la pelle. C'est la même contrainte qui a donné leur forme aux
@@ -521,8 +527,13 @@ bool ReadBossCell(int* out_x, int* out_y) {
   __try {
     void* gm = ActiveGameMode();
     if (!gm || Read<uint8_t>(gm, kGm_BossKnown) == 0) return false;
-    *out_x = Read<int>(gm, kGm_BossX);
-    *out_y = Read<int>(gm, kGm_BossY);
+    const int bx = Read<int>(gm, kGm_BossX);
+    const int by = Read<int>(gm, kGm_BossY);
+    // Tombe active : aucune position à donner, on masque au lieu de coller
+    // l'icône dans le coin.
+    if (bx <= 0 && by <= 0) return false;
+    *out_x = bx;
+    *out_y = by;
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
@@ -1747,7 +1758,8 @@ void Minimap::DrawSettings() {
   SameLine();
   HelpMarker(i18n::Tr("Le boss révélé par un Convex Mirror.\n"
                       "Hors du cadrage, l'icône se colle au bord de la carte\n"
-                      "pour en donner la direction."));
+                      "pour en donner la direction ; elle disparaît tant que le\n"
+                      "boss est mort (le client n'a plus de position à donner)."));
   g_needs_save |= ro::RoCheckbox(i18n::Tr("Repères du serveur"),
                                  &g_cfg.show_viewpoints);
   SameLine();

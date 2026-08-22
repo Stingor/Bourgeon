@@ -255,6 +255,12 @@ d'écran normale. Constaté en jeu le 2026-08-15 sur la minimap Bourgeon.
 | 5 | `GameMode_DrawMiniMapPartyGuildQuestMarkers` (`0x00c66060`) | voir §2.5 | | |
 | 6 | `GameMode+0x1C8` | 3 | 1 | clignote 500 ms sur 1000, **expire à 15 s** (`timeGetTime`) |
 
+⚠ Le drapeau `+0x5CC` reste **armé quand le boss est mort** : l'annonce de la
+tombe n'apporte pas de position et le client laisse `0,0` dans `+0x5C4/0x5C8`.
+Le natif dessine donc son icône au coin bas-gauche pendant toute l'attente ; la
+minimap Bourgeon traite `0,0` comme « aucun boss » et masque le marqueur
+(`ReadBossCell`, `src/features/overlays/minimap.cc`).
+
 ### 2.5 Groupe, guilde, quêtes — `0x00c66060`
 
 | champ `CGameMode` | contenu | genre | message vers la grande carte |
