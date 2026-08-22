@@ -5,9 +5,9 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
-#include <cstdlib>  // std::atoi
 #include <cstring>
 #include <iterator>  // std::size
+#include <string>
 
 #include "bourgeon.h"
 #include "features/fx/screen_fx.h"         // les effets d'écran, hébergés ici
@@ -156,29 +156,92 @@ const char* TabLabel(int tab) {
   }
 }
 
+// Ce que Windows sait dire d'une sortie d'affichage, une fois interrogé.
+//
+// 🔴 `number` N'EST PAS le chiffre du nom GDI. `\\.\DISPLAYn` porte un
+// identifiant que Windows ALLOUE ET NE RECYCLE JAMAIS : chaque combinaison
+// écran/sortie jamais vue (un branchement, un câble passé de DP à HDMI, un
+// pilote mis à jour, une sortie inutilisée de la carte…) en consomme un de plus.
+// Sur une machine un peu vécue on tombe sur `DISPLAY11` et `DISPLAY12` là où
+// Windows, lui, affiche « 1 » et « 2 » — signalé en jeu le 2026-08-22, et c'est
+// exactement ce que montrait l'ancien libellé, qui lisait ce chiffre au mot.
+//
+// Le numéro des Paramètres est un RANG : celui de la sortie parmi les écrans
+// attachés au bureau, dans l'ordre où `EnumDisplayDevices` les rend. C'est ce
+// rang qu'on recompte ici.
+struct ScreenInfo {
+  int  number  = 0;      // rang parmi les écrans du bureau ; 0 = introuvable
+  int  width   = 0;
+  int  height  = 0;
+  bool primary = false;
+};
+
+ScreenInfo QueryScreenInfo(const char* device) {
+  ScreenInfo info;
+  if (!device || device[0] == '\0') return info;
+
+  int rank = 0;
+  for (DWORD i = 0; ; ++i) {
+    DISPLAY_DEVICEA dd = {};
+    dd.cb = sizeof(dd);
+    if (!EnumDisplayDevicesA(nullptr, i, &dd, 0)) break;
+    // Un pilote miroir (capture, bureau à distance) est « attaché » sans être un
+    // écran : le compter décalerait tous les rangs qui suivent.
+    if (dd.StateFlags & DISPLAY_DEVICE_MIRRORING_DRIVER) continue;
+    if (!(dd.StateFlags & DISPLAY_DEVICE_ATTACHED_TO_DESKTOP)) continue;
+    ++rank;
+    if (std::strcmp(dd.DeviceName, device) != 0) continue;
+
+    info.number  = rank;
+    info.primary = (dd.StateFlags & DISPLAY_DEVICE_PRIMARY_DEVICE) != 0;
+    DEVMODEA dm = {};
+    dm.dmSize = sizeof(dm);
+    if (EnumDisplaySettingsA(device, ENUM_CURRENT_SETTINGS, &dm)) {
+      info.width  = static_cast<int>(dm.dmPelsWidth);
+      info.height = static_cast<int>(dm.dmPelsHeight);
+    }
+    return info;
+  }
+  return info;
+}
+
 // Le libellé d'un adaptateur : sa description, et l'écran quand il y en a un.
 //
-// `\\.\DISPLAY2` est le nom Windows de la sortie — exact, mais illisible pour un
-// joueur. On n'en garde que le NUMÉRO, qui est justement ce qui distingue les
-// deux lignes. Un nom d'une autre forme (ce qui n'arrive pas en Direct3D 9, mais
-// rien ne l'interdit) est recopié tel quel plutôt qu'écarté.
-void FormatAdapterLabel(const gamesettings::graphics::Adapter& adapter, char* out,
-                        size_t out_size) {
+// On donne de quoi RECONNAÎTRE l'écran — un numéro qui est celui des Paramètres
+// Windows, sa définition, et le fait qu'il soit ou non l'écran principal —
+// plutôt que le nom GDI, exact mais illisible ET trompeur. Ce nom brut reste
+// disponible sous la souris (infobulle du combo), pour un diagnostic.
+//
+// `rank` est le rang de la ligne dans l'énumération du client : c'est le repli
+// quand Windows ne reconnaît pas la sortie (elle a pu être débranchée entre
+// l'énumération Direct3D et maintenant), et il vaut toujours mieux qu'un numéro
+// arbitraire. En DirectX 7 le client ne donne aucun nom de sortie : la ligne se
+// réduit alors à la description, sans numéro inventé.
+std::string FormatAdapterLabel(const gamesettings::graphics::Adapter& adapter,
+                               int rank) {
+  char out[224];
   if (adapter.device[0] == '\0') {
-    std::snprintf(out, out_size, "%s", adapter.name);
-    return;
+    std::snprintf(out, sizeof(out), "%s", adapter.name);
+    return out;
   }
-  static const char kPrefix[] = "\\\\.\\DISPLAY";
-  const size_t prefix_len = sizeof(kPrefix) - 1;
-  if (std::strncmp(adapter.device, kPrefix, prefix_len) == 0 &&
-      adapter.device[prefix_len] != '\0') {
-    const int screen = std::atoi(adapter.device + prefix_len);
-    if (screen > 0) {
-      std::snprintf(out, out_size, i18n::Tr("%s  —  écran %d"), adapter.name, screen);
-      return;
-    }
+
+  const ScreenInfo info = QueryScreenInfo(adapter.device);
+  const int number = (info.number > 0) ? info.number : rank;
+
+  char details[80] = {0};
+  const bool has_size = (info.width > 0 && info.height > 0);
+  if (has_size && info.primary) {
+    std::snprintf(details, sizeof(details), "  (%d x %d, %s)", info.width,
+                  info.height, i18n::Tr("principal"));
+  } else if (has_size) {
+    std::snprintf(details, sizeof(details), "  (%d x %d)", info.width, info.height);
+  } else if (info.primary) {
+    std::snprintf(details, sizeof(details), "  (%s)", i18n::Tr("principal"));
   }
-  std::snprintf(out, out_size, "%s  —  %s", adapter.name, adapter.device);
+
+  std::snprintf(out, sizeof(out), i18n::Tr("%s  —  écran %d"), adapter.name, number);
+  std::strncat(out, details, sizeof(out) - std::strlen(out) - 1);
+  return out;
 }
 
 // Recherche insensible à la casse, sur une sous-chaîne.
@@ -263,6 +326,7 @@ void GameSettings::OpenFromMenu() {
   // Direct3D, et l'onglet Graphismes les demandera s'il est ouvert.
   graphics_ready_ = false;
   adapters_.clear();
+  adapter_labels_.clear();
   modes_.clear();
 }
 
@@ -953,6 +1017,14 @@ void GameSettings::RefreshGraphicsLists() {
     count = 0;
   adapters_.resize(static_cast<size_t>(count));
 
+  // Les libellés sont composés ICI, une fois par énumération — pas à la frame :
+  // chacun interroge Windows sur la sortie (`EnumDisplayDevices` puis
+  // `EnumDisplaySettings`), ce qui n'a rien à faire dans une boucle de rendu.
+  adapter_labels_.clear();
+  adapter_labels_.reserve(adapters_.size());
+  for (size_t i = 0; i < adapters_.size(); ++i)
+    adapter_labels_.push_back(FormatAdapterLabel(adapters_[i], static_cast<int>(i) + 1));
+
   // Celui que le client choisira réellement — relu ICI et nulle part ailleurs,
   // parce que le savoir coûte une énumération de plus.
   current_adapter_ = (draft_.system == gfx::System()) ? gfx::CurrentAdapterIndex() : -1;
@@ -1118,27 +1190,40 @@ void GameSettings::DrawGraphicsTab() {
   // branchés sur la même carte donnent deux lignes à la description identique.
   // Le numéro d'écran est la seule chose qui les distingue, et sans lui la liste
   // est inutilisable — c'est exactement ce qu'un joueur a signalé.
-  char adapter_label[192];
-  std::strncpy(adapter_label, i18n::Tr("(aucun)"), sizeof(adapter_label) - 1);
-  adapter_label[sizeof(adapter_label) - 1] = '\0';
-  for (const gfx::Adapter& adapter : adapters_) {
-    if (adapter.index == draft_.adapter) {
-      FormatAdapterLabel(adapter, adapter_label, sizeof(adapter_label));
+  const char* adapter_label = i18n::Tr("(aucun)");
+  for (size_t i = 0; i < adapters_.size() && i < adapter_labels_.size(); ++i) {
+    if (adapters_[i].index == draft_.adapter) {
+      adapter_label = adapter_labels_[i].c_str();
       break;
     }
   }
-  ImGui::SetNextItemWidth(ro::Px(300.0f));
+
+  // La largeur est MESURÉE sur les libellés : ils portent désormais la
+  // définition de l'écran, et une largeur fixe couperait le nom de la carte.
+  float combo_width = ro::Px(300.0f);
+  for (const std::string& label : adapter_labels_) {
+    const float needed = ImGui::CalcTextSize(label.c_str()).x +
+                         ImGui::GetStyle().FramePadding.x * 2.0f +
+                         ImGui::GetFrameHeight();  // la flèche du combo
+    combo_width = (std::max)(combo_width, needed);
+  }
+  ImGui::SetNextItemWidth(combo_width);
   if (ro::RoBeginCombo(msgstr::Utf8Or(kMsgGraphicDevice, i18n::Tr("Carte graphique")),
                         adapter_label)) {
-    for (const gfx::Adapter& adapter : adapters_) {
-      char label[192];
-      FormatAdapterLabel(adapter, label, sizeof(label));
+    for (size_t i = 0; i < adapters_.size(); ++i) {
+      const gfx::Adapter& adapter = adapters_[i];
+      const char* label = (i < adapter_labels_.size()) ? adapter_labels_[i].c_str()
+                                                       : adapter.name;
       ImGui::PushID(adapter.index);
       if (ImGui::Selectable(label, adapter.index == draft_.adapter) &&
           adapter.index != draft_.adapter) {
         draft_.adapter = adapter.index;
         pending_graphics_refresh_ = true;  // les modes dépendent de l'adaptateur
       }
+      // Le nom Windows de la sortie n'est plus à la ligne, mais il reste ce
+      // qu'un joueur pourra citer si sa liste ne ressemble pas à ses Paramètres.
+      if (adapter.device[0] != '\0' && ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s", adapter.device);
       ImGui::PopID();
     }
     ro::RoEndCombo();
@@ -1147,6 +1232,8 @@ void GameSettings::DrawGraphicsTab() {
   mui::HelpMarker(
       i18n::Tr("Une même carte apparaît une fois PAR ÉCRAN branché : ce que vous "
                "choisissez ici, c'est l'écran sur lequel le jeu s'ouvrira.\n"
+               "Le numéro est celui de vos Paramètres Windows ; le nom technique "
+               "de la sortie s'affiche sous la souris.\n"
                "Uniquement en plein écran : en fenêtré, le client place toujours "
                "sa fenêtre sur l'écran principal de Windows."));
 

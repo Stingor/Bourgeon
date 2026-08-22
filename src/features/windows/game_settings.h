@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "features/plugin.h"
@@ -264,6 +265,11 @@ class GameSettings : public Plugin {
 
   std::vector<gamesettings::graphics::Adapter> adapters_;
   std::vector<gamesettings::graphics::Mode>    modes_;
+
+  // Le libellé prêt à afficher de chaque adaptateur, DANS LE MÊME ORDRE que
+  // `adapters_`. Composé à l'énumération : chacun coûte deux appels Windows sur
+  // la sortie d'affichage, et le combo se redessine à chaque frame.
+  std::vector<std::string> adapter_labels_;
 
   // 🔴 Les trois réglages « effet immédiat » sont eux aussi DIFFÉRÉS AU TICK, et
   // pour la même raison que le skin : les appliquer recharge des textures du

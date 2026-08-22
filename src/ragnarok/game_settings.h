@@ -287,6 +287,10 @@ int  BitsPerPixel();
 struct Adapter {
   int  index = 0;
   char name[128] = {0};  // description de la carte (« NVIDIA GeForce… »)
+  // 🔴 Le CHIFFRE de `\\.\DISPLAYn` n'est PAS le numéro que Windows montre
+  // dans ses Paramètres : c'est un identifiant GDI jamais recyclé, qui grimpe à
+  // chaque branchement. Pour l'afficher, cf. `QueryScreenInfo` dans
+  // features/windows/game_settings.cc, qui recompte le RANG.
   char device[64] = {0}; // nom de la sortie Windows ; vide en DirectX 7
 };
 
