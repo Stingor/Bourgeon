@@ -201,9 +201,9 @@
 # [92] Please select a Deal Type.
 "MSI_SELECT_DEAL_TYPE": "Veuillez choisir un type d'échange."
 # [93]  requests a deal.
-"MSI_SUGGEST_DEAL": "vous propose un échange."
+"MSI_SUGGEST_DEAL": " vous propose un échange."
 # [94]  Party has sent you an invitation. Would you like to join?
-"MSI_SUGGEST_JOIN_PARTY": "vous invite à rejoindre son groupe. Acceptez-vous ?"
+"MSI_SUGGEST_JOIN_PARTY": " vous invite à rejoindre son groupe. Acceptez-vous ?"
 # [95] Invalid Command
 "MSI_INVALID_COMMAND": "Commande invalide"
 # [96] Leave party
@@ -313,9 +313,9 @@
 # [148] There is no such character name or the user is offline.
 "MSI_NOT_EXIST_CHARACTER": "Ce nom de personnage n'existe pas ou le joueur est hors ligne."
 # [149]  doesn't want to receive your messages.
-"MSI_NO_RECEIVE_MODE": "ne souhaite pas recevoir vos messages."
+"MSI_NO_RECEIVE_MODE": " ne souhaite pas recevoir vos messages."
 # [150]  is not in the mood to talk with anyone.
-"MSI_NO_RECEIVE_MODE_FOR_ALL": "n'a envie de parler à personne."
+"MSI_NO_RECEIVE_MODE_FOR_ALL": " n'a envie de parler à personne."
 # [151] Kick/Disconnected User.
 "MSI_SUCCESS_DISCONNECT_CHARACTER": "Joueur expulsé/déconnecté."
 # [152] Kick has failed.
@@ -355,9 +355,9 @@
 # [169] Storage
 "MSI_ITEMS_THAT_IS_STORED": "Storage"
 # [170]  is put on.
-"MSI_ITEM_IS_EQUIPED": "est équipé."
+"MSI_ITEM_IS_EQUIPED": " est équipé."
 # [171]  is taken off.
-"MSI_ITEM_IS_REMOVED": "est déséquipé."
+"MSI_ITEM_IS_REMOVED": " est déséquipé."
 # [172] To add names on the Whispering List
 "MSI_ADD_TO_WHISPER_CHAR_LIST": "Ajouter des noms à la liste de messages privés"
 # [173] How to Take Screen Shots: Press [Print Screen] or [Scroll Lock]
@@ -769,7 +769,7 @@
 # [376] That Guild Name already exists.
 "MSI_GUILD_MAKE_GUILD_EXIST": "Ce nom de guilde existe déjà."
 # [377]  Guild has sent you an invitation. Would you like to join this Guild?
-"MSI_SUGGEST_JOIN_GUILD": "vous a envoyé une invitation. Voulez-vous rejoindre cette guilde ?"
+"MSI_SUGGEST_JOIN_GUILD": " vous a envoyé une invitation. Voulez-vous rejoindre cette guilde ?"
 # [378] He/She is already in a Guild.
 "MSI_CHARACTER_IS_ALREADY_IN_GUILD": "Ce personnage est déjà dans une guilde."
 # [379] You have refused the guild invitation.
@@ -801,7 +801,7 @@
 # [392] Ask (%s) to join your party   <<< formats : %s
 "MSI_REQ_JOIN_PARTY2": "Inviter (%s) dans votre groupe"
 # [393]  Guild is asking for an Alliance with them. Do you accept?
-"MSI_SUGGEST_ALLY_GUILD": "vous propose une alliance. Acceptez-vous ?"
+"MSI_SUGGEST_ALLY_GUILD": " vous propose une alliance. Acceptez-vous ?"
 # [394] Your Guild is already in an Alliance with this Guild.
 "MSI_REQALLYGUILD_ALREADY_ALLIED": "Votre guilde est déjà alliée à cette guilde."
 # [395] You rejected the Alliance Request.
@@ -867,13 +867,13 @@
 # [425] Manufacturing List
 "MSI_MAKE_LIST": "Liste de fabrication"
 # [426]  Create
-"MSI_MAKE_TARGET": ": fabrication"
+"MSI_MAKE_TARGET": " : fabrication"
 # [427] 's required materials
 "MSI_REQUIRE_FOR_MAKE_TARGET": ": matériaux requis"
 # [428]  item creation failed.
-"MSI_MAKE_TARGET_FAIL": ": échec de la fabrication."
+"MSI_MAKE_TARGET_FAIL": " : échec de la fabrication."
 # [429]  item created successfully.
-"MSI_MAKE_TARGET_SUCCEESS": ": fabrication réussie."
+"MSI_MAKE_TARGET_SUCCEESS": " : fabrication réussie."
 # [430] Failed to create %s.   <<< formats : %s
 "MSI_MAKE_TARGET_FAIL_MSG": "Échec de la fabrication de %s."
 # [431] Successfully created %s.   <<< formats : %s
@@ -1235,97 +1235,97 @@
 # [609] (%d ppl) - over the age 18   <<< formats : %d
 "MSI_SERVER_PROPERTY_ADULT": "(%d pers.) - plus de 18 ans"
 # [610]  Provoke initiated.
-"MSI_ENST_PROVOKE": "Provoke activé."
+"MSI_ENST_PROVOKE": " Provoke activé."
 # [611]  Provoke canceled.
-"MSI_DSST_PROVOKE": "Provoke annulé."
+"MSI_DSST_PROVOKE": " Provoke annulé."
 # [612]  Endure initiated.
-"MSI_ENST_ENDURE": "Endure activé."
+"MSI_ENST_ENDURE": " Endure activé."
 # [613]  Endure canceled.
-"MSI_DSST_ENDURE": "Endure annulé."
+"MSI_DSST_ENDURE": " Endure annulé."
 # [614]  Improve Concentration initiated.
-"MSI_ENST_CONCENTRATION": "Improve Concentration activé."
+"MSI_ENST_CONCENTRATION": " Improve Concentration activé."
 # [615]  Improve Concentration canceled.
-"MSI_DSST_CONCENTRATION": "Improve Concentration annulé."
+"MSI_DSST_CONCENTRATION": " Improve Concentration annulé."
 # [616]  Hiding initiated.
-"MSI_ENST_HIDING": "Hiding activé."
+"MSI_ENST_HIDING": " Hiding activé."
 # [617]  Hiding canceled.
-"MSI_DSST_HIDING": "Hiding annulé."
+"MSI_DSST_HIDING": " Hiding annulé."
 # [618]  Cloaking initiated.
-"MSI_ENST_CLOAKING": "Cloaking activé."
+"MSI_ENST_CLOAKING": " Cloaking activé."
 # [619]  Cloaking canceled.
-"MSI_DSST_CLOAKING": "Cloaking annulé."
+"MSI_DSST_CLOAKING": " Cloaking annulé."
 # [620]  Poison React initiated.
-"MSI_ENST_POISONREACT": "Poison React activé."
+"MSI_ENST_POISONREACT": " Poison React activé."
 # [621]  Poison React canceled.
-"MSI_DSST_POISONREACT": "Poison React annulé."
+"MSI_DSST_POISONREACT": " Poison React annulé."
 # [622]  Movement Speed reduced.
-"MSI_ENST_QUAGMIRE": "Vitesse de déplacement réduite."
+"MSI_ENST_QUAGMIRE": " Vitesse de déplacement réduite."
 # [623]  Quagmire canceled.
-"MSI_DSST_QUAGMIRE": "Quagmire annulé."
+"MSI_DSST_QUAGMIRE": " Quagmire annulé."
 # [624]  Defense increased.
-"MSI_ENST_ANGELUS": "Défense augmentée."
+"MSI_ENST_ANGELUS": " Défense augmentée."
 # [625]  Angelus canceled.
-"MSI_DSST_ANGELUS": "Angelus annulé."
+"MSI_DSST_ANGELUS": " Angelus annulé."
 # [626]  STR, INT and DEX increased.
-"MSI_ENST_BLESSING": "STR, INT et DEX augmentées."
+"MSI_ENST_BLESSING": " STR, INT et DEX augmentées."
 # [627]  Blessing canceled.
-"MSI_DSST_BLESSING": "Blessing annulé."
+"MSI_DSST_BLESSING": " Blessing annulé."
 # [628]  Signum Crusis initiated.
-"MSI_ENST_CRUCIS": "Signum Crusis activé."
+"MSI_ENST_CRUCIS": " Signum Crusis activé."
 # [629]  Signum Crusis canceled.
-"MSI_DSST_CRUCIS": "Signum Crusis annulé."
+"MSI_DSST_CRUCIS": " Signum Crusis annulé."
 # [630]  Slow Poison initiated.
-"MSI_ENST_SLOWPOISON": "Slow Poison activé."
+"MSI_ENST_SLOWPOISON": " Slow Poison activé."
 # [631]  Slow Poison canceled.
-"MSI_DSST_SLOWPOISON": "Slow Poison annulé."
+"MSI_DSST_SLOWPOISON": " Slow Poison annulé."
 # [632]  SP Regeneration is increased.
-"MSI_ENST_MAGNIFICAT": "La régénération de SP est augmentée."
+"MSI_ENST_MAGNIFICAT": " La régénération de SP est augmentée."
 # [633]  Magnificat canceled.
-"MSI_DSST_MAGNIFICAT": "Magnificat annulé."
+"MSI_DSST_MAGNIFICAT": " Magnificat annulé."
 # [634]  LUK increased.
-"MSI_ENST_GLORIA": "LUK augmentée."
+"MSI_ENST_GLORIA": " LUK augmentée."
 # [635]  Gloria canceled.
-"MSI_DSST_GLORIA": "Gloria annulé."
+"MSI_DSST_GLORIA": " Gloria annulé."
 # [636]  You will receive double damage from 1 attack.
-"MSI_ENST_LEXAETERNA": "Vous subirez le double de dégâts sur 1 attaque."
+"MSI_ENST_LEXAETERNA": " Vous subirez le double de dégâts sur 1 attaque."
 # [637]  Lex Aeterna canceled.
-"MSI_DSST_LEXAETERNA": "Lex Aeterna annulé."
+"MSI_DSST_LEXAETERNA": " Lex Aeterna annulé."
 # [638]  Attack speed increased.
-"MSI_ENST_ADRENALINE": "Vitesse d'attaque augmentée."
+"MSI_ENST_ADRENALINE": " Vitesse d'attaque augmentée."
 # [639]  Attack speed reduced.
-"MSI_DSST_ADRENALINE": "Vitesse d'attaque réduite."
+"MSI_DSST_ADRENALINE": " Vitesse d'attaque réduite."
 # [640]  You have mounted a Pecopeco.
-"MSI_ENST_RIDING": "Vous montez un Pecopeco."
+"MSI_ENST_RIDING": " Vous montez un Pecopeco."
 # [641]  You have dismounted your Pecopeco.
-"MSI_DSST_RIDING": "Vous descendez de votre Pecopeco."
+"MSI_DSST_RIDING": " Vous descendez de votre Pecopeco."
 # [642]  You have rented a Falcon.
-"MSI_ENST_FALCON": "Vous avez loué un Falcon."
+"MSI_ENST_FALCON": " Vous avez loué un Falcon."
 # [643]  You have released your Falcon.
-"MSI_DSST_FALCON": "Vous avez relâché votre Falcon."
+"MSI_DSST_FALCON": " Vous avez relâché votre Falcon."
 # [644]  Play Dead initiated.
-"MSI_ENST_TRICKDEAD": "Play Dead activé."
+"MSI_ENST_TRICKDEAD": " Play Dead activé."
 # [645]  Play Dead canceled.
-"MSI_DSST_TRICKDEAD": "Play Dead annulé."
+"MSI_DSST_TRICKDEAD": " Play Dead annulé."
 # [646]  STR increased.
-"MSI_ENST_SHOUT": "STR augmentée."
+"MSI_ENST_SHOUT": " STR augmentée."
 # [647]  Crazy Uproar canceled.
-"MSI_DSST_SHOUT": "Crazy Uproar annulé."
+"MSI_DSST_SHOUT": " Crazy Uproar annulé."
 # [648]  Energy Coat initiated.
-"MSI_ENST_ENERGYCOAT": "Energy Coat activé."
+"MSI_ENST_ENERGYCOAT": " Energy Coat activé."
 # [649]  Energy Coat canceled.
-"MSI_DSST_ENERGYCOAT": "Energy Coat annulé."
+"MSI_DSST_ENERGYCOAT": " Energy Coat annulé."
 # [650]  Armor damaged.
-"MSI_ENST_BROKENAMOR": "Armure endommagée."
+"MSI_ENST_BROKENAMOR": " Armure endommagée."
 # [651]  Armor repaired.
-"MSI_DSST_BROKENAMOR": "Armure réparée."
+"MSI_DSST_BROKENAMOR": " Armure réparée."
 # [652]  Weapon damaged.
-"MSI_ENST_BROKENWEAPON": "Arme endommagée."
+"MSI_ENST_BROKENWEAPON": " Arme endommagée."
 # [653]  Weapon repaired.
-"MSI_DSST_BROKENWEAPON": "Arme réparée."
+"MSI_DSST_BROKENWEAPON": " Arme réparée."
 # [654]  Invisibility initiated.
-"MSI_ENST_ILLUSION": "Invisibilité activée."
+"MSI_ENST_ILLUSION": " Invisibilité activée."
 # [655]  Invisibility canceled.
-"MSI_DSST_ILLUSION": "Invisibilité annulée."
+"MSI_DSST_ILLUSION": " Invisibilité annulée."
 # [656] Sorry. It is delayed due to the process of payment. Please re-connect in a minute.
 "MSI_REFUSE_BLOCK_TEMPORARY": "Désolé, un traitement de paiement est en cours. Veuillez vous reconnecter dans une minute."
 # [657] You must unequip ammunition first.
@@ -1349,23 +1349,23 @@
 # [666] - [Not equipped]
 "MSI_REF_UNEQUIP": "- [Non équipé]"
 # [667]  Very Hungry
-"MSI_VERY_HUNGRY": "Très affamé"
+"MSI_VERY_HUNGRY": " Très affamé"
 # [668]  Hungry
-"MSI_HUNGRY": "Affamé"
+"MSI_HUNGRY": " Affamé"
 # [669]  Neutral
-"MSI_NORMAL": "Neutre"
+"MSI_NORMAL": " Neutre"
 # [670]  Satisfied
-"MSI_REPLETE": "Rassasié"
+"MSI_REPLETE": " Rassasié"
 # [671]  Stuffed
-"MSI_VERY_REPLETE": "Repu"
+"MSI_VERY_REPLETE": " Repu"
 # [672]  Awkward
-"MSI_VERY_AWKWARD": "Distant"
+"MSI_VERY_AWKWARD": " Distant"
 # [673]  Shy
-"MSI_AWKWARD": "Timide"
+"MSI_AWKWARD": " Timide"
 # [674]  Cordial
-"MSI_FRIENDLY": "Cordial"
+"MSI_FRIENDLY": " Cordial"
 # [675]  Loyal
-"MSI_VERY_FRIENDLY": "Loyal"
+"MSI_VERY_FRIENDLY": " Loyal"
 # [676] Unknown
 "MSI_UNKNOWN": "Inconnu"
 # [677] Your account has play time of %d day %d hour %d minute.   <<< formats : %d %d %d
@@ -1403,7 +1403,7 @@
 # [695] Your character has fainted. Push the ESC key to restart.
 "MSI_PRESS_ESC_TO_RESTART": "Votre personnage a perdu connaissance. Appuyez sur ÉCHAP pour recommencer."
 # [696]  - %d obtained.   <<< formats : %d
-"MSI_EA_OBTAIN": "- %d obtenu."
+"MSI_EA_OBTAIN": " - %d obtenu."
 # [697] Spell List
 "MSI_SPELL_LIST": "Liste de sorts"
 # [698] /minimize
@@ -1599,7 +1599,7 @@
 # [793] Help me out~ Please~ T_T
 "MSI_SUPERNOVICE4": "Aide-moi~ S'il te plaît~ T_T"
 # [794]  wishes to adopt you. Do you accept?
-"MSI_SUGGEST_BABY": "souhaite vous adopter. Acceptez-vous ?"
+"MSI_SUGGEST_BABY": " souhaite vous adopter. Acceptez-vous ?"
 # [795] Z ~ > keys allow you to use skills assigned on shortcut window 1. On | Off
 "MSI_EXPLAIN_BATTLE3": "Les touches Z ~ > utilisent les compétences de la fenêtre de raccourcis 1. On | Off"
 # [796] Press the space bar to Chat when in Battle mode [/battlemode | /bm].
@@ -2519,9 +2519,9 @@
 # [1253] Do you really want to purchase this item? %d points will be deducted from your total Kafra Credit Points.   <<< formats : %d
 "MSI_BUY_RECONFIRM": "Voulez-vous vraiment acheter cet objet ? %d points seront déduits de vos points Kafra."
 # [1254]  You do not have enough Kafra Credit Points.
-"MSI_BUY_CASH_FAIL_MONEY": "Vous n'avez pas assez de points Kafra."
+"MSI_BUY_CASH_FAIL_MONEY": " Vous n'avez pas assez de points Kafra."
 # [1255]  ^ff0000Expiration Date: %s^000000   <<< formats : %s
-"MSI_NOTICE_TO_DELETE_TIME": "^ff0000Date d'expiration : %s^000000"
+"MSI_NOTICE_TO_DELETE_TIME": " ^ff0000Date d'expiration : %s^000000"
 # [1256] The [%s] item will disappear in %d minutes.   <<< formats : %s %d
 "MSI_NOTICE_TO_REMAIN_ITEMUSINGTIME": "L'objet [%s] disparaîtra dans %d minutes."
 # [1257] [%s] item will be deleted from the Inventory in 1 minute.   <<< formats : %s
@@ -2551,7 +2551,7 @@
 # [1269] The mercenary has run away.
 "MSI_MER_RUNAWAY": "Le mercenaire s'est enfui."
 # [1270]  The [%s] item will disappear in %d seconds.   <<< formats : %s %d
-"MSI_NOTICE_TO_REMAIN_ITEMUSINGTIME2": "L'objet [%s] disparaîtra dans %d secondes."
+"MSI_NOTICE_TO_REMAIN_ITEMUSINGTIME2": " L'objet [%s] disparaîtra dans %d secondes."
 # [1271] IP Bonus: EXP/JEXP %d%%, Death Penalty %d%%, Item Drop %d%%   <<< formats : %d %d %d
 "MSI_PCBANG_EVENT": "Bonus IP : EXP/JEXP %d%%, pénalité de mort %d%%, drop d'objets %d%%"
 # [1272] Symbols in Character Names are forbidden.
@@ -2561,7 +2561,7 @@
 # [1274] Mercenary will follow basic AI.
 "MSI_MER_USERAI_OFF": "Le mercenaire suit l'IA de base."
 # [1275]  %s's    <<< formats : %s
-"MSI_CHARACTER_NAME": "%s :"
+"MSI_CHARACTER_NAME": " %s :"
 # [1276] %s has acquired %s.   <<< formats : %s %s
 "MSI_ITEM_PICKUP_PARTY": "%s a obtenu %s."
 # [1277] Public Chat
@@ -3001,9 +3001,9 @@
 # [1494] Shortcut Settings
 "MSI_HOTKEYWND_TITLE": "Configuration des raccourcis"
 # [1495]     BGM
-"MSI_BGM": "BGM"
+"MSI_BGM": " BGM"
 # [1496]     SFX
-"MSI_SOUND": "SFX"
+"MSI_SOUND": " SFX"
 # [1497] Skin
 "MSI_SKIN": "Skin"
 # [1498] Chat room entry sound [ON]
@@ -3217,13 +3217,13 @@
 # [1604] Someone
 "MSI_WHO_IS": "Quelqu'un"
 # [1605]  [%s] inflicts '%d' damage points on you.   <<< formats : %s %d
-"MSI_I_RECEIVED_DAMAGE": "[%s] vous inflige '%d' points de dégâts."
+"MSI_I_RECEIVED_DAMAGE": " [%s] vous inflige '%d' points de dégâts."
 # [1606]  [%s] attacked by [%s] with '%d' damage points.   <<< formats : %s %s %d
-"MSI_PARTY_RECEIVED_DAMAGE": "[%s] est attaqué par [%s] : '%d' points de dégâts."
+"MSI_PARTY_RECEIVED_DAMAGE": " [%s] est attaqué par [%s] : '%d' points de dégâts."
 # [1607]  [%s] receives '%d' damage points.   <<< formats : %s %d
-"MSI_I_GAVE_DAMAGE": "[%s] subit '%d' points de dégâts."
+"MSI_I_GAVE_DAMAGE": " [%s] subit '%d' points de dégâts."
 # [1608]  [%s] attacks [%s] with '%d' damage points.   <<< formats : %s %s %d
-"MSI_PARTY_GAVE_DAMAGE": "[%s] attaque [%s] : '%d' points de dégâts."
+"MSI_PARTY_GAVE_DAMAGE": " [%s] attaque [%s] : '%d' points de dégâts."
 # [1609] You dropped %s (%d).   <<< formats : %s %d
 "MSI_DROP_ITEM": "Vous avez jeté %s (%d)."
 # [1610] [%s] quest - defeating [%s] progress (%d/%d).   <<< formats : %s %s %d %d
@@ -3233,13 +3233,13 @@
 # [1612] [%s]    <<< formats : %s
 "MSI_NOTIFY_WHO": "[%s]"
 # [1613]  %d Base exp points   <<< formats : %d
-"MSI_NOTIFY_EXP": "%d points d'EXP de base"
+"MSI_NOTIFY_EXP": " %d points d'EXP de base"
 # [1614]  %d Job exp points   <<< formats : %d
-"MSI_NOTIFY_JOBEXP": "%d points d'EXP de Job"
+"MSI_NOTIFY_JOBEXP": " %d points d'EXP de Job"
 # [1615]  acquired.
-"MSI_GET": "obtenu."
+"MSI_GET": " obtenu."
 # [1616]  has lost.
-"MSI_LOSS": "a perdu."
+"MSI_LOSS": " a perdu."
 # [1617] From [%s], '%d' coins were stolen.   <<< formats : %s %d
 "MSI_NOTIFY_STEAL_COIN": "De [%s], '%d' pièces ont été volées."
 # [1618] Battle message
@@ -3561,7 +3561,7 @@
 # [1776] Failed to add because you have reached the limit.
 "MSI_OVER_TABSIZE": "Ajout impossible : la limite est atteinte."
 # [1777]  message log settings
-"MSI_SET_CHATINFO": "paramètres du journal des messages"
+"MSI_SET_CHATINFO": " paramètres du journal des messages"
 # [1778] Sell
 "MSI_SELL": "Vendre"
 # [1779] Buy
@@ -3989,7 +3989,7 @@
 # [1990] Record Start
 "MSI_REPLAY_RECORDSTART": "Début de l'enregistrement"
 # [1991]  is Saved.
-"MSI_REPLAY_RECORDEND": "est enregistré."
+"MSI_REPLAY_RECORDEND": " est enregistré."
 # [1992] Weight: %3d / %3d   <<< formats : %3d %3d
 "MSI_WEIGHT": "Poids : %3d / %3d"
 # [1993] Total: %s   <<< formats : %s
@@ -4111,7 +4111,7 @@
 # [2051] Fav
 "MSI_INVENTORY_TABNAME_3": "Fav"
 # [2052]  Drop Lock: On/Off
-"MSI_ITEM_DROP_LOCK": "Verrou de drop : On/Off"
+"MSI_ITEM_DROP_LOCK": " Verrou de drop : On/Off"
 # [2053] Party Alarm
 "MSI_PARTY_RECRUIT_ALRAM": "Alerte de groupe"
 # [2054] Create Party
@@ -4125,11 +4125,11 @@
 # [2058] Player Name:
 "MSI_PUT_PLAYER_NAME_IN": "Nom du joueur :"
 # [2059]  has received an invitation to join your party.
-"MSI_CHARACTER_PARTY_INVITATION_TO_JOIN": "a reçu une invitation à rejoindre votre groupe."
+"MSI_CHARACTER_PARTY_INVITATION_TO_JOIN": " a reçu une invitation à rejoindre votre groupe."
 # [2060]  rejected your party invitation.
-"MSI_CHARACTER_REJECT_PARTY_INVITATION": "a refusé votre invitation de groupe."
+"MSI_CHARACTER_REJECT_PARTY_INVITATION": " a refusé votre invitation de groupe."
 # [2061]  accepted your party invitation.
-"MSI_CHARACTER_ACCEPT_PARTY_INVITATION": "a accepté votre invitation de groupe."
+"MSI_CHARACTER_ACCEPT_PARTY_INVITATION": " a accepté votre invitation de groupe."
 # [2062] Recruitment is already a party.
 "MSI_PARTY_RECRUIT_ERROR1": "Un recrutement de groupe est déjà en cours."
 # [2063] Same conditions such as the previous search.
@@ -4663,7 +4663,7 @@
 # [2327] Below is the total cost:
 "MSI_SHOP_ITEM_BAY_MAG1": "Voici le coût total :"
 # [2328]  Zeny
-"MSI_SHOP_ITEM_BAY_MAG2": "Zeny"
+"MSI_SHOP_ITEM_BAY_MAG2": " Zeny"
 # [2329] Press buy to confirm.
 "MSI_SHOP_ITEM_BAY_MAG3": "Appuyez sur Acheter pour confirmer."
 # [2330] %.1f%% (Internet cafe %.1f%% + TPLUS %.1f%% + Premium %.1f%% + %s Server %.1f%%)   <<< formats : %.1f %.1f %.1f %.1f %s %.1f
@@ -4957,11 +4957,11 @@
 # [2474] 100000000
 "MSI_WARNING_PRICE2": "100000000"
 # [2475]  is over ^FF0000%d00^0000FF million^000000 zeny and   <<< formats : %d
-"MSI_WARNING_PRICE3": "dépasse ^FF0000%d00^0000FF millions^000000 de zeny et"
+"MSI_WARNING_PRICE3": " dépasse ^FF0000%d00^0000FF millions^000000 de zeny et"
 # [2476] 10000000
 "MSI_WARNING_PRICE4": "10000000"
 # [2477]  more than^FF0000 %d0^0000FF million^000000 zeny   <<< formats : %d
-"MSI_WARNING_PRICE5": "plus de^FF0000 %d0^0000FF millions^000000 de zeny"
+"MSI_WARNING_PRICE5": " plus de^FF0000 %d0^0000FF millions^000000 de zeny"
 # [2478] . Is it correct?
 "MSI_WARNING_PRICE6": ". Est-ce correct ?"
 # [2479] Safe check for over 10 mil zeny
@@ -5425,9 +5425,9 @@
 # [2709] %s Crackers    <<< formats : %s
 "MSI_TAIWAN_CASH_MSG_6": "%s Crackers"
 # [2710]                                           Current Crackers : %s   <<< formats : %s
-"MSI_TAIWAN_CASH_MSG_7": "Crackers actuels : %s"
+"MSI_TAIWAN_CASH_MSG_7": " Crackers actuels : %s"
 # [2711]     %s  :  %s  Crackers   <<< formats : %s %s
-"MSI_TAIWAN_CASH_MSG_8": "%s  :  %s  Crackers"
+"MSI_TAIWAN_CASH_MSG_8": " %s  :  %s  Crackers"
 # [2712] %10s Crackers   <<< formats : %10s
 "MSI_TAIWAN_CASH_MSG_9": "%10s Crackers"
 # [2713] Total : %s Crackers   <<< formats : %s
@@ -6151,7 +6151,7 @@
 # [3072] Exp
 "MSI_BASICINFO_EXP": "Exp"
 # [3073]  all on
-"MSI_ALL_ON": "tout activé"
+"MSI_ALL_ON": " tout activé"
 # [3074] Play Replay File
 "MSI_REPLAY_BTN_TOOLTIP": "Lire un fichier de replay"
 # [3075] P
@@ -6291,9 +6291,9 @@
 # [3142] Stop watching the replay?
 "MSI_STOP_VIDEO": "Arrêter de regarder le replay ?"
 # [3143]  have been placed on the Swap Equipment window.
-"MSI_ITEM_IS_SWAP_EQUIPED": "ont été placés dans la fenêtre de permutation d'équipement."
+"MSI_ITEM_IS_SWAP_EQUIPED": " ont été placés dans la fenêtre de permutation d'équipement."
 # [3144]  have been removed from the Swap Equipment window.
-"MSI_ITEM_IS_SWAP_REMOVED": "ont été retirés de la fenêtre de permutation d'équipement."
+"MSI_ITEM_IS_SWAP_REMOVED": " ont été retirés de la fenêtre de permutation d'équipement."
 # [3145] In the last row
 "MSI_CANNOT_MOVE_MINI_PARTYWND": "Sur la dernière ligne"
 # [3146] %.1f%% (Basic 100%% + Bonus%.1f%%+ %s Server%.1f%% )   <<< formats : %.1f %.1f %s %.1f
@@ -6465,9 +6465,9 @@
 # [3229] Unable to open a shop at the current location
 "MSI_MERCHANTSHOP_FAIL_POSITION": "Impossible d'ouvrir un shop à cet endroit"
 # [3230]  seconds left before it become usable again.
-"MSI_SWAP_EQUIPITEM_WAITING": "secondes avant de pouvoir le réutiliser."
+"MSI_SWAP_EQUIPITEM_WAITING": " secondes avant de pouvoir le réutiliser."
 # [3231] Cap
-"MSI_PARTYMEMBER": "Cap"
+"MSI_PARTYMEMBER": "Membres"
 # [3232] SNS Failed to send(%d)   <<< formats : %d
 "MSI_CONNECT_SNS_FAIL_SEND": "Échec de l'envoi SNS(%d)"
 # [3233] SNS Failed to connect to server
@@ -6521,11 +6521,11 @@
 # [3257] There is no party member that can be delegated. Do you want to disband the party instead?
 "MSI_PARTY_DO_YOU_WANT_BREAKING_UP": "Aucun membre du groupe ne peut recevoir la direction. Voulez-vous plutôt dissoudre le groupe ?"
 # [3258]  - Age 18+
-"MSI_SERVER_PROPERTY_ADULT_NO_COUNT": "- 18 ans et plus"
+"MSI_SERVER_PROPERTY_ADULT_NO_COUNT": " - 18 ans et plus"
 # [3259]  - Paid server
-"MSI_SERVER_PROPERTY_PAY_NO_COUNT": "- Serveur payant"
+"MSI_SERVER_PROPERTY_PAY_NO_COUNT": " - Serveur payant"
 # [3260]  - Free server
-"MSI_SERVER_PROPERTY_FREE_NO_COUNT": "- Serveur gratuit"
+"MSI_SERVER_PROPERTY_FREE_NO_COUNT": " - Serveur gratuit"
 # [3261] Smooth
 "MSI_SERVER_USERCOUNT_STATE_NICE": "Fluide"
 # [3262] Normal
@@ -6783,17 +6783,17 @@
 # [3388] Taekwon
 "MSI_JOBNAME_TAEKWON": "Taekwon"
 # [3389]  is blocked.
-"MSI_TO_BLOCK_WHISPER": "est bloqué."
+"MSI_TO_BLOCK_WHISPER": " est bloqué."
 # [3390]  Failed to block.
-"MSI_TO_BLOCK_WHISPER_FAILED1": "Échec du blocage."
+"MSI_TO_BLOCK_WHISPER_FAILED1": " Échec du blocage."
 # [3391]  Failed to block.(Maximum number exceeded)
-"MSI_TO_BLOCK_WHISPER_FAILED2": "Échec du blocage.(Nombre maximum dépassé)"
+"MSI_TO_BLOCK_WHISPER_FAILED2": " Échec du blocage.(Nombre maximum dépassé)"
 # [3392]  is unblocked.
-"MSI_TO_UNBLOCK_WHISPER": "est débloqué."
+"MSI_TO_UNBLOCK_WHISPER": " est débloqué."
 # [3393]  Failed to unblock.
-"MSI_TO_UNBLOCK_WHISPER_FAILED1": "Échec du déblocage."
+"MSI_TO_UNBLOCK_WHISPER_FAILED1": " Échec du déblocage."
 # [3394]  Failed to unblock.(Maximum number exceeded)
-"MSI_TO_UNBLOCK_WHISPER_FAILED2": "Échec du déblocage.(Nombre maximum dépassé)"
+"MSI_TO_UNBLOCK_WHISPER_FAILED2": " Échec du déblocage.(Nombre maximum dépassé)"
 # [3395] There is no block list.
 "MSI_NO_BLOCK_LIST": "Aucune liste de blocage."
 # [3396] -Block list-
@@ -7363,9 +7363,9 @@
 # [3679] Balance: %s %c   <<< formats : %s %c
 "MSI_NC_CASH_INNOVA": "Solde : %s %c"
 # [3680]  ^ff0000You can withdraw your subscription within 7 days of purchasing this item. However, if 7 days have passed or the item is opened, it will be excluded from the withdrawal of subscription. Also, the free cash used for purchase will not be returned upon withdrawal of subscription. ^000000Are you sure you want to purchase the item? %s Cash will be deducted when purchasing.   <<< formats : %s
-"MSI_BUY_RECONFIRM_CASHSTRINGFMT": "^ff0000Vous pouvez annuler votre achat dans les 7 jours suivant l'acquisition de cet objet. Toutefois, passé ce délai de 7 jours ou si l'objet a été ouvert, il sera exclu de l'annulation. De plus, le cash gratuit utilisé pour l'achat ne sera pas restitué en cas d'annulation. ^000000Voulez-vous vraiment acheter cet objet ? %s cash seront déduits lors de l'achat."
+"MSI_BUY_RECONFIRM_CASHSTRINGFMT": " ^ff0000Vous pouvez annuler votre achat dans les 7 jours suivant l'acquisition de cet objet. Toutefois, passé ce délai de 7 jours ou si l'objet a été ouvert, il sera exclu de l'annulation. De plus, le cash gratuit utilisé pour l'achat ne sera pas restitué en cas d'annulation. ^000000Voulez-vous vraiment acheter cet objet ? %s cash seront déduits lors de l'achat."
 # [3681]  ^ff0000You can withdraw your subscription within 7 days of purchasing this item. However, if 7 days have passed or the item is opened, it will be excluded from the withdrawal of subscription. Also, the free cash used for purchase will not be returned upon withdrawal of subscription. ^000000Are you sure you want to purchase the item? If you purchase, normal %s cash and free %s cash will be deducted.   <<< formats : %s %s
-"MSI_BUY_RECONFIRM2_CASHSTRINGFMT": "^ff0000Vous pouvez annuler votre achat dans les 7 jours suivant l'acquisition de cet objet. Toutefois, passé ce délai de 7 jours ou si l'objet a été ouvert, il sera exclu de l'annulation. De plus, le cash gratuit utilisé pour l'achat ne sera pas restitué en cas d'annulation. ^000000Voulez-vous vraiment acheter cet objet ? Si vous achetez, %s cash normal et %s cash gratuit seront déduits."
+"MSI_BUY_RECONFIRM2_CASHSTRINGFMT": " ^ff0000Vous pouvez annuler votre achat dans les 7 jours suivant l'acquisition de cet objet. Toutefois, passé ce délai de 7 jours ou si l'objet a été ouvert, il sera exclu de l'annulation. De plus, le cash gratuit utilisé pour l'achat ne sera pas restitué en cas d'annulation. ^000000Voulez-vous vraiment acheter cet objet ? Si vous achetez, %s cash normal et %s cash gratuit seront déduits."
 # [3682] The call was rejected.
 "MSI_CALL_REJECTED": "L'appel a été refusé."
 # [3683] The purchase limit cannot exceed your possession.
@@ -7383,7 +7383,7 @@
 # [3689] Items you want to exchange
 "MSI_BARTER_ITEMLIST": "Objets à échanger"
 # [3690]  Please raise 1st, 2nd and 3rd Job Skills.
-"MSI_UPGRADESKILLERROR_MORE_THIRDJOBSKILL": "Veuillez d'abord monter les compétences de 1re, 2e et 3e classe."
+"MSI_UPGRADESKILLERROR_MORE_THIRDJOBSKILL": " Veuillez d'abord monter les compétences de 1re, 2e et 3e classe."
 # [3691] You can have up to %d of the same item.   <<< formats : %d
 "MSI_LIMIT_HAVE_ITEM_CNT": "Vous ne pouvez posséder que %d exemplaires du même objet."
 # [3692] Up to %d items can be exchanged at once.   <<< formats : %d
@@ -8241,7 +8241,7 @@
 # [4121] Percentage
 "MSI_PROBABILITY": "Pourcentage"
 # [4122]  ({}hour)
-"MSI_ITEM_HIRE_HOUR": "({}h)"
+"MSI_ITEM_HIRE_HOUR": " ({}h)"
 # [4123] https://moonlight-destiny.fr
 "MSI_REFINING_PROBABILITY_URL": "https://moonlight-destiny.fr"
 # [4124] https://moonlight-destiny.fr
