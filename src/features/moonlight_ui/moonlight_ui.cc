@@ -1078,6 +1078,7 @@ const moonlight_ui::SettingDesc kAfkScreenSettings[] = {
     {"afk_tilt_deg",    SType::kFloat, AFK(tilt_deg)},
     {"afk_zoom_factor", SType::kFloat, AFK(zoom_factor)},
     {"afk_ease_s",      SType::kFloat, AFK(ease_s)},
+    {"afk_wake_on",     SType::kInt,   AFK(wake_on)},
     {"afk_hide_ui",     SType::kBool,  AFK(hide_ui)},
     {"afk_hide_cursor", SType::kBool,  AFK(hide_cursor)},
     {"afk_vignette",    SType::kFloat, AFK(vignette)},

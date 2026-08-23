@@ -257,6 +257,21 @@ void MoonlightUi::DrawAfkScreenSettings() {
       "Temps sans toucher au clavier ni à la souris avant que la veille ne "
       "commence."));
 
+  // Items passés NUS : RoCombo les traduit à leur lecture (les envelopper ici
+  // les traduirait deux fois).
+  static const char* const kWakeModes[] = {"Clavier et souris", "Clavier seulement",
+                                           "Souris seulement"};
+  ImGui::SetNextItemWidth(ro::Px(200.0f));
+  changed |= ro::RoCombo(i18n::Tr("Réveil"), &cfg.wake_on, kWakeModes,
+                         IM_ARRAYSIZE(kWakeModes));
+  SameLine(); HelpMarker(i18n::Tr(
+      "Ce qui met fin à la veille. « Clavier seulement » évite qu'une souris "
+      "frôlée ne la réveille sans arrêt.\n\n"
+      "Ce réglage ne change PAS ce qui repousse la mise en veille : tant que tu "
+      "joues, tout compte. Et ce qui n'a pas le droit de te réveiller n'agit pas "
+      "non plus dans le jeu — sinon une touche partirait sur un décor que tu ne "
+      "vois pas."));
+
   SeparatorText(i18n::Tr("Caméra"));
   ImGui::SetNextItemWidth(ro::Px(200.0f));
   changed |= WheelSliderFloat(i18n::TrId("Rotation", "afk_spin"), &cfg.spin_deg_s,
@@ -364,7 +379,7 @@ void MoonlightUi::DrawAfkScreenSettings() {
   ImGui::EndDisabled();
 
   ImGui::Spacing();
-  if (ro::RoButton(i18n::Tr("Essayer maintenant"))) afk->PreviewNow();
+  if (ro::RoButton(i18n::Tr("Essayer maintenant"))) afk->StartNow();
   SameLine(); HelpMarker(i18n::Tr(
       "Entre en veille tout de suite, sans attendre le délai. Bouge la souris "
       "pour en sortir."));

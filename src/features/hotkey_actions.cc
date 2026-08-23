@@ -5,6 +5,7 @@
 #include <cstring>
 
 #include "bourgeon.h"
+#include "features/gameplay/afk_screen.h"    // StartNow (écran de veille)
 #include "features/hotkey_util.h"           // VkToImGuiKey
 #include "features/overlays/target_frame.h"  // ciblage clavier
 #include "features/windows/bank_window.h"
@@ -108,6 +109,14 @@ const Action kActions[] = {
     {"ui_cycle_windows", "Cycler entre les fenêtres", ActionGroup::kTools, 0,
      {VK_TAB, /*ctrl=*/true, /*alt=*/false, /*shift=*/false}, /*staff_only=*/false,
      /*imgui_windowing=*/true},
+    // Écran de veille, lancé à la main. 🔴 AUCUN défaut, comme le ciblage : la
+    // touche évidente (Pause) sert déjà, et poser un défaut qui vole une touche du
+    // jeu est le genre de cadeau qu'on passe sa vie à retirer.
+    //
+    // ⚠ Le libellé est le MÊME que le titre de la sous-section des réglages, donc
+    // la même clé de catalogue — c'est voulu : le joueur qui cherche « Écran de
+    // veille » doit tomber sur le même mot aux deux endroits.
+    {"tool_afk",         "Écran de veille",         ActionGroup::kTools,   0, {}},
     // Établi du staff. Le seul membre du catalogue à être gaté : il ne s'affiche
     // même pas dans l'écran des raccourcis d'un joueur ordinaire.
     {"tool_staff",       "Staff Tools",             ActionGroup::kTools,   0, {}, true},
@@ -288,6 +297,14 @@ bool Invoke(const char* id) {
     if (!bug_report || !bug_report->enabled()) return false;
     bug_report->Open(BugReport::GenericContext());
     return true;
+  }
+  // Écran de veille. `StartNow` ne fait rien si la veille est déjà en cours, et
+  // n'exige PAS que la mise en veille automatique soit cochée : c'est un geste
+  // explicite. Le relâchement de la touche ne la terminera pas — un relâchement
+  // ne réveille jamais (cf. `afk::FilterMessage`).
+  if (std::strcmp(id, "tool_afk") == 0) {
+    if (auto* afk = bourgeon.afk_screen()) { afk->StartNow(); return true; }
+    return false;
   }
   if (std::strcmp(id, "tool_staff") == 0) {
     if (auto* staff_tools = bourgeon.staff_tools()) { staff_tools->Toggle(); return true; }

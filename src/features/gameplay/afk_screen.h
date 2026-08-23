@@ -65,6 +65,9 @@ class AfkScreen : public Plugin {
     // kWakeSpeedup) : il répond à un geste du joueur, pas à une mise en scène.
     float ease_s        = 2.5f;
     // ── Habillage ────────────────────────────────────────────────────────────
+    // Ce qui a le droit de RÉVEILLER (afk::kWake*). Ne change rien à ce qui
+    // repousse l'endormissement : là, toute activité compte, toujours.
+    int   wake_on       = 0;      // kWakeAny
     bool  hide_ui       = true;   // effacer les deux interfaces
     bool  hide_cursor   = true;   // et la flèche de la souris avec
     float vignette      = 0.45f;  // 0 = aucune (composée en MAX avec celle du joueur)
@@ -122,9 +125,14 @@ class AfkScreen : public Plugin {
   // option décochée). Sans effet si la veille n'est pas en cours.
   void Wake();
 
-  // Bascule d'essai pour le panneau de réglages : entrer en veille tout de
-  // suite, sans attendre le délai (le prochain geste réveille comme d'habitude).
-  void PreviewNow();
+  // Entrer en veille SUR-LE-CHAMP, sans attendre le délai — le bouton d'essai du
+  // panneau et le raccourci clavier « Écran de veille ». Le prochain geste
+  // réveille comme d'habitude.
+  //
+  // ⚠ Marche même quand la veille AUTOMATIQUE est décochée : c'est un geste
+  // explicite, et le joueur qui se lève de sa chaise n'a pas à activer d'abord un
+  // délai dont il ne veut pas.
+  void StartNow();
 
   // Décide d'entrer en veille ou d'en sortir (~100 ms suffisent pour un délai
   // qui se compte en dizaines de secondes).
@@ -196,6 +204,23 @@ class AfkScreen : public Plugin {
 // utilisable même si AfkScreen n'est pas enregistré.
 namespace afk {
 
+// Ce qui a le droit de mettre fin à la veille.
+//
+// ⚠ Ce réglage ne dit PAS ce qui compte comme activité — ça, c'est toujours
+// tout. Il dit seulement ce qui ROUVRE les yeux une fois endormi. « Clavier
+// seulement » existe pour la raison la plus banale qui soit : une souris posée
+// sur un bureau qu'on bouscule, un capteur trop sensible, et la veille ne tient
+// jamais.
+enum WakeMode : int {
+  kWakeAny      = 0,  // clavier et souris
+  kWakeKeyboard = 1,  // le clavier seul
+  kWakeMouse    = 2,  // la souris seule
+};
+
+// Renseigné par AfkScreen à chaque battement, comme `SetSleeping`.
+void SetWakeMode(int mode);
+
+
 // Passe TOUS les messages de la fenêtre. Rend `true` quand le message doit être
 // AVALÉ, c'est-à-dire ne parvenir ni au jeu ni à ImGui.
 //
@@ -211,10 +236,16 @@ namespace afk {
 // il tombe, et cet endroit vient de changer.
 bool FilterMessage(unsigned int msg, intptr_t lparam);
 
-// Date (GetTickCount) de la dernière entrée réelle. 0 = aucune depuis le
-// lancement — traité comme « à l'instant » par l'appelant, faute de quoi le
-// client s'endormirait avant le premier geste du joueur.
+// Date (GetTickCount) de la dernière entrée réelle, TOUTES sources confondues.
+// C'est le compteur d'inactivité, celui qui décide de l'endormissement. 0 =
+// aucune depuis le lancement — traité comme « à l'instant » par l'appelant,
+// faute de quoi le client s'endormirait avant le premier geste du joueur.
 uint32_t LastInputMs();
+
+// Date de la dernière entrée AUTORISÉE À RÉVEILLER (cf. WakeMode). Identique à
+// la précédente en mode « clavier et souris » ; c'est celle-ci que la veille
+// interroge une fois endormie.
+uint32_t LastWakeInputMs();
 
 // Renseigné par AfkScreen à chaque frame : `FilterMessage` a besoin de savoir
 // s'il faut avaler, et n'a pas d'autre moyen d'atteindre le module.

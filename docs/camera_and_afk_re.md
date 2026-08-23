@@ -217,6 +217,31 @@ pendant que le joueur joue.
   clavier, lui, passe — une touche porte une intention explicite, un clic ne
   vaut que par l'endroit où il tombe, et cet endroit vient de changer.
 
+🔴 **DEUX horodatages, et les confondre casse l'un ou l'autre.** Le réglage
+« Réveil » (clavier et souris / clavier seul / souris seule) ne filtre QUE le
+second :
+
+| | Ce qu'il retient | Ce qu'il décide |
+|---|---|---|
+| `LastInputMs()` | toute activité, sans filtre | l'ENDORMISSEMENT |
+| `LastWakeInputMs()` | seulement ce qui a le droit de réveiller | le RÉVEIL |
+
+Filtrer le premier ferait s'endormir le client pendant que le joueur promène sa
+souris, au seul motif qu'il a demandé un réveil au clavier.
+
+Corollaire assumé : en veille, **ce qui n'a pas le droit de réveiller n'agit pas
+non plus**. Une touche qui traverserait sans réveiller lancerait un skill sur un
+monde que le joueur ne voit pas, sous un angle qui n'est pas le sien. Le droit
+s'accorde à la SOURCE (tout le clavier, ou toute la souris) et non au message :
+avaler un appui sans avaler son relâchement laisserait le client croire la touche
+encore enfoncée.
+
+🔴 **Un RELÂCHEMENT ne réveille jamais** — c'est la fin d'un geste commencé
+avant, pas une intention neuve. Sans cette règle, le raccourci qui LANCE la
+veille (action `tool_afk`, catalogue `features/hotkey_actions.cc`) la terminerait
+de son propre relâchement une frame plus tard, et passerait pour cassé. Même
+raisonnement que le masque `g_swallowed_buttons` côté souris.
+
 **La caméra** avance dans `OnGameFramePulse` (battement de tête de frame), pas
 dans `OnRenderUI` : ce dernier est gardé par « interface native masquée » et
 « HUD remplacé », sous lesquels la veille doit continuer de tourner.

@@ -3485,3 +3485,8 @@
 "La flèche de la souris disparaît aussi. Elle revient dès le premier geste, en même temps que l'interface.": "The mouse pointer goes away too. It comes back on the first move, together with the interface."
 "Temps sans toucher au clavier ni à la souris avant que la veille ne commence.": "How long without touching the keyboard or the mouse before the screen saver starts."
 "Durée du basculement en veille. Le retour, lui, va trois fois plus vite : il répond à un geste que tu viens de faire.": "How long it takes to drop into the screen saver. Coming back is three times faster: it answers a move you have just made."
+"Réveil": "Wake on"
+"Clavier et souris": "Keyboard and mouse"
+"Clavier seulement": "Keyboard only"
+"Souris seulement": "Mouse only"
+"Ce qui met fin à la veille. « Clavier seulement » évite qu'une souris frôlée ne la réveille sans arrêt.\n\nCe réglage ne change PAS ce qui repousse la mise en veille : tant que tu joues, tout compte. Et ce qui n'a pas le droit de te réveiller n'agit pas non plus dans le jeu — sinon une touche partirait sur un décor que tu ne vois pas.": "What ends the screen saver. «Keyboard only» keeps a brushed mouse from waking it over and over.\n\nThis does NOT change what holds the screen saver off: while you play, everything counts. And whatever is not allowed to wake you does not act in the game either — otherwise a key would fire at scenery you cannot see."

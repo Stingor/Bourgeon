@@ -3443,3 +3443,8 @@
 "La flèche de la souris disparaît aussi. Elle revient dès le premier geste, en même temps que l'interface.": "El puntero del ratón también desaparece. Vuelve al primer gesto, junto con la interfaz."
 "Temps sans toucher au clavier ni à la souris avant que la veille ne commence.": "Tiempo sin tocar el teclado ni el ratón antes de que empiece el salvapantallas."
 "Durée du basculement en veille. Le retour, lui, va trois fois plus vite : il répond à un geste que tu viens de faire.": "Cuánto tarda en entrar en reposo. La vuelta es tres veces más rápida: responde a un gesto que acabas de hacer."
+"Réveil": "Despertar"
+"Clavier et souris": "Teclado y ratón"
+"Clavier seulement": "Solo teclado"
+"Souris seulement": "Solo ratón"
+"Ce qui met fin à la veille. « Clavier seulement » évite qu'une souris frôlée ne la réveille sans arrêt.\n\nCe réglage ne change PAS ce qui repousse la mise en veille : tant que tu joues, tout compte. Et ce qui n'a pas le droit de te réveiller n'agit pas non plus dans le jeu — sinon une touche partirait sur un décor que tu ne vois pas.": "Lo que pone fin al reposo. «Solo teclado» evita que un ratón rozado lo despierte sin parar.\n\nEste ajuste NO cambia lo que retrasa el reposo: mientras juegas, todo cuenta. Y lo que no tiene derecho a despertarte tampoco actúa en el juego — si no, una tecla saldría hacia un decorado que no ves."

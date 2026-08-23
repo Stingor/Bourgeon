@@ -106,8 +106,20 @@ namespace {
 // Écrits par le fil de la fenêtre, lus par le fil de rendu. Ce sont les mêmes
 // dans ce client, mais rien ne le garantit par écrit : des atomiques coûtent une
 // instruction et ferment la question.
+//
+// 🔴 DEUX horodatages, et les confondre casse l'un ou l'autre :
+//   • `g_last_input` — TOUTE activité, sans filtre. C'est lui qui repousse
+//     l'endormissement. Le filtrer ferait s'endormir le client pendant que le
+//     joueur promène sa souris, au seul motif qu'il a demandé un réveil au
+//     clavier.
+//   • `g_last_wake` — la seule activité qui a le DROIT de réveiller, selon le
+//     réglage. C'est lui que la veille interroge une fois endormie.
+// Hors du mode « clavier et souris », les deux divergent : c'est tout l'objet du
+// réglage.
 std::atomic<uint32_t> g_last_input{0};
+std::atomic<uint32_t> g_last_wake{0};
 std::atomic<bool>     g_sleeping{false};
+std::atomic<int>      g_wake_mode{kWakeAny};
 // Dernière position connue du curseur, pour distinguer un vrai mouvement du
 // WM_MOUSEMOVE que Windows renvoie quand la fenêtre bouge sous une souris
 // immobile. Sans ce test, une animation quelconque sous le curseur suffirait à
@@ -126,6 +138,9 @@ constexpr unsigned kBtnMiddle = 1u << 2;
 }  // namespace
 
 uint32_t LastInputMs() { return g_last_input.load(); }
+uint32_t LastWakeInputMs() { return g_last_wake.load(); }
+
+void SetWakeMode(int mode) { g_wake_mode.store(mode); }
 
 void SetSleeping(bool sleeping) {
   g_sleeping.store(sleeping);
@@ -136,22 +151,26 @@ void SetSleeping(bool sleeping) {
 }
 
 bool FilterMessage(unsigned int msg, intptr_t lparam) {
-  unsigned button = 0;   // quel bouton ce message concerne-t-il ?
-  bool is_press = false; // appui (par opposition à relâchement)
-  bool is_input = false; // le message compte-t-il comme une entrée du joueur ?
+  unsigned button = 0;      // quel bouton ce message concerne-t-il ?
+  bool is_press    = false; // appui (par opposition à relâchement)
+  bool key_release = false; // relâchement de touche
+  bool from_key    = false; // vient du clavier
+  bool from_mouse  = false; // vient de la souris (molette et mouvement compris)
 
   switch (msg) {
-    case WM_LBUTTONDOWN: case WM_LBUTTONDBLCLK: button = kBtnLeft;   is_press = true; break;
-    case WM_RBUTTONDOWN: case WM_RBUTTONDBLCLK: button = kBtnRight;  is_press = true; break;
-    case WM_MBUTTONDOWN: case WM_MBUTTONDBLCLK: button = kBtnMiddle; is_press = true; break;
-    case WM_LBUTTONUP: button = kBtnLeft;   break;
-    case WM_RBUTTONUP: button = kBtnRight;  break;
-    case WM_MBUTTONUP: button = kBtnMiddle; break;
-    case WM_MOUSEWHEEL: case WM_MOUSEHWHEEL: is_input = true; break;
-    case WM_KEYDOWN: case WM_KEYUP:
-    case WM_SYSKEYDOWN: case WM_SYSKEYUP:
-    case WM_CHAR:
-      is_input = true;
+    case WM_LBUTTONDOWN: case WM_LBUTTONDBLCLK: button = kBtnLeft;   is_press = true; from_mouse = true; break;
+    case WM_RBUTTONDOWN: case WM_RBUTTONDBLCLK: button = kBtnRight;  is_press = true; from_mouse = true; break;
+    case WM_MBUTTONDOWN: case WM_MBUTTONDBLCLK: button = kBtnMiddle; is_press = true; from_mouse = true; break;
+    case WM_LBUTTONUP: button = kBtnLeft;   from_mouse = true; break;
+    case WM_RBUTTONUP: button = kBtnRight;  from_mouse = true; break;
+    case WM_MBUTTONUP: button = kBtnMiddle; from_mouse = true; break;
+    case WM_MOUSEWHEEL: case WM_MOUSEHWHEEL: from_mouse = true; break;
+    case WM_KEYDOWN: case WM_SYSKEYDOWN: case WM_CHAR:
+      from_key = true;
+      break;
+    case WM_KEYUP: case WM_SYSKEYUP:
+      from_key = true;
+      key_release = true;
       break;
     case WM_MOUSEMOVE: {
       const int mx = static_cast<short>(LOWORD(lparam));
@@ -159,7 +178,7 @@ bool FilterMessage(unsigned int msg, intptr_t lparam) {
       if (mx == g_last_mx && my == g_last_my) return false;  // pas un mouvement
       g_last_mx = mx;
       g_last_my = my;
-      is_input = true;
+      from_mouse = true;
       break;
     }
     default:
@@ -171,6 +190,19 @@ bool FilterMessage(unsigned int msg, intptr_t lparam) {
   }
 
   const bool was_sleeping = g_sleeping.load();
+  const int  mode = g_wake_mode.load();
+  // 🔴 Le droit de réveiller s'accorde à la SOURCE, pas au message : c'est ce qui
+  // garde l'avalage symétrique. Avaler un appui sans avaler son relâchement
+  // laisserait le client croire la touche encore enfoncée — un personnage qui
+  // marche tout seul, et personne pour faire le rapprochement.
+  const bool source_may_wake = (mode == kWakeAny) ||
+                               (mode == kWakeKeyboard && from_key) ||
+                               (mode == kWakeMouse && from_mouse);
+  // Un RELÂCHEMENT ne réveille jamais : c'est la fin d'un geste commencé avant,
+  // pas une intention neuve. Sans cette règle, le raccourci qui LANCE la veille
+  // la terminerait de son propre relâchement, une frame plus tard.
+  const bool is_release = key_release || (button != 0 && !is_press);
+  const bool wakes_now = source_may_wake && !is_release;
 
   // Le relâchement suit le sort de son appui, veille ou pas : c'est ce qui rend
   // l'avalage symétrique même si le réveil a eu lieu entre les deux.
@@ -190,10 +222,24 @@ bool FilterMessage(unsigned int msg, intptr_t lparam) {
     return true;
   }
 
-  if (is_input || button != 0) g_last_input.store(GetTickCount());
+  const uint32_t now = GetTickCount();
+  g_last_input.store(now);               // repousse l'endormissement : TOUT compte
+  if (wakes_now) g_last_wake.store(now); // réveille : seulement ce qui en a le droit
 
-  if (button == 0) return false;  // clavier, molette, mouvement : rien à avaler
-  if (!was_sleeping) return false;
+  if (!was_sleeping) return false;       // hors veille, rien n'est jamais avalé
+
+  // ── En veille : ce qui n'a pas le droit de réveiller n'a pas non plus le
+  // droit d'AGIR ────────────────────────────────────────────────────────────
+  // Une touche qui traverserait sans réveiller lancerait un skill sur un monde
+  // que le joueur ne voit pas, sous un angle qui n'est pas le sien. Demander
+  // « seule la souris me réveille », c'est demander que le clavier soit sans
+  // effet — pas qu'il agisse en aveugle.
+  if (!source_may_wake) return true;
+
+  // Le clic qui réveille est avalé, lui aussi, et pour une raison qui lui est
+  // propre : le décor a tourné, il tomberait ailleurs que là où l'on croit
+  // viser. Le clavier, lui, passe — une touche porte une intention explicite.
+  if (button == 0) return false;
   g_swallowed_buttons |= button;
   return true;
 }
@@ -313,7 +359,7 @@ void AfkScreen::AbortSleep() {
   RestorePostFx();
 }
 
-void AfkScreen::PreviewNow() {
+void AfkScreen::StartNow() {
   if (phase_ != Phase::kAwake) return;
   BeginSleep();
   // Le clic qui vient d'appuyer sur « Essayer maintenant » est encore enfoncé :
@@ -325,6 +371,11 @@ void AfkScreen::PreviewNow() {
 
 void AfkScreen::OnTick() {
   if (Bourgeon::Instance().client().timestamp() != 20250716) return;
+
+  // Le filtre d'entrées tourne sur le fil de la fenêtre et n'a pas d'autre moyen
+  // d'atteindre la configuration : on la lui repose à chaque battement, comme
+  // l'état de veille.
+  afk::SetWakeMode(cfg_.wake_on);
 
   auto& app = Bourgeon::Instance();
   // Hors du monde, ou pendant un chargement de carte : ni veille ni maintien.
@@ -349,17 +400,27 @@ void AfkScreen::OnTick() {
     return;
   }
 
-  // En veille : la moindre entrée réveille — et l'option décochée en cours de
-  // route aussi, sans quoi le joueur ne pourrait plus l'éteindre qu'à l'aveugle.
+  // En veille : la moindre entrée réveille.
+  //
+  // ⚠ `cfg_.enabled` ne figure PAS dans ce test, et ce n'est pas un oubli : il
+  // gouverne le DÉCLENCHEMENT automatique (plus haut), pas la veille en cours.
+  // L'y remettre couperait net toute veille lancée à la main — au raccourci ou
+  // au bouton d'essai — chez quiconque n'a pas coché la mise en veille
+  // automatique, c'est-à-dire précisément ceux à qui ce geste sert.
   //
   // La question posée est « une entrée est-elle survenue APRÈS l'endormissement ? »,
   // et non « l'inactivité est-elle retombée sous un certain seuil ? » : un seuil
   // aurait été un chiffre arbitraire à choisir, alors que la comparaison de dates
   // répond exactement. La soustraction est SIGNÉE parce que GetTickCount repasse
   // par zéro tous les quarante-neuf jours — un serveur qui tourne, ça arrive.
+  // 🔴 `LastWakeInputMs`, PAS `LastInputMs` : c'est ici, et ici seulement, que le
+  // réglage « qui a le droit de me réveiller » se fait sentir. Le compteur
+  // d'inactivité au-dessus, lui, prend tout — sans quoi demander un réveil au
+  // clavier ferait s'endormir le client pendant qu'on promène la souris.
+  const uint32_t woke = afk::LastWakeInputMs();
   const bool input_since_sleep =
-      (last != 0) && (static_cast<int32_t>(last - sleep_start_) > 0);
-  if (input_since_sleep || !cfg_.enabled) Wake();
+      (woke != 0) && (static_cast<int32_t>(woke - sleep_start_) > 0);
+  if (input_since_sleep) Wake();
 }
 
 // ── Mouvement ────────────────────────────────────────────────────────────────
