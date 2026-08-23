@@ -3391,3 +3391,58 @@
 "stats###viewequip_clonestat": "stats###viewequip_clonestat"
 "job###viewequip_clonejob": "job###viewequip_clonejob"
 "Me donne la MÊME classe (@job).\n⚠ Sur moonlight cette commande enchaîne aussi @blvl 999, @jlvl 100, @allskills et @allstats.\nUn joueur monté ou déguisé sera refusé : sa classe affichée est une classe factice.": "Gives me the SAME class (@job).\n⚠ On moonlight this command also chains @blvl 999, @jlvl 100, @allskills and @allstats.\nA mounted or disguised player will be refused: their displayed class is a dummy one."
+
+# ── Staff pane of the character sheet + staff row of the grimoire ────────────
+# atcommands replayed through the chat channel: the server stays the sole judge.
+# The class-family headers come from a STATIC table (kJobList[].group in
+# character_sheet.cc), where Tr takes a variable: the static extractor cannot see
+# them, so they are listed here by hand. Three of them ("2e classe", "3e classe",
+# "4e classe") already live in the grimoire section above and are not repeated.
+"Staff": "Staff"
+"Vitesse normale": "Normal speed"
+"Reset": "Reset"
+"Tout apprendre": "Learn all"
+"Cooldowns": "Cooldowns"
+"@%s : ajoute ou retire le montant saisi à %s.\nC'est un AJUSTEMENT, pas une valeur cible.": "@%s: adds or removes the entered amount to %s.\nThis is an ADJUSTMENT, not a target value."
+"@resetstat : remet les six stats à leur base et rend tous les points de statut dépensés.": "@resetstat: resets all six stats to their base and refunds every status point spent."
+"@allstat : monte les six stats à leur maximum.": "@allstat: raises all six stats to their maximum."
+"@job : change de classe.\n\n⚠ Sur ce serveur la commande enchaîne d'elle-même @blvl 999, @jlvl 100, @allskills et @allstats — changer de classe MAXE le personnage, ce n'est pas un simple changement d'apparence.": "@job: changes class.\n\n⚠ On this server the command chains @blvl 999, @jlvl 100, @allskills and @allstats on its own — changing class MAXES the character out, it is not a mere change of appearance."
+"@speed : vitesse de marche. PLUS BAS = PLUS RAPIDE ; 150 est la vitesse normale, 20 le plancher du serveur.\nEnvoyé au relâchement du curseur.": "@speed: walking speed. LOWER = FASTER; 150 is normal speed, 20 the server's floor.\nSent when the slider is released."
+"@speed -1 : rend au personnage sa vitesse par défaut (150).": "@speed -1: gives the character back its default speed (150)."
+"@blvl : gagne ou perd le nombre de niveaux de BASE saisi.": "@blvl: gains or loses the entered number of BASE levels."
+"@jlvl : gagne ou perd le nombre de niveaux de JOB saisi.": "@jlvl: gains or loses the entered number of JOB levels."
+"@stpoint : donne le nombre de points de statut saisi — de quoi essayer les boutons « + » du volet stats.": "@stpoint: grants the entered number of status points — enough to try out the “+” buttons of the stats pane."
+"@resetskill : oublie toutes les compétences et rend les points.": "@resetskill: forgets every skill and refunds the points."
+"@allskills : apprend toutes les compétences de la classe.": "@allskills: learns every skill of the class."
+"@resetcooltime : remet à zéro le temps de recharge de toutes les compétences (homoncule et mercenaire compris).": "@resetcooltime: clears the cooldown of every skill (homunculus and mercenary included)."
+"@skpoint : donne le nombre de points de compétence saisi.": "@skpoint: grants the entered number of skill points."
+"Novice / 1re classe": "Novice / 1st class"
+"Trans. 1re classe": "Trans. 1st class"
+"Trans. 2e classe": "Trans. 2nd class"
+"3e classe (trans.)": "3rd class (trans.)"
+"Classes étendues": "Expanded classes"
+"Baby / 1re classe": "Baby / 1st class"
+"Baby 2e classe": "Baby 2nd class"
+"Baby 3e classe": "Baby 3rd class"
+"Baby étendues": "Expanded baby classes"
+
+# ── Staff pane, second block: gear, zeny and visual state ────────────────────
+# "Toutes les pièces" comes from the same kind of STATIC table as the class
+# families above (kRefinePos[0].label, read through RefinePosLabel): invisible to
+# the static extractor, hence listed by hand. The other slot names are GAME TERMS
+# and stay in English in every language, like the doll's own abbreviations.
+"Toutes les pièces": "All worn gear"
+"Soigner": "Full heal"
+"Réparer tout": "Repair all"
+"Invisible": "Invisible"
+"État visuel": "Visual state"
+"Vider l'inventaire": "Clear inventory"
+"Coché = présent. Le reste est retiré.": "Ticked = present. Everything else is removed."
+"Emplacement visé par le raffinage. « Toutes les pièces » couvre tout ce qui est porté (c'est la position 0 de @refine).": "Slot the refining applies to. “All worn gear” covers everything equipped (that is @refine's position 0)."
+"@refine : ajoute ou retire des niveaux de raffinage sur l'emplacement choisi. Le maximum est +10 sur ce serveur (pré-renewal).": "@refine: adds or removes refine levels on the chosen slot. The maximum is +10 on this server (pre-renewal)."
+"@zeny : donne ou retire le montant saisi. Un retrait plus grand que la bourse la vide sans passer en négatif.": "@zeny: grants or removes the entered amount. Taking away more than you carry empties the purse without going negative."
+"@heal : rend tous les PV et les SP.": "@heal: restores all HP and SP."
+"@repairall : répare toutes les pièces endommagées de l'inventaire.": "@repairall: repairs every damaged piece in the inventory."
+"@hide : bascule l'invisibilité GM. Retaper la commande (ou recliquer) redevient visible.": "@hide: toggles GM invisibility. Typing the command again (or clicking again) turns you visible."
+"@itemreset : SUPPRIME tous les objets de l'inventaire. Irréversible, et le serveur ne demande rien — la confirmation est ici.": "@itemreset: DELETES every item in the inventory. Irreversible, and the server asks nothing — the confirmation lives here."
+"@option : pose l'état visuel du personnage (monture, faucon, Hiding, Ruwach…).\n\n⚠ La commande REMPLACE l'état complet : ce qui n'est pas coché est RETIRÉ. Les cases sont amorcées sur l'état connu du client pour ne pas perdre la monture ou le cart en chemin.\nElle remet aussi à zéro les statuts (pétrifié, gelé, maudit…).": "@option: sets the character's visual state (mount, falcon, Hiding, Ruwach…).\n\n⚠ The command REPLACES the whole state: anything left unticked is REMOVED. The boxes are seeded from the state the client knows about, so the mount or the cart is not lost along the way.\nIt also clears the status effects (petrified, frozen, cursed…)."

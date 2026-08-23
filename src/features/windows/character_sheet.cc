@@ -42,6 +42,7 @@
 #include "features/windows/chat_window.h"       // OpenWhisperWindowByAid : « Chuchoter » sur un membre
 #include "features/windows/rodex_window.h"      // ComposeTo : « Envoyer un courrier » sur un membre
 #include "features/moonlight_ui/moonlight_ui.h"      // SaveSettings (persistance des presets)
+#include "features/staff_gate.h"        // IsStaff : le volet staff du mannequin
 #include "features/hotkey_util.h"       // capture/libellé/conflit d'un raccourci
 #include "ui/imgui_escape.h"
 #include "ui/ro_imgui.h"
@@ -2326,8 +2327,300 @@ float StatsPaneW() {
   return std::max(ro::Px(kStatsWMin),
                   std::ceil(content + st.WindowPadding.x * 2.0f + st.ScrollbarSize));
 }
+// ── Volet STAFF : largeur et catalogue des classes ───────────────────────────
+// Le plancher couvre les deux contrôles qui ne se mesurent pas sur un libellé —
+// le menu déroulant des classes et le slider de vitesse, tous deux étirés à la
+// largeur du volet. Sous ce plancher, le nom d'une classe ne tiendrait plus.
+constexpr float kStaffWMin = 200.0f;
+// Bornes du slider `@speed`. 20 et 150 sont celles du SERVEUR (MIN_WALK_SPEED et
+// DEFAULT_WALK_SPEED, common/mmo.hpp) : sous 20 le serveur clampe en silence, et
+// proposer des crans morts ferait croire à un réglage qui n'arrive pas. Le plafond
+// affiché s'arrête à 500 — le serveur accepte 1000, mais on marche déjà au pas à
+// 500 et l'autre moitié de la course ne servirait qu'à rendre le curseur imprécis.
+constexpr int kSpeedMin     = 20;
+constexpr int kSpeedDefault = 150;
+constexpr int kSpeedUiMax   = 500;
+
+// Raffinage maximal. 🔴 10 et non 20 : `MAX_REFINE` vaut 20 sous RENEWAL et 10 sinon
+// (moonlight, src/map/status.hpp), et ce serveur est PRE-RENEWAL — `RENEWAL` est
+// commenté dans src/config/renewal.hpp. Le serveur clampe de toute façon ; borner ici
+// évite juste de proposer une course dont la moitié ne fait rien.
+constexpr int kMaxRefine = 10;
+
+// Plafonds de SAISIE des rangées d'ajustement. Ce ne sont pas des règles de jeu — le
+// serveur clampe déjà tout (`pc_maxparameter`, `pc_maxbaselv`, `MAX_ZENY`) — mais des
+// garde-fous de frappe : ils empêchent un zéro de trop de partir en commande, et
+// gardent la saisie dans un ordre de grandeur qui a du sens pour la rangée.
+constexpr int kStatStepMax  = 9999;
+constexpr int kLevelStepMax = 999;
+constexpr int kZenyStepMax  = 1000000000;  // MAX_ZENY vaut INT_MAX ; un milliard suffit
+
+// Les emplacements que `@refine` accepte : un MASQUE EQP_* (moonlight,
+// common/mmo.hpp), et 0 pour « toutes les pièces portées » — c'est la valeur que
+// `ACMD_FUNC(refine)` traite comme « pas de filtre ».
+//
+// 🔴 Les libellés restent les TERMES DU JEU en anglais, comme les abréviations des
+// cases du mannequin (SlotAbbrev) : c'est la convention du projet, et le staff doit
+// pouvoir apparier d'un coup d'œil la ligne du combo et la case du mannequin. Seule
+// la première entrée est une phrase, donc la seule à traduire (cf. RefinePosLabel).
+struct RefinePos { uint32_t mask; const char* label; };
+const RefinePos kRefinePos[] = {
+    {    0, "Toutes les pièces"},
+    {    2, "Weapon"},
+    {   32, "Shield"},
+    {   16, "Armor"},
+    {    4, "Garment"},
+    {   64, "Shoes"},
+    {  256, "Head top"},
+    {  512, "Head mid"},
+    {    1, "Head bot"},
+    {    8, "Acc. R"},
+    {  128, "Acc. L"},
+};
+constexpr int kRefinePosCount = static_cast<int>(sizeof(kRefinePos) / sizeof(kRefinePos[0]));
+const char* RefinePosLabel(int i) {
+  // Seul l'index 0 passe par le catalogue : traduire « Weapon » y ferait entrer les
+  // termes du jeu dans la liste des textes manquants, un par emplacement.
+  return i == 0 ? i18n::Tr(kRefinePos[0].label) : kRefinePos[i].label;
+}
+
+// Les drapeaux du TROISIÈME paramètre de `@option` (l'état « visuel » : OPTION_* de
+// rAthena). Les deux premiers paramètres portent opt1/opt2 — les vrais statuts
+// (pétrifié, gelé, maudit…) — et la modale les met à 0 : le staff qui pose un état
+// visuel veut être propre, pas gelé.
+//
+// ⚠ Le niveau de CART n'est pas ici : ses cinq valeurs (8, 128, 256, 512, 1024)
+// s'excluent, c'est un combo et non une case (cf. kOptionCartBits).
+struct OptionFlag { int bit; const char* label; };
+const OptionFlag kOptionFlags[] = {
+    {   32, "Riding"},     // peco / monture
+    {   16, "Falcon"},
+    {    1, "Sight"},
+    {    2, "Hiding"},
+    {    4, "Cloaking"},
+    {   64, "Invisible"},
+    { 2048, "Orc Head"},
+    { 4096, "Wedding"},
+    { 8192, "Ruwach"},
+    {16384, "Chasewalk"},
+};
+constexpr int kOptionFlagCount = static_cast<int>(sizeof(kOptionFlags) / sizeof(kOptionFlags[0]));
+// Index = niveau de cart (0 = aucun), valeur = bit OPTION_CART*.
+const int kOptionCartBits[6] = {0, 8, 128, 256, 512, 1024};
+
+// Les classes que `@job` accepte SUR CE SERVEUR. RECOPIÉE de l'aide que la commande
+// publie elle-même (moonlight, conf/atcommands.yml, entrée « jobchange ») : c'est la
+// seule liste qui fasse foi, et elle omet déjà les classes FANTÔMES — Knight2 et
+// Crusader2 (montures), tenues de mariage/Noël/été/hanbok — que `ACMD_FUNC(jobchange)`
+// refuse nommément. Les proposer n'offrirait qu'un refus.
+//
+// 🔴 Le LIBELLÉ affiché vient du CLIENT (table Lua des classes, déjà dans sa langue,
+// cf. JobName). Celui d'ici n'est qu'un repli pour les ids que le Lua ne connaît pas —
+// les classes récentes, absentes des Lua d'un client 2016.
+//
+// 🔴 `group` est un libellé de table STATIQUE : il se traduit à la LECTURE (i18n::Tr
+// dans le menu), jamais ici — un Tr posé sur un initialiseur statique serait évalué
+// avant le chargement du catalogue et resterait français pour toujours.
+struct JobEntry { int id; const char* group; const char* fallback; };
+const JobEntry kJobList[] = {
+    {   0, "Novice / 1re classe", "Novice"},
+    {   1, "Novice / 1re classe", "Swordman"},
+    {   2, "Novice / 1re classe", "Magician"},
+    {   3, "Novice / 1re classe", "Archer"},
+    {   4, "Novice / 1re classe", "Acolyte"},
+    {   5, "Novice / 1re classe", "Merchant"},
+    {   6, "Novice / 1re classe", "Thief"},
+    {   7, "2e classe", "Knight"},
+    {   8, "2e classe", "Priest"},
+    {   9, "2e classe", "Wizard"},
+    {  10, "2e classe", "Blacksmith"},
+    {  11, "2e classe", "Hunter"},
+    {  12, "2e classe", "Assassin"},
+    {  14, "2e classe", "Crusader"},
+    {  15, "2e classe", "Monk"},
+    {  16, "2e classe", "Sage"},
+    {  17, "2e classe", "Rogue"},
+    {  18, "2e classe", "Alchemist"},
+    {  19, "2e classe", "Bard"},
+    {  20, "2e classe", "Dancer"},
+    {4001, "Trans. 1re classe", "Novice High"},
+    {4002, "Trans. 1re classe", "Swordman High"},
+    {4003, "Trans. 1re classe", "Magician High"},
+    {4004, "Trans. 1re classe", "Archer High"},
+    {4005, "Trans. 1re classe", "Acolyte High"},
+    {4006, "Trans. 1re classe", "Merchant High"},
+    {4007, "Trans. 1re classe", "Thief High"},
+    {4008, "Trans. 2e classe", "Lord Knight"},
+    {4009, "Trans. 2e classe", "High Priest"},
+    {4010, "Trans. 2e classe", "High Wizard"},
+    {4011, "Trans. 2e classe", "Whitesmith"},
+    {4012, "Trans. 2e classe", "Sniper"},
+    {4013, "Trans. 2e classe", "Assassin Cross"},
+    {4015, "Trans. 2e classe", "Paladin"},
+    {4016, "Trans. 2e classe", "Champion"},
+    {4017, "Trans. 2e classe", "Professor"},
+    {4018, "Trans. 2e classe", "Stalker"},
+    {4019, "Trans. 2e classe", "Creator"},
+    {4020, "Trans. 2e classe", "Clown"},
+    {4021, "Trans. 2e classe", "Gypsy"},
+    {4054, "3e classe", "Rune Knight"},
+    {4055, "3e classe", "Warlock"},
+    {4056, "3e classe", "Ranger"},
+    {4057, "3e classe", "Arch Bishop"},
+    {4058, "3e classe", "Mechanic"},
+    {4059, "3e classe", "Guillotine Cross"},
+    {4066, "3e classe", "Royal Guard"},
+    {4067, "3e classe", "Sorcerer"},
+    {4068, "3e classe", "Minstrel"},
+    {4069, "3e classe", "Wanderer"},
+    {4070, "3e classe", "Sura"},
+    {4071, "3e classe", "Genetic"},
+    {4072, "3e classe", "Shadow Chaser"},
+    {4060, "3e classe (trans.)", "Rune Knight T"},
+    {4061, "3e classe (trans.)", "Warlock T"},
+    {4062, "3e classe (trans.)", "Ranger T"},
+    {4063, "3e classe (trans.)", "Arch Bishop T"},
+    {4064, "3e classe (trans.)", "Mechanic T"},
+    {4065, "3e classe (trans.)", "Guillotine Cross T"},
+    {4073, "3e classe (trans.)", "Royal Guard T"},
+    {4074, "3e classe (trans.)", "Sorcerer T"},
+    {4075, "3e classe (trans.)", "Minstrel T"},
+    {4076, "3e classe (trans.)", "Wanderer T"},
+    {4077, "3e classe (trans.)", "Sura T"},
+    {4078, "3e classe (trans.)", "Genetic T"},
+    {4079, "3e classe (trans.)", "Shadow Chaser T"},
+    {4252, "4e classe", "Dragon Knight"},
+    {4253, "4e classe", "Meister"},
+    {4254, "4e classe", "Shadow Cross"},
+    {4255, "4e classe", "Arch Mage"},
+    {4256, "4e classe", "Cardinal"},
+    {4257, "4e classe", "Windhawk"},
+    {4258, "4e classe", "Imperial Guard"},
+    {4259, "4e classe", "Biolo"},
+    {4260, "4e classe", "Abyss Chaser"},
+    {4261, "4e classe", "Elemental Master"},
+    {4262, "4e classe", "Inquisitor"},
+    {4263, "4e classe", "Troubadour"},
+    {4264, "4e classe", "Trouvere"},
+    {  23, "Classes étendues", "Super Novice"},
+    {  24, "Classes étendues", "Gunslinger"},
+    {  25, "Classes étendues", "Ninja"},
+    {4045, "Classes étendues", "Super Baby"},
+    {4046, "Classes étendues", "Taekwon"},
+    {4047, "Classes étendues", "Star Gladiator"},
+    {4049, "Classes étendues", "Soul Linker"},
+    {4190, "Classes étendues", "Ex. Super Novice"},
+    {4191, "Classes étendues", "Ex. Super Baby"},
+    {4211, "Classes étendues", "Kagerou"},
+    {4212, "Classes étendues", "Oboro"},
+    {4215, "Classes étendues", "Rebellion"},
+    {4218, "Classes étendues", "Summoner"},
+    {4239, "Classes étendues", "Star Emperor"},
+    {4240, "Classes étendues", "Soul Reaper"},
+    {4302, "Classes étendues", "Sky Emperor"},
+    {4303, "Classes étendues", "Soul Ascetic"},
+    {4304, "Classes étendues", "Shinkiro"},
+    {4305, "Classes étendues", "Shiranui"},
+    {4306, "Classes étendues", "Night Watch"},
+    {4307, "Classes étendues", "Hyper Novice"},
+    {4308, "Classes étendues", "Spirit Handler"},
+    {4023, "Baby / 1re classe", "Baby Novice"},
+    {4024, "Baby / 1re classe", "Baby Swordman"},
+    {4025, "Baby / 1re classe", "Baby Magician"},
+    {4026, "Baby / 1re classe", "Baby Archer"},
+    {4027, "Baby / 1re classe", "Baby Acolyte"},
+    {4028, "Baby / 1re classe", "Baby Merchant"},
+    {4029, "Baby / 1re classe", "Baby Thief"},
+    {4030, "Baby 2e classe", "Baby Knight"},
+    {4031, "Baby 2e classe", "Baby Priest"},
+    {4032, "Baby 2e classe", "Baby Wizard"},
+    {4033, "Baby 2e classe", "Baby Blacksmith"},
+    {4034, "Baby 2e classe", "Baby Hunter"},
+    {4035, "Baby 2e classe", "Baby Assassin"},
+    {4037, "Baby 2e classe", "Baby Crusader"},
+    {4038, "Baby 2e classe", "Baby Monk"},
+    {4039, "Baby 2e classe", "Baby Sage"},
+    {4040, "Baby 2e classe", "Baby Rogue"},
+    {4041, "Baby 2e classe", "Baby Alchemist"},
+    {4042, "Baby 2e classe", "Baby Bard"},
+    {4043, "Baby 2e classe", "Baby Dancer"},
+    {4096, "Baby 3e classe", "Baby Rune Knight"},
+    {4097, "Baby 3e classe", "Baby Warlock"},
+    {4098, "Baby 3e classe", "Baby Ranger"},
+    {4099, "Baby 3e classe", "Baby Arch Bishop"},
+    {4100, "Baby 3e classe", "Baby Mechanic"},
+    {4101, "Baby 3e classe", "Baby Guillotine Cross"},
+    {4102, "Baby 3e classe", "Baby Royal Guard"},
+    {4103, "Baby 3e classe", "Baby Sorcerer"},
+    {4104, "Baby 3e classe", "Baby Minstrel"},
+    {4105, "Baby 3e classe", "Baby Wanderer"},
+    {4106, "Baby 3e classe", "Baby Sura"},
+    {4107, "Baby 3e classe", "Baby Genetic"},
+    {4108, "Baby 3e classe", "Baby Shadow Chaser"},
+    {4220, "Baby étendues", "Baby Summoner"},
+    {4222, "Baby étendues", "Baby Ninja"},
+    {4223, "Baby étendues", "Baby Kagerou"},
+    {4224, "Baby étendues", "Baby Oboro"},
+    {4225, "Baby étendues", "Baby Taekwon"},
+    {4226, "Baby étendues", "Baby Star Gladiator"},
+    {4227, "Baby étendues", "Baby Soul Linker"},
+    {4228, "Baby étendues", "Baby Gunslinger"},
+    {4229, "Baby étendues", "Baby Rebellion"},
+    {4241, "Baby étendues", "Baby Star Emperor"},
+    {4242, "Baby étendues", "Baby Soul Reaper"},
+};
+constexpr int kJobListCount = static_cast<int>(sizeof(kJobList) / sizeof(kJobList[0]));
+
+// Libellé d'une entrée de la table : le nom que le CLIENT donne à cette classe, ou
+// le repli de la table quand il n'en a pas. Résolu UNE fois — `JobNameSEH` traverse
+// le Lua, et le menu déroulant en redemanderait 160 par frame tant qu'il est ouvert.
+const char* JobListLabel(int idx) {
+  static std::vector<std::string> cache;
+  if (cache.empty()) {
+    cache.reserve(kJobListCount);
+    for (int i = 0; i < kJobListCount; ++i) {
+      const char* n = JobNameSEH(kJobList[i].id);
+      cache.emplace_back((n && n[0]) ? n : kJobList[i].fallback);
+    }
+  }
+  return cache[static_cast<size_t>(idx)].c_str();
+}
+
+// Largeur du volet staff : la plus large de ses rangées. La rangée de stat
+// (« - » / saisie / « + ») et celle des niveaux (libellé devant) sont les deux
+// candidates, le plancher couvrant le reste.
+float StaffPaneW() {
+  const ImGuiStyle& st = ImGui::GetStyle();
+  const float btn   = ImGui::GetFrameHeight();          // les carrés « - » et « + »
+  // Le champ est mesuré sur le PLUS GRAND montant saisissable — le zeny — et non sur
+  // celui des stats : une largeur par rangée ferait respirer la colonne, et un gabarit
+  // à cinq chiffres coupait la saisie d'un million de zeny en deux. La rangée reste
+  // très en dessous du plancher du volet : la fenêtre, elle, ne bouge pas.
+  const float input = ImGui::CalcTextSize("999999999").x + st.FramePadding.x * 2.0f;
+  const float stat_row = btn * 2.0f + input + st.ItemSpacing.x * 2.0f;
+  // Colonne des libellés des rangées d'ajustement NOMMÉES (Base / Job / Zeny) : la
+  // même mesure que dans DrawStaffPanel, sur les mêmes trois libellés.
+  const float lvl_lbl  = std::max(std::max(ImGui::CalcTextSize(i18n::Tr("Base")).x,
+                                           ImGui::CalcTextSize(i18n::Tr("Job")).x),
+                                  ImGui::CalcTextSize("Zeny").x);
+  const float lvl_row  = lvl_lbl + st.ItemSpacing.x + stat_row;
+  const float acts = ro::MaxButtonWidth({i18n::Tr("Reset"), i18n::Tr("Max")}) * 2.0f +
+                     st.ItemSpacing.x;
+  // Les boutons pleine largeur : ils s'étirent, mais la fenêtre doit d'abord leur
+  // donner de quoi écrire leur libellé — sinon RoButton le rétrécit puis le coupe.
+  const float full = ro::MaxButtonWidth({i18n::Tr("Vitesse normale"), i18n::Tr("Réparer tout"),
+                                         i18n::Tr("Vider l'inventaire"), i18n::Tr("Soigner"),
+                                         i18n::Tr("État visuel"), i18n::Tr("Invisible")});
+  const float content = std::max(std::max(std::max(stat_row, lvl_row), acts), full);
+  return std::max(ro::Px(kStaffWMin),
+                  std::ceil(content + st.WindowPadding.x * 2.0f + st.ScrollbarSize));
+}
+
+// Trois largeurs de fenêtre possibles, et non plus deux : mannequin seul, +stats,
+// +staff. `xwide` n'existe que pour le staff — pour tout le monde elle vaut `wide`,
+// et le repli redevient la bascule à deux crans d'avant.
 struct WinSnap {
-  float narrow = 0.0f, wide = 0.0f;
+  float narrow = 0.0f, wide = 0.0f, xwide = 0.0f;
   bool  valid = false;
   bool  force_wide = false;  // onglets pleine largeur (Guilde) : pas de repli étroit
 };
@@ -2335,8 +2628,14 @@ WinSnap g_win_snap;
 void SnapCharSheetWidth(ImGuiSizeCallbackData* d) {
   if (!g_win_snap.valid) return;
   if (g_win_snap.force_wide) { d->DesiredSize.x = g_win_snap.wide; return; }
-  const float mid = (g_win_snap.narrow + g_win_snap.wide) * 0.5f;
-  d->DesiredSize.x = (d->DesiredSize.x < mid) ? g_win_snap.narrow : g_win_snap.wide;
+  // Cran le plus proche de la largeur demandée. Les crans sont croissants et
+  // `xwide == wide` quand il n'y a pas de volet staff : le test s'annule alors de
+  // lui-même et la bascule redevient narrow/wide.
+  const float w = d->DesiredSize.x;
+  float best = g_win_snap.narrow;
+  if (std::abs(w - g_win_snap.wide)  < std::abs(w - best)) best = g_win_snap.wide;
+  if (std::abs(w - g_win_snap.xwide) < std::abs(w - best)) best = g_win_snap.xwide;
+  d->DesiredSize.x = best;
 }
 
 // ── Raccourcis clavier de preset ─────────────────────────────────────────────
@@ -3653,6 +3952,51 @@ void CharacterSheet::DrawSkillsTab() {
     }
     mui::Tooltip(i18n::Tr("Filtrage bilinéaire des icônes de la grille.\n"
                  "Décoché (défaut) = pixels nets, comme le client natif, qui ne filtre pas."));
+  }
+
+  // ── Ligne STAFF : les atcommands qui refont l'arbre ───────────────────────
+  // 🔴 Gate relu à CHAQUE frame (IsStaff), comme celui du volet staff du mannequin
+  // et celui de StaffTools : un droit retiré en cours de session doit faire
+  // disparaître la ligne sans attendre une reconnexion.
+  //
+  // Ces commandes court-circuitent la mécanique de réservation juste au-dessus :
+  // elles ne passent pas par `skill_pending_`, elles agissent tout de suite. On
+  // vide donc la réservation en cours, qui porterait sur un arbre qui n'existe
+  // plus — un point réservé sur une compétence que `@resetskill` vient d'effacer
+  // se ferait jeter au tri de la frame suivante, mais après avoir compté pour rien.
+  if (IsStaff()) {
+    ImGui::TextDisabled(i18n::Tr("Staff"));
+    ImGui::SameLine();
+    if (ro::RoSmallButton(i18n::Tr("Reset"), 0.0f, 0.0f)) {
+      SendAtCommand("@resetskill");
+      skill_pending_.clear();
+      skill_status_.clear();
+    }
+    mui::Tooltip(i18n::Tr("@resetskill : oublie toutes les compétences et rend les points."));
+    ImGui::SameLine();
+    if (ro::RoSmallButton(i18n::Tr("Tout apprendre"), 0.0f, 0.0f)) {
+      SendAtCommand("@allskills");
+      skill_pending_.clear();
+      skill_status_.clear();
+    }
+    mui::Tooltip(i18n::Tr("@allskills : apprend toutes les compétences de la classe."));
+    ImGui::SameLine();
+    if (ro::RoSmallButton(i18n::Tr("Cooldowns"), 0.0f, 0.0f)) SendAtCommand("@resetcooltime");
+    mui::Tooltip(i18n::Tr("@resetcooltime : remet à zéro le temps de recharge de toutes "
+                          "les compétences (homoncule et mercenaire compris)."));
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(ImGui::CalcTextSize("99999").x +
+                            ImGui::GetStyle().FramePadding.x * 2.0f);
+    ImGui::InputInt("##skpoint", &staff_skpoint_, 0, 0);  // step=0 : pas de flèches ImGui
+    if (staff_skpoint_ < 1)   staff_skpoint_ = 1;
+    if (staff_skpoint_ > 9999) staff_skpoint_ = 9999;
+    ImGui::SameLine();
+    if (ro::RoSmallButton(i18n::Tr("Points"), 0.0f, 0.0f)) {
+      char line[32];
+      std::snprintf(line, sizeof(line), "@skpoint %d", staff_skpoint_);
+      SendAtCommand(line);
+    }
+    mui::Tooltip(i18n::Tr("@skpoint : donne le nombre de points de compétence saisi."));
   }
 
   // ── Groupes d'onglets ────────────────────────────────────────────────────────
@@ -7713,7 +8057,13 @@ void CharacterSheet::RequestGifSave() {
 
 void CharacterSheet::DrawStatsPanel() {
   Stats s{};
+  stat_rows_valid_ = false;  // pas de relevé tant que la lecture n'a pas abouti
   if (!ReadStats(&s)) return;
+
+  // Haut du CONTENU de ce volet : toutes les ordonnées relevées plus bas lui sont
+  // soustraites, pour que le volet staff aligne ses commandes sur les rangées sans
+  // dépendre du scroll ni de la position de la fenêtre (cf. stat_row_dy_).
+  const float pane_top = ImGui::GetCursorPosY();
 
   // Tooltip enrichi d'une stat primaire : rôle + split équip/carte quand le serveur
   // l'a poussé (ZC_BOURGEON_STAT_BONUS). Le natif ne donne que le TOTAL ; ici on
@@ -7740,6 +8090,7 @@ void CharacterSheet::DrawStatsPanel() {
   // Petit fond arrondi gris léger derrière le NOM de chaque stat (limité au libellé).
   const ImU32 kRowBg = IM_COL32(165, 170, 180, 55);  // gris léger
   for (int i = 0; i < 6; ++i) {
+    stat_row_dy_[i] = ImGui::GetCursorPosY() - pane_top;  // repère pour le volet staff
     const ImVec2 rp = ImGui::GetCursorScreenPos();  // haut de la rangée
     const float nw = ImGui::CalcTextSize(kStatName[i]).x;  // largeur du nom
     ImGui::GetWindowDrawList()->AddRectFilled(
@@ -7799,6 +8150,7 @@ void CharacterSheet::DrawStatsPanel() {
       ImGui::TextColored(can ? kBlack : ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "%d", s.raise[i]);
     }
   }
+  stat_points_dy_ = ImGui::GetCursorPosY() - pane_top;  // repère pour le volet staff
   ImGui::TextColored(kBlack, i18n::Tr("Points de statut : %d"), s.points);
   ImGui::Separator();
 
@@ -7850,6 +8202,7 @@ void CharacterSheet::DrawStatsPanel() {
     if (n) std::snprintf(sfx + n, sizeof(sfx) - n, "  (%s %+d%%)", label, contrib);
     else   std::snprintf(sfx, sizeof(sfx), "(%s %+d%%)", label, contrib);
   };
+  atk_row_dy_ = ImGui::GetCursorPosY() - pane_top;  // repère pour le volet staff
   std::snprintf(b, sizeof(b), "%d + %d", s.atk1, s.atk2);
   appendEquip(bonus_.eatk);
   append("refine", bonus_.refine_atk);
@@ -7898,6 +8251,9 @@ void CharacterSheet::DrawStatsPanel() {
   stat("ASPD", b, i18n::Tr("Vitesse d'attaque : plus elle est haute, plus vous frappez souvent."));
   std::snprintf(b, sizeof(b), "%d%%", s.pdodge);
   stat("Esq.P", b, i18n::Tr("Esquive parfaite (%, via LUK) : évite totalement une attaque, même critique."));
+  // Toutes les rangées que le volet staff sait viser ont été relevées : il peut
+  // aligner ses commandes cette frame.
+  stat_rows_valid_ = true;
 
   // ── Bonus d'équipement/cartes (poussés par le serveur, ZC_BOURGEON_STAT_BONUS) ──
   // Origines que le natif n'expose pas : bonus plats + conditionnels vs cible.
@@ -8172,6 +8528,367 @@ void CharacterSheet::DrawStatsPanel() {
   }
 }
 
+// ── Volet STAFF ──────────────────────────────────────────────────────────────
+// Le pendant ACTIF du volet stats : chaque commande y est posée en face de la
+// valeur qu'elle change — les six ajusteurs devant STR..LUK, la remise à zéro
+// devant les points de statut, la classe devant l'ATK.
+//
+// 🔴 Tout part par SendAtCommand, c'est-à-dire par le canal de chat, exactement
+// comme la commande tapée à la main : mêmes droits de groupe, mêmes refus, même
+// journalisation serveur. RIEN n'est validé ici — pas même l'existence de la
+// classe choisie. Ce volet est une SAISIE, le serveur reste le juge, et son refus
+// arrive dans le chat comme d'habitude.
+//
+// ⚠ TOUT ce volet n'est pas ouvert au même niveau. conf/import/groups.yml accorde
+// au groupe 80 (le seuil d'IsStaff) `jobchange`, `allstats`, `allskill`, `resetstat`,
+// `resetskill`, `speed`, `blvl`, `jlvl`, `refine`, `heal`, `repairall`, `hide`,
+// `zeny`, `itemreset` et `option` — mais PAS les six ajusteurs de stat (`@str`…),
+// ni `@stpoint`, `@skpoint` et `@resetcooltime`, qui demandent le 99.
+//
+// Ils restent VISIBLES pour tout le staff, et c'est délibéré : le gate d'affichage
+// suit IsStaff, et la liste des commandes d'un groupe est une donnée SERVEUR qui
+// peut changer sans que la DLL le sache — la recopier ici la ferait mentir au
+// premier ajout. Un staff de niveau 80 qui clique reçoit le refus habituel.
+void CharacterSheet::DrawStaffPanel() {
+  const float top = ImGui::GetCursorPosY();
+  // Pose le curseur sur la rangée `dy` du volet stats. Jamais EN ARRIÈRE : un
+  // contrôle plus haut qu'une rangée de texte (un combo fait une hauteur de cadre,
+  // une dérivée une hauteur de ligne) déborde forcément sur la rangée suivante, et
+  // reculer le curseur le ferait chevaucher le précédent. L'alignement est donc au
+  // mieux — exact sur les six stats primaires, qui font la même hauteur des deux
+  // côtés, approché ensuite.
+  auto alignTo = [&](float dy) {
+    if (!stat_rows_valid_) return;
+    const float y = top + dy;
+    if (y > ImGui::GetCursorPosY()) ImGui::SetCursorPosY(y);
+  };
+
+  const ImGuiStyle& st = ImGui::GetStyle();
+  const float btn   = ImGui::GetFrameHeight();  // carrés « - » et « + »
+  const float input = ImGui::CalcTextSize("999999999").x + st.FramePadding.x * 2.0f;
+
+  // Une rangée d'ajustement : « - », saisie du pas, « + ». `cmd` est la commande NUE
+  // (« str », « blvl »…) ; le signe vient du bouton, jamais de la saisie — un « -5 »
+  // tapé dans le champ puis un clic sur « + » enverrait « @str +-5 ».
+  //
+  // `hi` borne la saisie, et il n'est pas le même partout : une stat plafonne à
+  // quelques centaines là où le zeny se compte en millions. Un plafond unique aurait
+  // silencieusement rogné les montants de l'un ou laissé l'autre écrire n'importe quoi.
+  auto adjustRow = [&](const char* id, const char* cmd, int* step, int hi, const char* tip) {
+    ImGui::PushID(id);
+    if (*step < 1)  *step = 1;
+    if (*step > hi) *step = hi;
+    char line[64];
+    if (ro::RoButton("-", btn, btn)) {
+      std::snprintf(line, sizeof(line), "@%s -%d", cmd, *step);
+      SendAtCommand(line);
+    }
+    mui::Tooltip(tip);
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(input);
+    ImGui::InputInt("##v", step, 0, 0);  // step=0 : pas de flèches ImGui (non skinnées)
+    mui::Tooltip(tip);
+    ImGui::SameLine();
+    if (ro::RoButton("+", btn, btn)) {
+      std::snprintf(line, sizeof(line), "@%s +%d", cmd, *step);
+      SendAtCommand(line);
+    }
+    mui::Tooltip(tip);
+    ImGui::PopID();
+  };
+
+  // ── Six ajusteurs, en face de STR..LUK ──────────────────────────────────────
+  char tip[192];
+  for (int i = 0; i < 6; ++i) {
+    alignTo(stat_row_dy_[i]);
+    // Nom de la commande = le nom de la stat en minuscules, dans le MÊME ordre que
+    // rAthena (parameter_names[] : str, agi, vit, int, dex, luk).
+    char cmd[4];
+    for (int k = 0; k < 3; ++k)
+      cmd[k] = static_cast<char>(std::tolower(static_cast<unsigned char>(kStatName[i][k])));
+    cmd[3] = '\0';
+    std::snprintf(tip, sizeof(tip),
+                  i18n::Tr("@%s : ajoute ou retire le montant saisi à %s.\n"
+                           "C'est un AJUSTEMENT, pas une valeur cible."),
+                  cmd, kStatName[i]);
+    adjustRow(kStatName[i], cmd, &staff_stat_step_[i], kStatStepMax, tip);
+  }
+
+  // ── Remise à zéro / tout au max, en face des points de statut ───────────────
+  alignTo(stat_points_dy_);
+  const float act_w = ro::MaxButtonWidth({i18n::Tr("Reset"), i18n::Tr("Max")});
+  if (ro::RoButton(i18n::Tr("Reset"), act_w, 0.0f)) SendAtCommand("@resetstat");
+  mui::Tooltip(i18n::Tr("@resetstat : remet les six stats à leur base et rend tous les "
+                        "points de statut dépensés."));
+  ImGui::SameLine();
+  if (ro::RoButton(i18n::Tr("Max"), act_w, 0.0f)) SendAtCommand("@allstat");
+  mui::Tooltip(i18n::Tr("@allstat : monte les six stats à leur maximum."));
+
+  // ── Classe, en face de l'ATK ────────────────────────────────────────────────
+  alignTo(atk_row_dy_);
+  // Le job COURANT sert d'aperçu tant que rien n'a été choisi dans la liste : le
+  // menu montre alors ce que le personnage est, pas une case vide.
+  const int own_job = OwnJobIdSEH();
+  // 🔴 L'aperçu montre la classe COURANTE, jamais le dernier choix cliqué : le
+  // serveur a pu le refuser (classe factice, `pcdb_checkid` négatif), et la classe
+  // peut changer par bien d'autres chemins — monture, déguisement, quête de job.
+  // Afficher ce qu'on a demandé plutôt que ce qu'on est ferait mentir le volet.
+  // `JobName` répond pour TOUT id, y compris ceux que la liste ne propose pas.
+  const char* preview = JobName(own_job);
+  ImGui::SetNextItemWidth(-1.0f);
+  if (ro::RoBeginCombo("##cs_staff_job", preview)) {
+    const bool just_opened = ImGui::IsWindowAppearing();
+    // Filtre REMIS À ZÉRO à chaque ouverture : gardé d'une fois sur l'autre, il
+    // rouvrirait la liste presque vide sans que rien ne dise pourquoi.
+    if (just_opened) {
+      staff_job_filter_[0] = '\0';
+      ImGui::SetKeyboardFocusHere();
+    }
+    ImGui::SetNextItemWidth(-1.0f);
+    ImGui::InputTextWithHint("##jobfilter", i18n::Tr("Rechercher…"), staff_job_filter_,
+                             sizeof(staff_job_filter_));
+    // Filtre insensible à la casse sur le libellé AFFICHÉ (celui du client) et sur
+    // l'id : « 4054 » comme « rune » trouvent le Rune Knight.
+    char needle[sizeof(staff_job_filter_)];
+    for (size_t k = 0; k < sizeof(needle); ++k)
+      needle[k] = static_cast<char>(std::tolower(static_cast<unsigned char>(staff_job_filter_[k])));
+    const char* last_group = nullptr;
+    for (int i = 0; i < kJobListCount; ++i) {
+      const char* label = JobListLabel(i);
+      if (needle[0]) {
+        char hay[80];
+        std::snprintf(hay, sizeof(hay), "%s %d", label, kJobList[i].id);
+        for (char* p = hay; *p; ++p)
+          *p = static_cast<char>(std::tolower(static_cast<unsigned char>(*p)));
+        if (!std::strstr(hay, needle)) continue;
+      }
+      if (last_group != kJobList[i].group) {  // en-tête de famille (pointeurs de la table)
+        last_group = kJobList[i].group;
+        ImGui::TextDisabled("%s", i18n::Tr(last_group));
+      }
+      char row[80];
+      std::snprintf(row, sizeof(row), "%s (%d)", label, kJobList[i].id);
+      const bool sel = (kJobList[i].id == own_job);
+      if (ImGui::Selectable(row, sel)) {
+        char line[32];
+        std::snprintf(line, sizeof(line), "@job %d", kJobList[i].id);
+        SendAtCommand(line);
+        ImGui::CloseCurrentPopup();
+      }
+      if (sel && just_opened) ImGui::SetScrollHereY(0.5f);
+    }
+    ro::RoEndCombo();
+  }
+  mui::Tooltip(
+      i18n::Tr("@job : change de classe.\n\n"
+               "⚠ Sur ce serveur la commande enchaîne d'elle-même @blvl 999, "
+               "@jlvl 100, @allskills et @allstats — changer de classe MAXE le "
+               "personnage, ce n'est pas un simple changement d'apparence."));
+
+  // ── Vitesse de marche ───────────────────────────────────────────────────────
+  // 🔴 Envoyée au RELÂCHEMENT, jamais pendant le drag : chaque @speed est un
+  // message de chat ET un status_calc_bl côté serveur, un par frame de drag
+  // noierait le chat et ferait travailler le serveur pour rien.
+  ImGui::SetNextItemWidth(-1.0f);
+  ro::RoSliderInt("##cs_staff_speed", &staff_speed_, kSpeedMin, kSpeedUiMax, "%d");
+  const bool speed_released = ImGui::IsItemDeactivatedAfterEdit();
+  mui::Tooltip(
+      i18n::Tr("@speed : vitesse de marche. PLUS BAS = PLUS RAPIDE ; 150 est la "
+               "vitesse normale, 20 le plancher du serveur.\n"
+               "Envoyé au relâchement du curseur."));
+  if (speed_released && staff_speed_ != staff_speed_sent_) {
+    char line[24];
+    std::snprintf(line, sizeof(line), "@speed %d", staff_speed_);
+    SendAtCommand(line);
+    staff_speed_sent_ = staff_speed_;
+  }
+  // 🔴 Largeur EXPLICITE : `RoButton` traite un w négatif comme « taille auto », pas
+  // comme le « remplis la place » d'ImGui — un -1 y donnerait un bouton au format du
+  // libellé, pas un bouton pleine largeur.
+  if (ro::RoButton(i18n::Tr("Vitesse normale"), ImGui::GetContentRegionAvail().x, 0.0f)) {
+    // Une valeur NÉGATIVE, et non « 150 » : c'est ce que le serveur attend pour
+    // relâcher le verrou permanent_speed qu'il pose dès que la vitesse diffère du
+    // défaut. Envoyer 150 remettrait la bonne valeur mais garderait le verrou.
+    SendAtCommand("@speed -1");
+    staff_speed_ = staff_speed_sent_ = kSpeedDefault;
+  }
+  mui::Tooltip(i18n::Tr("@speed -1 : rend au personnage sa vitesse par défaut (150)."));
+
+  // ── Niveaux, points et zeny ─────────────────────────────────────────────────
+  // Ces trois rangées portent un LIBELLÉ devant l'ajusteur, contrairement aux six
+  // stats dont le nom est déjà écrit en face, dans le volet stats. Une colonne
+  // commune aux trois : sans elle, « Zeny » décalerait son « - » d'une dizaine de
+  // pixels par rapport à ceux de « Base » et « Job ».
+  const float lvl_lbl =
+      std::max(std::max(ImGui::CalcTextSize(i18n::Tr("Base")).x,
+                        ImGui::CalcTextSize(i18n::Tr("Job")).x),
+               ImGui::CalcTextSize("Zeny").x);
+  // Écrit le libellé puis pose le curseur en début de colonne d'ajustement.
+  auto labelledRow = [&](const char* label) {
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextColored(kBlack, "%s", label);
+    ImGui::SameLine(0.0f, 0.0f);
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + lvl_lbl -
+                         ImGui::CalcTextSize(label).x + st.ItemSpacing.x);
+  };
+  labelledRow(i18n::Tr("Base"));
+  adjustRow("blvl", "blvl", &staff_blvl_step_, kLevelStepMax,
+            i18n::Tr("@blvl : gagne ou perd le nombre de niveaux de BASE saisi."));
+  labelledRow(i18n::Tr("Job"));
+  adjustRow("jlvl", "jlvl", &staff_jlvl_step_, kLevelStepMax,
+            i18n::Tr("@jlvl : gagne ou perd le nombre de niveaux de JOB saisi."));
+  // « Zeny » est un terme du jeu : il ne passe pas par le catalogue.
+  labelledRow("Zeny");
+  adjustRow("zeny", "zeny", &staff_zeny_step_, kZenyStepMax,
+            i18n::Tr("@zeny : donne ou retire le montant saisi. Un retrait plus grand que "
+                     "la bourse la vide sans passer en négatif."));
+
+  // Points de statut : une SAISIE et un bouton, pas un ajusteur — `@stpoint` donne
+  // un nombre de points, il n'y a pas de « retirer » qui ait un sens en face.
+  ImGui::SetNextItemWidth(input);
+  ImGui::InputInt("##cs_staff_points", &staff_stpoint_, 0, 0);
+  if (staff_stpoint_ < 1)     staff_stpoint_ = 1;
+  if (staff_stpoint_ > 30000) staff_stpoint_ = 30000;
+  ImGui::SameLine();
+  if (ro::RoButton(i18n::Tr("Points"), ImGui::GetContentRegionAvail().x, 0.0f)) {
+    char line[32];
+    std::snprintf(line, sizeof(line), "@stpoint %d", staff_stpoint_);
+    SendAtCommand(line);
+  }
+  mui::Tooltip(i18n::Tr("@stpoint : donne le nombre de points de statut saisi — de quoi "
+                        "essayer les boutons « + » du volet stats."));
+
+  ImGui::Separator();
+
+  // ── Raffinage ───────────────────────────────────────────────────────────────
+  // Un COMBO d'emplacement plutôt qu'un geste sur la case du mannequin : le clic
+  // droit y ouvre déjà la description et le double-clic déséquipe. Inventer un
+  // troisième geste caché sur la même case ne se découvrirait pas, et se
+  // tromperait un jour de bouton sur une pièce qu'on ne voulait pas toucher.
+  ImGui::SetNextItemWidth(-1.0f);
+  if (ro::RoBeginCombo("##cs_staff_refpos", RefinePosLabel(staff_refine_pos_))) {
+    for (int i = 0; i < kRefinePosCount; ++i)
+      if (ImGui::Selectable(RefinePosLabel(i), i == staff_refine_pos_))
+        staff_refine_pos_ = i;
+    ro::RoEndCombo();
+  }
+  mui::Tooltip(i18n::Tr("Emplacement visé par le raffinage. « Toutes les pièces » couvre "
+                        "tout ce qui est porté (c'est la position 0 de @refine)."));
+  {
+    // Même rangée que les stats, mais la commande porte DEUX arguments : le masque
+    // d'emplacement puis l'ajustement. `adjustRow` n'en sait faire qu'un, on écrit
+    // donc la rangée à la main plutôt que de tordre le lambda pour un seul appelant.
+    ImGui::PushID("refine");
+    if (staff_refine_step_ < 1)          staff_refine_step_ = 1;
+    if (staff_refine_step_ > kMaxRefine) staff_refine_step_ = kMaxRefine;
+    const uint32_t mask = kRefinePos[staff_refine_pos_].mask;
+    char line[48];
+    if (ro::RoButton("-", btn, btn)) {
+      std::snprintf(line, sizeof(line), "@refine %u -%d", mask, staff_refine_step_);
+      SendAtCommand(line);
+    }
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(input);
+    ImGui::InputInt("##rv", &staff_refine_step_, 0, 0);
+    ImGui::SameLine();
+    if (ro::RoButton("+", btn, btn)) {
+      std::snprintf(line, sizeof(line), "@refine %u +%d", mask, staff_refine_step_);
+      SendAtCommand(line);
+    }
+    mui::Tooltip(i18n::Tr("@refine : ajoute ou retire des niveaux de raffinage sur "
+                          "l'emplacement choisi. Le maximum est +10 sur ce serveur "
+                          "(pré-renewal)."));
+    ImGui::PopID();
+  }
+
+  // ── Objets et état ──────────────────────────────────────────────────────────
+  const float full_w = ImGui::GetContentRegionAvail().x;
+  if (ro::RoButton(i18n::Tr("Soigner"), full_w, 0.0f)) SendAtCommand("@heal");
+  mui::Tooltip(i18n::Tr("@heal : rend tous les PV et les SP."));
+  if (ro::RoButton(i18n::Tr("Réparer tout"), full_w, 0.0f)) SendAtCommand("@repairall");
+  mui::Tooltip(i18n::Tr("@repairall : répare toutes les pièces endommagées de l'inventaire."));
+  // `@hide` est une BASCULE sans argument : le serveur regarde `pc_isinvisible` et
+  // inverse. On ne tient donc aucun état ici — un état local se désynchroniserait au
+  // premier `@hide` tapé à la main, et il n'y a rien à afficher qui soit sûr.
+  if (ro::RoButton(i18n::Tr("Invisible"), full_w, 0.0f)) SendAtCommand("@hide");
+  mui::Tooltip(i18n::Tr("@hide : bascule l'invisibilité GM. Retaper la commande (ou "
+                        "recliquer) redevient visible."));
+
+  if (ro::RoButton(i18n::Tr("État visuel"), full_w, 0.0f)) {
+    // Amorçage sur ce que le CLIENT sait de l'état (les paquets de compagnon) :
+    // `@option` REMPLACE l'état complet, une case oubliée retirerait la monture, le
+    // cart ou le faucon sans que personne l'ait demandé.
+    for (int i = 0; i < kOptionFlagCount; ++i) {
+      const int bit = kOptionFlags[i].bit;
+      staff_opt_flags_[i] = (bit == 32 && companion_.riding_active) ||
+                            (bit == 16 && companion_.falcon_active);
+    }
+    staff_opt_cart_ = companion_.cart_active > 0 && companion_.cart_active <= 5
+                          ? companion_.cart_active : 0;
+    ImGui::OpenPopup("##cs_staff_option");
+  }
+  mui::Tooltip(i18n::Tr("@option : pose l'état visuel du personnage (monture, faucon, "
+                        "Hiding, Ruwach…).\n\n"
+                        "⚠ La commande REMPLACE l'état complet : ce qui n'est pas coché "
+                        "est RETIRÉ. Les cases sont amorcées sur l'état connu du client "
+                        "pour ne pas perdre la monture ou le cart en chemin.\n"
+                        "Elle remet aussi à zéro les statuts (pétrifié, gelé, maudit…)."));
+  if (ImGui::BeginPopup("##cs_staff_option")) {
+    ImGui::TextDisabled("%s", i18n::Tr("Coché = présent. Le reste est retiré."));
+    ImGui::Separator();
+    ImGui::SetNextItemWidth(ro::Px(110.0f));
+    char cart_label[24];
+    if (staff_opt_cart_ == 0) std::snprintf(cart_label, sizeof(cart_label), "%s", i18n::Tr("aucun"));
+    else                      std::snprintf(cart_label, sizeof(cart_label), "Cart %d", staff_opt_cart_);
+    if (ro::RoBeginCombo("Cart##cs_staff_optcart", cart_label)) {
+      for (int lv = 0; lv <= 5; ++lv) {
+        char row[24];
+        if (lv == 0) std::snprintf(row, sizeof(row), "%s", i18n::Tr("aucun"));
+        else         std::snprintf(row, sizeof(row), "Cart %d", lv);
+        if (ImGui::Selectable(row, lv == staff_opt_cart_)) staff_opt_cart_ = lv;
+      }
+      ro::RoEndCombo();
+    }
+    for (int i = 0; i < kOptionFlagCount; ++i)
+      ro::RoCheckbox(kOptionFlags[i].label, &staff_opt_flags_[i]);
+    ImGui::Separator();
+    if (ro::RoButton(i18n::Tr("Appliquer"), 0.0f, 0.0f)) {
+      int mask = kOptionCartBits[staff_opt_cart_];
+      for (int i = 0; i < kOptionFlagCount; ++i)
+        if (staff_opt_flags_[i]) mask |= kOptionFlags[i].bit;
+      char line[32];
+      // Les deux premiers paramètres à 0 : opt1/opt2 portent les vrais statuts, et
+      // `ACMD_FUNC(option)` les écrase avec ce qu'on lui donne. 0 = « aucun ».
+      std::snprintf(line, sizeof(line), "@option 0 0 %d", mask);
+      SendAtCommand(line);
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::SameLine();
+    if (ro::RoButton(i18n::Tr("Annuler"), 0.0f, 0.0f)) ImGui::CloseCurrentPopup();
+    ImGui::EndPopup();
+  }
+
+  // ── Vider l'inventaire ──────────────────────────────────────────────────────
+  // 🔴 EN DEUX TEMPS. `@itemreset` supprime TOUT l'inventaire et le serveur ne
+  // demande aucune confirmation : le clic est irréversible. Même règle que la
+  // suppression d'un homoncule et que la dissolution de guilde.
+  if (!staff_itemreset_ask_) {
+    if (ro::RoButton(i18n::Tr("Vider l'inventaire"), full_w, 0.0f))
+      staff_itemreset_ask_ = true;
+    mui::Tooltip(i18n::Tr("@itemreset : SUPPRIME tous les objets de l'inventaire. "
+                          "Irréversible, et le serveur ne demande rien — la "
+                          "confirmation est ici."));
+  } else {
+    const float half = (full_w - st.ItemSpacing.x) * 0.5f;
+    if (ro::RoButton(i18n::Tr("Confirmer"), half, 0.0f)) {
+      SendAtCommand("@itemreset");
+      staff_itemreset_ask_ = false;
+    }
+    ImGui::SameLine();
+    if (ro::RoButton(i18n::Tr("Annuler"), half, 0.0f)) staff_itemreset_ask_ = false;
+  }
+}
+
 // Ouvre (ou déplie) la feuille sur l'onglet Grimoire. Appelée depuis le hook
 // MakeWindow quand le joueur demande le grimoire natif : on ne fait que POSER la
 // demande, la sélection d'onglet se joue au rendu suivant.
@@ -8331,12 +9048,21 @@ void CharacterSheet::OnRenderUI() {
     ImGui::SetNextWindowPos(ImVec2(240, 140), ImGuiCond_FirstUseEver);
     need_pos_ = false;
   }
-  // Deux tailles possibles : doll seul (narrow) ou doll+stats (wide) ; snap au drag.
+  // Trois tailles possibles : doll seul (narrow), doll+stats (wide) et, pour le
+  // STAFF SEUL, doll+stats+staff (xwide) ; snap au drag. Le droit est relu à chaque
+  // frame — comme celui de StaffTools, il doit pouvoir se retirer en cours de
+  // session, et la fenêtre reperd alors son troisième cran.
   const float gap = ImGui::GetStyle().ItemSpacing.x;
   const float doll_pane_w  = DollPaneW();   // mesurées à la police courante
   const float stats_pane_w = StatsPaneW();
+  const bool  staff_pane_allowed = IsStaff();
+  const float staff_pane_w = staff_pane_allowed ? StaffPaneW() : 0.0f;
   g_win_snap.narrow = doll_pane_w + chrome_w_;
   g_win_snap.wide   = doll_pane_w + gap + stats_pane_w + chrome_w_;
+  // Sans droit staff, le troisième cran se confond avec le second : `SnapCharSheetWidth`
+  // retrouve alors sa bascule à deux crans sans avoir à connaître le gate.
+  g_win_snap.xwide  = staff_pane_allowed ? g_win_snap.wide + gap + staff_pane_w
+                                         : g_win_snap.wide;
   g_win_snap.valid  = true;
   // Les onglets Guilde (table des membres) et Grimoire (grille de 7 colonnes) ont
   // besoin de toute la largeur : on y interdit le repli étroit plutôt que de laisser
@@ -8346,10 +9072,12 @@ void CharacterSheet::OnRenderUI() {
   // rétrécir juste après : on ne fait qu'imposer la largeur d'ouverture.
   g_win_snap.force_wide = (tab_ == 4 || tab_ == 5) || want_wide_;
   want_wide_ = false;
+  // Plafond = le cran le plus large DISPONIBLE : sans droit staff, `xwide` vaut
+  // `wide` et la contrainte est celle d'avant.
   ImGui::SetNextWindowSizeConstraints(
       ImVec2(g_win_snap.force_wide ? g_win_snap.wide : g_win_snap.narrow,
              ro::Px(450.0f)),
-      ImVec2(g_win_snap.wide, 10000.0f), SnapCharSheetWidth);
+      ImVec2(g_win_snap.xwide, 10000.0f), SnapCharSheetWidth);
   ImGui::SetNextWindowSize(ImVec2(g_win_snap.wide, ro::Px(490.0f)),
                            ImGuiCond_FirstUseEver);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f);
@@ -8431,6 +9159,12 @@ void CharacterSheet::OnRenderUI() {
     // qui distingue « vue Status » de « vue Équipement », les deux partageant
     // l'onglet du mannequin.
     stats_panel_shown_ = show_stats;
+    // Volet staff : un cran de plus, à la même règle et dans le même ordre —
+    // mannequin, stats, staff. Il ne peut apparaître QUE derrière le volet stats,
+    // dont il aligne les rangées : sans lui il n'aurait rien à viser.
+    const bool show_staff =
+        staff_pane_allowed && show_stats &&
+        avail.x >= doll_pane_w + gap + stats_pane_w + gap + staff_pane_w - 6.0f;
     const float doll_w = show_stats ? doll_pane_w : avail.x;
 
     ImGui::BeginChild("cs_doll", ImVec2(doll_w, 0), true);
@@ -8441,6 +9175,14 @@ void CharacterSheet::OnRenderUI() {
       ImGui::SameLine();
       ImGui::BeginChild("cs_stats", ImVec2(stats_pane_w, 0), true);
       DrawStatsPanel();
+      ImGui::EndChild();
+    }
+    if (show_staff) {
+      // 🔴 APRÈS le volet stats, jamais avant : c'est DrawStatsPanel qui relève, à
+      // cette frame, les ordonnées sur lesquelles DrawStaffPanel s'aligne.
+      ImGui::SameLine();
+      ImGui::BeginChild("cs_staff", ImVec2(staff_pane_w, 0), true);
+      DrawStaffPanel();
       ImGui::EndChild();
     }
   }

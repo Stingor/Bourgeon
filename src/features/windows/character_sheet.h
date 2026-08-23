@@ -259,6 +259,54 @@ class CharacterSheet : public Plugin {
   // et donc ce que le raccourci Status doit basculer.
   bool stats_panel_shown_ = false;
 
+  // ── Volet STAFF (le troisième volet du mannequin, gaté IsStaff) ────────────
+  // Il pilote par atcommands ce que le volet stats ne fait qu'AFFICHER : monter
+  // une stat, changer de classe, régler la vitesse de marche. Chaque commande y
+  // est posée EN FACE de la valeur qu'elle change — d'où le relevé ci-dessous.
+  //
+  // Ordonnées des rangées du volet stats, RELATIVES au haut de son contenu et
+  // relevées par DrawStatsPanel à la frame COURANTE (il est dessiné avant).
+  // Relatives et pas écran : `ImGui::GetCursorPosY()` est déjà en coordonnées de
+  // contenu, donc l'alignement reste juste quand le volet stats est scrollé.
+  float stat_row_dy_[6] = {};    // rangées STR..LUK
+  float stat_points_dy_ = 0.0f;  // ligne « Points de statut : N »
+  float atk_row_dy_     = 0.0f;  // rangée ATK (première dérivée)
+  // Faux tant que DrawStatsPanel n'a pas tourné cette frame (ReadStats peut
+  // échouer) : sans relevé, le volet staff se contente de son flux naturel.
+  bool  stat_rows_valid_ = false;
+  // Ajustement saisi par stat (STR..LUK), niveau de base et niveau de job. Ce sont
+  // des AJUSTEMENTS, pas des valeurs cibles : `@str`, `@blvl` et `@jlvl` prennent
+  // tous un delta signé côté rAthena (« usage: @str <+/-adjustment> »), le signe
+  // venant du bouton cliqué.
+  int   staff_stat_step_[6] = {1, 1, 1, 1, 1, 1};
+  int   staff_blvl_step_ = 10;
+  int   staff_jlvl_step_ = 10;
+  // Points offerts d'un coup. Deux champs distincts et non un seul partagé : ils
+  // vivent dans deux volets différents (mannequin / grimoire) et n'ont pas le même
+  // ordre de grandeur — on donne des centaines de points de statut là où une poignée
+  // de points de compétence suffit.
+  int   staff_stpoint_ = 100;      // @stpoint (volet staff du mannequin)
+  int   staff_skpoint_ = 10;       // @skpoint (ligne staff du grimoire)
+  int   staff_zeny_step_ = 10000;  // @zeny, ajustement signé lui aussi
+  // Raffinage. `pos` est un INDEX dans la table des emplacements, pas un masque :
+  // c'est le combo qui le porte, la conversion se fait à l'envoi.
+  int   staff_refine_step_ = 1;
+  int   staff_refine_pos_  = 0;    // 0 = toutes les pièces portées
+  // `@itemreset` DÉTRUIT l'inventaire entier et le serveur ne demande rien. La
+  // confirmation est donc à nous, comme pour la suppression d'un homoncule.
+  bool  staff_itemreset_ask_ = false;
+  // Modale « état visuel » (@option). Les cases sont amorcées sur l'état connu du
+  // client à l'ouverture : la commande REMPLACE l'état complet, une case oubliée
+  // retirerait la monture ou le cart sans prévenir.
+  bool  staff_opt_flags_[10] = {};
+  int   staff_opt_cart_ = 0;       // 0 = aucun, 1..5 = niveau de cart
+  // Vitesse de marche (@speed). 150 = la valeur par défaut du serveur ; envoyée
+  // au RELÂCHEMENT du slider, pas à chaque pixel de drag — un @speed par frame
+  // noierait le chat et ferait un status_calc_bl par image.
+  int   staff_speed_ = 150;
+  int   staff_speed_sent_ = 150;   // dernière valeur réellement envoyée
+  char  staff_job_filter_[24] = {};  // filtre du menu déroulant des classes
+
   // ── Onglet Grimoire (arbre de compétences, remplace la fenêtre native 0x25) ──
   int  skill_tab_ = 0;              // onglet de job actif (0..3), 4 = « divers » (liste plate)
   bool skill_grid_ = true;          // grille d'icônes (vue « moderne ») / liste détaillée
@@ -446,6 +494,16 @@ class CharacterSheet : public Plugin {
   void DrawHoverDesc();
 
   void DrawStatsPanel();
+  // Troisième volet du mannequin, réservé au STAFF : les atcommands qui changent
+  // ce que le volet stats affiche, chacune posée en face de sa valeur. Tout part
+  // par SendAtCommand — donc par le canal de chat, avec les mêmes droits, les
+  // mêmes refus et la même journalisation que la commande tapée à la main. Aucune
+  // de ces commandes n'est validée ici : le serveur reste seul juge.
+  //
+  // 🔴 À n'appeler que sous IsStaff(). Le gate est REVÉRIFIÉ à chaque frame par
+  // l'appelant, comme celui de StaffTools : un droit retiré en cours de session
+  // fait disparaître le volet sans attendre une reconnexion.
+  void DrawStaffPanel();
   void DrawDoll(float avail_w);
   // Onglet Presets : liste des presets du perso (icones des items) + sauvegarde.
   void DrawPresetsTab();

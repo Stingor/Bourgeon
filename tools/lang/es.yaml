@@ -3347,3 +3347,60 @@
 "stats###viewequip_clonestat": "stats###viewequip_clonestat"
 "job###viewequip_clonejob": "clase###viewequip_clonejob"
 "Me donne la MÊME classe (@job).\n⚠ Sur moonlight cette commande enchaîne aussi @blvl 999, @jlvl 100, @allskills et @allstats.\nUn joueur monté ou déguisé sera refusé : sa classe affichée est une classe factice.": "Me da la MISMA clase (@job).\n⚠ En moonlight este comando encadena además @blvl 999, @jlvl 100, @allskills y @allstats.\nUn jugador montado o disfrazado será rechazado: su clase mostrada es una clase ficticia."
+
+# ── Volet staff de la fiche de personnage + ligne staff du grimoire ──────────
+# Des atcommands rejouées par le canal du chat : le serveur reste seul juge.
+# Les en-têtes de famille de classe viennent d'une table STATIQUE (kJobList[].group
+# dans character_sheet.cc), où Tr reçoit une variable : l'extracteur statique ne
+# les voit pas, elles sont donc listées ici à la main. Trois d'entre elles
+# (« 2e classe », « 3e classe », « 4e classe ») existent déjà dans la section du
+# grimoire plus haut et ne sont pas répétées.
+"Staff": "Staff"
+"Vitesse normale": "Velocidad normal"
+"Reset": "Reiniciar"
+"Tout apprendre": "Aprender todo"
+"Cooldowns": "Recargas"
+"@%s : ajoute ou retire le montant saisi à %s.\nC'est un AJUSTEMENT, pas une valeur cible.": "@%s: añade o quita la cantidad indicada a %s.\nEs un AJUSTE, no un valor objetivo."
+"@resetstat : remet les six stats à leur base et rend tous les points de statut dépensés.": "@resetstat: devuelve las seis estadísticas a su base y reembolsa todos los puntos de estado gastados."
+"@allstat : monte les six stats à leur maximum.": "@allstat: sube las seis estadísticas a su máximo."
+"@job : change de classe.\n\n⚠ Sur ce serveur la commande enchaîne d'elle-même @blvl 999, @jlvl 100, @allskills et @allstats — changer de classe MAXE le personnage, ce n'est pas un simple changement d'apparence.": "@job: cambia de clase.\n\n⚠ En este servidor el comando encadena por sí solo @blvl 999, @jlvl 100, @allskills y @allstats — cambiar de clase DEJA AL MÁXIMO al personaje, no es un simple cambio de apariencia."
+"@speed : vitesse de marche. PLUS BAS = PLUS RAPIDE ; 150 est la vitesse normale, 20 le plancher du serveur.\nEnvoyé au relâchement du curseur.": "@speed: velocidad de marcha. MÁS BAJO = MÁS RÁPIDO; 150 es la velocidad normal, 20 el mínimo del servidor.\nSe envía al soltar el deslizador."
+"@speed -1 : rend au personnage sa vitesse par défaut (150).": "@speed -1: devuelve al personaje su velocidad por defecto (150)."
+"@blvl : gagne ou perd le nombre de niveaux de BASE saisi.": "@blvl: gana o pierde el número de niveles de BASE indicado."
+"@jlvl : gagne ou perd le nombre de niveaux de JOB saisi.": "@jlvl: gana o pierde el número de niveles de CLASE indicado."
+"@stpoint : donne le nombre de points de statut saisi — de quoi essayer les boutons « + » du volet stats.": "@stpoint: otorga el número de puntos de estado indicado — lo justo para probar los botones «+» del panel de estadísticas."
+"@resetskill : oublie toutes les compétences et rend les points.": "@resetskill: olvida todas las habilidades y devuelve los puntos."
+"@allskills : apprend toutes les compétences de la classe.": "@allskills: aprende todas las habilidades de la clase."
+"@resetcooltime : remet à zéro le temps de recharge de toutes les compétences (homoncule et mercenaire compris).": "@resetcooltime: pone a cero el tiempo de recarga de todas las habilidades (homúnculo y mercenario incluidos)."
+"@skpoint : donne le nombre de points de compétence saisi.": "@skpoint: otorga el número de puntos de habilidad indicado."
+"Novice / 1re classe": "Novato / 1.ª clase"
+"Trans. 1re classe": "Trans. 1.ª clase"
+"Trans. 2e classe": "Trans. 2.ª clase"
+"3e classe (trans.)": "3.ª clase (trans.)"
+"Classes étendues": "Clases extendidas"
+"Baby / 1re classe": "Baby / 1.ª clase"
+"Baby 2e classe": "Baby 2.ª clase"
+"Baby 3e classe": "Baby 3.ª clase"
+"Baby étendues": "Baby extendidas"
+
+# ── Volet staff, second bloc : équipement, zeny et état visuel ───────────────
+# « Toutes les pièces » vient du même genre de table STATIQUE que les familles de
+# classe plus haut (kRefinePos[0].label, lu par RefinePosLabel) : invisible à
+# l'extracteur statique, donc listée à la main. Les autres noms d'emplacement sont
+# des TERMES DU JEU et restent en anglais dans toutes les langues, comme les
+# abréviations des cases du mannequin.
+"Toutes les pièces": "Todo el equipo puesto"
+"Soigner": "Curar del todo"
+"Réparer tout": "Reparar todo"
+"Invisible": "Invisible"
+"État visuel": "Estado visual"
+"Vider l'inventaire": "Vaciar el inventario"
+"Coché = présent. Le reste est retiré.": "Marcado = presente. Todo lo demás se quita."
+"Emplacement visé par le raffinage. « Toutes les pièces » couvre tout ce qui est porté (c'est la position 0 de @refine).": "Ranura a la que se aplica la refinación. «Todo el equipo puesto» abarca todo lo equipado (es la posición 0 de @refine)."
+"@refine : ajoute ou retire des niveaux de raffinage sur l'emplacement choisi. Le maximum est +10 sur ce serveur (pré-renewal).": "@refine: añade o quita niveles de refinación en la ranura elegida. El máximo es +10 en este servidor (pre-renewal)."
+"@zeny : donne ou retire le montant saisi. Un retrait plus grand que la bourse la vide sans passer en négatif.": "@zeny: da o quita la cantidad indicada. Quitar más de lo que llevas vacía la bolsa sin pasar a negativo."
+"@heal : rend tous les PV et les SP.": "@heal: restaura todos los PV y los SP."
+"@repairall : répare toutes les pièces endommagées de l'inventaire.": "@repairall: repara todas las piezas dañadas del inventario."
+"@hide : bascule l'invisibilité GM. Retaper la commande (ou recliquer) redevient visible.": "@hide: alterna la invisibilidad de GM. Volver a escribir el comando (o pulsar de nuevo) te hace visible."
+"@itemreset : SUPPRIME tous les objets de l'inventaire. Irréversible, et le serveur ne demande rien — la confirmation est ici.": "@itemreset: BORRA todos los objetos del inventario. Irreversible, y el servidor no pregunta nada — la confirmación está aquí."
+"@option : pose l'état visuel du personnage (monture, faucon, Hiding, Ruwach…).\n\n⚠ La commande REMPLACE l'état complet : ce qui n'est pas coché est RETIRÉ. Les cases sont amorcées sur l'état connu du client pour ne pas perdre la monture ou le cart en chemin.\nElle remet aussi à zéro les statuts (pétrifié, gelé, maudit…).": "@option: fija el estado visual del personaje (montura, halcón, Hiding, Ruwach…).\n\n⚠ El comando REEMPLAZA el estado completo: lo que no esté marcado se QUITA. Las casillas se rellenan con el estado que el cliente conoce, para no perder la montura ni el cart por el camino.\nTambién pone a cero los estados alterados (petrificado, congelado, maldito…)."
