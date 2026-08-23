@@ -145,6 +145,13 @@ constexpr int kMsgCommand = 42;   // 0x2A -> Chat_HandleChatMessage
 // native, réservé aux commandes slash 18/26/55.
 constexpr int kMsgCmdRejectsItemTag = 0xAFC;
 
+// Anti-rebond de l'écriture de la disposition. Assez long pour qu'un geste
+// continu (zoom à la molette) n'écrive qu'un fichier, assez court pour qu'un
+// joueur qui verrouille sa fenêtre puis ferme le client dans la foulée retrouve
+// son réglage. Le fichier est petit (une dizaine de canaux) et l'écriture rare :
+// elle ne suit que les GESTES de disposition, jamais les lignes de chat.
+constexpr uint32_t kLayoutFlushDelayMs = 1000;
+
 // Le client refuse plus de 10 canaux (principaux + détachés confondus) : au-delà,
 // c'est qu'on ne lit pas un registre mais autre chose. La borne protège le
 // parcours d'arbre autant que l'affichage.
@@ -1466,13 +1473,41 @@ bool ChatWindow::InGuild() const {
   }
 }
 
-// Dernière chance d'écrire : une fermeture par la croix ne passe pas forcément
-// par un changement de mode. Le détour, lui, n'est PAS retiré — il reste posé pour
-// la durée du processus ; on se contente de couper le pointeur qu'il consulte.
+// Le détour n'est PAS retiré — il reste posé pour la durée du processus ; on se
+// contente de couper le pointeur qu'il consulte.
+//
+// ⚠ ET CE DESTRUCTEUR NE TOURNE PAS quand le joueur ferme le client. On l'a
+// longtemps pris pour la « dernière chance d'écrire » ; il n'en est pas une :
+// DllMain termine le processus dès le DLL_PROCESS_DETACH de fin, AVANT tout
+// destructeur C++ (cf. src/main.cc). C'est un filet pour un déchargement propre,
+// PAS le mécanisme de sauvegarde — celui-ci est l'anti-rebond d'OnTick.
 ChatWindow::~ChatWindow() {
   if (layout_dirty_) SaveLayout();
   SaveHistory();
   if (g_chat_window == this) g_chat_window = nullptr;
+}
+
+// Une écriture de la disposition est due — dans `kLayoutFlushDelayMs`, pas tout
+// de suite : un geste continu (zoom à la molette sur un onglet à style propre)
+// repose le drapeau à chaque cran et ne doit produire qu'un seul fichier, à sa
+// fin. Même anti-rebond que `MoonlightUi::SaveSettings` pour les réglages.
+void ChatWindow::MarkLayoutDirty() {
+  layout_dirty_    = true;
+  layout_dirty_ms_ = GetTickCount();
+}
+
+// 🔴 LE SEUL POINT DE SAUVEGARDE QUI SERVE VRAIMENT. La disposition ne s'écrivait
+// qu'à la sortie du monde (retour char-select) et dans le destructeur — or fermer
+// le client depuis le jeu ne passe NI par l'un NI par l'autre : le processus est
+// terminé sans dérouler les destructeurs. Tout ce qui avait été réglé depuis la
+// dernière déconnexion était donc perdu en silence : le verrouillage d'une
+// fenêtre, un onglet renommé, un filtre décoché. On écrit maintenant dès que la
+// disposition a cessé de bouger, comme les réglages de Bourgeon.
+void ChatWindow::OnTick() {
+  if (!layout_dirty_) return;
+  if (GetTickCount() - layout_dirty_ms_ < kLayoutFlushDelayMs) return;
+  SaveLayout();
+  layout_dirty_ = false;
 }
 
 void ChatWindow::OnModeSwitch(ModeMgr::ModeType mode_type, const char* map_name) {
@@ -1480,10 +1515,9 @@ void ChatWindow::OnModeSwitch(ModeMgr::ModeType mode_type, const char* map_name)
   // session précédente, et les canaux seront relus au prochain rendu.
   if (mode_type != ModeMgr::ModeType::kGame) {
     // 🔴 Enregistrer AVANT de vider : c'est le dernier instant où la disposition
-    // existe encore. C'est aussi le moment que choisit le client pour écrire son
-    // propre `ChatWndInfo_U.lua` — la déconnexion, pas chaque modification : une
-    // écriture par ligne de chat serait exactement le genre de coût qui a déjà
-    // gelé cette fenêtre.
+    // existe encore. En pratique l'anti-rebond d'OnTick a déjà écrit — il ne reste
+    // ici que le geste des toutes dernières centaines de millisecondes, celui qui
+    // n'a pas eu le temps d'arriver à échéance.
     if (layout_dirty_) {
       SaveLayout();
       layout_dirty_ = false;
@@ -4204,7 +4238,7 @@ void ChatWindow::HandleFontZoom(Channel& channel) {
       // L'onglet range ses réglages avec la disposition, les généraux avec ceux
       // de Bourgeon. `SaveSettings` a son anti-rebond (400 ms) : un cran de
       // molette n'écrit pas un fichier, et un geste continu n'en écrit qu'un.
-      if (channel.style_own) layout_dirty_ = true;
+      if (channel.style_own) MarkLayoutDirty();
       else if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
     }
   }
@@ -5723,7 +5757,7 @@ void ChatWindow::CreateChannel() {
   std::memset(channel.filter, 1, sizeof(channel.filter));
   channels_.push_back(std::move(channel));
   structure_owned_ = true;
-  layout_dirty_    = true;
+  MarkLayoutDirty();
   active_channel_  = static_cast<int>(channels_.size()) - 1;
 }
 
@@ -5738,7 +5772,7 @@ void ChatWindow::CloseChannel(int index) {
   const bool closed_active = (channels_[index].id == active_id);
   channels_.erase(channels_.begin() + index);
   structure_owned_ = true;
-  layout_dirty_    = true;
+  MarkLayoutDirty();
 
   // Suivre le canal, pas le rang : fermer le troisième onglet ne doit pas faire
   // sauter le joueur ailleurs si ce n'est pas celui qu'il lisait.
@@ -5878,7 +5912,7 @@ void ChatWindow::MoveChannelToGroup(int from, uint32_t group, int dest_slot) {
   // SON ordre deux secondes plus tard, et le geste du joueur disparaîtrait sans
   // un mot (cf. RefreshChannels).
   structure_owned_ = true;
-  layout_dirty_    = true;
+  MarkLayoutDirty();
 }
 
 // ── Confirmation avant de fermer un onglet ───────────────────────────────────
@@ -6019,7 +6053,7 @@ void ChatWindow::DrawLogOptionsPopup() {
     if (rename_buf_[0] != '\0') {
       channel->name    = rename_buf_;
       structure_owned_ = true;
-      layout_dirty_    = true;
+      MarkLayoutDirty();
     }
     ImGui::CloseCurrentPopup();
   }
@@ -6035,7 +6069,7 @@ void ChatWindow::DrawLogOptionsPopup() {
       SetChannelGroup(*channel, 0);
       channel->detach_owned = true;
       structure_owned_      = true;
-      layout_dirty_         = true;
+      MarkLayoutDirty();
       active_channel_       = target;
     }
   } else {
@@ -6051,7 +6085,7 @@ void ChatWindow::DrawLogOptionsPopup() {
       channel->detach_owned = true;
       channel->locked       = false;  // une flottante naît libre (cf. l'arrachage)
       structure_owned_      = true;
-      layout_dirty_         = true;
+      MarkLayoutDirty();
     }
     if (!can_detach) {
       ImGui::EndDisabled();
@@ -6084,7 +6118,7 @@ void ChatWindow::DrawLogOptionsPopup() {
     if (group != 0)
       for (Channel& other : channels_)
         if (other.group == group) other.locked = *lock;
-    layout_dirty_ = true;  // le verrou se range avec la géométrie, pas avec les réglages
+    MarkLayoutDirty();  // le verrou se range avec la géométrie, pas avec les réglages
   }
   if (ImGui::IsItemHovered())
     ImGui::SetTooltip(
@@ -6158,7 +6192,7 @@ void ChatWindow::DrawLogOptionsPopup() {
         std::memcpy(channel->body, body_rgba_, sizeof(channel->body));
       }
       channel->style_own = own;
-      layout_dirty_      = true;
+      MarkLayoutDirty();
       // La bascule change la taille EFFECTIVE de l'onglet (les siennes ou les
       // générales) : les hauteurs mémorisées ne valent plus.
       InvalidateLineLayout();
@@ -6173,7 +6207,7 @@ void ChatWindow::DrawLogOptionsPopup() {
                                "%d px");
     touched |= RoColorSwatch("Fond###chatstyle_body", channel->body);
     if (relayout) InvalidateLineLayout();  // le PAS des lignes a changé
-    if (touched || relayout) layout_dirty_ = true;
+    if (touched || relayout) MarkLayoutDirty();
     if (!channel->style_own) ImGui::EndDisabled();
     ImGui::PopItemWidth();
     PopStyleCompact();
@@ -6202,7 +6236,7 @@ void ChatWindow::DrawLogOptionsPopup() {
     if (ro::RoSmallButton(i18n::Tr("Tout cocher"))) {
       for (int i = 0; i < kFilterCount; ++i) {
         channel->filter[i] = 1;
-        layout_dirty_      = true;
+        MarkLayoutDirty();
         WriteChannelFilter(channel->node, i, true);
       }
     }
@@ -6210,7 +6244,7 @@ void ChatWindow::DrawLogOptionsPopup() {
     if (ro::RoSmallButton(i18n::Tr("Tout décocher"))) {
       for (int i = 0; i < kFilterCount; ++i) {
         channel->filter[i] = 0;
-        layout_dirty_      = true;
+        MarkLayoutDirty();
         WriteChannelFilter(channel->node, i, false);
       }
     }
@@ -6231,7 +6265,7 @@ void ChatWindow::DrawLogOptionsPopup() {
         std::snprintf(label, sizeof(label), i18n::Tr("%s###chatflt%d"), chatwnd::TypeLabel(i), i);
       if (ro::RoCheckbox(label, &on)) {
         channel->filter[i] = on ? 1 : 0;
-        layout_dirty_      = true;
+        MarkLayoutDirty();
         WriteChannelFilter(channel->node, i, on);
       }
     }

@@ -62,6 +62,10 @@ class ChatWindow : public Plugin {
   const char* name() const override { return "ChatWindow"; }
 
   void OnRenderUI() override;
+  // Écrit la disposition dès qu'elle a cessé de bouger : c'est le SEUL moment où
+  // elle est enregistrée pour un joueur qui ferme le client depuis le monde (cf.
+  // OnTick).
+  void OnTick() override;
   void OnModeSwitch(ModeMgr::ModeType mode_type, const char* map_name) override;
   // Fil RÉSEAU : on COPIE, rien de plus (cf. features/net_inbox.h).
   void OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
@@ -990,6 +994,13 @@ class ChatWindow : public Plugin {
   // porter le même rang, sinon un onglet vidé ferait réapparaître la seconde.
   uint64_t next_line_seq_ = 1;
   bool layout_dirty_ = false;  // une écriture est due (structure ou filtre modifié)
+  // Quand le drapeau a été posé (GetTickCount), pour l'anti-rebond d'`OnTick`.
+  uint32_t layout_dirty_ms_ = 0;
+  // 🔴 TOUT MARQUAGE PASSE PAR ICI, jamais par `layout_dirty_` en direct : c'est
+  // l'horodatage qui décide de la date d'écriture, et un site qui l'oublierait
+  // ferait écrire la disposition au tout début d'un geste continu (le zoom à la
+  // molette repose le drapeau à chaque cran).
+  void MarkLayoutDirty();
   void  ParseText(const char* local_text, Line* out) const;
   void  ParseUtf8(const std::string& text, Line* out) const;
   // Remplit `select_buf_` avec le canal tel qu'il est à l'écran (filtre du canal +
