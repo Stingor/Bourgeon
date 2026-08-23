@@ -1,4 +1,5 @@
 #include "features/windows/chat_window.h"
+#include "features/windows/chat_room_window.h"  // chatroomwnd::IngestRoomLine (action 5)
 
 #include <Windows.h>
 
@@ -115,6 +116,11 @@ constexpr uintptr_t kStdStringDtor      = 0x004f08f0;  // __thiscall(this)
 // `0x0131F6C4` reste NON NUL — le garde s'ouvre donc, et le test de balises
 // s'exécute. Les six littéraux qu'il cherche sont `<URL>`, `<NAVI>`, `<ITEM>`,
 // `<ITEML>` et deux voisins : rien à voir avec un gros mot.
+// Les deux ids de « sauvegarder le chat » : la table slash en rend un, et le
+// salon impose sa variante (cf. NativeSendChatText).
+constexpr int kCmdIdSaveChat         = 0x33;  // TT_REQ_SAVE_CHAT
+constexpr int kCmdIdSaveChatFromRoom = 0x34;  // TT_REQ_SAVE_CHAT_FROM_CHATROOM
+
 constexpr uintptr_t kCmdHandlerMap      = 0x00d7f1a0;  // __thiscall(ctxKey, texte)
 constexpr uintptr_t kUIWindowContextKey = 0x015fa3c0;
 // 🔴 __thiscall, PAS __stdcall : le natif charge `ecx = g_UIWindowContextKey`
@@ -162,6 +168,12 @@ constexpr int kMaxChannels = 10;
 constexpr int kTypeCount     = 25;
 constexpr int kTypeBroadcast = 0x19;
 constexpr int kTypeWhisper   = 2;
+constexpr int kTypePublicChat = 1;   // « Public Chat » — le type des lignes de salon
+
+// 🔴 Le tag de conversation réservé au SALON. Il commence par un octet de
+// CONTRÔLE : aucun nom de personnage ne peut le porter, donc il ne peut entrer en
+// collision avec une conversation 1:1, quoi que le joueur nomme son personnage.
+constexpr const char* kChatRoomTag = "\x01""salon";
 
 // 🔴 NOTRE table à nous en compte une de plus, et c'est toute la différence : la
 // case d'index `kTypeBroadcast` (25) filtre les annonces serveur, que le natif
@@ -367,6 +379,27 @@ int __cdecl ChatActionFilter(int action, const char* text, int color,
   // perdu : le battle mode ne masque QUE la ligne de saisie, le log continue
   // d'afficher l'annonce.
   if (action == 3 && g_chat_window != nullptr && g_chat_window->imgui_enabled_)
+    return 1;
+  // 🔴 Action 5 = `UIM_PUSH_INTO_CHATROOM` : LA ligne d'un salon de chat. Le natif
+  // en fait `if (mgr[159]) mgr[159]->OnMsg(37, …)` et RIEN d'autre — pas de file
+  // d'attente, contrairement à l'action 1. La fenêtre 28 étant détruite par
+  // ChatRoomWindow, cette ligne se PERDRAIT sans cette reprise, et la salle serait
+  // muette. Ce détour est le seul point de passage possible : il n'y a qu'un jeu
+  // d'octets à l'entrée de ChatAction, un second détour tuerait celui-ci en
+  // silence (cf. l'en-tête). Cf. docs/chat_room_re.md §10bis.4.
+  if (action == 5 && chatroomwnd::IngestRoomLine(text, static_cast<uint32_t>(color)))
+    return 1;
+  // 🔴 Action 1 alors qu'un salon est ouvert : c'est une ligne de SALON, pas de
+  // chat public. Le client choisit lui-même entre les deux — `if
+  // (g_UIChatRoomWnd_Slot) ChatAction(5,…) else ChatAction(1,…)` — et comme
+  // ChatRoomWindow DÉTRUIT la fenêtre 28, ce slot est toujours nul : tout le
+  // contenu d'un salon privé ressortait dans la chatbox générale. On reprend donc
+  // l'aiguillage. Ce n'est pas une heuristique : un occupant de salon ne reçoit
+  // PAS le chat public de la carte (le serveur l'envoie en `AREA_CHAT_WOC` —
+  // « without chatrooms »), donc tout type-1 reçu en salon vient du salon.
+  // Cf. docs/chat_room_re.md §10bis.4.
+  if (action == 1 &&
+      chatroomwnd::ClaimPublicChatLine(text, static_cast<uint32_t>(color), type))
     return 1;
   // 🔴 Action 6 = `/savechat`, et elle est MUETTE chez le client dès que notre
   // chatbox vit. `ChatLog_SaveAllToFiles` (0x00907030) parcourt les sous-fenêtres
@@ -945,6 +978,14 @@ const char* NativeSendChatText(const char* text, const char* whisper_target,
           error = msgstr::Utf8(kMsgCmdRejectsItemTag);
         } else {
           if (arg_off != -1) SetPendingSendText(text + arg_off);
+          // 🔴 DANS UN SALON, le natif substitue l'id de commande : « /savechat »
+          // part sous sa variante salon (`UIChatRoomWnd_OnMsg` @0x008823CF).
+          // C'est le SEUL écart qui reste entre cette barre et la saisie native
+          // du salon — l'autre substitution du natif (texte simple, 0 → 0x32)
+          // tombe sur le MÊME `case` et ne change rien (docs/chat_room_re.md
+          // §10bis.7-4).
+          if (cmd_id == kCmdIdSaveChat && chatroomwnd::RoomOwnsChatInput())
+            cmd_id = kCmdIdSaveChatFromRoom;
           ModeSendMsg(kMsgCommand, cmd_id,
                       static_cast<int>(reinterpret_cast<intptr_t>(args)));
         }
@@ -1318,6 +1359,111 @@ bool chatwnd::IngestPluginLine(const char* text, uint32_t rgb) {
   // distinguer en mode diagnostic — ni le serveur ('A'/'W'), ni le natif : nous.
   g_chat_window->Ingest(raw.text, rgb, 0, 'P');
   return true;
+}
+
+// ── Le SALON DE CHAT : une « conversation » de plus ──────────────────────────
+
+bool chatwnd::IngestChatRoomLine(const char* local_text, uint32_t rgb) {
+  if (g_chat_window == nullptr || !g_chat_window->imgui_enabled_) return false;
+  return g_chat_window->IngestChatRoomLine(local_text, rgb);
+}
+
+void chatwnd::DrawChatRoomLog(std::string* link_insert_target) {
+  if (g_chat_window != nullptr) g_chat_window->DrawChatRoomLog(link_insert_target);
+}
+
+void chatwnd::ClearChatRoomLog() {
+  if (g_chat_window != nullptr) g_chat_window->ClearChatRoomLog();
+}
+
+bool ChatWindow::IngestChatRoomLine(const char* local_text, uint32_t rgb) {
+  if (local_text == nullptr || *local_text == '\0') return false;
+
+  Line line;
+  line.source       = 'P';  // ni ChatAction ni WndProc : notre propre branchement
+  line.rgb          = rgb & 0xFFFFFF;
+  line.type         = static_cast<uint8_t>(kTypePublicChat);
+  // 🔴 C'est CE champ qui fait tout : il exclut la ligne des onglets du journal
+  // et la réserve à la fenêtre du salon (cf. ChannelAccepts).
+  line.whisper_with = kChatRoomTag;
+
+  SYSTEMTIME now;
+  GetLocalTime(&now);
+  line.hour   = static_cast<uint8_t>(now.wHour);
+  line.minute = static_cast<uint8_t>(now.wMinute);
+  line.second = static_cast<uint8_t>(now.wSecond);
+
+  // Le sender se lit en tête, comme partout ailleurs : « Nom : texte ».
+  const char* separator = std::strstr(local_text, " :");
+  if (separator != nullptr && (separator - local_text) <= 40) {
+    char extracted[64] = {};
+    CopyBounded(extracted, sizeof(extracted), local_text);
+    extracted[separator - local_text] = '\0';
+    line.sender = ro::WireToUtf8(extracted);
+  }
+  ParseText(local_text, &line);
+  MarkSenderAsPlayerLink(&line);
+
+  std::lock_guard<std::mutex> lock(lines_mutex_);
+  ++ingest_seen_;
+  ++ingest_kept_;
+  lines_.push_back(std::move(line));
+  TrimLines();
+  return true;
+}
+
+void ChatWindow::DrawChatRoomLog(std::string* link_insert_target) {
+  // Canal SYNTHÉTIQUE : il ne figure pas dans `channels_`, il ne sert qu'à router
+  // et à porter les réglages de lecture. Les filtres de type sont tous ouverts —
+  // `ChannelAccepts` sort de toute façon sur le `whisper_with` bien avant.
+  Channel room;
+  room.whisper_with = kChatRoomTag;
+  std::memset(room.filter, 1, sizeof(room.filter));
+  if (!channels_.empty()) {
+    room.font_pct = channels_[0].font_pct;
+    room.padding  = channels_[0].padding;
+    room.line_gap = channels_[0].line_gap;
+  }
+  // Pendant CE dessin, un Maj+clic sur un lien alimente la saisie du salon, pas
+  // la barre générale. Les deux drapeaux d'après-coup sont neutralisés au retour :
+  // les `Append*Link` les posent pour la barre principale, qui n'est pas
+  // concernée ici — sans quoi le clavier lui reviendrait sous les doigts du
+  // joueur, et la barre repliée s'ouvrirait toute seule.
+  const bool was_open  = input_open_;
+  const bool was_focus = focus_input_next_;
+  input_redirect_ = link_insert_target;
+  DrawLines(room);
+  input_redirect_ = nullptr;
+  if (link_insert_target != nullptr) {
+    input_open_       = was_open;
+    focus_input_next_ = was_focus;
+  }
+  // Même règle de collage au bas que le journal, et pour la même raison :
+  // `GetScrollMaxY` porte le contenu de la frame précédente, donc le test dit
+  // bien « j'étais en bas », sans variable d'état à décaler d'une frame.
+  if (ImGui::GetScrollY() >= ImGui::GetScrollMaxY())
+    ImGui::SetScrollHereY(1.0f);
+}
+
+bool chatwnd::DrawChatInputRow() {
+  if (g_chat_window == nullptr || !g_chat_window->imgui_enabled_) return false;
+  g_chat_window->DrawInputRow();
+  return true;
+}
+
+bool chatwnd::TargetWhisper(const char* name_wire) {
+  if (g_chat_window == nullptr) return false;
+  return g_chat_window->TargetWhisper(name_wire);
+}
+
+void ChatWindow::ClearChatRoomLog() {
+  std::lock_guard<std::mutex> lock(lines_mutex_);
+  for (auto it = lines_.begin(); it != lines_.end();) {
+    if (it->whisper_with == kChatRoomTag)
+      it = lines_.erase(it);
+    else
+      ++it;
+  }
 }
 
 // ── Libellés des 25 types (msgstringtable du client, §3.1.1 de la doc) ───────
@@ -3131,6 +3277,10 @@ void ChatWindow::RefreshChannels() {
 // fenêtre à part entière, pas un onglet déplacé.
 void ChatWindow::OnRenderUI() {
   if (!imgui_enabled_) return;
+  // 🔴 UNE seule lecture par frame, et AVANT tout dessin : la réponse ne doit pas
+  // dépendre de l'ordre dans lequel la chatbox et le salon se peignent. Elle ne
+  // le peut pas — `room_open_` est posé par les paquets, pas par le rendu.
+  row_in_room_ = chatroomwnd::RoomOwnsChatInput();
   // Hôtes autorisés par le joueur : la liste vivante est celle d'imgprev, ce champ
   // n'en est que la forme persistée. On les resynchronise par COMPARAISON plutôt
   // qu'à un moment précis du chargement — l'ordre d'initialisation des réglages
@@ -3208,7 +3358,14 @@ void ChatWindow::OnRenderUI() {
       // demandait donc DEUX Entrée pour envoyer, la première ne servant qu'à
       // reprendre le focus. C'est ce qui bloquait un lien posé pendant un
       // dialogue NPC, où la touche est confisquée puis remise ici.
-      const bool row_open = battle_mode_ ? input_open_ : InputRowVisible();
+      // 🔴 …ET UN SALON OUVERT VAUT « HORS BATTLE MODE ». La barre y est
+      // dessinée en permanence (elle est le seul chemin vers les autres), donc
+      // `input_open_` — le dépliement du battle mode — n'y décrit plus rien. Sans
+      // ce mot, la première Entrée dans un salon ne faisait que « déplier » une
+      // barre déjà visible, et il en fallait une seconde pour envoyer.
+      const bool row_open = (battle_mode_ && !row_in_room_)
+                                ? input_open_
+                                : InputRowVisible();
       if (row_open) {
         if (input_[0] != '\0') {
           QueueSend();
@@ -3521,7 +3678,23 @@ void ChatWindow::DrawDockedWindow() {
                           2.0f * ImGui::GetStyle().WindowPadding.y + LineOverhang(channel);
       DrawChannel(*channel, log_h);
     }
-    if (InputRowVisible()) DrawInputRow();
+    // 🔴 La HAUTEUR reste réservée dans les deux cas (`InputRowVisible` plus
+    // haut) : ce qui change, c'est ce qu'on met dedans. Sans un mot à la place de
+    // la barre, le joueur la croirait disparue et chercherait où taper.
+    if (DrawsInputRowHere()) {
+      DrawInputRow();
+    } else if (InputRowVisible()) {
+      ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(0xA0, 0xA0, 0xA0, 255));
+      ImGui::TextUnformatted(i18n::Tr("Tu écris dans le salon de chat."));
+      ImGui::PopStyleColor();
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip(
+            i18n::Tr("Dans un salon, tout ce que tu dis y part.\nClic : ramener la "
+                     "fenêtre du salon devant."));
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+          chatroomwnd::FocusRoom();
+      }
+    }
     DrawLogOptionsPopup();
   }
   ro::EndRoChatWindow();
@@ -6412,6 +6585,35 @@ bool ChatWindow::ReadNativeBattleMode() const {
 // branche `if (accessoire && *(accessoire+0x150))`). On fait la même chose, mais
 // en tenant les liens séparément plutôt qu'une deuxième copie de toute la ligne :
 // notre saisie reste une simple `char[]` qu'ImGui édite librement.
+// Pose `insert` à la fin de la saisie VISÉE — normalement la barre principale.
+//
+// 🔴 Mais pas toujours. Quand un log DÉTOURNÉ est en cours de dessin (celui du
+// salon de chat, qui vit dans sa propre fenêtre), c'est la saisie de CETTE
+// fenêtre-là qui doit recevoir le lien. Sans ça, un Maj+clic dans le salon
+// posait la balise dans la barre du chat général : elle arrivait au bon endroit
+// à l'envoi, mais dans un champ que le joueur ne regardait pas.
+//
+// ⚠ La comptabilité des liens en attente (`item_links_`), elle, reste GLOBALE et
+// c'est voulu : c'est `ResolveItemLinks` qui retraduit la balise au départ, quel
+// que soit le champ d'où part la ligne.
+bool ChatWindow::AppendToActiveInput(const std::string& insert) {
+  if (input_redirect_ != nullptr) {
+    if (input_redirect_->size() + insert.size() + 1 > sizeof(input_)) return false;
+    *input_redirect_ += insert;
+    return true;
+  }
+  const size_t used = std::strlen(input_);
+  if (used + insert.size() + 1 > sizeof(input_)) return false;
+  std::memcpy(input_ + used, insert.c_str(), insert.size() + 1);
+  NotifyInputEdited();  // 🔴 sinon le champ ACTIF réécrit son propre texte par-dessus
+  return true;
+}
+
+std::string chatwnd::ResolveOutgoingLinks(const char* utf8) {
+  if (g_chat_window == nullptr || utf8 == nullptr) return utf8 ? utf8 : "";
+  return g_chat_window->ResolveItemLinks(utf8);
+}
+
 std::string ChatWindow::ResolveItemLinks(const char* utf8) const {
   if (item_links_.empty()) return utf8 ? utf8 : "";
   const std::string src = utf8 ? utf8 : "";
@@ -6673,12 +6875,9 @@ bool ChatWindow::AppendItemLink(void* info) {
   // Un séparateur entre deux liens collés : sans lui, deux noms bout à bout ne se
   // distinguent plus à la lecture, et la substitution retrouverait le second au
   // milieu du premier si l'un est le préfixe de l'autre.
-  const size_t used = std::strlen(input_);
   std::string insert = display;
   insert += ' ';
-  if (used + insert.size() + 1 > sizeof(input_)) return false;
-  std::memcpy(input_ + used, insert.c_str(), insert.size() + 1);
-  NotifyInputEdited();  // 🔴 sinon le champ ACTIF réécrit son propre texte par-dessus
+  if (!AppendToActiveInput(insert)) return false;
 
   PendingLink pending;
   pending.wire    = wire;
@@ -6723,12 +6922,9 @@ bool ChatWindow::AppendItemLinkFromLink(const itemcell::ChatLink& link) {
   PruneItemLinks();
   if (static_cast<int>(item_links_.size()) >= kMaxItemLinks) return false;
 
-  const size_t used = std::strlen(input_);
   std::string insert = display;
   insert += ' ';
-  if (used + insert.size() + 1 > sizeof(input_)) return false;
-  std::memcpy(input_ + used, insert.c_str(), insert.size() + 1);
-  NotifyInputEdited();  // 🔴 sinon le champ ACTIF réécrit son propre texte par-dessus
+  if (!AppendToActiveInput(insert)) return false;
 
   PendingLink pending;
   pending.wire    = wire;
@@ -6764,12 +6960,9 @@ bool ChatWindow::AppendItemRefLink(uint32_t item_id, const char* name_utf8) {
   char wire[256];
   std::snprintf(wire, sizeof(wire), "<ITMR>%u:%s</ITMR>", item_id, name.c_str());
 
-  const size_t used = std::strlen(input_);
   std::string insert = display;
   insert += ' ';
-  if (used + insert.size() + 1 > sizeof(input_)) return false;
-  std::memcpy(input_ + used, insert.c_str(), insert.size() + 1);
-  NotifyInputEdited();  // 🔴 sinon le champ ACTIF réécrit son propre texte par-dessus
+  if (!AppendToActiveInput(insert)) return false;
 
   PendingLink pending;
   pending.wire    = wire;
@@ -6806,12 +6999,9 @@ bool ChatWindow::AppendRecipeLink(uint32_t item_id, const char* name_utf8) {
   char wire[256];
   std::snprintf(wire, sizeof(wire), "<CRAF>%u:%s</CRAF>", item_id, name.c_str());
 
-  const size_t used = std::strlen(input_);
   std::string insert = display;
   insert += ' ';
-  if (used + insert.size() + 1 > sizeof(input_)) return false;
-  std::memcpy(input_ + used, insert.c_str(), insert.size() + 1);
-  NotifyInputEdited();  // 🔴 sinon le champ ACTIF réécrit son propre texte par-dessus
+  if (!AppendToActiveInput(insert)) return false;
 
   PendingLink pending;
   pending.wire    = wire;
@@ -6850,12 +7040,9 @@ bool ChatWindow::AppendSettingLink(const char* key) {
   // dans laquelle l'expéditeur joue.
   std::snprintf(wire, sizeof(wire), "<SETL>%s:%s</SETL>", key, label);
 
-  const size_t used = std::strlen(input_);
   std::string insert = display;
   insert += ' ';
-  if (used + insert.size() + 1 > sizeof(input_)) return false;
-  std::memcpy(input_ + used, insert.c_str(), insert.size() + 1);
-  NotifyInputEdited();  // 🔴 sinon le champ ACTIF réécrit son propre texte par-dessus
+  if (!AppendToActiveInput(insert)) return false;
 
   PendingLink pending;
   pending.wire        = wire;
@@ -6910,12 +7097,9 @@ bool ChatWindow::AppendNaviSearchLink(uint8_t kind, const char* term_utf8,
                                     map != nullptr ? map : "", term_utf8);
   if (written <= 0 || written >= static_cast<int>(sizeof(wire))) return false;
 
-  const size_t used = std::strlen(input_);
   std::string insert = display;
   insert += ' ';
-  if (used + insert.size() + 1 > sizeof(input_)) return false;
-  std::memcpy(input_ + used, insert.c_str(), insert.size() + 1);
-  NotifyInputEdited();  // 🔴 sinon le champ ACTIF réécrit son propre texte par-dessus
+  if (!AppendToActiveInput(insert)) return false;
 
   PendingLink pending;
   pending.wire      = wire;
@@ -6976,12 +7160,9 @@ bool ChatWindow::AppendStyleLink(const char* code, const char* owner_utf8) {
   std::snprintf(display, sizeof(display), "[%s: %s]", i18n::Tr("Style"),
                 owner.empty() ? "?" : owner.c_str());
 
-  const size_t used = std::strlen(input_);
   std::string insert = display;
   insert += ' ';
-  if (used + insert.size() + 1 > sizeof(input_)) return false;
-  std::memcpy(input_ + used, insert.c_str(), insert.size() + 1);
-  NotifyInputEdited();  // 🔴 sinon le champ ACTIF réécrit son propre texte par-dessus
+  if (!AppendToActiveInput(insert)) return false;
 
   PendingLink pending;
   pending.wire        = wire;
@@ -7029,10 +7210,11 @@ bool ChatWindow::AppendNaviLink(const char* map_name, int x, int y) {
                                     map_name, coords);
   if (written <= 0 || written >= static_cast<int>(sizeof(tag))) return false;
 
-  const size_t used = std::strlen(input_);
-  if (used + static_cast<size_t>(written) + 1 > sizeof(input_)) return false;
-  std::memcpy(input_ + used, tag, static_cast<size_t>(written) + 1);
-  NotifyInputEdited();  // 🔴 sinon le champ ACTIF réécrit son propre texte par-dessus
+  // ⚠ Par le même chemin que les autres liens : `<NAVIL>` part TELLE QUELLE
+  // (pas de PendingLink à substituer, cf. plus haut), mais elle doit tout autant
+  // atterrir dans la saisie VISÉE. C'était le seul Append*Link resté à écrire
+  // directement dans `input_`, donc le seul qui ignorait encore la redirection.
+  if (!AppendToActiveInput(std::string(tag))) return false;
 
   if (battle_mode_) input_open_ = true;
   focus_input_next_ = true;
@@ -7059,12 +7241,9 @@ bool ChatWindow::AppendMobLink(uint32_t mob_id, int rank, const char* name_utf8)
   std::snprintf(wire, sizeof(wire), "<MOBL>%u:%d:%s</MOBL>", mob_id, rank,
                 name.c_str());
 
-  const size_t used = std::strlen(input_);
   std::string insert = display;
   insert += ' ';
-  if (used + insert.size() + 1 > sizeof(input_)) return false;
-  std::memcpy(input_ + used, insert.c_str(), insert.size() + 1);
-  NotifyInputEdited();  // 🔴 sinon le champ ACTIF réécrit son propre texte par-dessus
+  if (!AppendToActiveInput(insert)) return false;
 
   PendingLink pending;
   pending.wire     = wire;

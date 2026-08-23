@@ -230,6 +230,18 @@ class ChatWindow : public Plugin {
   // aucun « To »/« From ». Seule la couleur-marqueur du client le dit. Il sert à
   // l'en-tête de la copie que cette ligne dépose dans le JOURNAL — sans quoi un
   // chuchotement s'y lit comme une parole publique.
+  bool IngestChatRoomLine(const char* local_text, uint32_t rgb);
+  void DrawChatRoomLog(std::string* link_insert_target);
+  bool AppendToActiveInput(const std::string& insert);
+  // Publique pour la même raison que les deux au-dessus : le SALON dessine cette
+  // ligne dans sa propre fenêtre (`chatwnd::DrawChatInputRow`). Elle reste écrite
+  // pour être appelée UNE fois par frame, tout en bas d'un conteneur ImGui.
+  void DrawInputRow();
+  // Public parce que le pont `chatwnd::ResolveOutgoingLinks` en a besoin : une
+  // saisie qui n'est pas la barre principale (celle du salon) doit pouvoir
+  // retraduire ses libellés de liens avant d'envoyer. Const, sans effet de bord.
+  std::string ResolveItemLinks(const char* utf8) const;
+  void ClearChatRoomLog();
   bool IngestWhisper(const char* with_wire, const char* text_wire, uint32_t rgb,
                      uint32_t aid, bool outgoing);
 
@@ -893,7 +905,6 @@ class ChatWindow : public Plugin {
   void  InvalidateLineLayout();
   void  DrawChannel(const Channel& channel, float height);
   void  DrawLines(const Channel& channel);
-  void  DrawInputRow();
   // Le sélecteur, DEUX onglets — et la séparation n'est pas cosmétique : ce qui
   // arrive au bout du fil n'est pas de même nature.
   //   · « Emotes » = les images du GRF. Elles voyagent en `:nom:` et le clic
@@ -1163,7 +1174,9 @@ class ChatWindow : public Plugin {
   // `<ITEML>`. Balayage de GAUCHE à DROITE en consommant les liens dans l'ordre
   // de pose — deux exemplaires du même objet donnent deux liens distincts, et
   // celui que le joueur a effacé est simplement sauté.
-  std::string ResolveItemLinks(const char* utf8) const;
+  // Non nul pendant le dessin d'un log DÉTOURNÉ : les `Append*Link` y écrivent au
+  // lieu de `input_`. Remis à nul dès le retour — ce n'est PAS un état persistant.
+  std::string* input_redirect_ = nullptr;
   // Oublie les liens dont le nom n'est plus dans la saisie : le joueur qui efface
   // un lien doit pouvoir en reposer un autre sans buter sur le plafond de trois.
   void PruneItemLinks();
@@ -1306,10 +1319,26 @@ class ChatWindow : public Plugin {
   // OptionInfo). On le lit plutôt que de suivre la commande : ainsi la valeur
   // restaurée à la connexion et toute bascule venue d'ailleurs nous parviennent.
   bool ReadNativeBattleMode() const;
-  // La barre est-elle à dessiner cette frame ?
+  // La barre EXISTE-t-elle cette frame ? Pas forcément ici : quand un salon de
+  // chat est ouvert, c'est lui qui la porte (cf. `chatwnd::DrawChatInputRow`).
+  // Tout ce qui raisonne sur le CLAVIER — Entrée volée au jeu, frappes mises en
+  // file, Échap — doit répondre « oui » dans ce cas-là aussi : la barre est bien
+  // là, sous les doigts du joueur, simplement dans une autre fenêtre.
+  //
+  // 🔴 Et le salon l'affiche même repliée par le battle mode : dans un salon,
+  // écrire EST l'activité. Une barre pliée y serait une impasse.
   bool InputRowVisible() const {
-    return input_bar_ && (!battle_mode_ || input_open_);
+    return row_in_room_ || (input_bar_ && (!battle_mode_ || input_open_));
   }
+  // La barre est-elle à dessiner ICI, dans la chatbox ? Le pendant du précédent,
+  // pour les seuls sites de RENDU.
+  bool DrawsInputRowHere() const {
+    return !row_in_room_ && input_bar_ && (!battle_mode_ || input_open_);
+  }
+  // Un salon de chat porte-t-il la barre cette frame ? Relu UNE fois par frame,
+  // en tête d'`OnRenderUI`, pour que la réponse ne dépende pas de l'ordre dans
+  // lequel les deux fenêtres se dessinent.
+  bool row_in_room_ = false;
   // Met notre état à jour quand le joueur tape `/bm` ou `/battlemode`. La commande
   // part AUSSI au client, qui garde son propre comportement clavier.
   void TrackBattleModeCommand(const char* utf8);
@@ -1413,6 +1442,68 @@ void IngestNativeLine(const char* text, uint32_t rgb, int type,
 // natif (sans fenêtre pour la consommer, elle s'empile dans `mgr+0x4C4`, jamais
 // drainée). Renvoie false tant que la native vit — c'est son WndProc qui alimente.
 bool IngestPluginLine(const char* text, uint32_t rgb);
+
+// ── QUATRIÈME source : le SALON DE CHAT ──────────────────────────────────────
+// `ChatRoomWindow` remplace la fenêtre native du salon (id 28), mais son log doit
+// dire exactement ce que dit le nôtre : balises `<ITEML>`, liens d'objets, de
+// monstres, de cartes, icônes `^i[]`, emotes du jeu et de Discord, gras/italique,
+// couleurs `^RRGGBB`. Recopier ce rendu en aurait fait une SIXIÈME copie — le
+// travers que `project_link_label_widget_todo` demande justement d'arrêter.
+//
+// 🔴 Ces lignes empruntent donc la machinerie des CONVERSATIONS 1:1, qui existe
+// déjà et qui fait exactement ce qu'il faut : une ligne portant un
+// `whisper_with` n'entre dans AUCUN onglet du journal, et ne s'affiche que dans
+// la fenêtre qui porte le même. Le salon en devient une, sous un tag réservé
+// qu'aucun nom de personnage ne peut porter.
+//
+// Ce qu'on gagne au passage, sans une ligne de plus : le repli, le cache de
+// hauteurs, la recherche, les clics sur les liens, l'historique persistant.
+bool IngestChatRoomLine(const char* local_text, uint32_t rgb);
+
+// Dessine le log du salon DANS le conteneur ImGui courant (à appeler entre un
+// BeginChild et son End). Le canal est synthétique : il ne figure pas dans la
+// liste d'onglets et n'a donc ni case, ni réglage propre — il reprend ceux du
+// canal principal, que le joueur a déjà réglés une fois.
+// `link_insert_target` reçoit le texte des liens qu'on Maj+clique pendant ce
+// dessin — la saisie du SALON, donc, et pas la barre du chat général. Peut être
+// nul : les liens repartent alors vers la barre principale.
+void DrawChatRoomLog(std::string* link_insert_target);
+
+// Retraduit les libellés de liens (`<Nom d'objet>`, `[Style: X]`…) en BALISES du
+// fil. À appeler juste avant d'envoyer une ligne qui vient d'une saisie AUTRE que
+// la barre principale : la table des liens en attente est globale à la chatbox,
+// c'est elle qui sait ce que chaque libellé désigne.
+std::string ResolveOutgoingLinks(const char* utf8);
+
+// ── La BARRE DE SAISIE, prêtée au salon ──────────────────────────────────────
+// Dessine la ligne de saisie de la chatbox — box destinataire, mode d'envoi,
+// sélecteur d'emotes, champ, chips de liens, historique — DANS la fenêtre ImGui
+// courante, à appeler tout en bas de celle-ci.
+//
+// 🔴 Ce n'est pas une copie : c'est LA barre, déplacée le temps qu'un salon soit
+// ouvert. Tant qu'on est dans un salon, c'est le seul endroit où l'on peut
+// parler — le serveur route un message ordinaire vers le salon dès que
+// `sd->chatID` est posé (clif.cpp, `clif_parse_GlobalMessage` :
+// `sd->chatID ? CHAT_WOS : AREA_CHAT_WOC`). Une saisie propre au salon aurait
+// donc été une DEUXIÈME boîte faisant exactement la même chose, avec ses liens,
+// son historique et ses préfixes à re-câbler un par un.
+//
+// La chatbox, elle, cesse de la dessiner pendant ce temps : un `InputText` peint
+// deux fois sous le même identifiant se disputerait le clavier avec lui-même.
+//
+// Renvoie false — et ne dessine rien — si la chatbox moderne est éteinte :
+// l'appelant doit alors le dire, sinon la fenêtre n'a plus de saisie du tout.
+bool DrawChatInputRow();
+
+// Écrit un nom dans la box destinataire de la barre : la suite part en
+// chuchotement. C'est ce que fait le bouton « Select Receiver » du chat natif, et
+// c'est par là que la liste des membres d'un salon chuchote à l'un d'eux.
+bool TargetWhisper(const char* name_wire);
+
+// Oublie les lignes du salon. Appelé à l'entrée dans un salon et à la sortie :
+// un salon n'est pas une conversation qui se poursuit, et retrouver les lignes du
+// précédent en ouvrant le suivant n'aurait aucun sens.
+void ClearChatRoomLog();
 
 // Libellé d'un des 25 types de message, plus le broadcast 0x19 (enum §3.1.1 de
 // la doc). Volontairement en anglais : ce sont les libellés du client

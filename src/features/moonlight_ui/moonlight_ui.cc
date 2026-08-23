@@ -43,6 +43,7 @@
 #include "features/windows/staff_tools.h"
 #include "features/windows/game_settings.h"
 #include "features/windows/hotkey_settings.h"
+#include "features/windows/chat_room_window.h"
 #include "features/windows/macro_window.h"
 #include "features/windows/cart_viewer.h"
 #include "features/windows/cashshop_window.h"
@@ -624,6 +625,17 @@ const moonlight_ui::SettingDesc kBankSettings[] = {
 // l'interface moderne. Recopier ces valeurs priverait du nouveau défaut tous ceux
 // qui ont déjà un yaml, c'est-à-dire tout le monde. Les nouvelles clés partent
 // donc de zéro ; la case reste dans le panneau pour qui veut revenir au natif.
+// « Create Chat Room » (Alt+C, /chat). HORS du groupe « Interface moderne », et ON
+// par défaut, pour la même raison que le menu Échap et la liste de macros : ce
+// formulaire ne dépend d'AUCUNE autre fenêtre moderne — il n'échange pas d'objets,
+// ne lit pas le modèle d'inventaire, et se contente d'un paquet brut que le serveur
+// valide. Il rend donc le même service dans les deux modes.
+// Mettre la clé à `false` rend intégralement la fenêtre native.
+const moonlight_ui::SettingDesc kChatRoomSettings[] = {
+    {"chatroom_imgui", SType::kBool, MLUI_FIELD(chat_room_window, imgui_enabled_),
+     MLUI_LITERAL(bool, true)},
+};
+
 const moonlight_ui::SettingDesc kGameMenuSettings[] = {
     {"escmenu_imgui", SType::kBool, MLUI_FIELD(game_menu, imgui_enabled_),
      MLUI_LITERAL(bool, true)},
@@ -1733,6 +1745,7 @@ void MoonlightUi::LoadSettings() {
     moonlight_ui::ReadSettings(ui, kCartSettings);
     moonlight_ui::ReadSettings(ui, kStorageSettings);
     moonlight_ui::ReadSettings(ui, kBankSettings);
+    moonlight_ui::ReadSettings(ui, kChatRoomSettings);
     moonlight_ui::ReadSettings(ui, kGameMenuSettings);
     moonlight_ui::ReadSettings(ui, kHotkeySettings);
     moonlight_ui::ReadSettings(ui, kMacroWindowSettings);
@@ -1924,6 +1937,7 @@ void MoonlightUi::WriteSettingsFile() {
   moonlight_ui::WriteSettings(out, kCartSettings);
   moonlight_ui::WriteSettings(out, kStorageSettings);
   moonlight_ui::WriteSettings(out, kBankSettings);
+  moonlight_ui::WriteSettings(out, kChatRoomSettings);
   moonlight_ui::WriteSettings(out, kGameMenuSettings);
   moonlight_ui::WriteSettings(out, kHotkeySettings);
   moonlight_ui::WriteSettings(out, kMacroWindowSettings);

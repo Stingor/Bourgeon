@@ -34,6 +34,7 @@
 #include "features/patches/inventory_tweaks.h"
 #include "features/windows/inventory_viewer.h"
 #include "features/windows/bank_window.h"
+#include "features/windows/chat_room_window.h"
 #include "features/windows/game_menu.h"
 #include "features/windows/char_diagnostics.h"
 #include "features/windows/staff_tools.h"
@@ -130,6 +131,7 @@ StorageWindow* Bourgeon::storage_window() { return storage_window_; }
 InventoryViewer* Bourgeon::inventory_viewer() { return inventory_viewer_; }
 CartViewer* Bourgeon::cart_viewer() { return cart_viewer_; }
 BankWindow* Bourgeon::bank_window() { return bank_window_; }
+ChatRoomWindow* Bourgeon::chat_room_window() { return chat_room_window_; }
 GameMenu* Bourgeon::game_menu() { return game_menu_; }
 StaffTools* Bourgeon::staff_tools() { return staff_tools_; }
 CharDiagnostics* Bourgeon::char_diagnostics() { return char_diagnostics_; }
@@ -403,6 +405,7 @@ void Bourgeon::OnProcessInput() {
   // complet (table de commandes, CMode::SendMsg), qui peut ouvrir une modale
   // BLOQUANTE — à ne jamais déclencher entre NewFrame() et Render().
   if (auto* cw = chat_window()) cw->FlushPending();
+  if (auto* cr = chat_room_window()) cr->FlushPending();
   // ⚠ Échoppe joueur : MÊME raison, mais pour un danger plus sévère que du
   // flicker. Ses boutons pilotent des commandes natives dont certaines ouvrent
   // une modale BLOQUANTE (UIWndMgr_ShowMessageBoxModal 0x00A31A30), qui ne rend
@@ -853,6 +856,16 @@ void Bourgeon::LoadPlugins() {
     auto bank_window = std::make_unique<BankWindow>();
     bank_window_ = bank_window.get();
     plugins_.emplace_back(std::move(bank_window));
+  }
+  {
+    // « Create Chat Room » (Alt+C, /chat, bouton de Basic Info) : remplace la
+    // fenêtre native 27, masquée à la naissance puis DÉTRUITE au tick — elle
+    // déclare un bouton par défaut qui ENVOIE le paquet de création sur Entrée.
+    // Hors du groupe « Interface moderne » et ON par défaut : ce formulaire ne
+    // dépend d'aucune autre fenêtre moderne. Cf. docs/chat_room_re.md.
+    auto chat_room_window = std::make_unique<ChatRoomWindow>();
+    chat_room_window_ = chat_room_window.get();
+    plugins_.emplace_back(std::move(chat_room_window));
   }
   {
     // Menu Échap (« Game Options », id 155) : remplace la native, qui est masquée à

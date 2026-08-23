@@ -463,6 +463,223 @@ pour ré-afficher un brouillon.
 
 ---
 
+## 10 bis. `UIChatRoomWnd` (id 28) — la SALLE — RE complète (2026-08-23)
+
+**Identité** : `UIChatRoomWnd`, **id 28 (`0x1C`)**, ctor `0x0086B7F0`, vtable `0x01030678`,
+objet `0x124` octets, slot manager `+0x27C` (= `g_UIChatRoomWnd_Slot` `0x0131F764`).
+Taille par défaut **280 × 120**, **redimensionnable**, posée par `MakeWindow` à
+`Screen_CenterXFrom640(200)` / `UI_ScaleYFrom480(300)`.
+
+### 10bis.1 `OnCreate` (`0x00874D60`) — six contrôles, tout en proportions
+
+Tout est calculé à partir de la taille courante `w = this[5]`, `h = this[6]` : cette fenêtre
+est la seule de la famille qui se redimensionne.
+
+| Champ | classe | position | taille | cmd |
+|---|---|---|---|---|
+| `this[61]` | `UIResizeButton` (mode 7) | (w−15, h−15) | 16 × 16 | — |
+| `this[62]` | `UIEditWnd` — **saisie** | (3, h−18) | (w−30) × 16 | **494** |
+| `this[63]` | `0x00834AD0` — **historique des messages** | (1, 17) | (w − 56w/280 − 3) × (h−38) | 184 |
+| `this[64]` | `0x00836130` — **liste des membres** | (w − 56w/280 − 1, 17) | (56w/280) × (h−38) | 184 |
+| `this[65]` | croix de fermeture, libellé **`"/q"`** | — | — | 201 |
+| `this[66]` | `UIStaticText` — **ligne de titre** | (9, 2) | (w−30) × 15 | — |
+
+La saisie est plafonnée à **70 octets** (`UIEdit+0x88`) et reçoit le focus à l'ouverture.
+Le rapport 56/280 = **20 % de largeur pour la liste des membres**, 80 % pour les messages.
+
+🔴 **`this[35] = 184`** — la fenêtre déclare un bouton par défaut, comme la 27. Ici Entrée
+**envoie le message**. Même conséquence : masquer sans détruire est exclu.
+
+### 10bis.2 L'état du salon vit DANS la fenêtre, à `+0xB4`
+
+`UIChatRoomWnd+0xB4` porte une copie du bloc de 64 octets de §7.1 — la même struct que celle
+qu'on passe à `SendMsg(43)` :
+
+| offset fenêtre | contenu |
+|---|---|
+| `+0xB4` | `std::string` titre |
+| `+0xCC` | `std::string` mot de passe |
+| `+0xE4` | `int` public (1) / privé (0) |
+| `+0xE8` | `int` occupants |
+| `+0xEC` | `int` limite |
+| `+0xF0` | `int` id de salon |
+
+La **ligne de titre** est montée dans l'`OnMsg` à `0x00882F46` :
+
+```c
+sprintf(buf, "%s%s (%d/%d)",             // gabarit @0x010317D4
+        MsgString(this[0xE4] ? 90 : 89), // MSI_ROOM_PUBLIC2 / MSI_ROOM_PRIVATE2
+        this+0xB4,                       // le titre
+        this[0xE8], this[0xEC]);         // occupants / limite
+```
+
+C'est exactement ce qu'affichait « Publ. : (1/-657931) » quand le bloc n'était pas rempli.
+
+### 10bis.3 Les trois messages qui ALIMENTENT la fenêtre
+
+| msg | émetteur | effet |
+|---|---|---|
+| **34 (`0x22`)** | `ZC_ACK_CREATE_CHATROOM` succès (`0x00CA17F8`), `ZC_MEMBER_NEWENTRY` (`0x00CA1966`) | pose le bloc de 64 o (§10bis.2). ⚠ À la CRÉATION la source est **`CGameMode+0x3C8`** — d'où l'obligation de passer par `SendMsg(43)` (§12.3) |
+| **43 (`0x2B`)** | ACK création (`0x00CA1818`) | « je suis le propriétaire » (argument 0) |
+| **44 (`0x2C`)** | ACK création avec `Own_GetCharName()` (`0x00CA183D`), `ZC_MEMBER_NEWENTRY` avec le nom reçu et le drapeau 1 | **ajoute un membre** à la liste |
+
+⚠ `ZC_MEMBER_NEWENTRY` appelle `MakeWindow(0x1C)` lui-même : la fenêtre naît aussi à
+l'arrivée d'un membre, pas seulement à la création du salon.
+Et l'ACK écrit `CGameMode+0x3FC = 1` (un occupant) avant de recopier le bloc.
+
+### 10bis.4 Les LIGNES du salon — `ChatAction` action 5, et elles se PERDENT
+
+`UIWindowMgr_ChatAction` (`0x00A4AD20`), **action 5** (`UIM_PUSH_INTO_CHATROOM`) :
+
+```c
+case 5:
+    if (mgr[159])                        // 159*4 = 0x27C = le slot de la fenêtre 28
+        mgr[159]->OnMsg(0, 37, texte, couleur, 0, 0);
+    return 0;                            // sinon : RIEN. La ligne est JETÉE.
+```
+
+🔴 **Différence capitale avec le chat principal.** L'action 1 (chatbox) empile dans la file
+`mgr+0x4C4` quand la fenêtre n'existe pas — d'où la fuite mémoire documentée par
+`project_chatbox_imgui_conversion`. L'action 5, elle, **abandonne la ligne** en silence. Donc :
+
+- détruire la fenêtre 28 ne fait **fuir aucune mémoire** — bonne nouvelle ;
+- mais toute ligne de salon est **perdue** tant que rien ne l'intercepte — donc un
+  remplacement DOIT se brancher sur `ChatAction` action 5, sans quoi la salle sera muette.
+
+🟢 Et le détour est **déjà posé** : `ChatWindow` détourne `0x00A4AD20`
+(`ChatActionStub` → `ChatActionFilter(action, texte, couleur, type, sender)`), et il n'y a
+qu'un seul jeu d'octets à cette adresse — un second détour tuerait le premier en silence.
+L'ingestion du salon passe donc par CE filtre, pas par un hook à nous.
+
+### 10bis.5 Les commandes — toutes par `CMode::SendMsg`
+
+Aucune n'est à fabriquer à la main (cf. la leçon de §12.3) :
+
+| msg | paquet | arguments | rôle |
+|---|---|---|---|
+🔴 **`SendMsg(44)` est gardé comme le 48** : `if (g_UIChatRoomWnd_Slot == 0) return;`
+(bloc `0x00C8C6AC`). Même conséquence pour un remplacement qui détruit la fenêtre 28, et même
+remède — le paquet brut `CZ_CHANGE_CHATROOM 0x00DE`, au prix du miroir CGameMode et de la
+ligne de replay.
+
+| 43 | `CZ_CREATE_CHATROOM 0x00D5` | struct 64 o | créer |
+| 44 | `CZ_CHANGE_CHATROOM 0x00DE` | struct 64 o | modifier les réglages |
+| **45** | `CZ_REQ_ENTER_ROOM 0x00D9` | (bloc `0x00C8C7D5`) | **entrer** dans un salon |
+| **46** | `CZ_REQ_ROLE_CHANGE 0x00E0` | `p1` = nom (C-string), `p2` = rôle | **céder les droits** |
+| **47** | `CZ_REQ_EXPEL_MEMBER 0x00E2` | `p1` = nom (C-string) | **expulser** |
+| **48** | `CZ_EXIT_ROOM 0x00E3` | — ; gardé par `g_UIChatRoomWnd_Slot != 0` | **quitter** (`/q`) |
+
+🔴 **Le 48 est le CONTRE-EXEMPLE du 43, et il complète la règle.** Son bloc
+(`0x00C8C2D1`) ne fait que deux choses : `if (g_UIChatRoomWnd_Slot == 0) return;` puis émettre
+un paquet de 2 octets sans charge utile. Un remplacement qui DÉTRUIT la fenêtre 28 met ce slot
+à zéro en permanence — le client refuse alors la commande **en silence**, et ni « Quitter » ni
+la croix ne ferment quoi que ce soit (vécu en jeu le 2026-08-23). Là, et seulement là, le
+paquet brut est le bon choix.
+
+➡ **La règle, dans les deux sens** : regarder ce que le chemin natif fait *en plus* d'émettre.
+Si c'est un état que d'autres relisent (43 → le bloc du CGameMode), il faut y passer. Si ce
+n'est qu'une garde portant sur une fenêtre qu'on a supprimée (48), il faut s'en passer.
+
+Mises en forme relevées : `0x00E0` = `W opcode | L rôle | 24B nom` (30 o) ;
+`0x00E2` = `W opcode | 24B nom` (26 o) — conformes à `docs/opcode_map.csv`.
+La longueur part de `PacketLen_Get`, pas d'un littéral.
+
+### 10bis.6 Ce qui reste à mesurer
+
+- Le **contenu** des deux panneaux (`0x00834AD0` historique, `0x00836130` liste) : ce sont des
+  contrôles de liste génériques. Un remplacement tient son propre modèle et n'en a pas besoin.
+- La marque du **propriétaire** dans la liste (msg 43 pose un drapeau ; reste à voir comment il
+  est rendu) et le **menu contextuel** sur un membre (expulser / céder).
+- `ZC_ENTER_ROOM 0x00DB` (`sub_CBBDE0`) : la liste complète des membres à l'entrée dans le
+  salon d'un AUTRE joueur — c'est le chemin « rejoindre », pas le chemin « créer ».
+
+### 10bis.7 ✅ Ce que le REMPLACEMENT a appris en jeu (2026-08-23)
+
+Sept faits qu'aucune lecture statique n'avait donnés, et qui ont tous coûté un aller-retour.
+
+**1. 🔴🔴 `g_UIChatRoomWnd_Slot` est LE commutateur du chat.** Les handlers ZC de messages
+aiguillent eux-mêmes, en toutes lettres (`0x00C9E785` par exemple) :
+
+```c
+if (g_UIChatRoomWnd_Slot) ChatAction(5, texte, 0x222222, 0, 0);   // -> le SALON
+else                      ChatAction(1, texte, 0xFFFF00, 1, 0);   // -> le chat général
+```
+
+Un remplacement qui **détruit** la fenêtre 28 met ce slot à zéro en permanence : **tout le
+contenu d'un salon privé ressort dans la chatbox générale**. Et le symptôme est
+INTERMITTENT — `ZC_MEMBER_NEWENTRY` recrée la fenêtre, qui vit jusqu'au tick suivant, donc
+quelques lignes arrivent au bon endroit. Il faut reprendre l'aiguillage soi-même.
+
+C'est sûr de le faire : le serveur envoie le chat public en `AREA_CHAT_WOC` — *« hearable
+area, **without chatrooms** »* (`src/map/clif.hpp`) — donc **un occupant de salon ne reçoit
+pas le chat de la carte**. Toute ligne de type 1 reçue en salon vient du salon.
+
+**2. 🔴 Le même slot garde TROIS commandes**, et pas seulement les deux déjà notées :
+`SendMsg(44)` (modifier) et `SendMsg(48)` (quitter) refusent en silence, et l'aiguillage
+ci-dessus bascule. Règle à retenir : **avant de détruire une fenêtre native, chercher son
+slot de manager dans le reste du binaire** — ici trois consommateurs, tous muets en cas
+d'échec.
+
+**3. 🔴 On ne reçoit JAMAIS l'écho de ses propres lignes.**
+`clif_parse_GlobalMessage` route en `CHAT_WOS` = *« current chatroom, **without self** »*.
+Et le client n'écho pas non plus (le `case 6` de `CMode::SendMsg` n'appelle `ChatAction` que
+pour « TOO FAST CHATTING »). **Une salle de remplacement doit fabriquer son propre écho**, au
+format `nom : texte` que monte `clif_process_message`.
+
+**4. 🔴 CORRECTION de §10bis.5 — `cmdId 0` et `cmdId 0x32` sont le MÊME `case`** de
+`Chat_HandleChatMessage` (même entrée de table de saut). La substitution que fait le natif ne
+change donc **pas** la destination : c'est le SERVEUR qui route, sur `sd->chatID`. Les deux
+finissent sur `SendMsg(6)` → `CZ_REQUEST_CHAT 0x008C`. La substitution reste à faire par
+fidélité, mais il ne faut rien en attendre.
+
+**5. La couleur des lignes de salon est `0x222222`** — donnée par le client lui-même dans
+l'appel ci-dessus. Sombre, parce que le corps d'une fenêtre RO est CLAIR. Tout habillage
+repris du chat général (jaune vif, gris pâle) y est illisible.
+
+**6. Sélectionner un membre dans la liste transforme la saisie en CHUCHOTEMENT** vers lui
+(`0x008822AF`) : si un membre est sélectionné, que le texte ne commence pas par `/` et que ce
+n'est pas soi-même, la saisie part en `SendMsg(0x0B, nom)` au lieu du salon. Fonctionnalité
+native discrète, à ne pas perdre.
+
+**7bis. 🔴🔴 UN SALON N'A PAS BESOIN DE SAISIE À LUI.** Le fait qui commande tout le
+reste est au serveur, une ligne de `clif_parse_GlobalMessage` :
+
+```c
+clif_GlobalMessage(*sd, output, sd->chatID ? CHAT_WOS : AREA_CHAT_WOC);
+```
+
+Dès que `sd->chatID` est posé, **un message ordinaire part au salon** — le client n'a rien à
+faire de particulier, et la barre de la chatbox y suffit telle quelle. La saisie propre à la
+fenêtre 28 n'est donc pas un chemin d'envoi distinct : c'est un second champ qui fait la même
+chose, plus près des yeux.
+
+Conséquence pour un remplacement : ne pas en écrire une. On **déplace** la barre de la
+chatbox dans la fenêtre du salon le temps qu'il dure (`chatwnd::DrawChatInputRow`), et la
+chatbox cesse de la dessiner — un `InputText` peint deux fois sous le même identifiant se
+dispute le clavier avec lui-même. On récupère gratuitement la box destinataire, le sélecteur
+de mode d'envoi, les préfixes `%`/`$`/`^`, le sélecteur d'emotes, les chips de liens et
+l'historique ↑/↓, dont pas une ligne n'avait à être recopiée.
+
+Il ne reste alors **qu'un seul** écart de fidélité avec la saisie native : la substitution
+`cmdId 0x33 → 0x34` (« /savechat » depuis un salon), portée par `NativeSendChatText`. L'autre
+substitution du natif (`0 → 0x32`) ne change rien — point 4 ci-dessus.
+
+Et le point 6 s'en trouve simplifié : chuchoter à un membre, c'est écrire son nom dans la box
+destinataire de cette barre. Le natif le faisait en silence, sur une sélection invisible ; là,
+le joueur LIT à qui il parle.
+
+**7. ⚠ Deux « bugs » qui n'en sont pas, sur un personnage GM.** `chat.cpp:151`
+`!pc_has_permission(sd, PC_PERM_JOIN_ALL_CHAT)` (clé `join_chat`) laisse **entrer dans un
+salon privé sans mot de passe** ; `chat.cpp:388`
+`if (pc_has_permission(cd->usersd[i], PC_PERM_NO_CHAT_KICK)) return 0;` (clé `kick_chat`)
+rend un GM **inexpulsable**, en silence. Les deux clés sont à `true` pour les groupes staff de
+`conf/import/groups.yml`. Toute recette de test du salon se fait avec un personnage
+ORDINAIRE.
+
+---
+
+---
+
 ## 11. Défauts de la fenêtre native — la liste qui justifie le portage
 
 1. **La saisie est perdue sur refus serveur** (§9.1). Le pire cas : « un salon du même nom existe
@@ -523,15 +740,28 @@ directement `gamesettings::ExecOption(0x17)` pour rester sur le chemin natif.
 
 ### 12.3 Envoi
 
-Deux options ; **préférer la première**.
+🔴 **TRANCHÉ EN JEU (2026-08-23), et l'inverse de ce que ce paragraphe recommandait d'abord :
+il FAUT passer par `CMode::SendMsg(43)`.**
 
-- **Paquet brut** `CZ_CREATE_CHATROOM 0x00D5` via `Bourgeon::Instance().SendPacket` — mise en
-  forme entièrement connue (§7.3), aucune struct C++ native à construire, aucun dtor à ne pas
-  oublier. Le serveur valide tout : aucun exploit possible que le bouton natif ne permette déjà.
-- Appel de `CMode::SendMsg(43)` avec la struct de 64 octets : fidèle (met à jour
-  `CGameMode+0x3C8…`), mais impose de construire deux `std::string` du CRT du jeu et d'appeler le
-  dtor `sub_819300`. À ne faire que si la mémorisation dans le `CGameMode` s'avère nécessaire —
-  auquel cas on peut aussi l'écrire nous-mêmes.
+Le paquet brut a été essayé en premier — la mise en forme est entièrement connue (§7.3), et le
+salon se créait bel et bien. Mais sa fenêtre s'intitulait **« Publ. : (1/-657931) »** : titre
+vide, limite aberrante (`-657931` = `0xFFF5F5F5`, une constante de couleur lue à côté).
+
+Parce que le `case 43` ne fait **pas que sérialiser**. Avant d'émettre, il recopie la demande
+dans un bloc « salon courant » du `CGameMode` (§7.2), et c'est **ce bloc** — pas le paquet, pas
+la réponse serveur — que la fenêtre de salon lit pour s'intituler
+(`"%s%s (%d/%d)"` @0x010317D4, monté dans son `OnMsg` à 0x00882F46 depuis `mode+0x3C8`,
+`+0x3F8`, `+0x3FC`, `+0x400`). Et le propriétaire ne reçoit **jamais** `ZC_ROOM_NEWENTRY` pour
+son propre salon — `clif_dispchat` diffuse en `AREA_WOSC`, qui exclut la source — donc cette
+copie locale est sa **seule** source de vérité. Troisième devoir du même bloc :
+`ChatRoom_RecordToReplay` (0x00C810A0) le relit pour écrire la création dans le replay.
+
+Coût réel du chemin natif : deux `std::string` construites par le CRT **du jeu**
+(`0x004E5330`) et leurs destructeurs (`0x004F08F0`). Très peu payé pour ne rien oublier.
+
+➡ **Règle générale, au-delà de cette fenêtre** : quand un chemin natif fait plus qu'émettre,
+le rejouer à la main est un pari, pas une simplification. Le symptôme, lui, apparaît loin de la
+cause — ici dans le titre d'une AUTRE fenêtre.
 
 `CZ_CHANGE_CHATROOM 0x00DE` est strictement identique : **un seul écran** sert les deux cas, avec
 un drapeau « création / modification ».
@@ -585,13 +815,51 @@ mot de passe ≥ 4 si privé, limite ≤ 20, textes pris dans la `MsgStringTable
 
 ### 12.5 Ordre de marche proposé
 
-1. **Lot 1 — parité.** Interception (destruction), formulaire ImGui skin RO, paquet `0x00D5`,
-   gardes client rejouées, textes `MsgStringTable`. La fenêtre reste ouverte jusqu'à l'ACK.
+1. **Lot 1 — parité. ✅ LIVRÉ** (`src/features/windows/chat_room_window.{h,cc}`).
+   Interception par le hook `MakeWindow` de `window_pos_tweaks` (id 27) : la native est
+   masquée à la naissance puis DÉTRUITE au tick. Formulaire ImGui skin RO, paquet `0x00D5`
+   brut, textes pris dans la `MsgStringTable` (ids 13/14/15/16/65/66/125/131/190/200/201/661
+   et les 4316/4317/4320 que le natif n'utilisait pas). Gardes rejouées : case occupée
+   (`ChatRoom_IsCellBlockedByRoomTitle`), mots interdits, ASCII 7 bits sous `g_ServiceType`,
+   plafonds 36 / 8 / 20, mot de passe ≥ 4 si privé. **La fenêtre reste ouverte jusqu'à
+   l'ACK `0x00D6`** et affiche le refus à l'intérieur, champ fautif surligné.
+   S'y ajoutent, parce qu'ils ne coûtaient rien une fois le formulaire à nous : compteur
+   d'octets CP949 en direct, avertissement ASCII pendant la frappe, limite libre 2→20 au
+   curseur, œil « révéler le mot de passe », règle des 4 caractères dite avant le clic,
+   champ mot de passe grisé sur un salon public, saisie conservée d'une ouverture à l'autre.
+   Réglage `chatroom_imgui` (défaut ON, hors du groupe « Interface moderne »).
 2. **Lot 2 — mémoire.** Brouillon + historique des titres + « réutiliser le dernier salon ».
-3. **Lot 3 — annuaire.** Écoute de `ZC 0x00D7`/`0x00D8`/`0x00DF`, liste des salons proches,
-   détection du doublon de titre, entrée dans un salon (`CZ 0x00D9`).
-4. **Lot 4 — pré-vol.** Basic Skill, PNJ proche, cellule/carte `NOCHAT`, vending, salon en cours.
-5. **Lot 5 — modification.** Mode `0x00DE` et le reste de la vie du salon (chef, expulsion) — au
+3. **Lot 3 — la SALLE. ✅ LIVRÉ** (même module, seconde fenêtre). Fenêtre à part, volet des
+   messages à gauche et volet des membres à droite (la proportion 80/20 du natif), saisie en
+   bas, boutons Quitter / Réglages. Interception de la native 28 par le hook `MakeWindow`
+   — ⚠ **sans bascule** : elle naît d'un ÉVÉNEMENT, pas d'une demande du joueur.
+   Ingestion des lignes par le filtre `ChatAction` action 5 de `ChatWindow` (le seul détour
+   possible sur `0x00A4AD20`). Membres et état tenus depuis `ZC 0x00DB / 0x00DC / 0x00DD /
+   0x00DF / 0x00E1`. Envoi par le chemin natif avec la substitution `cmdId 0 → 0x32`, et
+   commandes par `SendMsg(46/47/48)` — le tout ARMÉ pendant la frame et joué par
+   `FlushPending`, hors frame.
+   Ajouts par rapport au natif : marque du propriétaire dans la liste, **menu contextuel sur
+   un membre** (expulser / céder les droits — le natif n'en a aucun), volet de réglages
+   INTERNE (le natif en fait la fenêtre 30, détachée), et la croix qui QUITTE vraiment le
+   salon (comme le `/q` natif) au lieu de masquer.
+
+   ✅ **Rendu riche** — les lignes du salon ne sont PAS dessinées ici. Elles entrent dans le
+   modèle de `ChatWindow` sous un tag de conversation réservé (`"\x01salon"`, qu'aucun nom de
+   personnage ne peut porter), et c'est lui qui les peint : balises `<ITEML>`, liens d'objets
+   et de monstres, icônes `^i[]`, emotes du jeu et de Discord, gras/italique, couleurs
+   `^RRGGBB`, et les clics qui vont avec. En écrire un second aurait fait une **sixième** copie
+   du même rendu (`project_link_label_widget_todo`).
+
+   ✅ **La barre de saisie est celle de la chatbox**, déplacée ici tant que le salon vit
+   (§10bis.7-7bis) : une seule saisie, dans la fenêtre qu'on regarde, avec sa box
+   destinataire, son mode d'envoi, ses emotes, ses chips de liens et son historique. La
+   chatbox affiche à la place un mot cliquable qui ramène le salon devant. L'envoi natif
+   `SendRoomChatText` a donc disparu du module — sa recette reste ici, §10bis.5.
+4. **Lot 3 bis — annuaire des salons proches.** Écoute de `ZC 0x00D7`/`0x00D8`, liste des
+   salons alentour, détection du doublon de titre AVANT le refus, entrée dans un salon
+   (`SendMsg(45)` → `CZ 0x00D9`).
+5. **Lot 4 — pré-vol.** Basic Skill, PNJ proche, cellule/carte `NOCHAT`, vending, salon en cours.
+6. **Lot 5 — modification.** Mode `0x00DE` et le reste de la vie du salon (chef, expulsion) — au
    besoin dans une seconde fenêtre, adossée à `UIChatRoomWnd` (id 28), qui reste à documenter.
 
 ---
@@ -632,13 +900,13 @@ mot de passe ≥ 4 si privé, limite ≤ 20, textes pris dans la `MsgStringTable
 
 ## 14. Ce qui reste à faire
 
-- **`UIChatRoomWnd` (id 28)** — la salle ouverte : liste des membres, chef, expulsion, bouton
-  « réglages » qui ouvre la 30. Non documentée ici ; ctor `0x0086B7F0`, vtable `0x01030678`.
-  ⚠ Son `OnMsg` (vtable `+0x94`) pointe sur **`0x00881F30`**, une fonction de **0x1FF4 octets
-  PARTAGÉE avec la boîte de chat** (saisie, commandes slash, `ChatCmd_LookupSlashCommandTable`,
-  `Chat_SetPendingSendText`) — ce n'est **pas** un handler propre au salon, et le nom
-  `UI_CharSelect_HandleEvent` que porte l'IDB y est **faux**. La documenter, c'est retomber sur
-  le chantier `project_chatbox_imgui_conversion`, avec son crash connu sur `0x01C3`.
+- **`UIChatRoomWnd` (id 28)** — ✅ **documentée en §10 bis**. Reste le détail interne des deux
+  panneaux de liste (`0x00834AD0`, `0x00836130`) et le menu contextuel sur un membre.
+  ⚠ Son `OnMsg` est **`0x00881F30`** (0x1FF4 octets), que l'IDB nommait
+  `UI_CharSelect_HandleEvent` — **faux**. Il lui appartient EN PROPRE : `UINewChatWnd::OnMsg`
+  est une autre fonction (`0x008FC220`, vtable `0x01037F80`), vérifié par RTTI le 2026-08-23.
+  S'il contient de la saisie et des commandes slash, c'est simplement que la salle a sa
+  propre ligne de saisie.
 - **`UIChatRoomTitle`** — le panneau au-dessus de la tête (vtable `0x0102A4E8`) : c'est lui qu'un
   aperçu fidèle devra imiter, et lui que `ChatRoom_IsCellBlockedByRoomTitle` inspecte.
 - **Vérification en jeu** : ✅ `g_ServiceType == 1` et base `0x400000` **mesurés** le 2026-08-23

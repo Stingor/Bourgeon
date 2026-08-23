@@ -20,6 +20,7 @@
 #include "features/windows/game_settings.h"    // hide-native-at-creation (réglages 0x271E)
 #include "features/windows/hotkey_settings.h"  // hide-native-at-creation (raccourcis 156)
 #include "features/windows/macro_window.h"     // hide-native-at-creation (macros 86)
+#include "features/windows/chat_room_window.h"  // hide-native-at-creation (salon de chat 27)
 #include "features/windows/navigation_window.h"  // hide-native-at-creation (navi 203 + 3)
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
@@ -193,6 +194,46 @@ void* __fastcall MakeWindowHook(void* mgr, void* edx, int windowID) {
     if (windowID == 155) {
       if (auto* gm = Bourgeon::Instance().game_menu())
         gm->HandleNativeCreation(win);
+    }
+    // « Create Chat Room » (UIChatRoomMakeWnd id 27 / 0x1B). Même raisonnement que
+    // les précédentes, avec une raison de plus de ne PAS se contenter de masquer :
+    // son OnCreate termine par `this[35] = 184`, c'est-à-dire « bouton par défaut
+    // = OK ». Invisible mais vivante, elle CRÉERAIT un salon sur une frappe
+    // d'Entrée destinée à notre champ de saisie (le piège de la banque).
+    //
+    // Un seul point d'interception suffit : les trois chemins d'ouverture —
+    // /chat, le bouton 214 de UIBasicInfoWnd et l'action TalkType 0x17
+    // (ChatRoom_OpenMakeWnd) — passent tous par MakeWindow(0x1B), et leurs gardes
+    // (échoppe en cours, déjà dans un salon) ont déjà joué avant d'arriver ici.
+    // Cf. docs/chat_room_re.md §2 et §12.2.
+    if (windowID == 27) {
+      if (auto* cr = Bourgeon::Instance().chat_room_window())
+        cr->HandleNativeCreation(win);
+    }
+    // La SALLE (UIChatRoomWnd id 28). ⚠ Contrairement à toutes les précédentes,
+    // celle-ci ne naît pas d'une demande du JOUEUR mais d'un ÉVÉNEMENT : l'ACK de
+    // création (0x00CA17D2) et l'arrivée d'un membre (ZC_MEMBER_NEWENTRY, qui
+    // appelle MakeWindow(0x1C) lui-même) la fabriquent. Le module ne bascule donc
+    // pas ici — il ouvre la sienne si elle ne l'est pas déjà.
+    if (windowID == 28) {
+      if (auto* cr = Bourgeon::Instance().chat_room_window())
+        cr->HandleNativeRoomCreation(win);
+    }
+    // « Réglages du salon » (UIChatRoomChangeWnd id 30). Elle dérive de la 27 et
+    // partage son OnCreate — donc son bouton par défaut ENVOIE lui aussi. Elle
+    // n'a de toute façon plus de source : c'est le natif de la fenêtre 28, morte,
+    // qui lui poussait son `msg 34`. Notre formulaire la remplace, pré-rempli.
+    if (windowID == 30) {
+      if (auto* cr = Bourgeon::Instance().chat_room_window())
+        cr->HandleNativeChangeCreation(win);
+    }
+    // « Veuillez saisir le mot de passe » (UIPasswordWnd id 29), au clic sur le
+    // panneau d'un salon PRIVÉ. ⚠ Elle ne porte pas encore l'identifiant du salon
+    // à cet instant : son ouvreur le lui pose juste après, par un `msg 47`. Le
+    // module se contente donc de la masquer et relit son `+0xBC` au tick.
+    if (windowID == 29) {
+      if (auto* cr = Bourgeon::Instance().chat_room_window())
+        cr->HandleNativePasswordCreation(win);
     }
     // La table des raccourcis (UIHotKeyWnd id 156). Même raisonnement que le menu
     // Échap ci-dessus : elle est détruite au tick, donc toute demande repasse ici.

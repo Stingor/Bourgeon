@@ -645,7 +645,13 @@ ImU32 SkinImageTint();
 // InputText dont le buffer est du CP949 en entrée ET en sortie : la saisie
 // (coréen via IME, latin) est éditée en UTF-8 en interne puis re-convertie en
 // CP949 dans `cp949_buf`. `buf_size` = taille en octets du buffer CP949.
-// `imgui_input_flags` = ImGuiInputTextFlags optionnels. Renvoie true quand édité.
+// `imgui_input_flags` = ImGuiInputTextFlags optionnels.
+//
+// Renvoie ce que renverrait `ImGui::InputText` avec ces mêmes drapeaux — donc
+// « édité » dans le cas nu, mais « Entrée pressée » avec
+// `ImGuiInputTextFlags_EnterReturnsTrue`. ⚠ `cp949_buf`, LUI, est tenu à jour à
+// CHAQUE frappe dans les deux cas : ne pas déduire de la valeur de retour que le
+// tampon n'a pas bougé.
 bool InputTextCp949(const char* label, char* cp949_buf, size_t buf_size,
                     int imgui_input_flags = 0);
 

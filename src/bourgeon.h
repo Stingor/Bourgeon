@@ -29,6 +29,7 @@ class StorageWindow;
 class InventoryViewer;
 class CartViewer;
 class BankWindow;
+class ChatRoomWindow;
 class GameMenu;
 class StaffTools;
 class CharDiagnostics;
@@ -101,6 +102,7 @@ class Bourgeon {
   InventoryViewer* inventory_viewer();
   CartViewer* cart_viewer();
   BankWindow* bank_window();
+  ChatRoomWindow* chat_room_window();
   GameMenu* game_menu();
   StaffTools* staff_tools();
   // Fiche technique du personnage (staff). Exposée pour le bouton qui l'ouvre,
@@ -320,6 +322,7 @@ class Bourgeon {
   InventoryViewer* inventory_viewer_ = nullptr;  // non-owning, lifetime tied to plugins_
   CartViewer* cart_viewer_ = nullptr;            // non-owning, lifetime tied to plugins_
   BankWindow* bank_window_ = nullptr;          // non-owning, lifetime tied to plugins_
+  ChatRoomWindow* chat_room_window_ = nullptr; // non-owning, lifetime tied to plugins_
   GameMenu* game_menu_ = nullptr;              // non-owning, lifetime tied to plugins_
   StaffTools* staff_tools_ = nullptr;          // non-owning, lifetime tied to plugins_
   CharDiagnostics* char_diagnostics_ = nullptr;  // idem

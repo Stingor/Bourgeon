@@ -3406,14 +3406,22 @@ static bool InputTextCp949Impl(const char* label, const char* hint, char* cp949_
 
   InputTextUserData ud{&utf8};
   const int flags = imgui_input_flags | ImGuiInputTextFlags_CallbackResize;
-  const bool edited =
+  const bool returned =
       hint ? ImGui::InputTextWithHint(label, hint, utf8.data(), utf8.capacity() + 1,
                                       flags, InputTextResizeCb, &ud)
            : ImGui::InputText(label, utf8.data(), utf8.capacity() + 1, flags,
                               InputTextResizeCb, &ud);
 
-  if (edited) Utf8ToCp949(utf8.c_str(), cp949_buf, buf_size);
-  return edited;
+  // 🔴 La recopie vers le CP949 se décide sur `IsItemEdited()`, PAS sur le retour
+  // d'InputText. Les deux coïncident dans le cas nu, mais divergent dès qu'un
+  // appelant passe `ImGuiInputTextFlags_EnterReturnsTrue` : le retour ne vaut
+  // alors true QUE sur Entrée, donc plus rien n'était réécrit pendant la frappe.
+  // `cp949_buf` restait vide, et la ligne ci-dessus — qui re-sème le tampon
+  // d'édition depuis lui dès que le champ perd le focus — effaçait la saisie sous
+  // les yeux du joueur. Symptôme vécu sur le champ « Titre » du salon de chat, et
+  // MUET : la valeur renvoyée à l'appelant, elle, était correcte.
+  if (ImGui::IsItemEdited()) Utf8ToCp949(utf8.c_str(), cp949_buf, buf_size);
+  return returned;
 }
 
 bool InputTextCp949(const char* label, char* cp949_buf, size_t buf_size,

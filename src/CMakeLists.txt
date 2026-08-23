@@ -70,6 +70,8 @@ set(BOURGEON_FILES
 	"features/windows/char_select.h"
 	"features/windows/char_select_layout.cc"
 	"features/windows/char_select_layout.h"
+	"features/windows/chat_room_window.cc"
+	"features/windows/chat_room_window.h"
 	"features/windows/chat_window.cc"
 	"features/windows/chat_window.h"
 	"features/windows/character_sheet.cc"
