@@ -48,6 +48,7 @@ class CharacterSheet;
 class LoginParade;
 class ItemDescWindow;
 class MonsterInfoWindow;
+class ViewEquipWindow;
 class NavigationWindow;
 class PetWindow;
 class PaletteEditor;
@@ -126,6 +127,10 @@ class Bourgeon {
   LoginParade* login_parade();
   ItemDescWindow* item_desc();
   MonsterInfoWindow* monster_info();
+  // « Voir l'équipement » d'un autre joueur : remplace la fenêtre native 139.
+  // EntityContextMenu lui donne l'AID de la cible avant de rejouer le code 42 —
+  // la réponse du serveur, elle, ne le porte pas.
+  ViewEquipWindow* view_equip_window();
   // Navigation ImGui. Exposée pour l'action de raccourci `win_navigation`, pour
   // le hook qui route la native 203, et pour les liens de lieu du chat.
   NavigationWindow* navigation_window();
@@ -343,6 +348,7 @@ class Bourgeon {
   Rojeweled* rojeweled_ = nullptr;      // non-owning, lifetime tied to plugins_
   ItemDescWindow* item_desc_ = nullptr;       // non-owning, lifetime tied to plugins_
   MonsterInfoWindow* monster_info_ = nullptr;  // non-owning, lifetime tied to plugins_
+  ViewEquipWindow* view_equip_window_ = nullptr;  // non-owning, lifetime tied to plugins_
   NavigationWindow* navigation_window_ = nullptr;  // non-owning, idem
   PetWindow* pet_window_ = nullptr;            // non-owning, lifetime tied to plugins_
   PaletteEditor* palette_editor_ = nullptr;    // idem

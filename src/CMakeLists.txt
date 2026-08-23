@@ -112,6 +112,8 @@ set(BOURGEON_FILES
 	"features/windows/trade_window.h"
 	"features/windows/vending_window.cc"
 	"features/windows/vending_window.h"
+	"features/windows/view_equip_window.cc"
+	"features/windows/view_equip_window.h"
 	"features/windows/weapon_refine_window.cc"
 	"features/windows/weapon_refine_window.h"
 	"features/windows/make_item_window.cc"
@@ -298,6 +300,7 @@ set(BOURGEON_FILES
 	# Ragnarok
 	"ragnarok/uiwnd.h"
 	"ragnarok/globals.h"
+	"ragnarok/equip_slots.h"
 	"ragnarok/grf_index.cc"
 	"ragnarok/grf_index.h"
 	"ragnarok/player_skills.cc"

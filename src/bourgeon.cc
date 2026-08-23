@@ -68,6 +68,7 @@
 #include "features/windows/entity_context_menu.h"
 #include "features/windows/entity_inspector.h"
 #include "features/windows/monster_info_window.h"
+#include "features/windows/view_equip_window.h"
 #include "features/windows/navigation_window.h"
 #include "features/fx/style_sync.h"
 #include "features/windows/palette_editor.h"
@@ -150,6 +151,7 @@ CharacterSheet* Bourgeon::character_sheet() { return character_sheet_; }
 LoginParade* Bourgeon::login_parade() { return login_parade_; }
 ItemDescWindow* Bourgeon::item_desc() { return item_desc_; }
 MonsterInfoWindow* Bourgeon::monster_info() { return monster_info_; }
+ViewEquipWindow* Bourgeon::view_equip_window() { return view_equip_window_; }
 NavigationWindow* Bourgeon::navigation_window() { return navigation_window_; }
 PetWindow* Bourgeon::pet_window() { return pet_window_; }
 PaletteEditor* Bourgeon::palette_editor() { return palette_editor_; }
@@ -996,6 +998,15 @@ void Bourgeon::LoadPlugins() {
     auto monster_info = std::make_unique<MonsterInfoWindow>();
     monster_info_ = monster_info.get();
     plugins_.emplace_back(std::move(monster_info));
+
+    // « Voir l'équipement » d'un autre joueur : remplace la fenêtre native 139.
+    // Son constructeur REVENDIQUE le paquet ZC 0x0B37 — il doit donc exister
+    // avant la première inspection de la session. Comme la fiche de monstre,
+    // elle ne détruit rien : elle empêche la native de NAÎTRE, ce que son unique
+    // créateur (le handler de ce paquet) rend possible.
+    auto view_equip_window = std::make_unique<ViewEquipWindow>();
+    view_equip_window_ = view_equip_window.get();
+    plugins_.emplace_back(std::move(view_equip_window));
 
     // Navigation ImGui (chercher une carte / un NPC / un monstre, puis se faire
     // guider). Elle REMPLACE les quatre fenêtres natives — la 203 et ses

@@ -17,6 +17,7 @@
 #include "features/windows/chat_window.h"  // TargetWhisper / OpenWhisperWindowByAid
 #include "features/windows/entity_inspector.h"
 #include "features/windows/monster_info_window.h"
+#include "features/windows/view_equip_window.h"
 #include "ragnarok/globals.h"
 #include "ragnarok/ui_window_mgr.h"  // UIM_PUSHINTOCHATHISTORY (avis de blocage)
 #include "ui/ro_imgui.h"
@@ -2140,6 +2141,18 @@ void EntityContextMenu::FlushPending() {
       return;
     case Local::kNone:
       break;
+  }
+
+  // 🔴 La réponse du serveur (`ZC_EQUIPWIN_MICROSCOPE`) ne porte QUE le nom du
+  // joueur — jamais son AID. La fenêtre d'inspection ne saurait donc à qui
+  // redemander sa fiche, et deux homonymes seraient indiscernables. Nous, ici,
+  // le savons : on le lui dit avant de rejouer le code natif.
+  //
+  // ⚠ C'est une demande, pas une cible : trois des quatre refus du serveur sont
+  // SILENCIEUX (cible partie, autre map). L'AID n'est promu qu'à la réception.
+  if (code == kCodeViewEquip) {
+    if (auto* ve = Bourgeon::Instance().view_equip_window())
+      ve->NotePendingTarget(aid);
   }
 
   if (!RunNativeMenuCode(code, aid))

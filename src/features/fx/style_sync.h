@@ -193,6 +193,22 @@ void SendClearAll();
 // coiffure clampée sans le lui dire.
 constexpr int kHairStyleMax = 80;
 
+// La recette d'un joueur EN VUE, telle que `ZC_BOURGEON_STYLES` (0x0F27) nous
+// l'a livrée, pour le corps `body_key` — ou sa variante de repli si ce corps-là
+// n'a pas la sienne (même règle que ce qu'on pose sur son acteur, donc le même
+// résultat à l'écran). Rend false si ce joueur n'a rien partagé.
+//
+// 🔴 Elle existe pour les vues qui dessinent un AUTRE joueur ailleurs qu'à sa
+// place dans le monde — la fiche « Voir l'équipement », d'abord. Sans elle, ces
+// vues montreraient l'apparence NATIVE d'un joueur qui s'est recoloré : le
+// pantin et le personnage à l'écran ne seraient pas la même personne.
+//
+// ⚠ Le registre n'existe QUE pour les joueurs dont le serveur nous a envoyé le
+// style — donc ceux qui sont (ou ont été) en vue pendant cette session.
+// `body_key` à 0 = « je ne sais pas quel corps » : la variante de repli est
+// rendue.
+bool RemoteRecipe(uint32_t gid, uint32_t body_key, ro::PaletteRecipe* out);
+
 // Le module est-il en place ? (false = paquet non envoyé, p. ex. hors session.)
 bool Available();
 

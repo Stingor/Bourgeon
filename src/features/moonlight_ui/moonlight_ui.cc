@@ -51,6 +51,7 @@
 #include "features/windows/make_item_window.h"
 #include "features/windows/entity_context_menu.h"
 #include "features/windows/monster_info_window.h"
+#include "features/windows/view_equip_window.h"
 #include "features/windows/navigation_window.h"
 #include "features/windows/pet_window.h"
 #include "features/windows/weapon_refine_window.h"
@@ -787,6 +788,21 @@ const moonlight_ui::SettingDesc kMonsterInfoSettings[] = {
      MLUI_FIELD(monster_info, show_guardians()), MLUI_LITERAL(bool, false)},
 };
 
+// « Voir l'équipement » d'un autre joueur (remplace la fenêtre native id 139).
+// « viewequip_imgui » est basculé en GROUPE par SetModernInterface : défaut OFF.
+const moonlight_ui::SettingDesc kViewEquipSettings[] = {
+    {"viewequip_imgui", SType::kBool,
+     MLUI_FIELD(view_equip_window, imgui_enabled_), MLUI_LITERAL(bool, false)},
+    // Défaut ON : savoir que la cible n'a NI cape NI accessoire fait partie de ce
+    // qu'on vient regarder, et la fenêtre native ne le disait pas.
+    {"viewequip_show_empty", SType::kBool,
+     MLUI_FIELD(view_equip_window, show_empty()), MLUI_LITERAL(bool, true)},
+    // Défaut OFF : la comparaison élargit la fenêtre, et on ne compare pas à
+    // chaque fois qu'on regarde quelqu'un.
+    {"viewequip_compare", SType::kBool,
+     MLUI_FIELD(view_equip_window, compare()), MLUI_LITERAL(bool, false)},
+};
+
 // Fiche de pet (remplace UIPetInfoWnd id 88 ET son menu de commandes id 260).
 // « pet_imgui » est basculé en GROUPE par SetModernInterface : défaut OFF.
 const moonlight_ui::SettingDesc kPetWindowSettings[] = {
@@ -1496,6 +1512,13 @@ void SetModernInterface(bool on) {
   // drops n'a de sens qu'avec la fiche d'item moderne, qui en fait partie.
   if (auto* monster_info = Bourgeon::Instance().monster_info())
     monster_info->imgui_enabled_ = on;
+  // « Voir l'équipement » d'un autre joueur suit le groupe : elle REVENDIQUE le
+  // paquet ZC 0x0B37, donc l'activer isolément tuerait la fenêtre native 139
+  // pendant que tout le reste serait encore natif. Et elle vit du même
+  // écosystème que la fiche d'objet — c'est elle qui s'ouvre au clic sur une
+  // pièce, et le chat moderne qui reçoit ses liens.
+  if (auto* view_equip = Bourgeon::Instance().view_equip_window())
+    view_equip->imgui_enabled_ = on;
   // Le menu contextuel d'entité suit le groupe : une de ses entrées ouvre la
   // fiche de monstre ci-dessus, et surtout il DÉTOURNE le constructeur du menu
   // natif — l'activer seul laisserait un menu moderne au milieu d'une interface
@@ -1689,6 +1712,7 @@ void MoonlightUi::LoadSettings() {
     moonlight_ui::ReadSettings(ui, kCraftAtlasSettings);
     moonlight_ui::ReadSettings(ui, kNavigationSettings);
     moonlight_ui::ReadSettings(ui, kMonsterInfoSettings);
+    moonlight_ui::ReadSettings(ui, kViewEquipSettings);
     moonlight_ui::ReadSettings(ui, kPetWindowSettings);
     moonlight_ui::ReadSettings(ui, kEntityContextMenuSettings);
     moonlight_ui::ReadBlockedNpcs(ui);
@@ -1878,6 +1902,7 @@ void MoonlightUi::WriteSettingsFile() {
   moonlight_ui::WriteSettings(out, kCraftAtlasSettings);
   moonlight_ui::WriteSettings(out, kNavigationSettings);
   moonlight_ui::WriteSettings(out, kMonsterInfoSettings);
+  moonlight_ui::WriteSettings(out, kViewEquipSettings);
   moonlight_ui::WriteSettings(out, kPetWindowSettings);
   moonlight_ui::WriteSettings(out, kEntityContextMenuSettings);
   moonlight_ui::WriteBlockedNpcs(out);

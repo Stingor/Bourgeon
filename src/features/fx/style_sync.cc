@@ -229,6 +229,25 @@ namespace style_sync {
 
 bool Available() { return g_instance != nullptr; }
 
+// La recette d'un AUTRE joueur, pour les vues qui le dessinent hors du monde.
+//
+// 🔴 Même sélection de variante que ce qu'on pose sur son acteur (`PickVariant`)
+// : une vue qui choisirait autrement afficherait d'autres couleurs que celles
+// qu'on a sous les yeux, ce qui est pire que pas de couleurs du tout.
+//
+// ⚠ `g_remote` est écrite et lue par le SEUL fil principal (cf. sa déclaration).
+// Cette fonction en fait partie : elle est appelée depuis le rendu.
+bool RemoteRecipe(uint32_t gid, uint32_t body_key, ro::PaletteRecipe* out) {
+  if (!out || gid == 0) return false;
+  auto it = g_remote.find(gid);
+  if (it == g_remote.end()) return false;
+  uint32_t retenue = 0;
+  const ro::PaletteRecipe* pick = PickVariant(it->second, body_key, &retenue);
+  if (pick == nullptr) return false;
+  *out = *pick;
+  return true;
+}
+
 void SetLocalEditing(bool editing) { g_local_editing = editing; }
 
 bool LocalRecipe(uint32_t body_key, ro::PaletteRecipe* out, bool* out_exact) {
