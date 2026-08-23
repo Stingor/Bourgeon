@@ -54,6 +54,8 @@
 #include "features/windows/monster_info_window.h"
 #include "features/windows/view_equip_window.h"
 #include "features/windows/navigation_window.h"
+#include "features/overlays/party_frames.h"
+#include "features/windows/party_friend_window.h"
 #include "features/windows/pet_window.h"
 #include "features/windows/weapon_refine_window.h"
 #include "features/windows/trade_window.h"
@@ -604,6 +606,79 @@ const moonlight_ui::SettingDesc kStorageSettings[] = {
 const moonlight_ui::SettingDesc kBankSettings[] = {
     {"bank_imgui", SType::kBool, MLUI_FIELD(bank_window, imgui_enabled_),
      MLUI_LITERAL(bool, false)},
+};
+
+// Fenêtre Amis / Groupe (remplace UIMessengerGroupWnd 0x45).
+// « partyfriend_imgui » est basculé en GROUPE par SetModernInterface : défaut OFF,
+// comme tous les membres du groupe. `partyfriend_tab` retient l'onglet ouvert, avec
+// le MÊME codage que le champ natif +0x28C (0 = amis, 1 = groupe) — et le même
+// défaut que le natif, qui démarre sur GROUPE.
+// HUD de groupe en grille (raid frames). HORS du groupe « Interface moderne » :
+// il ne remplace aucune fenêtre, il ajoute un HUD que le client n'a pas sous
+// cette forme — et il a du sens même en interface native. Défaut OFF : c'est un
+// changement d'affichage visible, pas une correction.
+const moonlight_ui::SettingDesc kPartyFramesSettings[] = {
+    {"partyframes_on", SType::kBool, MLUI_FIELD(party_frames, enabled_),
+     MLUI_LITERAL(bool, false)},
+    {"partyframes_locked", SType::kBool, MLUI_FIELD(party_frames, locked_),
+     MLUI_LITERAL(bool, false)},
+    {"partyframes_cols", SType::kInt, MLUI_FIELD(party_frames, columns()),
+     MLUI_LITERAL(int, 1)},
+    {"partyframes_tile_h", SType::kInt, MLUI_FIELD(party_frames, tile_h()),
+     MLUI_LITERAL(int, 34)},
+    {"partyframes_self", SType::kBool, MLUI_FIELD(party_frames, show_self_),
+     MLUI_LITERAL(bool, true)},
+    {"partyframes_offline", SType::kBool, MLUI_FIELD(party_frames, show_offline_),
+     MLUI_LITERAL(bool, true)},
+    {"partyframes_level", SType::kBool, MLUI_FIELD(party_frames, show_level_),
+     MLUI_LITERAL(bool, false)},
+    {"partyframes_sp", SType::kBool, MLUI_FIELD(party_frames, show_sp_),
+     MLUI_LITERAL(bool, true)},
+    {"partyframes_sp_h", SType::kInt, MLUI_FIELD(party_frames, sp_bar_h()),
+     MLUI_LITERAL(int, 6)},
+    {"partyframes_tile_w", SType::kInt, MLUI_FIELD(party_frames, tile_w()),
+     MLUI_LITERAL(int, 180)},
+    {"partyframes_gap", SType::kInt, MLUI_FIELD(party_frames, gap()),
+     MLUI_LITERAL(int, 2)},
+    {"partyframes_jobicon", SType::kBool,
+     MLUI_FIELD(party_frames, show_job_icon_), MLUI_LITERAL(bool, true)},
+    {"partyframes_hptext", SType::kBool,
+     MLUI_FIELD(party_frames, show_hp_text_), MLUI_LITERAL(bool, true)},
+    {"partyframes_hp_mid", SType::kInt, MLUI_FIELD(party_frames, hp_mid_pct()),
+     MLUI_LITERAL(int, 55)},
+    {"partyframes_hp_low", SType::kInt, MLUI_FIELD(party_frames, hp_low_pct()),
+     MLUI_LITERAL(int, 25)},
+    // Couleurs. Le fond du CADRE existe parce que sans lui la grille se confond
+    // avec le décor (tuiles sombres sur carte sombre).
+    {"partyframes_col_frame", SType::kColorHex,
+     MLUI_FIELD(party_frames, col_frame_bg_), MLUI_LITERAL_ARGB(0xB80D0D12)},
+    {"partyframes_col_tile", SType::kColorHex,
+     MLUI_FIELD(party_frames, col_tile_bg_), MLUI_LITERAL_ARGB(0xE617171C)},
+    {"partyframes_col_hp_high", SType::kColorHex,
+     MLUI_FIELD(party_frames, col_hp_high_), MLUI_LITERAL_ARGB(0xFF40C747)},
+    {"partyframes_col_hp_mid", SType::kColorHex,
+     MLUI_FIELD(party_frames, col_hp_mid_), MLUI_LITERAL_ARGB(0xFFD6BF3D)},
+    {"partyframes_col_hp_low", SType::kColorHex,
+     MLUI_FIELD(party_frames, col_hp_low_), MLUI_LITERAL_ARGB(0xFFCF4238)},
+    {"partyframes_col_sp", SType::kColorHex,
+     MLUI_FIELD(party_frames, col_sp_), MLUI_LITERAL_ARGB(0xFF4582DB)},
+    {"partyframes_col_text", SType::kColorHex,
+     MLUI_FIELD(party_frames, col_text_), MLUI_LITERAL_ARGB(0xFFF0F0F0)},
+    {"partyframes_col_me", SType::kColorHex,
+     MLUI_FIELD(party_frames, col_me_), MLUI_LITERAL_ARGB(0xDBFFD978)},
+    {"partyframes_x", SType::kInt, MLUI_FIELD(party_frames, rect().x),
+     MLUI_LITERAL(int, 40)},
+    {"partyframes_y", SType::kInt, MLUI_FIELD(party_frames, rect().y),
+     MLUI_LITERAL(int, 200)},
+    {"partyframes_w", SType::kInt, MLUI_FIELD(party_frames, rect().w),
+     MLUI_LITERAL(int, 190)},
+};
+
+const moonlight_ui::SettingDesc kPartyFriendSettings[] = {
+    {"partyfriend_imgui", SType::kBool,
+     MLUI_FIELD(party_friend_window, imgui_enabled_), MLUI_LITERAL(bool, false)},
+    {"partyfriend_tab", SType::kInt, MLUI_FIELD(party_friend_window, cur_tab()),
+     MLUI_LITERAL(int, 1)},
 };
 
 // ── Le menu Échap et ses sous-fenêtres : ON PAR DÉFAUT, HORS du groupe ───────
@@ -1536,6 +1611,13 @@ void SetModernInterface(bool on) {
   // l'inverse) laisserait ce bouton sans fenêtre, ou la fenêtre sans bouton.
   if (auto* bank_window = Bourgeon::Instance().bank_window())
     bank_window->imgui_enabled_ = on;
+  // Amis / Groupe : elle REMPLACE UIMessengerGroupWnd (0x45), la seule fenêtre du
+  // client qui rende les deux listes. Elle est dans le groupe pour la raison
+  // habituelle — on ne veut pas d'un demi-jeu moderne — et parce que sa native est
+  // DÉTRUITE quand elle est active : laisser le joueur activer l'une sans l'autre
+  // reviendrait à lui faire cohabiter deux fenêtres qui se disputent le même id.
+  if (auto* party_friend_window = Bourgeon::Instance().party_friend_window())
+    party_friend_window->imgui_enabled_ = on;
   // Le refine Whitesmith rejoint le lot : sa liste d'armes se lit dans le
   // MÊME modèle d'inventaire que le viewer moderne (noms composés, icônes,
   // aperçu de description), et il ferme/rouvre la fenêtre native à chaque
@@ -1745,6 +1827,8 @@ void MoonlightUi::LoadSettings() {
     moonlight_ui::ReadSettings(ui, kCartSettings);
     moonlight_ui::ReadSettings(ui, kStorageSettings);
     moonlight_ui::ReadSettings(ui, kBankSettings);
+    moonlight_ui::ReadSettings(ui, kPartyFriendSettings);
+    moonlight_ui::ReadSettings(ui, kPartyFramesSettings);
     moonlight_ui::ReadSettings(ui, kChatRoomSettings);
     moonlight_ui::ReadSettings(ui, kGameMenuSettings);
     moonlight_ui::ReadSettings(ui, kHotkeySettings);
@@ -1937,6 +2021,8 @@ void MoonlightUi::WriteSettingsFile() {
   moonlight_ui::WriteSettings(out, kCartSettings);
   moonlight_ui::WriteSettings(out, kStorageSettings);
   moonlight_ui::WriteSettings(out, kBankSettings);
+  moonlight_ui::WriteSettings(out, kPartyFriendSettings);
+  moonlight_ui::WriteSettings(out, kPartyFramesSettings);
   moonlight_ui::WriteSettings(out, kChatRoomSettings);
   moonlight_ui::WriteSettings(out, kGameMenuSettings);
   moonlight_ui::WriteSettings(out, kHotkeySettings);

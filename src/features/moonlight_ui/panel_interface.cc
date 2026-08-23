@@ -48,6 +48,7 @@
 #include "features/windows/rodex_window.h"
 #include "features/overlays/skill_bar.h"
 #include "features/overlays/status_icon_bar.h"
+#include "features/overlays/party_frames.h"
 #include "features/overlays/target_frame.h"
 #include "features/windows/storage_window.h"
 
@@ -134,6 +135,7 @@ constexpr IfaceEntry kIfaceSections[] = {
     {MoonlightUi::kIfaceDesc,        "desc",         "Descriptions"},
     {MoonlightUi::kIfaceMakeItem,    "make_item",    "Fabrication"},
     {MoonlightUi::kIfaceTargetFrame, "target_frame", "Fenêtre de cible"},
+    {MoonlightUi::kIfacePartyFrames, "party_frames", "Groupe (grille)"},
     {MoonlightUi::kIfaceNpc,         "npc",          "Fenêtre NPC"},
     {MoonlightUi::kIfaceMonsterInfo, "monster_info", "Fiche de monstre"},
     {MoonlightUi::kIfacePet,         "pet",          "Fiche de pet"},
@@ -616,6 +618,106 @@ void MoonlightUi::DrawInterfacePanel() {
           if (target_frame->DrawSettings()) SaveSettings();
         } else {
           ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
+        }
+      }
+
+      // ── Groupe : la grille (PartyFrames) ─────────────────────────────────
+      // Un HUD de raid frames — une tuile par membre, dont la couleur DIT l'état.
+      // HORS du groupe « Interface moderne » : il ne remplace aucune fenêtre, il
+      // ajoute ce que le client n'a pas sous cette forme, et il a du sens même en
+      // interface native.
+      if (iface_nav_ == kIfacePartyFrames) {
+        auto* pf = Bourgeon::Instance().party_frames();
+        if (pf == nullptr) {
+          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
+        } else {
+          bool changed = false;
+          changed |= ImGui::Checkbox(i18n::Tr("Afficher la grille de groupe"),
+                                     &pf->enabled_);
+          SameLine(); HelpMarker(i18n::Tr(
+              "Remplace le HUD de groupe du client par une grille de tuiles : la "
+              "barre de vie EST le fond de la tuile, et sa couleur dit l'état du "
+              "membre. Le HUD d'origine est masqué tant que cette grille est "
+              "active."));
+          if (!pf->enabled_) ImGui::BeginDisabled();
+
+          changed |= ImGui::Checkbox(i18n::Tr("Verrouiller la position"),
+                                     &pf->locked_);
+          SameLine(); HelpMarker(i18n::Tr(
+              "Fige le cadre et laisse passer les clics vers le jeu.\n\n"
+              "Maintenir MAJ le déverrouille le temps d'un déplacement : pas "
+              "besoin de revenir décocher ici.\n\n"
+              "À savoir : MAJ+clic est l'attaque forcée du jeu. Tant que la "
+              "touche est tenue, un clic sur le cadre le déplace au lieu de "
+              "frapper ce qu'il y a dessous."));
+
+          // ── Disposition ───────────────────────────────────────────────────
+          SeparatorText(i18n::Tr("Disposition"));
+          changed |= WheelSliderInt(i18n::Tr("Colonnes"), &pf->columns_, 1, 6,
+                                    "%d");
+          SameLine(); HelpMarker(i18n::Tr(
+              "1 colonne donne une liste, comme le HUD d'origine ; 2 ou 3 donnent "
+              "la grille compacte des raid frames."));
+          changed |= WheelSliderInt(i18n::Tr("Largeur des tuiles"),
+                                    &pf->tile_w_, 60, 400, "%d px");
+          changed |= WheelSliderInt(i18n::Tr("Hauteur des tuiles"),
+                                    &pf->tile_h_, 18, 80, "%d px");
+          changed |= WheelSliderInt(i18n::Tr("Espacement"), &pf->gap_, 0, 12,
+                                    "%d px");
+          SameLine(); HelpMarker(i18n::Tr(
+              "La taille du cadre se DÉDUIT de ces valeurs : c'est la tuile qui "
+              "commande. Le cadre reste déplaçable, mais le tirer par un coin ne "
+              "le redimensionne pas."));
+
+          // ── Contenu d'une tuile ───────────────────────────────────────────
+          SeparatorText(i18n::Tr("Contenu"));
+          changed |= ImGui::Checkbox(i18n::Tr("Icône de classe"),
+                                     &pf->show_job_icon_);
+          SameLine(); HelpMarker(i18n::Tr(
+              "L'art du client. C'est ce qui rend une grille lisible d'un coup "
+              "d'œil : on reconnaît le soigneur à sa silhouette, pas à son nom."));
+          changed |= ImGui::Checkbox(i18n::Tr("M'inclure dans la grille"),
+                                     &pf->show_self_);
+          changed |= ImGui::Checkbox(i18n::Tr("Garder les membres hors ligne"),
+                                     &pf->show_offline_);
+          changed |= ImGui::Checkbox(i18n::Tr("Afficher le niveau"),
+                                     &pf->show_level_);
+          changed |= ImGui::Checkbox(i18n::Tr("Afficher les PV chiffrés"),
+                                     &pf->show_hp_text_);
+          changed |= ImGui::Checkbox(i18n::Tr("Barre de SP"), &pf->show_sp_);
+          SameLine(); HelpMarker(i18n::Tr(
+              "Le SP d'un autre joueur ne circule dans AUCUN paquet du jeu : il "
+              "est demandé au serveur membre par membre. Il n'apparaît donc que "
+              "pour ceux qui sont à portée de vue."));
+          if (!pf->show_sp_) ImGui::BeginDisabled();
+          changed |= WheelSliderInt(i18n::Tr("Hauteur de la barre de SP"),
+                                    &pf->sp_bar_h_, 2, 14, "%d px");
+          if (!pf->show_sp_) ImGui::EndDisabled();
+
+          // ── Couleurs ──────────────────────────────────────────────────────
+          SeparatorText(i18n::Tr("Couleurs"));
+          changed |= RoColorSwatch(i18n::Tr("Fond du cadre"), pf->col_frame_bg_);
+          SameLine(); HelpMarker(i18n::Tr(
+              "Le panneau qui porte les tuiles. Sans lui, une grille sombre sur "
+              "une carte sombre devient impossible à distinguer du décor."));
+          changed |= RoColorSwatch(i18n::Tr("Fond d'une tuile"), pf->col_tile_bg_);
+          changed |= RoColorSwatch(i18n::Tr("Vie — haute"), pf->col_hp_high_);
+          changed |= RoColorSwatch(i18n::Tr("Vie — moyenne"), pf->col_hp_mid_);
+          changed |= RoColorSwatch(i18n::Tr("Vie — basse"), pf->col_hp_low_);
+          changed |= RoColorSwatch(i18n::Tr("SP"), pf->col_sp_);
+          changed |= RoColorSwatch(i18n::Tr("Texte"), pf->col_text_);
+          changed |= RoColorSwatch(i18n::Tr("Liseré de ma tuile"), pf->col_me_);
+
+          changed |= WheelSliderInt(i18n::Tr("Seuil « vie moyenne »"),
+                                    &pf->hp_mid_pct_, 20, 90, "%d %%");
+          changed |= WheelSliderInt(i18n::Tr("Seuil « vie basse »"),
+                                    &pf->hp_low_pct_, 5, 50, "%d %%");
+          SameLine(); HelpMarker(i18n::Tr(
+              "En dessous de ces pourcentages, la tuile change de couleur. C'est "
+              "ce qui permet de repérer un blessé sans lire un seul chiffre."));
+
+          if (!pf->enabled_) ImGui::EndDisabled();
+          if (changed) SaveSettings();
         }
       }
 

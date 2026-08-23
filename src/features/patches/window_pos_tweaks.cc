@@ -20,6 +20,7 @@
 #include "features/windows/game_settings.h"    // hide-native-at-creation (réglages 0x271E)
 #include "features/windows/hotkey_settings.h"  // hide-native-at-creation (raccourcis 156)
 #include "features/windows/macro_window.h"     // hide-native-at-creation (macros 86)
+#include "features/windows/party_friend_window.h"  // hide-native-at-creation (amis/groupe 0x45)
 #include "features/windows/chat_room_window.h"  // hide-native-at-creation (salon de chat 27)
 #include "features/windows/navigation_window.h"  // hide-native-at-creation (navi 203 + 3)
 #include "utils/hooking/hook_manager.h"
@@ -112,8 +113,22 @@ MakeWindow_t g_orig_makewindow = nullptr;  // trampoline to the real MakeWindow
 // MakeWindow does ALL of a window's open-time positioning internally (SetSize /
 // centre SetPos / OnCreate), so overriding here is the last word before the first
 // render → no flicker. Untracked windows pass straight through.
+// 🔴 Profondeur d'imbrication du point d'entrée « Amis / Groupe » (id 0x45).
+//
+// Cette fenêtre a deux ids : 0x45 est le point d'entrée du JOUEUR, et il rappelle
+// MakeWindow(0x22), la vraie fabrique. Or le client fabrique AUSSI la 0x22 tout
+// seul (création d'un groupe, jonction) — et là, il veut afficher, pas basculer.
+// Un compteur posé avant l'appel original suffit à séparer les deux cas, sans
+// hook supplémentaire : pendant que 0x45 s'exécute, l'appel 0x22 qu'il déclenche
+// est forcément imbriqué. Mono-thread (fil principal), donc pas d'atomique.
+int g_party_entry_depth = 0;
+
 void* __fastcall MakeWindowHook(void* mgr, void* edx, int windowID) {
+  // ⚠ AVANT l'appel original : c'est LUI qui déclenche l'appel imbriqué.
+  const bool party_entry = (windowID == 0x45);
+  if (party_entry) ++g_party_entry_depth;
   void* win = g_orig_makewindow(mgr, edx, windowID);
+  if (party_entry) --g_party_entry_depth;
   if (win) {
     for (auto& w : g_windows) {
       if (w.id != windowID) continue;
@@ -194,6 +209,30 @@ void* __fastcall MakeWindowHook(void* mgr, void* edx, int windowID) {
     if (windowID == 155) {
       if (auto* gm = Bourgeon::Instance().game_menu())
         gm->HandleNativeCreation(win);
+    }
+    // La fenêtre AMIS / GROUPE (UIMessengerGroupWnd), la classe à deux onglets qui
+    // rend les deux listes.
+    //
+    // 🔴 C'EST 0x22, PAS 0x45 — cette fenêtre a DEUX ids et ils ne servent pas à la
+    // même chose :
+    //   · 0x22 = l'id de FABRIQUE. Le case 34 @0x00a3aeac est le seul endroit du
+    //     binaire qui construise la classe (le ctor 0x00701fc0 n'a qu'UN appelant,
+    //     cette fonction) ;
+    //   · 0x45 = l'id d'ENREGISTREMENT, celui que FindWindow / CloseWindow prennent.
+    //     Son case 69 @0x00a3ae55 n'est qu'un POINT D'ENTRÉE : il rappelle
+    //     MakeWindow(0x22), puis envoie OnMsg(6, 0xD7, …) pour choisir l'onglet
+    //     selon `mgr+0x740`, et sort par le `default` — il ne RETOURNE donc aucune
+    //     fenêtre. Un hook posé sur 0x45 ne verrait jamais `win`.
+    // Comme MakeWindow(0x45) rappelle MakeWindow(0x22), notre hook est réentrant et
+    // c'est la passe 0x22 (imbriquée) qui porte la vraie fenêtre.
+    // Cf. docs/party_friend_re.md §7.
+    // `g_party_entry_depth > 0` = cet appel 0x22 est IMBRIQUÉ dans un 0x45, donc
+    // il vient d'un geste du joueur (bouton « party », raccourci) -> bascule.
+    // À plat, c'est le client qui fabrique la fenêtre pour la peupler (création
+    // de groupe, jonction) -> on ouvre, on ne bascule pas.
+    if (windowID == 0x22) {
+      if (auto* pf = Bourgeon::Instance().party_friend_window())
+        pf->HandleNativeCreation(win, g_party_entry_depth > 0);
     }
     // « Create Chat Room » (UIChatRoomMakeWnd id 27 / 0x1B). Même raisonnement que
     // les précédentes, avec une raison de plus de ne PAS se contenter de masquer :

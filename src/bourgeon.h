@@ -52,6 +52,8 @@ class MonsterInfoWindow;
 class ViewEquipWindow;
 class NavigationWindow;
 class PetWindow;
+class PartyFriendWindow;
+class PartyFrames;
 class PaletteEditor;
 class EntityContextMenu;
 class EntityInspector;
@@ -139,6 +141,11 @@ class Bourgeon {
   // le hook qui route la native 203, et pour les liens de lieu du chat.
   NavigationWindow* navigation_window();
   PetWindow* pet_window();
+  // Fenêtre Amis / Groupe ImGui (remplace UIMessengerGroupWnd 0x45). Exposée pour
+  // le bouton « party » du menu d'icônes, qui l'ouvre et la referme.
+  PartyFriendWindow* party_friend_window();
+  // HUD de groupe en grille (raid frames). Exposé pour ses réglages.
+  PartyFrames* party_frames();
   // Éditeur de couleurs du personnage (Alt+P). Exposé pour que la feuille de
   // perso puisse l'ouvrir : c'est là que le joueur regarde son apparence.
   PaletteEditor* palette_editor();
@@ -357,6 +364,8 @@ class Bourgeon {
   ViewEquipWindow* view_equip_window_ = nullptr;  // non-owning, lifetime tied to plugins_
   NavigationWindow* navigation_window_ = nullptr;  // non-owning, idem
   PetWindow* pet_window_ = nullptr;            // non-owning, lifetime tied to plugins_
+  PartyFriendWindow* party_friend_window_ = nullptr;  // idem
+  PartyFrames* party_frames_ = nullptr;               // idem
   PaletteEditor* palette_editor_ = nullptr;    // idem
   EntityContextMenu* entity_context_menu_ = nullptr;  // idem
   EntityInspector* entity_inspector_ = nullptr;       // idem

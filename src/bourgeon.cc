@@ -75,6 +75,8 @@
 #include "features/fx/style_sync.h"
 #include "features/windows/palette_editor.h"
 #include "features/windows/pet_window.h"
+#include "features/overlays/party_frames.h"
+#include "features/windows/party_friend_window.h"
 #include "features/windows/storage_window.h"
 #include "features/windows/cashshop_window.h"
 #include "features/windows/npc_shop_window.h"
@@ -158,6 +160,8 @@ MonsterInfoWindow* Bourgeon::monster_info() { return monster_info_; }
 ViewEquipWindow* Bourgeon::view_equip_window() { return view_equip_window_; }
 NavigationWindow* Bourgeon::navigation_window() { return navigation_window_; }
 PetWindow* Bourgeon::pet_window() { return pet_window_; }
+PartyFriendWindow* Bourgeon::party_friend_window() { return party_friend_window_; }
+PartyFrames* Bourgeon::party_frames() { return party_frames_; }
 PaletteEditor* Bourgeon::palette_editor() { return palette_editor_; }
 EntityContextMenu* Bourgeon::entity_context_menu() {
   return entity_context_menu_;
@@ -435,6 +439,10 @@ void Bourgeon::OnProcessInput() {
   // chemin par lequel « nourrir » ouvre sa confirmation native (docs/pet_re.md
   // §12.2). S'y ajoute l'ouverture de la fenêtre d'évolution (MakeWindow 261).
   if (auto* pw = pet_window()) pw->FlushPending();
+  // ⚠ Amis / Groupe : MÊME raison que la chatbox et l'échoppe. Ses actions
+  // rejouent `CMode::SendMsg` 0x3D et 0x0B0, qui ouvrent des MODALES NATIVES
+  // (UIWndMgr_ShowMessageBoxModal) — jamais entre NewFrame() et Render().
+  if (auto* pf = party_friend_window()) pf->FlushPending();
   // Déplacement clavier : ici AUSSI (pas seulement dans OnRenderUI) pour qu'il
   // survive au « cacher l'interface » natif (F11), qui coupe la passe UI des
   // plugins. Auto-limité dans le temps -> aucun doublon de demande.
@@ -1062,6 +1070,19 @@ void Bourgeon::LoadPlugins() {
     auto pet_window = std::make_unique<PetWindow>();
     pet_window_ = pet_window.get();
     plugins_.emplace_back(std::move(pet_window));
+
+    // Fenêtre Amis / Groupe : remplace UIMessengerGroupWnd (0x45), la classe à
+    // deux onglets qui rend les deux listes. Elle lit le manager de session à
+    // chaque frame, comme le fait la native. Cf. docs/party_friend_re.md.
+    auto party_friend_window = std::make_unique<PartyFriendWindow>();
+    party_friend_window_ = party_friend_window.get();
+    plugins_.emplace_back(std::move(party_friend_window));
+
+    // HUD de groupe en grille (raid frames). Masque le HUD natif 0x12D tant
+    // qu'il est actif ; lit la même source que la fenêtre Amis/Groupe.
+    auto party_frames = std::make_unique<PartyFrames>();
+    party_frames_ = party_frames.get();
+    plugins_.emplace_back(std::move(party_frames));
 
     // Éditeur de couleurs du personnage (Alt+P). Son OnRenderUI pose aussi,
     // paresseusement, les détours d'injection de palette — depuis le fil de
