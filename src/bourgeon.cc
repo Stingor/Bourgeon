@@ -54,6 +54,7 @@
 #include "features/fx/weapon_dual_sprites.h"
 #include "features/fx/hat_effect_depth.h"
 #include "features/patches/skill_tree_tweaks.h"
+#include "features/gameplay/afk_screen.h"
 #include "features/gameplay/fps_view.h"
 #include "features/gameplay/keyboard_move.h"
 #include "features/gameplay/quick_cast.h"
@@ -114,6 +115,7 @@ ItemObtainToast* Bourgeon::item_obtain_toast() { return item_obtain_toast_; }
 ScreenFx* Bourgeon::screen_fx() { return screen_fx_; }
 ZoneRecorder* Bourgeon::zone_recorder() { return zone_recorder_; }
 FpsView* Bourgeon::fps_view() { return fps_view_; }
+AfkScreen* Bourgeon::afk_screen() { return afk_screen_; }
 PlayerJump* Bourgeon::player_jump() { return player_jump_; }
 KeyboardMove* Bourgeon::keyboard_move() { return keyboard_move_; }
 QuickCast* Bourgeon::quick_cast() { return quick_cast_; }
@@ -326,6 +328,15 @@ void Bourgeon::OnGameFrame() {
   // jauge sans prévenir — au rythme d'OnTick (~100 ms) elle réapparaîtrait
   // plusieurs frames à chaque fois.
   if (auto* bi = basic_info()) bi->OnGameFramePulse();
+
+  // Écran de veille : la caméra avance ICI, pas dans OnRenderUI. Deux raisons
+  // qui se cumulent. La pose écrite en tête de frame vaut pour l'image en cours
+  // — écrite après le dessin, elle n'aurait pris effet qu'à la suivante, et une
+  // orbite en retard permanent d'une frame se voit. Surtout, `OnRenderUI` est
+  // gardé plus bas par « interface native masquée » et « HUD remplacé » : un
+  // joueur qui part en ayant masqué son interface, ou la carte du monde ouverte,
+  // aurait une veille figée à mi-course.
+  if (auto* afk = afk_screen()) afk->OnGameFramePulse();
 
   // ── Rejeu de commandes NATIVES, en fin de battement ───────────────────────
   // Les deux suivantes ne se contentent pas de lire le client : elles lui
@@ -631,7 +642,17 @@ void Bourgeon::RenderUI() {
   // posé sur la branche login ci-dessus).
   ro::SetWindowCollapseAllowed(true);
   // Render windows drawn by plugins
+  //
+  // En veille, un seul module dessine : l'écran de veille lui-même. C'est la
+  // moitié « Bourgeon » du masquage — l'autre, l'interface du CLIENT, est refusée
+  // au même moment par le veto posé sur le dessin natif
+  // (features/gameplay/afk_screen.cc). Couper ici plutôt que de faire tester la
+  // veille à chaque module suit la règle apprise sur la carte du monde : la
+  // question « faut-il dessiner ? » se pose au dispatch, une fois, sinon tout
+  // module ajouté ensuite oublie de se la poser.
+  const bool afk_hides_ui = afk_screen_ != nullptr && afk_screen_->hiding_ui();
   for (auto& plugin : plugins_) {
+    if (afk_hides_ui && plugin.get() != afk_screen_) continue;
     try {
       plugin->OnRenderUI();
     } catch (const std::exception& error) {
@@ -952,6 +973,11 @@ void Bourgeon::LoadPlugins() {
     auto fps_view = std::make_unique<FpsView>();
     fps_view_ = fps_view.get();
     plugins_.emplace_back(std::move(fps_view));
+  }
+  {
+    auto afk_screen = std::make_unique<AfkScreen>();
+    afk_screen_ = afk_screen.get();
+    plugins_.emplace_back(std::move(afk_screen));
   }
   {
     auto player_jump = std::make_unique<PlayerJump>();

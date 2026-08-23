@@ -66,6 +66,7 @@
 #include "features/minigames/doom.h"
 #include "features/minigames/roggle.h"
 #include "features/minigames/rojeweled.h"
+#include "features/gameplay/afk_screen.h"
 #include "features/gameplay/keyboard_move.h"
 #include "features/gameplay/player_jump.h"
 #include "features/gameplay/quick_cast.h"
@@ -1066,6 +1067,35 @@ const moonlight_ui::SettingDesc kQuickCastSettings[] = {
      MLUI_FIELD(quick_cast, item_repeat_ms()), MLUI_LITERAL(int, 50)},
 };
 
+// Écran de veille (AfkScreen). Les défauts ne sont PAS répétés ici : ils vivent
+// dans `AfkScreen::Config`, en clair dans le header du module, et MLUI_DEFAULT
+// va les y chercher dans une instance construite par défaut.
+#define AFK(member)   MLUI_FIELD(afk_screen, config().member), MLUI_DEFAULT(AfkScreen::Config, member)
+const moonlight_ui::SettingDesc kAfkScreenSettings[] = {
+    {"afk_enabled",     SType::kBool,  AFK(enabled)},
+    {"afk_delay_s",     SType::kInt,   AFK(delay_s)},
+    {"afk_spin_deg_s",  SType::kFloat, AFK(spin_deg_s)},
+    {"afk_tilt_deg",    SType::kFloat, AFK(tilt_deg)},
+    {"afk_zoom_factor", SType::kFloat, AFK(zoom_factor)},
+    {"afk_ease_s",      SType::kFloat, AFK(ease_s)},
+    {"afk_hide_ui",     SType::kBool,  AFK(hide_ui)},
+    {"afk_hide_cursor", SType::kBool,  AFK(hide_cursor)},
+    {"afk_vignette",    SType::kFloat, AFK(vignette)},
+    {"afk_desaturate",  SType::kFloat, AFK(desaturate)},
+    {"afk_grain",       SType::kFloat, AFK(grain)},
+    {"afk_show_clock",  SType::kBool,  AFK(show_clock)},
+    {"afk_show_away",   SType::kBool,  AFK(show_away)},
+    {"afk_clock_anchor",SType::kInt,   AFK(clock_anchor)},
+    {"afk_clock_margin",SType::kInt,   AFK(clock_margin)},
+    {"afk_clock_scale", SType::kFloat, AFK(clock_scale)},
+    {"afk_clock_shadow",SType::kBool,  AFK(clock_shadow)},
+    // ImU32 DÉCIMAL, comme les couleurs de l'overlay FPS et de la barre de
+    // statuts — et non la chaîne hex ARGB de chat_bg/dps/skillbar. Les deux
+    // formats coexistent sur disque et sont figés (cf. settings_table.h).
+    {"afk_clock_col",   SType::kUInt,  AFK(clock_col)},
+};
+#undef AFK
+
 // Barres EXP/HP/SP et portrait de statut (BasicInfo). Les barres et les
 // éléments du portrait sont indexés (expbar_<barre>_*, portrait_<élément>_*) :
 // leurs clés se construisent à l'exécution, elles restent en boucle.
@@ -1722,6 +1752,7 @@ void MoonlightUi::LoadSettings() {
     moonlight_ui::ReadSettings(ui, kJumpKeySettings);
     moonlight_ui::ReadSettings(ui, kKeyboardMoveSettings);
     moonlight_ui::ReadSettings(ui, kQuickCastSettings);
+    moonlight_ui::ReadSettings(ui, kAfkScreenSettings);
     moonlight_ui::ReadSettings(ui, kSkillBarSettings);
     moonlight_ui::ReadSkillBarLayout(ui);
     moonlight_ui::ReadSettings(ui, kSkillBarColorSettings);
@@ -1912,6 +1943,7 @@ void MoonlightUi::WriteSettingsFile() {
   moonlight_ui::WriteSettings(out, kJumpKeySettings);
   moonlight_ui::WriteSettings(out, kKeyboardMoveSettings);
   moonlight_ui::WriteSettings(out, kQuickCastSettings);
+  moonlight_ui::WriteSettings(out, kAfkScreenSettings);
 
   moonlight_ui::WriteSettings(out, kSkillBarSettings);
   moonlight_ui::WriteSkillBarLayout(out);

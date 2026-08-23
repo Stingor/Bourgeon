@@ -439,9 +439,12 @@ class MoonlightUi : public Plugin {
   void DrawCommandsPanel();
   void DrawFunPanels();
   // Section « Gameplay » (panel_gameplay.cc) : precision du ciblage,
-  // Quick cast et enregistreur GIF — les QOL qui touchent au JEU, entre
-  // l'interface et les commandes serveur.
+  // Quick cast, enregistreur GIF et écran de veille — les QOL qui touchent au
+  // JEU, entre l'interface et les commandes serveur.
   void DrawGameplayPanel();
+  // Sous-section « Écran de veille » de la précédente, sortie à part parce
+  // qu'elle porte à elle seule une douzaine de réglages.
+  void DrawAfkScreenSettings();
   void DrawAlootOverlay();
   // Affichages pilotés par ce panneau mais dessinés HORS de lui : ils survivent à
   // sa fermeture, et sont donc appelés sur les DEUX chemins de rendu.

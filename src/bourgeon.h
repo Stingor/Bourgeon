@@ -55,6 +55,7 @@ class PaletteEditor;
 class EntityContextMenu;
 class EntityInspector;
 class FpsView;
+class AfkScreen;
 class PlayerJump;
 class KeyboardMove;
 class QuickCast;
@@ -91,6 +92,7 @@ class Bourgeon {
   Minimap* minimap();
   ItemObtainToast* item_obtain_toast();
   ScreenFx* screen_fx();
+  AfkScreen* afk_screen();
   ZoneRecorder* zone_recorder();
   MoonlightUi* moonlight_ui();
   SkillBar* skill_bar();
@@ -340,6 +342,7 @@ class Bourgeon {
   CharacterSheet* character_sheet_ = nullptr;  // non-owning, lifetime tied to plugins_
   LoginParade* login_parade_ = nullptr;        // non-owning, lifetime tied to plugins_
   FpsView* fps_view_ = nullptr;         // non-owning, lifetime tied to plugins_
+  AfkScreen* afk_screen_ = nullptr;     // non-owning, lifetime tied to plugins_
   PlayerJump* player_jump_ = nullptr;   // non-owning, lifetime tied to plugins_
   KeyboardMove* keyboard_move_ = nullptr;  // non-owning, lifetime tied to plugins_
   QuickCast* quick_cast_ = nullptr;     // non-owning, lifetime tied to plugins_

@@ -9,6 +9,7 @@
 
 #include "imgui.h"
 #include "bourgeon.h"
+#include "features/gameplay/afk_screen.h"
 #include "features/moonlight_ui/moonlight_ui.h"
 #include "ui/ro_imgui.h"
 #include "utils/hooking/hook_manager.h"
@@ -346,12 +347,23 @@ void BuildCustom(void* scene, void* vp) {
 // Absolute override (not a multiply) so it can never compound toward invisible.
 // Works for both the stock and custom layouts.  SEH-guarded; always forwards.
 void __fastcall RenderIconHook(void* node) {
-  if (g_cfg.icon_alpha < 100 && node) {
+  // 🔴 L'écran de veille passe par ICI, et il n'a pas le choix. Son effacement
+  // de l'interface du client veto le rendu des FENÊTRES
+  // (`UIWindowMgr_RenderWindows`) — or ces icônes n'en sont pas : ce sont des
+  // nœuds de sprite de la SCÈNE, qui traversaient donc l'écran de veille intacts.
+  // Ce hook est le seul endroit d'où les faire taire sans toucher ni à leur
+  // construction ni à leur durée de vie : on écrit 0 dans l'alpha que le rendu
+  // s'apprête à lire, et la frame suivante peut les redessiner comme si de rien
+  // n'était.
+  const AfkScreen* afk = Bourgeon::Instance().afk_screen();
+  const bool afk_hides = (afk != nullptr) && afk->hiding_ui();
+  if ((afk_hides || g_cfg.icon_alpha < 100) && node) {
     __try {
       auto* B = reinterpret_cast<uint8_t*>(node);
       if (*reinterpret_cast<uint8_t*>(B + kNodeMark) == kNodeMarkVal) {
         auto* col = reinterpret_cast<uint32_t*>(B + kNodeColor);
-        *col = (*col & 0x00ffffffu) | (static_cast<uint32_t>(IconAlphaByte()) << 24);
+        const uint32_t a = afk_hides ? 0u : IconAlphaByte();
+        *col = (*col & 0x00ffffffu) | (a << 24);
       }
     } __except (EXCEPTION_EXECUTE_HANDLER) {
     }

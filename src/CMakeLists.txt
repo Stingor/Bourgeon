@@ -177,6 +177,8 @@ set(BOURGEON_FILES
 	"features/overlays/status_icon_bar.h"
 
 	# gameplay/
+	"features/gameplay/afk_screen.cc"
+	"features/gameplay/afk_screen.h"
 	"features/gameplay/fps_view.cc"
 	"features/gameplay/fps_view.h"
 	"features/gameplay/keyboard_move.cc"
@@ -344,6 +346,8 @@ set(BOURGEON_FILES
 	"ragnarok/login_mode.h"
 	"ragnarok/game_mode.cc"
 	"ragnarok/game_mode.h"
+	"ragnarok/camera.cc"
+	"ragnarok/camera.h"
 	"ragnarok/held_sprites.cc"
 	"ragnarok/held_sprites.h"
 	"ragnarok/own_actor.cc"

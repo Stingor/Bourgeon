@@ -10,6 +10,7 @@
 
 #include "backends/imgui_impl_win32.h"
 #include "bourgeon.h"
+#include "features/gameplay/afk_screen.h"      // compteur d'inactivite (ecran de veille)
 #include "features/overlays/target_frame.h"  // le vrai double-clic du monde
 #include "imgui/imgui_impl_dx7.h"
 #include "imgui_internal.h"
@@ -158,9 +159,19 @@ void __fastcall Hooked_CursorRender(void* thisptr) {
   // force ces deux offsets à ~ -(souris) - 4096 -> le quad tombe hors viewport
   // (sommets XYZRHW, clippés), puis on RESTAURE avant de rendre la main : invisible
   // pour tout le reste du client (anim, hit-test natif, notif UIWindowMgr intacts).
+  //
+  // 🔴 L'ÉCRAN DE VEILLE PASSE PAR LÀ, LUI AUSSI, et il n'a pas d'autre choix. Le
+  // drapeau natif `g_cursor_hidden` (0x01229448) semblait tout indiqué — c'est
+  // bien lui qui décide du curseur — mais il ne garde QUE le chemin de
+  // `CScene_RenderCellsAndCursor`. En jeu, le curseur est dessiné par un SECOND
+  // chemin, `GameMode_InGame_ProcessFrame+0x6E5` (0x00c75165), dont l'appel à
+  // `CursorMgr_RenderSprite` est INCONDITIONNEL : le drapeau y est ignoré, et
+  // l'écrire ne produisait donc rien du tout.
   bool fs_suppress = false;
   float saved_ox = 0.0f, saved_oy = 0.0f;
-  if (thisptr && ro::FullscreenCursorActive()) {
+  const AfkScreen* afk_cursor = Bourgeon::Instance().afk_screen();
+  const bool afk_hides_cursor = (afk_cursor != nullptr) && afk_cursor->hiding_cursor();
+  if (thisptr && (ro::FullscreenCursorActive() || afk_hides_cursor)) {
     __try {
       auto* ox = reinterpret_cast<float*>(reinterpret_cast<char*>(thisptr) + 0x30);
       auto* oy = reinterpret_cast<float*>(reinterpret_cast<char*>(thisptr) + 0x34);
@@ -257,6 +268,13 @@ void InstallCharSelectPagingFix() {
 // are part of the current frame's render data, guaranteed above all windows.
 void DrawROCursorImGui() {
   if (!ImGui::GetCurrentContext()) return;
+  // Écran de veille : le curseur natif est masqué à la source (drapeau
+  // `g_cursor_hidden`), mais CELUI-CI est notre propre copie, redessinée par-dessus
+  // les fenêtres ImGui — l'horloge de veille en est une, et il suffirait qu'elle
+  // passe sous la souris pour qu'une flèche réapparaisse toute seule au milieu
+  // d'un écran qu'on venait de vider.
+  if (auto* afk = Bourgeon::Instance().afk_screen(); afk && afk->hiding_cursor())
+    return;
   InstallCursorCapture();  // lazy, once (no-op in DX7)
 
   const ImVec2 mp = ImGui::GetIO().MousePos;
@@ -601,6 +619,20 @@ static LRESULT CALLBACK WindowProcHook(HWND hwnd, UINT uMsg, WPARAM wParam,
     if (wParam == VK_RETURN && native_login::CharSelectWindowPresent()) return 0;
     return WndProcRef(hwnd, uMsg, wParam, lParam);
   }
+
+  // ── Écran de veille : le seul endroit d'où l'on voit TOUTE l'activité ──────
+  // Ici et pas ailleurs, parce que c'est ici que passe indistinctement ce que le
+  // joueur tape, clique et fait rouler — `ProcessPushButton` ne voit que les
+  // touches LIÉES à une action, et nos modules ne voient chacun que ce qui les
+  // concerne. Une veille bâtie sur l'un d'eux s'endormirait pendant que le
+  // joueur joue.
+  //
+  // Placé APRÈS le court-circuit des frappes synthétiques juste au-dessus : ces
+  // frappes-là sont les NÔTRES (auto-confirm du char-server), et les compter
+  // comme activité du joueur retarderait la veille sans que personne n'ait rien
+  // fait. Placé AVANT ImGui, en revanche, pour que le clic de réveil ne soit vu
+  // par personne — ni notre interface, ni le jeu.
+  if (afk::FilterMessage(uMsg, lParam)) return 0;
 
   // ── Le sélecteur de variante du panneau emoji de Windows, jeté ici ─────────
   // Win+. envoie « ❤️ » en DEUX caractères : le cœur, puis U+FE0F qui demande la

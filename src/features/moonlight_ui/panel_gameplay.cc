@@ -1,7 +1,7 @@
 // ── Section « Gameplay » du panneau Moonlight ────────────────────────────────
 // Entre « Interface de jeu » et « Commands Settings » : les réglages qui
 // changent la MANIÈRE DE JOUER, pas l'habillage — précision du ciblage, quick
-// cast, enregistreur GIF. Nés dans Staff Tools, ouverts aux joueurs le
+// cast, enregistreur GIF, écran de veille. Nés dans Staff Tools, ouverts aux joueurs le
 // 2026-08-18 ; le staff garde ses propres vues dans sa fenêtre.
 
 #include <algorithm>  // std::max (rectangle = max(dessin, minimum))
@@ -13,6 +13,7 @@
 
 #include "bourgeon.h"
 #include "features/fx/zone_recorder.h"
+#include "features/gameplay/afk_screen.h"
 #include "features/gameplay/quick_cast.h"
 #include "features/patches/pick_quad_tweaks.h"
 #include "imgui.h"
@@ -22,6 +23,12 @@
 #include "utils/i18n.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
+
+// Armé par le proxy DirectDraw dès le premier EndScene du chemin DX7 : c'est le
+// seul témoin du mode de rendu réellement en cours. La passe de post-traitement
+// n'existe que sous DX9, et trois curseurs qui ne font rien méritent une phrase
+// plutôt que du silence.
+extern bool g_imgui_dx7_active;
 
 namespace {
 
@@ -208,5 +215,161 @@ void MoonlightUi::DrawGameplayPanel() {
   else
     ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
 
+  // ── Écran de veille ─────────────────────────────────────────────────────────
+  SeparatorText(i18n::Tr("Écran de veille"));
+  DrawAfkScreenSettings();
+
   PopStyleCompact();
+}
+
+// Réglages de l'écran de veille. Tout est vivant : chaque valeur touchée pendant
+// un aperçu se voit immédiatement, puisque le module relit sa configuration à
+// chaque frame plutôt que de la figer à l'entrée en veille.
+void MoonlightUi::DrawAfkScreenSettings() {
+  auto* afk = Bourgeon::Instance().afk_screen();
+  if (!afk) {
+    ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
+    return;
+  }
+  AfkScreen::Config& cfg = afk->config();
+  bool changed = false;
+
+  changed |= ro::RoCheckbox(i18n::Tr("Activer l'écran de veille"), &cfg.enabled);
+  SameLine(); HelpMarker(i18n::Tr(
+      "Passé un moment sans toucher au clavier ni à la souris, l'interface "
+      "s'efface et la caméra recule pour tourner lentement autour de ton "
+      "personnage.\n\n"
+      "Le premier geste rend tout comme c'était. Le clic qui te réveille ne "
+      "part pas dans le jeu : le décor a changé d'angle, il tomberait ailleurs "
+      "que là où tu crois viser."));
+
+  ImGui::BeginDisabled(!cfg.enabled);
+
+  ImGui::SetNextItemWidth(ro::Px(200.0f));
+  // 🔴 Le format d'un slider RO est une VALEUR, jamais une phrase :
+  // `RoSliderScalar` réserve la place du texte en formatant les BORNES avec lui,
+  // si bien qu'un « %d s sans rien toucher » réservait la largeur de « 900 s sans
+  // rien toucher » — la piste tombait à zéro et les flèches disparaissaient avec
+  // elle. L'explication est dans l'infobulle, à sa place.
+  changed |= WheelSliderInt(i18n::TrId("Délai", "afk_delay"), &cfg.delay_s, 10, 900,
+                            "%d s");
+  SameLine(); HelpMarker(i18n::Tr(
+      "Temps sans toucher au clavier ni à la souris avant que la veille ne "
+      "commence."));
+
+  SeparatorText(i18n::Tr("Caméra"));
+  ImGui::SetNextItemWidth(ro::Px(200.0f));
+  changed |= WheelSliderFloat(i18n::TrId("Rotation", "afk_spin"), &cfg.spin_deg_s,
+                              -30.0f, 30.0f, "%.1f °/s");
+  SameLine(); HelpMarker(i18n::Tr(
+      "Vitesse de l'orbite autour du personnage. Une valeur négative tourne "
+      "dans l'autre sens ; zéro fige la vue, ce qui donne un simple plan large."));
+
+  ImGui::SetNextItemWidth(ro::Px(200.0f));
+  changed |= WheelSliderFloat(i18n::TrId("Plongée", "afk_tilt"), &cfg.tilt_deg,
+                              15.0f, 85.0f, "%.0f °");
+  SameLine(); HelpMarker(i18n::Tr(
+      "Hauteur du regard au-dessus de l'horizon. Le jeu se joue à 45° ; plus "
+      "haut, la caméra domine la scène, et tout en haut elle est presque à la "
+      "verticale."));
+
+  ImGui::SetNextItemWidth(ro::Px(200.0f));
+  changed |= WheelSliderFloat(i18n::TrId("Recul", "afk_zoom"), &cfg.zoom_factor,
+                              1.0f, 2.5f, "%.2f x");
+  SameLine(); HelpMarker(i18n::Tr(
+      "De combien la caméra s'éloigne, en multiples de ta distance habituelle. "
+      "Le moteur ne laisse pas aller plus loin que sa propre limite de vue : "
+      "au-delà, on verrait le bord du monde et le brouillard."));
+
+  ImGui::SetNextItemWidth(ro::Px(200.0f));
+  changed |= WheelSliderFloat(i18n::TrId("Transition", "afk_ease"), &cfg.ease_s,
+                              0.2f, 6.0f, "%.1f s");
+  SameLine(); HelpMarker(i18n::Tr(
+      "Durée du basculement en veille. Le retour, lui, va trois fois plus vite : "
+      "il répond à un geste que tu viens de faire."));
+
+  SeparatorText(i18n::Tr("Image"));
+  changed |= ro::RoCheckbox(i18n::Tr("Masquer toute l'interface"), &cfg.hide_ui);
+  SameLine(); HelpMarker(i18n::Tr(
+      "L'interface Bourgeon ET celle du client — fenêtres, noms au-dessus des "
+      "personnages, bulles de chat. Rien n'est fermé pour autant : tout ce qui "
+      "était ouvert l'est encore au réveil."));
+
+  changed |= ro::RoCheckbox(i18n::Tr("Masquer le curseur"), &cfg.hide_cursor);
+  SameLine(); HelpMarker(i18n::Tr(
+      "La flèche de la souris disparaît aussi. Elle revient dès le premier "
+      "geste, en même temps que l'interface."));
+
+  ImGui::SetNextItemWidth(ro::Px(200.0f));
+  changed |= WheelSliderFloat(i18n::TrId("Vignette", "afk_vignette"), &cfg.vignette,
+                              0.0f, 1.0f, "%.2f");
+  ImGui::SetNextItemWidth(ro::Px(200.0f));
+  changed |= WheelSliderFloat(i18n::TrId("Noir et blanc", "afk_bw"), &cfg.desaturate,
+                              0.0f, 1.0f, "%.2f");
+  ImGui::SetNextItemWidth(ro::Px(200.0f));
+  changed |= WheelSliderFloat(i18n::TrId("Grain", "afk_grain"), &cfg.grain,
+                              0.0f, 1.0f, "%.2f");
+  // Ces trois-là passent par le post-traitement DX9. Sous le proxy DX7 la veille
+  // fonctionne — caméra et masquage — mais l'image reste telle quelle, et le
+  // dire vaut mieux que de laisser croire à trois curseurs cassés.
+  if (g_imgui_dx7_active)
+    ImGui::TextDisabled("%s", i18n::Tr("Vignette, noir et blanc et grain "
+                                       "demandent le rendu DirectX 9."));
+
+  SeparatorText(i18n::Tr("Horloge"));
+  changed |= ro::RoCheckbox(i18n::Tr("Afficher l'heure"), &cfg.show_clock);
+
+  ImGui::BeginDisabled(!cfg.show_clock);
+  changed |= ro::RoCheckbox(i18n::Tr("Afficher la durée d'absence"), &cfg.show_away);
+
+  // Libellés passés NUS : RoCombo traduit chaque item à sa lecture. Les
+  // envelopper ici les traduirait deux fois, et le second passage inscrirait de
+  // l'anglais dans la liste des textes à traduire — invisible à l'écran, et long
+  // à comprendre après coup.
+  static const char* const kAnchors[] = {
+      "Haut-gauche",   "Haut-centre", "Haut-droite",
+      "Milieu-gauche", "Centre",      "Milieu-droite",
+      "Bas-gauche",    "Bas-centre",  "Bas-droite"};
+  ImGui::SetNextItemWidth(ro::Px(200.0f));
+  changed |= ro::RoCombo(i18n::Tr("Position"), &cfg.clock_anchor, kAnchors,
+                         IM_ARRAYSIZE(kAnchors));
+
+  ImGui::SetNextItemWidth(ro::Px(200.0f));
+  changed |= WheelSliderInt(i18n::TrId("Marge", "afk_clock_margin"),
+                            &cfg.clock_margin, 0, 400, "%d px");
+  SameLine(); HelpMarker(i18n::Tr(
+      "Distance au bord de l'écran. Sans effet sur une position centrée, qui n'a "
+      "pas de bord dont s'écarter."));
+
+  ImGui::SetNextItemWidth(ro::Px(200.0f));
+  changed |= WheelSliderFloat(i18n::TrId("Taille du texte", "afk_clock_scale"),
+                              &cfg.clock_scale, 0.5f, 6.0f, "%.1fx");
+  SameLine(); HelpMarker(i18n::Tr(
+      "Taille de l'heure. La ligne d'absence suit, en plus petit."));
+
+  // ⚠ `RoColorSwatch` avec l'alpha : « couleur ET opacité » est UNE décision
+  // pour le joueur, et deux widgets l'obligeraient à faire l'aller-retour entre
+  // un curseur et une pastille pour juger du résultat.
+  ImVec4 clock_rgba = ImGui::ColorConvertU32ToFloat4(cfg.clock_col);
+  if (RoColorSwatch(i18n::Tr("Couleur du texte"), &clock_rgba.x, nullptr,
+                    /*with_alpha=*/true, /*numeric_inputs=*/false)) {
+    cfg.clock_col = ImGui::ColorConvertFloat4ToU32(clock_rgba);
+    changed = true;
+  }
+
+  changed |= ro::RoCheckbox(i18n::Tr("Ombrage du texte"), &cfg.clock_shadow);
+  SameLine(); HelpMarker(i18n::Tr(
+      "Une ombre d'un pixel sous le texte. C'est elle qui le garde lisible quand "
+      "la caméra passe devant un décor clair."));
+  ImGui::EndDisabled();
+
+  ImGui::Spacing();
+  if (ro::RoButton(i18n::Tr("Essayer maintenant"))) afk->PreviewNow();
+  SameLine(); HelpMarker(i18n::Tr(
+      "Entre en veille tout de suite, sans attendre le délai. Bouge la souris "
+      "pour en sortir."));
+
+  ImGui::EndDisabled();
+
+  if (changed) SaveSettings();
 }

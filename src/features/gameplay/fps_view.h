@@ -8,14 +8,10 @@
 // engine (3D terrain + billboarded sprites) whose camera is just locked to an
 // isometric tilt/distance, so an FPS view is only a matter of re-parametering the
 // existing camera each frame:
-//   pCam = *(CGameMode + 0xd0)   (camera object, vtable g_CCamera_vtable 0x0104dee4)
-//   pCam+0x30 / +0x48 : latitude/tilt (default 45deg)  -> force ~0 = look horizontal
-//   pCam+0x34 / +0x4c : zoom/distance (from g_cam_zoomWork) -> force ~0 = eye height
-// The tilt is per-instance so we capture pCam via a trampoline hook on
-// Camera_ApplyViewDistanceClamp (0x00c82340, ECX = CGameMode) and write it in
-// OnTick; the zoom is driven through the engine's own view-distance globals (the
-// clamp function rewrites pCam+0x34 from them every frame, so writing the field
-// directly would fight it). See project_fps_view_re memory for the full RE.
+// il suffit d'écrire dans les CIBLES du rig (+0x44 tilt, +0x4c distance) : le
+// moteur lisse le reste. Le rig, ses offsets et la capture de pCam vivent dans
+// ragnarok/camera.h — ce module n'ajoute que la hauteur d'yeux, en relevant le
+// point de vue dans SetView.
 //
 // Toggle with F9. 20250716-specific addresses.
 //
