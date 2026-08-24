@@ -832,40 +832,21 @@ const char* HatOrdinalToResName(int ordinal) {
 //  les effets tête/scène qui voudraient le -80.)
 struct HatEffectParams { float pos_x = 0.0f; bool before = false; };
 
-// Appel brut d'un global Lua getter(ord). Nombre : lua_tolstring+atof (le natif convertit les
-// nombres en place, cf. GetHatEfResName). Booléen : lua_toboolean. POD/SEH. `def` si Lua KO.
+// Appel d'un global Lua getter(ord). Le pont lui-même — checkstack, appel
+// protégé, dépilage — vit dans `lua::CallGlobal*`, avec les deux autres lectures
+// du même genre (le SPR Lab et le nom de ressource d'effet).
+//
+// ⚠ Le résultat NUMÉRIQUE se lit via lua_tonumber (comme le natif
+// Lua_CallGlobal_va pour 'd'/'l'). lua_tolstring convertirait aussi, mais on
+// évite l'aller-retour chaîne + atof, qui est fragile.
+//
+// ⚠ `HatLuaBool` gagne au passage le `CheckStack` que sa version d'origine
+// n'avait pas — les deux autres copies l'avaient.
 float HatLuaNum(int ordinal, const char* fn, float def) {
-  float r = def;
-  __try {
-    void* L = lua::State();
-    if (L) {
-      lua::CheckStack(L, 3);  // comme le natif : garantit la place
-      lua::GetField(L, lua::kGlobalsIndex, fn);
-      lua::PushNumber(L, static_cast<double>(ordinal));
-      if (lua::PCall(L, 1, 1, 0) == 0) {
-        // Résultat NUMÉRIQUE lu via lua_tonumber (comme le natif Lua_CallGlobal_va pour 'd'/'l').
-        // lua_tolstring convertissait aussi mais on évite le round-trip string+atof (fragile).
-        const double d = lua::ToNumber(L, -1);
-        r = static_cast<float>(d);
-      }
-      lua::SetTop(L, -2);
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) { r = def; }
-  return r;
+  return static_cast<float>(lua::CallGlobalNum(fn, ordinal, def));
 }
 bool HatLuaBool(int ordinal, const char* fn, bool def) {
-  bool r = def;
-  __try {
-    void* L = lua::State();
-    if (L) {
-      lua::GetField(L, lua::kGlobalsIndex, fn);
-      lua::PushNumber(L, static_cast<double>(ordinal));
-      if (lua::PCall(L, 1, 1, 0) == 0)
-        r = lua::ToBoolean(L, -1) != 0;
-      lua::SetTop(L, -2);
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) { r = def; }
-  return r;
+  return lua::CallGlobalBool(fn, ordinal, def);
 }
 // Caché par ordinal. NE met en cache QUE si Lua est prêt (sinon repli non figé -> réessai).
 const HatEffectParams& HatOrdinalParams(int ordinal) {

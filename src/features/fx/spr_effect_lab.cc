@@ -75,23 +75,11 @@ bool IsOurs(const ez_capture::Prim& p) {
 }
 
 // GetHatEffectID(ordinal) NATIF : ordinal (87) -> id concret (1240). AUCUN hardcode.
-// Bridge Lua brut (Lua 5.1) avec lua_checkstack AVANT push (le natif le fait ; sinon pile pleine
-// -> pcall échoue -> -1). POD/SEH. Renvoie <=0 si non résolu (Lua pas prêt). Cf. basic_info HatLuaNum.
+// Renvoie <=0 si non résolu (Lua pas prêt). Le pont Lua — checkstack, appel
+// protégé, dépilage — vit dans `lua::CallGlobalNum`, avec les trois autres
+// lectures du même genre.
 int ResolveConcreteId(int ordinal) {
-  int r = 0;
-  __try {
-    void* L = lua::State();
-    if (L) {
-      lua::CheckStack(L, 3);
-      lua::GetField(
-          L, lua::kGlobalsIndex, "GetHatEffectID");
-      lua::PushNumber(L, static_cast<double>(ordinal));
-      if (lua::PCall(L, 1, 1, 0) == 0)
-        r = static_cast<int>(lua::ToNumber(L, -1));
-      lua::SetTop(L, -2);
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) { r = 0; }
-  return r;
+  return static_cast<int>(lua::CallGlobalNum("GetHatEffectID", ordinal, 0.0));
 }
 
 // GetHatEfResName(ordinal) NATIF : chemin du .str d'un hat effect « name-based » (ex. gold_shower),

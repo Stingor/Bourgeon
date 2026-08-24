@@ -125,6 +125,49 @@ inline int CheckStack(void* L, int extra) {
 // Dépile les `count` valeurs du sommet (lua_pop de la vraie API est une macro).
 inline void Pop(void* L, int count) { SetTop(L, -count - 1); }
 
+// ── Appeler un global Lua avec UN argument numérique ─────────────────────────
+// Le motif « champ global, argument, appel protégé, lecture, dépilage » était
+// écrit QUATRE fois : `ResolveConcreteId` (SPR Lab), `HatLuaNum` et `HatLuaBool`
+// (basic_info), et `HatEffectResName` juste en dessous. C'est le même geste, à la
+// lecture du résultat près.
+//
+// ⚠ ET `HatLuaBool` N'AVAIT PAS LE `CheckStack`. Le commentaire de
+// `HatEffectResName` raconte déjà l'avoir récupéré sur une copie sur deux ; une
+// TROISIÈME copie s'en passait encore. On empile deux valeurs quatre lignes plus
+// bas : sur un état Lua dont la pile est pleine, l'omission donne une corruption
+// silencieuse au lieu d'un échec propre. Les trois l'ont désormais.
+//
+// `def` est rendu tel quel si Lua n'est pas prêt ou si l'appel échoue.
+inline double CallGlobalNum(const char* fn, int arg, double def = 0.0) {
+  double r = def;
+  __try {
+    void* L = State();
+    if (L) {
+      CheckStack(L, 3);
+      GetField(L, kGlobalsIndex, fn);
+      PushNumber(L, static_cast<double>(arg));
+      if (PCall(L, 1, 1, 0) == 0) r = ToNumber(L, -1);
+      Pop(L, 1);
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) { r = def; }
+  return r;
+}
+
+inline bool CallGlobalBool(const char* fn, int arg, bool def = false) {
+  bool r = def;
+  __try {
+    void* L = State();
+    if (L) {
+      CheckStack(L, 3);
+      GetField(L, kGlobalsIndex, fn);
+      PushNumber(L, static_cast<double>(arg));
+      if (PCall(L, 1, 1, 0) == 0) r = ToBoolean(L, -1) != 0;
+      Pop(L, 1);
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) { r = def; }
+  return r;
+}
+
 // ── `GetHatEfResName(ordinal)` : le nom de ressource d'un effet de couvre-chef ──
 //
 // La séquence complète — champ global, argument, appel protégé, lecture de la

@@ -26,6 +26,7 @@
 #include "features/windows/storage_window.h"
 #include "features/patches/window_pos_tweaks.h"
 #include "ui/color_codec.h"
+#include "ui/hud_frame.h"  // ro::HudRect — nommé ici, donc inclus ici
 #include "ui/ro_imgui.h"
 #include "ui/skin_panel.h"
 
@@ -82,6 +83,41 @@ void EmitSkinCfg(YAML::Emitter& out, const ro::RoSkinConfig& cfg,
   for (const SkinColorField& field : kSkinColorFields)
     out << YAML::Key << prefix + field.key << YAML::Value
         << ro::ImU32FromPicker(cfg.*field.member);
+}
+
+// ── Le bloc `show` + rectangle, une fois ─────────────────────────────────────
+// Les TROIS familles d'éléments de HUD — barres d'info, portrait, cadre de
+// cible — persistent le même quintuplet sous leur propre préfixe, et toutes
+// trois portent un `ro::HudRect`.
+//
+// 🔴 Le relevé de doublons n'en appariait que DEUX : la famille « portrait »
+// porte deux champs de plus (arrondi, échelle de texte), ce qui la faisait
+// passer sous le seuil de similarité. La copie qu'un relevé ne montre pas est la
+// plus tenace — c'est celle qu'on ne corrige jamais.
+//
+// ⚠ ET UNE DIVERGENCE RÉELLE EST CORRIGÉE AU PASSAGE. `ReadBarLayout` prenait
+// `true` EN DUR comme défaut de `show`, là où les deux autres reprennent la
+// valeur COURANTE. Sans effet visible aujourd'hui — les sept barres sont livrées
+// visibles — mais une huitième barre livrée MASQUÉE serait revenue visible au
+// premier chargement de réglages, et rien ne l'aurait signalé.
+void ReadRectBlock(const YAML::Node& ui, const std::string& prefix, bool* show,
+                   ro::HudRect* rect) {
+  *show   = ui[prefix + "show"].as<bool>(*show);
+  rect->x = ui[prefix + "x"].as<int>(rect->x);
+  rect->y = ui[prefix + "y"].as<int>(rect->y);
+  rect->w = ui[prefix + "w"].as<int>(rect->w);
+  rect->h = ui[prefix + "h"].as<int>(rect->h);
+}
+
+// ⚠ L'ORDRE DES CLÉS est celui des trois écritures d'origine : le premier yaml
+// réécrit après ce changement ne doit pas différer de l'ancien.
+void WriteRectBlock(YAML::Emitter& out, const std::string& prefix, bool show,
+                    const ro::HudRect& rect) {
+  out << YAML::Key << (prefix + "show") << YAML::Value << show
+      << YAML::Key << (prefix + "x")    << YAML::Value << rect.x
+      << YAML::Key << (prefix + "y")    << YAML::Value << rect.y
+      << YAML::Key << (prefix + "w")    << YAML::Value << rect.w
+      << YAML::Key << (prefix + "h")    << YAML::Value << rect.h;
 }
 
 }  // namespace
@@ -519,11 +555,7 @@ void ReadBarLayout(const YAML::Node& ui) {
     const std::string prefix =
         std::string("expbar_") + BasicInfo::kBarKeys[i] + "_";
     auto& bar = basic_info->bars_[i];
-    bar.show = ui[prefix + "show"].as<bool>(true);
-    bar.rect.x = ui[prefix + "x"].as<int>(bar.rect.x);
-    bar.rect.y = ui[prefix + "y"].as<int>(bar.rect.y);
-    bar.rect.w = ui[prefix + "w"].as<int>(bar.rect.w);
-    bar.rect.h = ui[prefix + "h"].as<int>(bar.rect.h);
+    ReadRectBlock(ui, prefix, &bar.show, &bar.rect);
     ReadArgbKey(ui, prefix + "color", bar.fill);
   }
 }
@@ -535,11 +567,7 @@ void WriteBarLayout(YAML::Emitter& out) {
     const std::string prefix =
         std::string("expbar_") + BasicInfo::kBarKeys[i] + "_";
     const auto& bar = basic_info->bars_[i];
-    out << YAML::Key << (prefix + "show") << YAML::Value << bar.show
-        << YAML::Key << (prefix + "x")    << YAML::Value << bar.rect.x
-        << YAML::Key << (prefix + "y")    << YAML::Value << bar.rect.y
-        << YAML::Key << (prefix + "w")    << YAML::Value << bar.rect.w
-        << YAML::Key << (prefix + "h")    << YAML::Value << bar.rect.h;
+    WriteRectBlock(out, prefix, bar.show, bar.rect);
     WriteArgbKey(out, prefix + "color", bar.fill);
   }
 }
@@ -553,11 +581,7 @@ void ReadPortraitLayout(const YAML::Node& ui) {
     const std::string prefix =
         std::string("portrait_") + BasicInfo::kPortKeys[i] + "_";
     auto& element = basic_info->ports_[i];
-    element.show     = ui[prefix + "show"].as<bool>(element.show);
-    element.rect.x   = ui[prefix + "x"].as<int>(element.rect.x);
-    element.rect.y   = ui[prefix + "y"].as<int>(element.rect.y);
-    element.rect.w   = ui[prefix + "w"].as<int>(element.rect.w);
-    element.rect.h   = ui[prefix + "h"].as<int>(element.rect.h);
+    ReadRectBlock(ui, prefix, &element.show, &element.rect);
     element.rounding = ui[prefix + "rounding"].as<float>(element.rounding);
     element.text_scale = ui[prefix + "tscale"].as<float>(element.text_scale);
     ReadArgbKey(ui, prefix + "bg", element.bg);
@@ -572,12 +596,8 @@ void WritePortraitLayout(YAML::Emitter& out) {
     const std::string prefix =
         std::string("portrait_") + BasicInfo::kPortKeys[i] + "_";
     const auto& element = basic_info->ports_[i];
-    out << YAML::Key << (prefix + "show")     << YAML::Value << element.show
-        << YAML::Key << (prefix + "x")        << YAML::Value << element.rect.x
-        << YAML::Key << (prefix + "y")        << YAML::Value << element.rect.y
-        << YAML::Key << (prefix + "w")        << YAML::Value << element.rect.w
-        << YAML::Key << (prefix + "h")        << YAML::Value << element.rect.h
-        << YAML::Key << (prefix + "rounding") << YAML::Value << element.rounding
+    WriteRectBlock(out, prefix, element.show, element.rect);
+    out << YAML::Key << (prefix + "rounding") << YAML::Value << element.rounding
         << YAML::Key << (prefix + "tscale")   << YAML::Value << element.text_scale;
     WriteArgbKey(out, prefix + "bg", element.bg);
     WriteArgbKey(out, prefix + "fg", element.fg);
@@ -591,11 +611,7 @@ void ReadTargetLayout(const YAML::Node& ui) {
     const std::string prefix =
         std::string("target_") + TargetFrame::kElemKeys[i] + "_";
     auto& elem = target_frame->elems_[i];
-    elem.show = ui[prefix + "show"].as<bool>(elem.show);
-    elem.rect.x = ui[prefix + "x"].as<int>(elem.rect.x);
-    elem.rect.y = ui[prefix + "y"].as<int>(elem.rect.y);
-    elem.rect.w = ui[prefix + "w"].as<int>(elem.rect.w);
-    elem.rect.h = ui[prefix + "h"].as<int>(elem.rect.h);
+    ReadRectBlock(ui, prefix, &elem.show, &elem.rect);
     ReadArgbKey(ui, prefix + "bg", elem.bg);
     ReadArgbKey(ui, prefix + "fg", elem.fg);
   }
@@ -608,11 +624,7 @@ void WriteTargetLayout(YAML::Emitter& out) {
     const std::string prefix =
         std::string("target_") + TargetFrame::kElemKeys[i] + "_";
     const auto& elem = target_frame->elems_[i];
-    out << YAML::Key << (prefix + "show") << YAML::Value << elem.show
-        << YAML::Key << (prefix + "x")    << YAML::Value << elem.rect.x
-        << YAML::Key << (prefix + "y")    << YAML::Value << elem.rect.y
-        << YAML::Key << (prefix + "w")    << YAML::Value << elem.rect.w
-        << YAML::Key << (prefix + "h")    << YAML::Value << elem.rect.h;
+    WriteRectBlock(out, prefix, elem.show, elem.rect);
     WriteArgbKey(out, prefix + "bg", elem.bg);
     WriteArgbKey(out, prefix + "fg", elem.fg);
   }
