@@ -71,6 +71,33 @@ void BodyPalettePath(int color, int job, char* out, size_t out_size) {
                 IsDoramJob(job) ? RaceFolder(job) : kBodyPalFolder, color);
 }
 
+// 🔴 LA RACE SE LIT DANS LE CHEMIN DU SPRITE, et non depuis la classe. C'est ce
+// qui permet de servir un AUTRE joueur, dont on n'a pas la classe : le client a
+// déjà résolu son sprite, et le dossier de race y est.
+// Gabarit : `data\sprite\<race>\몸통\<sexe>\<nom>`.
+//
+// L'extraction était écrite deux fois — corps et cheveux — à l'identique. Ce qui
+// SUIT, en revanche, diffère vraiment : le corps compose un chemin absolu, les
+// cheveux un chemin relatif dont la FORME change avec la race. Seule la partie
+// commune est partagée ; le reste reste écrit là où il se lit.
+//
+// `out` reçoit le dossier de race, false si le chemin n'a pas la forme attendue
+// (ou si le dossier ne tient pas — 32 octets suffisent largement).
+namespace {
+bool RaceFolderFromSpritePath(const char* spr, char* out, size_t out_size) {
+  const char* p = std::strstr(spr, "sprite\\");
+  if (!p) return false;
+  p += 7;
+  const char* fin = std::strchr(p, '\\');
+  if (!fin) return false;
+  const size_t n = static_cast<size_t>(fin - p);
+  if (n == 0 || n >= out_size) return false;
+  std::memcpy(out, p, n);
+  out[n] = '\0';
+  return true;
+}
+}  // namespace
+
 bool BodyPalettePathForSprite(const char* spr_base, int color, char* out,
                               size_t out_size) {
   if (!out || out_size == 0) return false;
@@ -78,23 +105,11 @@ bool BodyPalettePathForSprite(const char* spr_base, int color, char* out,
   if (!spr_base || !*spr_base || color < 0) return false;
   static constexpr char kBodyPalFolder[] = "\xB8\xF6";  // 몸
 
-  // 🔴 La race se lit DANS le chemin du sprite, et non depuis la classe. C'est
-  // ce qui permet de servir un AUTRE joueur, dont on n'a pas la classe : le
-  // client a déjà résolu son sprite, et le dossier de race y est. Gabarit :
-  // `data\sprite\<race>\몸통\<sexe>\<nom>`.
-  const char* p = std::strstr(spr_base, "sprite\\");
-  if (!p) return false;
-  p += 7;
-  const char* fin = std::strchr(p, '\\');
-  if (!fin) return false;
-  const size_t n = static_cast<size_t>(fin - p);
+  char race[32];
+  if (!RaceFolderFromSpritePath(spr_base, race, sizeof(race))) return false;
 
   // Humain (ou race inconnue) : le dossier de palettes UNISEXE `몸`. Doram : son
   // propre dossier, dont l'indexation n'a rien de commun avec l'humaine.
-  char race[32];
-  if (n >= sizeof(race)) return false;
-  std::memcpy(race, p, n);
-  race[n] = '\0';
   const bool humain = std::memcmp(race, kRaceHumanFallback, kRaceLen) == 0;
   std::snprintf(out, out_size, "data\\palette\\%s\\body_%d.pal",
                 humain ? kBodyPalFolder : race, color);
@@ -108,19 +123,8 @@ bool HairPaletteRelForSprite(const char* head_spr, int color, char* out,
   if (!head_spr || !*head_spr || color < 0) return false;
   static constexpr char kHairPalFolder[] = "\xB8\xD3\xB8\xAE";  // 머리
 
-  // Race lue dans le chemin du sprite de TÊTE, pour la même raison que pour le
-  // corps : on n'a pas la classe d'un autre joueur, mais le client a déjà résolu
-  // son sprite.
-  const char* p = std::strstr(head_spr, "sprite\\");
-  if (!p) return false;
-  p += 7;
-  const char* fin = std::strchr(p, '\\');
-  if (!fin) return false;
-  const size_t n = static_cast<size_t>(fin - p);
   char race[32];
-  if (n >= sizeof(race)) return false;
-  std::memcpy(race, p, n);
-  race[n] = '\0';
+  if (!RaceFolderFromSpritePath(head_spr, race, sizeof(race))) return false;
 
   // 🔴 Chemin RELATIF à `palette\` : c'est sous cette forme que l'acteur porte
   // le sien, le préfixe de type étant recollé par le chargeur de ressources.

@@ -2536,6 +2536,98 @@ bool RoToggleButton(const char* label, bool active, float w, float h) {
   return clicked;
 }
 
+// ── Le corps commun des deux boutons ─────────────────────────────────────────
+// `RoButton` et `RoSmallButton` partageaient une SOIXANTAINE de lignes à
+// l'identique — item invisible, états survol/enfoncé, grisage de BeginDisabled,
+// choix du triplet d'art, découpe en trois tranches, repli à plat, libellé,
+// tooltip de troncature — soit 2 750 caractères recopiés. Tout ce qui les
+// distingue vraiment tient dans la structure ci-dessous, et ça se lit d'un coup
+// d'œil au lieu de se chercher en diff.
+//
+// ⚠ Les cinq écarts sont RÉELS et chacun a sa raison, écrite au point d'usage :
+// la marge de largeur auto, la marge de place du libellé, la descente de l'art,
+// l'ajustement vertical du texte, et l'enfoncement du libellé.
+struct ButtonSkin {
+  const SkinTex* l[3];  // [0] repos, [1] survol, [2] enfoncé — tranche GAUCHE
+  const SkinTex* m[3];  // … MILIEU (étirée)
+  const SkinTex* r[3];  // … DROITE
+  float cap_l = 0.0f;   // largeur de la tranche gauche, à l'échelle
+  float cap_r = 0.0f;
+  float native_h = 0.0f;
+  float auto_pad = 0.0f;     // largeur auto = texte + caps + ceci
+  float room_margin = 0.0f;  // place du libellé = entre-caps - ceci
+  float art_drop_y = 0.0f;   // l'art descend de tant sous le haut de l'item
+  float text_dy = 0.0f;      // ajustement vertical du libellé
+  bool  press_sinks = false;      // le libellé descend d'1 px quand enfoncé
+  bool  tighten_sameline = false; // resserrer contre le widget précédent
+};
+
+bool DrawSkinnedButton(const char* label, float w, float h, const ButtonSkin& s) {
+  const ImVec2 ts = ImGui::CalcTextSize(label, nullptr, true);
+  if (w <= 0.0f) w = ts.x + s.cap_l + s.cap_r + s.auto_pad;
+  if (h <= 0.0f) h = s.native_h;
+  // Largeur imposée par l'appelant : elle a pu être calculée pour le français
+  // alors qu'on affiche l'anglais ou l'espagnol. Place disponible = l'espace
+  // PHYSIQUE entre les deux caps, moins `room_margin`.
+  const FittedLabel fit =
+      FitButtonLabel(label, ButtonLabelRoom(w, s.cap_l, s.cap_r, s.room_margin));
+
+  if (s.tighten_sameline && ImGui::GetCurrentWindow()->DC.IsSameLine)
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() - Px(3.0f));
+
+  ImGui::PushID(label);
+  const bool clicked = ImGui::InvisibleButton("##rb", ImVec2(w, h + s.art_drop_y));
+  const bool hovered = ImGui::IsItemHovered();
+  const bool held = ImGui::IsItemActive() || g_force_button_active;
+  if (hovered) SetHoverCursor(kRoCursorHand);
+  const ImVec2 p0(ImGui::GetItemRectMin().x,
+                  ImGui::GetItemRectMin().y + s.art_drop_y);
+  const ImVec2 p1 = ImGui::GetItemRectMax();
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+
+  // Etat desactive (BeginDisabled) : ImGui ne modifie PAS le visuel des widgets
+  // dessines main -> on grise nous-memes (art estompe + texte grise).
+  const bool disabled =
+      ImGui::GetCurrentContext() &&
+      (ImGui::GetCurrentContext()->CurrentItemFlags & ImGuiItemFlags_Disabled) != 0;
+  const ImU32 tint = disabled ? IM_COL32(255, 255, 255, 90) : IM_COL32_WHITE;
+
+  const int state = held ? 2 : (hovered ? 1 : 0);
+  const SkinTex* l = s.l[state];
+  const SkinTex* m = s.m[state];
+  const SkinTex* r = s.r[state];
+
+  if (l->tex) {
+    dl->AddCallback(ImCb_PointFilter, nullptr);
+    BlitStretch(dl, *l, p0, ImVec2(p0.x + s.cap_l, p1.y), tint);
+    BlitStretch(dl, *r, ImVec2(p1.x - s.cap_r, p0.y), p1, tint);
+    BlitStretch(dl, *m, ImVec2(p0.x + s.cap_l, p0.y), ImVec2(p1.x - s.cap_r, p1.y),
+                tint);
+    dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+  } else {
+    dl->AddRectFilled(p0, p1,
+                      disabled ? IM_COL32(210, 216, 228, 110)
+                               : IM_COL32(210, 216, 228, 255),
+                      2.0f);
+    dl->AddRect(p0, p1, IM_COL32(96, 112, 152, 255), 2.0f);
+  }
+
+  // Centrage sur les dimensions RETENUES (fit.size = hauteur de ligne à cette
+  // taille) : identique à `ts` quand le libellé n'a pas eu à être réduit.
+  const ImVec2 tp(p0.x + (w - fit.width) * 0.5f,
+                  p0.y + (h - fit.size) * 0.5f + s.text_dy +
+                      ((held && s.press_sinks) ? Px(1.0f) : 0.0f));
+  // Bouton enfoncé : libellé en gras. L'art « press » se distingue mal de l'état
+  // survolé sur les petites tailles, la graisse tranche tout de suite.
+  DrawButtonLabel(dl, tp,
+                  disabled ? ImGui::GetColorU32(ImGuiCol_TextDisabled)
+                           : ImGui::GetColorU32(ImGuiCol_Text),
+                  fit, held && !disabled);
+  ImGui::PopID();
+  TooltipIfTruncated(fit, label);
+  return clicked;
+}
+
 bool RoButton(const char* label, float w, float h) {
   EnsureTex("basic_interface\\btn_out_left.bmp",    skin::kBtnOutLeft,    g_btn_out_l);
   EnsureTex("basic_interface\\btn_out_mid.bmp",     skin::kBtnOutMid,     g_btn_out_m);
@@ -2547,68 +2639,21 @@ bool RoButton(const char* label, float w, float h) {
   EnsureTex("basic_interface\\btn_press_mid.bmp",   skin::kBtnPressMid,   g_btn_press_m);
   EnsureTex("basic_interface\\btn_press_right.bmp", skin::kBtnPressRight, g_btn_press_r);
 
-  const float capL = Px((float)skin::kBtnOutLeft.w);
-  const float capR = Px((float)skin::kBtnOutRight.w);
-  const float nativeH = Px((float)skin::kBtnOutLeft.h);
-  const ImVec2 ts = ImGui::CalcTextSize(label, nullptr, true);
-  if (w <= 0.0f) w = ts.x + capL + capR + Px(12.0f);
-  if (h <= 0.0f) h = nativeH;
-  // Largeur imposée par l'appelant : elle a pu être calculée pour le français alors
-  // qu'on affiche l'anglais ou l'espagnol. Place disponible = l'espace PHYSIQUE entre
-  // les deux caps, moins 2 px pour ne pas coller à l'art. Surtout PAS les 12 px de
-  // marge de la largeur auto : c'est du confort, pas de l'encombrement — les décompter
-  // ici rapetissait des libellés qui tenaient très bien.
-  const FittedLabel fit =
-      FitButtonLabel(label, ButtonLabelRoom(w, capL, capR, Px(2.0f)));
-
-  ImGui::PushID(label);
-  const bool clicked = ImGui::InvisibleButton("##rb", ImVec2(w, h));
-  const bool hovered = ImGui::IsItemHovered();
-  const bool held = ImGui::IsItemActive() || g_force_button_active;
-  if (hovered) SetHoverCursor(kRoCursorHand);
-  const ImVec2 p0 = ImGui::GetItemRectMin();
-  const ImVec2 p1 = ImGui::GetItemRectMax();
-  ImDrawList* dl = ImGui::GetWindowDrawList();
-
-  // Etat desactive (BeginDisabled) : ImGui ne modifie PAS le visuel des widgets
-  // dessines main -> on grise nous-memes (art estompe + texte grise).
-  const bool disabled =
-      ImGui::GetCurrentContext() &&
-      (ImGui::GetCurrentContext()->CurrentItemFlags & ImGuiItemFlags_Disabled) != 0;
-  const ImU32 tint = disabled ? IM_COL32(255, 255, 255, 90) : IM_COL32_WHITE;
-
-  const SkinTex *l, *m, *r;
-  if (held) { l = &g_btn_press_l; m = &g_btn_press_m; r = &g_btn_press_r; }
-  else if (hovered) { l = &g_btn_over_l; m = &g_btn_over_m; r = &g_btn_over_r; }
-  else { l = &g_btn_out_l; m = &g_btn_out_m; r = &g_btn_out_r; }
-
-  if (l->tex) {
-    dl->AddCallback(ImCb_PointFilter, nullptr);
-    BlitStretch(dl, *l, p0, ImVec2(p0.x + capL, p1.y), tint);
-    BlitStretch(dl, *r, ImVec2(p1.x - capR, p0.y), p1, tint);
-    BlitStretch(dl, *m, ImVec2(p0.x + capL, p0.y), ImVec2(p1.x - capR, p1.y), tint);
-    dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
-  } else {
-    dl->AddRectFilled(p0, p1,
-                      disabled ? IM_COL32(210, 216, 228, 110)
-                               : IM_COL32(210, 216, 228, 255),
-                      2.0f);
-    dl->AddRect(p0, p1, IM_COL32(96, 112, 152, 255), 2.0f);
-  }
-
-  // Centrage sur les dimensions RETENUES (fit.size = hauteur de ligne à cette
-  // taille) : identique à ts quand le libellé n'a pas eu à être réduit.
-  const ImVec2 tp(p0.x + (w - fit.width) * 0.5f,
-                  p0.y + (h - fit.size) * 0.5f + (held ? Px(1.0f) : 0.0f));
-  // Bouton enfoncé : libellé en gras. L'art « press » se distingue mal de l'état
-  // survolé sur les petites tailles, la graisse tranche tout de suite.
-  DrawButtonLabel(dl, tp,
-                  disabled ? ImGui::GetColorU32(ImGuiCol_TextDisabled)
-                           : ImGui::GetColorU32(ImGuiCol_Text),
-                  fit, held && !disabled);
-  ImGui::PopID();
-  TooltipIfTruncated(fit, label);
-  return clicked;
+  ButtonSkin s;
+  s.l[0] = &g_btn_out_l;    s.m[0] = &g_btn_out_m;    s.r[0] = &g_btn_out_r;
+  s.l[1] = &g_btn_over_l;   s.m[1] = &g_btn_over_m;   s.r[1] = &g_btn_over_r;
+  s.l[2] = &g_btn_press_l;  s.m[2] = &g_btn_press_m;  s.r[2] = &g_btn_press_r;
+  s.cap_l    = Px((float)skin::kBtnOutLeft.w);
+  s.cap_r    = Px((float)skin::kBtnOutRight.w);
+  s.native_h = Px((float)skin::kBtnOutLeft.h);
+  // 12 px de confort dans la largeur AUTO — mais surtout PAS retirés de la place
+  // du libellé plus bas : c'est du confort, pas de l'encombrement, et les
+  // décompter là rapetissait des libellés qui tenaient très bien.
+  s.auto_pad = Px(12.0f);
+  // 2 px pour que le texte ne colle pas à l'art.
+  s.room_margin = Px(2.0f);
+  s.press_sinks = true;  // le libellé suit l'art qui s'enfonce
+  return DrawSkinnedButton(label, w, h, s);
 }
 // Petit bouton (ex. pour les + - x ) : même design que RoButton mais plus petit
 bool RoSmallButton(const char* label, float w, float h) {
@@ -2622,80 +2667,34 @@ bool RoSmallButton(const char* label, float w, float h) {
   EnsureTex("basic_interface\\sbtn_press_mid.bmp",   skin::ksBtnPressMid,   g_sbtn_press_m);
   EnsureTex("basic_interface\\sbtn_press_right.bmp", skin::ksBtnPressRight, g_sbtn_press_r);
 
-  const float capL = Px((float)skin::ksBtnOutLeft.w);
-  const float capR = Px((float)skin::ksBtnOutRight.w);
-  const float nativeH = Px((float)skin::ksBtnOutLeft.h);
-  const ImVec2 ts = ImGui::CalcTextSize(label, nullptr, true);
-  if (w <= 0.0f) w = ts.x + capL + capR; // +12px pour RoButton, pas pour le petit bouton
-  if (h <= 0.0f) h = nativeH;
-  // Comme RoButton : un libellé traduit plus long que le français ne déborde pas de
-  // l'art, il rétrécit (puis se coupe). Pas de marge de 2 px retirée ici, contrairement
-  // au grand bouton : la largeur auto du petit vaut PILE texte + caps, en enlever
-  // quoi que ce soit rapetisserait tous les petits boutons en taille automatique.
-  const FittedLabel fit = FitButtonLabel(label, ButtonLabelRoom(w, capL, capR, 0.0f));
-
-  // Resserre le bouton contre le widget qui le précède SUR LA MÊME LIGNE (le skin
-  // RO a déjà sa propre marge dans l'art, l'ItemSpacing d'ImGui l'éloigne trop).
-  // Uniquement en SameLine : quand le bouton OUVRE la ligne, il n'y a rien à
-  // resserrer et ces 3 px le font mordre sur la marge gauche — hors clip rect de
-  // la fenêtre (ou de la colonne), donc rogné à gauche.
-  if (ImGui::GetCurrentWindow()->DC.IsSameLine)
-    ImGui::SetCursorPosX(ImGui::GetCursorPosX() - Px(3.0f));
-
+  ButtonSkin s;
+  s.l[0] = &g_sbtn_out_l;    s.m[0] = &g_sbtn_out_m;    s.r[0] = &g_sbtn_out_r;
+  s.l[1] = &g_sbtn_over_l;   s.m[1] = &g_sbtn_over_m;   s.r[1] = &g_sbtn_over_r;
+  s.l[2] = &g_sbtn_press_l;  s.m[2] = &g_sbtn_press_m;  s.r[2] = &g_sbtn_press_r;
+  s.cap_l    = Px((float)skin::ksBtnOutLeft.w);
+  s.cap_r    = Px((float)skin::ksBtnOutRight.w);
+  s.native_h = Px((float)skin::ksBtnOutLeft.h);
+  // ⚠ Pas de marge de largeur auto, contrairement au grand bouton : la largeur
+  // auto du petit vaut PILE texte + caps. Pas de marge de place non plus — en
+  // enlever quoi que ce soit rapetisserait tous les petits boutons automatiques.
+  s.auto_pad = 0.0f;
+  s.room_margin = 0.0f;
   // Le petit bouton est plus court que du texte : on le pose 3 px sous le haut
   // de la ligne pour le recentrer. Surtout PAS en déplaçant le curseur Y : quand
   // le bouton OUVRE la ligne, ce décalage devient l'origine de la ligne, et les
   // boutons suivants (posés en SameLine, qui les ramène à cette origine) se
-  // décalent encore de 3 px — le premier bouton apparaissait alors 3 px plus
-  // haut que ses voisins. On réserve donc un item 3 px plus haut que l'art et on
-  // dessine l'art dans sa partie basse : l'origine de la ligne reste intacte.
-  const float art_drop_y = Px(3.0f);
-
-  ImGui::PushID(label);
-  const bool clicked = ImGui::InvisibleButton("##rb", ImVec2(w, h + art_drop_y));
-  const bool hovered = ImGui::IsItemHovered();
-  const bool held = ImGui::IsItemActive() || g_force_button_active;
-  if (hovered) SetHoverCursor(kRoCursorHand);
-  const ImVec2 p0(ImGui::GetItemRectMin().x,
-                  ImGui::GetItemRectMin().y + art_drop_y);
-  const ImVec2 p1 = ImGui::GetItemRectMax();
-  ImDrawList* dl = ImGui::GetWindowDrawList();
-
-  // Etat desactive (BeginDisabled) : ImGui ne modifie PAS le visuel des widgets
-  // dessines main -> on grise nous-memes (art estompe + texte grise).
-  const bool disabled =
-      ImGui::GetCurrentContext() &&
-      (ImGui::GetCurrentContext()->CurrentItemFlags & ImGuiItemFlags_Disabled) != 0;
-  const ImU32 tint = disabled ? IM_COL32(255, 255, 255, 90) : IM_COL32_WHITE;
-
-  const SkinTex *l, *m, *r;
-  if (held) { l = &g_sbtn_press_l; m = &g_sbtn_press_m; r = &g_sbtn_press_r; }
-  else if (hovered) { l = &g_sbtn_over_l; m = &g_sbtn_over_m; r = &g_sbtn_over_r; }
-  else { l = &g_sbtn_out_l; m = &g_sbtn_out_m; r = &g_sbtn_out_r; }
-
-  if (l->tex) {
-    dl->AddCallback(ImCb_PointFilter, nullptr);
-    BlitStretch(dl, *l, p0, ImVec2(p0.x + capL, p1.y), tint);
-    BlitStretch(dl, *r, ImVec2(p1.x - capR, p0.y), p1, tint);
-    BlitStretch(dl, *m, ImVec2(p0.x + capL, p0.y), ImVec2(p1.x - capR, p1.y), tint);
-    dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
-  } else {
-    dl->AddRectFilled(p0, p1,
-                      disabled ? IM_COL32(210, 216, 228, 110)
-                               : IM_COL32(210, 216, 228, 255),
-                      2.0f);
-    dl->AddRect(p0, p1, IM_COL32(96, 112, 152, 255), 2.0f);
-  }
-
-  const ImVec2 tp(p0.x + (w - fit.width) * 0.5f,
-                  p0.y + (h - fit.size) * 0.5f - Px(1.0f));  // -1 pour centrer le texte correctement dans la case
-  DrawButtonLabel(dl, tp,
-                  disabled ? ImGui::GetColorU32(ImGuiCol_TextDisabled)
-                           : ImGui::GetColorU32(ImGuiCol_Text),
-                  fit, held && !disabled);
-  ImGui::PopID();
-  TooltipIfTruncated(fit, label);
-  return clicked;
+  // décalent encore de 3 px — le premier apparaissait alors 3 px plus haut que
+  // ses voisins. On réserve donc un item 3 px plus haut que l'art et on dessine
+  // l'art dans sa partie basse : l'origine de la ligne reste intacte.
+  s.art_drop_y = Px(3.0f);
+  s.text_dy = -Px(1.0f);  // recentre le libellé dans la case
+  // Resserre le bouton contre le widget qui le précède SUR LA MÊME LIGNE (le
+  // skin RO a déjà sa propre marge dans l'art, l'ItemSpacing d'ImGui l'éloigne
+  // trop). Uniquement en SameLine : quand le bouton OUVRE la ligne, il n'y a
+  // rien à resserrer et ces 3 px le font mordre sur la marge gauche — hors clip
+  // rect de la fenêtre (ou de la colonne), donc rogné à gauche.
+  s.tighten_sameline = true;
+  return DrawSkinnedButton(label, w, h, s);
 }
 
 bool RoCheckbox(const char* label, bool* v) {
