@@ -1238,11 +1238,15 @@ class ChatWindow : public Plugin {
   // Ce qu'un fragment DÉSIGNE, dans le vocabulaire commun des liens.
   links::Target TargetOf(const Run& run) const;
   links::Target TargetOf(const PendingLink& link) const;
-  // Le lien visé par le menu contextuel ouvert. Il est mis de côté au clic droit
-  // et survit jusqu'à la frame suivante — c'est là que le popup s'ouvre. Le menu
-  // lui-même est celui de TOUT LE CLIENT (features/link_gesture.h) : la chatbox
-  // n'a pas son menu à elle.
-  links::Target link_menu_;
+  // Le lien visé par le menu contextuel ouvert : mis de côté au clic droit, le
+  // popup s'ouvrant hors du child qui l'a demandé. Le menu lui-même est celui de
+  // TOUT LE CLIENT (features/link_gesture.h) : la chatbox n'a pas le sien.
+  //
+  // 🔴 DEUX ancres et pas une : le log et la barre de saisie ont chacun leur
+  // popup, et une ancre partagée ferait consommer le drapeau de l'un par le
+  // `Draw` de l'autre — celui qui dessine en premier gagnerait.
+  links::MenuAnchor link_menu_;   // le log
+  links::MenuAnchor input_menu_;  // les pastilles de la barre de saisie
 
   char search_[64] = {};
   char input_[256] = {};        // ligne de saisie (UTF-8)

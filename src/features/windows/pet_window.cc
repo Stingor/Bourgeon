@@ -202,12 +202,9 @@ bool ReadInfoCards(void* info, uint32_t* out4) {
 // hache avec la pile d'ids courante) : on met la cible de côté ici et le popup
 // est ouvert en fin de panneau. Même montage que la table des drops de la fiche
 // de monstre.
-links::Target g_link_menu;
-bool          g_link_menu_open = false;
+links::MenuAnchor g_link_menu;
 
 inline ImTextureID TexId(void* t) { return reinterpret_cast<ImTextureID>(t); }
-
-const ImVec4 kLinkBlue(0.10f, 0.30f, 0.85f, 1.0f);
 
 // Une CELLULE d'objet cliquable : icône optionnelle + libellé, avec la totale —
 // aperçu de description au survol, description au clic gauche, menu contextuel
@@ -223,37 +220,15 @@ const ImVec4 kLinkBlue(0.10f, 0.30f, 0.85f, 1.0f);
 void ItemLinkCell(uint32_t itid, const char* shown, const ImVec4& color,
                   bool with_icon) {
   ImGui::PushID(static_cast<int>(itid));
-  ImGui::BeginGroup();
-  if (with_icon) {
-    const float side = ImGui::GetTextLineHeight();
-    const ro::IconTex ic = ro::ItemIcon(itid, 1);
-    if (ic.tex) ImGui::Image(TexId(ic.tex), ImVec2(side, side));
-    else        ImGui::Dummy(ImVec2(side, side));
-    ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
-  }
-  ImGui::TextColored(color, "%s", (shown && shown[0]) ? shown : "?");
-  ImGui::EndGroup();
-
-  // Après EndGroup, « le dernier item » EST le groupe : survol et clics portent
-  // sur l'icône ET le texte. Ni Image ni Text ne consomment d'entrée.
-  const bool hovered = ImGui::IsItemHovered();
-  if (hovered) {
-    ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-    const ImVec2 mn = ImGui::GetItemRectMin(), mx = ImGui::GetItemRectMax();
-    ImGui::GetWindowDrawList()->AddLine(ImVec2(mn.x, mx.y), ImVec2(mx.x, mx.y),
-                                        ImGui::GetColorU32(color));
-  }
   // Le libellé de la CIBLE est le nom RÉEL de l'objet, pas le texte affiché :
   // c'est lui qui coiffe le menu et qui part dans le chat, et « MASTERING »
   // n'aurait rien dit de l'œuf qu'on aurait collé.
   const char* real = itemcell::NameById(itid);
-  const links::Target target =
-      links::FromItemId(itid, (real && real[0]) ? real : shown);
-  if (hovered) links::HoverPreview(target);
-  if (links::Gestures(target, hovered)) {
-    g_link_menu = target;
-    g_link_menu_open = true;
-  }
+  links::LabelOpts opts;
+  opts.Color(color);
+  if (with_icon) opts.Icon(itid);
+  links::Label(links::FromItemId(itid, (real && real[0]) ? real : shown), shown,
+               g_link_menu, opts);
   ImGui::PopID();
 }
 
@@ -870,13 +845,13 @@ void PetWindow::DrawEvolutionPanel(const rag::pet::State& pet, int src_egg) {
   char src_copy[64];
   std::snprintf(src_copy, sizeof(src_copy), "%s",
                 (src_name && src_name[0]) ? src_name : "?");
-  ItemLinkCell(static_cast<uint32_t>(src_egg), src_copy, kLinkBlue, false);
+  ItemLinkCell(static_cast<uint32_t>(src_egg), src_copy, links::LinkColor(), false);
   ImGui::SameLine();
   ImGui::TextColored(kBlack, "  →  ");
   ImGui::SameLine();
   const char* dst_name = rag::pet::MobDisplayNameUtf8(dst_mob);
   ItemLinkCell(static_cast<uint32_t>(evo_target_),
-               (dst_name && dst_name[0]) ? dst_name : "?", kLinkBlue, false);
+               (dst_name && dst_name[0]) ? dst_name : "?", links::LinkColor(), false);
 
   // ── Les matériaux ────────────────────────────────────────────────────────
   // 🔴 Ce que la fenêtre native ne disait pas : elle listait « Yggdrasil Leaf
@@ -900,7 +875,7 @@ void PetWindow::DrawEvolutionPanel(const rag::pet::State& pet, int src_egg) {
       // qui bloque prime sur signaler que c'est cliquable — le soulignement au
       // survol et le curseur main le disent déjà.
       ImGui::Indent(8.0f);
-      ItemLinkCell(itid, label, ok ? kLinkBlue : kRed, /*with_icon=*/true);
+      ItemLinkCell(itid, label, ok ? links::LinkColor() : kRed, /*with_icon=*/true);
       ImGui::Unindent(8.0f);
     }
   }
@@ -941,11 +916,7 @@ void PetWindow::DrawEvolutionPanel(const rag::pet::State& pet, int src_egg) {
   // l'identifiant d'un popup se hache avec la pile d'ids courante, et un
   // `OpenPopup` posé sous un `PushID(itid)` ne serait pas retrouvé par un
   // `DrawMenu` appelé ailleurs.
-  if (g_link_menu_open) {
-    g_link_menu_open = false;
-    ImGui::OpenPopup("##pet_link_menu");
-  }
-  links::DrawMenu("##pet_link_menu", g_link_menu);
+  g_link_menu.Draw("##pet_link_menu");
 }
 
 // ── La liste d'éclosion (remplace UIPetEggListWnd, id 90) ───────────────────

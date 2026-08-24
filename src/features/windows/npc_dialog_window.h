@@ -295,10 +295,10 @@ class NpcDialogWindow : public Plugin {
   std::unordered_map<int, ro::MobSpriteRes> mob_sprites_;
 
   // ── Menu contextuel d'un lien ─────────────────────────────────────────────
-  // La cible est mise de côté au clic droit et le popup ouvert à la frame
-  // suivante, dans la pile d'ID de la fenêtre (même mécanique que la chatbox).
-  links::Target link_menu_;
-  bool          link_menu_request_ = false;
+  // La cible est mise de côté au clic droit — dans le child du texte — et le
+  // popup ouvert plus bas, dans la pile d'ID de la FENÊTRE (même mécanique que
+  // la chatbox).
+  links::MenuAnchor link_menu_;
 
   bool       has_next_  = false;      // bouton [Next] demandé (WAIT)
   bool       has_close_ = false;      // bouton [Close] demandé (CLOSE)

@@ -348,10 +348,9 @@ class NavigationWindow : public Plugin {
   // le menu, Maj+clic = le lien dans le chat. Le clic GAUCHE reste la sélection
   // — c'est le métier du widget, et le volet de détail en dépend.
   links::Target TargetOf(const Entry& entry) const;
-  // Cible du clic droit, mise de côté : le popup s'ouvre à la frame suivante et
-  // hors de l'arbre (l'identifiant d'un popup se hache avec la pile d'ids).
-  links::Target row_menu_;
-  bool          row_menu_open_ = false;
+  // Cible du clic droit, mise de côté : le popup s'ouvre plus bas et hors de
+  // l'arbre (l'identifiant d'un popup se hache avec la pile d'ids).
+  links::MenuAnchor row_menu_;
 
   void DrawResultsPane();
   void DrawDetailPane();

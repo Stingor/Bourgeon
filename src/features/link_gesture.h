@@ -29,6 +29,7 @@
 #include <string>
 
 #include "features/item_cell.h"  // itemcell::ChatLink
+#include "imgui.h"               // ImVec4 (la couleur d'un lien, cf. `LabelOpts`)
 
 namespace links {
 
@@ -264,6 +265,110 @@ bool Gestures(const Target& target, bool hovered);
 // fiche n'est pas dans le client). C'est borné : une seule demande par monstre,
 // et survoler n'ouvre ni ne change la fiche affichée.
 void HoverPreview(const Target& target);
+
+// ── DESSINER un lien ─────────────────────────────────────────────────────────
+//
+// Tout ce qui précède décrit le COMPORTEMENT d'un lien ; le PEINDRE restait à
+// chaque surface, et les sept l'ont fait à l'identique : texte à la couleur des
+// liens, soulignement tracé au DrawList sur le rectangle du dernier item,
+// curseur « main », aperçu au survol, gestes, drapeau de menu. Une vingtaine de
+// lignes recopiées par site, la couleur redéclarée CINQ fois — et le troisième
+// exemplaire a été écrit le jour où l'onglet Spawns a eu besoin d'un lien.
+//
+// 🔴 CE QUI NE SE FACTORISE PAS, et c'est voulu : les surfaces qui composent un
+// libellé riche — une icône d'équipement grisée quand la pièce est cassée, une
+// ligne de liste qui est déjà un `Selectable`, un fragment peint à la main dans
+// le log du chat. Elles gardent leur dessin et n'empruntent que `Decorate` et
+// `Hit`, qui sont justement les deux briques qui ne supposent aucun libellé.
+
+// La couleur d'un lien dans une fenêtre Bourgeon.
+//
+// ⚠ La chatbox garde la SIENNE (`kLinkCol`, l'orange du client) et ce n'est PAS
+// un oubli à résorber : son fond est sombre et elle imite le chat natif, où les
+// liens ont cette couleur-là. Ce bleu-ci est calibré pour le corps CLAIR d'une
+// fenêtre RO. Deux fonds, deux couleurs — les unifier casserait l'un des deux.
+ImVec4 LinkColor();
+
+// La décoration d'un lien sur le DERNIER item dessiné : curseur « main » et
+// soulignement. Un `BeginGroup`/`EndGroup` compte pour un seul item, ce qui rend
+// une icône et son libellé sensibles ensemble — c'est ce qu'on veut, le joueur
+// vise l'image en premier.
+//
+// `hovered` est fourni par l'appelant, comme pour `Gestures` : toutes les
+// surfaces ne sont pas des items ImGui.
+void Decorate(bool hovered);
+void Decorate(bool hovered, const ImVec4& color);
+
+// Ce qui change d'un lien à l'autre. Les valeurs par défaut sont celles des sept
+// sites d'origine ; les setters se chaînent pour qu'un appel tienne sur sa ligne
+// (`LabelOpts().Icon(id)`) — le C++17 du projet n'a pas les initialiseurs
+// désignés qui rendraient l'agrégat aussi lisible.
+struct LabelOpts {
+  ImVec4   color        = LinkColor();
+  uint32_t icon_item_id = 0;      // 0 = pas d'icône
+  float    icon_size    = 0.0f;   // 0 = la hauteur d'une ligne de texte
+  bool     preview      = true;   // l'aperçu au survol (`HoverPreview`)
+
+  LabelOpts& Color(const ImVec4& c) { color = c; return *this; }
+  LabelOpts& Icon(uint32_t item_id, float size = 0.0f) {
+    icon_item_id = item_id;
+    icon_size    = size;
+    return *this;
+  }
+  LabelOpts& NoPreview() { preview = false; return *this; }
+};
+
+// ── Le menu contextuel DIFFÉRÉ ───────────────────────────────────────────────
+//
+// Un popup s'ouvre et se dessine dans la MÊME pile d'ids ; or on clique un lien
+// depuis une table, un arbre ou un child, d'où l'`OpenPopup` reporté hors de
+// cette pile. Chaque surface gardait donc sa paire `cible` + `drapeau` et son
+// quatuor de lignes — le détour était à redécouvrir à chaque nouveau site.
+//
+// 🔴 L'ANCRE APPARTIENT À L'APPELANT (un membre de sa fenêtre, ou un statique de
+// son fichier), elle n'est PAS un état global du module. Deux surfaces visibles
+// en même temps arment chacune la sienne ; avec une ancre partagée, la première
+// fenêtre dessinée ouvrirait le menu armé par la seconde — le popup n'appartient
+// qu'à la pile d'ids qui l'a ouvert.
+class MenuAnchor {
+ public:
+  void Arm(const Target& t) {
+    target_ = t;
+    armed_  = true;
+  }
+  // Renoncer à une ouverture armée. Pour les surfaces dont le CONTENU peut
+  // disparaître entre le clic et le dessin — une page de dialogue qu'un paquet
+  // remplace, par exemple : le menu s'ouvrirait sur un lien qui n'est plus là.
+  void Disarm() { armed_ = false; }
+  // À appeler une fois par frame, dans la fenêtre (ou le child) où le popup doit
+  // vivre — hors de la table ou de l'arbre qui a armé.
+  void Draw(const char* popup_id);
+
+ private:
+  Target target_;
+  bool   armed_ = false;
+};
+
+// Le lien COMPLET : dessine, décore, montre l'aperçu, joue les gestes et arme le
+// menu. C'est la forme à préférer — une ligne par lien.
+void Label(const Target& target, const char* text_utf8, MenuAnchor& menu,
+           const LabelOpts& opts = LabelOpts());
+
+// Dessine et RECONNAÎT le geste sans le jouer : pour les surfaces qui honorent
+// la description autrement — celles d'une fenêtre de description REMPLACENT
+// l'objet affiché au lieu d'en ouvrir une seconde. Même distinction que
+// `Hit` face à `Gestures`, appliquée au libellé.
+Gesture LabelHit(const Target& target, const char* text_utf8,
+                 const LabelOpts& opts = LabelOpts());
+
+// Le survol du DERNIER lien dessiné, pour les surfaces qui veulent y ajouter
+// quelque chose (une infobulle à elles).
+//
+// 🔴 À lire ici et NON par `ImGui::IsItemHovered()` : quand l'aperçu s'est
+// affiché, le « dernier item » d'ImGui est celui de l'INFOBULLE — une fenêtre
+// à part, dont rien ne restaure l'état au retour. Le survol lu là serait celui
+// de la dernière ligne du tooltip, c'est-à-dire faux à chaque fois qu'il compte.
+bool LabelHovered();
 
 // Le menu contextuel. À appeler dans la MÊME fenêtre ImGui que l'OpenPopup, avec
 // la cible que l'appelant a mise de côté au clic droit.

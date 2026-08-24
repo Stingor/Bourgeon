@@ -4533,7 +4533,6 @@ void ChatWindow::DrawLines(const Channel& channel) {
   const bool hovering_log = ImGui::IsWindowHovered();
   links::Target click_target;        // invalide = aucun lien cliqué cette frame
   bool click_shift  = false;         // Maj enfoncé au moment du clic
-  bool menu_request = false;         // clic droit sur un lien : ouvrir le menu
 
   float x = 0.0f, y = 0.0f;
   std::unique_lock<std::mutex> lock(lines_mutex_);
@@ -4737,10 +4736,8 @@ void ChatWindow::DrawLines(const Channel& channel) {
           click_target = TargetOf(run);
           click_shift  = ImGui::GetIO().KeyShift;
         }
-        if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
-          link_menu_   = TargetOf(run);
-          menu_request = true;
-        }
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Right))
+          link_menu_.Arm(TargetOf(run));
       };
       // ── Miniature d'une image de NOTRE miroir ────────────────────────────
       //
@@ -4935,8 +4932,7 @@ void ChatWindow::DrawLines(const Channel& channel) {
   }
   // ⚠ Ouverture et rendu du popup dans la MÊME fenêtre ImGui (ici l'enfant du
   // log) : son identifiant se hache avec la pile d'ids de la fenêtre courante.
-  if (menu_request) ImGui::OpenPopup("##chat_link_menu_log");
-  links::DrawMenu("##chat_link_menu_log", link_menu_);
+  link_menu_.Draw("##chat_link_menu_log");
 }
 
 // 🔴 Les couleurs de `channels.conf` sont choisies pour le fond SOMBRE du chat —
@@ -5531,7 +5527,7 @@ void ChatWindow::DrawInputRow() {
   // Les liens posés reprennent ici leur couleur et leurs crochets, par-dessus le
   // texte que le champ vient de peindre.
   DrawInputLinkChips(field_pos, field_w, field_h, input_active, input_hovered);
-  links::DrawMenu("##chat_link_menu_input", link_menu_);
+  input_menu_.Draw("##chat_link_menu_input");
   // 🔴 LA PERTE DE FOCUS NE REFERME RIEN. DEUX sorties, toutes deux explicites :
   // Entrée sur un texte VIDE et ÉCHAP. Rien d'autre : ni la combo de mode, ni la
   // liste des destinataires, ni un onglet, ni le log, ni une autre fenêtre, ni un
@@ -6663,10 +6659,7 @@ void ChatWindow::DrawInputLinkChips(const ImVec2& field_pos, float field_w,
     const bool hovered = over_field && ImGui::IsMouseHoveringRect(a, b);
     const links::Target target = TargetOf(link);
     if (hovered) links::HoverPreview(target);
-    if (links::Gestures(target, hovered)) {
-      link_menu_ = target;
-      ImGui::OpenPopup("##chat_link_menu_input");
-    }
+    if (links::Gestures(target, hovered)) input_menu_.Arm(target);
   }
   dl->PopClipRect();
 }

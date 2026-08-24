@@ -1635,8 +1635,7 @@ void NavigationWindow::DrawResultsPane() {
         switch (links::Hit(row, true)) {
           case links::Gesture::kChatLink: links::PostToChat(row); break;
           case links::Gesture::kMenu:
-            row_menu_      = row;
-            row_menu_open_ = true;  // ouvert hors de l'arbre (piles d'ID)
+            row_menu_.Arm(row);  // ouvert hors de l'arbre (piles d'ID)
             break;
           default: break;  // le clic gauche appartient au Selectable
         }
@@ -1656,11 +1655,7 @@ void NavigationWindow::DrawResultsPane() {
   // empilent des identifiants, et un popup ouvert sous cette pile ne serait pas
   // retrouvé par le `BeginPopup` d'après. Même détour que la table des drops de
   // la fiche de monstre.
-  if (row_menu_open_) {
-    row_menu_open_ = false;
-    ImGui::OpenPopup("##navi_row_menu");
-  }
-  links::DrawMenu("##navi_row_menu", row_menu_);
+  row_menu_.Draw("##navi_row_menu");
 }
 
 // ── Volet de DÉTAIL ──────────────────────────────────────────────────────────

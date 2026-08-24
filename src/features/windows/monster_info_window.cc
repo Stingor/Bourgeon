@@ -21,7 +21,6 @@
 #include "ragnarok/lua.h"       // lua::State / GetField / PCall (GetSkillDescript)
 #include "ragnarok/msgstring.h"
 #include "ragnarok/uiwnd.h"     // MakeWindow / OnMsg / SetPos (description de skill)
-#include "ui/icon_cache.h"
 #include "ui/ro_imgui.h"        // ro::BeginRoDescWindow, ro::LocalToUtf8 (CP949)
 #include "ui/ro_widgets.h"      // mui::LastItemWheel (verrou molette anti-défilement)
 #include "ui/sprite_view.h"     // cadence du .act + son du sprite (interaction)
@@ -1523,16 +1522,16 @@ void MonsterInfoWindow::DrawResistTab(MobInfo& mob) {
   }
 }
 
-// L'objet visé par le menu contextuel de la table des drops : mis de côté au clic
-// droit, relu à la frame SUIVANTE — c'est là que le popup s'ouvre vraiment. Une
-// variable de fichier plutôt qu'un membre : il n'y a qu'un popup ouvert à la fois,
-// et l'en-tête n'a pas à connaître `links::`.
+// L'ancre du menu contextuel, partagée par les tables de drops et de spawns : la
+// cible est mise de côté au clic droit et le popup s'ouvre plus bas, HORS de la
+// table. Une variable de fichier plutôt qu'un membre : il n'y a qu'un popup
+// ouvert à la fois, et l'en-tête n'a pas à connaître `links::`.
 // 🔴 L'ouverture est DIFFÉRÉE hors de la table : une cellule modifie la pile
 // d'ids d'ImGui (TableBeginCell la remplace, TableEndCell la restaure), donc
 // l'identifiant écrit par `OpenPopup` depuis une cellule n'est pas celui que
 // `BeginPopup` cherchera ensuite — le menu ne s'ouvrirait jamais, en silence.
-static links::Target g_link_menu;
-static bool          g_link_menu_open = false;
+// C'est ce détour que `links::MenuAnchor` porte pour toutes les surfaces.
+static links::MenuAnchor g_link_menu;
 
 // Aperçu au survol d'un lien de monstre. Volontairement COURT : il répond à
 // « est-ce que je veux ouvrir la fiche ? », pas à « comment je le tue ? ».
@@ -1646,37 +1645,20 @@ void MonsterInfoWindow::DrawDropsTab(MobInfo& mob) {
       ImGui::TableNextColumn();
 
       // Icône, puis nom cliquable -> fiche de l'objet (le pendant du lien
-      // inverse posé dans la table des sources de la fiche d'item).
-      const ro::IconTex icon = ro::ItemIcon(d.nameid);
-      const float line = ImGui::GetTextLineHeight();
-      if (icon.tex != nullptr) {
-        ImGui::Image(reinterpret_cast<ImTextureID>(icon.tex),
-                     ImVec2(line * 1.4f, line * 1.4f));
-        ImGui::SameLine();
-      }
-      const ImVec4 kLink(0.10f, 0.30f, 0.85f, 1.0f);
-      ImGui::TextColored(kLink, "%s",
-                         d.name.empty() ? i18n::Tr("(objet inconnu)") : d.name.c_str());
-      const bool item_hovered = ImGui::IsItemHovered();
-      if (item_hovered) {
-        ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-        const ImVec2 mn = ImGui::GetItemRectMin();
-        const ImVec2 mx = ImGui::GetItemRectMax();
-        ImGui::GetWindowDrawList()->AddLine(ImVec2(mn.x, mx.y),
-                                            ImVec2(mx.x, mx.y),
-                                            ImGui::GetColorU32(kLink));
-      }
-      // Les gestes communs des LIENS (features/link_gesture.h) : gauche = la
-      // description, droite = le menu (site, alootid, @iteminfo, @whodrops),
-      // Maj+clic = le lien dans la barre de chat.
-      const links::Target drop_target =
-          links::FromItemId(d.nameid, ro::LocalToUtf8(d.name.c_str()));
-      // La description simple sous la souris, comme sur une cellule d'objet.
-      if (item_hovered) links::HoverPreview(drop_target);
-      if (links::Gestures(drop_target, item_hovered)) {
-        g_link_menu = drop_target;
-        g_link_menu_open = true;  // ouvert hors de la table (cf. la déclaration)
-      }
+      // inverse posé dans la table des sources de la fiche d'item). Les gestes
+      // et le dessin sont ceux de tous les liens du client
+      // (features/link_gesture.h) : gauche = la description, droite = le menu
+      // (site, alootid, @iteminfo, @whodrops), Maj+clic = le lien dans la barre
+      // de chat, et la description simple sous la souris au survol.
+      //
+      // ⚠ Le nom AFFICHÉ reste dans la code-page du client (il vient du paquet)
+      // alors que la cible, elle, part en UTF-8 : c'est elle qui coiffe le menu
+      // et qui se pose dans la barre de saisie.
+      links::Label(links::FromItemId(d.nameid, ro::LocalToUtf8(d.name.c_str())),
+                   d.name.empty() ? i18n::Tr("(objet inconnu)") : d.name.c_str(),
+                   g_link_menu,
+                   links::LabelOpts().Icon(
+                       d.nameid, ImGui::GetTextLineHeight() * 1.4f));
 
       ImGui::TableNextColumn();
       char rate[32];
@@ -1691,11 +1673,7 @@ void MonsterInfoWindow::DrawDropsTab(MobInfo& mob) {
     }
     ImGui::EndTable();
   }
-  if (g_link_menu_open) {
-    g_link_menu_open = false;
-    ImGui::OpenPopup("##mi_link_menu");
-  }
-  links::DrawMenu("##mi_link_menu", g_link_menu);
+  g_link_menu.Draw("##mi_link_menu");
 }
 
 void MonsterInfoWindow::DrawSpawnsTab(MobInfo& mob) {
@@ -1748,33 +1726,16 @@ void MonsterInfoWindow::DrawSpawnsTab(MobInfo& mob) {
       // joueurs, et c'est aussi sur lui que trie la colonne — afficher l'un et
       // trier sur l'autre donnerait un ordre incompréhensible. Le nom lisible et
       // le plan de la carte sont au survol.
-      const ImVec4 kMapLink(0.10f, 0.30f, 0.85f, 1.0f);
-      ImGui::TextColored(kMapLink, "%s", s->map.c_str());
-      const bool map_hovered = ImGui::IsItemHovered();
-      if (map_hovered) {
-        const ImVec2 mn = ImGui::GetItemRectMin();
-        const ImVec2 mx = ImGui::GetItemRectMax();
-        ImGui::GetWindowDrawList()->AddLine(ImVec2(mn.x, mx.y), ImVec2(mx.x, mx.y),
-                                            ImGui::GetColorU32(kMapLink));
-      }
       // `(0, 0)` : le joueur veut se rendre SUR LA CARTE, pas sur une cellule —
       // un spawn n'a de toute façon aucune position fixe.
-      const links::Target place = links::FromNavi(s->map.c_str(), 0, 0);
-      if (map_hovered) links::HoverPreview(place);
-      if (links::Gestures(place, map_hovered)) {
-        g_link_menu = place;
-        g_link_menu_open = true;  // ouvert hors de la table (cf. la déclaration)
-      }
+      links::Label(links::FromNavi(s->map.c_str(), 0, 0), s->map.c_str(),
+                   g_link_menu);
 
       ImGui::TableNextColumn(); ImGui::Text("%u", s->qty);
     }
     ImGui::EndTable();
   }
-  if (g_link_menu_open) {
-    g_link_menu_open = false;
-    ImGui::OpenPopup("##mi_link_menu");
-  }
-  links::DrawMenu("##mi_link_menu", g_link_menu);
+  g_link_menu.Draw("##mi_link_menu");
   Label(i18n::Tr("Clic sur une carte : s'y faire guider. Maj+clic : la partager dans le chat."));
   Label(i18n::Tr("Les spawns d'instance et les invocations de script ne sont pas comptés."));
 }
@@ -1832,15 +1793,12 @@ void MonsterInfoWindow::DrawSkillsTab(MobInfo& mob) {
         ImGui::TableNextColumn(); Label("%u", s->id);
         continue;
       }
-      const ImVec4 kLink(0.10f, 0.30f, 0.85f, 1.0f);
-      ImGui::TextColored(kLink, "%s", s->name.c_str());
-      if (ImGui::IsItemHovered()) {
-        ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-        const ImVec2 mn = ImGui::GetItemRectMin();
-        const ImVec2 mx = ImGui::GetItemRectMax();
-        ImGui::GetWindowDrawList()->AddLine(ImVec2(mn.x, mx.y), ImVec2(mx.x, mx.y),
-                                            ImGui::GetColorU32(kLink));
-      }
+      // Peint comme un lien, mais ce n'en est pas un au sens de `links::` : une
+      // compétence de monstre n'a ni menu contextuel ni lien de chat, rien que
+      // sa description native. On n'emprunte donc que la DÉCORATION — c'est
+      // exactement ce qu'elle est là pour offrir.
+      ImGui::TextColored(links::LinkColor(), "%s", s->name.c_str());
+      links::Decorate(ImGui::IsItemHovered());
       // On ENREGISTRE au clic, on OUVRE au relâchement (FlushPending) : ouvrir
       // tout de suite ferait passer la description derrière la fiche, qui garde
       // le focus tant que le bouton est enfoncé.

@@ -157,10 +157,9 @@ class ViewEquipWindow : public Plugin {
   // l'identifiant d'un popup se hache avec cette pile, et un `OpenPopup` appelé
   // sous le `PushID` d'une cellule donnerait un id que le `BeginPopup` d'après
   // ne retrouverait jamais. Le clic se contente donc de LEVER LE DRAPEAU.
-  links::Target hover_target_;
-  bool          hover_valid_ = false;
-  links::Target menu_target_;
-  bool          menu_open_   = false;
+  links::Target     hover_target_;
+  bool              hover_valid_ = false;
+  links::MenuAnchor menu_;
 
   // L'aperçu d'objet, dessiné hors fenêtre depuis OnRenderUI.
   void DrawHoverPreview();

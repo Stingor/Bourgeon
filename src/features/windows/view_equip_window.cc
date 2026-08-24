@@ -671,8 +671,7 @@ void ViewEquipWindow::DrawItemCell(const itemcell::ChatLink& link,
       links::PostToChat(target);
       break;
     case links::Gesture::kMenu:
-      menu_target_ = target;
-      menu_open_   = true;  // ouvert plus bas, hors de cette pile d'ids
+      menu_.Arm(target);  // ouvert plus bas, hors de cette pile d'ids
       break;
     case links::Gesture::kNone:
       break;
@@ -783,11 +782,7 @@ void ViewEquipWindow::DrawPieceList() {
   // cellule donnerait un id que ce `BeginPopup`-ci ne retrouverait jamais.
   // ⚠ Dans le MÊME `BeginChild` que les cellules — un popup appartient à sa
   // fenêtre, et l'enfant en est une.
-  if (menu_open_) {
-    menu_open_ = false;
-    ImGui::OpenPopup(kItemMenuId);
-  }
-  links::DrawMenu(kItemMenuId, menu_target_);
+  menu_.Draw(kItemMenuId);
 
   section(i18n::Tr("Équipement###viewequip_sec_equip"), kEquipOrder,
           IM_ARRAYSIZE(kEquipOrder), false);

@@ -1929,14 +1929,12 @@ void ItemDescWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
 // pile d'ids d'ImGui (TableBeginCell la remplace, TableEndCell la restaure) :
 // l'identifiant qu'`OpenPopup` écrirait depuis une cellule n'est pas celui que
 // `BeginPopup` cherche ensuite — le menu ne s'ouvrirait jamais, sans un mot.
-static links::Target g_drop_menu;
-static bool          g_drop_menu_open = false;
+static links::MenuAnchor g_drop_menu;
 // Idem pour les liens d'OBJET de la fenêtre (membres de combo, cartes serties).
-// `*_open` : le popup est ouvert HORS de la pile d'ids où le clic a eu lieu (les
+// L'ancre reporte l'ouverture HORS de la pile d'ids où le clic a eu lieu (les
 // membres de combo vivent sous un PushID par combo), sinon `BeginPopup` cherche
 // un identifiant que `OpenPopup` n'a pas écrit.
-static links::Target g_item_menu;
-static bool          g_item_menu_open = false;
+static links::MenuAnchor g_item_menu;
 
 // Rend une table de sources (filtre + tri + liens bestiaire). show_type ajoute
 // une colonne mécanisme (drop normal / MVP reward).
@@ -2009,38 +2007,24 @@ void ItemDescWindow::RenderDropTable(const TechData& td, const char* table_id,
         ImGui::TextColored(ImVec4(0.80f, 0.55f, 0.10f, 1.0f), i18n::Tr("[Mini]"));
         ImGui::SameLine();
       }
-      // Nom cliquable — un LIEN, donc les gestes communs (juste en dessous).
-      const ImVec4 kLink(0.10f, 0.30f, 0.85f, 1.0f);
-      ImGui::TextColored(kLink, "%s (%u)", d->name.c_str(), d->mob_id);
-      const bool link_hovered = ImGui::IsItemHovered();
-      if (link_hovered) {
-        ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-        const ImVec2 mn = ImGui::GetItemRectMin();
-        const ImVec2 mx = ImGui::GetItemRectMax();
-        ImGui::GetWindowDrawList()->AddLine(ImVec2(mn.x, mx.y),
-                                            ImVec2(mx.x, mx.y),
-                                            ImGui::GetColorU32(kLink));
-      }
-      // 🔴 La convention des LIENS, la même dans tout le client
+      // 🔴 Nom cliquable — un LIEN, avec la convention commune à tout le client
       // (features/link_gesture.h) : gauche = la fiche, droite = le menu (site,
-      // @mobinfo, @whereis), Maj+clic = le lien dans la barre de chat. Ces trois
-      // gestes vivaient ici en version locale — et déjà divergente : le clic
-      // simple ouvrait le SITE là où un lien de chat ouvrait la fiche.
+      // @mobinfo, @whereis), Maj+clic = le lien dans la barre de chat, et au
+      // survol l'aperçu — sprite, niveau, race, élément, PV, de quoi décider si
+      // l'on ouvre la fiche. Ces trois gestes vivaient ici en version locale — et
+      // déjà divergente : le clic simple ouvrait le SITE là où un lien de chat
+      // ouvrait la fiche.
       //
       // ⚠ Le nom arrive du paquet dans la code-page du CLIENT (recopié brut, cf.
       // le décodage plus haut) alors que la barre de saisie est en UTF-8 :
-      // convertir ici. Sans effet sur un nom ASCII, ce qu'ils sont presque tous.
+      // convertir pour la CIBLE, garder le brut à l'affichage. Sans effet sur un
+      // nom ASCII, ce qu'ils sont presque tous.
       // `d->boss` porte déjà la convention de rang (2 = MVP, 1 = boss).
-      const links::Target mob_target =
-          links::FromMob(d->mob_id, d->boss, ro::LocalToUtf8(d->name.c_str()));
-      // Aperçu SOUS LA SOURIS — sprite, niveau, race, élément, PV : de quoi
-      // décider si l'on ouvre la fiche. Il crée son propre popup, et remplace
-      // donc l'ancienne infobulle d'aide (une seule infobulle à la fois).
-      if (link_hovered) links::HoverPreview(mob_target);
-      if (links::Gestures(mob_target, link_hovered)) {
-        g_drop_menu = mob_target;
-        g_drop_menu_open = true;  // ouvert hors de la table (cf. la déclaration)
-      }
+      char shown[128];
+      std::snprintf(shown, sizeof(shown), "%s (%u)", d->name.c_str(), d->mob_id);
+      links::Label(
+          links::FromMob(d->mob_id, d->boss, ro::LocalToUtf8(d->name.c_str())),
+          shown, g_drop_menu);
       ImGui::TableNextColumn();
       ImGui::Text("%.2f%%", d->rate / 100.0f);  // rate en 0.01% (10000 = 100%)
       if (show_type) {
@@ -2054,11 +2038,7 @@ void ItemDescWindow::RenderDropTable(const TechData& td, const char* table_id,
     ImGui::EndTable();
   }
   ImGui::PopStyleColor();  // TableHeaderBg
-  if (g_drop_menu_open) {
-    g_drop_menu_open = false;
-    ImGui::OpenPopup("##drop_mob_menu");
-  }
-  links::DrawMenu("##drop_mob_menu", g_drop_menu);
+  g_drop_menu.Draw("##drop_mob_menu");
   if (td.treasure_excluded > 0)
     ImGui::TextDisabled(i18n::Tr("%u coffre(s) au trésor exclu(s)."), td.treasure_excluded);
   if (td.truncated)
@@ -2760,36 +2740,31 @@ void ItemDescWindow::RenderTechTabs(const DescWindow& w) {
             std::snprintf(lbl, sizeof(lbl), "%s", mem.second.c_str());
           else
             std::snprintf(lbl, sizeof(lbl), "#%u", mem.first);
+          // L'item COURANT est en or, les autres en bleu de lien : le membre
+          // qu'on regarde déjà n'est pas une destination.
           const bool self = (mem.first == w.id);
-          const ImU32 col = self ? IM_COL32(230, 200, 90, 255)    // item courant : or
-                                 : IM_COL32(26, 77, 217, 255);    // lien : bleu
-          ImGui::PushStyleColor(ImGuiCol_Text, col);
-          ImGui::TextUnformatted(lbl);
-          ImGui::PopStyleColor();
-          const bool mem_hovered = ImGui::IsItemHovered();
-          if (mem_hovered) {
-            ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-            const ImVec2 mn = ImGui::GetItemRectMin();
-            const ImVec2 mx = ImGui::GetItemRectMax();
-            ImGui::GetWindowDrawList()->AddLine(ImVec2(mn.x, mx.y),
-                                                ImVec2(mx.x, mx.y), col);
-            RenderCardTooltip(mem.first);   // aperçu RO partagé (nom + desc + illust)
-          }
+          const ImVec4 col =
+              self ? ImGui::ColorConvertU32ToFloat4(IM_COL32(230, 200, 90, 255))
+                   : links::LinkColor();
           // Gestes communs des LIENS, mais description MAISON : ici elle REMPLACE
           // l'objet affiché (comme un lien de carte natif) au lieu d'ouvrir une
           // seconde fenêtre, et l'appel natif est différé au prochain OnTick. La
           // convention porte sur le GESTE, pas sur la façon de l'honorer — d'où
-          // `Hit` plutôt que `Gestures`. Le site, lui, est passé dans le menu.
+          // `LabelHit` plutôt que `Label`. Le site, lui, est passé dans le menu.
+          //
+          // ⚠ Et aperçu MAISON aussi (`RenderCardTooltip` : nom, description,
+          // illustration), d'où le `NoPreview` — la description simple des liens
+          // ordinaires ne montrerait pas l'illustration d'une carte.
           const links::Target t = links::FromItemId(mem.first, lbl);
-          switch (links::Hit(t, mem_hovered)) {
+          switch (links::LabelHit(t, lbl, links::LabelOpts().Color(col).NoPreview())) {
             case links::Gesture::kDescription: pending_card_open_ = mem.first; break;
             case links::Gesture::kChatLink:    links::PostToChat(t); break;
             case links::Gesture::kMenu:
-              g_item_menu = t;
-              g_item_menu_open = true;  // ouvert plus bas, hors de la pile d'ids
+              g_item_menu.Arm(t);  // ouvert plus bas, hors de la pile d'ids
               break;
             default: break;
           }
+          if (links::LabelHovered()) RenderCardTooltip(mem.first);
         };
         for (size_t i = 0; i < sd->combos.size(); ++i) {
           const ComboInfo& c = sd->combos[i];
@@ -2832,11 +2807,7 @@ void ItemDescWindow::RenderTechTabs(const DescWindow& w) {
         // membre — donc sous le `PushID(i)` de son combo — donnerait un id que le
         // `BeginPopup` d'ici, hors de cette pile, ne retrouverait jamais. Le clic
         // se contente donc de LEVER LE DRAPEAU.
-        if (g_item_menu_open) {
-          g_item_menu_open = false;
-          ImGui::OpenPopup("##desc_item_menu");
-        }
-        links::DrawMenu("##desc_item_menu", g_item_menu);
+        g_item_menu.Draw("##desc_item_menu");
       }
     }
     ImGui::EndTabItem();
@@ -3340,7 +3311,8 @@ void ItemDescWindow::RenderItemWindow() {
                          ImVec2(th * cicon.w / cicon.h, th));
             ImGui::SameLine(0, 2);
           }
-          ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(26, 77, 217, 255));  // lien
+          ImGui::PushStyleColor(ImGuiCol_Text,
+                                ImGui::GetColorU32(links::LinkColor()));
           ImGui::Selectable(clbl, false, ImGuiSelectableFlags_AllowDoubleClick);
           ImGui::PopStyleColor();
           const bool card_hovered = ImGui::IsItemHovered();
@@ -3356,8 +3328,7 @@ void ItemDescWindow::RenderItemWindow() {
             case links::Gesture::kDescription: pending_card_open_ = e.cards[i]; break;
             case links::Gesture::kChatLink:    links::PostToChat(t); break;
             case links::Gesture::kMenu:
-              g_item_menu = t;
-              g_item_menu_open = true;  // ouvert plus bas, hors de la pile d'ids
+              g_item_menu.Arm(t);  // ouvert plus bas, hors de la pile d'ids
               break;
             default: break;
           }
@@ -3366,11 +3337,7 @@ void ItemDescWindow::RenderItemWindow() {
         // Même raison que pour les membres de combo : l'ouverture se fait ICI,
         // depuis une pile d'ids stable — le clic, lui, s'est produit dans une
         // cellule de la liste.
-        if (g_item_menu_open) {
-          g_item_menu_open = false;
-          ImGui::OpenPopup("##desc_item_menu");
-        }
-        links::DrawMenu("##desc_item_menu", g_item_menu);
+        g_item_menu.Draw("##desc_item_menu");
         y = ImGui::GetWindowPos().y + ImGui::GetWindowSize().y + 4.0f;
       }
       end_panel();

@@ -20,6 +20,7 @@
 #include "features/windows/monster_info_window.h"   // fiche d'un monstre
 #include "features/windows/navigation_window.h"     // cible d'un lien de lieu
 #include "imgui.h"
+#include "ui/icon_cache.h"                          // l'icône d'un lien d'objet
 #include "ui/ro_imgui.h"                            // ro::SetHoverCursor
 #include "utils/i18n.h"
 
@@ -758,6 +759,94 @@ void HoverPreview(const Target& target) {
     ImGui::EndTooltip();
     ImGui::PopStyleColor();
   }
+}
+
+// ── DESSINER un lien ─────────────────────────────────────────────────────────
+
+ImVec4 LinkColor() {
+  // Le bleu que les sept surfaces avaient chacune redéclaré. Il est SOMBRE parce
+  // que le corps d'une fenêtre RO est clair — la chatbox, elle, a le sien.
+  return ImVec4(0.10f, 0.30f, 0.85f, 1.0f);
+}
+
+void Decorate(bool hovered, const ImVec4& color) {
+  if (!hovered) return;
+  // Les DEUX curseurs : celui d'ImGui pour les surfaces qu'il dessine, et celui
+  // du jeu, qui est ce que le joueur voit réellement en plein écran. `Hit` pose
+  // déjà le second, mais `Decorate` sert aussi là où aucun geste n'est joué.
+  ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+  ro::SetHoverCursor(2);  // curseur « main » RO
+  const ImVec2 mn = ImGui::GetItemRectMin();
+  const ImVec2 mx = ImGui::GetItemRectMax();
+  ImGui::GetWindowDrawList()->AddLine(ImVec2(mn.x, mx.y), ImVec2(mx.x, mx.y),
+                                      ImGui::GetColorU32(color));
+}
+
+void Decorate(bool hovered) { Decorate(hovered, LinkColor()); }
+
+namespace {
+
+// Le survol du dernier lien dessiné. Un état de la frame, comme le `LastItemData`
+// d'ImGui — et pour la même raison : l'appelant ne peut pas le relire lui-même
+// une fois l'aperçu affiché (cf. `LabelHovered` dans le .h).
+bool g_label_hovered = false;
+
+// Le corps commun à `Label` et `LabelHit` : dessine (icône optionnelle puis
+// libellé, groupés pour ne former qu'une seule zone sensible), décore, montre
+// l'aperçu — et rend le survol, que l'appelant traduira en geste.
+bool DrawLabelAndHover(const Target& target, const char* text_utf8,
+                       const LabelOpts& opts) {
+  const char* shown = (text_utf8 && text_utf8[0]) ? text_utf8 : "?";
+  ImGui::BeginGroup();
+  if (opts.icon_item_id != 0) {
+    const float side =
+        (opts.icon_size > 0.0f) ? opts.icon_size : ImGui::GetTextLineHeight();
+    const ro::IconTex icon = ro::ItemIcon(opts.icon_item_id);
+    if (icon.tex != nullptr)
+      ImGui::Image(reinterpret_cast<ImTextureID>(icon.tex), ImVec2(side, side));
+    else
+      ImGui::Dummy(ImVec2(side, side));
+    ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+  }
+  ImGui::TextColored(opts.color, "%s", shown);
+  ImGui::EndGroup();
+
+  // Après `EndGroup`, « le dernier item » EST le groupe : survol et clics portent
+  // sur l'icône ET le texte. Ni `Image` ni `Text` ne consomment d'entrée.
+  const bool hovered = ImGui::IsItemHovered();
+  g_label_hovered = hovered;
+  Decorate(hovered, opts.color);
+  // 🔴 L'aperçu EN DERNIER : il ouvre une infobulle, donc une autre fenêtre, et
+  // le « dernier item » d'ImGui n'est plus le lien après lui. Tout ce qui a
+  // besoin du rectangle du lien — la décoration — doit passer avant.
+  if (hovered && opts.preview) HoverPreview(target);
+  return hovered;
+}
+
+}  // namespace
+
+bool LabelHovered() { return g_label_hovered; }
+
+void Label(const Target& target, const char* text_utf8, MenuAnchor& menu,
+           const LabelOpts& opts) {
+  const bool hovered = DrawLabelAndHover(target, text_utf8, opts);
+  if (Gestures(target, hovered)) menu.Arm(target);
+}
+
+Gesture LabelHit(const Target& target, const char* text_utf8,
+                 const LabelOpts& opts) {
+  return Hit(target, DrawLabelAndHover(target, text_utf8, opts));
+}
+
+void MenuAnchor::Draw(const char* popup_id) {
+  // L'ouverture est ICI et pas au clic : l'identifiant d'un popup se hache avec
+  // la pile d'ids courante, et le clic s'est produit sous celle d'une table, d'un
+  // arbre ou d'un `PushID`. Le geste se contente donc de lever le drapeau.
+  if (armed_) {
+    armed_ = false;
+    ImGui::OpenPopup(popup_id);
+  }
+  DrawMenu(popup_id, target_);
 }
 
 void DrawMenu(const char* popup_id, const Target& target) {

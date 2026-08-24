@@ -426,7 +426,7 @@ void NpcDialogWindow::Reset() {
   targets_.clear();
   img_srcs_.clear();
   portrait_mob_ = 0;
-  link_menu_request_ = false;
+  link_menu_.Disarm();
   layout_wrap_ = layout_font_ = -1.0f;
   layout_h_ = 0.0f;
   ++page_gen_;
@@ -1271,10 +1271,7 @@ void NpcDialogWindow::DrawMedia(ImDrawList* dl, const Frag& f, ImVec2 p0) {
 void NpcDialogWindow::LinkGestures(const links::Target& target, bool hovered) {
   if (!target.valid()) return;
   if (hovered) links::HoverPreview(target);
-  if (links::Gestures(target, hovered)) {
-    link_menu_ = target;
-    link_menu_request_ = true;
-  }
+  if (links::Gestures(target, hovered)) link_menu_.Arm(target);
 }
 
 ro::MobSpriteRes* NpcDialogWindow::MobSprite(int class_id) {
@@ -1741,11 +1738,7 @@ void NpcDialogWindow::OnRenderUI() {
     // Menu contextuel d'un lien maison (clic droit dans le corps). Ouvert ICI, dans
     // la pile d'ID de la FENÊTRE : posé depuis le child du texte, l'identifiant du
     // popup ne serait pas celui que `links::DrawMenu` recherche.
-    if (link_menu_request_) {
-      ImGui::OpenPopup("##npc_link_menu");
-      link_menu_request_ = false;
-    }
-    links::DrawMenu("##npc_link_menu", link_menu_);
+    link_menu_.Draw("##npc_link_menu");
 
     // En attente de la réponse serveur, la page reste à l'identique mais devient
     // INERTE : les widgets gardent leur place (aucun saut de footer) et le joueur ne
