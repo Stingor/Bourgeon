@@ -149,7 +149,6 @@ constexpr uintptr_t kIsCellBlockedAddr = 0x00a38c60;
 
 // `BannedWord_Contains` (0x00A85BE0) — __thiscall(table, cp949) : renvoie vrai
 // quand la chaîne contient un mot interdit (c'est la négation de ScanClean).
-constexpr uintptr_t kBannedWordContainsAddr = 0x00a85be0;
 constexpr uintptr_t kBannedWordTableAddr    = 0x0159c2c8;
 
 // `g_ServiceType` — vaut 1 sur Moonlight (MESURÉ en jeu le 2026-08-23, x32dbg).
@@ -177,7 +176,7 @@ bool ContainsBannedWord(const char* cp949) {
   if (!cp949 || !*cp949) return false;
   __try {
     using Fn = bool(__fastcall*)(void*, void*, const char*);
-    return reinterpret_cast<Fn>(kBannedWordContainsAddr)(
+    return reinterpret_cast<Fn>(rag::kBannedWordContainsAddr)(
         reinterpret_cast<void*>(kBannedWordTableAddr), nullptr, cp949);
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     return false;
@@ -236,8 +235,7 @@ ModeRoomInfo ReadModeRoomInfo() {
   ModeRoomInfo info{};
   void* mode = nullptr;
   __try {
-    mode = reinterpret_cast<void*(__fastcall*)(int)>(rag::kModeMgrGetActiveAddr)(
-        static_cast<int>(rag::kModeMgrAddr));
+    mode = rag::ActiveModeIfReady();
   } __except (EXCEPTION_EXECUTE_HANDLER) { return info; }
   if (!mode) return info;
   __try {
@@ -260,8 +258,7 @@ void ReadModeRoomPassword(char* out, size_t out_size) {
   out[0] = 0;
   void* mode = nullptr;
   __try {
-    mode = reinterpret_cast<void*(__fastcall*)(int)>(rag::kModeMgrGetActiveAddr)(
-        static_cast<int>(rag::kModeMgrAddr));
+    mode = rag::ActiveModeIfReady();
   } __except (EXCEPTION_EXECUTE_HANDLER) { return; }
   if (!mode) return;
   __try {
@@ -356,11 +353,9 @@ struct CreateChatRoomRequest {
 static_assert(sizeof(CreateChatRoomRequest) == 0x40, "struct CZ_CREATE_CHATROOM");
 
 constexpr int kModeMsgCreateChatRoom = 43;  // -> CZ_CREATE_CHATROOM 0x00D5
-constexpr int kVfModeSendMsg         = 0x18;  // CMode::SendMsg, vtable+0x18
 
 // Le CRT du JEU — jamais celui de la DLL : ces `std::string` sont détruites par du
 // code natif, et allouées par un autre tas elles le feraient planter.
-constexpr uintptr_t kStdStringCtorCStr = 0x004e5330;  // __thiscall(this, cstr)
 
 // Envoie la demande par le chemin natif. Rend false si le mode de jeu n'est pas
 // disponible (transition de carte, char-select) ou si l'appel a levé.
@@ -371,8 +366,7 @@ bool SendCreateChatRoom(const char* title_cp949, const char* password_cp949,
   // carte n'aurait aucun sens.
   void* mode = nullptr;
   __try {
-    mode = reinterpret_cast<void*(__fastcall*)(int)>(rag::kModeMgrGetActiveAddr)(
-        static_cast<int>(rag::kModeMgrAddr));
+    mode = rag::ActiveModeIfReady();
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
   if (!mode) return false;
 
@@ -380,7 +374,7 @@ bool SendCreateChatRoom(const char* title_cp949, const char* password_cp949,
     CreateChatRoomRequest req{};
     using StrCtor_t = void*(__fastcall*)(void*, void*, const char*);
     using StrDtor_t = void(__fastcall*)(void*, void*);
-    auto* ctor = reinterpret_cast<StrCtor_t>(kStdStringCtorCStr);
+    auto* ctor = reinterpret_cast<StrCtor_t>(rag::kStdStringCtorCStrAddr);
     auto* dtor = reinterpret_cast<StrDtor_t>(rag::kStdStringDtorAddr);
 
     ctor(req.title, nullptr, title_cp949);
@@ -392,11 +386,10 @@ bool SendCreateChatRoom(const char* title_cp949, const char* password_cp949,
     req.limit     = limit;
     req.room_id   = -1;
 
-    // CMode::SendMsg(msg, p1, p2, p3, p4) — __thiscall.
-    using SendMsg_t = void(__fastcall*)(void*, void*, int, void*, int, int, int);
-    const auto vt = *reinterpret_cast<uintptr_t**>(mode);
-    reinterpret_cast<SendMsg_t>(vt[kVfModeSendMsg / 4])(
-        mode, nullptr, kModeMsgCreateChatRoom, &req, 0, 0, 0);
+    // Le premier paramètre transporte l'ADRESSE de la requête — x86, donc un int
+    // la porte sans perte (cf. rag::ModeSendMsg).
+    rag::ModeSendMsg(mode, kModeMsgCreateChatRoom,
+                     static_cast<int>(reinterpret_cast<intptr_t>(&req)));
 
     // 🔴 Destructeurs OBLIGATOIRES, comme pour la CSkillInfo du 0x71 : le natif
     // COPIE ce qu'il lui faut, il ne prend pas possession de la struct.
@@ -915,15 +908,11 @@ bool OwnCharName(char* out, size_t out_size) {
 bool ModeSendMsg(int cmd, int p2 = 0, int p3 = 0, int p4 = 0, int p5 = 0) {
   void* mode = nullptr;
   __try {
-    mode = reinterpret_cast<void*(__fastcall*)(int)>(rag::kModeMgrGetActiveAddr)(
-        static_cast<int>(rag::kModeMgrAddr));
+    mode = rag::ActiveModeIfReady();
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
   if (!mode) return false;
   __try {
-    using SendMsg_t = void(__fastcall*)(void*, void*, int, int, int, int, int);
-    const auto vt = *reinterpret_cast<uintptr_t**>(mode);
-    reinterpret_cast<SendMsg_t>(vt[kVfModeSendMsg / 4])(mode, nullptr, cmd, p2,
-                                                        p3, p4, p5);
+    rag::ModeSendMsg(mode, cmd, p2, p3, p4, p5);
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }

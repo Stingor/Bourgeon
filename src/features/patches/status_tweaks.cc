@@ -66,8 +66,6 @@ constexpr uint32_t  kNewHeight = 132;         // 17 title bar + 115 bitmap
 
 // ---- engine functions ------------------------------------------------------
 constexpr uintptr_t kDrawTitleBar = 0x00898bc0;  // __thiscall(this, char hasClose, char* title, int width)
-constexpr uintptr_t kDrawText     = 0x00a25a70;  // __thiscall(this,x,y,str,len,face,size,color,bold,ital)  LEFT
-constexpr uintptr_t kDrawTextR    = 0x00a27b50;  // __thiscall(this,x,y,str,len,face,size,color,bold) RIGHT@x
 constexpr uintptr_t kBgNormalPath = 0x010361b4;  // "...\statuswnd\w_statwin_bg.bmp"
 
 // ---- GLOBAL title-bar text offset (shared UIWindow_DrawTitleBar 0x00898bc0) -
@@ -87,9 +85,6 @@ using DrawText_t = void (__fastcall*)(void*, void*, int, int, const char*, unsig
 using DrawTextR_t = void (__fastcall*)(void*, void*, int, int, const char*, unsigned,
                                        int, int, unsigned, unsigned char);
 using Blit_t   = void (__fastcall*)(void*, void*, int, int, void*, int);
-using TexMgr_t = void* (__cdecl*)();
-using MakeKey_t = void* (__cdecl*)(const char*);
-using LoadTex_t = void* (__fastcall*)(void*, void*, void*);
 using StatusMsg_t = int (__fastcall*)(void*, void*, int, int, int, int, int, int);  // FUN_008cb7c0 — SIX stack args (ret 0x18)
 using SetPos_t    = void (__fastcall*)(void*, void*, int, int);                       // UIWindow SetPos(this,x,y)
 
@@ -145,10 +140,10 @@ inline int RDo(void* base, int off) {
 }
 
 void DTextL(void* w, int x, int y, const char* s, int size, int face = 1) {
-  reinterpret_cast<DrawText_t>(kDrawText)(w, nullptr, x, y, s, 0, face, size, 0, 0, 0);
+  reinterpret_cast<DrawText_t>(uiwnd::kDrawTextAddr)(w, nullptr, x, y, s, 0, face, size, 0, 0, 0);
 }
 void DTextR(void* w, int x, int y, const char* s, int size, int face = 1) {
-  reinterpret_cast<DrawTextR_t>(kDrawTextR)(w, nullptr, x, y, s, 0, face, size, 0, 0);
+  reinterpret_cast<DrawTextR_t>(uiwnd::kDrawTextRightAddr)(w, nullptr, x, y, s, 0, face, size, 0, 0);
 }
 
 // Draw all NORMAL-view content at the new 302x115 coordinates.  POD-only
@@ -259,10 +254,8 @@ void __fastcall DrawContentHook(void* wnd, void* /*edx*/) {
     const int blitY = RDo(wnd, 0xd4);
     if (RDo(wnd, 0x18) == blitY || RDo(wnd, 0x30) != 0) return;  // minimized/guard
 
-    void* mgr = reinterpret_cast<TexMgr_t>(ro::texmgr::kGet)();
-    void* key = reinterpret_cast<MakeKey_t>(ro::texmgr::kMakeKey)(
+    void* tex = ro::texmgr::LoadResource(
         reinterpret_cast<const char*>(kBgNormalPath));
-    void* tex = reinterpret_cast<LoadTex_t>(ro::texmgr::kLoad)(mgr, nullptr, key);
     if (tex) reinterpret_cast<Blit_t>(uiwnd::kBlitImageToNodeAddr)(wnd, nullptr, 0, blitY, tex, 1);
 
     DrawNormal(wnd, blitY);

@@ -43,12 +43,8 @@ constexpr uint32_t kNewMaxW   = 0x500;  // 1280
 constexpr uint32_t kNewMaxH   = 0x400;  // 1024
 
 // ---- engine functions ------------------------------------------------------
-constexpr uintptr_t kDrawText  = 0x00a25a70;  // __thiscall(this,x,y,str,len,face,size,color,bold,ital)
-constexpr uintptr_t kMeasureW  = 0x00a21c90;  // __thiscall(this,str,len,face,size,_,_) -> width
 constexpr uintptr_t kFill      = 0x00a1d460;  // __thiscall(this,x,y,w,h,color) filled rect
 constexpr int       kBarHeight  = 0x29;       // btnbar bmp height fallback (41px) if the live read fails
-
-constexpr uintptr_t kOverweightPct = 0x01602324;  // red-tint % threshold
 
 // ---- inventory slot-count "X / max" readout (drawn by the native FUN_00946da0) --
 // The native draw computes max = 100 + DAT_01602354 (the client hardcodes a 100-slot
@@ -63,8 +59,9 @@ constexpr uintptr_t kOverweightPct = 0x01602324;  // red-tint % threshold
 // i.e. the real capacity, with red only at full. Restored right after the draw so the
 // three DAT_01602354 writers (FUN_00d2c150 / FUN_00d00b00 / login case 0xb18) and the
 // other readers see the unmodified server value.
-constexpr uintptr_t kInvExpansion = 0x01602354;  // server-sent inventory expansion (slots - 200)
-constexpr int kInvBaseDelta = 100;  // server INVENTORY_BASE_SIZE 200 - client base 100
+// L'écart entre les deux bases, calculé depuis le catalogue plutôt qu'écrit :
+// si l'une des deux bouge un jour, c'est là-bas qu'elle bougera.
+constexpr int kInvBaseDelta = rag::kInventoryServerBase - rag::kInventoryClientBase;
 
 // ---- UIWindow field offsets / UITexture fields -----------------------------
 constexpr int kWndWidth   = 0x14;
@@ -230,9 +227,6 @@ using DrawOrig_t = void(__fastcall*)(void*, void*);
 using DrawText_t = void(__fastcall*)(void*, void*, int, int, const char*, unsigned,
                                      int, int, unsigned, unsigned char, unsigned char);
 using MeasureW_t = int(__fastcall*)(void*, void*, const char*, int, int, int, int, int);
-using TexMgr_t   = void*(__cdecl*)();
-using MakeKey_t  = void*(__cdecl*)(const char*);
-using LoadTex_t  = void*(__fastcall*)(void*, void*, void*);
 using Blit_t     = void(__fastcall*)(void*, void*, int, int, void*, int);
 using SetName_t   = void(__fastcall*)(void*, void*, const char*);
 using ColorChip_t = void(__stdcall*)(int, int, unsigned*, unsigned*, unsigned*);  // FUN_007a6df0 ends RET 0x14
@@ -325,12 +319,9 @@ void LoadTabImages() {
                       "%s%d.bmp", kTabImgName[i], v + 1);
       }
   }
-  void* ttmgr = reinterpret_cast<TexMgr_t>(ro::texmgr::kGet)();
   for (int i = 0; i < kTabCount; ++i) {
-    g_tabTexA[i] = reinterpret_cast<LoadTex_t>(ro::texmgr::kLoad)(
-        ttmgr, nullptr, reinterpret_cast<MakeKey_t>(ro::texmgr::kMakeKey)(s_paths[i][0]));
-    g_tabTexB[i] = reinterpret_cast<LoadTex_t>(ro::texmgr::kLoad)(
-        ttmgr, nullptr, reinterpret_cast<MakeKey_t>(ro::texmgr::kMakeKey)(s_paths[i][1]));
+    g_tabTexA[i] = ro::texmgr::LoadResource(s_paths[i][0]);
+    g_tabTexB[i] = ro::texmgr::LoadResource(s_paths[i][1]);
   }
 }
 
@@ -396,8 +387,8 @@ void __fastcall DrawContentHook(void* wnd, void* /*edx*/) {
     // Bump the inventory-expansion global by the server/client base delta for the
     // span of the native draw so the "X / max" readout (and its red-tint threshold,
     // which share the same 100 + DAT_01602354 formula) report the REAL slot count
-    // instead of "X / 100" red-at-101. Restored immediately; see kInvExpansion.
-    int* const invExp = reinterpret_cast<int*>(kInvExpansion);
+    // instead of "X / 100" red-at-101. Restored immediately; see rag::kInventoryExpansionAddr.
+    int* const invExp = reinterpret_cast<int*>(rag::kInventoryExpansionAddr);
     const int savedExp = *invExp;
     *invExp = savedExp + kInvBaseDelta;
     g_draw_orig(wnd, nullptr);
@@ -458,10 +449,8 @@ void __fastcall DrawContentHook(void* wnd, void* /*edx*/) {
     {
       const bool fav = *reinterpret_cast<int*>(w + kTabCat) == 3 &&
                        *reinterpret_cast<uint8_t*>(rag::kFavoriteModeFlagAddr) == 1;
-      void* bmgr = reinterpret_cast<TexMgr_t>(ro::texmgr::kGet)();
-      void* bkey = reinterpret_cast<MakeKey_t>(ro::texmgr::kMakeKey)(
+      void* btex = ro::texmgr::LoadResource(
           reinterpret_cast<const char*>(ro::uipath::kUiRootSample));
-      void* btex = reinterpret_cast<LoadTex_t>(ro::texmgr::kLoad)(bmgr, nullptr, bkey);
       const int btnbarH = btex
           ? *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(btex) + kTexH)
           : kBarHeight;
@@ -479,13 +468,11 @@ void __fastcall DrawContentHook(void* wnd, void* /*edx*/) {
 
     char buf[64];
     std::snprintf(buf, sizeof(buf), "%d / %d (%d%%)", cur, max, pct);
-    const unsigned color = (pct >= RD(kOverweightPct)) ? kColorOver : kColorNormal;
+    const unsigned color = (pct >= RD(rag::kOverweightPctAddr)) ? kColorOver : kColorNormal;
 
     // The cart's weight scale icon (texture manager caches by key per frame).
-    void* mgr = reinterpret_cast<TexMgr_t>(ro::texmgr::kGet)();
-    void* key = reinterpret_cast<MakeKey_t>(ro::texmgr::kMakeKey)(
+    void* tex = ro::texmgr::LoadResource(
         reinterpret_cast<const char*>(ro::uipath::kIconWeight));
-    void* tex = reinterpret_cast<LoadTex_t>(ro::texmgr::kLoad)(mgr, nullptr, key);
     int iconW = 0, iconH = 0;
     if (tex) {
       iconW = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(tex) + kTexW);
@@ -500,7 +487,7 @@ void __fastcall DrawContentHook(void* wnd, void* /*edx*/) {
     const int iconX = kLeftMargin;
     const int iconY = textY - (iconH - 11) / 2;  // center icon against the glyphs
     if (tex) reinterpret_cast<Blit_t>(uiwnd::kBlitImageToNodeAddr)(wnd, nullptr, iconX, iconY, tex, 1);
-    reinterpret_cast<DrawText_t>(kDrawText)(
+    reinterpret_cast<DrawText_t>(uiwnd::kDrawTextAddr)(
         wnd, nullptr, iconX + iconW + kIconGap, textY, buf, 0, 0, 0xb, color, 0, 0);
 
     // Zeny, right-aligned, comma-formatted like the basic-info window.
@@ -508,9 +495,9 @@ void __fastcall DrawContentHook(void* wnd, void* /*edx*/) {
     reinterpret_cast<FmtComma_t>(rag::kFormatThousandsAddr)(RD(rag::kZenyAddr), zbuf, sizeof(zbuf));
     char zline[64];
     std::snprintf(zline, sizeof(zline), "%sz", zbuf);
-    const int zW = reinterpret_cast<MeasureW_t>(kMeasureW)(
+    const int zW = reinterpret_cast<MeasureW_t>(uiwnd::kMeasureTextWidthAddr)(
         wnd, nullptr, zline, static_cast<int>(std::strlen(zline)), 0, 0xb, 0, 0);
-    reinterpret_cast<DrawText_t>(kDrawText)(
+    reinterpret_cast<DrawText_t>(uiwnd::kDrawTextAddr)(
         wnd, nullptr, (width - kRightMargin) - zW, textY, zline, 0, 0, 0xb, kColorNormal, 0, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {
   }

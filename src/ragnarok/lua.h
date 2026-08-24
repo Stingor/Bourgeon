@@ -79,6 +79,18 @@ constexpr uintptr_t kExecFileAddr     = 0x00a9bc90;
 constexpr uintptr_t kGetSkillNameAddr   = 0x0073a1f0;  // GetSkillName(id)
 constexpr uintptr_t kGetSkillIdNameAddr = 0x0073a140;  // GetSkillIdName(id)
 
+// Les deux appels typés. Six fichiers recopiaient la signature sous deux noms
+// (`GetSkillNameLua_t`, `GetSkillIdNameLua_t`) et l'un d'eux redéclarait en plus
+// l'adresse pour son compte. Le retour est `const char*` ici alors que le natif
+// rend un `char*` : la chaîne appartient au CLIENT, l'écrire serait une faute
+// que le type interdit maintenant.
+inline const char* SkillName(int skill_id) {
+  return reinterpret_cast<const char* (__cdecl*)(int)>(kGetSkillNameAddr)(skill_id);
+}
+inline const char* SkillIdName(int skill_id) {
+  return reinterpret_cast<const char* (__cdecl*)(int)>(kGetSkillIdNameAddr)(skill_id);
+}
+
 // ── Enveloppes ───────────────────────────────────────────────────────────────
 // Toute l'API C de Lua est __cdecl. Signatures vérifiées identiques dans les
 // quatre appelants avant extraction.

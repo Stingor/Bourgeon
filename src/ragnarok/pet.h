@@ -241,5 +241,11 @@ void SendAutoFeed(bool on);
 // ouvert par `@hatch`, le paquet est ignoré en silence.
 bool SendSelectEgg(int inv_index);
 
+// AID du familier du joueur, 0 s'il n'en a pas de sorti. Le menu contextuel
+// d'entité s'en sert pour reconnaître SON pet parmi les acteurs cliqués — d'où
+// la deuxième déclaration qu'il portait. C'est la tête du bloc de globals du
+// familier (docs/pet_re.md §1), écrit par ZC_PROPERTY_PET 0x01A2.
+constexpr uintptr_t kOwnPetAidAddr = 0x015fb3b0;
+
 }  // namespace pet
 }  // namespace rag

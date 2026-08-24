@@ -66,11 +66,9 @@ constexpr int kOffRange   = 0x1c;
 constexpr uintptr_t kSkillGetAt = 0x00d80810;
 constexpr int kInfoOffFound = 0x04;               // fiche utilisable
 constexpr int kInfoOffLevel = 0x10;               // niveau appris
-constexpr int kVfDispCmd     = 0x18;              // CGameMode::SendMsg (vtable+0x18)
 constexpr int kCmdUseSkillSlot = 0x71;            // « lancer, routé par l'INF »
 
 using GetAt_t   = void* (__fastcall*)(void*, void*, void*, int);
-using DispCmd_t = void* (__thiscall*)(void*, int, int, int, int, int);
 
 // Parcours brut : remplit `out` et rend le nombre d'entrées. `pos` suit le rang dans
 // la liste NON filtrée, seul indice que l'accesseur natif comprenne.
@@ -147,7 +145,7 @@ bool LaunchSEH(int pos, int level) {
       const int owned = *reinterpret_cast<const int*>(info + kInfoOffLevel);
       int lv = level < 1 ? 1 : level;
       if (owned > 0 && lv > owned) lv = owned;  // le natif refuse au-dessus de l'appris
-      uiwnd::Vf<DispCmd_t>(d, kVfDispCmd)(d, kCmdUseSkillSlot,
+      rag::ModeSendMsg(d, kCmdUseSkillSlot,
                                           static_cast<int>(reinterpret_cast<uintptr_t>(info)),
                                           lv, 0, 0);
       sent = true;

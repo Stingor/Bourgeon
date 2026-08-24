@@ -47,6 +47,22 @@ constexpr int kTgtPitch  = 0x44;
 constexpr int kTgtYaw    = 0x48;
 constexpr int kTgtDist   = 0x4c;
 
+// La vtable de `CCamera`, qui sert de GARDE : le pointeur cueilli au hook est
+// vérifié contre elle avant tout déréférencement. Deux fichiers la déclaraient —
+// ce module et le déplacement au clavier, qui remonte à la caméra par un autre
+// chemin. Écrire les offsets ci-dessus sur un objet qui n'est PAS une caméra
+// corromprait de la mémoire silencieusement, d'où l'intérêt d'une garde unique.
+constexpr uintptr_t kCameraVTable = 0x0104dee4;
+
+// Plafond de DÉZOOM en extérieur (un float), tel que le moteur le tient.
+//
+// ⚠ Ce global ne nous appartient pas : le moteur le RÉÉCRIT à chaque bascule de
+// la commande `/zoom`. Un module qui veut dézoomer au-delà doit donc le relire
+// à chaque frame, jamais le mettre de côté à l'entrée — c'est ce que fait
+// l'écran de veille, et c'est ce que le dézoom étendu ajuste.
+constexpr uintptr_t kZoomMaxOutdoorAddr = 0x012291c0;
+constexpr uintptr_t kZoomMaxIndoorAddr  = 0x012291c4;  // le voisin, pour l'intérieur
+
 // Pose l'unique hook de capture. Idempotent, et à appeler INCONDITIONNELLEMENT :
 // le timestamp du client n'est pas encore connu au chargement des modules (il
 // est posé plus tard, dans RagnarokClient::Initialize), si bien qu'un install

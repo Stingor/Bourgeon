@@ -38,8 +38,7 @@ struct WorldRefs {
 WorldRefs GetWorldRefs() {
   WorldRefs refs;
   __try {
-    void* gm = reinterpret_cast<void*(__fastcall*)(int)>(rag::kModeMgrGetActiveAddr)(
-        static_cast<int>(rag::kModeMgrAddr));
+    void* gm = rag::ActiveModeIfReady();
     if (gm) {
       void* mgr =
           *reinterpret_cast<void**>(reinterpret_cast<char*>(gm) + gamescene::kGmActorMgr);

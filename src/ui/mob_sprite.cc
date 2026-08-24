@@ -7,6 +7,7 @@
 #include <cstring>
 
 #include "ragnarok/globals.h"  // rag::kSessionAddr (le `this` de l'appel natif)
+#include "ui/game_texture.h"  // ro::uipath::kFmtMonsterSpr
 
 namespace ro {
 namespace {
@@ -48,7 +49,6 @@ namespace {
 // sont en UTF-8, et un littéral coréen y serait encodé en UTF-8 — il ne
 // désignerait aucun dossier du GRF. On leur retire leur « .spr » plus bas,
 // sprite_view voulant une base sans extension.
-constexpr uintptr_t kFmtSprMonster = 0x0103181c;  // 몬스터\%s.spr
 constexpr uintptr_t kFmtSprNpc     = 0x0108f960;  // NPC\%s.spr
 constexpr uintptr_t kFmtSprHuman   = 0x010940d0;  // 인간족\몸통\%s.spr
 constexpr uintptr_t kFmtSprHomun   = 0x010940f8;  // homun\%s.spr
@@ -120,7 +120,7 @@ const char* SprFormatFor(int class_id) {
     return reinterpret_cast<const char*>(kFmtSprHuman);
   if (class_id >= kHomunFirst && class_id <= kHomunLast)
     return reinterpret_cast<const char*>(kFmtSprHomun);
-  return reinterpret_cast<const char*>(kFmtSprMonster);
+  return reinterpret_cast<const char*>(ro::uipath::kFmtMonsterSpr);
 }
 
 // Chemin VFS complet SANS extension, ex. `data\sprite\몬스터\Chocho` pour un

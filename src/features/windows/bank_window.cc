@@ -238,7 +238,6 @@ inline long long ClampAmount(long long v) {
 // le TexMgr attend du CP949. ⚠ NE PAS concaténer un littéral qui commence par un
 // caractère hexadécimal juste après « \xBA » — l'échappement hex est glouton en
 // C++ ; on passe donc toujours par un %s de snprintf.
-constexpr char kUiDirCp949[] = "\xC0\xAF\xC0\xFA\xC0\xCE\xC5\xCD\xC6\xE4\xC0\xCC\xBD\xBA";
 // Nom DISTINCT du bg_bank.bmp d'origine : la native garde le sien intact — elle est
 // masquée, pas détruite, et redevient visible dès que le groupe « Interface
 // moderne » repasse à OFF. Le fond retaillé pour l'ImGui vit donc à côté, sans
@@ -269,7 +268,7 @@ const ro::GameTexture& BackgroundTexture() {
   if (!g_bg_tried) {
     g_bg_tried = true;
     char full[128];
-    std::snprintf(full, sizeof(full), "%s\\%s", kUiDirCp949, kBgRelPath);
+    std::snprintf(full, sizeof(full), "%s\\%s", ro::uipath::kUiRoot, kBgRelPath);
     g_bg = ro::TextureFromGameFile(full);
   }
   return g_bg;

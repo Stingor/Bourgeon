@@ -178,8 +178,7 @@ bool ReadOwnActorSprites(OwnActorSprites* out) {
   void* actor = nullptr;
   __try {
     using GameModeFn = void*(__fastcall*)(int);
-    void* mode = reinterpret_cast<GameModeFn>(kModeMgrGetActiveAddr)(
-        static_cast<int>(kModeMgrAddr));
+    void* mode = rag::ActiveModeIfReady();
     if (!mode) return false;
     void* mgr = *reinterpret_cast<void**>(
         reinterpret_cast<char*>(mode) + gamescene::kGmActorMgr);

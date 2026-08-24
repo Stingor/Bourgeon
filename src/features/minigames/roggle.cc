@@ -206,10 +206,6 @@ void StepPhysics(float dt) {
 // exactly D3DFMT_A8R8G8B8 byte order, so we colour-key magenta -> transparent and
 // hand the buffer to D3D9_CreateTextureARGB. Item icons: 512=Apple (ball),
 // 502=Orange Potion (orange pegs), 505=Blue Potion (blue pegs).
-using BuildPath_t = void (__stdcall*)(const char*, char*, int);  // cf. ro::texmgr::kBuildItemIconPath
-using TexMgr_t    = void* (__cdecl*)();
-using MakeKey_t   = void* (__cdecl*)(const char*);
-using LoadTex_t   = void* (__fastcall*)(void*, void*, void*);
 
 // "orange"/"blue" are the Peggle terms for target/bonus pegs — we dress them as
 // coloured GEMS (Bejeweled-Peggle look): Red Gemstone = must-clear, Blue
@@ -248,13 +244,12 @@ IconTex g_tex_orange, g_tex_blue;
 bool LoadItemIcon(uint32_t id, IconTex* out) {
   static uint32_t buf[256 * 256];
   __try {
-    char idbuf[16];
-    std::snprintf(idbuf, sizeof(idbuf), "%u", id);
     char path[260] = {0};
-    reinterpret_cast<BuildPath_t>(ro::texmgr::kBuildItemIconPath)(idbuf, path, 0);
-    void* mgr  = reinterpret_cast<TexMgr_t>(ro::texmgr::kGet)();
-    void* key  = reinterpret_cast<MakeKey_t>(ro::texmgr::kMakeKey)(path);
-    void* texv = reinterpret_cast<LoadTex_t>(ro::texmgr::kLoad)(mgr, nullptr, key);
+    // `identified` defaults to 1 (cf. chat.cc): the flag picks between the
+    // record's two resource names, and 1 is the identified one — the only kind
+    // Moonlight hands out. Inert for gemstones, which carry a single name.
+    ro::texmgr::BuildItemIconPath(id, path);
+    void* texv = ro::texmgr::LoadResource(path);
     if (!texv) return false;
     auto* t = reinterpret_cast<uint8_t*>(texv);
     const int sw = *reinterpret_cast<int*>(t + 0x114);

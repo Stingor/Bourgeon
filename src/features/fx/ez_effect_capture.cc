@@ -183,7 +183,7 @@ bool IsOurNode(void* ez, int* out_id) {
 void RefreshOwnerActor() {
   void* actor = nullptr;
   __try {
-    void* gm = reinterpret_cast<void*(__fastcall*)(int)>(rag::kModeMgrGetActiveAddr)(static_cast<int>(rag::kModeMgrAddr));
+    void* gm = rag::ActiveModeIfReady();
     if (gm) {
       void* mgr = *reinterpret_cast<void**>(reinterpret_cast<char*>(gm) + gamescene::kGmActorMgr);
       if (mgr) actor = *reinterpret_cast<void**>(reinterpret_cast<char*>(mgr) + kOffOwnActor);
@@ -533,7 +533,7 @@ bool ProjectAnchor(const DrawOpts& o, float* ax, float* ay, float* screen_scale)
   float x = 0.0f, y = 0.0f, inv_w = 0.0f, s = 0.0f;
   bool ok = false;
   __try {
-    void* gm = reinterpret_cast<void*(__fastcall*)(int)>(rag::kModeMgrGetActiveAddr)(static_cast<int>(rag::kModeMgrAddr));
+    void* gm = rag::ActiveModeIfReady();
     void* cam = gm ? *reinterpret_cast<void**>(reinterpret_cast<char*>(gm) + kOffCamera) : nullptr;
     float* view =
         cam ? reinterpret_cast<float*>(reinterpret_cast<char*>(cam) + kOffViewMtx) : nullptr;

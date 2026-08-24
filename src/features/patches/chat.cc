@@ -101,11 +101,6 @@ namespace {
 // ItemBtn_LoadIconByResName (0x00857350): a render-node-backed image blit that
 // the engine composites as part of the owning window's draw pass.
 
-using BuildPath_t = void (__stdcall*)(const char*, char*, int);  // cf. ro::texmgr::kBuildItemIconPath
-using TexMgr_t    = void* (__cdecl*)();
-using MakeKey_t   = void* (__cdecl*)(const char*);
-using LoadTex_t   = void* (__fastcall*)(void*, void*, void*);
-
 // FUN_0083d840: the chat tab's "append drawn line" virtual (vtable +0xe4).
 // __thiscall(this, char* text, color, sender-ish).  Called for EVERY drawn line
 // — by WrapAndDispatch (per wrapped chunk) and by the direct link path — with
@@ -448,13 +443,12 @@ static int MeasureSEH(void* ctx, const char* s, int n) {
 static void BlitIconAtSEH(void* ctx, int x, int y, uint32_t id) {
   static uint32_t dbuf[kChatIconSize * kChatIconSize];
   __try {
-    char idbuf[16];
-    std::snprintf(idbuf, sizeof(idbuf), "%u", id);
     char path[260] = {0};
-    reinterpret_cast<BuildPath_t>(ro::texmgr::kBuildItemIconPath)(idbuf, path, 0);
-    void* mgr = reinterpret_cast<TexMgr_t>(ro::texmgr::kGet)();
-    void* key = reinterpret_cast<MakeKey_t>(ro::texmgr::kMakeKey)(path);
-    void* texv = reinterpret_cast<LoadTex_t>(ro::texmgr::kLoad)(mgr, nullptr, key);
+    // `identified` defaults to 1: a chat link carries no identification state
+    // (neither the ^i[id] token nor ChatLink has the field), and on Moonlight
+    // every item is identified unless deliberately spawned via item2/@item2.
+    ro::texmgr::BuildItemIconPath(id, path);
+    void* texv = ro::texmgr::LoadResource(path);
     if (!texv) return;
     auto* t = reinterpret_cast<uint8_t*>(texv);
     const int sw = *reinterpret_cast<int*>(t + 0x114);
@@ -872,7 +866,7 @@ ChatTweaks::ChatTweaks() {
   g_layout_measure_orig = reinterpret_cast<LayoutMeasureFn>(
       hooking::HookManager::Instance().SetHook(
           hooking::HookType::kJmpHook,
-          reinterpret_cast<uint8_t*>(0x00a21c90),
+          reinterpret_cast<uint8_t*>(uiwnd::kMeasureTextWidthAddr),
           reinterpret_cast<uint8_t*>(MeasureHook)));
   if (!g_layout_measure_orig) {
     LogError("[Chat] failed to hook layout measure at 0x00a21c90");

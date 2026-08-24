@@ -19,6 +19,7 @@
 #include "features/windows/weapon_refine_window.h"
 #include "imgui.h"
 #include "ragnarok/globals.h"
+#include "ragnarok/item_db.h"    // itemdb::kInfoCtorAddr / kInfoSetIdAddr
 #include "ragnarok/msgstring.h"  // msgstr:: (libellés natifs du client)
 #include "ragnarok/player_skills.h"    // LearnedSkillLevel (bonus de maîtrise)
 #include "ragnarok/ragnarok_client.h"  // UseItemById (relance par OBJET)
@@ -157,7 +158,6 @@ constexpr int kWndVisible = 0x28;  // UIWindow : flag « visible »
 // CMode::SendMsg : le dispatcher du mode actif, vtable+0x18. On rejoue les
 // chemins natifs plutôt que de fabriquer les paquets — règle du projet, et ici
 // ça évite en prime de dupliquer trois constructions d'en-tête différentes.
-constexpr int kVfDispCmd = 0x18;
 constexpr int kCmdProduce   = 130;  // { id, ItemSkillInfo[3] } -> CZ_REQMAKINGITEM   0x018E
 constexpr int kCmdMakeArrow = 153;  // { id }                   -> CZ_REQ_MAKINGARROW 0x01AE
 constexpr int kCmdMakeItem  = 207;  // { id, mk_type }          -> CZ_REQ_MAKINGITEM  0x025B
@@ -211,7 +211,6 @@ constexpr PotionBonus kPotionBonuses[] = {
     {547,     0, 100, true },   // White Slim Potion  : -(1+rnd%100)*10
     {7139,    0, 100, true },   // Coating Bottle     : idem
 };
-using DispCmd_t = void(__thiscall*)(void*, int, int, int, int, int);
 
 constexpr int kNodeNext   = 0x00;
 constexpr int kNodeInfo   = 0x08;
@@ -224,7 +223,6 @@ constexpr int kMaxInvNodes = 4096; // garde-fou de parcours
 // qui attend un tableau de TROIS structures (§3.4). On les construit vides : le
 // natif en fait `atoi("")` = 0, c'est-à-dire « aucun matériau optionnel », ce que
 // le natif lui-même envoie pour les jobs qui court-circuitent la fenêtre 80.
-constexpr uintptr_t kItemSkillInfoCtor = 0x006a1b20;
 constexpr uintptr_t kItemSkillInfoDtor = 0x005a4300;
 constexpr size_t    kItemSkillInfoSize = 0xf8;
 using InfoCtor_t = void*(__thiscall*)(void*);
@@ -348,11 +346,8 @@ inline ImVec4 V4(ImU32 c) { return ImGui::ColorConvertU32ToFloat4(c); }
 // Envoie une commande au dispatcher du mode actif (le chemin des boutons natifs).
 void SendModeCmd(int cmd, int a, int b = 0, int c = 0, int d = 0) {
   __try {
-    void* mode = rag::ActiveMode();
-    if (!mode) return;
-    auto fn = reinterpret_cast<DispCmd_t>(
-        (*reinterpret_cast<uintptr_t**>(mode))[kVfDispCmd / 4]);
-    fn(mode, cmd, a, b, c, d);
+    // ⚠ Mode lu BRUT (rag::ActiveMode), pas le getter gaté (cf. globals.h).
+    rag::ModeSendMsg(rag::ActiveMode(), cmd, a, b, c, d);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -366,7 +361,6 @@ void SendModeCmd(int cmd, int a, int b = 0, int c = 0, int d = 0) {
 // C'est LE point qui rend la fenêtre native 80 inutile : les trois matériaux
 // optionnels de forge voyagent en PARAMÈTRE de la commande 130, ils ne sont pas
 // lus dans cette fenêtre.
-constexpr uintptr_t kItemSkillInfoSetId = 0x006a6570;
 using InfoSetId_t = int(__thiscall*)(void*, int);
 
 // `mats` : trois identifiants d'objet, 0 = emplacement vide. Exactement ce que la
@@ -377,9 +371,9 @@ void SendProduceCmd(int item_id, const uint32_t mats[3] = nullptr) {
     void* mode = rag::ActiveMode();
     if (!mode) return;
     alignas(8) unsigned char slots[kItemSkillInfoSize * 3];
-    auto ctor = reinterpret_cast<InfoCtor_t>(kItemSkillInfoCtor);
+    auto ctor = reinterpret_cast<InfoCtor_t>(itemdb::kInfoCtorAddr);
     auto dtor = reinterpret_cast<InfoDtor_t>(kItemSkillInfoDtor);
-    auto set_id = reinterpret_cast<InfoSetId_t>(kItemSkillInfoSetId);
+    auto set_id = reinterpret_cast<InfoSetId_t>(itemdb::kInfoSetIdAddr);
     for (int i = 0; i < 3; ++i) ctor(slots + i * kItemSkillInfoSize);
     // Remplissage APRÈS construction : SetId fait un std::string::assign, il lui
     // faut une chaîne déjà initialisée.
@@ -387,10 +381,8 @@ void SendProduceCmd(int item_id, const uint32_t mats[3] = nullptr) {
       for (int i = 0; i < 3; ++i)
         if (mats[i]) set_id(slots + i * kItemSkillInfoSize,
                             static_cast<int>(mats[i]));
-    auto fn = reinterpret_cast<DispCmd_t>(
-        (*reinterpret_cast<uintptr_t**>(mode))[kVfDispCmd / 4]);
-    fn(mode, kCmdProduce, item_id,
-       static_cast<int>(reinterpret_cast<intptr_t>(slots)), 0, 0);
+    rag::ModeSendMsg(mode, kCmdProduce, item_id,
+                     static_cast<int>(reinterpret_cast<intptr_t>(slots)));
     for (int i = 2; i >= 0; --i) dtor(slots + i * kItemSkillInfoSize);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }

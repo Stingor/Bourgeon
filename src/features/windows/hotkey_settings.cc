@@ -24,6 +24,7 @@
 #include "ui/ro_imgui.h"
 #include "utils/i18n.h"
 #include "utils/log_console.h"
+#include "ragnarok/globals.h"  // rag::kBattleModeFlagAddr / BattleModeOn
 
 namespace {
 
@@ -57,7 +58,6 @@ constexpr int kMsgBattleOff = 786;  // MSI_BATTLE_OFF « …are Disabled. [/bm O
 // ── Battle Mode ──────────────────────────────────────────────────────────────
 // g_ChangeChatMode : l'état du mode combat, un OCTET. Écrit par le message 213 de
 // UIHotKeyWnd, lu par la fenêtre de chat.
-constexpr uintptr_t kChangeChatModeAddr = 0x0131f50e;
 
 // 🔴 213 est une COMMANDE, pas un message. `UIHotKeyWnd_OnMsg` (0x008FB130)
 // n'entre dans son switch que si le message vaut **6** (= clic sur un bouton) ;
@@ -80,11 +80,7 @@ bool KeyboardMoveEnabled() {
   return keyboard_move && keyboard_move->enabled();
 }
 
-bool BattleModeEnabled() {
-  __try {
-    return *reinterpret_cast<const uint8_t*>(kChangeChatModeAddr) != 0;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
-}
+bool BattleModeEnabled() { return rag::BattleModeOn(); }
 
 // 🔴 Texte secondaire : couleur EXPLICITE, jamais ImGui::TextDisabled. Le corps
 // d'une fenêtre RO est CLAIR, et le gris de TextDisabled y est illisible

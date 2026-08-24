@@ -9,6 +9,7 @@
 #include "ragnarok/talktype.h"
 #include "ragnarok/uiwnd.h"
 #include "ui/ro_imgui.h"  // ro::LocalToUtf8
+#include "ragnarok/render.h"  // render::kSpriteRefCacheAddr
 
 namespace gamesettings {
 namespace {
@@ -20,7 +21,6 @@ constexpr uintptr_t kMgrPtrAddr = 0x0131ee7c;
 
 // Drapeau INTERNE d'une bascule, lu dans l'unordered_map 0x012515FC.
 using GetFlag_t = char(__cdecl*)(unsigned int);
-constexpr uintptr_t kGetFlagAddr = 0x0068ea70;
 
 // 1 pour les cinq options rangées à l'envers. On INTERROGE le client au lieu de
 // recopier sa liste : elle est en dur dans un `switch`, et un client plus récent
@@ -31,7 +31,6 @@ constexpr uintptr_t kIsInvertedAddr = 0x0068eaf0;
 // Écriture BRUTE du drapeau, sans handler ni message. Réservée aux deux cases du
 // groupe Audio, qui sont les seules que le natif écrive ainsi.
 using SetFlagRaw_t = char(__cdecl*)(unsigned int, char);
-constexpr uintptr_t kSetFlagRawAddr = 0x0068fd50;
 
 // `CGameSettingsMgr::SetOption(id, valeur, annonce)` — le chemin complet :
 // trouve le handler de l'option et le laisse appliquer l'effet.
@@ -97,8 +96,6 @@ constexpr uintptr_t kSoundSet3DAddr        = 0x00600ab0;
 
 // `CMode::SendMsg`, vtable+0x18 du mode actif — le message 90 (re)démarre ou
 // coupe la musique.
-using DispCmd_t = void(__thiscall*)(void*, int, int, int, int, int);
-constexpr int kVfDispCmd = 0x18;
 constexpr int kCmdBgmToggled = 90;
 
 // ── Les trois groupes câblés en dur de la page Basique (docs §3.9) ───────────
@@ -163,7 +160,6 @@ constexpr uintptr_t kSpriteTexFactoryApplyAddr = 0x00560f80;
 // puisque les globales, elles, étaient bien écrites.
 using CacheFlush_t = void(__thiscall*)(void*);
 constexpr uintptr_t kSpriteTexCacheFlushAddr = 0x00568b30;
-constexpr uintptr_t kSpriteTexCacheAddr      = 0x0125161c;
 
 // Un `std::vector` du client : trois pointeurs, rien de plus.
 struct ClientVector {
@@ -255,9 +251,7 @@ void* SoundMgr() {
 
 void* ActiveGameMode() {
   __try {
-    using GetActive_t = void*(__thiscall*)(void*);
-    return reinterpret_cast<GetActive_t>(rag::kModeMgrGetActiveAddr)(
-        reinterpret_cast<void*>(rag::kModeMgrAddr));
+    return rag::ActiveModeIfReady();
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
 }
 
@@ -330,14 +324,14 @@ bool IsInverted(int id) {
 
 bool RawFlag(int id) {
   __try {
-    return reinterpret_cast<GetFlag_t>(kGetFlagAddr)(
+    return reinterpret_cast<GetFlag_t>(gamesettings::kFlagGetRawAddr)(
                static_cast<unsigned int>(id)) != 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
 void SetRawFlag(int id, bool value) {
   __try {
-    reinterpret_cast<SetFlagRaw_t>(kSetFlagRawAddr)(static_cast<unsigned int>(id),
+    reinterpret_cast<SetFlagRaw_t>(gamesettings::kFlagSetRawAddr)(static_cast<unsigned int>(id),
                                                     value ? 1 : 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 
@@ -539,7 +533,7 @@ void SetBgmEnabled(bool on) {
   // cours jouer jusqu'au bout, et la rallumer ne relance rien.
   __try {
     void* mode = ActiveGameMode();
-    if (mode) uiwnd::Vf<DispCmd_t>(mode, kVfDispCmd)(mode, kCmdBgmToggled, 0, 0, 0, 0);
+    if (mode) rag::ModeSendMsg(mode, kCmdBgmToggled, 0, 0, 0, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -641,7 +635,7 @@ int ClampDetail(int level) {
 void FlushSpriteTextures() {
   __try {
     reinterpret_cast<CacheFlush_t>(kSpriteTexCacheFlushAddr)(
-        reinterpret_cast<void*>(kSpriteTexCacheAddr));
+        reinterpret_cast<void*>(render::kSpriteRefCacheAddr));
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -918,7 +912,7 @@ void ShutdownClient() {
     if (connection)
       reinterpret_cast<ConnDisconnect_t>(kConnDisconnectAddr)(connection);
     void* mode = *reinterpret_cast<void**>(rag::kActiveModePtr);
-    if (mode) uiwnd::Vf<DispCmd_t>(mode, kVfDispCmd)(mode, kCmdShutdown, 0, 0, 0, 0);
+    if (mode) rag::ModeSendMsg(mode, kCmdShutdown, 0, 0, 0, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 

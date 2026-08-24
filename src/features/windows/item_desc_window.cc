@@ -46,7 +46,6 @@ namespace {
 
 // Slots manager (g_UIWindowMgr = 0x0131f4e8) : non-nul ⇒ fenêtre ouverte, remis
 // à 0 à la fermeture (signal FIABLE). Relire FRAIS chaque tick.
-constexpr uintptr_t kItemWndSlot  = 0x0131f700;  // mgr+0x218 : ITEM desc (classe 0xc)
 constexpr uintptr_t kSkillWndSlot = 0x0131f718;  // mgr+0x230 : SKILL desc (classe 0x2e)
 
 // vtables attendues (valider avant de déréférencer les offsets spécifiques).
@@ -76,9 +75,7 @@ constexpr uintptr_t kItemIconLen  = 0x1d4;  // longueur de la std::string chemin
 constexpr uintptr_t kItemIconCap  = 0x1d8;  // capacité de la std::string chemin
 
 // Fonctions natives (base 0x400000, no-ASLR).
-constexpr uintptr_t kHideNative   = 0x009030c0;  // UIWnd_SetVisible(this,edx,vis) : cache sans détruire
 constexpr uintptr_t kGetDescLines = 0x006a2a70;  // ItemSkillDB_GetDescLines(info) -> &vector<char*>
-constexpr uintptr_t kGetResName   = 0x006a4bc0;  // ItemSkillDB_GetResName(info) -> resname C-str (icône)
 // DB de description (map id->record). Lookup(id,&db) -> record, ou nil(&itemdb::kNilAddr).
 // nom d'item affiché = *(char**)(record+4) (cf. GetBaseName). Sert à résoudre les
 // noms de cartes/enchants par id.
@@ -210,9 +207,6 @@ constexpr int kMsgBookGoto  = 92;     // aller à la page param_3 (0 = signet re
 // confisquées au jeu alors que plus aucun panneau n'est à l'écran.
 bool g_book_kbd_open  = false;
 int  g_book_page_step = 0;  // -1 / +1
-using TexMgr_t       = void* (__cdecl*)();
-using MakeKey_t      = void* (__cdecl*)(const char*);
-using LoadTex_t      = void* (__fastcall*)(void*, void*, void*);
 // std::string MSVC en mode HEAP (nom Lua de 16 car. = pas de SSO) : ptr + size + cap.
 struct LuaStr { const char* ptr; char pad[12]; uint32_t size; uint32_t cap; };
 static_assert(sizeof(LuaStr) == 0x18, "LuaStr = std::string MSVC (0x18)");
@@ -268,11 +262,7 @@ const char* MsvcStr(const uint8_t* base, uint32_t cap) {
 struct RawTex { const uint8_t* bgra; int w; int h; void* ctex; };
 bool GetRawTex(const char* path, RawTex* out) {
   __try {
-    void* mgr = reinterpret_cast<TexMgr_t>(ro::texmgr::kGet)();
-    if (!mgr) return false;
-    void* key = reinterpret_cast<MakeKey_t>(ro::texmgr::kMakeKey)(path);
-    if (!key) return false;
-    void* t = reinterpret_cast<LoadTex_t>(ro::texmgr::kLoad)(mgr, nullptr, key);
+    void* t = ro::texmgr::LoadResource(path);
     if (!t) return false;
     const int w = *reinterpret_cast<int*>(static_cast<char*>(t) + kTexW);
     const int h = *reinterpret_cast<int*>(static_cast<char*>(t) + kTexH);
@@ -1151,7 +1141,7 @@ uint8_t* FindBookWindow() {
 // des données et le destinataire des commandes de page). SEH.
 void HideBookWindow(uint8_t* wnd) {
   if (!wnd) return;
-  __try { reinterpret_cast<HideNative_t>(kHideNative)(wnd, nullptr, 0); }
+  __try { reinterpret_cast<HideNative_t>(uiwnd::kSetVisibleAddr)(wnd, nullptr, 0); }
   __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -1160,7 +1150,7 @@ void HideBookWindow(uint8_t* wnd) {
 // ne se ré-affiche qu'au chargement d'une page). SEH.
 void ShowBookWindow(uint8_t* wnd) {
   if (!wnd) return;
-  __try { reinterpret_cast<HideNative_t>(kHideNative)(wnd, nullptr, 1); }
+  __try { reinterpret_cast<HideNative_t>(uiwnd::kSetVisibleAddr)(wnd, nullptr, 1); }
   __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -1258,13 +1248,13 @@ void IconCachesGuard() {
   g_card_illust_cache.clear();
   s_epoch = e;
 }
-// Préfixes CP949 (2 littéraux concaténés pour éviter que \xba avale le \ suivant).
 // L'item et sa collection portent le MÊME resname, dans deux dossiers : « item\ »
-// pour la petite icône d'inventaire, « collection\ » pour l'art de preview.
-static const char kItemIconPrefix[] =
-    "\xc0\xaf\xc0\xfa\xc0\xce\xc5\xcd\xc6\xe4\xc0\xcc\xbd\xba" "\\item\\";
-static const char kCollectionPrefix[] =
-    "\xc0\xaf\xc0\xfa\xc0\xce\xc5\xcd\xc6\xe4\xc0\xcc\xbd\xba" "\\collection\\";
+// pour la petite icône d'inventaire, « collection\ » pour l'art de preview. Les
+// deux chemins se composent au format, sur la racine partagée
+// `ro::uipath::kUiRoot` — ce qui écarte du même coup le piège des littéraux
+// collés, où l'octet `\xba` de la racine avalait le `\` suivant.
+static const char kItemIconFmt[]   = "%s\\item\\%s.bmp";
+static const char kCollectionFmt[] = "%s\\collection\\%s.bmp";
 
 // Charge la desc d'une carte/enchant par id. Toutes les descs de ce client vivent
 // dans rec+0x0c (RE 2026-07-05), lues par GetDescLines quand info+0x5c==1. On
@@ -1316,15 +1306,15 @@ void LoadCardDesc(uint32_t id, CardDesc* cd) {
 
     // 4) Chemins images (mêmes fonctions natives que le jeu) : petite icône item
     // (GetResName -> rec+0x08 avec +0x5c=1) + illustration cardBmp (GetCardResName).
-    const char* irn = reinterpret_cast<GetResName_t>(kGetResName)(info);
+    const char* irn = reinterpret_cast<GetResName_t>(itemdb::kGetResNameAddr)(info);
     if (irn && irn[0]) {
-      std::snprintf(cd->icon_path, sizeof(cd->icon_path), "%s%s.bmp",
-                    kItemIconPrefix, irn);
+      std::snprintf(cd->icon_path, sizeof(cd->icon_path), kItemIconFmt,
+                    ro::uipath::kUiRoot, irn);
       // Même resname, autre dossier : l'art de preview. Beaucoup d'items n'en
       // ont pas — le chemin est bâti quand même, c'est le chargement qui échoue
       // et fait retomber la vignette sur la petite icône.
-      std::snprintf(cd->coll_path, sizeof(cd->coll_path), "%s%s.bmp",
-                    kCollectionPrefix, irn);
+      std::snprintf(cd->coll_path, sizeof(cd->coll_path), kCollectionFmt,
+                    ro::uipath::kUiRoot, irn);
     }
     void* crec = reinterpret_cast<CardResName_t>(kGetCardResName)(static_cast<int>(id));
     // crec == la fiche nil (kCardNilRecord, resname "sorry") => id absent de la DB
@@ -1512,7 +1502,7 @@ namespace {
 // Cache le rendu natif d'UNE fenêtre desc lue depuis son slot (vtable validée).
 void HideDescSlot(uintptr_t slot, uintptr_t vtable) {
   if (uint8_t* wnd = ReadValidWnd(slot, vtable))
-    __try { reinterpret_cast<HideNative_t>(kHideNative)(wnd, nullptr, 0); }
+    __try { reinterpret_cast<HideNative_t>(uiwnd::kSetVisibleAddr)(wnd, nullptr, 0); }
     __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -1559,7 +1549,7 @@ void ItemDescWindow::HideNativeDescWindows() {
   if (!show_item_panel_) return;
   // Cache la fenêtre item (0xc) ET la fenêtre de comparaison (0xea) — cette
   // dernière est créée dans le même OnMsg 0x18, donc déjà présente ici.
-  HideDescSlot(kItemWndSlot, kItemVTable);
+  HideDescSlot(uiwnd::kItemDescWndSlot, kItemVTable);
   HideDescSlot(kCompareWndSlot, kCompareVTable);
 }
 
@@ -1605,7 +1595,7 @@ void ItemDescWindow::OnTick() {
   }
 
   // ── Fenêtres ITEM (0xc) + COMPARAISON équipé (0xea) : Option A ─────────────
-  ReadItemLayoutWindow(kItemWndSlot, kItemVTable, &item_);
+  ReadItemLayoutWindow(uiwnd::kItemDescWndSlot, kItemVTable, &item_);
   ReadItemLayoutWindow(kCompareWndSlot, kCompareVTable, &compare_);
   // Cache le rendu natif à CHAQUE tick (filet de sécurité ; le hook OnMsg le
   // fait déjà sans flicker à l'ouverture). On garde les objets vivants pour les
@@ -2873,7 +2863,7 @@ static void EmitDescBugButton(uint32_t id, const char* name, bool is_skill) {
 // natif est relu FRAIS + validé ici (indépendant de OnTick). SEH sur les
 // lectures/appels natifs ; le rendu ImGui reste hors __try (objets C++).
 void ItemDescWindow::RenderItemWindow() {
-  uint8_t* iwnd = ReadValidWnd(kItemWndSlot, kItemVTable);
+  uint8_t* iwnd = ReadValidWnd(uiwnd::kItemDescWndSlot, kItemVTable);
   if (!iwnd) return;
   // Fenêtre de comparaison (équipé) éventuelle (id 0xea).
   uint8_t* cwnd = ReadValidWnd(kCompareWndSlot, kCompareVTable);

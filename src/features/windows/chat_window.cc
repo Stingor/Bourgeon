@@ -28,7 +28,7 @@
 #include "features/systems/image_preview.h"      // hôtes autorisés par le joueur
 #include "imgui.h"
 #include "imgui_internal.h"      // GetInputTextState (défilement interne du champ)
-#include "ragnarok/globals.h"    // kModeMgrAddr / kModeMgrGetActiveAddr (dict de noms)
+#include "ragnarok/globals.h"    // rag::ActiveModeIfReady (dict de noms)
 #include "ragnarok/msgstring.h"  // msgstr::Utf8 (refus du filtre de mots)
 #include "ragnarok/uiwnd.h"      // uiwnd::SafeFindWindow / CloseWindow (natif détruit)
 #include "ui/emoji_set.h"        // ro::emoji (la palette Unicode, 2e onglet)
@@ -43,6 +43,7 @@
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 #include "utils/i18n.h"
+#include "ragnarok/social.h"  // rag::social::kFriendListAddByNameAddr
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -119,12 +120,9 @@ constexpr uintptr_t kCmdHandlerMap      = 0x00d7f1a0;  // __thiscall(ctxKey, tex
 // (`0x00d60804` → `sub_D5CD30(ecx, nom)`) et déréférence ce contexte. Appelée
 // sans, elle part sur un ecx quelconque et lève une exception.
 constexpr uintptr_t kLookupSlashCmd     = 0x00d5e590;  // __thiscall(ctx, texte, &id, args[3])
-constexpr uintptr_t kInputTargetMode    = 0x015ff838;  // 0 public 1 groupe 2 guilde 3 clan 4 alliés
-constexpr uintptr_t kClanStatePtr       = 0x0159c07c;  // *(byte*)(*ptr + 0x5C) = clan
 // `/battlechat` : quand il est armé, l'ENTRÉE native envoie tout au champ de
 // bataille et ne consulte NI le mode NI les préfixes (0x00c7a905).
 constexpr uintptr_t kBattleChatModeOn   = 0x015ff824;
-constexpr int       kSendMsgVtOff       = 0x18;        // CMode::SendMsg (vtbl+0x18)
 // Les commandes de CMode::SendMsg utilisées ici (§5.2 de la doc).
 constexpr int kMsgPublic  = 6;
 constexpr int kMsgWhisper = 11;
@@ -208,7 +206,6 @@ constexpr int kMsgPartyInvite = 0x3b;
 // Désassemblée à 0x00a2c600 — `Src = 514` (0x0202), 24 octets de nom recopiés,
 // longueur lue dans la table du client. ⚠ Elle lit les 24 octets d'un bloc.
 using FriendAddFn = int(__stdcall*)(const void*);
-constexpr uintptr_t kFriendListAddByName = 0x00a2c600;
 
 // CZ_REQ_JOIN_GUILD2 {op, nom[24]} — invitation en guilde PAR NOM. Le menu du
 // client, lui, n'invite que par AID : sans équivalent natif, on l'envoie
@@ -514,7 +511,6 @@ __declspec(naked) void ChatTagTransformStub() {
 // Basculé par la case 135 de `Chat_HandleChatMessage` (`/bm`, `/battlemode`) au
 // moyen d'un `setz` — c'est une vraie bascule, un « on »/« off » en argument est
 // ignoré.
-constexpr uintptr_t kBattleModeFlag     = 0x0131f50e;
 constexpr uintptr_t kChatToggleInputBar = 0x008dc0d0;  // __thiscall(this), retn 0
 void* g_tramp_chat_togglebar = nullptr;
 
@@ -745,7 +741,6 @@ using StdStringDtor_t   = void(__thiscall*)(void*);
 using CmdHandlerMap_t   = int(__thiscall*)(void*, const char*);
 using PartyCount_t      = int(__thiscall*)(void*);
 using LookupSlashCmd_t  = int(__thiscall*)(void*, const char*, int*, void*);
-using SendMsg_t         = void(__thiscall*)(void*, int, int, int, int, int);
 
 // Le texte porte-t-il une balise d'objet ? Le natif fait exactement ce test, au
 // `_mbsstr`, sur les deux littéraux — et seulement pour trois commandes slash.
@@ -768,10 +763,11 @@ void SetPendingSendText(const char* text) {
 // CMode::SendMsg(cmd, p2..p5) sur le mode de zone courant. Rend false si aucun
 // mode n'est actif (écran de login, changement de carte).
 bool ModeSendMsg(int cmd, int p2 = 0, int p3 = 0, int p4 = 0, int p5 = 0) {
+  // ⚠ Lecture BRUTE du pointeur, pas rag::ActiveModeIfReady() : les deux ne
+  // disent pas la même chose pendant un changement de carte (cf. globals.h).
   void* mode = *reinterpret_cast<void**>(rag::kActiveModePtr);
   if (mode == nullptr) return false;
-  void** vt = *reinterpret_cast<void***>(mode);
-  reinterpret_cast<SendMsg_t>(vt[kSendMsgVtOff / 4])(mode, cmd, p2, p3, p4, p5);
+  rag::ModeSendMsg(mode, cmd, p2, p3, p4, p5);
   return true;
 }
 
@@ -883,7 +879,7 @@ int ResolveSendCommand(ChatWindow::SendToggles toggles) {
   // Le chat de champ de bataille court-circuite tout, mode et bascules compris.
   if (*reinterpret_cast<int*>(kBattleChatModeOn) != 0) return kMsgBattle;
 
-  const int  mode     = *reinterpret_cast<int*>(kInputTargetMode);
+  const int  mode     = *reinterpret_cast<int*>(rag::kInputTargetModeAddr);
   const bool in_guild = rag::OwnGuildId() != 0;
   if (mode == 2 && in_guild) return toggles.guild ? kMsgPublic : kMsgGuild;
   if (mode == 1) {
@@ -891,7 +887,7 @@ int ResolveSendCommand(ChatWindow::SendToggles toggles) {
     return (PartyMemberCount() != 0) ? kMsgParty : kMsgPublic;
   }
   if (mode == 3) {
-    const uint8_t* clan = *reinterpret_cast<const uint8_t**>(kClanStatePtr);
+    const uint8_t* clan = *reinterpret_cast<const uint8_t**>(rag::kClanStatePtrAddr);
     if (clan != nullptr && clan[0x5C] == 1) return kMsgClan;
   } else if (mode == 4 && in_guild) {
     return toggles.ally ? kMsgPublic : kMsgAlly;
@@ -1048,11 +1044,9 @@ struct GuildProbe {
 
 bool ProbeGuildsFromNameDict(GuildProbe* items, int count) {
   if (count <= 0) return false;
-  using GetActiveFn    = void*(__fastcall*)(int);
   using GetNameEntryFn = void*(__thiscall*)(void*, unsigned);
   __try {
-    void* gm = reinterpret_cast<GetActiveFn>(rag::kModeMgrGetActiveAddr)(
-        static_cast<int>(rag::kModeMgrAddr));
+    void* gm = rag::ActiveModeIfReady();
     if (gm == nullptr) return false;
     void* dict = reinterpret_cast<uint8_t*>(gm) + gamescene::kGmNameDict;
     auto get_entry = reinterpret_cast<GetNameEntryFn>(gamescene::kNameDictGetEntryOrRequestAddr);
@@ -1120,7 +1114,6 @@ void WriteChannelFilter(uintptr_t node, int type, bool on) {
 // ── Bitmaps du client utilisés par la chatbox ────────────────────────────────
 // Les noms viennent de `UINewChatWnd_Create` : les boutons du chat sont des
 // UIBitmapButton à deux états (`_a` normal, `_b` survol/pressé).
-const char kUiDirCp949[] = "\xC0\xAF\xC0\xFA\xC0\xCE\xC5\xCD\xC6\xE4\xC0\xCC\xBD\xBA";
 
 ro::GameTexture ChatBitmap(const char* rel_path) {
   struct Entry {
@@ -1134,7 +1127,7 @@ ro::GameTexture ChatBitmap(const char* rel_path) {
   if (entry.tried && entry.epoch == epoch) return entry.tex;
 
   char full[260];
-  std::snprintf(full, sizeof(full), "%s\\%s", kUiDirCp949, rel_path);
+  std::snprintf(full, sizeof(full), "%s\\%s", ro::uipath::kUiRoot, rel_path);
   entry.tex   = ro::TextureFromGameFile(full);
   entry.epoch = epoch;
   entry.tried = true;
@@ -1146,7 +1139,7 @@ ro::GameTexture ChatBitmap(const char* rel_path) {
 // doivent envoyer au même endroit.
 int ReadSendMode() {
   __try {
-    return *reinterpret_cast<int*>(kInputTargetMode);
+    return *reinterpret_cast<int*>(rag::kInputTargetModeAddr);
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     return 0;
   }
@@ -1154,7 +1147,7 @@ int ReadSendMode() {
 
 void WriteSendMode(int mode) {
   __try {
-    *reinterpret_cast<int*>(kInputTargetMode) = mode;
+    *reinterpret_cast<int*>(rag::kInputTargetModeAddr) = mode;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
   }
 }
@@ -6553,13 +6546,9 @@ void ChatWindow::DrawWhisperHistoryPopup() {
 // l'OptionInfo à la connexion. Un joueur déjà en battle mode nous trouvait donc
 // inversés dès la première frame — c'est précisément ce que lire le drapeau règle.
 bool ChatWindow::ReadNativeBattleMode() const {
-  bool battle = false;
-  __try {
-    battle = *reinterpret_cast<const uint8_t*>(kBattleModeFlag) != 0;
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-    battle = false;  // en cas de doute, barre visible : jamais de chat perdu
-  }
-  return battle;
+  // L'accesseur porte déjà la garde ET le repli « en cas de doute, barre
+  // visible » — c'est-à-dire la règle de ce site, devenue celle du catalogue.
+  return rag::BattleModeOn();
 }
 
 // ── Liens d'objets (Maj + clic gauche) ───────────────────────────────────────
@@ -6775,7 +6764,7 @@ void ChatWindow::FlushNameAction() {
       // compilation, et il s'adresse au développeur, pas au joueur.
       static_assert(sizeof(name) >= 24, "sub_A2C600 lit 24 octets de nom");
       __try {
-        reinterpret_cast<FriendAddFn>(kFriendListAddByName)(name);
+        reinterpret_cast<FriendAddFn>(rag::social::kFriendListAddByNameAddr)(name);
       } __except (EXCEPTION_EXECUTE_HANDLER) {
       }
       return;

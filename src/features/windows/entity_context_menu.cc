@@ -27,6 +27,7 @@
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 #include "utils/i18n.h"
+#include "ragnarok/pet.h"  // rag::pet::kOwnPetAidAddr
 
 using namespace mui;
 
@@ -73,8 +74,6 @@ constexpr int       kBtnRepeat         = 4;  // appui trop rapproché du précé
 
 // §4.1 — les gardes que le natif applique avant d'ouvrir : on les reprend telles
 // quelles, sinon notre menu apparaîtrait là où le client refusait le sien.
-constexpr uintptr_t kReplayActive  = 0x015beecc;  // lecture d'un replay
-constexpr uintptr_t kStorageWndPtr = 0x0131f770;  // storage NATIF ouvert
 
 // §4.3 — les trois champs du CGameMode que le menu écrit et que le dispatch relit.
 constexpr int kGm_MenuCodes  = 0x1cc;  // std::vector<int> : begin/end/cap
@@ -145,7 +144,6 @@ constexpr uintptr_t kIsHostileOrSpecial   = 0x00d9d220;  // __stdcall(aid, job) 
 // fier pour lire ses propres infos — cf. docs §9.6.
 
 constexpr uintptr_t kInPartyFlag   = 0x015ff804;
-constexpr uintptr_t kOwnPetAid     = 0x015fb3b0;
 // ⚠ Ces deux offsets sont ceux des comparaisons `*((int*)session + N)` du client,
 // pas les noms qu'IDA leur a donnés : 5462*4 = 0x5558 et 5506*4 = 0x5608.
 constexpr int kSess_HomunAid = 0x5558;  // GameMode_IsCurrentId5558
@@ -837,12 +835,12 @@ bool EntityContextMenu::OnNativeContextMenu(void* game_mode, const int* quad,
   // faire à deux instants différents du même clic. Elles ne sont pas
   // cosmétiques : sans elles, le menu s'ouvrirait pendant un drag, par-dessus
   // une fenêtre native, ou pendant un replay.
-  if (ReadGlobalInt(kReplayActive)) return true;
+  if (ReadGlobalInt(rag::kReplayActiveAddr)) return true;
   if (ReadGlobalInt(kMouseLButtonState) == kBtnHeld) return true;
   if ((GetAsyncKeyState(VK_SHIFT) >> 8) != 0) return true;  // Maj = attaque forcée
   if (!quad) return true;
   if (blocked) return true;
-  if (ReadGlobalPtr(kStorageWndPtr)) return true;
+  if (ReadGlobalPtr(uiwnd::kStorageWndSlot)) return true;
 
   // Ce détour tourne à CHAQUE frame, y compris quand la souris ne fait que
   // survoler. Trois états du bouton droit nous concernent : l'appui (qu'il faut
@@ -1025,7 +1023,7 @@ EntityContextMenu::Kind EntityContextMenu::ClassifyTarget(void* game_mode,
   // natif ouvrait autre chose qu'un menu de joueur.
   {
     void* session = reinterpret_cast<void*>(rag::kSessionAddr);
-    if (aid == static_cast<uint32_t>(ReadGlobalInt(kOwnPetAid))) {
+    if (aid == static_cast<uint32_t>(ReadGlobalInt(rag::pet::kOwnPetAidAddr))) {
       // La condition d'entrée du menu pet natif est, mot pour mot,
       // `quad[6] == g_Own_PetAid && acteur[0x314] == 7` (@0x00c6ecdb). Sa
       // seconde moitié, le quad la porte DÉJÀ : la catégorie 3 n'est écrite que

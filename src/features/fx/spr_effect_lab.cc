@@ -14,6 +14,7 @@
 #include "features/fx/ez_effect_capture.h"  // capture EZ PARTAGÉE (hooks, blend par primitive, rendu ré-ancré)
 #include "features/moonlight_ui/moonlight_ui.h"  // helpers UI du toolkit (namespace mui)
 #include "ragnarok/game_scene.h"
+#include "ragnarok/own_actor.h"  // rag::kActorToggleEffectIdAddr / kHatEffectIdBase
 #include "ui/ro_imgui.h"  // ro::Px (échelle de l'interface, largeurs de contrôles)
 #include "utils/i18n.h"
 
@@ -25,9 +26,6 @@ namespace {
 // ── Adresses / offsets natifs (client 20250716, base 0x400000) ────────────────
 // Réutilisés à l'identique de la RE existante (cf. basic_info.cc, docs/hat_effect_re.md).
 constexpr int       kOffOwnActor      = 0x2c;        // actorMgr -> acteur joueur
-
-constexpr uintptr_t kToggleEffectId   = 0x00c44940;  // Actor_ToggleEffectId(actor, unifiedId, add) __thiscall
-constexpr int       kHatOrdinalBase   = 0x98a;       // id unifié d'un hat effect = ordinal + 0x98a
 
 // Bridge Lua brut (Lua 5.1) — pour appeler GetHatEffectID(ordinal) = getter NATIF de l'id concret
 // (ordinal -> id d'effet interne). Mêmes adresses/mécanique que basic_info.cc (HatLuaNum) :
@@ -80,7 +78,7 @@ bool IsOurs(const ez_capture::Prim& p) {
 void* GetOwnActor() {
   void* actor = nullptr;
   __try {
-    void* gm = reinterpret_cast<void*(__fastcall*)(int)>(rag::kModeMgrGetActiveAddr)(static_cast<int>(rag::kModeMgrAddr));
+    void* gm = rag::ActiveModeIfReady();
     if (gm) {
       void* mgr = *reinterpret_cast<void**>(reinterpret_cast<char*>(gm) + gamescene::kGmActorMgr);
       if (mgr) actor = *reinterpret_cast<void**>(reinterpret_cast<char*>(mgr) + kOffOwnActor);
@@ -195,14 +193,14 @@ void Reconcile() {
   if (!actor) return;                                                             // hors-jeu : on retentera
 
   using ToggleFn = void(__thiscall*)(void*, int, char);
-  const ToggleFn toggle = reinterpret_cast<ToggleFn>(kToggleEffectId);
+  const ToggleFn toggle = reinterpret_cast<ToggleFn>(rag::kActorToggleEffectIdAddr);
   __try {
     // Despawn propre SEULEMENT si l'acteur est encore le nôtre (sinon l'ancien est déjà libéré).
     if (g_applied_ordinal != 0 && actor == g_applied_actor)
-      toggle(actor, g_applied_ordinal + kHatOrdinalBase, 0);
+      toggle(actor, g_applied_ordinal + rag::kHatEffectIdBase, 0);
     if (g_wanted_ordinal != 0) {
       g_applied_concrete = ResolveConcreteId(g_wanted_ordinal);  // id concret NATIF (pas de hardcode)
-      toggle(actor, g_wanted_ordinal + kHatOrdinalBase, 1);
+      toggle(actor, g_wanted_ordinal + rag::kHatEffectIdBase, 1);
     } else {
       g_applied_concrete = 0;
     }

@@ -30,11 +30,9 @@ using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 namespace {
 
 // GameMode_GetActive(mgr) __fastcall : le CGameMode actif, 0 hors jeu.
-using GetActiveFn = void*(__fastcall*)(int);
 
 // char* GetSkillName(int id) — wrapper Lua, renvoie « Unknown-Skill » si l'id
 // est inconnu. Même source que l'arbre de compétences et l'infobulle native.
-using GetSkillNameLua_t = char*(__cdecl*)(int);
 
 // Offsets GameMode / gestionnaire d'acteurs / acteur.
 constexpr int kNode_Actor   = 0x08;   //  node+8          = pointeur acteur
@@ -112,7 +110,7 @@ void ResolveSkillName(int skill_id, char* out, size_t n) {
   if (n == 0) return;
   out[0] = '\0';
   __try {
-    const char* s = reinterpret_cast<GetSkillNameLua_t>(lua::kGetSkillNameAddr)(skill_id);
+    const char* s = lua::SkillName(skill_id);
     // « Unknown-Skill » est le repli du client : l'afficher serait pire que de
     // ne rien afficher.
     if (s == nullptr || s[0] == '\0' || std::strcmp(s, "Unknown-Skill") == 0) return;
@@ -237,8 +235,7 @@ void CastBar::SyncGuarded() {
 }
 
 void CastBar::SyncWithActors() {
-  void* gm = reinterpret_cast<GetActiveFn>(rag::kModeMgrGetActiveAddr)(
-      static_cast<int>(rag::kModeMgrAddr));
+  void* gm = rag::ActiveModeIfReady();
   if (!gm) { own_cast_ = OwnCast(); return; }
   void* actor_mgr = Read<void*>(gm, gamescene::kGmActorMgr);
   if (!actor_mgr) { own_cast_ = OwnCast(); return; }
@@ -306,8 +303,7 @@ void CastBar::SyncWithActors() {
 void CastBar::RestoreNatives() {
   natives_hidden_ = false;
   __try {
-    void* gm = reinterpret_cast<GetActiveFn>(rag::kModeMgrGetActiveAddr)(
-        static_cast<int>(rag::kModeMgrAddr));
+    void* gm = rag::ActiveModeIfReady();
     if (!gm) return;
     void* actor_mgr = Read<void*>(gm, gamescene::kGmActorMgr);
     if (!actor_mgr) return;
@@ -343,8 +339,7 @@ void CastBar::OnRenderUI() {
 }
 
 void CastBar::DrawBars() {
-  void* gm = reinterpret_cast<GetActiveFn>(rag::kModeMgrGetActiveAddr)(
-      static_cast<int>(rag::kModeMgrAddr));
+  void* gm = rag::ActiveModeIfReady();
   if (!gm) return;
   void* actor_mgr = Read<void*>(gm, gamescene::kGmActorMgr);
   if (!actor_mgr) return;

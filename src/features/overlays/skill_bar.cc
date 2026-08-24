@@ -31,6 +31,7 @@
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 #include "utils/i18n.h"
+#include "ragnarok/user_hotkey.h"  // userhotkey::kGetHotKeyAddr
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -104,7 +105,6 @@ using GetSkillInfo_t = void (__fastcall*)(void*, void*, void*, int, int);  // (m
 using StrFree_t      = void (__fastcall*)(void*);                          // (ecx=std::string base)
 using ShowTip_t      = void (__fastcall*)(void*, void*, const char*, int, int, unsigned, unsigned char, char);
 using ItemDbGet_t    = void* (__cdecl*)(int, void*);                       // (nameid, table) -> record / sentinelle
-using GetSkillNameLua_t = char* (__cdecl*)(int);                          // GetSkillName(id) -> nom skill / "Unknown-Skill"
 using ItemSkillInfoCtor_t  = void* (__fastcall*)(void*);                  // (ecx=this) -> this
 using ItemSkillInfoSetId_t = void  (__thiscall*)(void*, int);             // (this, id)
 
@@ -155,7 +155,6 @@ void __fastcall ShortCutDrawHook(void* self, void* edx) {
   if (g_orig_shortcut_draw) g_orig_shortcut_draw(self, edx);
 }
 
-constexpr uintptr_t kSetVisibleFn = 0x009030c0;  // UIWnd_SetVisible (vtable+0x38, __thiscall)
 using SetVisibleFn_t = void (__thiscall*)(void*, int);
 SetVisibleFn_t g_orig_setvisible = nullptr;
 void __fastcall SetVisibleHook(void* self, void* /*edx*/, int visible) {
@@ -451,7 +450,6 @@ int GetItemLiveCount(uint32_t nameid) {
 //   Source unique = UserKeys.lua -> touche RÉELLE (rebinds inclus) ET layout-aware (AZERTY/
 //   QWERTY, car le nom vient du jeu). Les 2 std::string créées par le wrapper DOIVENT être
 //   détruites (rag::kStdStringDtorAddr, sinon fuite si nom > 15 car.). SEH : on touche Lua + globals.
-constexpr uintptr_t kGetHotKey = 0x00d80950;
 using GetHotKey_t = void* (__stdcall*)(void* out, int category, int slot);
 
 // Copie une std::string MSVC vers dst (base = objet string ; +0x10 = size, +0x14 = cap ;
@@ -477,7 +475,7 @@ void GetSlotKeyLabel(int category, int slot, char* out, int n) {
   __try {
     alignas(4) uint8_t buf[0x40];
     std::memset(buf, 0, sizeof(buf));
-    reinterpret_cast<GetHotKey_t>(kGetHotKey)(buf, category, slot);
+    reinterpret_cast<GetHotKey_t>(userhotkey::kGetHotKeyAddr)(buf, category, slot);
     CopyMsvcString(buf + 0x08, out, n);                  // out+0x08 = nom de la touche
     reinterpret_cast<StrFree_t>(rag::kStdStringDtorAddr)(buf + 0x08);   // détruit les 2 std::string du wrapper
     reinterpret_cast<StrFree_t>(rag::kStdStringDtorAddr)(buf + 0x20);
@@ -494,7 +492,7 @@ bool GetSlotKeyCodes(int category, int slot, int* kc1, int* kc2) {
   __try {
     alignas(4) uint8_t buf[0x40];
     std::memset(buf, 0, sizeof(buf));
-    reinterpret_cast<GetHotKey_t>(kGetHotKey)(buf, category, slot);
+    reinterpret_cast<GetHotKey_t>(userhotkey::kGetHotKeyAddr)(buf, category, slot);
     *kc1 = *reinterpret_cast<int*>(buf + 0x00);
     *kc2 = *reinterpret_cast<int*>(buf + 0x04);
     reinterpret_cast<StrFree_t>(rag::kStdStringDtorAddr)(buf + 0x08);
@@ -542,10 +540,6 @@ float CooldownFraction(uint32_t skillId) {
 
 // ── Icônes (recette menu_icons.cc : TexMgr -> BGRA -> Overlay_CreateTextureARGB) ──
 constexpr int kTexW = 0x114, kTexH = 0x118, kTexPix = 0x11c;
-const char kUIDir[] = "\xC0\xAF\xC0\xFA\xC0\xCE\xC5\xCD\xC6\xE4\xC0\xCC\xBD\xBA";  // CP949 유저인터페이스
-using TexMgr_t  = void* (__cdecl*)();
-using MakeKey_t = void* (__cdecl*)(const char*);
-using LoadTex_t = void* (__fastcall*)(void*, void*, void*);
 // Chemin d'icône construit par fonctions natives (RE) :
 //   OBJET : ro::texmgr::kBuildItemIconPath __stdcall(id_str, out, identified)
 //           (resname via ResolveItemResNameById/DB objets -> marche même HORS inventaire). C'est la clé :
@@ -558,8 +552,6 @@ using LoadTex_t = void* (__fastcall*)(void*, void*, void*);
 //           perdue après relog sur un perso GM multi-classe. Le nom du slot survivait car il vient de
 //           GetSkillName Lua, elle aussi indép. de l'appris.) Repli sur 0x00d7fa90 si idname invalide.
 using GetInvInfo_t = void* (__stdcall*)(void*, int);          // itemdb::kFillInfoByIdAddr (out, id)
-using BuildPath_t  = void  (__stdcall*)(const char*, char*, int);  // (id_str, out[>=260], identified)
-using GetSkillIdNameLua_t = char* (__cdecl*)(int);            // 0x0073a140 GetSkillIdName(id) -> idname
 
 std::unordered_map<uint32_t, void*> g_iconCache;  // (type0?hi:0)|id -> ImTextureID (null=miss connu)
 
@@ -574,14 +566,11 @@ inline bool LooksUnknown(const char* s) {
 // Chemins SEH-protégés (aucun objet C++ -> SEH OK), écrits dans out (taille >=260).
 bool ItemPath(int id, char* out, int /*n*/) {
   __try {
-    char idstr[16];
-    std::snprintf(idstr, sizeof(idstr), "%d", id);
-    out[0] = '\0';
-    // 🔴 TROIS arguments : la fonction finit sur `retn 0Ch` et LIT son drapeau
-    // `identified`. En n'en passant que deux, on le lui laissait prendre dans de
-    // la pile non initialisée — donc un nom de ressource tiré au sort entre les
-    // deux que porte l'enregistrement. Cf. ro::texmgr::kBuildItemIconPath.
-    reinterpret_cast<BuildPath_t>(ro::texmgr::kBuildItemIconPath)(idstr, out, 1);
+    // L'enveloppe porte la signature à TROIS arguments, tranchée au
+    // désassemblage : la déclarer ici à deux — ce que faisait ce fichier —
+    // laissait la fonction prendre son drapeau `identified` dans de la pile non
+    // initialisée. Cf. ro::texmgr::BuildItemIconPath.
+    ro::texmgr::BuildItemIconPath(static_cast<unsigned>(id), out);
     if (LooksUnknown(out)) { out[0] = '\0'; return false; }  // pas de ressource -> ne pas charger
     return out[0] != '\0';
   } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; return false; }
@@ -591,9 +580,9 @@ bool SkillPath(int id, char* out, int n) {
     // 1) Source d'icône NATIVE, indépendante de l'état appris : Lua GetSkillIdName(id) -> identifiant
     //    (ex. "AL_BLESSING"). Marche pour un skill d'une AUTRE classe (perso GM multi-classe) alors que
     //    l'ancien getter renvoyait vide -> icône perdue après relog. Voir le bloc de commentaire ci-dessus.
-    const char* idn = reinterpret_cast<GetSkillIdNameLua_t>(lua::kGetSkillIdNameAddr)(id);
+    const char* idn = lua::SkillIdName(id);
     if (idn && idn[0] && !LooksUnknown(idn)) {                      // rejette "Zero Skill"/"Unknown"
-      std::snprintf(out, n, "%s\\item\\%s.bmp", kUIDir, idn);
+      std::snprintf(out, n, "%s\\item\\%s.bmp", ro::uipath::kUiRoot, idn);
       return out[0] != '\0';
     }
     // 2) Repli : ancien getter 0x00d7fa90 (resname de la liste APPRISE à +0x20). Utile si GetSkillIdName
@@ -602,18 +591,14 @@ bool SkillPath(int id, char* out, int n) {
     reinterpret_cast<GetInvInfo_t>(itemdb::kFillInfoByIdAddr)(info, id);          // __stdcall(out, id)
     const char* rn = *reinterpret_cast<const char**>(info + 0x20);  // resname (déréférencé)
     if (rn && rn[0] && !LooksUnknown(rn)) {                         // rejette "Unknown-Skill"
-      std::snprintf(out, n, "%s\\item\\%s.bmp", kUIDir, rn);
+      std::snprintf(out, n, "%s\\item\\%s.bmp", ro::uipath::kUiRoot, rn);
       return out[0] != '\0';
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
   return false;
 }
 void* UploadBmp(const char* path) {
-  void* mgr = reinterpret_cast<TexMgr_t>(ro::texmgr::kGet)();
-  if (!mgr) return nullptr;
-  void* key = reinterpret_cast<MakeKey_t>(ro::texmgr::kMakeKey)(path);
-  if (!key) return nullptr;
-  void* t = reinterpret_cast<LoadTex_t>(ro::texmgr::kLoad)(mgr, nullptr, key);
+  void* t = ro::texmgr::LoadResource(path);
   if (!t) return nullptr;
   const int w = *reinterpret_cast<int*>(static_cast<char*>(t) + kTexW);
   const int h = *reinterpret_cast<int*>(static_cast<char*>(t) + kTexH);
@@ -777,7 +762,7 @@ void ShowSlotTooltip(int region, int slot) {
           // SKILL : nom via Lua GetSkillName(id) — les ids skills sont absents de la DB item (les
           // skills custom y sont parfois, mais GetSkillName couvre TOUT, source que la fenêtre de
           // skills/le tooltip natif utilisent). "" ou "Unknown-Skill" => repli ci-dessous.
-          const char* sn = reinterpret_cast<GetSkillNameLua_t>(lua::kGetSkillNameAddr)(id);
+          const char* sn = lua::SkillName(id);
           if (sn && *sn && std::strcmp(sn, "Unknown-Skill") != 0)
             std::snprintf(nm, sizeof(nm), "%s", sn);
         }
@@ -840,7 +825,7 @@ SkillBar::SkillBar() {
   auto& hm = hooking::HookManager::Instance();
   // Principal : empêche la native (barre + boutons enfants) d'être re-liée tant qu'on la veut cachée.
   g_orig_setvisible = reinterpret_cast<SetVisibleFn_t>(
-      hm.SetHook(hooking::HookType::kJmpHook, reinterpret_cast<uint8_t*>(kSetVisibleFn),
+      hm.SetHook(hooking::HookType::kJmpHook, reinterpret_cast<uint8_t*>(uiwnd::kSetVisibleAddr),
                  reinterpret_cast<uint8_t*>(&SetVisibleHook)));
   // Défense : annule le contenu-slots natif si la fenêtre restait liée par une voie hors SetVisible.
   g_orig_shortcut_draw = reinterpret_cast<OnDraw_t>(

@@ -102,4 +102,17 @@ constexpr int kSkillDescWndId  = 0x2e;
 constexpr int kSkillDescMsgSet = 0x3d;
 constexpr int kSkillDescShownId = 0x104;
 
+// ── Nom de ressource d'un objet, et classe d'arme ───────────────────────────
+// `ItemSkillDB_GetResName(info)` -> le nom de ressource CP949 (celui du .bmp
+// d'icône et du .spr), ou vide. ⚠ Il lit `rec+8` ou `rec+0x1C` selon l'octet
+// « identifié » à `ItemSkillInfo+0x5c` — poser cet octet à 1 avant l'appel est
+// donc ce que fait tout appelant qui monte une fiche autonome.
+constexpr uintptr_t kGetResNameAddr = 0x006a4bc0;
+
+// `Weapon_ItemIdToWeaponClass(id)` __stdcall, `retn 4` : l'id d'objet -> la
+// classe d'arme au sens du RENDU (celle qui choisit le .spr tenu en main et
+// l'animation). Deux effets s'en servent — le tir de baguette pour savoir si
+// l'arme est à distance, les sprites duals pour choisir la couche.
+constexpr uintptr_t kItemIdToWeaponClassAddr = 0x00d8a1d0;
+
 }  // namespace itemdb

@@ -144,6 +144,70 @@ inline uint32_t NpcInteractionGid() {
 // un mode que le getter considère indisponible.
 constexpr uintptr_t kModeMgrGetActiveAddr = 0x00a75340;
 
+// L'appel typé. Il était recopié dans NEUF fichiers sous quatre noms de type
+// (GetActiveFn, GetMode_t, GameModeGetActive_t, et une variante à deux
+// paramètres dans damage_name_fix), chacun redonnant sa propre convention
+// d'appel à la même adresse — la classe d'erreur qui ne se voit qu'en jeu.
+//
+// 🔴 CE N'EST PAS `ActiveMode()`. Le nom porte la différence, qui est réelle :
+// celui-ci est GATÉ (rend 0 tant que le manager n'est pas en état 1), l'autre
+// lit le pointeur brut. Pendant un changement de map, les deux ne disent pas la
+// même chose — voir le bloc ci-dessus.
+inline void* ActiveModeIfReady() {
+  return reinterpret_cast<void* (__fastcall*)(int)>(kModeMgrGetActiveAddr)(
+      static_cast<int>(kModeMgrAddr));
+}
+
+// ── CMode::SendMsg — le dispatcher de commandes du mode de zone ──────────────
+// C'est par lui que passent presque toutes nos actions rejouées : utiliser une
+// compétence, retirer du chariot, monter une stat, basculer la musique…
+//
+// LE SLOT ÉTAIT ÉCRIT DE QUATRE FAÇONS dans SEIZE fichiers — `kVfDispCmd`,
+// `kSendMsgVtOff`, `kVfModeSendMsg` (tous `0x18`), `kVtblSendMsgIndex` (`6`), et
+// deux fichiers l'écrivaient en littéral nu (`vt[6]`, `Vf<>(disp, 0x18)`). Rien
+// ne reliait ces cinq écritures entre elles : chercher « 0x18 » dans le projet
+// ramène surtout des offsets de champ sans rapport, et chercher « 6 » ne veut
+// rien dire. Le slot n'a donc qu'un seul nom désormais.
+constexpr int kVfModeSendMsg = 0x18;  // vtable +0x18, soit l'index 6
+
+// ⚠ Le retour est déclaré `int` alors que le natif ne rend rien d'utile sur la
+// plupart des commandes : sur x86, un appelant qui ignore EAX est correct dans
+// les deux sens. C'est ce qui permet d'avoir UNE signature là où le projet en
+// portait trois (`void`, `void*`, `int`) pour la même méthode.
+//
+// Les paramètres qui transportent un POINTEUR passent par un int — x86, donc
+// même largeur (c'est le cas du titre de salon dans chat_room_window).
+inline int ModeSendMsg(void* mode, int cmd, int p2 = 0, int p3 = 0, int p4 = 0,
+                       int p5 = 0) {
+  if (!mode) return 0;
+  using SendMsgFn = int(__thiscall*)(void*, int, int, int, int, int);
+  const uintptr_t* vt = *reinterpret_cast<uintptr_t**>(mode);
+  return reinterpret_cast<SendMsgFn>(vt[kVfModeSendMsg / 4])(mode, cmd, p2, p3,
+                                                             p4, p5);
+}
+
+// La même, sur le mode actif — la forme de LOIN la plus fréquente. Rend 0 sans
+// rien envoyer si aucun mode n'est disponible, ce que tous les appelants
+// vérifiaient déjà à la main.
+inline int ActiveModeSendMsg(int cmd, int p2 = 0, int p3 = 0, int p4 = 0,
+                             int p5 = 0) {
+  return ModeSendMsg(ActiveModeIfReady(), cmd, p2, p3, p4, p5);
+}
+
+// Quelques commandes RENDENT un objet plutôt qu'un code — la 8 du mode de login
+// rend le CHARACTER_INFO d'un slot, ou nullptr si le slot est vide ou la liste
+// pas encore arrivée. Même appel, seul le type de retour déclaré change : sur
+// x86 les deux lisent EAX, et cette variante évite un aller-retour par `int`
+// pour un pointeur.
+inline void* ModeSendMsgPtr(void* mode, int cmd, int p2 = 0, int p3 = 0,
+                            int p4 = 0, int p5 = 0) {
+  if (!mode) return nullptr;
+  using SendMsgPtrFn = void*(__thiscall*)(void*, int, int, int, int, int);
+  const uintptr_t* vt = *reinterpret_cast<uintptr_t**>(mode);
+  return reinterpret_cast<SendMsgPtrFn>(vt[kVfModeSendMsg / 4])(mode, cmd, p2,
+                                                                p3, p4, p5);
+}
+
 // ── Stats du personnage, et le TOTAL que le serveur utilise ──────────────────
 // Deux blocs de six entiers, pas de pas de 4, dans l'ordre STR AGI VIT INT DEX LUK.
 // Déjà lus par la feuille de personnage (donc éprouvés en jeu) — c'est de là qu'ils
@@ -211,6 +275,23 @@ inline uint32_t OwnAccountId() { return *reinterpret_cast<uint32_t*>(kOwnAccount
 inline uint32_t OwnCharId()    { return *reinterpret_cast<uint32_t*>(kOwnCharIdAddr); }
 inline int      OwnJobId()     { return *reinterpret_cast<int*>(kOwnJobIdAddr); }
 
+// ── L'APPARENCE du personnage, telle que le client la tient ─────────────────
+// Trois globales voisines, lues par l'éditeur de style ET par le panneau
+// d'infos de base — chacun les déclarait pour son compte.
+//
+// ⚠ `kOwnClothesColorAddr` est un CACHE MORT côté client (cf.
+// project_own_look_globals) : il n'est PAS la source de vérité du rendu, qui
+// vient de l'acteur. Le lire renseigne sur ce que le client CROIT, pas sur ce
+// qu'il affiche. Le style de tête, lui, est fiable.
+constexpr uintptr_t kOwnHairStyleAddr   = 0x015fb278;
+constexpr uintptr_t kOwnClothesColorAddr = 0x015fb28c;
+constexpr uintptr_t kOwnHairColorAddr   = 0x015fb290;
+
+// Le SEXE du personnage, par appel natif : `Session_GetSex()` — les sprites de
+// corps et les palettes en dépendent, et la globale équivalente n'est pas
+// exposée. Deux fichiers la déclaraient.
+constexpr uintptr_t kOwnSexAddr = 0x00d84760;
+
 // Expérience. Quatre INT64 ; la plupart des lecteurs n'en prennent que le mot
 // bas, ce qui suffit tant que la valeur tient sur 31 bits — au-delà (serveurs à
 // très haut taux) il faut lire les huit octets.
@@ -267,6 +348,22 @@ constexpr uintptr_t kOwnWalkSpeedAddr         = 0x015fba94;  // ms par cellule
 constexpr uintptr_t kOwnMannerAddr            = 0x015fba98;  // négatif = muet
 constexpr uintptr_t kWeightMaxAddr            = 0x015fba9c;
 constexpr uintptr_t kWeightCurAddr            = 0x015fbaa0;
+
+// Seuil de SURCHARGE, en pourcentage : au-delà, le client teinte le poids en
+// rouge — et le serveur commence à refuser certaines actions. C'est une valeur
+// envoyée par le serveur, pas une constante : la lire évite de la supposer à 50.
+constexpr uintptr_t kOverweightPctAddr = 0x01602324;
+
+// Extension d'inventaire envoyée par le serveur.
+//
+// 🔴 ELLE NE VAUT PAS LE NOMBRE DE CASES. Le client calcule `100 + extension`,
+// avec une base de 100 CÂBLÉE EN DUR, là où Moonlight définit
+// `INVENTORY_BASE_SIZE = 200` et envoie donc `cases - 200`. Pour un personnage
+// ordinaire l'extension vaut 0 et le compteur natif afficherait « X / 100 »,
+// rouge dès 101. Tout lecteur doit ajouter le décalage des deux bases.
+constexpr uintptr_t kInventoryExpansionAddr = 0x01602354;
+constexpr int kInventoryClientBase = 100;  // la base câblée dans le client
+constexpr int kInventoryServerBase = 200;  // INVENTORY_BASE_SIZE côté Moonlight
 
 // Vitalité. Ces quatre-là sont dans un bloc SÉPARÉ (0x015ff9xx), pas avec les
 // stats — c'est pour ça qu'on les retrouvait recopiées même dans les fichiers
@@ -438,6 +535,33 @@ constexpr uintptr_t kStdStringDtorAddr = 0x004f08f0;
 // lui, et c'est bien à `kStdStringDtorAddr` qu'il faudra la rendre.
 constexpr uintptr_t kStdStringAssignAddr = 0x004f1940;
 
+// `std::string::string(const char*)` du CLIENT — __thiscall(this, src) -> this.
+// Construit EN PLACE dans un tampon non initialisé, là où `assign` remplit une
+// string déjà construite : deux gestes distincts, et confondre les deux laisse
+// soit une string jamais initialisée, soit une fuite. Deux fichiers la
+// déclaraient (dont une graphie en majuscules, invisible à un grep sensible à
+// la casse). Ce qu'elle construit se rend à `kStdStringDtorAddr`.
+constexpr uintptr_t kStdStringCtorCStrAddr = 0x004e5330;
+
+// ── Mode combat (`/bm`, `/battlemode`) ──────────────────────────────────────
+// Un OCTET : 1 = la barre de saisie du chat est masquée et Entrée l'ouvre,
+// 0 = barre permanente. Basculé par la commande 213 de UIHotKeyWnd et par la
+// case 135 de `Chat_HandleChatMessage`, au moyen d'un `setz` — c'est une vraie
+// bascule, un « on »/« off » en argument est ignoré.
+//
+// Deux surfaces le LISENT (la chatbox, pour savoir si sa barre doit se montrer ;
+// le panneau de raccourcis, pour afficher l'état de la case) et chacune le
+// déclarait, l'une sous `kBattleModeFlag`, l'autre sous `kChangeChatModeAddr`.
+constexpr uintptr_t kBattleModeFlagAddr = 0x0131f50e;
+
+// Vrai si le mode combat est actif. En cas de doute (lecture impossible) rend
+// FAUX — donc barre visible : jamais de ligne de chat perdue.
+inline bool BattleModeOn() {
+  __try {
+    return *reinterpret_cast<const uint8_t*>(kBattleModeFlagAddr) != 0;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
 // ── Carte COURANTE, telle que le client la nomme ─────────────────────────────
 // Le global que le client injecte lui-même dans son gabarit de minimap
 // (`유저인터페이스\map\%s.bmp`, UIMiniMapWnd_DrawContent @0x00962441). Rendu SANS
@@ -498,5 +622,38 @@ inline bool MapDisplayName(const char* map_no_ext, char* out, size_t cap) {
     return false;
   }
 }
+
+// ── Trois drapeaux d'état que plusieurs surfaces consultent ─────────────────
+// Chacun était déclaré dans DEUX fichiers, dont un dans `ragnarok/` — ce qui
+// les rendait invisibles au relevé des adresses « partagées par au moins deux
+// fichiers de features », qui excluait ce dossier. L'angle mort a été comblé le
+// 2026-08-24 par un relevé croisé catalogue/copies.
+
+// Cible d'envoi de la ligne de chat : 0 public, 1 groupe, 2 guilde, 3 clan,
+// 4 alliés. Lue par la chatbox (pour teinter la saisie) et par l'envoi de macro.
+constexpr uintptr_t kInputTargetModeAddr = 0x015ff838;
+
+// L'état de clan du joueur, via un POINTEUR : l'appartenance se lit à
+// `*(byte*)(*kClanStatePtrAddr + 0x5C)`. Sert de garde aux deux chemins qui
+// peuvent viser le clan — sans elle, choisir la cible « clan » sans en avoir un
+// envoie une ligne que le serveur jette sans un mot.
+constexpr uintptr_t kClanStatePtrAddr = 0x0159c07c;
+
+// Une relecture de REPLAY est en cours. Deux conséquences sans rapport
+// apparent, et c'est pour ça que les deux fichiers ne se savaient pas voisins :
+// l'horloge du jeu vient alors du gestionnaire de réassemblage et non de
+// `timeGetTime` (comparer les deux donne des cooldowns fantômes de plusieurs
+// heures), et le client REFUSE d'ouvrir un menu contextuel d'entité.
+constexpr uintptr_t kReplayActiveAddr = 0x015beecc;
+
+// ── Le filtre de mots interdits du client ───────────────────────────────────
+// `BannedWord_Contains` __thiscall(table, texte_cp949) -> bool : vrai si le
+// texte contient un mot interdit. ⚠ C'est la NÉGATION de « propre » — un nom de
+// fonction en `Scan…` inviterait à s'y tromper.
+//
+// Deux chemins la consultent avant d'envoyer quoi que ce soit au serveur : le
+// nom qu'on donne à un familier, et le titre d'un salon de chat. Le texte doit
+// être en CP949, pas en UTF-8.
+constexpr uintptr_t kBannedWordContainsAddr = 0x00a85be0;
 
 }  // namespace rag

@@ -58,10 +58,6 @@ constexpr int kActor_PosZ = 0x18;  // float
 // soit la nature exacte de cet angle.
 constexpr int kActor_Angle = 0x4c;  // float, degrés
 
-// Racine des bitmaps d'interface, en CP949 (유저인터페이스). Écrite en octets
-// verbatim : le fichier source est en UTF-8, et le client attend sa code-page.
-constexpr char kUiRoot[] = "\xC0\xAF\xC0\xFA\xC0\xCE\xC5\xCD\xC6\xE4\xC0\xCC\xBD\xBA";
-
 // Le bouton du radar natif dont on emprunte l'art. Ses cinq boutons suivent tous
 // le même gabarit `minimap\i_<nom>_<état>.bmp`, les états valant 1 = normal,
 // 2 = survol, 3 = enfoncé (`UIMinimapZoomWnd_CreateControls` 0x008a9220).
@@ -190,9 +186,7 @@ inline T Read(const void* base, int off) {
 
 void* ActiveGameMode() {
   __try {
-    using GetActive_t = void*(__thiscall*)(void*);
-    return reinterpret_cast<GetActive_t>(rag::kModeMgrGetActiveAddr)(
-        reinterpret_cast<void*>(rag::kModeMgrAddr));
+    return rag::ActiveModeIfReady();
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
 }
 
@@ -830,7 +824,7 @@ void Minimap::OnRenderUI() {
   ro::GameTexture tex;
   if (have_map) {
     char path[192];
-    _snprintf_s(path, sizeof(path), _TRUNCATE, "%s\\map\\%s.bmp", kUiRoot, map);
+    _snprintf_s(path, sizeof(path), _TRUNCATE, "%s\\map\\%s.bmp", ro::uipath::kUiRoot, map);
     tex = ro::CachedTextureFromGameFile(path);
   }
 
@@ -839,7 +833,7 @@ void Minimap::OnRenderUI() {
   // plein prend le relais.
   char arrow_path[192];
   _snprintf_s(arrow_path, sizeof(arrow_path), _TRUNCATE, "%s\\map\\map_arrow.bmp",
-              kUiRoot);
+              ro::uipath::kUiRoot);
   const ro::GameTexture arrow = ro::CachedTextureFromGameFile(arrow_path);
 
   const ImGuiStyle& style = ImGui::GetStyle();
@@ -1183,7 +1177,7 @@ void Minimap::OnRenderUI() {
           // convention que `i_viewon_1.bmp` du bouton de réglages.
           char mp[192];
           _snprintf_s(mp, sizeof(mp), _TRUNCATE, "%s\\minimap\\memopoint_1.bmp",
-                      kUiRoot);
+                      ro::uipath::kUiRoot);
           const ro::GameTexture mt = ro::CachedTextureFromGameFile(mp);
           const float mh = (half * 0.8f < 4.0f) ? 4.0f : half * 0.8f;
           const ImVec2 saved_cur = ImGui::GetCursorScreenPos();
@@ -1232,7 +1226,7 @@ void Minimap::OnRenderUI() {
             if (!CellToScreen(quests[i].cell_x, quests[i].cell_y, &at)) continue;
             char qp[192];
             _snprintf_s(qp, sizeof(qp), _TRUNCATE,
-                        "%s\\basic_interface\\quest_%d.bmp", kUiRoot,
+                        "%s\\basic_interface\\quest_%d.bmp", ro::uipath::kUiRoot,
                         quests[i].variant);
             const ro::GameTexture qt = ro::CachedTextureFromGameFile(qp);
             if (!qt.tex) continue;
@@ -1309,7 +1303,7 @@ void Minimap::OnRenderUI() {
           if (ReadBossCell(&bx, &by)) {
             char bmp[192];
             _snprintf_s(bmp, sizeof(bmp), _TRUNCATE, "%s\\map\\bossmonster.bmp",
-                        kUiRoot);
+                        ro::uipath::kUiRoot);
             const ro::GameTexture bt = ro::CachedTextureFromGameFile(bmp);
             if (bt.tex) {
               // Position NON bornée, puis ramenée dans le cadre : c'est ce qui
@@ -1508,7 +1502,7 @@ void Minimap::OnRenderUI() {
     // en permanence serait mort au clic.
     if (interactive) {
       char bp[192];
-      _snprintf_s(bp, sizeof(bp), _TRUNCATE, "%s\\minimap\\i_%s_1.bmp", kUiRoot,
+      _snprintf_s(bp, sizeof(bp), _TRUNCATE, "%s\\minimap\\i_%s_1.bmp", ro::uipath::kUiRoot,
                   kCfgButtonName);
       const ro::GameTexture b_norm = ro::CachedTextureFromGameFile(bp);
       if (b_norm.tex && b_norm.w > 0 && b_norm.h > 0) {
@@ -1534,7 +1528,7 @@ void Minimap::OnRenderUI() {
         ro::GameTexture alt;
         if (b_down || b_hover) {
           _snprintf_s(bp, sizeof(bp), _TRUNCATE, "%s\\minimap\\i_%s_%d.bmp",
-                      kUiRoot, kCfgButtonName, b_down ? 3 : 2);
+                      ro::uipath::kUiRoot, kCfgButtonName, b_down ? 3 : 2);
           alt = ro::CachedTextureFromGameFile(bp);
           if (alt.tex) face = &alt;
         }

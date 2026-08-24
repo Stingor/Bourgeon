@@ -12,14 +12,13 @@
 #include "features/hotkey_util.h"  // NativeTextInputHasFocus (garde partagée)
 #include "features/windows/item_desc_window.h"  // WantsSideArrows (livre ouvert)
 #include "imgui.h"
+#include "ragnarok/camera.h"  // ro::camera::kCameraVTable (garde de validite du pointeur)
 
 // ── Adresses (client 20250716, no-ASLR : addr Ghidra == live) ────────────────
 namespace {
-constexpr uintptr_t kWorldToTile  = 0x00c6aa80;  // MapCoord_WorldToTileAndSub
 constexpr uintptr_t kCellValid    = 0x00c6cf80;  // Cell_IsMoveTargetValid
 constexpr uintptr_t kClampReach   = 0x00c69160;  // Move_ClampToReachableCell
 constexpr uintptr_t kNoPathFlag   = 0x0131f764;  // != 0 -> le natif passe en msg 0x10
-constexpr uintptr_t kCameraVtable = 0x0104dee4;  // g_CCamera_vtable (valide pCam)
 
 constexpr int kOffOwnActor = 0x2c;   // scène -> acteur joueur
 constexpr int kOffCamera   = 0xd0;   // CGameMode -> pCam
@@ -36,8 +35,7 @@ constexpr int kMsgWalkToRaw = 0x10;  // idem, variante sans validation client
 void* GetGameMode() {
   void* gm = nullptr;
   __try {
-    gm = reinterpret_cast<void*(__fastcall*)(int)>(rag::kModeMgrGetActiveAddr)(
-        static_cast<int>(rag::kModeMgrAddr));
+    gm = rag::ActiveModeIfReady();
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     gm = nullptr;
   }
@@ -115,7 +113,7 @@ bool ActorCell(void* gm, void* actor, int* out_x, int* out_y) {
         void(__thiscall*)(void*, float, float, int*, int*, unsigned*, unsigned*);
     char* a = reinterpret_cast<char*>(actor);
     unsigned sub_x = 0, sub_y = 0;
-    reinterpret_cast<WorldToTile_t>(kWorldToTile)(
+    reinterpret_cast<WorldToTile_t>(gamescene::kWorldToTileAddr)(
         gm, *reinterpret_cast<float*>(a + kOffActorX),
         *reinterpret_cast<float*>(a + kOffActorZ), out_x, out_y, &sub_x, &sub_y);
     ok = true;
@@ -139,7 +137,7 @@ bool ScreenDirToCellDelta(void* gm, bool camera_relative, int screen_x,
     __try {
       void* cam =
           *reinterpret_cast<void**>(reinterpret_cast<char*>(gm) + kOffCamera);
-      if (cam && *reinterpret_cast<uintptr_t*>(cam) == kCameraVtable) {
+      if (cam && *reinterpret_cast<uintptr_t*>(cam) == ro::camera::kCameraVTable) {
         const float* m = reinterpret_cast<const float*>(
             reinterpret_cast<char*>(cam) + kOffViewMat);
         // Lignes = (axeX, axeY, axeZ) : m[0..2] = X du repère caméra, etc.

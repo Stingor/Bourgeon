@@ -52,10 +52,8 @@ constexpr int kBtnCancelId = 185;
 // envoie CZ_REQ_WEAPONREFINE (§4). On rejoue ce chemin natif plutôt que de
 // fabriquer le paquet — c'est la règle du projet, et ici elle évite en prime de
 // dupliquer la construction d'en-tête.
-constexpr int kVfDispCmd  = 0x18;
 constexpr int kCmdRefine  = 182;   // { index } -> CZ_REQ_WEAPONREFINE 0x0222
 constexpr int kCmdUseSkill = 0x45;  // { skillId, cibleGID, niveau } -> lancer un skill
-using DispCmd_t = void(__thiscall*)(void*, int, int, int, int, int);
 
 // Le skill lui-même (db/pre-re/skill_db.yml du fork moonlight).
 constexpr int kSkillWeaponRefine = 477;  // WS_WEAPONREFINE, MaxLevel 10
@@ -337,11 +335,8 @@ uint32_t OwnAid() {
 // Envoie une commande au dispatcher du mode actif (le chemin des boutons natifs).
 void SendModeCmd(int cmd, int a, int b = 0, int c = 0, int d = 0) {
   __try {
-    void* mode = *reinterpret_cast<void**>(rag::kActiveModePtr);
-    if (!mode) return;
-    auto fn = reinterpret_cast<DispCmd_t>(
-        (*reinterpret_cast<uintptr_t**>(mode))[kVfDispCmd / 4]);
-    fn(mode, cmd, a, b, c, d);
+    // ⚠ Lecture BRUTE du pointeur, pas rag::ActiveModeIfReady() (cf. globals.h).
+    rag::ModeSendMsg(*reinterpret_cast<void**>(rag::kActiveModePtr), cmd, a, b, c, d);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 

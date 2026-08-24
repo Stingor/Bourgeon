@@ -44,7 +44,6 @@ constexpr int kOffWndPosY = 0x20;
 // @0x007ca3fd), ce dont le plugin se servait justement pour annuler. La détruire au
 // tick aurait annulé la rédaction une frame après son ouverture. On l'empêche donc
 // de NAÎTRE, en prenant la place de son unique créateur (ZC 0x0A12 ci-dessous).
-constexpr uintptr_t kWriteWndPtr = 0x0131f940;  // g_MailWriteWnd (filet : doit rester nul)
 constexpr int kWriteId = 0x108;
 constexpr uintptr_t kWriteVTable = 0x01021b30;
 
@@ -508,7 +507,7 @@ uint8_t* RodexMgr() {
 // tient à jour pour nous. nullptr si aucune écriture n'est en cours.
 uint8_t* ComposeWnd() {
   __try {
-    uint8_t* w = *reinterpret_cast<uint8_t**>(kWriteWndPtr);
+    uint8_t* w = *reinterpret_cast<uint8_t**>(uiwnd::kMailWriteWndSlot);
     if (w && *reinterpret_cast<uintptr_t*>(w) == kWriteVTable) return w;
     return nullptr;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }

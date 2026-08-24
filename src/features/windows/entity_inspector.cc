@@ -44,7 +44,6 @@ namespace {
 // est valable EN JEU (et cette fenêtre n'existe qu'en jeu).
 
 // Position monde -> cellule de carte (+ sous-position, dont on n'a que faire).
-constexpr uintptr_t kWorldToTile = 0x00c6aa80;  // __thiscall(gm, x, z, …)
 
 // CGameMode
 constexpr int kGm_ActorMgr = 0x0cc;
@@ -206,7 +205,7 @@ bool ActorCell(void* game_mode, void* actor, int* cx, int* cy) {
   __try {
     if (!game_mode || !actor) return false;
     unsigned sub_x = 0, sub_y = 0;
-    reinterpret_cast<WorldToTileFn>(kWorldToTile)(
+    reinterpret_cast<WorldToTileFn>(gamescene::kWorldToTileAddr)(
         game_mode, Read<float>(actor, kActor_PosX),
         Read<float>(actor, kActor_PosZ), cx, cy, &sub_x, &sub_y);
     return true;

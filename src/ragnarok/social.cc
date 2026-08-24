@@ -6,6 +6,7 @@
 #include <utility>
 
 #include "ragnarok/game_scene.h"
+#include "ui/game_texture.h"  // ro::uipath::kUiRoot (racine CP949 des bitmaps d'interface)
 #include "utils/i18n.h"
 
 namespace rag::social {
@@ -211,11 +212,7 @@ int PartyMemberCount() {
 
 void JobIconPath(int job_id, char* out, size_t cap) {
   if (!out || cap == 0) return;
-  // Racine des bitmaps d'interface, en CP949 (유저인터페이스), en octets verbatim :
-  // ce fichier est en UTF-8 et le client attend SA code-page.
-  static constexpr char kUiRoot[] =
-      "\xC0\xAF\xC0\xFA\xC0\xCE\xC5\xCD\xC6\xE4\xC0\xCC\xBD\xBA";
-  std::snprintf(out, cap, "%s\\renewalparty\\icon_jobs_%u.bmp", kUiRoot,
+  std::snprintf(out, cap, "%s\\renewalparty\\icon_jobs_%u.bmp", ro::uipath::kUiRoot,
                 static_cast<unsigned>(job_id));
 }
 

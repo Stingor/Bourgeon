@@ -50,7 +50,6 @@ constexpr uintptr_t kQueueDestroyWindow = 0x00a447d0;
 // `this` aberrant.
 
 // GameMode_GetActive(mgr) __fastcall : le CGameMode actif, 0 hors jeu.
-using GetActiveFn = void*(__fastcall*)(int);
 using QueueDestroyFn = void(__thiscall*)(void*, void*);
 
 // Offsets (cf. docs/entity_nameplate_re.md et entity_chat_balloon_re.md).
@@ -182,8 +181,7 @@ bool ChatBalloon::IsActorBalloon(void* window) {
   // Raté de cache : une bulle qui vient de naître, avant notre prochaine frame.
   // On tranche tout de suite en parcourant la liste d'acteurs, sinon le natif la
   // dessinerait pendant une frame — un clignotement de la balise brute.
-  void* gm = reinterpret_cast<GetActiveFn>(rag::kModeMgrGetActiveAddr)(
-      static_cast<int>(rag::kModeMgrAddr));
+  void* gm = rag::ActiveModeIfReady();
   if (!gm) return false;
   void* actor_mgr = Read<void*>(gm, gamescene::kGmActorMgr);
   if (!actor_mgr) return false;
@@ -305,8 +303,7 @@ void ChatBalloon::DestroyAdopted(const std::vector<Doomed>& doomed) {
 }
 
 void ChatBalloon::SyncWithActors() {
-  void* gm = reinterpret_cast<GetActiveFn>(rag::kModeMgrGetActiveAddr)(
-      static_cast<int>(rag::kModeMgrAddr));
+  void* gm = rag::ActiveModeIfReady();
   if (!gm) { balloons_.clear(); return; }
   void* actor_mgr = Read<void*>(gm, gamescene::kGmActorMgr);
   if (!actor_mgr) { balloons_.clear(); return; }
@@ -553,8 +550,7 @@ void ChatBalloon::LayoutRuns(const ChatWindow::Line& line, float wrap,
 void ChatBalloon::DrawBalloons() {
   if (balloons_.empty()) return;
 
-  void* gm = reinterpret_cast<GetActiveFn>(rag::kModeMgrGetActiveAddr)(
-      static_cast<int>(rag::kModeMgrAddr));
+  void* gm = rag::ActiveModeIfReady();
   if (!gm) return;
   void* actor_mgr = Read<void*>(gm, gamescene::kGmActorMgr);
   if (!actor_mgr) return;

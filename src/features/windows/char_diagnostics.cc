@@ -187,9 +187,7 @@ T ReadField(const void* base, int offset) {
 // L'acteur du joueur, ou nullptr hors jeu.
 void* OwnActor() {
   __try {
-    using GetActiveFn = void*(__fastcall*)(int);
-    void* mode = reinterpret_cast<GetActiveFn>(rag::kModeMgrGetActiveAddr)(
-        static_cast<int>(rag::kModeMgrAddr));
+    void* mode = rag::ActiveModeIfReady();
     if (!mode) return nullptr;
     void* mgr = *reinterpret_cast<void**>(reinterpret_cast<char*>(mode) +
                                           gamescene::kGmActorMgr);
@@ -431,8 +429,6 @@ float CycleMs(int frames, float frame_delay) {
 // l'index 9 la sentinelle d'une liste chaînée dont chaque maillon a le quad en
 // [2]. Le nœud racine est l'OBJET à cette adresse, pas un pointeur vers lui —
 // même forme que g_UIWindowMgr.
-constexpr uintptr_t kPickQuadTree  = 0x012135f0;
-constexpr uintptr_t kQuadTreeQuery = 0x00a797b0;
 
 // 🔴 `g_PickQuadMinSizePx` : la taille MINIMALE d'une zone cliquable, en pixels
 // (`échelle de scène × 40`, calculée une seule fois au premier quad). Tout quad
@@ -442,7 +438,6 @@ constexpr uintptr_t kQuadTreeQuery = 0x00a797b0;
 //
 // Deux lectures dans TOUT le binaire, toutes deux dans cette construction :
 // l'écrire ne touche donc ni aux plaques de nom, ni au rendu, ni au reste.
-constexpr uintptr_t kPickQuadMinSize = 0x015e5b40;
 
 constexpr int kMaxPickBoxes = 512;   // plafond de sûreté, pas une limite du jeu
 constexpr int kMaxPickDepth = 16;
@@ -486,7 +481,7 @@ void CollectQuadsRec(const void* node, PickBox* out, int* count, int depth) {
 int CollectPickBoxes(PickBox* out) {
   int count = 0;
   __try {
-    CollectQuadsRec(reinterpret_cast<const void*>(kPickQuadTree), out, &count, 0);
+    CollectQuadsRec(reinterpret_cast<const void*>(gamescene::kPickQuadTreeAddr), out, &count, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
   return count;
 }
@@ -500,8 +495,8 @@ const float* HoveredQuad(float* out_mx, float* out_my) {
     if (out_mx) *out_mx = mx;
     if (out_my) *out_my = my;
     using QueryPoint_t = float*(__thiscall*)(void*, float, float);
-    return reinterpret_cast<QueryPoint_t>(kQuadTreeQuery)(
-        reinterpret_cast<void*>(kPickQuadTree), mx, my);
+    return reinterpret_cast<QueryPoint_t>(gamescene::kQuadTreeQueryPointAddr)(
+        reinterpret_cast<void*>(gamescene::kPickQuadTreeAddr), mx, my);
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
 }
 
@@ -1449,7 +1444,7 @@ void CharDiagnostics::ApplyPickMinSize() {
   const int hand_back =
       pick_quad::MinAreaCurrent(pick_quad::kFamilyActors);
   __try {
-    int* p = reinterpret_cast<int*>(kPickQuadMinSize);
+    int* p = reinterpret_cast<int*>(gamescene::kPickQuadMinSizeAddr);
     // 🔴 Éteint, on NE TOUCHE À RIEN — même pas pour réécrire le défaut. La
     // leçon vient du dézoom : un tweak qui réécrivait « sa » base à chaque tick,
     // option décochée comprise, annulait la commande native et le patch WARP

@@ -37,8 +37,6 @@ constexpr int       kWavHandleOff = 0x110;       // objet wav chargé -> handle 
 using PlaySample2DFn = unsigned (__fastcall*)(void*, void*, void*, float*, float*,
                                               float*, int, int, float);  // (this,edx,handle,&x,&y,&z,min,max,vol)
 using SndMgrGetFn = int (__cdecl*)();
-using TexMgrGetFn = void* (__cdecl*)();
-using LoadResFn   = void* (__fastcall*)(void*, void*, void*);  // (mgr, edx, key)
 
 // Repli : la plupart des mobs de la famille Poring n'ont AUCUN wav dans leur .act
 // (table de sons vide), donc au clic il n'y aurait rien à jouer. On joue alors le son
@@ -116,9 +114,10 @@ void PlayMobSound(const char* name) {
       mgr = *reinterpret_cast<void**>(audio::kSoundMgrPtr);
     }
     if (!mgr) return;
-    void* tex = reinterpret_cast<TexMgrGetFn>(ro::texmgr::kGet)();
-    void* res = reinterpret_cast<LoadResFn>(ro::texmgr::kLoad)(
-        tex, nullptr, const_cast<char*>(name));  // wav chargé par NOM (comme Sound_Play3D)
+    // Le gestionnaire aiguille par EXTENSION : un .wav lui va aussi bien qu'un
+    // .bmp. Variante « Raw » = sans résolution de skin, qui ne s'applique qu'aux
+    // chemins sous la racine d'interface et serait ici un aller-retour inutile.
+    void* res = ro::texmgr::LoadResourceRaw(name);  // wav chargé par NOM (comme Sound_Play3D)
     if (!res) return;
     void* handle = *reinterpret_cast<void**>(
         reinterpret_cast<char*>(res) + kWavHandleOff);

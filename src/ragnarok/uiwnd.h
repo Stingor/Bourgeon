@@ -102,6 +102,14 @@ constexpr uintptr_t kStorageWndSlot     = 0x0131f770;  // UIItemStoreWnd, id 0x2
 constexpr uintptr_t kStorageWndVTable   = 0x0103ca40;
 constexpr uintptr_t kCartWndVTable      = 0x0103d538;  // UIMerchantItemWnd, id 0x28
 constexpr uintptr_t kChatWndSlot        = 0x0131f6b0;  // UINewChatWnd
+constexpr uintptr_t kMailWriteWndSlot   = 0x0131f940;  // UIMailWriteWnd (rédaction RODEX)
+constexpr uintptr_t kItemDescWndSlot    = 0x0131f700;  // mgr+0x218 : desc d'OBJET (classe 0xc)
+
+// ⚠ Le slot de rédaction RODEX est un FILET, pas une poignée : notre fenêtre de
+// courrier empêche la native de NAÎTRE (en prenant la place de son unique
+// créateur, ZC 0x0A12) plutôt que de la détruire après coup — la détruire
+// émettrait CZ_REQ_CANCEL_WRITE_MAIL et annulerait la rédaction. Le slot doit
+// donc rester NUL ; le lire, c'est vérifier que le filet tient.
 
 // ⚠ La vtable du chariot sert de SIGNATURE, pas de slot : trois fichiers la
 // lisent pour reconnaître une fenêtre dont ils tiennent le pointeur sans en
@@ -120,6 +128,33 @@ constexpr uintptr_t kMgrSendMsgAddr = 0x00a4ad20;
 // passent les retouches de fenêtres natives (chat, inventaire, statut), et les
 // trois la déclaraient chacune de leur côté (kBlit, kBlitImageToNode).
 constexpr uintptr_t kBlitImageToNodeAddr = 0x00a1d260;
+
+// ── Écrire et mesurer du texte dans une fenêtre native ──────────────────────
+// Les deux faces d'un même geste, et le projet les séparait : les retouches
+// d'inventaire et de statut déclaraient chacune `kDrawText`, l'inventaire seul
+// `kMeasureW`, et le chat écrivait l'adresse de mesure EN LITTÉRAL au milieu
+// d'une expression — donc invisible à tout relevé par nom.
+constexpr uintptr_t kDrawTextAddr    = 0x00a25a70;  // __thiscall(this,x,y,s,len,face,size,color,gras,ital)
+constexpr uintptr_t kDrawTextRightAddr = 0x00a27b50;  // idem, ALIGNÉ À DROITE sur x
+constexpr uintptr_t kMeasureTextWidthAddr = 0x00a21c90;  // __thiscall(this,s,len,face,size,_,_) -> largeur
+
+// ── Montrer / cacher une fenêtre SANS la détruire ───────────────────────────
+// `UIWindow_SetVisible` __thiscall(this, visible), la méthode de vtable+0x38.
+//
+// 🔴 CE N'EST PAS ÉQUIVALENT À ÉCRIRE `kOffVisible`. Le champ ne fait que
+// retirer la fenêtre du rendu et du hit-test ; la méthode propage aussi aux
+// CONTRÔLES ENFANTS et re-lie ce qu'il faut. C'est pour cette raison que la
+// barre de raccourcis la DÉTOURNE plutôt que de forcer le champ : sans cela, le
+// client relie la barre native et ses boutons par une autre voie et elle
+// réapparaît. Écrire le champ reste bon pour un masquage ponctuel qu'on tient
+// soi-même à chaque frame.
+constexpr uintptr_t kSetVisibleAddr = 0x009030c0;
+
+inline void SetVisible(void* wnd, bool visible) {
+  if (!wnd) return;
+  reinterpret_cast<void(__fastcall*)(void*, void*, int)>(kSetVisibleAddr)(
+      wnd, nullptr, visible ? 1 : 0);
+}
 
 // ── Méthodes virtuelles d'une UIWindow ───────────────────────────────────────
 constexpr int kVfSetPos = 0x10;  // vtable+0x10 : SetPos(x, y)

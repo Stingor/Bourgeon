@@ -7,6 +7,7 @@
 #include <cstring>
 
 #include "utils/log_console.h"
+#include "ragnarok/item_db.h"  // itemdb::kItemIdToWeaponClassAddr
 
 namespace {
 
@@ -37,7 +38,6 @@ constexpr uintptr_t kArrowSpawnCalls[] = {
     0x00d425ce,
     0x00d41c5f,
 };
-constexpr uintptr_t kItemIdToClass  = 0x00d8a1d0;  // Weapon_ItemIdToWeaponClass (__stdcall, retn 4)
 
 // ── La classe du projectile ──────────────────────────────────────────────────
 // `Arrow_SpawnProjectileToTarget` alloue 0x170 octets et y construit un
@@ -232,7 +232,7 @@ bool ReadWeaponField(const void* pos, int* out) {
 
 bool ItemIdToWeaponClass(int item_id, int* out) {
   __try {
-    *out = reinterpret_cast<ItemIdToClassFn>(kItemIdToClass)(item_id);
+    *out = reinterpret_cast<ItemIdToClassFn>(itemdb::kItemIdToWeaponClassAddr)(item_id);
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     return false;

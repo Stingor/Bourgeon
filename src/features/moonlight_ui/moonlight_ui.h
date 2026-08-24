@@ -342,8 +342,7 @@ class MoonlightUi : public Plugin {
   // [edi+0x218] in the game's UI manager object (edi=0x0131F4E8): pointer to
   // the active item description window, 0 when no tooltip is open.  Written by
   // the game independently of our hook, so polling it catches silent closes
-  // (e.g. comparison→non-comparison transition).
-  static constexpr uintptr_t kItemDescWndGlobalPtr = 0x0131F700;
+  // (e.g. comparison→non-comparison transition).  Now `uiwnd::kItemDescWndSlot`.
 
   std::unordered_map<uint32_t, std::string> item_names_;  // ID → Name from itemInfoMerged.lua
   // Index inverse (nom minuscule → ID), construit à la demande par ItemIdByName.

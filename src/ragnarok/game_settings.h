@@ -367,4 +367,21 @@ bool AdapterChoiceMovesWindow();  // == Fullscreen()
 
 }  // namespace graphics
 
+// ── Les deux ACCÈS BRUTS au drapeau, et pourquoi ils sont exposés ────────────
+// `IsOn`/`SetOn` ci-dessus sont la bonne porte : elles défont l'inversion des
+// cinq options concernées et, à l'écriture, passent par le HANDLER natif qui
+// applique réellement l'effet.
+//
+// Ces deux-ci lisent et écrivent le drapeau et RIEN d'autre. Un appelant les
+// choisit délibérément quand il veut l'écriture SANS l'effet — la bascule du
+// bouton de cash shop, par exemple, doit ranger l'option même hors carte, là où
+// la commande native sort sans rien faire faute de fenêtre à qui parler, et
+// c'est son propre code qui applique ensuite la visibilité.
+//
+// ⚠ Aucune inversion n'est défaite ici. Sur les cinq ids concernés (cf. le piège
+// n°1 en tête de ce fichier), la valeur lue est la NÉGATION de ce que voit le
+// joueur. Ne pas s'en servir sur ceux-là.
+constexpr uintptr_t kFlagGetRawAddr = 0x0068ea70;  // __cdecl(ttIndex) -> char
+constexpr uintptr_t kFlagSetRawAddr = 0x0068fd50;  // __cdecl(ttIndex, char)
+
 }  // namespace gamesettings

@@ -27,7 +27,6 @@ constexpr uintptr_t kRowToCommandIndexAddr = 0x00d83b20;
 
 // UserHotkey_Lua_GetHotKey(out, catégorie, cmdIdx) : Lua `GetHotKey(cat+1, idx)`
 // (format « dd>ddss »). Remplit une struct de 0x38 octets.
-constexpr uintptr_t kGetHotKeyAddr = 0x00d80950;
 
 // La struct de sortie de GetHotKey.
 //
@@ -122,7 +121,7 @@ bool ReadBinding(int category, int row, Binding* out) {
   __try {
     alignas(4) uint8_t buf[kOutSize];
     std::memset(buf, 0, sizeof(buf));
-    reinterpret_cast<GetHotKey_t>(kGetHotKeyAddr)(buf, category, cmd);
+    reinterpret_cast<GetHotKey_t>(userhotkey::kGetHotKeyAddr)(buf, category, cmd);
 
     kc1 = *reinterpret_cast<int*>(buf + kOffKeyCode1);
     kc2 = *reinterpret_cast<int*>(buf + kOffKeyCode2);

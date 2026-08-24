@@ -1109,23 +1109,14 @@ bool g_collapse_allowed = true;  // faux hors du jeu (cf. SetWindowCollapseAllow
 // ── Loader natif du client (conventions menu_icons.cc / status_tweaks.cc) ──────
 // Charge un bmp d'UI depuis le VFS du jeu (GRF + overrides data\) → un joueur qui
 // remplace le bmp dans son GRF/data voit son skin custom appliqué, à la RO.
-using TexMgr_t = void*(__cdecl*)();
-using MakeKey_t = void*(__cdecl*)(const char*);
-using LoadTex_t = void*(__fastcall*)(void*, void*, void*);
 constexpr int kOffW = 0x114, kOffH = 0x118, kOffPix = 0x11c;  // UITexture fields
-// "유저인터페이스\" en CP949 (bytes verbatim, cf. menu_icons.cc).
-const char kUIDir[] = "\xC0\xAF\xC0\xFA\xC0\xCE\xC5\xCD\xC6\xE4\xC0\xCC\xBD\xBA";
 
 // Charge un bmp d'UI (chemin RELATIF sous 유저인터페이스\) via le loader natif,
 // décode BGRA->A8R8G8B8 avec magenta #FF00FF -> alpha. null si absent/échec.
 void* LoadClientBmp(const char* rel_path, int* out_w, int* out_h) {
-  void* mgr = reinterpret_cast<TexMgr_t>(ro::texmgr::kGet)();
-  if (!mgr) return nullptr;
   char full[192];
-  std::snprintf(full, sizeof(full), "%s\\%s", kUIDir, rel_path);
-  void* key = reinterpret_cast<MakeKey_t>(ro::texmgr::kMakeKey)(full);
-  if (!key) return nullptr;
-  void* tex = reinterpret_cast<LoadTex_t>(ro::texmgr::kLoad)(mgr, nullptr, key);
+  std::snprintf(full, sizeof(full), "%s\\%s", ro::uipath::kUiRoot, rel_path);
+  void* tex = ro::texmgr::LoadResource(full);
   if (!tex) return nullptr;
   const int w = *reinterpret_cast<int*>(static_cast<char*>(tex) + kOffW);
   const int h = *reinterpret_cast<int*>(static_cast<char*>(tex) + kOffH);

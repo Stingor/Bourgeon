@@ -56,7 +56,6 @@ constexpr uint8_t kRenderWindowsCallBytes[5] = {0xE8, 0xF5, 0x3F, 0xDD, 0xFF};
 // ⚠ Ce global ne nous appartient pas : le moteur le réécrit à chaque bascule de
 // la commande /zoom. D'où une lecture À CHAQUE frame plutôt qu'une valeur mise
 // de côté à l'entrée en veille.
-constexpr uintptr_t kCamZoomMaxOutdoor = 0x012291c0;
 
 // Bornes de la « hauteur au-dessus de l'horizon » proposée au joueur, en degrés
 // positifs (le moteur, lui, veut l'opposé — cf. StepCamera). Le repos du client
@@ -482,7 +481,7 @@ void AfkScreen::StepCamera(float dt) {
   // celle qui plafonne le dézoom étendu de ScreenFx).
   const float target_dist =
       base_dist_ * std::clamp(cfg_.zoom_factor, 1.0f, 2.5f);
-  const float max_dist = *reinterpret_cast<const float*>(kCamZoomMaxOutdoor);
+  const float max_dist = *reinterpret_cast<const float*>(ro::camera::kZoomMaxOutdoorAddr);
   const float dist = std::min(target_dist, max_dist > 1.0f ? max_dist : target_dist);
 
   // 🔴 LE PITCH EST NÉGATIF. Le réglage se lit « hauteur au-dessus de

@@ -88,4 +88,33 @@ constexpr uintptr_t kFindActorByGidAddr     = 0x00d806a0;
 // plutôt que d'en refaire la logique — c'est la règle du projet.
 constexpr uintptr_t kPostActorClickActionAddr = 0x00c753a0;
 
+// ── Le quadtree de PICKING ──────────────────────────────────────────────────
+// 🔴 SON NOM A DÉJÀ MENTI UNE FOIS. Un fichier l'appelait
+// « kNameplateQuadTreeAddr », ce qui laissait croire à une structure au service
+// des étiquettes de noms. C'est le quadtree de PICKING : il est reconstruit à
+// chaque frame par le rendu des sprites, et c'est la source du survol natif.
+// Les étiquettes n'en sont qu'un consommateur parmi d'autres.
+//
+// `QueryPoint` __thiscall(tree, float x, float y) -> quad (dix floats) ou
+// nullptr. Le quad porte, en dwords : +6 l'AID, +7 le job (qui discrimine
+// joueur et monstre), +8 la CATÉGORIE de pick.
+//
+// ⚠ La catégorie n'est pas décorative : 0 = acteur, 1 = OBJET AU SOL, 3 = pet.
+// Un code qui traite tout quad comme un acteur ramasse les objets au sol.
+constexpr uintptr_t kPickQuadTreeAddr       = 0x012135f0;
+constexpr uintptr_t kQuadTreeQueryPointAddr = 0x00a797b0;
+constexpr int kQuadAid = 6;  // dword : AID de l'acteur
+constexpr int kQuadJob = 7;  // dword : job/classe
+constexpr int kQuadCat = 8;  // dword : catégorie de pick (0 acteur, 1 sol, 3 pet)
+
+// Taille minimale d'une cellule du quadtree de picking, en unités de monde.
+// C'est un réglage du client, pas une constante de code : le diagnostic de
+// personnage l'affiche et un correctif de picking l'ajuste.
+constexpr uintptr_t kPickQuadMinSizeAddr = 0x015e5b40;
+
+// `World_PositionToTile` : une position monde (float) -> la cellule de carte.
+// Employée par le déplacement au clavier (pour viser la case voisine) et par
+// l'inspecteur d'entité (pour dire où se tient un acteur).
+constexpr uintptr_t kWorldToTileAddr = 0x00c6aa80;
+
 }  // namespace gamescene

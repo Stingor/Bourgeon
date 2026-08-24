@@ -34,7 +34,6 @@ namespace {
 
 // ── Identité du joueur (client 20250716, base 0x400000) ──────────────────────
 // `GetSex(session)` — le sexe décide du dossier de sprite, pas seulement du nom.
-constexpr uintptr_t kGetSex = 0x00D84760;
 // `Job_ResolveMountedClassFromOption(session)` — la classe AFFICHÉE, montures
 // comprises.
 
@@ -47,7 +46,7 @@ using GetSexFn = int(__fastcall*)(void*, void*);
 using GetJobFn = int(__fastcall*)(void*, void*);
 
 int OwnSex() {
-  return reinterpret_cast<GetSexFn>(kGetSex)(
+  return reinterpret_cast<GetSexFn>(rag::kOwnSexAddr)(
       reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
 }
 int OwnJob() {
@@ -57,9 +56,6 @@ int OwnJob() {
 
 // Apparence courante, telle que le client la tient à jour sur ZC_SPRITE_CHANGE.
 // Mêmes globales que `BuildOwnDollLook` (features/overlays/basic_info.cc).
-constexpr uintptr_t kHair       = 0x015FB278;  // style de coiffure
-constexpr uintptr_t kClothesCol = 0x015FB28C;  // palette de vêtements
-constexpr uintptr_t kHairCol    = 0x015FB290;  // palette de cheveux
 
 // ── Grille de vignettes, commune aux trois sélecteurs ───────────────────────
 //
@@ -290,7 +286,7 @@ void PaletteEditor::SeedWornHead() {
   // qu'un amorçage vient éventuellement de poser. La recette peut être en
   // retard — un passage chez un styliste NPC change `sd->status.hair` sans rien
   // nous dire — et c'est la coupe réellement portée qui fait autorité.
-  recipe_.hair_style = static_cast<int16_t>(*reinterpret_cast<int*>(kHair));
+  recipe_.hair_style = static_cast<int16_t>(*reinterpret_cast<int*>(rag::kOwnHairStyleAddr));
 
   // ⛔ La COULEUR de cheveux ne se comble PAS ici, et ce fut une erreur de
   // l'essayer (2026-08-12, corrigé le jour même).
@@ -322,10 +318,10 @@ ro::PaletteRecipe PaletteEditor::ShareableRecipe() const {
   // la recette laissait ouvert — et seulement ici.
   if (out.hair_palette_id <= 0) {
     out.hair_palette_id =
-        static_cast<int16_t>(*reinterpret_cast<int*>(kHairCol));
+        static_cast<int16_t>(*reinterpret_cast<int*>(rag::kOwnHairColorAddr));
   }
   if (out.hair_style <= 0) {
-    out.hair_style = static_cast<int16_t>(*reinterpret_cast<int*>(kHair));
+    out.hair_style = static_cast<int16_t>(*reinterpret_cast<int*>(rag::kOwnHairStyleAddr));
   }
   return out;
 }
@@ -752,9 +748,9 @@ void PaletteEditor::DrawPreviewDoll(float size, int highlight) {
   look.sex = OwnSex();
   look.job = OwnJob();
   look.body = rag::OwnJobId();
-  look.hair = *reinterpret_cast<int*>(kHair);
-  look.hair_color = *reinterpret_cast<int*>(kHairCol);
-  look.clothes_color = *reinterpret_cast<int*>(kClothesCol);
+  look.hair = *reinterpret_cast<int*>(rag::kOwnHairStyleAddr);
+  look.hair_color = *reinterpret_cast<int*>(rag::kOwnHairColorAddr);
+  look.clothes_color = *reinterpret_cast<int*>(rag::kOwnClothesColorAddr);
   // 🔴 Rien d'autre : ni coiffe, ni cape, ni arme. On règle la palette du CORPS,
   // et un chapeau volumineux rétrécirait le personnage tout en masquant les
   // pièces qu'on cherche justement à voir.
@@ -889,9 +885,9 @@ void PaletteEditor::DrawHairStylePicker() {
   // La vignette porte la couleur CHOISIE : on compare des coupes telles qu'on
   // les portera, pas dans une teinte qu'on vient d'abandonner.
   const int couleur = recipe_.hair_palette_id > 0 ? recipe_.hair_palette_id
-                                                  : *reinterpret_cast<int*>(kHairCol);
+                                                  : *reinterpret_cast<int*>(rag::kOwnHairColorAddr);
   int choix = recipe_.hair_style > 0 ? recipe_.hair_style
-                                     : *reinterpret_cast<int*>(kHair);
+                                     : *reinterpret_cast<int*>(rag::kOwnHairStyleAddr);
   bool ferme = false;
   if (GrillePicker(1, maxi, kCols, kCote, &choix,
                    [&](int v, ImVec2 p, float c) {
@@ -925,7 +921,7 @@ void PaletteEditor::DrawHairColorPicker() {
   const int sex = OwnSex();
   const int job = OwnJob();
   const int coupe = recipe_.hair_style > 0 ? recipe_.hair_style
-                                           : *reinterpret_cast<int*>(kHair);
+                                           : *reinterpret_cast<int*>(rag::kOwnHairStyleAddr);
   // Chaque case = SA PROPRE coupe dans la teinte N. C'est ce que fait l'écran de
   // création, et c'est la seule façon honnête de montrer une couleur de cheveux :
   // une pastille unie ne dit rien du dégradé qu'une palette applique.
@@ -1139,9 +1135,9 @@ void PaletteEditor::DrawStylePreview() {
     look.sex = OwnSex();
     look.job = OwnJob();
     look.body = rag::OwnJobId();
-    look.hair = *reinterpret_cast<int*>(kHair);
-    look.hair_color = *reinterpret_cast<int*>(kHairCol);
-    look.clothes_color = *reinterpret_cast<int*>(kClothesCol);
+    look.hair = *reinterpret_cast<int*>(rag::kOwnHairStyleAddr);
+    look.hair_color = *reinterpret_cast<int*>(rag::kOwnHairColorAddr);
+    look.clothes_color = *reinterpret_cast<int*>(rag::kOwnClothesColorAddr);
     if (preview_recipe_.hair_palette_id > 0)
       look.hair_color = preview_recipe_.hair_palette_id;
     if (preview_recipe_.hair_style > 0) look.hair = preview_recipe_.hair_style;
@@ -1641,7 +1637,7 @@ void PaletteEditor::OnRenderUI() {
         char b[96];
         std::snprintf(b, sizeof(b), "%s (%d)", i18n::Tr("Coiffure"),
                       recipe_.hair_style > 0 ? recipe_.hair_style
-                                             : *reinterpret_cast<int*>(kHair));
+                                             : *reinterpret_cast<int*>(rag::kOwnHairStyleAddr));
         if (ro::RoButton(b, ro::ButtonWidth(b)))
           ImGui::OpenPopup("##coiffures");
         DrawHairStylePicker();

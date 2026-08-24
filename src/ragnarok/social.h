@@ -77,4 +77,9 @@ void JobIconPath(int job_id, char* out, size_t cap);
 constexpr int kMaxPartyMembers = 24;
 constexpr int kMaxFriends      = 40;
 
+// `FriendList_AddByName` : demander en ami par le NOM, comme le fait `/friend`.
+// Deux surfaces l'émettent — la commande du chat et le hub Groupe/Amis — et
+// chacune la déclarait. C'est la même requête, donc les mêmes refus serveur.
+constexpr uintptr_t kFriendListAddByNameAddr = 0x00a2c600;
+
 }  // namespace rag::social

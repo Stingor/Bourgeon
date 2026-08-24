@@ -63,10 +63,8 @@ constexpr uintptr_t kFnGetStep       = 0x00B2EE00;
 constexpr uintptr_t kFnNodeName      = 0x00B26CF0;  // CNaviNode::GetName (interne)
 constexpr uintptr_t kFnShareToChat   = 0x005AB550;  // pose la balise dans le chat
 constexpr uintptr_t kFnSetFocusedWnd = 0x00A4B760;  // __thiscall(mgr, fenetre)
-constexpr uintptr_t kNewChatWndPtr   = 0x0131F6B0;  // g_pNewChatWnd
 constexpr int       kChatInputChild  = 47;          // +0xBC : la barre de saisie
 constexpr uintptr_t kFnMapDisplayName = 0x00B26B00;  // nom AFFICHÉ d'une carte
-constexpr uintptr_t kStdStringCtorCStr = 0x004E5330;  // __thiscall(this, cstr)
 
 // ── Le CONTENU d'une carte : ses PNJ et ses spawns ──────────────────────────
 //
@@ -530,7 +528,7 @@ bool SafeRunSearch(int filter, const char* term, size_t term_len) {
 int SafeGoTo(const char* map, int type, char flags, int x, int y, int mob_id) {
   __try {
     ByValueString packed{};
-    reinterpret_cast<StrCtorCStr_t>(kStdStringCtorCStr)(&packed, map);
+    reinterpret_cast<StrCtorCStr_t>(rag::kStdStringCtorCStrAddr)(&packed, map);
     return reinterpret_cast<SearchRoute_t>(navi::kSearchRouteAddr)(
                Nav(), packed, type, flags, /*hideWindow=*/1, x, y, mob_id)
                ? 1
@@ -551,7 +549,7 @@ bool SafeShareToChat(const char* map, int x, int y) {
     // On donne donc le focus à la barre de saisie AVANT d'appeler : la native
     // retrouve alors exactement l'état qu'elle attend, déplie la barre si besoin
     // et y écrit sa balise.
-    void* chat = *reinterpret_cast<void**>(kNewChatWndPtr);
+    void* chat = *reinterpret_cast<void**>(uiwnd::kChatWndSlot);
     if (!chat) return false;
     void* input = reinterpret_cast<void**>(chat)[kChatInputChild];
     if (!input) return false;
@@ -559,7 +557,7 @@ bool SafeShareToChat(const char* map, int x, int y) {
         reinterpret_cast<void*>(uiwnd::kUIWindowMgrAddr), input);
 
     ByValueString packed{};
-    reinterpret_cast<StrCtorCStr_t>(kStdStringCtorCStr)(&packed, map);
+    reinterpret_cast<StrCtorCStr_t>(rag::kStdStringCtorCStrAddr)(&packed, map);
     reinterpret_cast<ShareToChat_t>(kFnShareToChat)(packed, x, y);
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
@@ -773,7 +771,6 @@ const char* RaceName(int race) {
 // ⚠ En ÉCHAPPEMENTS HEXA, jamais en caractères : ce fichier est en UTF-8, or le
 // client attend du CP949 — coller les glyphes donnerait deux octets par
 // caractère et un chemin introuvable, en silence.
-constexpr char kUiRoot[] = "\xC0\xAF\xC0\xFA\xC0\xCE\xC5\xCD\xC6\xE4\xC0\xCC\xBD\xBA";
 
 // Miniature d'une carte, en infobulle. Le natif réserve un cadre fixe à droite
 // de sa fenêtre pour cette image ; la mettre au survol donne la même information
@@ -786,7 +783,7 @@ constexpr char kUiRoot[] = "\xC0\xAF\xC0\xFA\xC0\xCE\xC5\xCD\xC6\xE4\xC0\xCC\xBD
 void MapThumbnail(const char* map_name, float side) {
   if (!map_name || !*map_name) return;
   char path[192];
-  _snprintf_s(path, sizeof(path), _TRUNCATE, "%s\\map\\%s.bmp", kUiRoot,
+  _snprintf_s(path, sizeof(path), _TRUNCATE, "%s\\map\\%s.bmp", ro::uipath::kUiRoot,
               map_name);
   const ro::GameTexture tex = ro::CachedTextureFromGameFile(path);
   if (!tex.tex) {
@@ -1877,7 +1874,7 @@ bool NavigationWindow::RouteIconButton(int icon, float side, const char* id) {
   char path[192];
   _snprintf_s(path, sizeof(path), _TRUNCATE,
               "%s\\navigation_interface3\\btn_roadIocn_select%d_normal.bmp",
-              kUiRoot, icon);
+              ro::uipath::kUiRoot, icon);
   const ro::GameTexture tex = ro::CachedTextureFromGameFile(path);
   ImGui::PushID(id);
   bool clicked = false;

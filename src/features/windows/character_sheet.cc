@@ -110,7 +110,6 @@ enum { kCompOff = 0, kCompOn = 1, kCompDeco = 2 };
 
 // Toggles de config natifs (fenêtre équip case 0xd5) via le dispatcher CMode *(0x0121333c)->vf+0x18.
 // RE live 2026-07-11 : cmd 0xFD = « Show Equip » (config 0), cmd 0x148 = « View Costumes » (config 5).
-constexpr int       kVfDispCmd       = 0x18;
 constexpr int       kCmdShowEquip    = 0xFD;   // config 0 : montrer l'équip aux autres
 constexpr int       kCmdViewCostume  = 0x148;  // config 5 : voir les costumes
 constexpr int       kCmdUseSkill     = 0x45;   // lancer une compétence sur une CIBLE DONNÉE (GID)
@@ -162,10 +161,6 @@ constexpr int kAnimCombat = 4;  // en combat, on limite à 4 directions cardinal
 // Icône de SKILL (case compagnon) : le .bmp est nommé par l'identifiant Lua du skill
 // (ex. "MC_PUSHCART"), pas par l'id numérique. Lua_GetSkillIdName(id) -> idname, puis
 // "유저인터페이스\item\<idname>.bmp" (source native, indép. de l'appris ; cf. skill_bar).
-constexpr uintptr_t kGetSkillIdNameLua = 0x0073a140;  // char* GetSkillIdName(int) __cdecl
-using GetSkillIdNameLua_t = char*(__cdecl*)(int);
-const char kUIDir[] = "\xC0\xAF\xC0\xFA\xC0\xCE\xC5\xCD\xC6\xE4\xC0\xCC\xBD\xBA";  // CP949 유저인터페이스
-
 
 int ReadInt(uintptr_t addr) {
   __try { return *reinterpret_cast<const int*>(addr); }
@@ -929,10 +924,10 @@ std::unordered_map<uint32_t, ro::IconTex> g_skill_icon_cache;
 bool BuildSkillIconPathSafe(int skillId, char* out, int n) {
   out[0] = '\0';
   __try {
-    const char* idn = reinterpret_cast<GetSkillIdNameLua_t>(kGetSkillIdNameLua)(skillId);
+    const char* idn = lua::SkillIdName(skillId);
     if (!idn || !idn[0]) return false;
     if (std::strstr(idn, "nknown") || std::strcmp(idn, "Zero Skill") == 0) return false;
-    std::snprintf(out, n, "%s\\item\\%s.bmp", kUIDir, idn);
+    std::snprintf(out, n, "%s\\item\\%s.bmp", ro::uipath::kUiRoot, idn);
     return out[0] != '\0';
   } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; return false; }
 }
@@ -1359,12 +1354,11 @@ constexpr float kEmblemFrameInset = 2.0f;
 constexpr int kTtEmblemFrame = 0xf3;
 
 ro::GameTexture EmblemFrameTexture() {
-  // 🔴 DEUX littéraux concaténés, et ce n'est pas du style : collés en un seul,
-  // l'octet `\xBA` du préfixe CP949 et la suite formeraient une autre séquence
-  // d'échappement (même piège que `icon_cache.cc`).
-  static const char kPath[] =
-      "\xC0\xAF\xC0\xFA\xC0\xCE\xC5\xCD\xC6\xE4\xC0\xCC\xBD\xBA" "\\emblem_frame.bmp";
-  return ro::CachedTextureFromGameFile(kPath);
+  // Composé au format sur la racine partagée plutôt que collé à un littéral :
+  // l'octet `\xBA` qui termine le préfixe CP949 n'a plus de `\` à avaler.
+  char path[128];
+  std::snprintf(path, sizeof(path), "%s\\emblem_frame.bmp", ro::uipath::kUiRoot);
+  return ro::CachedTextureFromGameFile(path);
 }
 
 // Dessine l'emblème dans la boîte donnée, encadré si le joueur l'a demandé.
@@ -2003,11 +1997,10 @@ void SendEquip(int invIndex, uint32_t position) {
 // Bascule un toggle de config natif (Show Equip / View Costumes) via le dispatcher, EXACTEMENT
 // comme la fenêtre équip (case 0xd5). `value` = nouvel état de la case ; le serveur répond
 // ZC_CONFIG qui applique le flag + rafraîchit le sprite. SEH (appel natif via vtable).
-using DispCmd_t = void*(__thiscall*)(void*, int, int, int, int, int);
 void SendConfigToggle(int cmd, int value) {
   __try {
     void* d = *reinterpret_cast<void**>(rag::kActiveModePtr);
-    if (d) uiwnd::Vf<DispCmd_t>(d, kVfDispCmd)(d, cmd, value, 0, 0, 0);
+    if (d) rag::ModeSendMsg(d, cmd, value, 0, 0, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 // Lance une compétence par le chemin NATIF, EXACTEMENT celui d'une touche de la barre de
@@ -2044,7 +2037,7 @@ void SendUseSkill(uint16_t skillId, int level) {
       int lv = level < 1 ? 1 : level;
       if (owned > 0 && lv > owned) lv = owned;
       if (found) {
-        uiwnd::Vf<DispCmd_t>(d, kVfDispCmd)(d, kCmdUseSkillSlot,
+        rag::ModeSendMsg(d, kCmdUseSkillSlot,
                                      static_cast<int>(reinterpret_cast<uintptr_t>(entry)),
                                      lv, 0, 0);
         dispatched = true;
@@ -2055,7 +2048,7 @@ void SendUseSkill(uint16_t skillId, int level) {
       // GID de notre acteur = notre AID : les compétences de guilde se lancent sur soi.
       const uint32_t self = rag::OwnAccountId();
       if (self)
-        uiwnd::Vf<DispCmd_t>(d, kVfDispCmd)(d, kCmdUseSkill, skillId, static_cast<int>(self),
+        rag::ModeSendMsg(d, kCmdUseSkill, skillId, static_cast<int>(self),
                                      level, 0);
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
@@ -2761,7 +2754,6 @@ struct ItemWire {          // miroir de PACKET_BOURGEON_STAT_ITEM
 
 // Résolveur de nom de skill localisé (wrapper Lua natif, cf. skill_bar) :
 // char* GetSkillName(int id) — renvoie « Unknown-Skill » si l'id est inconnu.
-using GetSkillNameLua_t = char* (__cdecl*)(int);
 
 // Résolution du nom de STATUT (EFST) via le global Lua GetStateIconDescript(efst),
 // appelé par l'API C Lua 5.1 BRUTE (nom statique => pas de std::string BYVAL détruit
@@ -4074,7 +4066,7 @@ void CharacterSheet::DrawSkillsTab() {
   // Filtre par nom (le libellé localisé, pas l'idname).
   const bool filtering = skill_filter_buf_[0] != '\0';
   auto skill_name = [](int id) -> const char* {
-    const char* n = reinterpret_cast<GetSkillNameLua_t>(lua::kGetSkillNameAddr)(id);
+    const char* n = lua::SkillName(id);
     return (n && n[0]) ? n : "?";
   };
   auto icontains = [](const char* hay, const char* needle) {
@@ -5055,7 +5047,7 @@ void CharacterSheet::DrawHomunTab() {
   }
 
   auto skill_name = [](int id) -> const char* {
-    const char* n = reinterpret_cast<GetSkillNameLua_t>(lua::kGetSkillNameAddr)(id);
+    const char* n = lua::SkillName(id);
     return (n && n[0]) ? n : "?";
   };
 
@@ -6175,7 +6167,7 @@ void CharacterSheet::DrawGuildSkillsTab() {
   // guilde ; puis le libellé du fichier d'arbre — seule source pour une verrouillée,
   // dont aucun paquet n'arrive ; enfin le nom technique du paquet.
   auto skill_label = [&](uint16_t id, const char* packet_name) -> const char* {
-    const char* lua_name = reinterpret_cast<GetSkillNameLua_t>(lua::kGetSkillNameAddr)(id);
+    const char* lua_name = lua::SkillName(id);
     if (lua_name && *lua_name && std::strcmp(lua_name, "Unknown-Skill") != 0) return lua_name;
     const GuildSkillTreeNode* node = tree_node(id);
     if (node && node->name[0]) return node->name;
@@ -8387,7 +8379,7 @@ void CharacterSheet::DrawStatsPanel() {
 
     // Bonus liés à un skill : nom résolu via le wrapper Lua natif (localisé).
     auto skillName = [](uint16_t id) -> const char* {
-      const char* n = reinterpret_cast<GetSkillNameLua_t>(lua::kGetSkillNameAddr)(id);
+      const char* n = lua::SkillName(id);
       return (n && *n) ? n : "?";
     };
     if (!bonus_.skills.empty() && ImGui::CollapsingHeader(i18n::Tr("Skills & statuts"), kSec))

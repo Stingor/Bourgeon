@@ -47,7 +47,6 @@ constexpr uintptr_t kMakeNode    = 0x00bb5d10;  // __thiscall(scene,0,0.0(8),0.0
 constexpr uintptr_t kGetEFSTImg  = 0x00d87380;  // __thiscall(session,id,layer) -> const char*
 constexpr uintptr_t kSpriteRef   = 0x00568760;  // __thiscall(cache,path,0,0,1,0) -> ref (5 args!)
 
-constexpr uintptr_t kSpriteCache = 0x0125161c;  // &DAT_0125161c (sprite-ref cache)
 constexpr uintptr_t kVecBegin    = 0x0136e6c8;  // std::vector<StatusIcon>::begin (raw bytes)
 constexpr uintptr_t kVecEnd      = 0x0136e6cc;  // ::end
 constexpr uintptr_t kGridIds     = 0x015ffd80;  // int[100] laid-out ids (-1 empty)
@@ -216,7 +215,7 @@ void EmitIcon(void* scene, int id, const char* path, float x, float y) {
   auto** tex = reinterpret_cast<void**>(Alloc(sizeof(void*) * 2));
   *reinterpret_cast<void**>(B + 0x144) = tex;
   if (tex) {
-    void* cache = reinterpret_cast<void*>(kSpriteCache);
+    void* cache = reinterpret_cast<void*>(render::kSpriteRefCacheAddr);
     tex[0] = SpriteRef(cache, nullptr, path,      0, 0, 1, 0);
     tex[1] = SpriteRef(cache, nullptr, kWhiteTex, 0, 0, 1, 0);
   }

@@ -34,7 +34,6 @@ constexpr uintptr_t kAutoFeed    = 0x015fb99c;  // écrit par le handler de ZC 0
 // (0x00CBAB6D, 0x00CBACAA). Ne pas propager (docs §1).
 
 // La rédaction de courrier RODEX, testée telle quelle par le msg 39 / id 467.
-constexpr uintptr_t kMailWriteWnd = 0x0131f940;
 // La fenêtre que le callback de confirmation (msg 6 / id 488) refuse de doubler.
 // Le client la cherche par id, sans jamais nommer la classe : on garde son
 // numéro brut plutôt qu'une étiquette inventée.
@@ -101,7 +100,6 @@ using BannedFn   = char (__stdcall*)(const char*);
 using FindActorFn = void* (__stdcall*)(uint32_t);
 
 constexpr uintptr_t kEggToMobAddr = 0x00d823f0;
-constexpr uintptr_t kBannedAddr   = 0x00a85be0;
 // Le `this` de `Job_GetDisplayNameOrResName`, c'est la session — le même objet
 // que `g_UIWindowContextKey`. On prend celui de globals.h, pas une redéclaration.
 
@@ -357,7 +355,7 @@ const char* MobDisplayNameUtf8(int mob_class) {
 
 bool MailWriteOpen() {
   __try {
-    return ReadPtr(kMailWriteWnd) != nullptr;
+    return ReadPtr(uiwnd::kMailWriteWndSlot) != nullptr;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
@@ -381,7 +379,7 @@ bool NameHasForbiddenWord(const char* wire_name) {
 bool NameHasBannedWord(const char* wire_name) {
   if (!wire_name || !wire_name[0]) return false;
   __try {
-    return reinterpret_cast<BannedFn>(kBannedAddr)(wire_name) == 1;
+    return reinterpret_cast<BannedFn>(rag::kBannedWordContainsAddr)(wire_name) == 1;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 

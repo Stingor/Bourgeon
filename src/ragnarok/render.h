@@ -57,4 +57,16 @@ constexpr uintptr_t kAtlasBuildAddr     = 0x005663d0;
 // Act_GetFrame(act, action, frame) -> frame*, __thiscall.
 constexpr uintptr_t kActionGetFrameAddr = 0x0070f4b0;
 
+// ── Cache de références de sprites ──────────────────────────────────────────
+// L'OBJET (pas un pointeur vers lui), voisin immédiat du contexte de rendu
+// ci-dessus — 0x24 octets plus loin, ce qui n'est pas un hasard : les deux sont
+// des membres du même bloc global de rendu.
+//
+// Deux fichiers le déclaraient chacun de leur côté, pour deux usages opposés
+// qui ne se savaient pas voisins : la barre d'icônes d'état y prend une
+// référence de sprite (`SpriteRef` __thiscall(cache, chemin, 0, 0, 1, 0) —
+// SIX arguments), et le changement de skin le VIDE, parce que les mêmes chemins
+// doivent alors rendre d'autres images.
+constexpr uintptr_t kSpriteRefCacheAddr = 0x0125161c;
+
 }  // namespace render

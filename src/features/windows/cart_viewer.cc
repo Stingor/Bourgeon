@@ -86,11 +86,8 @@ constexpr int kActionClose = 0xc9;   // …201 = fermeture (RE UICartWnd_OnMsg c
 // Dispatcher (CMode) : FUN_00a75340(0x1213338) -> objet mode actif (0 hors jeu).
 // Son vtbl+0x18 = CMode::SendMsg. Commandes de transfert RE'ées sur la fenêtre
 // cart elle-même (UICartWnd_OnRButtonDown branche ALT / OnMsg case 38).
-constexpr int kVfDispCmd     = 0x18;
 constexpr int kCmdCartToBody    = 0x4d;  // cart -> inventaire
 constexpr int kCmdCartToStorage = 0x4f;  // cart -> storage (storage ouvert)
-using GetMode_t = void*(__fastcall*)(int);
-using DispCmd_t = void(__thiscall*)(void*, int, int, int, int, int);
 
 // Autres fenêtres, pour router un transfert (cible ouverte ou non) :
 // uiwnd::kInventoryWndSlot / kStorageWndSlot et leurs vtables.
@@ -148,7 +145,7 @@ bool OverStorage(float x, float y) {
 // Objet mode courant (dispatcher), ou nullptr hors d'un mode jouable. SEH-gardé.
 void* Dispatcher() {
   __try {
-    return reinterpret_cast<GetMode_t>(rag::kModeMgrGetActiveAddr)(static_cast<int>(rag::kModeMgrAddr));
+    return rag::ActiveModeIfReady();
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
 }
 
@@ -162,7 +159,7 @@ void SendCmd(int cmd, int index, int amount) {
   if (VendingComposing()) return;
   __try {
     void* d = Dispatcher();
-    if (d) uiwnd::Vf<DispCmd_t>(d, kVfDispCmd)(d, cmd, index, amount, 0, 0);
+    if (d) rag::ModeSendMsg(d, cmd, index, amount, 0, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -248,7 +245,6 @@ inline ImTextureID TexId(void* t) { return reinterpret_cast<ImTextureID>(t); }
 
 // ── Assets natifs : barre 3-slice + fond de tuile + icônes du footer ───────────
 // Préfixe CP949 pris sur les strings de l'exe (jamais reconstruit à la main).
-constexpr uintptr_t kIconNumPath    = 0x0103dad4;  // …\inventory\icon_num.bmp
 
 using BarTex = ro::GameTexture;
 BarTex g_bar[3];      // btnbar 3-slice : 0=left, 1=mid, 2=right
@@ -280,7 +276,7 @@ void LoadAssets() {
   BasicInterfacePath("itemwin_mid.bmp", path, sizeof(path));
   g_tile = ro::TextureFromGameFile(path);
   g_ico_weight = ro::TextureFromGameFile(reinterpret_cast<const char*>(ro::uipath::kIconWeight));
-  g_ico_num    = ro::TextureFromGameFile(reinterpret_cast<const char*>(kIconNumPath));
+  g_ico_num    = ro::TextureFromGameFile(reinterpret_cast<const char*>(ro::uipath::kIconNum));
   for (int c = 0; c < kNumCats; ++c) {
     const char* base = kCats[c].img;
     if (!base) continue;

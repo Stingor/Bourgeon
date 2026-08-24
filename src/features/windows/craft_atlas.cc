@@ -35,7 +35,6 @@ constexpr int       kMaxInvNodes  = 4096;  // garde-fou de parcours
 // Résolveur de nom de compétence LOCALISÉ (wrapper Lua natif, cf. skill_bar et
 // character_sheet) : char* GetSkillName(int id), « Unknown-Skill » si inconnu.
 // C'est la seule source qui couvre TOUTES les compétences, custom comprises.
-using GetSkillNameLua_t = char* (__cdecl*)(int);
 
 constexpr int kRoCursorHand = 2;  // *(CursorMgr+0x50) : la main du client
 
@@ -182,7 +181,7 @@ const char* CraftAtlas::SkillLabel(int skill, int recipe_lv) {
     if (recipe_lv >= 11 && recipe_lv <= 20) return i18n::Tr("Cuisine (kit)");
     return i18n::Tr("Sans compétence (objet ou script)");
   }
-  const char* n = reinterpret_cast<GetSkillNameLua_t>(lua::kGetSkillNameAddr)(skill);
+  const char* n = lua::SkillName(skill);
   return (n && n[0]) ? n : "?";
 }
 

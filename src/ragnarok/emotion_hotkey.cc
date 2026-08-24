@@ -44,8 +44,6 @@ constexpr uintptr_t kSaveJsonSelf = 0x01251668;
 constexpr uintptr_t kSendMacroAddr = 0x00a47400;
 
 // La cible d'envoi et ses gardes d'appartenance (répliques du natif).
-constexpr uintptr_t kInputTargetMode  = 0x015ff838;
-constexpr uintptr_t kClanStatePtr     = 0x0159c07c;  // *(byte*)(*ptr + 0x5C)
 
 using StrAssign_t = void*(__thiscall*)(void*, const char*, size_t);
 using SaveJson_t  = int(__fastcall*)(void*, void*);
@@ -158,7 +156,7 @@ const char* DefaultLocal(int slot) {
 Target CurrentTarget() {
   int mode = 0;
   __try {
-    mode = *reinterpret_cast<const int*>(kInputTargetMode);
+    mode = *reinterpret_cast<const int*>(rag::kInputTargetModeAddr);
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     return Target::kPublic;
   }
@@ -185,7 +183,7 @@ Target CurrentTarget() {
   }
   if (mode == 3) {
     __try {
-      const uint8_t* clan = *reinterpret_cast<const uint8_t* const*>(kClanStatePtr);
+      const uint8_t* clan = *reinterpret_cast<const uint8_t* const*>(rag::kClanStatePtrAddr);
       if (clan && clan[0x5C]) return Target::kClan;
     } __except (EXCEPTION_EXECUTE_HANDLER) {}
     return Target::kPublic;

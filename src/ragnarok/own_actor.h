@@ -72,4 +72,19 @@ bool ReadOwnActorSprites(OwnActorSprites* out);
 // mort rend false au lieu de tuer le client, mais ce n'est pas une licence.
 bool ActorSlotSpritePath(void* actor, int slot, char* out, size_t out_size);
 
+// ── Poser ou retirer un EFFET sur un acteur ─────────────────────────────────
+// `Actor_ToggleEffectId(actor, unified_id, add)` __thiscall.
+//
+// 🔴 C'EST LA BONNE PORTE, ET IL Y EN A UNE MAUVAISE. `add = 1` insère l'id
+// dans l'ENSEMBLE porté par l'acteur (`actor+0x3fc`) puis RÉ-APPLIQUE tout
+// l'ensemble — les effets ÉQUIPÉS du joueur sont donc préservés, ou restaurés.
+// `add = 0` retire l'id de l'ensemble et n'enlève que celui-là.
+//
+// ⚠ NE PAS employer `Effect_ApplyEffectIdToActor` (0x00c41ba0) directement :
+// elle casse l'état équipé, et il faut alors un `@refresh` pour s'en remettre.
+//
+// L'id unifié d'un effet de couvre-chef vaut `ordinal + kHatEffectIdBase`.
+constexpr uintptr_t kActorToggleEffectIdAddr = 0x00c44940;
+constexpr int       kHatEffectIdBase         = 0x98a;
+
 }  // namespace rag

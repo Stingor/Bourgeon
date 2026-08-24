@@ -146,10 +146,6 @@ const char* ClassName() {
 // Ce sont celles-là mêmes que lit l'équipement natif (FUN_008cf970), donc elles
 // suivent un changement de coiffure ou de couleur sans qu'on ait à s'abonner à
 // quoi que ce soit. Cf. [[project_own_look_globals]].
-constexpr uintptr_t kGetSex      = 0x00d84760;  // GetSex(session)
-constexpr uintptr_t kHair        = 0x015fb278;  // style de coiffure
-constexpr uintptr_t kClothesCol  = 0x015fb28c;  // palette de vêtements
-constexpr uintptr_t kHairCol     = 0x015fb290;  // palette de cheveux
 constexpr uintptr_t kGarmentView = 0x015fb2a0;  // g_OwnLook_GarmentRobeViewId
 // Les VUES de coiffe, telles que le SERVEUR les a décidées : le client les tient
 // à jour sur ZC_SPRITE_CHANGE et c'est d'elles qu'il habille l'acteur en scène.
@@ -530,8 +526,6 @@ void DrawStrCapLayers(ImDrawList* dl, float ox, float oy, float scale) {
 // ÉQUIPÉS du joueur restent/sont restaurés) ; addFlag=0 retire l'id de l'ensemble et n'enlève QUE cet
 // effet. -> les effets équipés sont préservés par l'ensemble (⚠ NE PAS utiliser Effect_ApplyEffectIdToActor
 // direct 0xc41ba0 : il casse l'état équipé -> @refresh nécessaire). id unifié = ordinal + 0x98a.
-constexpr uintptr_t kToggleEffectId = 0x00c44940;  // Actor_ToggleEffectId(this, effectId, addFlag) __thiscall
-constexpr int       kHatOrdinalBase = 0x98a;       // id unifié d'un hat effect = ordinal + 0x98a
 
 // Ids concrets CIBLES = GetHatEffectID(ordinal) des hat effects équipés (rempli chaque OnTick). Ils ne
 // filtrent PLUS la capture (le module capture tout ce qui appartient à l'acteur ciblé) mais le DESSIN :
@@ -570,8 +564,7 @@ void InstallEzCapture() {
 void* GetOwnActorLive() {
   void* actor = nullptr;
   __try {
-    void* gm = reinterpret_cast<void*(__fastcall*)(int)>(rag::kModeMgrGetActiveAddr)(
-        static_cast<int>(rag::kModeMgrAddr));
+    void* gm = rag::ActiveModeIfReady();
     if (gm) {
       void* mgr = *reinterpret_cast<void**>(reinterpret_cast<char*>(gm) + gamescene::kGmActorMgr);
       if (mgr) actor = *reinterpret_cast<void**>(reinterpret_cast<char*>(mgr) + kOffOwnActor);
@@ -600,12 +593,12 @@ void ReconcileEzPreview() {
   void* actor = GetOwnActorLive();
   if (!actor) return;                          // hors-jeu : on retentera (l'état actif reste, resync au retour)
   using ToggleFn = void(__thiscall*)(void*, int, char);
-  const ToggleFn toggle = reinterpret_cast<ToggleFn>(kToggleEffectId);
+  const ToggleFn toggle = reinterpret_cast<ToggleFn>(rag::kActorToggleEffectIdAddr);
   __try {
     if (g_ez_preview_active != 0)
-      toggle(actor, g_ez_preview_active + kHatOrdinalBase, 0);   // despawn l'ancien aperçu (retire de l'ensemble)
+      toggle(actor, g_ez_preview_active + rag::kHatEffectIdBase, 0);   // despawn l'ancien aperçu (retire de l'ensemble)
     if (wanted != 0)
-      toggle(actor, wanted + kHatOrdinalBase, 1);                // spawn le nouvel aperçu (insère + ré-applique tout)
+      toggle(actor, wanted + rag::kHatEffectIdBase, 1);                // spawn le nouvel aperçu (insère + ré-applique tout)
     g_ez_preview_active = wanted;
   } __except (EXCEPTION_EXECUTE_HANDLER) { g_ez_preview_active = wanted; }
 
@@ -934,7 +927,6 @@ const HatEffectParams& HatOrdinalParams(int ordinal) {
 }
 
 // Adresses de chargement de ressource (comme cashshop_window) + AddRef (0x00a8e800).
-constexpr uintptr_t kTexAddRef = 0x00a8e800;  // UITexture_AddRef(obj) (__fastcall, ecx=obj)
 constexpr int       kEffDummyId = 0x59;       // StormGust : id concret bidon (setup natif complet)
 
 // Crée un nœud d'effet STR chargé du .str `strName` (par NOM). POD ONLY (SEH -> pas de
@@ -951,14 +943,12 @@ void* StrNode_CreateByName(const char* strName) {
     reinterpret_cast<void(__fastcall*)(void*)>(kEffCtor)(node);
     reinterpret_cast<void(__fastcall*)(void*, void*, void*, int, float, float, float)>(
         kEffLoadStr)(node, nullptr, g_str_srcpos, kEffDummyId, 0.0f, 0.0f, 0.0f);
-    void* mgr = reinterpret_cast<void*(__cdecl*)()>(ro::texmgr::kGet)();
-    void* key = reinterpret_cast<void*(__cdecl*)(const char*)>(ro::texmgr::kMakeKey)(strName);
-    void* strObj = (mgr && key)
-        ? reinterpret_cast<void*(__fastcall*)(void*, void*, void*)>(ro::texmgr::kLoad)(mgr, nullptr, key)
-        : nullptr;
+    // Un .str passe par le MÊME gestionnaire qu'un .bmp : il aiguille par
+    // extension. Ce n'est pas un détournement, c'est l'usage prévu.
+    void* strObj = ro::texmgr::LoadResource(strName);
     if (strObj) {
       *reinterpret_cast<void**>(reinterpret_cast<char*>(node) + kEffCStr) = strObj;
-      reinterpret_cast<void(__fastcall*)(void*)>(kTexAddRef)(strObj);  // garde le .str vivant
+      reinterpret_cast<void(__fastcall*)(void*)>(ro::texmgr::kAddRefAddr)(strObj);  // garde le .str vivant
       *reinterpret_cast<void**>(reinterpret_cast<char*>(node) + kEffLayerBase) =
           reinterpret_cast<char*>(strObj) + 0x110;
       const int fc = *reinterpret_cast<int*>(reinterpret_cast<char*>(strObj) + 0x118);
@@ -1151,13 +1141,13 @@ void BuildOwnDollLook(bool show_costume, ro::DollLook* look,
                       rag::OwnActorSprites* eq) {
   using GetSexFn = int(__fastcall*)(void*, void*);
   using GetJobFn = int(__fastcall*)(void*, void*);
-  look->sex = reinterpret_cast<GetSexFn>(kGetSex)(
+  look->sex = reinterpret_cast<GetSexFn>(rag::kOwnSexAddr)(
       reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
   look->job = reinterpret_cast<GetJobFn>(rag::kJobResolveMountedClassAddr)(
       reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
-  look->hair          = *reinterpret_cast<int*>(kHair);
-  look->hair_color    = *reinterpret_cast<int*>(kHairCol);
-  look->clothes_color = *reinterpret_cast<int*>(kClothesCol);
+  look->hair          = *reinterpret_cast<int*>(rag::kOwnHairStyleAddr);
+  look->hair_color    = *reinterpret_cast<int*>(rag::kOwnHairColorAddr);
+  look->clothes_color = *reinterpret_cast<int*>(rag::kOwnClothesColorAddr);
   // 🔴 `body` = la CLASSE, pas un style. C'est le second argument de
   // `Job_ResolveBodyClass`, et c'est lui qui nomme le sprite de corps — le
   // laisser à 0 demandait la classe 0, donc Novice pour tout le monde.
@@ -1364,13 +1354,13 @@ void BasicInfo::RenderItemPreviewTooltip(int view_id, int emplacement,
   using GetSexFn = int(__fastcall*)(void*, void*);
   using GetJobFn = int(__fastcall*)(void*, void*);
   ro::DollLook look;
-  look.sex = reinterpret_cast<GetSexFn>(kGetSex)(
+  look.sex = reinterpret_cast<GetSexFn>(rag::kOwnSexAddr)(
       reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
   look.job = reinterpret_cast<GetJobFn>(rag::kJobResolveMountedClassAddr)(
       reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
-  look.hair          = *reinterpret_cast<int*>(kHair);
-  look.hair_color    = *reinterpret_cast<int*>(kHairCol);
-  look.clothes_color = *reinterpret_cast<int*>(kClothesCol);
+  look.hair          = *reinterpret_cast<int*>(rag::kOwnHairStyleAddr);
+  look.hair_color    = *reinterpret_cast<int*>(rag::kOwnHairColorAddr);
+  look.clothes_color = *reinterpret_cast<int*>(rag::kOwnClothesColorAddr);
   // 🔴 `body` = la CLASSE (cf. RenderPlayerAvatar) : c'est elle qui nomme le
   // sprite de corps. À 0, tout le monde s'affichait en Novice.
   look.body = rag::OwnJobId();

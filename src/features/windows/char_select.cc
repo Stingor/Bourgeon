@@ -43,7 +43,6 @@ namespace {
 // Dispatcher CMode : *(0x0121333c) -> objet ; vtbl+0x18, cmd 8 = get CHARACTER_INFO
 // par slot (renvoie nullptr si slot vide). Convention __thiscall confirmée dans
 // character_sheet.cc (SendConfigToggle). Carte des champs = docs/charselect_re.md.
-constexpr int       kVfDispCmd = 0x18;
 constexpr int       kCmdGetChar = 8;
 
 // ── Loader de texture natif (fond banquet, BMP côté client) ───────────────────
@@ -209,8 +208,6 @@ constexpr int kRenameCnt = 0xaa;  // u32 renommages restants (coupon 12790)
 // UINewSelectCharWnd_OnMsg 0x0079d737 (Own_SetSex avant l'entrée en jeu).
 // Lu en OCTET : le natif ne consomme que le low byte (cast (char) avant Actor_Init).
 constexpr uintptr_t kAccountSex = 0x015FB23C;
-
-using DispCmd_t = void*(__thiscall*)(void*, int, int, int, int, int);
 
 // ── Détour de Net_OnDeleteCharReserveAck 0x00d21210 ──────────────────────────
 // Handler natif de HC_DELETE_CHAR3_RESERVED (réponse ZC 0x0828 à « Programmer
@@ -488,14 +485,7 @@ ImVec2 Anchor(const char* name, float def_nx, float def_ny, bool edit) {
 // d'objet »). D'où la scission avec la conversion C++ ci-dessous.
 const uint8_t* FetchHallBgra(const char* path, int* out_w, int* out_h) {
   __try {
-    using TexMgr_t  = void*(__cdecl*)();
-    using MakeKey_t = void*(__cdecl*)(const char*);
-    using LoadTex_t = void*(__fastcall*)(void*, void*, void*);
-    void* mgr = reinterpret_cast<TexMgr_t>(ro::texmgr::kGet)();
-    if (!mgr) return nullptr;
-    void* key = reinterpret_cast<MakeKey_t>(ro::texmgr::kMakeKey)(path);
-    if (!key) return nullptr;
-    void* t = reinterpret_cast<LoadTex_t>(ro::texmgr::kLoad)(mgr, nullptr, key);
+    void* t = ro::texmgr::LoadResource(path);
     if (!t) return nullptr;
     const int w = *reinterpret_cast<int*>(static_cast<char*>(t) + kTexW);
     const int h = *reinterpret_cast<int*>(static_cast<char*>(t) + kTexH);
@@ -702,12 +692,9 @@ bool CharSelect::ReadSlot(int slot, CharView* out) const {
   *out = CharView{};
   out->slot = slot;
   __try {
-    void* d = *reinterpret_cast<void**>(rag::kActiveModePtr);
-    if (!d) return false;
-    auto fn = reinterpret_cast<DispCmd_t>(
-        (*reinterpret_cast<uintptr_t**>(d))[kVfDispCmd / 4]);
-    void* c = fn(d, kCmdGetChar, slot, 0, 0, 0);
-    if (!c) return false;  // slot vide
+    void* c = rag::ModeSendMsgPtr(*reinterpret_cast<void**>(rag::kActiveModePtr),
+                                  kCmdGetChar, slot);
+    if (!c) return false;  // slot vide, ou liste pas encore arrivée
 
     out->occupied = true;
     out->gid = Read<uint32_t>(c, ci::kGid);
@@ -1173,18 +1160,15 @@ void CharSelect::DriveModeCmd(int cmd) {
   // joueur serait perdu.
   seat_edit_ = false;
   charsel::SaveIfDirty();
-  // Envoie une commande au MODE courant (dispatcher *(0x0121333c), vtbl+0x18) — le
-  // même point d'entrée que ReadSlot (cmd 8) et que le natif quand il quitte l'écran.
-  // 5 args pile : DispCmd_t est le typedef partagé (aucun ne sert ici, tous à 0).
+  // Envoie une commande au MODE courant — le même point d'entrée que ReadSlot
+  // (cmd 8) et que le natif quand il quitte l'écran. Aucun paramètre ne sert ici.
   __try {
     void* d = *reinterpret_cast<void**>(rag::kActiveModePtr);
     if (!d) {
       LogError("[CharSelect] dispatcher de mode absent -> commande {} ignorée", cmd);
       return;
     }
-    auto fn = reinterpret_cast<DispCmd_t>(
-        (*reinterpret_cast<uintptr_t**>(d))[kVfDispCmd / 4]);
-    fn(d, cmd, 0, 0, 0, 0);
+    rag::ModeSendMsg(d, cmd);
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     LogError("[CharSelect] exception sur la commande de mode {}", cmd);
   }

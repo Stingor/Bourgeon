@@ -10,10 +10,6 @@
 
 namespace {
 
-using TexMgr_t  = void*(__cdecl*)();
-using MakeKey_t = void*(__cdecl*)(const char*);
-using LoadTex_t = void*(__fastcall*)(void*, void*, void*);
-
 // Pixels bruts d'une texture du client, tels que le TexMgr les expose.
 struct RawTex { const uint8_t* bgra; int w; int h; };
 
@@ -22,11 +18,7 @@ struct RawTex { const uint8_t* bgra; int w; int h; };
 // hors du __try.
 bool GetRawTex(const char* path, RawTex* out) {
   __try {
-    void* mgr = reinterpret_cast<TexMgr_t>(ro::texmgr::kGet)();
-    if (!mgr) return false;
-    void* key = reinterpret_cast<MakeKey_t>(ro::texmgr::kMakeKey)(path);
-    if (!key) return false;
-    void* tex = reinterpret_cast<LoadTex_t>(ro::texmgr::kLoad)(mgr, nullptr, key);
+    void* tex = ro::texmgr::LoadResource(path);
     if (!tex) return false;
     auto* bytes = static_cast<char*>(tex);
     const int w = *reinterpret_cast<int*>(bytes + ro::texmgr::kWidth);

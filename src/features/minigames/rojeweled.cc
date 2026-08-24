@@ -17,6 +17,7 @@
 
 #include "d3d9/d3d9_hook.h"  // D3D9_AdditiveBlendCallback
 #include "utils/i18n.h"
+#include "ui/game_texture.h"  // ro::uipath::kFmtMonsterSpr
 
 // Le mélange ADDITIF des explosions est propre au backend DX9 (les sprites, eux,
 // passent maintenant par notre parseur et s'affichent sous les deux moteurs).
@@ -60,7 +61,6 @@ Mon g_mon[kTypes] = {
 // .lub externes — un id de classe y retomberait sur « poring », et deux gemmes
 // sur six seraient le même monstre. Un dossier absent laisse simplement sa
 // pastille colorée, qui porte de toute façon l'identité de la gemme.
-constexpr uintptr_t kFmtSpr = 0x0103181c;  // "몬스터\\%s.spr" (CP949)
 constexpr float kGemFrameMs = 130.0f;      // repli si le .act ne déclare rien
 
 // Chemin VFS complet SANS extension. `data\sprite\` et pas `data\` : le gabarit
@@ -72,7 +72,7 @@ void LoadMon(Mon& m) {
   char tail[192];
   // ⚠ `std::snprintf` : le gabarit est lu dans le binaire, ce n'est pas un
   // littéral — la famille sécurisée déclencherait C4774.
-  std::snprintf(tail, sizeof(tail), reinterpret_cast<const char*>(kFmtSpr),
+  std::snprintf(tail, sizeof(tail), reinterpret_cast<const char*>(ro::uipath::kFmtMonsterSpr),
                 m.resname);
   const size_t n = std::strlen(tail);
   if (n > 4) tail[n - 4] = '\0';  // retire « .spr » : sprite_view veut une base

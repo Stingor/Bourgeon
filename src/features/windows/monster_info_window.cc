@@ -385,13 +385,12 @@ const char* VariantQualifier(const std::string& aegis, bool summoned) {
 // Description : la fenêtre native 0x2E, pilotée par l'id BRUT (pas un
 // ItemSkillInfo, contrairement aux objets) — même chemin que la feuille de
 // personnage, cf. `CharacterSheet::OpenSkillDesc`.
-using GetSkillNameLua_t = char* (__cdecl*)(int);
 
 // SEH ISOLÉ dans sa propre fonction : l'appelant manipule des std::string.
 bool SkillNameCp949(int id, char* out, size_t out_size) {
   bool ok = false;
   __try {
-    const char* n = reinterpret_cast<GetSkillNameLua_t>(lua::kGetSkillNameAddr)(id);
+    const char* n = lua::SkillName(id);
     if (n && *n && std::strcmp(n, "Unknown-Skill") != 0) {
       strncpy_s(out, out_size, n, _TRUNCATE);
       ok = true;

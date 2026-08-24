@@ -13,6 +13,7 @@
 #include "features/moonlight_ui/moonlight_ui.h"
 #include "features/systems/net_ping.h"     // le ping affiché par l'overlay
 #include "features/windows/chat_window.h"  // imgui_enabled_ : plafond du FXAA
+#include "ragnarok/camera.h"  // ro::camera::kZoomMaxOutdoorAddr / kZoomMaxIndoorAddr
 #include "ui/ro_imgui.h"
 #include "utils/i18n.h"
 
@@ -414,8 +415,8 @@ void ScreenFx::OnTick() {
   // plus que si l'option est active, et on RE-BASE dès que la valeur lue n'est
   // plus celle qu'on avait posée : c'est le moteur qui vient de parler, sa
   // valeur devient la nouvelle référence à multiplier.
-  auto* max_out = reinterpret_cast<float*>(0x012291c0);  // g_cam_zoomMaxOutdoor
-  auto* max_in  = reinterpret_cast<float*>(0x012291c4);  // g_cam_zoomMaxIndoor
+  auto* max_out = reinterpret_cast<float*>(ro::camera::kZoomMaxOutdoorAddr);
+  auto* max_in  = reinterpret_cast<float*>(ro::camera::kZoomMaxIndoorAddr);
   if (zoom_enabled_) {
     if (!zoom_applied_ || *max_out != zoom_written_out_) zoom_base_out_ = *max_out;
     if (!zoom_applied_ || *max_in  != zoom_written_in_)  zoom_base_in_  = *max_in;

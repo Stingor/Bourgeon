@@ -8,6 +8,7 @@
 #include "features/windows/item_desc_window.h"
 #include "features/moonlight_ui/moonlight_ui.h"
 #include "ui/ro_imgui.h"
+#include "ragnarok/uiwnd.h"  // uiwnd::kItemDescWndSlot
 #include "ui/ro_widgets.h"
 #include "utils/hooking/hook_manager.h"
 #include "utils/i18n.h"
@@ -118,9 +119,9 @@ if (!g_item_desc_wnd_orig) {
 void MoonlightUi::DrawAlootOverlay() {
   // ── Alootid floating overlay ───────────────────────────────────────────────
   // Detect silent tooltip close (e.g. comparison→non-comparison): the game
-  // zeroes kItemDescWndGlobalPtr without sending our hook a close message.
+  // zeroes uiwnd::kItemDescWndSlot without sending our hook a close message.
   if (g_item_desc_visible &&
-      *reinterpret_cast<const uintptr_t*>(kItemDescWndGlobalPtr) == 0) {
+      *reinterpret_cast<const uintptr_t*>(uiwnd::kItemDescWndSlot) == 0) {
     g_item_desc_visible = false;
     g_item_desc_wnd_ptr = nullptr;
   }
@@ -148,7 +149,7 @@ void MoonlightUi::DrawAlootOverlay() {
     // alloue une autre fenêtre à la place, le global redevient non nul mais
     // pointe ailleurs — on lisait alors +0x1C/+0x20 dans un objet étranger. Le
     // test de plausibilité qui suit valide les VALEURS, jamais le pointeur.
-    const void* live_wnd = *reinterpret_cast<void* const*>(kItemDescWndGlobalPtr);
+    const void* live_wnd = *reinterpret_cast<void* const*>(uiwnd::kItemDescWndSlot);
     if (g_item_desc_wnd_ptr != nullptr && g_item_desc_wnd_ptr == live_wnd) {
       const auto* desc_wnd_bytes = static_cast<const uint8_t*>(g_item_desc_wnd_ptr);
       const int wnd_x = *reinterpret_cast<const int*>(desc_wnd_bytes + 0x1C);

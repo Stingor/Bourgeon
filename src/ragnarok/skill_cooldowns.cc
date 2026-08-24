@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "bourgeon.h"
+#include "ragnarok/globals.h"  // rag::kReplayActiveAddr
 
 namespace ro {
 namespace {
@@ -20,7 +21,6 @@ constexpr uint16_t kSkillCooldownLen = 6;
 // replay le temps vient du gestionnaire de réassemblage, sinon de timeGetTime.
 // Comparer une échéance posée sur une horloge avec un « maintenant » lu sur
 // l'autre donnerait des cooldowns fantômes de plusieurs heures.
-constexpr uintptr_t kReplayActive  = 0x015beecc;  // g_ReplayActive
 constexpr uintptr_t kReplayClock   = 0x00b1fac0;  // CReassemblyPacketMgr_GetInstance
 constexpr int       kReplayClockMs = 0x20;        // instance+0x20 = tick courant
 
@@ -45,7 +45,7 @@ std::vector<Cooldown> g_cooldowns;
 using ReplayClock_t = void*(__cdecl*)();
 
 unsigned long GameClockMs() {
-  if (*reinterpret_cast<int*>(kReplayActive) == 0) return timeGetTime();
+  if (*reinterpret_cast<int*>(rag::kReplayActiveAddr) == 0) return timeGetTime();
   void* mgr = reinterpret_cast<ReplayClock_t>(kReplayClock)();
   return mgr ? *reinterpret_cast<unsigned long*>(reinterpret_cast<uint8_t*>(mgr) +
                                                  kReplayClockMs)

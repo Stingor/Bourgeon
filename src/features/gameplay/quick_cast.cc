@@ -25,8 +25,6 @@ constexpr uintptr_t kPickGroundCellAddr = 0x00c69a40;
 // Quadtree de picking des acteurs, reconstruit à chaque frame par le rendu des
 // sprites. QueryPoint : float* __thiscall(tree, float x, float y) -> quad
 // (10 floats) ou nullptr. C'est la source du survol natif.
-constexpr uintptr_t kQuadTreeQueryPointAddr = 0x00a797b0;
-constexpr uintptr_t kNameplateQuadTreeAddr  = 0x012135f0;
 constexpr int kQuadAid = 6;  // dword : AID de l'acteur
 constexpr int kQuadJob = 7;  // dword : job/classe (discrimine joueur/monstre)
 constexpr int kQuadCat = 8;  // dword : catégorie de pick (0 = acteur)
@@ -67,7 +65,6 @@ constexpr int kActorMsgSkillLevel   = 0x5a;  // (niveau)
 
 // CMode::SendMsg : sortie du mode ciblage (le pendant du 0x48).
 constexpr int kSendMsgLeaveTargeting = 0x47;
-constexpr int kVtblSendMsgIndex = 6;  // vtable+0x18
 
 constexpr unsigned kJobWarpPortal = 45;  // catégorie 0 mais non ciblable
 
@@ -149,8 +146,7 @@ __declspec(noinline) void ActorSendMsg(void* actor, int msg,
 void* GetGameMode() {
   void* gm = nullptr;
   __try {
-    gm = reinterpret_cast<void*(__fastcall*)(int)>(rag::kModeMgrGetActiveAddr)(
-        static_cast<int>(rag::kModeMgrAddr));
+    gm = rag::ActiveModeIfReady();
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     gm = nullptr;
   }
@@ -222,8 +218,8 @@ bool MouseAimsAtWorld() {
 unsigned PickTargetGid(int mode) {
   __try {
     using QueryPoint_t = float*(__thiscall*)(void*, float, float);
-    const float* quad = reinterpret_cast<QueryPoint_t>(kQuadTreeQueryPointAddr)(
-        reinterpret_cast<void*>(kNameplateQuadTreeAddr),
+    const float* quad = reinterpret_cast<QueryPoint_t>(gamescene::kQuadTreeQueryPointAddr)(
+        reinterpret_cast<void*>(gamescene::kPickQuadTreeAddr),
         static_cast<float>(*reinterpret_cast<int*>(rag::kMouseScreenXAddr)),
         static_cast<float>(*reinterpret_cast<int*>(rag::kMouseScreenYAddr)));
     if (!quad) return 0;
@@ -250,10 +246,7 @@ unsigned PickTargetGid(int mode) {
 // prochain clic relancerait la compétence.
 void LeaveTargeting(void* cmode) {
   __try {
-    using SendMsg_t = int(__thiscall*)(void*, int, int, int, int, int);
-    void** vtbl = *reinterpret_cast<void***>(cmode);
-    reinterpret_cast<SendMsg_t>(vtbl[kVtblSendMsgIndex])(
-        cmode, kSendMsgLeaveTargeting, 0, 0, 0, 0);
+    rag::ModeSendMsg(cmode, kSendMsgLeaveTargeting);
   } __except (EXCEPTION_EXECUTE_HANDLER) {
   }
 }

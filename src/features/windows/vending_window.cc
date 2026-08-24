@@ -285,9 +285,7 @@ constexpr int kMaxOpts      = 5;
 // item_desc_window reconnaît la fenêtre pour en rendre sa version enrichie.
 
 // Résolution GID -> nom, pour le titre (cf. docs/entity_nameplate_re.md).
-using GameModeGetActive_t = void*(__fastcall*)(int);
 using NameDictGetEntry_t  = void*(__thiscall*)(void*, unsigned);
-constexpr uintptr_t kNameDictGetEntry  = 0x005A1460;
 constexpr int       kNameInfoStr       = 0x04;   // std::string du nom
 
 // ── Bouton « Import » (cmd 560) ──────────────────────────────────────────────
@@ -818,11 +816,11 @@ void VendorName(uint32_t gid, char* out, size_t cap) {
   if (!gid || cap < 2) return;
   __try {
     void* game_mode =
-        reinterpret_cast<GameModeGetActive_t>(rag::kModeMgrGetActiveAddr)(static_cast<int>(rag::kModeMgrAddr));
+        rag::ActiveModeIfReady();
     if (!game_mode) return;
     void* name_dict = reinterpret_cast<uint8_t*>(game_mode) + gamescene::kGmNameDict;
     void* info =
-        reinterpret_cast<NameDictGetEntry_t>(kNameDictGetEntry)(name_dict, gid);
+        reinterpret_cast<NameDictGetEntry_t>(gamescene::kNameDictGetEntryOrRequestAddr)(name_dict, gid);
     if (!info) return;
     const char* sbase = reinterpret_cast<const char*>(info) + kNameInfoStr;
     const uint32_t scap = *reinterpret_cast<const uint32_t*>(sbase + 0x14);
@@ -840,13 +838,7 @@ void VendorName(uint32_t gid, char* out, size_t cap) {
 // de session. Sans le premier, le client se croit encore devant le vendeur.
 void EndVendorDeal() {
   __try {
-    void* game_mode =
-        reinterpret_cast<GameModeGetActive_t>(rag::kModeMgrGetActiveAddr)(static_cast<int>(rag::kModeMgrAddr));
-    if (game_mode) {
-      void** vt = *reinterpret_cast<void***>(game_mode);
-      using SendMsg_t = int(__thiscall*)(void*, int, int, int, int, int);
-      reinterpret_cast<SendMsg_t>(vt[6])(game_mode, kCmdEndDeal, 0, 0, 0, 0);
-    }
+    rag::ActiveModeSendMsg(kCmdEndDeal);
     reinterpret_cast<BasketClear_t>(kVendingBasketClear)(SessionBase());
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }

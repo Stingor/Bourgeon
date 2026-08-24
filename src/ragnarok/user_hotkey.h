@@ -97,4 +97,16 @@ bool WriteBinding(int category, int command_index, int key1, int key2,
 // Grave `SaveData\UserKeys.lua`. Une fois, après les écritures.
 bool Save();
 
+// ── Le pont C brut, pour qui ne peut pas passer par l'API ci-dessus ─────────
+// `UserHotkey_Lua_GetHotKey(out, catégorie, index)` — le Lua `GetHotKey(cat+1,
+// idx)`, qui remplit une struct de 0x38 octets au format « dd>ddss ».
+//
+// La barre de raccourcis l'appelle directement plutôt que par `ReadBinding` :
+// elle est dessinée sous SEH, dans une portée qui s'interdit tout objet C++ à
+// dérouler, et la struct de ligne de ce module en contient.
+//
+// 🔴 Elle construit DEUX `std::string` qu'il faut DÉTRUIRE (`rag::kStdStringDtorAddr`) :
+// au-delà de quinze caractères, le nom part sur le tas et fuit sinon.
+constexpr uintptr_t kGetHotKeyAddr = 0x00d80950;
+
 }  // namespace userhotkey

@@ -20,21 +20,15 @@
 #include "ui/window_clamp.h"  // ClampWindowPosToScreen (icônes déplacées à la main)
 #include "utils/log_console.h"
 #include "utils/i18n.h"
+#include "ragnarok/game_settings.h"  // gamesettings::kFlagGetRawAddr / kFlagSetRawAddr
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
 namespace {
 // ── Game texture loader (conventions per status_tweaks.cc) ─────────────────
-using TexMgr_t  = void* (__cdecl*)();
-using MakeKey_t = void* (__cdecl*)(const char*);
-using LoadTex_t = void* (__fastcall*)(void*, void*, void*);
 
 // UITexture field offsets: +0x114 width, +0x118 height, +0x11c BGRA32 top-down.
 constexpr int kOffW = 0x114, kOffH = 0x118, kOffPix = 0x11c;
-
-// UI bitmaps live under "유저인터페이스\" (CP949). Verbatim bytes from the
-// client's own format string @0x01028384 ("유저인터페이스\menu_icon\bt_%s.bmp").
-const char kUIDir[] = "\xC0\xAF\xC0\xFA\xC0\xCE\xC5\xCD\xC6\xE4\xC0\xCC\xBD\xBA";
 
 // ── Native menu-icon window draw hook (hide the native grid) ───────────────
 // GridClear replaces the native grid's DrawContent (UIMenuIconWnd_RebuildNodes):
@@ -125,22 +119,14 @@ int ReadBadgeCmdIds(void* wnd, int* out, int cap) {
   return n;
 }
 
-void* LoadGameTexture(const char* path) {
-  void* mgr = reinterpret_cast<TexMgr_t>(ro::texmgr::kGet)();
-  if (!mgr) return nullptr;
-  void* key = reinterpret_cast<MakeKey_t>(ro::texmgr::kMakeKey)(path);
-  if (!key) return nullptr;
-  return reinterpret_cast<LoadTex_t>(ro::texmgr::kLoad)(mgr, nullptr, key);
-}
-
 // Loads \<dir><name>.bmp via the game, decodes BGRA->A8R8G8B8 with magenta
 // colorkey, uploads to a D3D9 texture. Returns the texture or nullptr (and
 // fills w/h when known). `dir` porte le dossier ET le préfixe de nom, parce que
 // les deux changent d'une famille d'icônes à l'autre (« menu_icon\bt_ » pour la
 // grille, « basic_interface\ » pour le bouton du cash shop).
 void* LoadIconTexture(const char* dir, const char* name, int* out_w, int* out_h) {
-  std::string path = std::string(kUIDir) + "\\" + dir + name + ".bmp";
-  void* tex = LoadGameTexture(path.c_str());
+  std::string path = std::string(ro::uipath::kUiRoot) + "\\" + dir + name + ".bmp";
+  void* tex = ro::texmgr::LoadResource(path.c_str());
   if (!tex) return nullptr;
   const int w = *reinterpret_cast<int*>(static_cast<char*>(tex) + kOffW);
   const int h = *reinterpret_cast<int*>(static_cast<char*>(tex) + kOffH);
@@ -233,8 +219,6 @@ const IconDef kIconTable[] = {
 // ET que notre remplacement ne prend pas le relais.
 constexpr int kCashShopBtnWndId  = 190;  // UInCash_CallWnd
 constexpr int kTtShowCashShopBtn = 218;  // TT_SHOW_CASHSHOP_BTN_ON_OFF
-constexpr uintptr_t kOptionInfoGetValue = 0x0068ea70;  // __cdecl(ttIndex) -> bool
-constexpr uintptr_t kOptionInfoSetValue = 0x0068fd50;  // __cdecl(ttIndex, value)
 using OptionInfoGetFn = uint8_t(__cdecl*)(unsigned int);
 using OptionInfoSetFn = int(__cdecl*)(unsigned int, char);
 
@@ -261,7 +245,7 @@ constexpr int kCashShopDefaultY           = 16;
 // Le natif rend l'octet de poids faible d'EAX : l'option est un booléen.
 bool CashShopButtonShown() {
   __try {
-    return reinterpret_cast<OptionInfoGetFn>(kOptionInfoGetValue)(
+    return reinterpret_cast<OptionInfoGetFn>(gamesettings::kFlagGetRawAddr)(
                kTtShowCashShopBtn) != 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
@@ -272,7 +256,7 @@ bool CashShopButtonShown() {
 // où la commande native, elle, sort sans rien faire sur un FindWindow(190) nul.
 void SetCashShopButtonShown(bool shown) {
   __try {
-    reinterpret_cast<OptionInfoSetFn>(kOptionInfoSetValue)(kTtShowCashShopBtn,
+    reinterpret_cast<OptionInfoSetFn>(gamesettings::kFlagSetRawAddr)(kTtShowCashShopBtn,
                                                            shown ? 1 : 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }

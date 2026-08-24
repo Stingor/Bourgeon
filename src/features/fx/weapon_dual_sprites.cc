@@ -8,6 +8,8 @@
 
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
+#include "ragnarok/item_db.h"  // itemdb::kItemIdToWeaponClassAddr
+#include "ui/game_texture.h"  // ro::texmgr::kAddRefAddr / kReleaseAddr
 
 // ── Per-item weapon sprites while dual-wielding ──────────────────────────────
 // Offset-corrected port of the standalone WARP patch AllowDualWeaponSprites.qjs.
@@ -18,9 +20,6 @@
 namespace {
 constexpr uintptr_t kBuildWeaponLayers = 0x00D403A0;  // CActorSprite_BuildWeaponLayers
 constexpr uintptr_t kActFrameCall      = 0x00D36EE4;  // CALL Act_GetFrame (E8 rel32)
-constexpr uintptr_t kResAddRef         = 0x00A8E800;  // resource AddRef (ECX = res)
-constexpr uintptr_t kResRelease        = 0x00A8F910;  // resource Release (ECX = res)
-constexpr uintptr_t kItemIdToWeaponClass = 0x00D8A1D0;  // Weapon_ItemIdToWeaponClass
 
 // CActorSprite field offsets.
 constexpr uint32_t kActVec    = 0x4AC;  // std::vector<ActRes*>  {begin,end,cap}
@@ -55,10 +54,10 @@ static void*   g_tramp_build  = nullptr;            // -> stock BuildWeaponLayer
 static BuildFn g_stock_build  = nullptr;
 static void*   g_act_get_frame = reinterpret_cast<void*>(render::kActionGetFrameAddr);
 
-static const RefFn Res_AddRef  = reinterpret_cast<RefFn>(kResAddRef);
-static const RefFn Res_Release = reinterpret_cast<RefFn>(kResRelease);
+static const RefFn Res_AddRef  = reinterpret_cast<RefFn>(ro::texmgr::kAddRefAddr);
+static const RefFn Res_Release = reinterpret_cast<RefFn>(ro::texmgr::kReleaseAddr);
 static const ItemClassFn Weapon_ItemIdToWeaponClass =
-    reinterpret_cast<ItemClassFn>(kItemIdToWeaponClass);
+    reinterpret_cast<ItemClassFn>(itemdb::kItemIdToWeaponClassAddr);
 
 namespace {
 

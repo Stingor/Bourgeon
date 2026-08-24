@@ -16,6 +16,7 @@
 // référer sans la redéclarer, même quand TextureFromGameFile ne leur convient pas.
 
 #include <cstdint>
+#include <cstdio>
 #include <vector>
 
 namespace ro {
@@ -28,15 +29,101 @@ struct GameTexture {
   int   h   = 0;
 };
 
-// Adresses du gestionnaire de textures natif (client 20250716).
+// ── Gestionnaire de RESSOURCES natif (client 20250716) ──────────────────────
+// 🔴 SON NOM MENT, ET LE PROJET S'EST FAIT PRENDRE. Le client l'appelle
+// « UITextureMgr », mais `kLoad` aiguille **par EXTENSION de fichier** vers un
+// chargeur par type (`ResolveTypeIndexFromExt`, un objet-fabrique par index) :
+// c'est un gestionnaire de RESSOURCES. D'où le fait, longtemps inexpliqué dans
+// nos sources, que la parade de connexion lui demande un `.wav` et l'aperçu
+// d'effet de couvre-chef un `.str` — ce ne sont pas des détournements, c'est
+// l'usage prévu. Une extension inconnue rend nullptr sans rien charger.
 namespace texmgr {
-constexpr uintptr_t kGet     = 0x00a90350;  // __cdecl() -> mgr
-constexpr uintptr_t kMakeKey = 0x00a9f030;  // __cdecl(path) -> key
-constexpr uintptr_t kLoad    = 0x00a8d4a0;  // __fastcall(mgr, _, key) -> tex
-// Champs de l'objet texture renvoyé par kLoad.
+constexpr uintptr_t kGet = 0x00a90350;  // __cdecl() -> mgr
+
+// 🔴 `UIPath_ResolveSkin` — s'appelait ici `kMakeKey`, ce qui décrivait un objet
+// que cette fonction NE CONSTRUIT PAS. Désassemblage (2026-08-24) : elle rend un
+// `const char*`, et son travail est la résolution de SKIN. Si le chemin commence
+// par la racine d'interface — les 14 octets CP949 `유저인터페이스`, vérifiés à
+// 0x010253b4 — elle tente le même chemin sous le dossier du skin actif, puis un
+// repli « UI\ », en ne gardant la réécriture que si la ressource EXISTE vraiment
+// (`UITextureMgr_ResourceExists`, 0x00a8e500). Dans tous les autres cas elle
+// rend le pointeur d'entrée TEL QUEL — c'est pourquoi un nom de .wav peut
+// sauter l'appel sans la moindre conséquence.
+//
+// ⚠ NON RÉENTRANTE : le chemin réécrit pointe dans l'un de DEUX std::string
+// GLOBAUX (0x0159d654 / 0x0159d670). Le résultat doit être consommé avant le
+// prochain appel ; ne jamais le conserver.
+constexpr uintptr_t kResolveSkinPath = 0x00a9f030;  // __cdecl(path) -> path
+
+// `UIResourceMgr_LoadByPath` — __thiscall(mgr, path). Le troisième argument de
+// la forme __fastcall ci-dessous n'est PAS une clé : c'est le chemin lui-même
+// (l'EDX est le fourre-tout habituel de l'émulation __thiscall).
+//
+// Ce qu'il fait du chemin, et qui se voit sur les appelants : il le copie dans
+// un tampon de 260 (donc TRONQUE au-delà), le passe dans une table de
+// translation (0x012154c8 — un tolower ASCII pur : `/` n'est PAS converti en
+// `\`, à l'appelant de mettre des antislashs), puis MÉMORISE le résultat. Deux
+// chargements du même chemin rendent le MÊME objet, sans incrémenter le
+// compteur de références — c'est à l'appelant qui veut le garder de faire
+// l'AddRef (cf. l'aperçu d'effet de couvre-chef). Échec = nullptr, journalisé
+// une seule fois par chemin.
+constexpr uintptr_t kLoad = 0x00a8d4a0;  // __thiscall(mgr, path) -> res
+
+// Comptage de références de la ressource rendue par kLoad — __fastcall, l'objet
+// en ECX. `kLoad` ne l'incrémente PAS : qui veut GARDER une ressource au-delà de
+// l'appel doit prendre sa référence, et la rendre. Deux fichiers les
+// déclaraient, sous `kResAddRef` et `kTexAddRef` — même fonction, et le second
+// nom laissait croire qu'elle ne valait que pour les textures alors qu'elle vaut
+// pour tout ce que ce gestionnaire charge.
+constexpr uintptr_t kAddRefAddr  = 0x00a8e800;
+constexpr uintptr_t kReleaseAddr = 0x00a8f910;
+
+// Champs de l'objet texture rendu par kLoad quand la ressource est un .bmp.
 constexpr int kWidth  = 0x114;
 constexpr int kHeight = 0x118;
 constexpr int kPixels = 0x11c;  // BGRA brut
+
+// ── Le pas de trois, en un appel ────────────────────────────────────────────
+// Treize fichiers récitaient la même séquence — obtenir le gestionnaire,
+// résoudre le skin, charger — chacun avec ses trois `using …_t` recopiés. Une
+// convention d'appel fausse dans une seule de ces copies ne se serait vue qu'à
+// l'exécution, et sur un seul écran.
+//
+// Ces enveloppes ne contiennent que des pointeurs bruts : un `__try` ENGLOBANT
+// les couvre, et elles n'introduisent aucun objet à dérouler (pas de C2712).
+// Elles ne gardent RIEN — pas de cache, pas d'AddRef : c'est `ro::ItemIcon` et
+// `CachedTextureFromGameFile` qui mémorisent, un cran plus haut.
+inline void* Mgr() {
+  return reinterpret_cast<void* (__cdecl*)()>(kGet)();
+}
+
+inline const char* ResolveSkinPath(const char* path) {
+  return reinterpret_cast<const char* (__cdecl*)(const char*)>(kResolveSkinPath)(path);
+}
+
+// Le chemin est en CP949 et attend des ANTISLASHS (ex. « 유저인터페이스\item\501.bmp »).
+// nullptr si le gestionnaire n'est pas prêt, l'extension inconnue, ou le fichier absent.
+inline void* LoadResource(const char* path) {
+  if (!path || !path[0]) return nullptr;
+  void* mgr = Mgr();
+  if (!mgr) return nullptr;
+  const char* resolved = ResolveSkinPath(path);
+  if (!resolved) return nullptr;
+  return reinterpret_cast<void* (__fastcall*)(void*, void*, const char*)>(kLoad)(
+      mgr, nullptr, resolved);
+}
+
+// Même chose SANS résolution de skin, pour les ressources qui ne vivent pas sous
+// la racine d'interface (un .wav de monstre, p. ex.) : la résolution y est un
+// aller-retour sans effet, et l'appelant qui la saute le dit ainsi plutôt qu'en
+// omettant silencieusement une étape.
+inline void* LoadResourceRaw(const char* path) {
+  if (!path || !path[0]) return nullptr;
+  void* mgr = Mgr();
+  if (!mgr) return nullptr;
+  return reinterpret_cast<void* (__fastcall*)(void*, void*, const char*)>(kLoad)(
+      mgr, nullptr, path);
+}
 
 // `BuildItemIconGrfPath` : le chemin GRF de l'icône d'un objet, construit par le
 // client lui-même — « 유저인터페이스\item\<resname>.bmp ». C'est LA façon de
@@ -63,6 +150,22 @@ constexpr int kPixels = 0x11c;  // BGRA brut
 //
 // ⚠ L'id part en CHAÎNE DÉCIMALE (la fonction fait `atoi` dessus), pas en entier.
 constexpr uintptr_t kBuildItemIconPath = 0x00d5a720;
+
+// L'appel typé, pour que la signature ci-dessus n'ait plus à être recopiée : la
+// conversion de l'id en chaîne est faite ici, puisque l'oublier est justement
+// l'erreur que la signature nue invite à commettre.
+//
+// `identified` : 1 sauf si l'on tient l'objet et qu'on le SAIT non identifié.
+// L'état n'est PAS une propriété de l'id — il vit dans l'instance
+// (`ItemSkillInfo+0x5c`) — donc tout appelant qui n'a qu'un nameid passe 1.
+// `out` doit faire au moins 260 octets.
+inline void BuildItemIconPath(unsigned nameid, char* out, int identified = 1) {
+  char idstr[16];
+  std::snprintf(idstr, sizeof(idstr), "%u", nameid);
+  out[0] = '\0';
+  reinterpret_cast<void (__stdcall*)(const char*, char*, int)>(kBuildItemIconPath)(
+      idstr, out, identified);
+}
 }  // namespace texmgr
 
 // ── Gabarits de chemin de l'interface, lus DANS le binaire du client ─────────
@@ -82,6 +185,22 @@ constexpr uintptr_t kBuildItemIconPath = 0x00d5a720;
 namespace uipath {
 constexpr uintptr_t kUiRootSample = 0x010357b8;  // « …\basic_interface\btnbar_left.bmp »
 constexpr uintptr_t kIconWeight   = 0x0103db00;  // « …\inventory\icon_weight.bmp »
+
+// Le dossier racine lui-même, en ÉCHAPPEMENT HEXADÉCIMAL — la seule façon
+// d'écrire ces 14 octets CP949 dans une source UTF-8. C'est bien la même chaîne
+// que le client garde à 0x010253b4, vérifiée octet à octet (2026-08-24), et
+// c'est le préfixe que `kResolveSkinPath` reconnaît pour tenter le skin actif.
+//
+// Onze fichiers la recopiaient sous SIX noms (kUIDir, kUiRoot, kUiDirCp949 et
+// trois copies anonymes en pleine expression). Une seule d'entre elles suffisait
+// à se tromper d'un octet pour donner un chemin qui n'existe dans aucun GRF —
+// et l'erreur ne se serait vue que sur l'écran concerné, sous forme d'une image
+// manquante, jamais d'un message.
+inline constexpr char kUiRoot[] = "\xC0\xAF\xC0\xFA\xC0\xCE\xC5\xCD\xC6\xE4\xC0\xCC\xBD\xBA";
+
+// Deux autres littéraux du binaire, chacun déclaré dans deux fichiers.
+constexpr uintptr_t kIconNum       = 0x0103dad4;  // « …\basic_interface\num_%d.bmp » (compteurs)
+constexpr uintptr_t kFmtMonsterSpr = 0x0103181c;  // « 몬스터\%s.spr » — le dossier des MONSTRES
 }  // namespace uipath
 
 // Charge `path` (encodé en CP949, ex. « 유저인터페이스\item\501.bmp ») via le

@@ -23,7 +23,6 @@ namespace {
 
 // GameMode_GetActive(mgr) __fastcall : renvoie le CGameMode actif, ou 0 hors
 // jeu (login/char-select) — donc jamais de pointeur périmé.
-using GetActiveFn = void*(__fastcall*)(int);
 
 // Signature de `gamescene::kNameDictGetEntryOrRequestAddr` (cf. game_scene.h
 // pour ce qu'elle déclenche : elle DEMANDE les noms inconnus au serveur).
@@ -77,7 +76,7 @@ void EntityNames::OnRenderUI() {
 }
 
 void EntityNames::DrawNames() {
-  void* gm = reinterpret_cast<GetActiveFn>(rag::kModeMgrGetActiveAddr)(static_cast<int>(rag::kModeMgrAddr));
+  void* gm = rag::ActiveModeIfReady();
   if (!gm) return;
   void* actor_mgr = Read<void*>(gm, gamescene::kGmActorMgr);
   if (!actor_mgr) return;

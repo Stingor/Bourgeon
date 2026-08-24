@@ -6,7 +6,6 @@
 
 // ── Adresses (client 20250716, sans ASLR : adresse Ghidra == adresse live) ───
 namespace {
-constexpr uintptr_t kCameraVtable = 0x0104dee4;  // g_CCamera_vtable (valide pCam)
 constexpr int       kCamOffInMode = 0xd0;        // CGameMode+0xd0 = pCam
 constexpr uintptr_t kCamClamp     = 0x00c82340;  // Camera_ApplyViewDistanceClamp
 }  // namespace
@@ -28,7 +27,7 @@ void __fastcall RoCameraCapture(void* gamemode) {
     if (!gamemode) return;
     void* pcam = *reinterpret_cast<void**>(
         reinterpret_cast<char*>(gamemode) + kCamOffInMode);
-    if (pcam && *reinterpret_cast<uintptr_t*>(pcam) == kCameraVtable)
+    if (pcam && *reinterpret_cast<uintptr_t*>(pcam) == ro::camera::kCameraVTable)
       g_pcam = pcam;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
   }
@@ -69,7 +68,7 @@ void Install() {
 void* Get() {
   if (!g_pcam) return nullptr;
   __try {
-    if (*reinterpret_cast<uintptr_t*>(g_pcam) != kCameraVtable) g_pcam = nullptr;
+    if (*reinterpret_cast<uintptr_t*>(g_pcam) != ro::camera::kCameraVTable) g_pcam = nullptr;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     g_pcam = nullptr;
   }

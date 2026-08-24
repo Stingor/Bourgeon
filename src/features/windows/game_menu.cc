@@ -56,7 +56,6 @@ constexpr int kNativeCmdCharSelect = 371;
 
 // `CMode::SendMsg` (0x00C86740) — vtable+0x18 du mode actif. ⚠ Les numéros de case
 // d'IDA sont DÉJÀ la valeur du message, pas un index (reference_cmode_sendmsg_use_skill).
-constexpr int kVfDispCmd = 0x18;
 constexpr int kCmdRestart          = 25;   // CZ_RESTART 0x00B2 {u16 op, u8 type}
 constexpr int kCmdRequestDisconnect = 88;  // -> case 128 -> CZ_REQ_DISCONNECT 0x018A
 constexpr int kCmdStandingResurrect = 250; // CZ_STANDING_RESURRECTION 0x0292
@@ -81,7 +80,6 @@ constexpr int kStatusResurrectReady = 580;  // 2e voie vers le bouton Résurrect
 // MsgStringTable : le seul libellé du natif qu'on reprend tel quel.
 constexpr int kMsgMoveToSavePoint = 1548;  // MSI_MOVETO_SAVEPOINT
 
-using DispCmd_t = void(__thiscall*)(void*, int, int, int, int, int);
 using HasToken_t = char(__thiscall*)(void*);
 using StatusHas_t = int(__stdcall*)(int);
 
@@ -91,9 +89,7 @@ using StatusHas_t = int(__stdcall*)(int);
 // que fait `UIEscOptionWnd_OnMsg`, et la nuance est documentée dans globals.h.
 void* ActiveGameMode() {
   __try {
-    using GetActive_t = void*(__thiscall*)(void*);
-    return reinterpret_cast<GetActive_t>(rag::kModeMgrGetActiveAddr)(
-        reinterpret_cast<void*>(rag::kModeMgrAddr));
+    return rag::ActiveModeIfReady();
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
 }
 
@@ -103,7 +99,7 @@ bool SendModeCmd(int cmd, int p1) {
   __try {
     void* mode = ActiveGameMode();
     if (!mode) return false;
-    uiwnd::Vf<DispCmd_t>(mode, kVfDispCmd)(mode, cmd, p1, 0, 0, 0);
+    rag::ModeSendMsg(mode, cmd, p1, 0, 0, 0);
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }

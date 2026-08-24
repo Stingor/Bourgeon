@@ -43,7 +43,6 @@ using SetText_t = void(__thiscall*)(void* edit, const char* text);
 using OnMsg_t = int(__thiscall*)(void*, int, int, int, int, int, int);
 // CLoginMode_SendMsg (0x00d2a130), vtbl_CLoginMode+0x18. RET 0x14 = 5 args pile
 // (this + 5). cmd 0x2713 = sélectionne la connexion `a1`(=index) du service-select.
-using SendMsg_t = int(__thiscall*)(void*, int, const void*, int, int, int);
 
 // Table des connexions (service-select) DANS le CLoginMode : base mode+0x1e8,
 // stride 0xa0 ; +0x1e8=IP(u32) +0x1ec=port(u16) +0x1ee=nom +0x204=état. (Prouvé au
@@ -155,13 +154,11 @@ bool native_login::SelectClientInfoConnection(int index) {
   void* mode = CurrentLoginMode();
   if (!mode || index < 0) return false;
   __try {
-    auto fn = reinterpret_cast<SendMsg_t>(
-        (*reinterpret_cast<uintptr_t**>(mode))[0x18 / 4]);
     // cmd 0x2723 : DAT_015ff81c=index, mode+0x6f48=index, Apply_ClientInfoConnection
     // (FUN_00a72da0) charge la connexion #index, puis mode+0xc = 3 (écran login)
     // — ou 0xd si servicetype 5/7. Aucune table à valider : les <connection> sont
     // parsées au boot (LoadClientInfoXml), pas dans le mode.
-    fn(mode, 0x2723, reinterpret_cast<const void*>(index), 0, 0, 0);
+    rag::ModeSendMsg(mode, 0x2723, index);
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     LogDiag("[native_login] SelectClientInfoConnection idx={} : EXCEPTION", index);
@@ -181,9 +178,7 @@ bool native_login::SelectConnection(int index) {
     if (ip == 0) return false;
     // cmd 0x2713 = sélectionne la connexion `index` (pose l'état de connexion,
     // comme un clic/Entrée sur la fenêtre service-select mais instantané).
-    auto fn = reinterpret_cast<SendMsg_t>(
-        (*reinterpret_cast<uintptr_t**>(mode))[0x18 / 4]);
-    fn(mode, 0x2713, reinterpret_cast<const void*>(index), 0, 0, 0);
+    rag::ModeSendMsg(mode, 0x2713, index);
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     LogDiag("[native_login] SelectConnection idx={} : EXCEPTION", index);
@@ -206,14 +201,11 @@ bool native_login::CharListLoaded() {
   // dans un slot > 0 (création dans un siège libre) renverrait nullptr pour le slot 0
   // MÊME liste chargée -> l'appelant croirait à tort la liste absente (boucle d'Entrée
   // au char-select). Dès qu'UN slot répond non-null, la liste est là.
-  using DispCmd_t = void*(__thiscall*)(void*, int, int, int, int, int);
   __try {
     void* d = *reinterpret_cast<void**>(rag::kActiveModePtr);
     if (!d) return false;
-    auto fn = reinterpret_cast<DispCmd_t>(
-        (*reinterpret_cast<uintptr_t**>(d))[0x18 / 4]);
     for (int slot = 0; slot < 45; ++slot) {
-      if (fn(d, 8, slot, 0, 0, 0) != nullptr) return true;
+      if (rag::ModeSendMsgPtr(d, 8, slot) != nullptr) return true;
     }
     return false;
   } __except (EXCEPTION_EXECUTE_HANDLER) {

@@ -130,7 +130,6 @@ void OpenItemDesc(int index, int mx, int my) {
 // viewer se rafraîchissent seuls (synchro). Le flag natif disp+0x5ce est un
 // simple anti-rebond côté appelant, pas requis par la commande.
 constexpr int       kCmdWithdraw = 0x38;         // storage -> body/inventaire
-using DispCmd_t = void(__thiscall*)(void*, int, int, int, int, int);
 
 // Défini plus bas, avec les autres émetteurs.
 bool VendingComposing();
@@ -140,7 +139,7 @@ void WithdrawItem(int index, int amount) {
   __try {
     void* disp = *reinterpret_cast<void**>(rag::kActiveModePtr);
     if (disp)
-      uiwnd::Vf<DispCmd_t>(disp, 0x18)(disp, kCmdWithdraw, index, amount, 0, 0);
+      rag::ModeSendMsg(disp, kCmdWithdraw, index, amount, 0, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 

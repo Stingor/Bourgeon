@@ -20,6 +20,7 @@
 #include "ui/ro_imgui.h"
 #include "ui/ro_widgets.h"
 #include "utils/i18n.h"
+#include "ragnarok/social.h"  // rag::social::kFriendListAddByNameAddr
 
 namespace {
 
@@ -193,15 +194,13 @@ bool ReadHpSEH(uint32_t gid, int* hp, int* max_hp) {
 // false si aucun mode n'est actif (login, changement de carte).
 // (Ce petit pont est déjà recopié dans chat_window et game_settings ; il mériterait
 // la factorisation qu'a reçue `uiwnd.h`. Hors périmètre de ce chantier.)
-constexpr int       kSendMsgVtOff   = 0x18;
 
 bool ModeSendMsg(int cmd, int p2 = 0, int p3 = 0, int p4 = 0, int p5 = 0) {
   __try {
+    // ⚠ Lecture BRUTE du pointeur, pas rag::ActiveModeIfReady() (cf. globals.h).
     void* mode = *reinterpret_cast<void**>(rag::kActiveModePtr);
     if (mode == nullptr) return false;
-    using SendMsg_t = int(__thiscall*)(void*, int, int, int, int, int);
-    void** vt = *reinterpret_cast<void***>(mode);
-    reinterpret_cast<SendMsg_t>(vt[kSendMsgVtOff / 4])(mode, cmd, p2, p3, p4, p5);
+    rag::ModeSendMsg(mode, cmd, p2, p3, p4, p5);
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
@@ -275,12 +274,11 @@ constexpr int kMsgFriendRequestText = 0x332;
 // (0x0202, nom sur 24 octets). Passer par elle évite d'avoir à trancher entre les
 // opcodes que le serveur accepte — et ce chemin est déjà éprouvé en jeu.
 // ⚠ ELLE LIT 24 OCTETS D'AFFILÉE : le tampon doit les porter.
-constexpr uintptr_t kFriendListAddByName = 0x00a2c600;
 
 void AddFriendSEH(const char* name24) {
   __try {
     using FriendAddFn = int(__stdcall*)(const void*);
-    reinterpret_cast<FriendAddFn>(kFriendListAddByName)(name24);
+    reinterpret_cast<FriendAddFn>(rag::social::kFriendListAddByNameAddr)(name24);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -322,7 +320,6 @@ const char* JobName(int job_id) {
 //
 // Racine des bitmaps d'interface, en CP949 (유저인터페이스), en octets verbatim :
 // ce fichier est en UTF-8 et le client attend SA code-page.
-constexpr char kUiRoot[] = "\xC0\xAF\xC0\xFA\xC0\xCE\xC5\xCD\xC6\xE4\xC0\xCC\xBD\xBA";
 
 // L'icône de classe. Le natif la pose sur ses 40 boutons de job (50×50) au msg
 // 0x17 : `sprintf("%sicon_jobs_%d.bmp", "\renewalparty\", job)` @0x0070622a, où
@@ -866,7 +863,7 @@ void PartyFriendWindow::DrawPartyRow(const SocialRow& row) {
   const float row_w = ImGui::GetContentRegionAvail().x;
 
   // ── L'icône de classe ──────────────────────────────────────────────────────
-  std::snprintf(path, sizeof(path), kJobIconFmt, kUiRoot,
+  std::snprintf(path, sizeof(path), kJobIconFmt, ro::uipath::kUiRoot,
                 static_cast<unsigned>(row.job));
   const ro::GameTexture job_icon = ro::CachedTextureFromGameFile(path);
   if (job_icon.tex) {
@@ -896,7 +893,7 @@ void PartyFriendWindow::DrawPartyRow(const SocialRow& row) {
   if (row.is_leader) {
     // Le natif dessine `ico_partyCrown.bmp` devant le nom du chef.
     std::snprintf(path, sizeof(path), "%s\\renewalparty\\ico_partyCrown.bmp",
-                  kUiRoot);
+                  ro::uipath::kUiRoot);
     const ro::GameTexture crown = ro::CachedTextureFromGameFile(path);
     if (crown.tex) {
       const float h = ImGui::GetTextLineHeight();

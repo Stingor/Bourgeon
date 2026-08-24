@@ -62,8 +62,6 @@ constexpr int kInfoIdent  = 0x5c;  // byte : item identifié ?
 constexpr int kInfoDamaged = 0x5d; // byte : équipement CASSÉ (rendu rouge, cf. itemcell)
 constexpr int kInfoRefine = 0x60;  // niveau de refine (int) ; RE character_sheet kOffEquipRefine
 
-constexpr uintptr_t kOverweightPct = 0x01602324;
-constexpr uintptr_t kInvExpansion  = 0x01602354;  // extension serveur (capacité = +200)
 constexpr int kInvBase = 200;  // moonlight INVENTORY_BASE_SIZE ; max = expansion + 200
 
 // Nom de base + nom complet (refine/cartes/enchant), comme le storage.
@@ -90,7 +88,6 @@ using ToggleById_t   = int (__stdcall*)(int);  // FUN_00812e60(id) : ferme la fe
 // Commandes (confirmées via le double-clic natif 0x00949fc0 et le clic-droit 0x0094f380) :
 //   use conso 0x1b / équiper 0x13 / carte 0x7b / munition-costume-ombre 0x57 ;
 //   transfert vers cart 0x4c / vers storage Kafra 0x37 (0x33 = guilde, fenêtre 0x271b).
-constexpr int kVfDispCmd = 0x18;
 constexpr int kCmdUse       = 0x1b;
 constexpr int kCmdEquip     = 0x13;
 constexpr int kCmdCard      = 0x7b;
@@ -105,8 +102,6 @@ constexpr int kCmdToStorage = 0x37;  // storage KAFRA.
                                      // la fenêtre ouverte ; nous, via StorageOpen() — qui
                                      // interroge StorageWindow, la fenêtre native n'existant
                                      // plus en mode ImGui.
-using GetMode_t = void*(__fastcall*)(int);
-using DispCmd_t = void(__thiscall*)(void*, int, int, int, int, int);
 
 // Opcodes client->serveur (bloc PACKETVER 20250716 ACTIF ; RE workflow confirmée).
 //   Drop     : CZ_ITEM_THROW 0x0438  [op:2][index:2][amount:2] (amount 16-bit)
@@ -203,7 +198,7 @@ int CountCardStock(uint32_t id) {
 // Objet mode courant (dispatcher), ou nullptr hors d'un mode jouable. SEH-gardé.
 void* Dispatcher() {
   __try {
-    return reinterpret_cast<GetMode_t>(rag::kModeMgrGetActiveAddr)(static_cast<int>(rag::kModeMgrAddr));
+    return rag::ActiveModeIfReady();
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
 }
 
@@ -250,7 +245,7 @@ void SendCmd(int cmd, int index, int arg2) {
     return;
   __try {
     void* d = Dispatcher();
-    if (d) uiwnd::Vf<DispCmd_t>(d, kVfDispCmd)(d, cmd, index, arg2, 0, 0);
+    if (d) rag::ModeSendMsg(d, cmd, index, arg2, 0, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -615,8 +610,8 @@ FooterVals ReadFooterVals() {
     v.wmax = *reinterpret_cast<int*>(rag::kWeightMaxAddr);
     v.wcur = *reinterpret_cast<int*>(rag::kWeightCurAddr);
     v.zeny = *reinterpret_cast<int*>(rag::kZenyAddr);
-    v.expansion = *reinterpret_cast<int*>(kInvExpansion);
-    v.overPct = *reinterpret_cast<int*>(kOverweightPct);
+    v.expansion = *reinterpret_cast<int*>(rag::kInventoryExpansionAddr);
+    v.overPct = *reinterpret_cast<int*>(rag::kOverweightPctAddr);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
   return v;
 }
@@ -654,7 +649,6 @@ inline ImTextureID TexId(void* t) { return reinterpret_cast<ImTextureID>(t); }
 // native 32px) + icônes du footer natif icon_weight/icon_num.bmp. Chargés en textures
 // ImGui. Préfixe CP949 pris sur les strings exe (basic_interface\ pour barre/tuile ;
 // inventory\ pour les icônes, qui ont leur propre string).
-constexpr uintptr_t kIconNumPath    = 0x0103dad4;  // "유저인터페이스\inventory\icon_num.bmp"
 // Le bouton « banque » du footer est de l'art AJOUTÉ (styleshop\btn_bank_*.bmp) :
 // il n'a donc pas de string dans l'exe. On emprunte le préfixe CP949 à une string
 // styleshop native plutôt que de le réécrire à la main.
@@ -715,7 +709,7 @@ void LoadFooterAssets() {
   InventoryPath("itemwin_mid_lock.bmp", path, sizeof(path));
   g_tile_lock = ro::TextureFromGameFile(path);
   g_ico_weight = ro::TextureFromGameFile(reinterpret_cast<const char*>(ro::uipath::kIconWeight));
-  g_ico_num    = ro::TextureFromGameFile(reinterpret_cast<const char*>(kIconNumPath));
+  g_ico_num    = ro::TextureFromGameFile(reinterpret_cast<const char*>(ro::uipath::kIconNum));
   // Onglets images (basic_interface\<img>1.bmp actif / <img>2.bmp inactif).
   for (int c = 0; c < kNumCats; ++c) {
     const char* base = kCats[c].img;

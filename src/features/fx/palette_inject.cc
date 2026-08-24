@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-#include "ragnarok/globals.h"  // kModeMgrAddr / kModeMgrGetActiveAddr
+#include "ragnarok/globals.h"  // rag::ActiveModeIfReady
 #include "ragnarok/own_actor.h"  // ActorSlotSpritePath (le .spr d'un emplacement)
 #include "ui/sprite_path.h"      // HairPaletteRelForSprite
 #include "utils/hooking/hook_manager.h"

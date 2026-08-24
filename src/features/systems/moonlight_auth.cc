@@ -306,20 +306,13 @@ MoonlightAuth::HttpResult DoPost(const std::string& full_url,
 // d'item) puis convertie en texture overlay ImGui. Cache 1 slot, recréé après un
 // reset device (epoch) — sinon handle mort -> crash au dessin (cf. d3d9_hook.h).
 constexpr int kTexOffW = 0x114, kTexOffH = 0x118, kTexOffPix = 0x11c;
-using TexMgrGet_t  = void*(__cdecl*)();
-using TexMakeKey_t = void*(__cdecl*)(const char*);
-using TexLoad_t    = void*(__fastcall*)(void*, void*, void*);
 
 struct ButtonTex { void* tex = nullptr; int w = 0; int h = 0; };
 
 // Charge une BMP de data\texture\ en pixels BGRA (pointeur natif). SEH (POD only).
 bool LoadRawBgra(const char* path, const uint8_t** bgra, int* w, int* h) {
   __try {
-    void* mgr = reinterpret_cast<TexMgrGet_t>(ro::texmgr::kGet)();
-    if (!mgr) return false;
-    void* key = reinterpret_cast<TexMakeKey_t>(ro::texmgr::kMakeKey)(path);
-    if (!key) return false;
-    void* t = reinterpret_cast<TexLoad_t>(ro::texmgr::kLoad)(mgr, nullptr, key);
+    void* t = ro::texmgr::LoadResource(path);
     if (!t) return false;
     const int tw = *reinterpret_cast<int*>(static_cast<char*>(t) + kTexOffW);
     const int th = *reinterpret_cast<int*>(static_cast<char*>(t) + kTexOffH);

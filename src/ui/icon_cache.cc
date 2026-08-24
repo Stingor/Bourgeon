@@ -48,15 +48,14 @@ bool BuildIconPathSafe(uint32_t nameid, char* out, int identified) {
 // ── Image de collection ──────────────────────────────────────────────────────
 // Le client la nomme par le RESNAME de l'item, pas par son id : il faut donc
 // monter un ItemSkillInfo autonome, lui poser l'id, et lui demander son resname.
-constexpr uintptr_t kGetResName = 0x006a4bc0;  // ItemSkillDB_GetResName(info) -> C-str
 using InfoCtor_t   = void(__fastcall*)(void*);
 using InfoSetId_t  = void(__thiscall*)(void*, int);
 using GetResName_t = char*(__fastcall*)(void*);
 
-// Préfixe CP949 « 유저인터페이스\collection\ », en DEUX littéraux concaténés : sans
-// la coupure, le \xba avalerait le \ suivant.
-constexpr char kCollectionPrefix[] =
-    "\xc0\xaf\xc0\xfa\xc0\xce\xc5\xcd\xc6\xe4\xc0\xcc\xbd\xba" "\\collection\\";
+// « 유저인터페이스\collection\<resname>.bmp », composé au format sur la racine
+// partagée : le chemin n'est plus un littéral collé, donc le piège de l'octet
+// `\xba` avalant le `\` suivant ne se pose plus ici.
+constexpr char kCollectionFmt[] = "%s\\collection\\%s.bmp";
 
 // SEH isolé (POD only).
 void ResolveResName(uint32_t nameid, char* out, size_t capacity) {
@@ -67,7 +66,7 @@ void ResolveResName(uint32_t nameid, char* out, size_t capacity) {
     reinterpret_cast<InfoCtor_t>(itemdb::kInfoCtorAddr)(info);
     reinterpret_cast<InfoSetId_t>(itemdb::kInfoSetIdAddr)(info, static_cast<int>(nameid));
     info[0x5c] = 1;  // « identifié » : le resname est alors lu dans rec+8
-    const char* resname = reinterpret_cast<GetResName_t>(kGetResName)(info);
+    const char* resname = reinterpret_cast<GetResName_t>(itemdb::kGetResNameAddr)(info);
     if (resname && resname[0]) {
       std::strncpy(out, resname, capacity - 1);
       out[capacity - 1] = '\0';
@@ -128,7 +127,7 @@ IconTex ItemCollectionIcon(uint32_t nameid) {
   ResolveResName(nameid, resname, sizeof(resname));
   if (resname[0]) {
     char path[192];
-    std::snprintf(path, sizeof(path), "%s%s.bmp", kCollectionPrefix, resname);
+    std::snprintf(path, sizeof(path), kCollectionFmt, ro::uipath::kUiRoot, resname);
     icon = TextureFromGameFile(path);
   }
   // Pas d'art de collection : la petite icône d'inventaire vaut mieux que rien.

@@ -6,6 +6,7 @@
 #include <cstring>
 #include <unordered_map>
 
+#include "ragnarok/globals.h"  // rag::ActiveModeIfReady
 #include "utils/log_console.h"
 
 namespace {
@@ -14,9 +15,6 @@ namespace {
 constexpr uintptr_t kProcessDamageAction  = 0x00c5dfc0;  // CActorSprite_ProcessDamageAction
 constexpr uintptr_t kProcessDamageCall    = 0x00c4d0a7;  // son appelant, UNIQUE
 constexpr uintptr_t kCopyEntityName       = 0x00c68e50;  // GameMode_CopyEntityName
-constexpr uintptr_t kGameModeGetActive    = 0x00a75340;
-constexpr uintptr_t kModeMgr              = 0x01213338;
-constexpr uintptr_t kClientOperatorDelete = 0x00dbbc7f;
 
 // Les deux appels du REJEU, et eux seuls. Relevés sur le désassemblage :
 //
@@ -70,7 +68,6 @@ using CopyNameFn      = void*(__fastcall*)(void* mode, void* edx, void* sortie, 
 // recopier la signature aurait laisse 8 octets sur la pile a chaque coup porte.
 using ProcessDamageFn = int(__fastcall*)(void* self, void* edx, int a1, int a2,
                                          int a3, int a4);
-using GetActiveFn     = void*(__fastcall*)(const void* mgr, void* edx);
 using OperatorDeleteFn = void(__cdecl*)(void*);
 
 CopyNameFn      g_copy_natif    = reinterpret_cast<CopyNameFn>(kCopyEntityName);
@@ -119,8 +116,7 @@ void Apprendre(uint32_t gid) {
   if (gid == 0)
     return;
 
-  void* mode = reinterpret_cast<GetActiveFn>(kGameModeGetActive)(
-      reinterpret_cast<const void*>(kModeMgr), nullptr);
+  void* mode = rag::ActiveModeIfReady();
   if (mode == nullptr)
     return;
 
@@ -132,7 +128,7 @@ void Apprendre(uint32_t gid) {
   g_copy_natif(mode, nullptr, &tampon, gid);
   Memoriser(gid, &tampon);
   if (tampon.capacite >= 16 && tampon.tas != nullptr)
-    reinterpret_cast<OperatorDeleteFn>(kClientOperatorDelete)(tampon.tas);
+    reinterpret_cast<OperatorDeleteFn>(rag::kGameOperatorDeleteAddr)(tampon.tas);
 }
 
 // Déportée pour que le `__try` ne cohabite pas avec un objet à destructeur

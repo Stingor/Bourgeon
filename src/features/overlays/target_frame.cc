@@ -76,7 +76,6 @@ constexpr int kScene_AgitZone = 0x4c;
 // 0x47 quitte le mode ciblage : le pipeline souris natif l'émet après un
 // lancement, et notre clic de cadre doit faire de même — sinon le curseur de
 // visée reste armé et le clic suivant relance la compétence.
-constexpr int kVtblSendMsgIndex   = 6;
 constexpr int kSendMsgLeaveTarget = 0x47;
 
 // `CNameDict_GetEntryOrRequest(dict, gid)` __thiscall : rend l'entrée si le nom
@@ -182,7 +181,6 @@ constexpr int kAct_HeadGage    = 0x488;
 constexpr int kGage_Hp    = 0xa0;
 constexpr int kGage_MaxHp = 0xa4;
 
-using GetActiveFn = void* (__fastcall*)(int);
 using FindActorFn = void* (__stdcall*)(uint32_t);
 using GetEntryFn  = void* (__thiscall*)(void*, uint32_t);
 
@@ -331,8 +329,7 @@ bool ClickEngagesAnAttack(void* game_mode, void* actor) {
 
 void* ActiveGameMode() {
   __try {
-    return reinterpret_cast<GetActiveFn>(rag::kModeMgrGetActiveAddr)(
-        static_cast<int>(rag::kModeMgrAddr));
+    return rag::ActiveModeIfReady();
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
 }
 
@@ -381,12 +378,7 @@ bool OnAgitZone(void* game_mode) {
 // lancement. Sans lui, le curseur de visée resterait armé.
 void LeaveSkillTargeting(void* game_mode) {
   __try {
-    if (!game_mode) return;
-    using SendMsgFn = int(__thiscall*)(void*, int, int, int, int, int);
-    void** vtbl = *reinterpret_cast<void***>(game_mode);
-    if (!vtbl) return;
-    reinterpret_cast<SendMsgFn>(vtbl[kVtblSendMsgIndex])(
-        game_mode, kSendMsgLeaveTarget, 0, 0, 0, 0);
+    rag::ModeSendMsg(game_mode, kSendMsgLeaveTarget);
   } __except (EXCEPTION_EXECUTE_HANDLER) {
   }
 }
