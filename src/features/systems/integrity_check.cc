@@ -12,10 +12,16 @@
 
 #include "bourgeon.h"
 #include "imgui.h"
+#include "ui/ro_imgui.h"  // BeginRoPopupModal : le cadre RO de la modale
 #include "utils/log_console.h"
 #include "utils/i18n.h"
 
 namespace {
+
+// Texte SECONDAIRE sur le corps CLAIR d'un cadre RO. `ImGui::TextDisabled` est
+// calibré pour un fond sombre : sur le beige d'une modale RO il s'efface presque
+// entièrement. Ce gris est celui de la palette du projet.
+const ImVec4 kDimOnLight(0.35f, 0.35f, 0.42f, 1.0f);
 
 // Full path of THIS module (the Bourgeon ddraw.dll), found from an address that
 // lives inside it — no need to plumb the HINSTANCE through from DllMain.
@@ -340,8 +346,14 @@ void IntegrityCheck::OnRecvPacket(uint16_t opcode, const uint8_t* /*data*/,
 }
 
 void IntegrityCheck::OnRenderUI() {
+  // ⚠ UNE SEULE chaîne pour l'ouverture ET pour le Begin, et un `###` : ImGui
+  // apparie les popups par l'identifiant qui suit, et l'échec est SILENCIEUX.
+  // Sans lui, l'identité de cette modale était son TITRE TRADUIT — changer de
+  // langue entre l'ouverture et le rendu l'aurait fait disparaître sans un mot.
+  const char* kUpdatePopup =
+      i18n::Tr("Client Update Required###bourgeon_integrity_outdated");
   if (popup_pending_) {
-    ImGui::OpenPopup(i18n::Tr("Client Update Required"));
+    ImGui::OpenPopup(kUpdatePopup);
     popup_pending_ = false;
   }
 
@@ -358,12 +370,17 @@ void IntegrityCheck::OnRenderUI() {
     }
   }
 
-  ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(),
-                          ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-  if (ImGui::BeginPopupModal(i18n::Tr("Client Update Required"), nullptr,
-                             ImGuiWindowFlags_AlwaysAutoResize |
-                                 ImGuiWindowFlags_NoMove)) {
-    ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f),
+  // 🔴 Cadre RO, pas un `BeginPopupModal` nu : c'est le dernier message que le
+  // joueur voit avant d'être déconnecté, et il s'affichait en fenêtre ImGui
+  // sombre au milieu de l'interface du jeu. `BeginRoPopupModal` centre lui-même
+  // à l'apparition — d'où la disparition du `SetNextWindowPos` qui était ici —
+  // et ImGui garde la modalité et le voile.
+  if (ro::BeginRoPopupModal(kUpdatePopup, ImGuiWindowFlags_AlwaysAutoResize |
+                                              ImGuiWindowFlags_NoMove)) {
+    // ⚠ Les couleurs suivent le CORPS CLAIR du cadre RO. Le rouge vif d'avant
+    // était calibré pour un fond sombre ; ici il passerait au-dessus du texte
+    // sans ressortir.
+    ImGui::TextColored(ImVec4(0.60f, 0.12f, 0.12f, 1.0f),
                        i18n::Tr("Your game client is outdated!"));
     ImGui::Spacing();
     if (patcher_exe_.empty()) {
@@ -383,12 +400,13 @@ void IntegrityCheck::OnRenderUI() {
       const uint32_t remaining =
           elapsed < kKickDelayMs ? kKickDelayMs - elapsed : 0;
       const int secs = static_cast<int>((remaining + 999) / 1000);
-      ImGui::TextDisabled(i18n::Tr("Closing in %d second%s..."), secs,
-                          secs == 1 ? "" : "s");
+      ImGui::TextColored(kDimOnLight, i18n::Tr("Closing in %d second%s..."),
+                         secs, secs == 1 ? "" : "s");
     } else {
-      ImGui::TextDisabled(i18n::Tr("Disconnecting in a few seconds..."));
+      ImGui::TextColored(kDimOnLight,
+                         i18n::Tr("Disconnecting in a few seconds..."));
     }
 
-    ImGui::EndPopup();
+    ro::EndRoPopupModal();
   }
 }

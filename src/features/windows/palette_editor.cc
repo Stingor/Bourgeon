@@ -1730,8 +1730,17 @@ void PaletteEditor::OnRenderUI() {
         ImGui::EndTooltip();
       }
 
+      // ⚠ UNE SEULE chaîne pour l'ouverture ET pour le Begin : ImGui apparie les
+      // popups par l'identifiant qui suit `###`, et l'échec est SILENCIEUX. C'est
+      // aussi ce `###` qui rend l'identité INSENSIBLE à la langue — sans lui,
+      // changer de langue entre l'ouverture et le rendu perdrait le popup.
+      const char* kResetPopup  = i18n::Tr("Repartir de zéro###bourgeon_style_reset");
+      const char* kDeletePopup = i18n::Tr("Supprimer mon style###bourgeon_style_delete");
+      const char* kForgetPopup =
+          i18n::Tr("Oublier ce corps###bourgeon_style_forget_body");
+
       if (ro::RoButton(i18n::Tr("Repartir de zéro")))
-        ImGui::OpenPopup("##confirm_reset");
+        ImGui::OpenPopup(kResetPopup);
       if (ImGui::IsItemHovered()) {
         ImGui::BeginTooltip();
         ImGui::PushTextWrapPos(ImGui::GetFontSize() * 24.0f);
@@ -1746,7 +1755,7 @@ void PaletteEditor::OnRenderUI() {
 
       // Le troisième EFFACE, ici et sur le serveur — d'où un libellé qui le dit.
       if (ro::RoButton(i18n::Tr("Supprimer mon style")))
-        ImGui::OpenPopup("##confirm_suppr");
+        ImGui::OpenPopup(kDeletePopup);
       if (ImGui::IsItemHovered()) {
         ImGui::BeginTooltip();
         ImGui::TextUnformatted(
@@ -1763,7 +1772,7 @@ void PaletteEditor::OnRenderUI() {
       if (fx::style_sync::LocalHasVariant(body_key_) &&
           fx::style_sync::LocalVariantCount() > 1) {
         if (ro::RoButton(i18n::Tr("Oublier le style de ce corps")))
-          ImGui::OpenPopup("##confirm_suppr_corps");
+          ImGui::OpenPopup(kForgetPopup);
         if (ImGui::IsItemHovered()) {
           ImGui::BeginTooltip();
           ImGui::PushTextWrapPos(ImGui::GetFontSize() * 24.0f);
@@ -1786,9 +1795,14 @@ void PaletteEditor::OnRenderUI() {
       // Elles gardent les deux gestes DESTRUCTIFS et eux seuls : « tout
       // réinitialiser » jette un réglage qui a pu demander du temps, et
       // « supprimer » efface jusque sur le serveur, sans retour possible.
-      if (ImGui::BeginPopupModal("##confirm_reset", nullptr,
-                                 ImGuiWindowFlags_AlwaysAutoResize |
-                                     ImGuiWindowFlags_NoTitleBar)) {
+      // 🔴 Cadre RO, pas un `BeginPopupModal` nu : skinner les boutons ne
+      // suffisait pas, il manquait le contenant — un corps sombre ImGui au milieu
+      // d'une fenêtre RO claire. ImGui garde la modalité et le voile ; le cadre
+      // centre lui-même et pousse les couleurs RO pour le contenu.
+      // ⚠ `EndRoPopupModal` UNIQUEMENT si le Begin a rendu true (règle EndPopup).
+      if (ro::BeginRoPopupModal(kResetPopup)) {
+        // Sinon un Échap fermerait À LA FOIS la confirmation et l'éditeur derrière.
+        ro::SuppressEscapeStack();
         ImGui::PushTextWrapPos(ImGui::GetFontSize() * 20.0f);
         ImGui::TextUnformatted(
             i18n::Tr("Remettre tout l'aperçu à zéro ? Tes réglages en cours "
@@ -1825,12 +1839,11 @@ void PaletteEditor::OnRenderUI() {
         }
         ImGui::SameLine();
         if (ro::RoButton(i18n::Tr("Annuler"))) ImGui::CloseCurrentPopup();
-        ImGui::EndPopup();
+        ro::EndRoPopupModal();
       }
 
-      if (ImGui::BeginPopupModal("##confirm_suppr", nullptr,
-                                 ImGuiWindowFlags_AlwaysAutoResize |
-                                     ImGuiWindowFlags_NoTitleBar)) {
+      if (ro::BeginRoPopupModal(kDeletePopup)) {
+        ro::SuppressEscapeStack();
         ImGui::PushTextWrapPos(ImGui::GetFontSize() * 20.0f);
         ImGui::TextUnformatted(
             i18n::Tr("Supprimer ton style, chez toi ET sur le serveur ? Ton "
@@ -1844,12 +1857,11 @@ void PaletteEditor::OnRenderUI() {
         }
         ImGui::SameLine();
         if (ro::RoButton(i18n::Tr("Annuler"))) ImGui::CloseCurrentPopup();
-        ImGui::EndPopup();
+        ro::EndRoPopupModal();
       }
 
-      if (ImGui::BeginPopupModal("##confirm_suppr_corps", nullptr,
-                                 ImGuiWindowFlags_AlwaysAutoResize |
-                                     ImGuiWindowFlags_NoTitleBar)) {
+      if (ro::BeginRoPopupModal(kForgetPopup)) {
+        ro::SuppressEscapeStack();
         ImGui::PushTextWrapPos(ImGui::GetFontSize() * 20.0f);
         ImGui::TextUnformatted(
             i18n::Tr("Oublier le style de ce corps ? Il reprendra ton style "
@@ -1863,7 +1875,7 @@ void PaletteEditor::OnRenderUI() {
         }
         ImGui::SameLine();
         if (ro::RoButton(i18n::Tr("Annuler"))) ImGui::CloseCurrentPopup();
-        ImGui::EndPopup();
+        ro::EndRoPopupModal();
       }
 
       // ── LA VALIDATION ────────────────────────────────────────────────────
