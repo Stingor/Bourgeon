@@ -323,6 +323,58 @@ void* FindInfoById(uintptr_t list_head, uint32_t id);
 int CountById(uintptr_t list_head, uint32_t id);
 void* FindInfoByIndex(uintptr_t list_head, int index);
 
+// ── Extraire TOUTE la liste en POD, une bonne fois ──────────────────────────
+//
+// Les trois viewers d'objets lisaient chacun leur liste avec leur propre boucle
+// et leur propre `struct Item` — trois copies d'une quinzaine de lectures de
+// champs, aux mêmes offsets, jusqu'aux cartes et aux options aléatoires. Les
+// trois structures étaient déjà compatibles NOM POUR NOM : chariot et entrepôt
+// n'étaient que des sous-ensembles de celle de l'inventaire.
+//
+// 🔴🔴 ET LA CORRECTION N'AVAIT ÉTÉ APPLIQUÉE QU'À DEUX DES TROIS. L'inventaire
+// et le chariot encadrent CHAQUE ITEM d'un `__try` séparé, parce qu'un seul item
+// fautif sous un `__try` GLOBAL fait avorter toute l'énumération — c'est le bug
+// « 16 objets au lieu de 22 », documenté dans inventory_viewer. L'entrepôt, lui,
+// gardait le `__try` unique autour de la boucle entière : un item corrompu y
+// tronquait silencieusement la fin de la liste. La forme partagée est celle qui
+// isole, donc l'entrepôt est corrigé du même coup.
+//
+// ⚠ Le SUIVANT est lu AVANT le contenu, et sous sa propre garde : un nœud
+// corrompu arrête net, sans boucle infinie et sans perdre ce qui précède.
+struct ItemRow {
+  uint32_t id = 0;          // atoi de la std::string à info+0x2c — la SOURCE du jeu
+  int      amount = 0;      // node+0x18 (= info+0x10)
+  int      index = 0;       // info+4 : l'index CLIENT, argument des commandes
+  uint32_t loc = 0;         // info+8 : masque d'emplacement d'équipement
+  int      refine = 0;      // info+0x60
+  int      type = 0;        // info+0 : type d'item (onglets de catégorie)
+  uint8_t  identified = 0;  // info+0x5c (résolution d'icône)
+  uint8_t  damaged = 0;     // info+0x5d : équipement CASSÉ (rendu rouge)
+  uint8_t  favorite = 0;    // info+0x74 (onglet Favoris de l'inventaire)
+  // Nom COMPLET (refine, cartes, forge), **EN UTF-8** — prêt pour ImGui.
+  //
+  // 🔴 96 et non 64 : `BuildDisplayName` écrit jusqu'à 64 octets dans la
+  // code-page du CLIENT, et la conversion en UTF-8 fait GROSSIR le texte (un
+  // accent latin passe de 1 à 2 octets, un caractère coréen de 2 à 3).
+  char     name[96] = {0};
+  // Données d'INSTANCE du stack (pas de la DB) : elles alimentent l'aperçu de
+  // description au survol, aux offsets de la fenêtre de description native.
+  uint32_t cards[4] = {0};  // info+0x1c : 4 emplacements carte/enchant (0 = vide)
+  int      opt_count = 0;   // info+0x98 : nombre de random options
+  int      total_slots = 0; // emplacements de carte (itemcell::SlotCount)
+  struct Opt { int16_t index; int16_t value; uint8_t param; };
+  Opt      opts[5] = {};    // info+0x9c : entrées de 5 octets
+};
+
+// Remplit `out` (au plus `max` entrées) et rend le nombre lu. Ne lève jamais :
+// une liste en cours de remaniement rend simplement moins d'entrées.
+//
+// ⚠ Trois champs ne concernent qu'une fenêtre sur trois — `loc` et `favorite`
+// (l'inventaire) — mais les lire coûte deux déréférencements et les porter, cinq
+// octets par ligne. Les rendre optionnels aurait coûté un paramètre de plus et
+// une branche dans la boucle, pour rien.
+int ExtractList(uintptr_t list_head, ItemRow* out, int max);
+
 // ⚠ Un septième site N'EST PAS passé par ici, et c'est délibéré :
 // NpcDialogWindow::OpenItemDescById (lien <ITEM> dans un dialogue) écrit l'id
 // ENTIER en info+0x00 — le champ que le name-builder lit comme un TYPE — et se

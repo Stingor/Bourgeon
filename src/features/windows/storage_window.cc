@@ -56,10 +56,7 @@ namespace {
 // cart, dont les natives, elles, existent toujours.
 
 // Nœud de liste (std::list MSVC) : next@+0, prev@+4, value@+8.
-using rag::itemlist::kNodeNext;
-using rag::itemlist::kNodeAmount;
 using rag::itemlist::kNodeInfo;
-using rag::itemlist::kInfoIdStr;
 
 // Champs DANS l'ItemSkillInfo (= node+kNodeInfo), tels que lus par FUN_008711a0 :
 // l'id est une std::string à +0x2c (le jeu fait atoi dessus pour l'icône), le
@@ -781,57 +778,13 @@ void StorageWindow::HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t 
 // modèle est peuplé par les paquets de liste (0x0b09/0x0b39) sans passer par la
 // fenêtre — leur ingesteur ne touche à g_StorageWnd_ptr que sous un test de
 // nullité. C'est précisément ce qui permet de tuer la native. POD-only sous SEH.
+// 🔴 L'ancienne version d'ici gardait un `__try` UNIQUE autour de toute la
+// boucle : un seul item corrompu tronquait silencieusement la fin de la liste.
+// L'inventaire avait corrigé ce défaut — le fameux « 16 objets au lieu de 22 » —
+// et le chariot l'avait repris, mais pas l'entrepôt. L'extracteur partagé isole
+// chaque item, donc c'est réglé ici aussi.
 void StorageWindow::Extract() {
-  item_count_ = 0;
-  __try {
-    // 0x015fbad8 = g_session+0x1718 : sentinelle de la std::list storage complète.
-    uint8_t* head = *reinterpret_cast<uint8_t**>(rag::kStorageListAddr);
-    if (!head) return;
-    uint8_t* node = *reinterpret_cast<uint8_t**>(head + kNodeNext);  // 1er nœud
-    int guard = 0;
-    while (node && node != head && item_count_ < kMaxItems && guard < kMaxItems) {
-      Item& it = items_[item_count_];
-      uint8_t* info = node + kNodeInfo;  // node+8 = ItemSkillInfo
-      // id : lu de la std::string à info+0x2c (là où le jeu le lit pour l'icône).
-      const char* ids = rag::clientstr::Data(info + kInfoIdStr);
-      it.id = ids ? static_cast<uint32_t>(atoi(ids)) : 0;
-      it.identified = *reinterpret_cast<uint8_t*>(info + kInfoIdent);
-      it.amount = *reinterpret_cast<int*>(node + kNodeAmount);
-      it.index = *reinterpret_cast<int*>(info + 4);  // storage index (arg du retrait)
-      it.type  = *reinterpret_cast<int*>(info);      // info+0 = type (onglets)
-      // Cartes/enchants (info+0x1c, 4 x uint32) et random options (compte à +0x98,
-      // entrées de 5 octets à +0x9c) : données d'INSTANCE du stack, pas de la DB.
-      // Mêmes offsets que ceux utilisés par la fenêtre de description native.
-      for (int k = 0; k < 4; ++k)
-        it.cards[k] = *reinterpret_cast<uint32_t*>(info + 0x1c + k * 4);
-      it.refine = *reinterpret_cast<int*>(info + 0x60);  // niveau de refine (aperçu)
-      it.damaged = *reinterpret_cast<uint8_t*>(info + 0x5d);  // cassé (rendu rouge)
-      int nopt = *reinterpret_cast<int*>(info + 0x98);
-      if (nopt < 0) nopt = 0;
-      if (nopt > 5) nopt = 5;
-      it.opt_count = nopt;
-      for (int k = 0; k < nopt; ++k) {
-        const uint8_t* e = info + 0x9c + k * 5;
-        it.opts[k].index = *reinterpret_cast<const int16_t*>(e);
-        it.opts[k].value = *reinterpret_cast<const int16_t*>(e + 2);
-        it.opts[k].param = e[4];
-      }
-      // Nom COMPLET (refine/cartes/enchant), via la brique partagée : elle porte
-      // son PROPRE SEH, par item, ce qui compte ici — le __try d'Extract couvre
-      // toute la boucle, donc un seul item fautif y ferait disparaître tous les
-      // suivants (la leçon de l'inventaire, cf. features/item_cell.cc).
-      // Le 1er argument n'est lu que sur une branche « nom du forgeron pas encore
-      // résolu », où le jeu le traite comme une liste de demandes en attente : on
-      // passe le gestionnaire de fenêtres, comme weapon_refine_window, et non une
-      // fenêtre storage qui n'existe plus.
-      itemcell::BuildDisplayName(info, it.name, sizeof(it.name));
-      ++item_count_;
-      node = *reinterpret_cast<uint8_t**>(node + kNodeNext);
-      ++guard;
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-    // laisse item_count_ à ce qui a été extrait avant la faute
-  }
+  item_count_ = itemcell::ExtractList(rag::kStorageListAddr, items_, kMaxItems);
 }
 
 void StorageWindow::OnTick() {

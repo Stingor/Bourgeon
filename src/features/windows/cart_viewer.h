@@ -2,6 +2,7 @@
 
 #include <cstdint>
 
+#include "features/item_cell.h"  // itemcell::ItemRow / ExtractList
 #include "features/windows/item_viewer_base.h"
 
 // ── CartViewer ───────────────────────────────────────────────────────────────
@@ -55,23 +56,10 @@ class CartViewer : public ItemViewerBase {
   void HandleNativeCreation(void* win);
 
  private:
-  // Un item du cart, extrait en POD (sous SEH) pour un rendu hors __try.
-  struct Item {
-    uint32_t id = 0;          // atoi(std::string @info+0x2c)
-    int      amount = 0;      // node+0x18 (= info+0x10)
-    int      index = 0;       // info+4 : index cart (arg des commandes de transfert)
-    int      refine = 0;      // info+0x60
-    int      type = 0;        // info+0 : type d'item (onglets)
-    uint8_t  identified = 0;  // info+0x5c (résolution d'icône)
-    uint8_t  damaged = 0;     // info+0x5d : équipement cassé (rendu rouge)
-    char     name[64] = {0};
-    // Données d'INSTANCE du stack, pour l'aperçu de description au survol.
-    uint32_t cards[4] = {0};  // info+0x1c
-    int      opt_count = 0;   // info+0x98
-    int      total_slots = 0; // emplacements de carte (itemcell::SlotCount)
-    struct Opt { int16_t index; int16_t value; uint8_t param; };
-    Opt      opts[5] = {};    // info+0x9c
-  };
+  // Un item du cart : le POD partage des trois viewers (features/item_cell.h).
+  // Il porte deux champs de plus que ce que le chariot montre (`loc`,
+  // `favorite`) -- cinq octets par ligne, pour n'avoir qu'un extracteur.
+  using Item = itemcell::ItemRow;
   static constexpr int kMaxItems = 200;  // marge au-dessus de MAX_CART (100)
 
   // Remplit items_/item_count_ depuis le modèle session. SEH (POD only).

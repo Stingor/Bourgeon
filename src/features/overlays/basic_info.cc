@@ -809,24 +809,6 @@ int g_hatfx_dg_captured = -1;  // g_str_count après capture (nb de couches capt
 // (cf. Effect_ResolveResourceName 0x00af0900). C'est LE résolveur des hat effects par NOM
 // (GetHatEffectID renvoie -1 pour eux). Ex : ordinal 48 -> "efst_Gold_Shower\coin2.str".
 // POD ONLY (SEH). out vidé si échec.
-void HatOrdinalToResNameRaw(int ordinal, char* out, int cap) {
-  if (cap <= 0) return;
-  out[0] = '\0';
-  __try {
-    void* L = lua::State();
-    if (L) {
-      lua::GetField(
-          L, lua::kGlobalsIndex, "GetHatEfResName");
-      lua::PushNumber(
-          L, static_cast<double>(ordinal));
-      if (lua::PCall(L, 1, 1, 0) == 0) {
-        const char* s = lua::ToLString(L, -1, nullptr);
-        if (s && s[0]) { std::strncpy(out, s, cap - 1); out[cap - 1] = '\0'; }
-      }
-      lua::SetTop(L, -2);
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
-}
 
 // Wrapper caché (map = op C++, hors __try). Renvoie le nom .str de l'ordinal, "" si échec
 // (non figé : Lua peut ne pas être prêt au 1er appel).
@@ -835,7 +817,7 @@ const char* HatOrdinalToResName(int ordinal) {
   auto it = cache.find(ordinal);
   if (it != cache.end()) return it->second.c_str();
   char buf[96];
-  HatOrdinalToResNameRaw(ordinal, buf, sizeof(buf));
+  lua::HatEffectResName(ordinal, buf, sizeof(buf));
   if (buf[0]) return (cache[ordinal] = buf).c_str();
   return "";
 }

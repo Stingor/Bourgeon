@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+
 #include "yaml-cpp/yaml.h"
 
 // ── Les réglages lus AVANT l'entrée en jeu ───────────────────────────────────
@@ -68,5 +70,24 @@ void SaveUiFontFamily(int family);
 // naît ici.
 int UiScalePercent(int fallback);
 void SaveUiScalePercent(int percent);
+
+// ── Écrire UNE clé à la racine, sans toucher au reste du document ────────────
+//
+// Relit le fichier, pose `key: value`, réécrit tout. Le document est relu à
+// chaque fois PARCE QUE personne ne le possède : trois sections y sont posées à
+// la main par le joueur (cf. le ⚠ en tête), et les écraser serait le pire des
+// bugs — silencieux, et sur une configuration que l'utilisateur a tapée.
+//
+// `what` nomme le réglage dans le journal si l'écriture échoue. C'est le seul
+// endroit qui parle à l'utilisateur en cas de disque plein ou de fichier
+// verrouillé, d'où un nom en clair plutôt qu'une clé YAML.
+//
+// ⚠ La vérification d'erreur se fait APRÈS le flush : une ouverture réussie ne
+// dit rien de l'écriture.
+//
+// i18n.cc portait sa propre copie de ces vingt lignes pour la langue, à la
+// ligne près.
+void SaveRootKey(const char* key, int value, const char* what);
+void SaveRootKey(const char* key, const std::string& value, const char* what);
 
 }  // namespace startup

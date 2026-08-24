@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "features/item_cell.h"  // itemcell::ItemRow / ExtractList
 #include "features/windows/item_viewer_base.h"
 
 // ── StorageWindow ───────────────────────────────────────────────────────────
@@ -120,22 +121,9 @@ class StorageWindow : public ItemViewerBase {
   void HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
 
   // Un item du storage, extrait en POD (sous SEH) pour rendre hors __try.
-  struct Item {
-    uint32_t id = 0;          // atoi(info+0x2c) — la SOURCE que le jeu utilise
-    int      amount = 0;
-    int      index = 0;       // info+4 (= node+0xc) : index storage pour le retrait
-    int      type = 0;        // info+0 : type d'item (pour les onglets)
-    uint8_t  identified = 0;  // info+0x5c (flag pour la résolution d'icône)
-    uint8_t  damaged = 0;     // info+0x5d : équipement cassé (rendu rouge)
-    int      refine = 0;      // info+0x60 : niveau de refine (préfixe « +N » de l'aperçu)
-    char     name[64] = {0};
-    // Données d'INSTANCE lues dans l'ItemSkillInfo (absentes de la DB) : elles
-    // alimentent l'aperçu de description au survol.
-    uint32_t cards[4] = {0};  // info+0x1c : 4 slots carte/enchant (0 = vide)
-    int      opt_count = 0;   // info+0x98 : nombre de random options
-    struct Opt { int16_t index; int16_t value; uint8_t param; };
-    Opt      opts[5] = {};    // info+0x9c : entrées de 5 octets
-  };
+  // Le POD partage des trois viewers (features/item_cell.h). L'entrepot y gagne
+  // `total_slots`, qu'il ne lisait pas.
+  using Item = itemcell::ItemRow;
   static constexpr int kMaxItems = 700;  // MAX_STORAGE serveur (marge)
 
   // Remplit items_/item_count_ depuis le MODÈLE de session (g_session+0x1718),

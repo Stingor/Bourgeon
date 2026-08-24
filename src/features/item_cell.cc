@@ -75,13 +75,6 @@ using rag::itemlist::kInfoIndex;
 using rag::itemlist::kInfoIdStr;
 using rag::itemlist::kInfoAmount;
 using rag::itemlist::kWalkGuard;
-// int : la QUANTITÉ de la pile (`num_`), l'un des deux seuls champs du layout
-// d'ItemInfo qui soient confirmés en jeu (cf. ragnarok/item_info.h).
-
-// Plafond du parcours : simple garde-fou anti-boucle (la liste s'arrête sur sa
-// sentinelle). Une seule valeur pour les trois listes — la plus grosse, celle du
-// storage premium, plafonne à 600 côté serveur.
-
 // ItemSkillInfo tel que le natif le passe à OnMsg 0x18. 0x100 octets : la
 // structure en fait 0xf8, on arrondit (cf. le memcpy 0x5c..0xf8 du pont `src`).
 constexpr size_t kInfoSize = 0x100;
@@ -104,6 +97,67 @@ struct DeferredDesc {
   bool        from_link;
 };
 DeferredDesc g_deferred = {};
+
+// ── Le nom du client -> UTF-8, sans couper un caractère en deux ─────────────
+//
+// 🔴🔴 LE DÉFAUT QUE CECI CORRIGE ÉTAIT LÀ DEPUIS TOUJOURS, INVISIBLE.
+// `BuildDisplayName` écrit dans la CODE-PAGE DU CLIENT ; `itemcell::NameText`
+// et `DrawTooltip` attendent de l'UTF-8 — c'est écrit dans leur signature. Les
+// trois viewers passaient l'un à l'autre sans conversion. Tant que tous les noms
+// d'objets étaient de l'ASCII anglais, les deux encodages coïncidaient et rien
+// ne se voyait.
+//
+// La traduction de la MsgStringTable a mis le premier octet accentué dans un nom
+// d'objet : `MSI_NAMED_PET` = « Bien-aimé », que le client PRÉFIXE au nom d'un
+// œuf de familier. Résultat à l'écran : « Bien-aim◆ring Egg ». ImGui lit l'octet
+// `0xE9` comme la tête d'une séquence UTF-8 de trois octets, avale « é », « P »
+// et « o » d'un coup, et rend un carré. La traduction n'a pas créé le bug, elle
+// l'a RÉVÉLÉ.
+//
+// ⚠ La conversion FAIT GROSSIR : un accent latin passe de 1 à 2 octets, un
+// caractère coréen de 2 à 3. D'où un tampon d'arrivée plus large que celui du
+// client — et, si ça déborde quand même, une troncature sur une FRONTIÈRE de
+// caractère. Couper au milieu d'une séquence rendrait exactement le carré qu'on
+// vient de faire disparaître.
+// Coupe la DERNIÈRE séquence UTF-8 si elle est incomplète — et seulement dans ce
+// cas. ⚠ Le piège de cette fonction est d'être trop zélée : reculer dès qu'on
+// voit un octet ≥ 0x80 amputerait un accent PARFAITEMENT VALIDE en fin de
+// chaîne. On remonte donc jusqu'à l'octet de TÊTE, on lit la longueur qu'il
+// annonce, et on ne tranche que si elle dépasse ce qui reste.
+void TrimIncompleteUtf8(char* s) {
+  if (!s) return;
+  size_t n = std::strlen(s);
+  size_t start = n;
+  while (start > 0 &&
+         (static_cast<unsigned char>(s[start - 1]) & 0xC0) == 0x80) --start;
+  if (start == 0) return;
+  --start;  // l'octet de tête du dernier caractère
+  const unsigned char lead = static_cast<unsigned char>(s[start]);
+  size_t need = 1;
+  if      ((lead & 0xE0) == 0xC0) need = 2;
+  else if ((lead & 0xF0) == 0xE0) need = 3;
+  else if ((lead & 0xF8) == 0xF0) need = 4;
+  if (start + need > n) s[start] = '\0';
+}
+
+void CopyNameAsUtf8(const char* local, char* out, size_t out_size) {
+  if (!out || out_size == 0) return;
+  out[0] = '\0';
+  if (!local || !local[0]) return;
+
+  const char* utf8 = ro::LocalToUtf8(local);
+  if (!utf8) return;
+
+  size_t n = std::strlen(utf8);
+  if (n >= out_size) {
+    n = out_size - 1;
+    // Reculer tant qu'on est sur un octet de CONTINUATION (10xxxxxx) : la
+    // frontière est le premier octet qui n'en est pas un.
+    while (n > 0 && (static_cast<unsigned char>(utf8[n]) & 0xC0) == 0x80) --n;
+  }
+  std::memcpy(out, utf8, n);
+  out[n] = '\0';
+}
 
 }  // namespace
 
@@ -482,6 +536,10 @@ const char* Label(char* out, size_t out_size, const char* name, int slots) {
   const char* base = (name && name[0]) ? name : "(?)";
   if (slots > 0) std::snprintf(out, out_size, "%s [%d]", base, slots);
   else           std::snprintf(out, out_size, "%s", base);
+  // ⚠ `snprintf` tronque à l'OCTET. Le nom est en UTF-8 (cf. ItemRow::name) : une
+  // coupure au milieu d'une séquence rendrait un carré — exactement le défaut que
+  // la conversion à la source vient de faire disparaître.
+  TrimIncompleteUtf8(out);
   return out;
 }
 
@@ -695,6 +753,81 @@ void* FindInfoByIndex(uintptr_t list_head, int index) {
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
   return nullptr;
+}
+
+// Les champs d'`ItemSkillInfo` que le viewer montre, en plus de ceux que
+// `rag::itemlist` publie (index, quantité, id). Tous relus en jeu.
+namespace {
+constexpr int kInfoType     = 0x00;  // int   : type d'item (onglets)
+constexpr int kInfoLoc      = 0x08;  // u32   : masque d'emplacement d'équipement
+constexpr int kInfoCards    = 0x1c;  // 4 x u32
+constexpr int kInfoIdent    = 0x5c;  // octet : identifié ?
+constexpr int kInfoDamaged  = 0x5d;  // octet : équipement CASSÉ
+constexpr int kInfoRefine   = 0x60;  // int
+constexpr int kInfoFav      = 0x74;  // octet : favori
+constexpr int kInfoOptCount = 0x98;  // int
+constexpr int kInfoOpts     = 0x9c;  // entrées de 5 octets
+constexpr int kMaxOpts      = 5;     // ce que porte `ItemRow::opts`
+}  // namespace
+
+int ExtractList(uintptr_t list_head, ItemRow* out, int max) {
+  if (!out || max <= 0) return 0;
+
+  uint8_t* head = nullptr;
+  uint8_t* node = nullptr;
+  __try {
+    head = *reinterpret_cast<uint8_t**>(list_head);
+    if (head) node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+  if (!head) return 0;
+
+  int count = 0;
+  int guard = 0;
+  while (node && node != head && count < max && guard < kWalkGuard) {
+    // Le SUIVANT d'abord, sous sa propre garde : un nœud corrompu arrête net,
+    // sans boucle infinie, et sans perdre ce qui a déjà été lu.
+    uint8_t* next = nullptr;
+    __try { next = *reinterpret_cast<uint8_t**>(node + kNodeNext); }
+    __except (EXCEPTION_EXECUTE_HANDLER) { break; }
+
+    // 🔴 Un `__try` PAR ITEM. Sous un `__try` global, un seul item fautif fait
+    // avorter toute l'énumération — c'est le bug « 16 objets au lieu de 22 ».
+    __try {
+      ItemRow& it = out[count];
+      uint8_t* info = node + kNodeInfo;
+      it.id         = rag::itemlist::ItemId(info);
+      it.amount     = *reinterpret_cast<int*>(info + kInfoAmount);
+      it.index      = *reinterpret_cast<int*>(info + kInfoIndex);
+      it.loc        = *reinterpret_cast<uint32_t*>(info + kInfoLoc);
+      it.refine     = *reinterpret_cast<int*>(info + kInfoRefine);
+      it.type       = *reinterpret_cast<int*>(info + kInfoType);
+      it.identified = *reinterpret_cast<uint8_t*>(info + kInfoIdent);
+      it.damaged    = *reinterpret_cast<uint8_t*>(info + kInfoDamaged);
+      it.favorite   = *reinterpret_cast<uint8_t*>(info + kInfoFav);
+      for (int k = 0; k < 4; ++k)
+        it.cards[k] = *reinterpret_cast<uint32_t*>(info + kInfoCards + k * 4);
+      int nopt = *reinterpret_cast<int*>(info + kInfoOptCount);
+      if (nopt < 0) nopt = 0;
+      if (nopt > kMaxOpts) nopt = kMaxOpts;
+      it.opt_count = nopt;
+      for (int k = 0; k < nopt; ++k) {
+        const uint8_t* e = info + kInfoOpts + k * 5;
+        it.opts[k].index = *reinterpret_cast<const int16_t*>(e);
+        it.opts[k].value = *reinterpret_cast<const int16_t*>(e + 2);
+        it.opts[k].param = e[4];
+      }
+      // Les deux briques partagées portent leur PROPRE SEH, par item.
+      char local[64];
+      BuildDisplayName(info, local, sizeof(local));
+      CopyNameAsUtf8(local, it.name, sizeof(it.name));
+      it.total_slots = SlotCount(info);
+      ++count;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {}
+
+    node = next;
+    ++guard;
+  }
+  return count;
 }
 
 void NameText(const char* utf8, bool damaged) {

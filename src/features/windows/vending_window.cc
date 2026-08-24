@@ -21,6 +21,7 @@
 #include "ui/ro_imgui.h"
 #include "ui/ro_widgets.h"        // mui::IsLastItemRightClicked
 #include "utils/i18n.h"
+#include "utils/text.h"  // text::GroupThousands
 #include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 
 // ── Constantes RE (client 20250716, base 0x400000) ───────────────────────────
@@ -913,16 +914,7 @@ void OpenDescFromList(void* wnd, int list_off, int index, uint32_t id, int mx,
 
 // Sépare les milliers, comme le client (« 666,666 »).
 void FormatZeny(long long v, char* out, size_t cap) {
-  char raw[32];
-  std::snprintf(raw, sizeof(raw), "%lld", v);
-  const int len = static_cast<int>(std::strlen(raw));
-  int lead = len % 3 ? len % 3 : 3;
-  size_t o = 0;
-  for (int i = 0; i < len && o + 2 < cap; ++i) {
-    if (i == lead && i != 0) { out[o++] = ','; lead += 3; }
-    out[o++] = raw[i];
-  }
-  out[o] = '\0';
+  text::GroupThousands(v, out, cap);
 }
 
 }  // namespace

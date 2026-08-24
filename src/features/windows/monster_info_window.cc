@@ -25,6 +25,7 @@
 #include "ui/ro_widgets.h"      // mui::LastItemWheel (verrou molette anti-défilement)
 #include "ui/sprite_view.h"     // cadence du .act + son du sprite (interaction)
 #include "utils/i18n.h"
+#include "utils/text.h"  // text::GroupThousands
 
 namespace {
 
@@ -244,16 +245,7 @@ constexpr ModeBit kModeBits[] = {
 // Les PV d'un MVP et l'EXP de base se comptent en millions : sans séparateur,
 // personne ne distingue 1200000 de 12000000 d'un coup d'œil.
 const char* Grouped(uint32_t v, char* out, size_t cap) {
-  char raw[16];
-  _snprintf_s(raw, sizeof(raw), _TRUNCATE, "%u", v);
-  const int len = static_cast<int>(std::strlen(raw));
-  int lead = (len % 3) ? (len % 3) : 3;
-  size_t o = 0;
-  for (int i = 0; i < len && o + 2 < cap; ++i) {
-    if (i == lead && i != 0) { out[o++] = ','; lead += 3; }
-    out[o++] = raw[i];
-  }
-  out[o] = '\0';
+  text::GroupThousands(v, out, cap);
   return out;
 }
 

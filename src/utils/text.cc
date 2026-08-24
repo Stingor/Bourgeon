@@ -1,5 +1,6 @@
 #include "utils/text.h"
 
+#include <cstdio>
 #include <cstring>
 
 namespace text {
@@ -33,6 +34,23 @@ int Base62Digit(char c) {
   if (c >= 'a' && c <= 'z') return c - 'a' + 10;
   if (c >= 'A' && c <= 'Z') return c - 'A' + 36;
   return -1;
+}
+
+void GroupThousands(long long value, char* out, size_t cap) {
+  if (!out || cap == 0) return;
+  out[0] = '\0';
+  char raw[32];
+  std::snprintf(raw, sizeof(raw), "%lld", value);
+  const int len = static_cast<int>(std::strlen(raw));
+  // Le premier groupe est le RESTE de la division par trois — « 1,234,567 »
+  // commence par un chiffre seul, pas par trois.
+  int lead = (len % 3) ? (len % 3) : 3;
+  size_t o = 0;
+  for (int i = 0; i < len && o + 2 < cap; ++i) {
+    if (i == lead && i != 0) { out[o++] = ','; lead += 3; }
+    out[o++] = raw[i];
+  }
+  out[o] = '\0';
 }
 
 }  // namespace text

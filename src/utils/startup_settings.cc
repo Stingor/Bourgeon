@@ -42,7 +42,8 @@ YAML::Node LoadDocument(const std::string& path) {
 // QUOI n'a pas été retenu n'aide personne à comprendre ce qu'il vient de perdre.
 // Un nom NU (« police de l'interface »), sans article : la phrase l'encadre de
 // guillemets, ce qui lui évite d'avoir à s'accorder avec le réglage du jour.
-void SaveRootKey(const char* key, int value, const char* what) {
+template <typename T>
+void SaveRootKeyImpl(const char* key, const T& value, const char* what) {
   const std::string path = paths::StartupSettingsPath();
   YAML::Node root;
   try {
@@ -68,6 +69,13 @@ void SaveRootKey(const char* key, int value, const char* what) {
 }
 
 }  // namespace
+
+void SaveRootKey(const char* key, int value, const char* what) {
+  SaveRootKeyImpl(key, value, what);
+}
+void SaveRootKey(const char* key, const std::string& value, const char* what) {
+  SaveRootKeyImpl(key, value, what);
+}
 
 YAML::Node Section(const char* name) {
   const YAML::Node startup_root = LoadDocument(paths::StartupSettingsPath());

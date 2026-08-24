@@ -58,11 +58,6 @@ constexpr float kSpawnW = 300.0f, kSpawnH = 300.0f;
 constexpr int kOffWidth   = 0x14;
 constexpr int kOffHeight  = 0x18;
 
-using rag::itemlist::kNodeNext;
-using rag::itemlist::kNodeInfo;
-using rag::itemlist::kNodeAmount;
-using rag::itemlist::kInfoIndex;
-using rag::itemlist::kInfoIdStr;
 // Champs DANS l'ItemSkillInfo (= node+0x08), identiques à l'inventaire :
 constexpr int kInfoType   = 0x00;
 constexpr int kInfoIdent  = 0x5c;  // byte : item identifié ?
@@ -288,56 +283,7 @@ void CartViewer::HandleNativeCreation(void* win) {
 // marche fenêtre native cachée. POD-only sous SEH ; le nom complet passe par
 // itemcell::BuildDisplayName, qui résout seul son contexte natif.
 void CartViewer::Extract() {
-  item_count_ = 0;
-  uint8_t* head = nullptr;
-  uint8_t* node = nullptr;
-  __try {
-    head = *reinterpret_cast<uint8_t**>(rag::kCartListAddr);
-    if (head) node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return; }
-  if (!head) return;
-
-  int guard = 0;
-  while (node && node != head && item_count_ < kMaxItems && guard < kMaxItems) {
-    // Pointeur SUIVANT lu D'ABORD sous garde : un nœud corrompu arrête net (pas de
-    // boucle infinie ni de faute) sans perdre les items déjà lus.
-    uint8_t* next = nullptr;
-    __try { next = *reinterpret_cast<uint8_t**>(node + kNodeNext); }
-    __except (EXCEPTION_EXECUTE_HANDLER) { break; }
-
-    // Extraction PAR ITEM sous SEH ISOLÉ -> une faute est confinée à l'item (sauté),
-    // l'énumération continue (même politique que l'inventaire).
-    __try {
-      Item& it = items_[item_count_];
-      uint8_t* info = node + kNodeInfo;
-      const char* ids = rag::clientstr::Data(info + kInfoIdStr);
-      it.id = ids ? static_cast<uint32_t>(atoi(ids)) : 0;
-      it.identified = *reinterpret_cast<uint8_t*>(info + kInfoIdent);
-      it.damaged = *reinterpret_cast<uint8_t*>(info + kInfoDamaged);
-      it.amount = *reinterpret_cast<int*>(node + kNodeAmount);
-      it.index  = *reinterpret_cast<int*>(info + kInfoIndex);
-      it.refine = *reinterpret_cast<int*>(info + kInfoRefine);
-      it.type   = *reinterpret_cast<int*>(info + kInfoType);
-      for (int k = 0; k < 4; ++k)
-        it.cards[k] = *reinterpret_cast<uint32_t*>(info + 0x1c + k * 4);
-      int nopt = *reinterpret_cast<int*>(info + 0x98);
-      if (nopt < 0) nopt = 0;
-      if (nopt > 5) nopt = 5;
-      it.opt_count = nopt;
-      for (int k = 0; k < nopt; ++k) {
-        const uint8_t* e = info + 0x9c + k * 5;
-        it.opts[k].index = *reinterpret_cast<const int16_t*>(e);
-        it.opts[k].value = *reinterpret_cast<const int16_t*>(e + 2);
-        it.opts[k].param = e[4];
-      }
-      itemcell::BuildDisplayName(info, it.name, sizeof(it.name));
-      it.total_slots = itemcell::SlotCount(info);
-      ++item_count_;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {}
-
-    node = next;
-    ++guard;
-  }
+  item_count_ = itemcell::ExtractList(rag::kCartListAddr, items_, kMaxItems);
 }
 
 void CartViewer::OnTick() {

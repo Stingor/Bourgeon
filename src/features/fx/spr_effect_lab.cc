@@ -96,25 +96,6 @@ int ResolveConcreteId(int ordinal) {
 
 // GetHatEfResName(ordinal) NATIF : chemin du .str d'un hat effect « name-based » (ex. gold_shower),
 // VIDE pour les effets EZ/hatEffectID. Sert de libellé indicatif dans le catalogue. POD/SEH.
-void ResolveResName(int ordinal, char* out, int cap) {
-  if (cap <= 0) return;
-  out[0] = '\0';
-  __try {
-    void* L = lua::State();
-    if (L) {
-      lua::CheckStack(L, 3);
-      lua::GetField(
-          L, lua::kGlobalsIndex, "GetHatEfResName");
-      lua::PushNumber(L, static_cast<double>(ordinal));
-      if (lua::PCall(L, 1, 1, 0) == 0) {
-        const char* s = lua::ToLString(
-            L, -1, nullptr);
-        if (s && s[0]) { std::strncpy(out, s, cap - 1); out[cap - 1] = '\0'; }
-      }
-      lua::SetTop(L, -2);
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
-}
 
 // ── Catalogue des effets .spr/EZ (scan NATIF, pas de liste hardcodée) ──────────
 // On balaie les ordinaux et on interroge le client lui-même : GetHatEffectID(ord) > 0 => c'est un
@@ -135,7 +116,7 @@ void BuildCatalog() {
   for (int ord = 1; ord < kMaxOrdinalScan; ++ord) {
     const int cid = ResolveConcreteId(ord);
     char res[48];
-    ResolveResName(ord, res, sizeof(res));
+    lua::HatEffectResName(ord, res, sizeof(res));
     if (cid > 0) {                      // effet EZ/hatEffectID = rendable par ce lab
       HatEntry e;
       e.ord = ord; e.cid = cid;

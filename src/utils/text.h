@@ -16,6 +16,7 @@
 //
 // Le nom le dit donc : ces fonctions sont ASCII, et c'est un choix.
 
+#include <cstddef>  // size_t
 #include <string>
 
 namespace text {
@@ -33,5 +34,15 @@ bool ContainsNoCase(const char* haystack, const char* needle);
 // que le client emploie dans ses balises de lien d'objet du chat. Deux fichiers
 // le décodaient, l'un en `char` et l'autre en `unsigned char` — même table.
 int Base62Digit(char c);
+
+// Un nombre avec des VIRGULES tous les trois chiffres — « 1,234,567 ».
+//
+// Écrit deux fois : `FormatZeny` (échoppe joueur) et `Grouped` (fiche de
+// monstre), à la ligne près, jusqu'au calcul du premier groupe. Le séparateur
+// est la virgule parce que c'est celui du client, pas celui de la locale : ces
+// chaînes voisinent des libellés que le jeu produit lui-même.
+//
+// ⚠ Tronque proprement si `cap` est trop petit, et termine toujours par un NUL.
+void GroupThousands(long long value, char* out, size_t cap);
 
 }  // namespace text

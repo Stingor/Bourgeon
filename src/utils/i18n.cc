@@ -11,6 +11,7 @@
 
 #include "utils/game_paths.h"
 #include "utils/log_console.h"
+#include "utils/startup_settings.h"  // startup::SaveRootKey
 #include "yaml-cpp/yaml.h"
 
 namespace i18n {
@@ -233,28 +234,11 @@ constexpr const char* kLanguageKey = "language";
 // `moonlight_auth`. Écrire à plat le tronquerait, et changer de langue effacerait
 // les identifiants d'auto-login — exactement le bug qu'a déjà connu
 // `bourgeon_settings.yaml`, dont la parade est commentée dans WriteSettingsFile.
+// L'écriture elle-même est `startup::SaveRootKey` : ce fichier en portait sa
+// propre copie, à la ligne près, jusqu'au commentaire sur la vérification
+// d'erreur après le flush.
 void SaveLanguageSetting() {
-  const std::string path = paths::StartupSettingsPath();
-  YAML::Node root;
-  try {
-    root = YAML::LoadFile(path);
-  } catch (const std::exception&) {
-    // Absent au premier lancement, ou illisible : on repart d'un document vide
-    // plutôt que de renoncer à enregistrer le choix du joueur.
-  }
-  if (!root.IsMap()) root = YAML::Node(YAML::NodeType::Map);
-  root[kLanguageKey] = g_code;
-
-  std::ofstream file(path, std::ios::binary | std::ios::trunc);
-  if (!file) {
-    LogDiag("[i18n] impossible d'écrire {} — la langue ne sera pas retenue", path);
-    return;
-  }
-  file << YAML::Dump(root) << "\n";
-  file.flush();
-  // ⚠ Vérifier APRÈS écriture : un disque plein ou un fichier verrouillé ne se
-  // manifeste qu'ici, l'ouverture ayant réussi.
-  if (!file) LogDiag("[i18n] écriture de {} incomplète", path);
+  startup::SaveRootKey(kLanguageKey, g_code, "langue de l'interface");
 }
 
 // L'ancienne place de la clé, avant l'éclatement : `moonlight_ui.language` dans

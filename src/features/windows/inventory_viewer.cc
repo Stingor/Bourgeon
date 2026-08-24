@@ -53,9 +53,6 @@ constexpr int kOffHeight  = 0x18;
 
 constexpr uintptr_t kCntEquipped = 0x00d9aa70;  // __fastcall(session) : nb items ÉQUIPÉS distincts (10 slots @+0x17d4)
 constexpr uintptr_t kCntCostume  = 0x00d9a960;  // __fastcall(session) : nb items COSTUME distincts (10 slots @+0x2b34)
-using rag::itemlist::kNodeNext;
-using rag::itemlist::kNodeInfo;
-using rag::itemlist::kNodeAmount;
 using rag::itemlist::kInfoIndex;
 using rag::itemlist::kInfoIdStr;
 constexpr int kInfoFav  = 0x74;  // favori dans l'ItemSkillInfo (RE FUN_0095af80 : local_98 = info+0x74)
@@ -874,66 +871,8 @@ void InventoryViewer::HandleCardInsertCreation(void* win) {
 // fenêtre native cachée. POD-only sous SEH ; le nom complet est bâti via BuildDisplayName
 // (repli GetBaseName), qui résout seul son contexte natif.
 void InventoryViewer::Extract() {
-  item_count_ = 0;
-  void* wnd = nullptr;
-  uint8_t* head = nullptr;
-  uint8_t* node = nullptr;
-  // Tête de liste + 1er nœud (contexte fenêtre = pour BuildName). RE workflow : la
-  // liste 0x015fbab0 (g_session+0x16f0) contient DÉJÀ tous les items (équipés inclus),
-  // = la même source que le natif. Le "16 au lieu de 22" venait d'un try/except GLOBAL
-  // qu'UN SEUL item fautif (id SSO corrompue / BuildDisplayName forgé) faisait avorter.
-  __try {
-    wnd  = *reinterpret_cast<void**>(uiwnd::kInventoryWndSlot);
-    head = *reinterpret_cast<uint8_t**>(rag::kInventoryListAddr);
-    if (head) node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return; }
-  if (!head) return;
-
-  int guard = 0;
-  while (node && node != head && item_count_ < kMaxItems && guard < kMaxItems) {
-    // Pointeur SUIVANT lu D'ABORD sous garde : un nœud corrompu arrête net (pas de
-    // boucle infinie / faute) sans perdre les items déjà lus.
-    uint8_t* next = nullptr;
-    __try { next = *reinterpret_cast<uint8_t**>(node + kNodeNext); }
-    __except (EXCEPTION_EXECUTE_HANDLER) { break; }
-
-    // Extraction PAR ITEM sous SEH ISOLÉ -> une faute est confinée à l'item (sauté),
-    // l'énumération continue jusqu'au bout (fix du "16 au lieu de 22").
-    __try {
-      Item& it = items_[item_count_];
-      uint8_t* info = node + kNodeInfo;
-      const char* ids = rag::clientstr::Data(info + kInfoIdStr);
-      it.id = ids ? static_cast<uint32_t>(atoi(ids)) : 0;
-      it.identified = *reinterpret_cast<uint8_t*>(info + kInfoIdent);
-      it.damaged = *reinterpret_cast<uint8_t*>(info + kInfoDamaged);
-      it.amount = *reinterpret_cast<int*>(node + kNodeAmount);
-      it.index  = *reinterpret_cast<int*>(info + kInfoIndex);
-      it.loc    = *reinterpret_cast<uint32_t*>(info + kInfoLoc);
-      it.refine = *reinterpret_cast<int*>(info + kInfoRefine);
-      it.type   = *reinterpret_cast<int*>(info + kInfoType);
-      it.favorite = *reinterpret_cast<uint8_t*>(info + kInfoFav);
-      // Cartes/enchants + random options : données d'instance nécessaires à l'aperçu
-      // de description au survol (mêmes offsets que la fenêtre de desc native).
-      for (int k = 0; k < 4; ++k)
-        it.cards[k] = *reinterpret_cast<uint32_t*>(info + 0x1c + k * 4);
-      int nopt = *reinterpret_cast<int*>(info + 0x98);
-      if (nopt < 0) nopt = 0;
-      if (nopt > 5) nopt = 5;
-      it.opt_count = nopt;
-      for (int k = 0; k < nopt; ++k) {
-        const uint8_t* e = info + 0x9c + k * 5;
-        it.opts[k].index = *reinterpret_cast<const int16_t*>(e);
-        it.opts[k].value = *reinterpret_cast<const int16_t*>(e + 2);
-        it.opts[k].param = e[4];
-      }
-      itemcell::BuildDisplayName(info, it.name, sizeof(it.name));  // nom (SEH isolé + repli GetBaseName)
-      it.total_slots = itemcell::SlotCount(info);
-      ++item_count_;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {}
-
-    node = next;
-    ++guard;
-  }
+  item_count_ =
+      itemcell::ExtractList(rag::kInventoryListAddr, items_, kMaxItems);
 }
 
 void InventoryViewer::OnTick() {

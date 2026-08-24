@@ -12,6 +12,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <excpt.h>  // __try / __except
 
 namespace lua {
 
@@ -123,5 +124,38 @@ inline int CheckStack(void* L, int extra) {
 
 // Dépile les `count` valeurs du sommet (lua_pop de la vraie API est une macro).
 inline void Pop(void* L, int count) { SetTop(L, -count - 1); }
+
+// ── `GetHatEfResName(ordinal)` : le nom de ressource d'un effet de couvre-chef ──
+//
+// La séquence complète — champ global, argument, appel protégé, lecture de la
+// chaîne, dépilage — était écrite DEUX fois, sous deux noms
+// (`HatOrdinalToResNameRaw` dans basic_info, `ResolveResName` dans le SPR Lab).
+//
+// ⚠ Le `CheckStack` ne venait que d'une des deux copies. Il est repris : quatre
+// lignes plus bas on empile deux valeurs, et un état Lua dont la pile est déjà
+// pleine ferait autrement une corruption silencieuse plutôt qu'un échec propre.
+//
+// ⚠ NE PAS confondre avec le `ResolveResName` de ui/icon_cache : celui-là prend
+// un NAMEID D'OBJET et passe par la DB d'items, pas par Lua.
+inline void HatEffectResName(int ordinal, char* out, int cap) {
+  if (!out || cap <= 0) return;
+  out[0] = '\0';
+  __try {
+    void* L = State();
+    if (!L) return;
+    CheckStack(L, 3);
+    GetField(L, kGlobalsIndex, "GetHatEfResName");
+    PushNumber(L, static_cast<double>(ordinal));
+    if (PCall(L, 1, 1, 0) == 0) {
+      const char* s = ToLString(L, -1, nullptr);
+      if (s && s[0]) {
+        int n = 0;
+        while (n < cap - 1 && s[n]) { out[n] = s[n]; ++n; }
+        out[n] = '\0';
+      }
+    }
+    Pop(L, 1);
+  } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
+}
 
 }  // namespace lua
