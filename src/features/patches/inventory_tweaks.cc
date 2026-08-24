@@ -1,4 +1,5 @@
 #include "ragnarok/globals.h"
+#include "ragnarok/item_info.h"  // rag::itemlist : le layout du noeud
 #include "ragnarok/uiwnd.h"  // uiwnd::kInventoryWndSlot (identifie NOTRE tab control)
 #include "ui/game_texture.h"
 #include "features/patches/inventory_tweaks.h"
@@ -68,8 +69,6 @@ constexpr int kInvBaseDelta = rag::kInventoryServerBase - rag::kInventoryClientB
 constexpr int kWndWidth   = 0x14;
 constexpr int kWndHeight  = 0x18;
 constexpr int kCollapsedH = 0x11;   // title-bar-only height when minimized
-constexpr int kTexW       = 0x114;  // UITexture width
-constexpr int kTexH       = 0x118;  // UITexture height
 
 constexpr unsigned kColorNormal = 0x232323;  // match the item-count text
 constexpr unsigned kColorOver   = 0x0000ff;  // red, like UIBasicInfoWnd
@@ -182,7 +181,7 @@ constexpr int kItCard  = 6;   // item TYPE for cards (node+0x08 == 6)
 constexpr int kEtcSub  = 0x108;  // inv+0x108 = Etc sub-filter (==4 => "show all etc")
 constexpr int kListHead  = 0xe8;  // inv+0xe8 -> head sentinel node (node+0 next, +4 prev)
 constexpr int kListCount = 0xec;  // inv+0xec element count
-constexpr int kNodeNext  = 0x00;  // list node: next
+using rag::itemlist::kNodeNext;
 constexpr int kNodePrev  = 0x04;  // list node: prev
 constexpr int kNodeType  = 0x08;  // list node: item TYPE (record+0x00)
 
@@ -339,7 +338,7 @@ void SizeTabsToImages(void* tabobj) {
   int maxW = 0;
   for (int i = 0; i < kTabCount; ++i)
     if (void* img = TabImg(i, true)) {
-      const int iw = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(img) + kTexW);
+      const int iw = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(img) + ro::texmgr::kTexWidth);
       if (iw > maxW) maxW = iw;
     }
   if (maxW > kTabMaxWidth) maxW = kTabMaxWidth;  // keep clear of the slot grid
@@ -353,7 +352,7 @@ void SizeTabsToImages(void* tabobj) {
       void* img = TabImg(i, true);
       if (!img) continue;
       const int imgH = *reinterpret_cast<int*>(
-          reinterpret_cast<uint8_t*>(img) + kTexH);
+          reinterpret_cast<uint8_t*>(img) + ro::texmgr::kTexHeight);
       if (imgH > 0 && sz[i] != imgH) { sz[i] = imgH; changed = true; }
     }
   }
@@ -451,7 +450,7 @@ void __fastcall DrawContentHook(void* wnd, void* /*edx*/) {
       void* btex = ro::texmgr::LoadResource(
           reinterpret_cast<const char*>(ro::uipath::kUiRootSample));
       const int btnbarH = btex
-          ? *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(btex) + kTexH)
+          ? *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(btex) + ro::texmgr::kTexHeight)
           : kBarHeight;
       const int gridBottom = kCollapsedH + *reinterpret_cast<int*>(w + kRows) * kSlot;
       const int frameTop   = height - btnbarH;
@@ -474,8 +473,8 @@ void __fastcall DrawContentHook(void* wnd, void* /*edx*/) {
         reinterpret_cast<const char*>(ro::uipath::kIconWeight));
     int iconW = 0, iconH = 0;
     if (tex) {
-      iconW = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(tex) + kTexW);
-      iconH = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(tex) + kTexH);
+      iconW = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(tex) + ro::texmgr::kTexWidth);
+      iconH = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(tex) + ro::texmgr::kTexHeight);
     }
 
     // Both share one line just above the native count: WEIGHT (icon + value)
@@ -538,7 +537,7 @@ void __fastcall TabDrawContentHook(void* tabobj, void* /*edx*/) {
       int y = 0;  // tab i top = sum(size[0..i-1] - 1), matching FUN_00847330
       for (int i = 0; i < count && i < kTabCount; ++i) {
         if (void* ttex = TabImg(i, i == sel)) {
-          const int iw = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(ttex) + kTexW);
+          const int iw = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(ttex) + ro::texmgr::kTexWidth);
           const int bx = (sw > iw) ? (sw - iw) / 2 : 0;  // centre in the strip width
           reinterpret_cast<Blit_t>(uiwnd::kBlitImageToNodeAddr)(tabobj, nullptr, bx, y, ttex, 0);
         }

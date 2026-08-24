@@ -438,21 +438,6 @@ bool SkillHasDescSEH(int skill_id) {
   return ok;
 }
 
-void OpenSkillDesc(int skill_id, int mx, int my) {
-  if (skill_id <= 0) return;
-  __try {
-    void* wnd = uiwnd::MakeWindow(itemdb::kSkillDescWndId);
-    if (!wnd) return;
-    // Re-clic sur le même skill = referme, comme le natif (id affiché à +0x104).
-    if (*reinterpret_cast<int*>(reinterpret_cast<char*>(wnd) +
-                                itemdb::kSkillDescShownId) == skill_id) {
-      uiwnd::CloseWindow(itemdb::kSkillDescWndId);
-      return;
-    }
-    uiwnd::OnMsg(wnd, itemdb::kSkillDescMsgSet, skill_id, 0, 0, 0);
-    uiwnd::SetPos(wnd, mx, my);
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
-}
 
 void RateText(char* out, size_t n, uint32_t rate) {
   // rate est en 1/100 de %, comme la fiche d'item et le bestiaire web.
@@ -1820,7 +1805,7 @@ void MonsterInfoWindow::FlushPending() {
     return;
   const int id = pending_skill_desc_;
   pending_skill_desc_ = 0;
-  OpenSkillDesc(id, pending_skill_x_, pending_skill_y_);
+  itemdb::OpenSkillDesc(id, pending_skill_x_, pending_skill_y_);
 }
 
 bool MonsterInfoWindow::DrawSettings() {

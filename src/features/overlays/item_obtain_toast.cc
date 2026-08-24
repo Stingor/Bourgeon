@@ -13,6 +13,7 @@
 #include "imgui.h"
 
 #include "bourgeon.h"
+#include "ragnarok/item_info.h"  // rag::itemlist : le layout du noeud
 #include "features/item_cell.h"          // itemcell::BuildDisplayName
 #include "features/moonlight_ui/moonlight_ui.h"
 #include "ragnarok/msgstring.h"          // msgstr::Utf8 (libellés natifs)
@@ -51,7 +52,7 @@ constexpr int kMsiObtain = 696;
 // ── Champs d'un ItemSkillInfo ───────────────────────────────────────────────
 // (mêmes offsets et mêmes noms que features/item_cell.cc et inventory_viewer.cc)
 constexpr int kInfoNum     = 0x10;  // int    : quantité
-constexpr int kInfoIdStr   = 0x2c;  // std::string : l'itemId EN TEXTE
+using rag::itemlist::kInfoIdStr;
 constexpr int kInfoIdent   = 0x5c;  // octet  : identifié
 constexpr int kInfoDamaged = 0x5d;  // octet  : cassé
 constexpr int kInfoRefine  = 0x60;  // int    : niveau d'affinage

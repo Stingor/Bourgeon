@@ -17,6 +17,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <excpt.h>  // __try / __except — jamais <Windows.h> dans un en-tête
 #include <vector>
 
 namespace ro {
@@ -165,6 +166,49 @@ inline void BuildItemIconPath(unsigned nameid, char* out, int identified = 1) {
   out[0] = '\0';
   reinterpret_cast<void (__stdcall*)(const char*, char*, int)>(kBuildItemIconPath)(
       idstr, out, identified);
+}
+
+// ── Lire les PIXELS d'une CTexture chargée ──────────────────────────────────
+//
+// Trois champs, à trois offsets, dans une structure de 0x120 octets. SEPT
+// fichiers les déclaraient, sous TROIS jeux de noms — `kTexW/kTexH/kTexPix`,
+// `kTexOffW/kTexOffH/kTexOffPix`, `kOffW/kOffH/kOffPix` — et rien ne reliait les
+// trois : chercher l'un des noms ne ramenait qu'un tiers des porteurs.
+constexpr int kTexWidth  = 0x114;
+constexpr int kTexHeight = 0x118;
+constexpr int kTexPixels = 0x11c;  // -> le tampon BGRA, 4 octets par pixel
+
+struct RawImage {
+  const uint8_t* bgra = nullptr;  // pixels du CLIENT — ne PAS libérer
+  int   w = 0;
+  int   h = 0;
+  void* ctex = nullptr;           // la CTexture elle-même, si l'appelant la veut
+};
+
+// Charge et rend les pixels bruts, ou false. Le tampon appartient au client : on
+// le LIT, on ne le garde pas au-delà de la frame (une bascule de skin ou un
+// reset de device le remplace).
+//
+// `max_dim` est un garde-fou de vraisemblance sur une structure lue en mémoire :
+// trois des appelants tenaient 4096, le quatrième 1024 pour ses vignettes de
+// login. Le paramètre garde cette différence VISIBLE plutôt que de l'aligner
+// sans raison.
+inline bool LoadRaw(const char* path, RawImage* out, int max_dim = 4096) {
+  if (!out) return false;
+  __try {
+    void* t = LoadResource(path);
+    if (!t) return false;
+    char* p = static_cast<char*>(t);
+    const int w = *reinterpret_cast<int*>(p + kTexWidth);
+    const int h = *reinterpret_cast<int*>(p + kTexHeight);
+    const uint8_t* px = *reinterpret_cast<const uint8_t**>(p + kTexPixels);
+    if (w <= 0 || h <= 0 || w > max_dim || h > max_dim || !px) return false;
+    out->bgra = px;
+    out->w = w;
+    out->h = h;
+    out->ctex = t;
+    return true;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 }  // namespace texmgr
 

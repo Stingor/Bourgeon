@@ -31,14 +31,10 @@ namespace {
 // `ActorList_FindByGID(gm+0xCC, gid)` — donc il rend nullptr proprement hors
 // jeu, là où lire `kActiveModePtr` à la main rendrait un mode de login.
 
-// Dictionnaire de noms `std::map<GID, CNameInfo>` à `GameMode+0x160`
-// (docs/entity_nameplate_re.md §2).
-//   · `Contains` ne fait que chercher : AUCUN effet de bord, on peut donc
-//     l'appeler à chaque frame pour dire si le client a seulement une entrée ;
-//   · `GetEntryOrRequest` rend l'entrée si elle est RENSEIGNÉE (+0x98 == 1) et,
-//     sinon, met le GID dans la file de demande au serveur avant de rendre une
-//     entrée vide STATIQUE. C'est le seul appel de ce fichier qui puisse
-//     produire un paquet — d'où le throttle côté appelant.
+// Dictionnaire de noms : `gamescene::NameDictContains` (sans effet de bord) et
+// `gamescene::NameDictEntry` (qui peut DEMANDER le nom au serveur — d'où le
+// throttle plus bas). Les deux vivent dans ragnarok/game_scene.h avec leurs
+// adresses ; ce fichier et target_frame en portaient chacun une copie.
 
 // (Le résolveur de nom de classe est `rag::JobName` — cf. globals.h. Ce bloc
 // affirmait auparavant que `sex = -1` était « valable en jeu » : c'était FAUX, et
@@ -93,8 +89,6 @@ const ImVec4 kLabelCol(0.35f, 0.35f, 0.42f, 1.0f);
 const ImVec4 kValueCol(0.10f, 0.10f, 0.13f, 1.0f);
 const ImVec4 kMissingCol(0.55f, 0.33f, 0.08f, 1.0f);
 
-using ContainsFn   = bool     (__thiscall*)(void*, uint32_t);
-using GetEntryFn   = void*    (__thiscall*)(void*, uint32_t);
 using WorldToTileFn = void (__thiscall*)(void*, float, float, int*, int*,
                                          unsigned*, unsigned*);
 
@@ -123,24 +117,6 @@ using rag::Read;
 // dès que le manager quitte l'état 1, et l'inspecteur ne montre rien pendant ces
 // quelques frames — ce qui est exactement ce qu'il doit faire : il n'y a plus
 // d'entité à inspecter.
-
-bool NameDictContains(void* game_mode, uint32_t gid) {
-  __try {
-    if (!game_mode) return false;
-    void* dict = reinterpret_cast<uint8_t*>(game_mode) + gamescene::kGmNameDict;
-    return reinterpret_cast<ContainsFn>(gamescene::kNameDictContainsAddr)(dict, gid);
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
-}
-
-// 🔴 Peut DEMANDER le nom au serveur (cf. le bloc d'adresses). L'appelant décide
-// quand il a le droit de le faire.
-void* NameDictEntry(void* game_mode, uint32_t gid) {
-  __try {
-    if (!game_mode) return nullptr;
-    void* dict = reinterpret_cast<uint8_t*>(game_mode) + gamescene::kGmNameDict;
-    return reinterpret_cast<GetEntryFn>(gamescene::kNameDictGetEntryOrRequestAddr)(dict, gid);
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
-}
 
 bool NameEntryValid(const void* entry) {
   __try {
@@ -356,7 +332,7 @@ void EntityInspector::Refresh(Snapshot* out) {
   if (!game_mode || gid_ == 0) return;
 
   // ── Plaque de nom ──────────────────────────────────────────────────────────
-  out->in_dict = NameDictContains(game_mode, gid_);
+  out->in_dict = gamescene::NameDictContains(game_mode, gid_);
 
   // 🔴 `GetEntryOrRequest` n'est appelée que si elle ne peut RIEN demander (le
   // nom est déjà résolu, elle sort tout de suite) ou si le throttle l'autorise.
@@ -370,7 +346,7 @@ void EntityInspector::Refresh(Snapshot* out) {
   if (!may_request) return;
   if (!name_resolved_) last_name_request_ = now;
 
-  void* entry = NameDictEntry(game_mode, gid_);
+  void* entry = gamescene::NameDictEntry(game_mode, gid_);
   out->resolved = NameEntryValid(entry);
   if (out->resolved) {
     name_resolved_ = true;

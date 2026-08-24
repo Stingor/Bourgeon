@@ -65,12 +65,29 @@ class ItemViewerBase : public Plugin {
 
   // ── Settings PERSISTANTS communs (section du panneau Moonlight) ────────────
   bool& show_panel()     { return show_panel_; }
+
   bool& show_filter()    { return show_filter_; }
   bool& desc_tooltip()   { return show_desc_tooltip_; }
   bool& tabs_vertical()  { return tabs_vertical_; }
   int&  cur_tab()        { return cur_tab_; }
 
  protected:
+  // ── La BASCULE, quand le hook MakeWindow voit naître la native ─────────────
+  //
+  // C'est la DEMANDE du joueur : il a appuyé sur la touche, ou cliqué l'icône.
+  // On masque la native avant son premier rendu — pas de scintillement — et
+  // c'est `OnTick` qui la détruit ensuite.
+  //
+  // 🔴 DÉTRUITE, pas masquée : toute bascule du client fait « ferme si elle
+  // existe, sinon crée ». Une native vivante avalerait donc un appui sur deux.
+  // Et comme elle n'existe jamais du point de vue du client, c'est NOUS qui
+  // portons l'état ouvert/fermé — d'où l'inversion sur `open_` ici.
+  //
+  // L'inventaire et le chariot en portaient chacun leur copie, identiques à la
+  // VTABLE PRÈS. C'est le seul paramètre : `uiwnd::kInventoryWndVTable` d'un
+  // côté, `uiwnd::kCartWndVTable` de l'autre.
+  void HandleNativeToggle(void* win, uintptr_t expected_vtable);
+
   // ── Cycle de vie ──────────────────────────────────────────────────────────
   bool open_ = false;   // session ouverte ce frame ?
   // Valeur d'`imgui_enabled_` au tick précédent : détecte la BASCULE de mode,

@@ -180,7 +180,6 @@ constexpr int kAct_HeadGage    = 0x488;
 constexpr int kGage_Hp    = 0xa0;
 constexpr int kGage_MaxHp = 0xa4;
 
-using GetEntryFn  = void* (__thiscall*)(void*, uint32_t);
 
 // Types d'entité tels qu'ils voyagent dans ZC 0x0F2A (e_bourgeon_target_type).
 constexpr uint8_t kTypePc  = 1;
@@ -397,13 +396,6 @@ uint32_t ValidSkillTarget(uint32_t gid, int mode) {
 // pour le même GID — jusqu'à 240 par seconde dans une file que le client ne vide
 // qu'à raison d'une par frame. La cible mettait d'autant plus longtemps à
 // recevoir son nom qu'on le réclamait plus fort.
-void* NameEntry(void* game_mode, uint32_t gid) {
-  __try {
-    if (!game_mode || gid == 0) return nullptr;
-    void* dict = reinterpret_cast<uint8_t*>(game_mode) + gamescene::kGmNameDict;
-    return reinterpret_cast<GetEntryFn>(gamescene::kNameDictGetEntryOrRequestAddr)(dict, gid);
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
-}
 
 // Un champ de cette entrée, recopié. L'entrée statique rendue sur un défaut a
 // tous ses champs vides, et le tampon de sortie est vidé dans tous les cas :
@@ -1043,7 +1035,7 @@ void TargetFrame::DrawHud() {
     // Ce que le client sait tout seul. Une seule interrogation du dictionnaire,
     // quatre lectures dedans — cf. NameEntry pour la raison, qui n'est pas
     // qu'une question de coût.
-    void* name_entry = NameEntry(gm, gid_);
+    void* name_entry = gamescene::NameDictEntry(gm, gid_);
     ReadNameField(name_entry, gamescene::kNameStr,   name_,  sizeof(name_));
     ReadNameField(name_entry, gamescene::kNameParty, party_, sizeof(party_));
     ReadNameField(name_entry, kName_Guild, guild_, sizeof(guild_));

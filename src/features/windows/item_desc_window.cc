@@ -133,7 +133,6 @@ constexpr uintptr_t kRichLinesEnd   = 0x8c;  // vector<std::string> end
 constexpr int       kStdStringSize  = 0x18;  // taille d'un std::string MSVC élément
 
 // Recette texture (identique à skill_bar / menu_icons).
-constexpr int kTexW = 0x114, kTexH = 0x118, kTexPix = 0x11c;
 
 using HideNative_t   = void  (__fastcall*)(void*, void*, int);
 using GetDescLines_t = char*** (__fastcall*)(void*);            // -> &vector : [0]=begin,[1]=end
@@ -254,19 +253,9 @@ uint8_t* ReadValidWnd(uintptr_t slot, uintptr_t expected_vtable) {
 // Résout le .bmp de collection en pixels bruts BGRA (appels natifs, POD only).
 // SEH ne peut pas contenir d'objets C++ (C2712) -> la conversion est faite hors
 // __try par l'appelant.
-struct RawTex { const uint8_t* bgra; int w; int h; void* ctex; };
+using RawTex = ro::texmgr::RawImage;
 bool GetRawTex(const char* path, RawTex* out) {
-  __try {
-    void* t = ro::texmgr::LoadResource(path);
-    if (!t) return false;
-    const int w = *reinterpret_cast<int*>(static_cast<char*>(t) + kTexW);
-    const int h = *reinterpret_cast<int*>(static_cast<char*>(t) + kTexH);
-    const uint8_t* bgra =
-        *reinterpret_cast<const uint8_t**>(static_cast<char*>(t) + kTexPix);
-    if (w <= 0 || h <= 0 || w > 4096 || h > 4096 || !bgra) return false;
-    out->bgra = bgra; out->w = w; out->h = h; out->ctex = t;
-    return true;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+  return ro::texmgr::LoadRaw(path, out);
 }
 
 // Charge le .bmp de collection (chemin déjà complet) en texture ImGui + dims.
@@ -672,27 +661,8 @@ inline int Hex2(const char* p) {
   return (hi < 0 || lo < 0) ? -1 : (hi << 4 | lo);
 }
 
-// std::string MSVC (SSO) telle que passée PAR VALEUR à la fonction de routage
-// (layout confirmé par capture live : buf[16] + size + cap = 0x18 octets).
-struct RoStr { char buf[16]; uint32_t size; uint32_t cap; };
-static_assert(sizeof(RoStr) == 0x18, "RoStr doit matcher std::string MSVC (0x18)");
-using NaviRoute_t =
-    char(__thiscall*)(void*, RoStr, int, int, int, int, int, int);
 
 // Déclenche le routage de navigation vers (map, x, y). SEH (POD only).
-void StartNavigation(const char* map, int x, int y, int type) {
-  __try {
-    RoStr s;
-    std::memset(&s, 0, sizeof(s));
-    size_t n = 0;
-    while (n < 15 && map[n]) { s.buf[n] = map[n]; ++n; }
-    s.size = static_cast<uint32_t>(n);
-    s.cap  = 15;  // SSO
-    // flags=1, a24=1, a30=0 : constantes observées pour un lien navi item.
-    reinterpret_cast<NaviRoute_t>(navi::kSearchRouteAddr)(
-        reinterpret_cast<void*>(navi::kNavigationAddr), s, type, 1, 1, x, y, 0);
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
-}
 
 // Pivot ImGui (0..1) de l'ancrage souris de la desc. L'ancrage = la DIRECTION dans
 // laquelle la fenêtre s'étend depuis le curseur (ex. « bas-droite » = la fenêtre
@@ -1057,7 +1027,7 @@ void SelectableColoredText(const char* id, const char lines[][kLineLen],
         ImGui::SetTooltip(i18n::Tr("Aller à : %s (%d, %d)"), mapn, nx, ny);
         ImGui::PopStyleColor();
         if (clicked && mapn[0])
-          StartNavigation(mapn, nx, ny, ntype);  // routage natif (ABI capturée live)
+          navi::RouteToItemLink(mapn, nx, ny, ntype);  // routage natif (ABI capturée live)
       }
     }
   }

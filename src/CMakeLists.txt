@@ -90,6 +90,7 @@ set(BOURGEON_FILES
 	"features/windows/hotkey_settings.h"
 	"features/windows/inventory_viewer.cc"
 	"features/windows/inventory_viewer.h"
+	"features/windows/item_viewer_base.cc"
 	"features/windows/item_viewer_base.h"
 	"features/windows/item_desc_window.cc"
 	"features/windows/item_desc_window.h"

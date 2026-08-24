@@ -10,6 +10,7 @@
 
 #include "imgui.h"
 #include "ragnarok/globals.h"  // rag::kGameOperatorDeleteAddr
+#include "ragnarok/item_info.h"  // rag::itemlist : le layout du noeud
 #include "ragnarok/item_db.h"
 #include "ragnarok/uiwnd.h"
 #include "ui/ro_imgui.h"
@@ -68,18 +69,18 @@ void ResolveNameSEH(uint32_t id, char* out, size_t cap) {
 
 // ── std::list<ItemSkillInfo> de session : nœud et champs lus ──────────────────
 // Nœud MSVC : next@+0, prev@+4, value@+8 — `value` EST l'ItemSkillInfo.
-constexpr int kNodeNext  = 0x00;
-constexpr int kNodeInfo  = 0x08;
-constexpr int kInfoIndex = 0x04;  // int : index client (arg des commandes)
-constexpr int kInfoIdStr = 0x2c;  // std::string : l'itemId EN TEXTE (le jeu fait atoi)
+using rag::itemlist::kNodeNext;
+using rag::itemlist::kNodeInfo;
+using rag::itemlist::kInfoIndex;
+using rag::itemlist::kInfoIdStr;
+using rag::itemlist::kInfoAmount;
+using rag::itemlist::kWalkGuard;
 // int : la QUANTITÉ de la pile (`num_`), l'un des deux seuls champs du layout
 // d'ItemInfo qui soient confirmés en jeu (cf. ragnarok/item_info.h).
-constexpr int kInfoAmount = 0x10;
 
 // Plafond du parcours : simple garde-fou anti-boucle (la liste s'arrête sur sa
 // sentinelle). Une seule valeur pour les trois listes — la plus grosse, celle du
 // storage premium, plafonne à 600 côté serveur.
-constexpr int kWalkGuard = 4000;
 
 // ItemSkillInfo tel que le natif le passe à OnMsg 0x18. 0x100 octets : la
 // structure en fait 0xf8, on arrondit (cf. le memcpy 0x5c..0xf8 du pont `src`).
@@ -643,14 +644,22 @@ void* FindInfoById(uintptr_t list_head, uint32_t id) {
     uint8_t* node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
     for (int guard = 0; node && node != head && guard < kWalkGuard; ++guard) {
       uint8_t* info = node + kNodeInfo;
-      const char* ids = rag::clientstr::Data(info + kInfoIdStr);
-      if (ids && static_cast<uint32_t>(atoi(ids)) == id) return info;
+      if (rag::itemlist::ItemId(info) == id) return info;
       node = *reinterpret_cast<uint8_t**>(node + kNodeNext);
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
   return nullptr;
 }
 
+// 🔴 LE COMPTEUR DE STOCK DU PROJET. Quatre fichiers en portaient leur propre
+// parcours — `OwnedCount` (fabrication), `OreCount` (raffinage),
+// `CountCardStock` (inventaire) et une variante dans l'Atlas — et deux d'entre
+// eux avaient dû apprendre SÉPARÉMENT le piège de la sentinelle ci-dessous.
+//
+// ⚠ Le `amount > 0` vient de ces copies-là ; celle-ci ne l'avait pas. Sur un
+// inventaire sain la différence est nulle (aucun nœud ne porte une quantité
+// négative), mais garder le test rend les quatre PROUVABLEMENT équivalentes
+// plutôt que « équivalentes en pratique ».
 int CountById(uintptr_t list_head, uint32_t id) {
   if (id == 0) return 0;
   int total = 0;
@@ -658,15 +667,16 @@ int CountById(uintptr_t list_head, uint32_t id) {
     // 🔴 `list_head` est l'adresse du GLOBAL ; le nœud sentinelle est ce qu'il
     // CONTIENT, et c'est lui — pas le global — qui ferme la liste circulaire.
     // Comparer le nœud courant à l'adresse du global fait boucler jusqu'au
-    // garde-fou et additionne la liste des centaines de fois.
+    // garde-fou et additionne la liste des centaines de fois. La fenêtre de
+    // fabrication a payé ce défaut en affichant « 28300 possédés » pour 200
+    // objets réels.
     uint8_t* head = *reinterpret_cast<uint8_t**>(list_head);
     if (!head) return 0;
     uint8_t* node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
     for (int guard = 0; node && node != head && guard < kWalkGuard; ++guard) {
       uint8_t* info = node + kNodeInfo;
-      const char* ids = rag::clientstr::Data(info + kInfoIdStr);
-      if (ids && static_cast<uint32_t>(atoi(ids)) == id)
-        total += *reinterpret_cast<int*>(info + kInfoAmount);
+      const int amount = *reinterpret_cast<int*>(info + kInfoAmount);
+      if (amount > 0 && rag::itemlist::ItemId(info) == id) total += amount;
       node = *reinterpret_cast<uint8_t**>(node + kNodeNext);
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) { return total; }

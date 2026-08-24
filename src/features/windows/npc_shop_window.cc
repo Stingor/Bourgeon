@@ -1,5 +1,6 @@
 #include "ragnarok/item_db.h"
 #include "ragnarok/globals.h"
+#include "ragnarok/item_info.h"  // rag::itemlist : le layout du noeud
 #include "features/windows/npc_shop_window.h"
 
 // Icônes d'item : ro::ItemIcon (ui/icon_cache.h). Le chargement, le colorkey
@@ -74,7 +75,7 @@ constexpr uintptr_t kParamCompareVTable = 0x010323ec;  // UIItemParamChangeDispl
 // Champs de l'ItemSkillInfo utilisés ici (mêmes offsets que l'InventoryViewer).
 constexpr int kInfoNum   = 0x10;  // quantité possédée
 constexpr int kInfoCards = 0x1c;  // 4 emplacements de carte (uint32 chacun)
-constexpr int kInfoIdStr = 0x2c;  // std::string « itemId » (MSVC : +0x14 = capacité)
+using rag::itemlist::kInfoIdStr;
 constexpr int kInfoDamaged = 0x5d;  // octet : équipement CASSÉ (cf. itemcell)
 constexpr int kInfoRefine  = 0x60;  // niveau de raffinage (int)
 constexpr int kInfoFav   = 0x74;  // flag « favori » (onglet Favoris de l'inventaire)

@@ -445,9 +445,9 @@ static void BlitIconAtSEH(void* ctx, int x, int y, uint32_t id) {
     void* texv = ro::texmgr::LoadResource(path);
     if (!texv) return;
     auto* t = reinterpret_cast<uint8_t*>(texv);
-    const int sw = *reinterpret_cast<int*>(t + 0x114);
-    const int sh = *reinterpret_cast<int*>(t + 0x118);
-    const uint32_t* spx = *reinterpret_cast<uint32_t**>(t + 0x11c);
+    const int sw = *reinterpret_cast<int*>(t + ro::texmgr::kTexWidth);
+    const int sh = *reinterpret_cast<int*>(t + ro::texmgr::kTexHeight);
+    const uint32_t* spx = *reinterpret_cast<uint32_t**>(t + ro::texmgr::kTexPixels);
     if (!spx || sw <= 0 || sh <= 0) return;
     for (int dy = 0; dy < kChatIconSize; ++dy) {
       const int syy = dy * sh / kChatIconSize;

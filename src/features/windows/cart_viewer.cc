@@ -1,6 +1,7 @@
 #include "features/item_cell.h"
 #include "ragnarok/item_db.h"
 #include "ragnarok/globals.h"
+#include "ragnarok/item_info.h"  // rag::itemlist : le layout du noeud
 #include "features/windows/cart_viewer.h"
 
 #include "ui/game_texture.h"
@@ -57,13 +58,13 @@ constexpr float kSpawnW = 300.0f, kSpawnH = 300.0f;
 constexpr int kOffWidth   = 0x14;
 constexpr int kOffHeight  = 0x18;
 
-constexpr int kNodeNext = 0x00;  // nœud : next
-constexpr int kNodeInfo = 0x08;  // nœud : value = ItemSkillInfo
-constexpr int kNodeAmt  = 0x18;  // nœud : quantité (= info+0x10)
+using rag::itemlist::kNodeNext;
+using rag::itemlist::kNodeInfo;
+using rag::itemlist::kNodeAmount;
+using rag::itemlist::kInfoIndex;
+using rag::itemlist::kInfoIdStr;
 // Champs DANS l'ItemSkillInfo (= node+0x08), identiques à l'inventaire :
 constexpr int kInfoType   = 0x00;
-constexpr int kInfoIndex  = 0x04;  // index CHARIOT (arg des commandes de transfert)
-constexpr int kInfoIdStr  = 0x2c;  // std::string id (le jeu fait atoi dessus)
 constexpr int kInfoIdent  = 0x5c;  // byte : item identifié ?
 constexpr int kInfoDamaged = 0x5d; // byte : équipement CASSÉ (rendu rouge, cf. itemcell)
 constexpr int kInfoRefine = 0x60;
@@ -280,20 +281,7 @@ void MaybeFlushTextures() {
 // masque sur-le-champ (sans quoi une frame native passe à l'écran) et on bascule
 // le viewer ; OnTick la détruira — le natif la manipule encore ici.
 void CartViewer::HandleNativeCreation(void* win) {
-  if (!win || !imgui_enabled_) return;
-  __try {
-    if (*reinterpret_cast<uintptr_t*>(win) != uiwnd::kCartWndVTable) return;
-    *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + uiwnd::kOffVisible) = 0;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return; }
-  // Reconstruction du HUD au changement de map : ce n'est pas le joueur qui
-  // demande, on ne touche donc pas à l'état du viewer.
-  if (Bourgeon::Instance().IsMapLoading()) return;
-  // C'est NOUS qui portons la bascule maintenant : la native est détruite, donc
-  // le client ne la voit jamais exister et redemande une création à chaque fois.
-  if (open_) { open_ = false; return; }
-  open_ = true;
-  show_panel_ = true;
-  need_pos_ = true;
+  HandleNativeToggle(win, uiwnd::kCartWndVTable);
 }
 
 // Remplit items_/item_count_ depuis le MODÈLE SESSION du cart (0x015fbae0), donc
@@ -326,7 +314,7 @@ void CartViewer::Extract() {
       it.id = ids ? static_cast<uint32_t>(atoi(ids)) : 0;
       it.identified = *reinterpret_cast<uint8_t*>(info + kInfoIdent);
       it.damaged = *reinterpret_cast<uint8_t*>(info + kInfoDamaged);
-      it.amount = *reinterpret_cast<int*>(node + kNodeAmt);
+      it.amount = *reinterpret_cast<int*>(node + kNodeAmount);
       it.index  = *reinterpret_cast<int*>(info + kInfoIndex);
       it.refine = *reinterpret_cast<int*>(info + kInfoRefine);
       it.type   = *reinterpret_cast<int*>(info + kInfoType);

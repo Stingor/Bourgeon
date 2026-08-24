@@ -540,7 +540,6 @@ float CooldownFraction(uint32_t skillId) {
 }
 
 // ── Icônes (recette menu_icons.cc : TexMgr -> BGRA -> Overlay_CreateTextureARGB) ──
-constexpr int kTexW = 0x114, kTexH = 0x118, kTexPix = 0x11c;
 // Chemin d'icône construit par fonctions natives (RE) :
 //   OBJET : ro::texmgr::kBuildItemIconPath __stdcall(id_str, out, identified)
 //           (resname via ResolveItemResNameById/DB objets -> marche même HORS inventaire). C'est la clé :
@@ -601,9 +600,9 @@ bool SkillPath(int id, char* out, int n) {
 void* UploadBmp(const char* path) {
   void* t = ro::texmgr::LoadResource(path);
   if (!t) return nullptr;
-  const int w = *reinterpret_cast<int*>(static_cast<char*>(t) + kTexW);
-  const int h = *reinterpret_cast<int*>(static_cast<char*>(t) + kTexH);
-  const uint8_t* bgra = *reinterpret_cast<const uint8_t**>(static_cast<char*>(t) + kTexPix);
+  const int w = *reinterpret_cast<int*>(static_cast<char*>(t) + ro::texmgr::kTexWidth);
+  const int h = *reinterpret_cast<int*>(static_cast<char*>(t) + ro::texmgr::kTexHeight);
+  const uint8_t* bgra = *reinterpret_cast<const uint8_t**>(static_cast<char*>(t) + ro::texmgr::kTexPixels);
   if (w <= 0 || h <= 0 || w > 4096 || h > 4096 || !bgra) return nullptr;
   std::vector<uint8_t> argb(static_cast<size_t>(w) * h * 4);
   for (int i = 0; i < w * h; ++i) {
@@ -705,15 +704,7 @@ void OpenSlotDescription(int region, int slot, int mx, int my) {
     if (id != 0) {
       void* mgr = uiwnd::Mgr();
       if (rec[0] != 0) {  // ── SKILL (rec[0]==1) ──
-        void* wnd = uiwnd::MakeWindow(itemdb::kSkillDescWndId);
-        if (wnd) {
-          if (*reinterpret_cast<int*>(reinterpret_cast<char*>(wnd) + itemdb::kSkillDescShownId) == id) {
-            uiwnd::CloseWindow(itemdb::kSkillDescWndId);  // bascule
-          } else {
-            uiwnd::OnMsg(wnd, itemdb::kSkillDescMsgSet, id, 0, 0, 0);
-            uiwnd::SetPos(wnd, mx, my);
-          }
-        }
+        itemdb::OpenSkillDesc(id, mx, my);
       } else {            // ── OBJET (rec[0]==0) ──
         alignas(8) uint8_t info[kSkillInfoSize] = {};
         reinterpret_cast<GetSkillInfo_t>(kGetSkillInfo)(

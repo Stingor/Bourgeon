@@ -1,5 +1,6 @@
 #include "ragnarok/item_db.h"
 #include "ragnarok/globals.h"
+#include "ragnarok/item_info.h"  // rag::itemlist : le layout du noeud
 #include "features/windows/trade_window.h"
 
 // Icônes d'item : ro::ItemIcon (ui/icon_cache.h). Le chargement, le colorkey
@@ -63,8 +64,8 @@ constexpr int kOffWidgetLock  = 0xC4;   // (widget liste) octet : côté verroui
 // rag::kInventoryListAddr (0x015FA3C0 + 0x16F0 = 0x015FBAB0), vérifié au désassemblage.
 constexpr uintptr_t kInvDecrease = 0x00d57a30;
 
-constexpr int kInfoAmount = 0x10;   // int : quantité possédée
-constexpr int kInfoIdStr  = 0x2c;   // std::string SSO : itemId EN TEXTE (atoi)
+using rag::itemlist::kInfoAmount;
+using rag::itemlist::kInfoIdStr;
 constexpr int kInfoDamaged = 0x5d;  // byte : équipement CASSÉ (rendu rouge, cf. itemcell)
 constexpr int kInfoRefine = 0x60;   // int : refine
 

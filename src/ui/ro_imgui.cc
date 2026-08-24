@@ -1109,7 +1109,6 @@ bool g_collapse_allowed = true;  // faux hors du jeu (cf. SetWindowCollapseAllow
 // ── Loader natif du client (conventions menu_icons.cc / status_tweaks.cc) ──────
 // Charge un bmp d'UI depuis le VFS du jeu (GRF + overrides data\) → un joueur qui
 // remplace le bmp dans son GRF/data voit son skin custom appliqué, à la RO.
-constexpr int kOffW = 0x114, kOffH = 0x118, kOffPix = 0x11c;  // UITexture fields
 
 // Charge un bmp d'UI (chemin RELATIF sous 유저인터페이스\) via le loader natif,
 // décode BGRA->A8R8G8B8 avec magenta #FF00FF -> alpha. null si absent/échec.
@@ -1118,9 +1117,9 @@ void* LoadClientBmp(const char* rel_path, int* out_w, int* out_h) {
   std::snprintf(full, sizeof(full), "%s\\%s", ro::uipath::kUiRoot, rel_path);
   void* tex = ro::texmgr::LoadResource(full);
   if (!tex) return nullptr;
-  const int w = *reinterpret_cast<int*>(static_cast<char*>(tex) + kOffW);
-  const int h = *reinterpret_cast<int*>(static_cast<char*>(tex) + kOffH);
-  void* bgra = *reinterpret_cast<void**>(static_cast<char*>(tex) + kOffPix);
+  const int w = *reinterpret_cast<int*>(static_cast<char*>(tex) + ro::texmgr::kTexWidth);
+  const int h = *reinterpret_cast<int*>(static_cast<char*>(tex) + ro::texmgr::kTexHeight);
+  void* bgra = *reinterpret_cast<void**>(static_cast<char*>(tex) + ro::texmgr::kTexPixels);
   if (w <= 0 || h <= 0 || w > 4096 || h > 4096 || !bgra) return nullptr;
   std::vector<unsigned char> argb(static_cast<size_t>(w) * h * 4);
   const unsigned char* src = static_cast<const unsigned char*>(bgra);

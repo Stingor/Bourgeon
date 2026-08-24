@@ -19,6 +19,7 @@
 #include "features/windows/weapon_refine_window.h"
 #include "imgui.h"
 #include "ragnarok/globals.h"
+#include "ragnarok/item_info.h"  // rag::itemlist : le layout du noeud
 #include "ragnarok/item_db.h"    // itemdb::kInfoCtorAddr / kInfoSetIdAddr
 #include "ragnarok/msgstring.h"  // msgstr:: (libellés natifs du client)
 #include "ragnarok/player_skills.h"    // LearnedSkillLevel (bonus de maîtrise)
@@ -214,10 +215,9 @@ constexpr PotionBonus kPotionBonuses[] = {
     {7139,    0, 100, true },   // Coating Bottle     : idem
 };
 
-constexpr int kNodeNext   = 0x00;
-constexpr int kNodeInfo   = 0x08;
-constexpr int kNodeAmt    = 0x18;
-constexpr int kInfoIdStr  = 0x2c;  // std::string de l'id — le jeu fait atoi dessus (§4.4)
+using rag::itemlist::kNodeNext;
+using rag::itemlist::kNodeInfo;
+using rag::itemlist::kNodeAmount;
 constexpr int kMaxInvNodes = 4096; // garde-fou de parcours
 
 // ItemSkillInfo : ctor/dtor natifs. Nécessaires UNIQUEMENT pour la commande 130,
@@ -376,39 +376,15 @@ void SendProduceCmd(int item_id, const uint32_t mats[3] = nullptr) {
 
 // Id d'objet d'un ItemSkillInfo. ⚠ Il est stocké en TEXTE décimal dans une
 // std::string à +0x2c (§4.4) : SSO tant que la capacité tient dans 15.
-uint32_t InfoItemId(const void* info) {
-  __try {
-    const auto base = reinterpret_cast<uintptr_t>(info);
-    const char* s = rag::clientstr::Data(
-        reinterpret_cast<const void*>(base + kInfoIdStr));
-    if (!s) return 0;
-    return static_cast<uint32_t>(std::atoi(s));
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
-}
 
 // Quantité totale d'un objet en inventaire, lue dans le MODÈLE SESSION (et non
 // dans la liste d'affichage d'une fenêtre : cacher le natif vide la seconde,
 // jamais le premier).
+// Le parcours vit dans `itemcell::CountById`, avec le piège de la SENTINELLE —
+// que cette fenêtre a payé en affichant « 28300 possédés » pour 200 objets
+// réels, et que trois autres fichiers avaient dû réapprendre chacun de son côté.
 int OwnedCount(uint32_t item_id) {
-  int total = 0;
-  __try {
-    // 🔴 `rag::kInventoryListAddr` est l'adresse du GLOBAL ; la SENTINELLE est ce qu'il
-    // contient. Écrit d'abord `node != rag::kInventoryListAddr`, ce parcours ne rencontrait
-    // jamais sa condition d'arrêt : la liste circulaire rebouclait et resommait
-    // l'inventaire jusqu'au garde-fou des 4096 nœuds — d'où un « possédé » à
-    // 28300 pour 200 objets réels. La sentinelle est le seul repère valide.
-    uint8_t* head = *reinterpret_cast<uint8_t**>(rag::kInventoryListAddr);
-    if (!head) return 0;
-    uint8_t* node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
-    int guard = 0;
-    while (node && node != head && guard++ < kMaxInvNodes) {
-      const uint8_t* info = node + kNodeInfo;
-      const int amount = *reinterpret_cast<const int*>(node + kNodeAmt);
-      node = *reinterpret_cast<uint8_t**>(node + kNodeNext);
-      if (amount > 0 && InfoItemId(info) == item_id) total += amount;
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return total; }
-  return total;
+  return itemcell::CountById(rag::kInventoryListAddr, item_id);
 }
 
 // ── Index d'inventaire ⇄ identifiant ─────────────────────────────────────────
@@ -422,7 +398,7 @@ int OwnedCount(uint32_t item_id) {
 // en jeu, et par le global qui est la vraie tête d'inventaire.
 //
 // `ItemInfo::item_index_` est à +0x08 dans l'info, soit node + 0x10 — cohérent
-// avec `num_` (+0x10 dans l'info = node + 0x18 = kNodeAmt), ce qui confirme au
+// avec `num_` (+0x10 dans l'info = node + 0x18 = kNodeAmount), ce qui confirme au
 // passage que le layout d'ItemInfo, LUI, est juste.
 // ⏱ Relevé en jeu : `node+0x10` vaut **0** sur un nœud pourtant valide (id 7144,
 // amt 1) — donc `item_index_` n'est PAS là, contrairement à ce que laissait
@@ -453,7 +429,7 @@ constexpr int kIndexCandidateCount =
 // Le détecteur reste en place : si un autre build donne un layout différent, la
 // résolution échouera et il rétablira la valeur au premier objet utilisé, au lieu
 // de désactiver silencieusement la relance.
-int g_index_offset = 0x0c;
+int g_index_offset = rag::itemlist::kNodeIndex;
 
 // Renvoie l'offset gagnant, ou -1 si aucun candidat n'est UNIQUEMENT porté par
 // une seule ligne. `hits_out` reçoit le compte par candidat, pour le journal.
@@ -466,7 +442,7 @@ int DetectIndexOffset(unsigned wanted, int hits_out[kIndexCandidateCount]) {
     uint8_t* node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
     int guard = 0;
     while (node && node != head && guard++ < kMaxInvNodes) {
-      const int amount = *reinterpret_cast<const int*>(node + kNodeAmt);
+      const int amount = *reinterpret_cast<const int*>(node + kNodeAmount);
       if (amount > 0) {
         for (int i = 0; i < kIndexCandidateCount; ++i)
           if (*reinterpret_cast<const unsigned*>(node + kIndexCandidates[i]) ==
@@ -493,9 +469,9 @@ uint32_t InvIdByIndex(unsigned item_index) {
     while (node && node != head && guard++ < kMaxInvNodes) {
       const uint8_t* info = node + kNodeInfo;
       const unsigned idx  = *reinterpret_cast<const unsigned*>(node + kNodeIndex);
-      const int amount    = *reinterpret_cast<const int*>(node + kNodeAmt);
+      const int amount    = *reinterpret_cast<const int*>(node + kNodeAmount);
       node = *reinterpret_cast<uint8_t**>(node + kNodeNext);
-      if (amount > 0 && idx == item_index) return InfoItemId(info);
+      if (amount > 0 && idx == item_index) return rag::itemlist::ItemId(info);
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
   return 0;
@@ -514,9 +490,9 @@ unsigned InvIndexById(uint32_t item_id) {
     while (node && node != head && guard++ < kMaxInvNodes) {
       const uint8_t* info = node + kNodeInfo;
       const unsigned idx  = *reinterpret_cast<const unsigned*>(node + kNodeIndex);
-      const int amount    = *reinterpret_cast<const int*>(node + kNodeAmt);
+      const int amount    = *reinterpret_cast<const int*>(node + kNodeAmount);
       node = *reinterpret_cast<uint8_t**>(node + kNodeNext);
-      if (amount > 0 && InfoItemId(info) == item_id) return idx;
+      if (amount > 0 && rag::itemlist::ItemId(info) == item_id) return idx;
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
   return 0;
@@ -542,11 +518,11 @@ InvProbe ProbeFirstInvNode() {
     if (!head) return p;
     uint8_t* node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
     if (!node || node == head) return p;
-    p.id  = InfoItemId(node + kNodeInfo);
+    p.id  = rag::itemlist::ItemId(node + kNodeInfo);
     p.v0c = *reinterpret_cast<const unsigned*>(node + 0x0c);
     p.v10 = *reinterpret_cast<const unsigned*>(node + 0x10);
     p.v14 = *reinterpret_cast<const unsigned*>(node + 0x14);
-    p.amt = *reinterpret_cast<const int*>(node + kNodeAmt);
+    p.amt = *reinterpret_cast<const int*>(node + kNodeAmount);
     p.ok  = 1;
   } __except (EXCEPTION_EXECUTE_HANDLER) { p.ok = 0; }
   return p;
@@ -658,10 +634,10 @@ int SnapshotInventory(uint32_t* ids, int* amounts, int max) {
     int guard = 0;
     while (node && node != head && guard++ < kMaxInvNodes && n < max) {
       const uint8_t* info = node + kNodeInfo;
-      const int amount = *reinterpret_cast<const int*>(node + kNodeAmt);
+      const int amount = *reinterpret_cast<const int*>(node + kNodeAmount);
       node = *reinterpret_cast<uint8_t**>(node + kNodeNext);
       if (amount <= 0) continue;
-      ids[n] = InfoItemId(info);
+      ids[n] = rag::itemlist::ItemId(info);
       amounts[n] = amount;
       ++n;
     }

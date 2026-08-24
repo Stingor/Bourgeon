@@ -300,23 +300,18 @@ MoonlightAuth::HttpResult DoPost(const std::string& full_url,
 // Chargée via le TexMgr natif (chemin RELATIF à data\texture\, comme les icônes
 // d'item) puis convertie en texture overlay ImGui. Cache 1 slot, recréé après un
 // reset device (epoch) — sinon handle mort -> crash au dessin (cf. d3d9_hook.h).
-constexpr int kTexOffW = 0x114, kTexOffH = 0x118, kTexOffPix = 0x11c;
 
 struct ButtonTex { void* tex = nullptr; int w = 0; int h = 0; };
 
 // Charge une BMP de data\texture\ en pixels BGRA (pointeur natif). SEH (POD only).
 bool LoadRawBgra(const char* path, const uint8_t** bgra, int* w, int* h) {
-  __try {
-    void* t = ro::texmgr::LoadResource(path);
-    if (!t) return false;
-    const int tw = *reinterpret_cast<int*>(static_cast<char*>(t) + kTexOffW);
-    const int th = *reinterpret_cast<int*>(static_cast<char*>(t) + kTexOffH);
-    const uint8_t* px =
-        *reinterpret_cast<const uint8_t**>(static_cast<char*>(t) + kTexOffPix);
-    if (tw <= 0 || th <= 0 || tw > 1024 || th > 1024 || !px) return false;
-    *bgra = px; *w = tw; *h = th;
-    return true;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+  // 1024 et non 4096 : ce sont des VIGNETTES d'ecran de login, et un plafond
+  // serre est un garde-fou de vraisemblance de plus sur une structure lue en
+  // memoire (cf. ui/game_texture.h).
+  ro::texmgr::RawImage img;
+  if (!ro::texmgr::LoadRaw(path, &img, /*max_dim=*/1024)) return false;
+  *bgra = img.bgra; *w = img.w; *h = img.h;
+  return true;
 }
 
 ButtonTex LoadDiscordBmp() {

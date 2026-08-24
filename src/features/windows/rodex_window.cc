@@ -1,5 +1,6 @@
 #include "ragnarok/item_db.h"
 #include "ragnarok/globals.h"
+#include "ragnarok/item_info.h"  // rag::itemlist : le layout du noeud
 #include "features/windows/rodex_window.h"
 
 #include <Windows.h>
@@ -99,11 +100,11 @@ constexpr int kAttachSlots  = 5;    // MAIL_MAX_ITEM côté serveur
 // (inventaire, chariot, entrepôt) : un slot de rédaction porte donc, tel quel, tout
 // ce qu'un item d'inventaire porte — cartes et enchants compris.
 constexpr int kInfoType   = 0x00;   // int : type d'item
-constexpr int kInfoIndex  = 0x04;   // int : index d'inventaire
+using rag::itemlist::kInfoIndex;
+using rag::itemlist::kInfoAmount;
+using rag::itemlist::kInfoIdStr;
 constexpr int kInfoLoc    = 0x08;   // int : masque d'emplacement d'équipement
-constexpr int kInfoAmount = 0x10;   // int : quantité (< 1 => slot vide)
 constexpr int kInfoCard0  = 0x1c;   // 4 × u32 : cartes / enchantements
-constexpr int kInfoIdStr  = 0x2c;   // std::string SSO : itemId EN TEXTE
 constexpr int kInfoIdent  = 0x5c;   // byte : identifié
 constexpr int kInfoDamaged = 0x5d;  // byte : équipement CASSÉ
 constexpr int kInfoRefine = 0x60;   // int : refine

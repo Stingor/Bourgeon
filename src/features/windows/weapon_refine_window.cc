@@ -16,6 +16,7 @@
 #include "imgui.h"
 #include "ragnarok/msgstring.h"  // msgstr:: (libellés natifs du client)
 #include "ragnarok/globals.h"
+#include "ragnarok/item_info.h"  // rag::itemlist : le layout du noeud
 #include "ragnarok/player_skills.h"
 #include "ragnarok/uiwnd.h"
 #include "ui/icon_cache.h"
@@ -81,10 +82,6 @@ int OwnSp() {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
 }
 
-constexpr int kNodeNext  = 0x00;  // nœud std::list : next
-constexpr int kNodeInfo  = 0x08;  // nœud : value = ItemSkillInfo
-constexpr int kNodeAmt   = 0x18;  // nœud : quantité
-constexpr int kInfoIdStr = 0x2c;  // std::string de l'id (le jeu fait atoi dessus)
 constexpr int kMaxInvNodes = 4096;  // garde-fou de parcours
 
 // Minerais de refine, par niveau d'arme (serveur : skill_weaponrefine, §7).
@@ -374,13 +371,6 @@ const char* SkipRefinePrefix(const char* name, int refine) {
 }
 
 // Lit l'id d'un ItemSkillInfo (std::string SSO à +0x2c).
-uint32_t InfoId(const uint8_t* info) {
-  __try {
-    const char* s = rag::clientstr::Data(info + kInfoIdStr);
-    if (!s) return 0;
-    return static_cast<uint32_t>(std::strtoul(s, nullptr, 10));
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
-}
 
 }  // namespace
 
@@ -1248,20 +1238,7 @@ void WeaponRefineWindow::FlushPending() {
 // ── Lectures du monde ────────────────────────────────────────────────────────
 
 int WeaponRefineWindow::OreCount(uint32_t nameid) const {
-  int total = 0;
-  __try {
-    uint8_t* head = *reinterpret_cast<uint8_t**>(rag::kInventoryListAddr);
-    if (!head) return 0;
-    uint8_t* node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
-    int guard = 0;
-    while (node && node != head && guard++ < kMaxInvNodes) {
-      const uint8_t* info = node + kNodeInfo;
-      const int amount = *reinterpret_cast<const int*>(node + kNodeAmt);
-      node = *reinterpret_cast<uint8_t**>(node + kNodeNext);
-      if (InfoId(info) == nameid && amount > 0) total += amount;
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
-  return total;
+  return itemcell::CountById(rag::kInventoryListAddr, nameid);
 }
 
 int WeaponRefineWindow::RefineSkillLevel(int* sp_cost) {

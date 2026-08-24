@@ -1,5 +1,6 @@
 #include "features/item_cell.h"
 #include "ragnarok/globals.h"
+#include "ragnarok/item_info.h"  // rag::itemlist : le layout du noeud
 #include "features/windows/storage_window.h"
 #include "ui/game_texture.h"
 
@@ -55,14 +56,14 @@ namespace {
 // cart, dont les natives, elles, existent toujours.
 
 // Nœud de liste (std::list MSVC) : next@+0, prev@+4, value@+8.
-constexpr int kNodeNext = 0x00;
-constexpr int kNodeAmt  = 0x18;  // value+0x10 = quantité
-constexpr int kNodeInfo = 0x08;  // value = ItemSkillInfo (arg de GetBaseName)
+using rag::itemlist::kNodeNext;
+using rag::itemlist::kNodeAmount;
+using rag::itemlist::kNodeInfo;
+using rag::itemlist::kInfoIdStr;
 
 // Champs DANS l'ItemSkillInfo (= node+kNodeInfo), tels que lus par FUN_008711a0 :
 // l'id est une std::string à +0x2c (le jeu fait atoi dessus pour l'icône), le
 // flag identifié est à +0x5c. (node+0xc N'EST PAS l'id fiable pour la liste vue.)
-constexpr int kInfoIdStr = 0x2c;  // std::string id (SSO ; heap si cap>0xf)
 constexpr int kInfoIdent = 0x5c;  // byte : item identifié ?
 
 // Le nom d'affichage complet (raffinement / [slots] / cartes / enchant) passe par
@@ -795,7 +796,7 @@ void StorageWindow::Extract() {
       const char* ids = rag::clientstr::Data(info + kInfoIdStr);
       it.id = ids ? static_cast<uint32_t>(atoi(ids)) : 0;
       it.identified = *reinterpret_cast<uint8_t*>(info + kInfoIdent);
-      it.amount = *reinterpret_cast<int*>(node + kNodeAmt);
+      it.amount = *reinterpret_cast<int*>(node + kNodeAmount);
       it.index = *reinterpret_cast<int*>(info + 4);  // storage index (arg du retrait)
       it.type  = *reinterpret_cast<int*>(info);      // info+0 = type (onglets)
       // Cartes/enchants (info+0x1c, 4 x uint32) et random options (compte à +0x98,

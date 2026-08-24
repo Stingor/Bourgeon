@@ -1889,20 +1889,6 @@ std::vector<uint8_t> BuildEmblemBmp() {
 // l'id BRUT — pas par un ItemSkillInfo. Re-clic sur le même skill = referme, comme le
 // natif (l'id affiché vit à +0x104).
 
-void OpenSkillDesc(int skillId, int mx, int my) {
-  if (skillId <= 0) return;
-  __try {
-    void* mgr = uiwnd::Mgr();
-    void* wnd = uiwnd::MakeWindow(itemdb::kSkillDescWndId);
-    if (!wnd) return;
-    if (*reinterpret_cast<int*>(reinterpret_cast<char*>(wnd) + itemdb::kSkillDescShownId) == skillId) {
-      uiwnd::CloseWindow(itemdb::kSkillDescWndId);
-      return;
-    }
-    uiwnd::OnMsg(wnd, itemdb::kSkillDescMsgSet, skillId, 0, 0, 0);
-    uiwnd::SetPos(wnd, mx, my);
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
-}
 
 // Nom d'affichage COMPLET (refine + [slots] + préfixes/suffixes de cartes/enchant/forge) via le
 // name-builder natif BuildDisplayName, SEH ISOLÉ (repli GetBaseName). `info` = ItemSkillInfo
@@ -4095,7 +4081,7 @@ void CharacterSheet::DrawSkillsTab() {
     if (ImGui::IsItemHovered() && ImGui::IsMouseReleased(ImGuiMouseButton_Right)) {
       if (ImGui::GetIO().KeyCtrl) {
         const ImVec2 mp = ImGui::GetIO().MousePos;
-        OpenSkillDesc(s.id, static_cast<int>(mp.x), static_cast<int>(mp.y));
+        itemdb::OpenSkillDesc(s.id, static_cast<int>(mp.x), static_cast<int>(mp.y));
       } else {
         ImGui::OpenPopup("skctx");
       }
@@ -4123,7 +4109,7 @@ void CharacterSheet::DrawSkillsTab() {
     ImGui::Separator();
     if (ImGui::MenuItem(i18n::Tr("Description"))) {
       const ImVec2 mp = ImGui::GetIO().MousePos;
-      OpenSkillDesc(s.id, static_cast<int>(mp.x), static_cast<int>(mp.y));
+      itemdb::OpenSkillDesc(s.id, static_cast<int>(mp.x), static_cast<int>(mp.y));
     }
     ImGui::EndPopup();
   };
@@ -5070,7 +5056,7 @@ void CharacterSheet::DrawHomunTab() {
         // barre lancerait AUSSI la compétence.
         if (!dragging && ImGui::IsMouseReleased(ImGuiMouseButton_Right)) {
           const ImVec2 mp = ImGui::GetIO().MousePos;
-          OpenSkillDesc(s.id, static_cast<int>(mp.x), static_cast<int>(mp.y));
+          itemdb::OpenSkillDesc(s.id, static_cast<int>(mp.x), static_cast<int>(mp.y));
         }
         if (active && !dragging && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
           rag::homun::LaunchSkill(s.id, s.level);
@@ -6308,7 +6294,7 @@ void CharacterSheet::DrawGuildSkillsTab() {
       // contextuel à départager, contrairement au Grimoire).
       if (hot && ImGui::IsMouseReleased(ImGuiMouseButton_Right)) {
         const ImVec2 mp = ImGui::GetIO().MousePos;
-        OpenSkillDesc(row.id, static_cast<int>(mp.x), static_cast<int>(mp.y));
+        itemdb::OpenSkillDesc(row.id, static_cast<int>(mp.x), static_cast<int>(mp.y));
       }
       ImGui::PopID();
     }
@@ -6496,7 +6482,7 @@ void CharacterSheet::DrawGuildSkillsTab() {
     // Vaut aussi pour une compétence verrouillée : savoir ce qu'elle fait aide à décider.
     if (mui::IsLastItemRightClicked()) {
       const ImVec2 mp = ImGui::GetIO().MousePos;
-      OpenSkillDesc(row.id, static_cast<int>(mp.x), static_cast<int>(mp.y));
+      itemdb::OpenSkillDesc(row.id, static_cast<int>(mp.x), static_cast<int>(mp.y));
     }
     if (ImGui::IsItemHovered()) {
       hovered_now = row.id;  // consommé à la frame suivante (liens + surlignage)

@@ -48,7 +48,6 @@ constexpr int       kCmdGetChar = 8;
 // ── Loader de texture natif (fond banquet, BMP côté client) ───────────────────
 // Même chemin que les icônes d'items (character_sheet.cc) : UITextureMgr_Get ->
 // MakeKey(path) -> LoadTex ; la texture expose largeur/hauteur/pixels BGRA.
-constexpr int kTexW = 0x114, kTexH = 0x118, kTexPix = 0x11c;
 // Chemin VFS du décor d'USINE : déposé dans le GRF/data du client (via le
 // patcher). Fichier 24/32 bits ; dessiné étiré plein écran (toute taille convient
 // — plus petit = moins de VRAM).
@@ -470,20 +469,11 @@ ImVec2 Anchor(const char* name, float def_nx, float def_ny, bool edit) {
 // un __try déclenche C2712 (« __try dans une fonction nécessitant un déroulement
 // d'objet »). D'où la scission avec la conversion C++ ci-dessous.
 const uint8_t* FetchHallBgra(const char* path, int* out_w, int* out_h) {
-  __try {
-    void* t = ro::texmgr::LoadResource(path);
-    if (!t) return nullptr;
-    const int w = *reinterpret_cast<int*>(static_cast<char*>(t) + kTexW);
-    const int h = *reinterpret_cast<int*>(static_cast<char*>(t) + kTexH);
-    const uint8_t* bgra =
-        *reinterpret_cast<const uint8_t**>(static_cast<char*>(t) + kTexPix);
-    if (w <= 0 || h <= 0 || w > 4096 || h > 4096 || !bgra) return nullptr;
-    *out_w = w;
-    *out_h = h;
-    return bgra;
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-    return nullptr;
-  }
+  ro::texmgr::RawImage img;
+  if (!ro::texmgr::LoadRaw(path, &img)) return nullptr;
+  *out_w = img.w;
+  *out_h = img.h;
+  return img.bgra;
 }
 
 // Recopie (SEH, POD only) le buffer natif BGRA vers ARGB opaque. Sous SEH car

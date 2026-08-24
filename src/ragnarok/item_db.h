@@ -15,6 +15,9 @@
 // En-tête MINUSCULE (<cstdint> seul), comme uiwnd.h et globals.h.
 
 #include <cstdint>
+#include <excpt.h>  // __try / __except — jamais <Windows.h> dans un en-tête
+
+#include "ragnarok/uiwnd.h"  // MakeWindow / CloseWindow / OnMsg / SetPos
 
 namespace itemdb {
 
@@ -101,6 +104,30 @@ constexpr int kItemDescMsgSet  = 0x18;
 constexpr int kSkillDescWndId  = 0x2e;
 constexpr int kSkillDescMsgSet = 0x3d;
 constexpr int kSkillDescShownId = 0x104;
+
+// Ouvre — ou REFERME — la fiche de compétence à la position donnée.
+//
+// La bascule n'est pas un raffinement : c'est ce que fait le natif, et l'oublier
+// donne une fenêtre qui ne se ferme plus quand on reclique la compétence qui l'a
+// ouverte. Elle se joue sur `+0x104`, l'id que la fenêtre affiche déjà.
+//
+// TROIS fichiers portaient cette séquence — la feuille de personnage, la fiche
+// de monstre, et la barre de compétences (celle-là en ligne, au milieu d'une
+// fonction plus grande, donc invisible à toute comparaison de fonctions).
+inline void OpenSkillDesc(int skill_id, int mx, int my) {
+  if (skill_id <= 0) return;
+  __try {
+    void* wnd = uiwnd::MakeWindow(kSkillDescWndId);
+    if (!wnd) return;
+    if (*reinterpret_cast<int*>(reinterpret_cast<char*>(wnd) +
+                                kSkillDescShownId) == skill_id) {
+      uiwnd::CloseWindow(kSkillDescWndId);
+      return;
+    }
+    uiwnd::OnMsg(wnd, kSkillDescMsgSet, skill_id, 0, 0, 0);
+    uiwnd::SetPos(wnd, mx, my);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
 
 // ── Nom de ressource d'un objet, et classe d'arme ───────────────────────────
 // `ItemSkillDB_GetResName(info)` -> le nom de ressource CP949 (celui du .bmp

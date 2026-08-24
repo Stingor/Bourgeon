@@ -388,12 +388,6 @@ struct TownIcon {
 };
 
 // ── Routage de navigation ────────────────────────────────────────────────────
-// std::string de MSVC telle que la fonction de routage la prend PAR VALEUR
-// (layout confirmé en live : buf[16] + taille + capacité = 0x18 octets).
-
-struct RoStr { char buf[16]; uint32_t size; uint32_t cap; };
-static_assert(sizeof(RoStr) == 0x18, "RoStr doit matcher std::string MSVC (0x18)");
-using NaviRoute_t = char(__thiscall*)(void*, RoStr, int, int, int, int, int, int);
 
 // Lance l'itinéraire vers (carte, x, y), comme le fait le clic sur une icône du
 // radar natif.
@@ -407,19 +401,6 @@ using NaviRoute_t = char(__thiscall*)(void*, RoStr, int, int, int, int, int, int
 //
 // 🔴 Le nom de carte doit être SANS extension et tenir en 15 caractères : on
 // reste en SSO, donc rien n'est alloué et le client n'a rien à libérer.
-void StartNavigation(const char* map, int x, int y) {
-  __try {
-    if (!map || !map[0]) return;
-    RoStr s;
-    memset(&s, 0, sizeof(s));
-    size_t n = 0;
-    while (n < 15 && map[n]) { s.buf[n] = map[n]; ++n; }
-    s.size = static_cast<uint32_t>(n);
-    s.cap = 15;  // SSO : le tampon est DANS la structure
-    reinterpret_cast<NaviRoute_t>(navi::kSearchRouteAddr)(
-        reinterpret_cast<void*>(navi::kNavigationAddr), s, 0, 5, 1, x, y, 1002);
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
-}
 
 // Les objets déclarés pour `map_name`. Le nom de carte est la CLÉ de la map ; on
 // parcourt l'arbre et on compare, plutôt que d'appeler le `find` natif — un
@@ -1100,7 +1081,7 @@ void Minimap::OnRenderUI() {
                   ImGui::SetTooltip("%s", ro::LocalToUtf8(town[i].name));
               }
               if (ImGui::IsItemClicked())
-                StartNavigation(map, town[i].cell_x, town[i].cell_y);
+                navi::RouteFromMinimap(map, town[i].cell_x, town[i].cell_y);
               ImGui::PopID();
             }
           }

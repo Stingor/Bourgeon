@@ -29,7 +29,6 @@ namespace {
 // ── Game texture loader (conventions per status_tweaks.cc) ─────────────────
 
 // UITexture field offsets: +0x114 width, +0x118 height, +0x11c BGRA32 top-down.
-constexpr int kOffW = 0x114, kOffH = 0x118, kOffPix = 0x11c;
 
 // ── Native menu-icon window draw hook (hide the native grid) ───────────────
 // GridClear replaces the native grid's DrawContent (UIMenuIconWnd_RebuildNodes):
@@ -129,9 +128,9 @@ void* LoadIconTexture(const char* dir, const char* name, int* out_w, int* out_h)
   std::string path = std::string(ro::uipath::kUiRoot) + "\\" + dir + name + ".bmp";
   void* tex = ro::texmgr::LoadResource(path.c_str());
   if (!tex) return nullptr;
-  const int w = *reinterpret_cast<int*>(static_cast<char*>(tex) + kOffW);
-  const int h = *reinterpret_cast<int*>(static_cast<char*>(tex) + kOffH);
-  void* bgra  = *reinterpret_cast<void**>(static_cast<char*>(tex) + kOffPix);
+  const int w = *reinterpret_cast<int*>(static_cast<char*>(tex) + ro::texmgr::kTexWidth);
+  const int h = *reinterpret_cast<int*>(static_cast<char*>(tex) + ro::texmgr::kTexHeight);
+  void* bgra  = *reinterpret_cast<void**>(static_cast<char*>(tex) + ro::texmgr::kTexPixels);
   if (w <= 0 || h <= 0 || w > 4096 || h > 4096 || !bgra) return nullptr;
   std::vector<unsigned char> argb(static_cast<size_t>(w) * h * 4);
   const unsigned char* src = static_cast<const unsigned char*>(bgra);

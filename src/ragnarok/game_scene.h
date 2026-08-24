@@ -68,6 +68,33 @@ constexpr int kNameGuild = 0x34;  // le nom de sa GUILDE
 constexpr uintptr_t kNameDictGetEntryOrRequestAddr = 0x005a1460;
 constexpr uintptr_t kNameDictContainsAddr          = 0x005a18e0;
 
+// Les deux appels typés, gardés. Le dictionnaire est un objet EMBARQUÉ dans le
+// CGameMode : son adresse est `gm + kGmNameDict`, pas un pointeur à
+// déréférencer — c'est le genre de détail qu'on ne veut pas voir recopié.
+//
+// Deux fichiers portaient `GetEntryOrRequest` sous deux noms (`NameDictEntry`
+// et `NameEntry`) ; l'un des deux gardait `gid == 0`, l'autre non. La garde est
+// reprise ici : demander le nom du GID 0 ne peut rien donner, et c'est un paquet
+// envoyé pour rien.
+inline void* NameDictEntry(void* game_mode, uint32_t gid) {
+  __try {
+    if (!game_mode || gid == 0) return nullptr;
+    void* dict = reinterpret_cast<uint8_t*>(game_mode) + kGmNameDict;
+    using GetEntryFn = void*(__thiscall*)(void*, uint32_t);
+    return reinterpret_cast<GetEntryFn>(kNameDictGetEntryOrRequestAddr)(dict, gid);
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
+}
+
+// Celle qui ne DEMANDE rien — à préférer partout où l'on veut seulement savoir.
+inline bool NameDictContains(void* game_mode, uint32_t gid) {
+  __try {
+    if (!game_mode || gid == 0) return false;
+    void* dict = reinterpret_cast<uint8_t*>(game_mode) + kGmNameDict;
+    using ContainsFn = bool(__thiscall*)(void*, uint32_t);
+    return reinterpret_cast<ContainsFn>(kNameDictContainsAddr)(dict, gid);
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
 // Retrouver un acteur par son GID. DEUX portes, et le choix n'est pas
 // indifférent :
 //

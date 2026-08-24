@@ -15,6 +15,7 @@
 #include "features/windows/chat_window.h"  // poser un lien de recette
 #include "imgui.h"
 #include "ragnarok/globals.h"
+#include "ragnarok/item_info.h"  // rag::itemlist : le layout du noeud
 #include "ragnarok/lua.h"
 #include "ui/icon_cache.h"
 #include "ui/ro_imgui.h"
@@ -26,10 +27,9 @@ using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
 namespace {
 
-constexpr int       kNodeNext     = 0x00;
-constexpr int       kNodeInfo     = 0x08;
-constexpr int       kNodeAmt      = 0x18;
-constexpr int       kInfoIdStr    = 0x2c;  // std::string : l'id EN TEXTE (le jeu fait atoi)
+using rag::itemlist::kNodeNext;
+using rag::itemlist::kNodeInfo;
+using rag::itemlist::kNodeAmount;
 constexpr int       kMaxInvNodes  = 4096;  // garde-fou de parcours
 
 // Résolveur de nom de compétence LOCALISÉ (wrapper Lua natif, cf. skill_bar et
@@ -48,13 +48,6 @@ constexpr ImU32 kColWarn = IM_COL32(166, 102,   0, 255);
 constexpr ImU32 kColText = IM_COL32( 20,  20,  20, 255);
 
 inline ImVec4      V4(ImU32 c)   { return ImGui::ColorConvertU32ToFloat4(c); }
-// L'itemId d'un ItemSkillInfo : une std::string sur laquelle le jeu fait atoi
-// (§4.4 de docs/make_item_list_re.md). Petite chaîne = tampon INTERNE, grande =
-// pointeur ; la capacité tranche.
-uint32_t InfoItemId(const uint8_t* info) {
-  const char* ids = rag::clientstr::Data(info + kInfoIdStr);
-  return ids ? static_cast<uint32_t>(std::atoi(ids)) : 0u;
-}
 
 // (Pas de `IsLastItemRightClicked` local : `mui::` en fournit un, et le
 //  redéfinir ici rendait l'appel ambigu sous `using namespace mui`. La version
@@ -130,8 +123,8 @@ void CraftAtlas::RebuildOwned() {
     int guard = 0;
     while (node && node != head && guard++ < kMaxInvNodes) {
       const uint8_t* info = node + kNodeInfo;
-      const int amount = *reinterpret_cast<const int*>(node + kNodeAmt);
-      const uint32_t id = InfoItemId(info);
+      const int amount = *reinterpret_cast<const int*>(node + kNodeAmount);
+      const uint32_t id = rag::itemlist::ItemId(info);
       node = *reinterpret_cast<uint8_t**>(node + kNodeNext);
       if (amount > 0 && id != 0) owned_[id] += amount;
     }
