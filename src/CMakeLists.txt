@@ -90,6 +90,7 @@ set(BOURGEON_FILES
 	"features/windows/hotkey_settings.h"
 	"features/windows/inventory_viewer.cc"
 	"features/windows/inventory_viewer.h"
+	"features/windows/item_viewer_base.h"
 	"features/windows/item_desc_window.cc"
 	"features/windows/item_desc_window.h"
 	"features/windows/macro_window.cc"
@@ -258,8 +259,11 @@ set(BOURGEON_FILES
 	"features/minigames/rojeweled.h"
 
 	# UI toolkit (socle ImGui « façon RO »)
+	"ui/desc_pending_lock.cc"
+	"ui/desc_pending_lock.h"
 	"ui/item_grid_chrome.cc"
 	"ui/item_grid_chrome.h"
+	"ui/viewer_rect.h"
 	"ui/ro_imgui.cc"
 	"ui/ro_imgui.h"
 	"ui/ro_skin_blobs.hpp"
@@ -382,6 +386,8 @@ set(BOURGEON_FILES
 	"utils/byte_pattern.h"
 	"utils/frame_profiler.cc"
 	"utils/frame_profiler.h"
+	"utils/game_focus.cc"
+	"utils/game_focus.h"
 	"utils/gif_writer.cc"
 	"utils/gif_writer.h"
 	"utils/game_paths.cc"

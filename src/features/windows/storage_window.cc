@@ -596,6 +596,15 @@ constexpr uint16_t kOpMapChange  = 0x0091;  // ZC_NPCACK_MAPMOVE
 constexpr uint16_t kOpServerMove = 0x0092;  // ZC_NPCACK_SERVERMOVE
 
 StorageWindow::StorageWindow() {
+  // 🔴 SEUL défaut de ItemViewerBase que cette fenêtre remplace. L'inventaire et
+  // le chariot sont des GRILLES d'icônes : leurs onglets de catégorie tiennent
+  // debout à gauche, comme dans le natif. L'entrepôt est un TABLEAU à colonnes,
+  // dont la largeur est déjà disputée — ses onglets vont en rangée horizontale.
+  // Sans cette ligne, la fenêtre s'ouvrirait avec des onglets verticaux à la
+  // première utilisation (ensuite le réglage persisté reprend la main, ce qui
+  // rendrait le défaut inversé difficile à remarquer).
+  tabs_vertical_ = false;
+
   Bourgeon::Instance().RegisterRecvOpcode(bopcodes::kStoragePrices);
   // Liste des storages accessibles : écoutée MÊME en mode natif. Le serveur
   // l'envoie à chaque ouverture quelle qu'en soit l'origine ; ne pas l'écouter
@@ -903,33 +912,6 @@ void StorageWindow::OnTick() {
 // Aucun drag natif ne peut donc plus en partir : les deux sens passent par le
 // glisser ImGui.)
 
-// ── Verrou « description en vol » (anti-flicker de l'aperçu au survol) ───────
-// Armé au moment où l'utilisateur DEMANDE une description (menu contextuel ou
-// Ctrl+clic droit) : la fenêtre de description met quelques frames à apparaître,
-// et pendant ce trou le curseur est de nouveau sur la ligne -> l'aperçu au survol
-// se rouvrait puis disparaissait (flicker). Le verrou tient jusqu'au prochain
-// VRAI mouvement du curseur (le geste souris/menu est alors terminé), avec un
-// garde-fou de temps au cas où la fenêtre n'arriverait jamais.
-void StorageWindow::MarkDescPending() {
-  const ImVec2 mouse_pos = ImGui::GetIO().MousePos;
-  desc_pending_ = true;
-  desc_pending_x_ = mouse_pos.x;
-  desc_pending_y_ = mouse_pos.y;
-  desc_pending_tick_ = GetTickCount();
-}
-
-bool StorageWindow::DescPendingBlocksHover() {
-  if (!desc_pending_) return false;
-  constexpr float kMoveThreshold = 6.0f;   // px : ignore le micro-jitter de la souris
-  constexpr uint32_t kMaxHoldMs = 1500;    // garde-fou : jamais bloqué indéfiniment
-  const ImVec2 mouse_pos = ImGui::GetIO().MousePos;
-  const bool moved = std::fabs(mouse_pos.x - desc_pending_x_) +
-                     std::fabs(mouse_pos.y - desc_pending_y_) > kMoveThreshold;
-  if (moved || GetTickCount() - desc_pending_tick_ > kMaxHoldMs)
-    desc_pending_ = false;
-  return desc_pending_;
-}
-
 // ── Section « StorageWindow » du panneau Moonlight ───────────────────────────
 // Déplacée depuis moonlight_ui/panel_interface.cc : ces widgets ne pilotent
 // que l'état de CE plugin. MoonlightUi ne garde que l'appel et la décision
@@ -1059,7 +1041,9 @@ bool StorageWindow::DrawSettings() {
 }
 
 void StorageWindow::OnRenderUI() {
-  if (!open_ || !imgui_enabled_) return;
+  // Pas dessinee ce frame => elle n a plus de rect : un depot lache sur sa
+  // derniere position connue ne doit pas lui etre route.
+  if (!open_ || !imgui_enabled_) { win_rect_.Invalidate(); return; }
 
   if (need_pos_) {
     // FirstUseEver (pas Appearing) : ce n'est qu'un DÉFAUT pour la toute 1re
@@ -1109,7 +1093,10 @@ void StorageWindow::OnRenderUI() {
     SendCloseStorage();
     show_panel_ = true;
   }
+  // Clippee : ImGui ne l a pas dessinee, son rect ne vaut plus rien comme
+  // cible de depot.
   if (!begun) {
+    win_rect_.Invalidate();
     ro::EndRoWindow();
     return;
   }
@@ -1158,8 +1145,7 @@ void StorageWindow::OnRenderUI() {
 
   // Rect écran du viewer (pour tester le drop d'un drag natif dessus).
   const ImVec2 wp = ImGui::GetWindowPos(), ws = ImGui::GetWindowSize();
-  win_x_ = wp.x; win_y_ = wp.y; win_w_ = ws.x; win_h_ = ws.y;
-  win_valid_ = true;
+  win_rect_.Capture(wp.x, wp.y, ws.x, ws.y);
 
   // Action en attente (menu contextuel ou fin d'un glisser partant d'ici) : 1 seul
   // = direct ; pile = prompt quantité. do_move applique le sens choisi. Les deux
@@ -2097,7 +2083,7 @@ void StorageWindow::OnRenderUI() {
       if (show_desc_tooltip_ &&
           ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort) &&
           !ImGui::IsMouseDown(ImGuiMouseButton_Left) &&
-          ImGui::GetDragDropPayload() == nullptr && !DescPendingBlocksHover()) {
+          ImGui::GetDragDropPayload() == nullptr && !desc_lock_.BlocksHover()) {
         hover_id = items_[idx].id;
         hover_idx = idx;
       }
@@ -2127,7 +2113,7 @@ void StorageWindow::OnRenderUI() {
       if (IsLastItemRightClicked()) {
         const ImGuiIO& io = ImGui::GetIO();
         if (io.KeyCtrl) {
-          MarkDescPending();  // bloque l'aperçu au survol jusqu'à la fenêtre de desc
+          desc_lock_.Arm();  // bloque l'aperçu au survol jusqu'à la fenêtre de desc
           POINT pt;
           if (GetCursorPos(&pt)) OpenItemDesc(items_[idx].index, pt.x, pt.y);
         } else if (io.KeyAlt || io.KeyShift) {
@@ -2148,7 +2134,7 @@ void StorageWindow::OnRenderUI() {
         if (ImGui::MenuItem(i18n::Tr("Description"))) {
           // Le menu se ferme AVANT que la fenêtre de description n'apparaisse :
           // sans ce verrou, l'aperçu au survol se rouvre entre les deux (flicker).
-          MarkDescPending();
+          desc_lock_.Arm();
           POINT pt;
           if (GetCursorPos(&pt)) OpenItemDesc(items_[idx].index, pt.x, pt.y);
         }
@@ -2321,8 +2307,7 @@ void StorageWindow::OnRenderUI() {
         // Lâcher DANS le storage = rangement interne, rien à router. Testé EN
         // PREMIER pour qu'une fenêtre posée dessous ne capte pas le drop (même
         // garde que l'inventaire et le cart).
-        const bool over_self = drag_mx_ >= win_x_ && drag_my_ >= win_y_ &&
-                               drag_mx_ < win_x_ + win_w_ && drag_my_ < win_y_ + win_h_;
+        const bool over_self = win_rect_.Contains(drag_mx_, drag_my_);
         if (over_self) {
           // rien
         }

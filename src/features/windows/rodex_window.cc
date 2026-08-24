@@ -31,17 +31,6 @@
 // ── Constantes RE (client 20250716, base 0x400000 ; cf. docs/rodex_re.md) ──
 namespace {
 
-// CMode::SendMsg (thread principal UNIQUEMENT). No-op si aucun mode n'est actif.
-// La descente « manager -> état 1 -> dispatcher -> vtable+0x18 » n'est plus
-// écrite ici : c'est exactement ce que `rag::ActiveModeSendMsg` fait, et les
-// trois constantes qu'elle demandait (0x58, +4, l'index 6) étaient en dur.
-void ModeCmd(int cmd, int a, int b, int c, int d) {
-  __try {
-    rag::ActiveModeSendMsg(cmd, a, b, c, d);
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
-}
-
-
 // Fenêtres natives à masquer + fermeture propre (persiste la position, comme le X).
 
 constexpr int kInboxId = 0x107;  // UIRodexWnd     — la LISTE
@@ -1048,7 +1037,7 @@ void RodexWindow::RequestRefresh() {
 void RodexWindow::OpenMail(const Mail& mail) {
   // Le natif ne transmet que les 32 bits bas du mailID (clic sur le sujet d'une
   // ligne, OnMsg 0x62 / ctrl 0x143) : on réplique à l'identique.
-  ModeCmd(kCmdReadMail, static_cast<int>(mail.id & 0xffffffff), mail.box, 0, 0);
+  rag::ActiveModeSendMsgSafe(kCmdReadMail, static_cast<int>(mail.id & 0xffffffff), mail.box, 0, 0);
 }
 
 void RodexWindow::ClaimAttachments(const Mail& mail) {
@@ -1072,7 +1061,7 @@ void RodexWindow::ClaimAttachments(const Mail& mail) {
 }
 
 void RodexWindow::DeleteMail(const Mail& mail) {
-  ModeCmd(kCmdDeleteMail, static_cast<int>(mail.id & 0xffffffff), mail.box, 0, 0);
+  rag::ActiveModeSendMsgSafe(kCmdDeleteMail, static_cast<int>(mail.id & 0xffffffff), mail.box, 0, 0);
   if (selected_id_ == mail.id) selected_id_ = 0;
 }
 
@@ -1099,7 +1088,7 @@ void RodexWindow::Compose(const char* recipient) {
   // SILENCE. Sa réponse (ZC 0x0A12) ouvre notre fenêtre — elle ne crée plus la native.
   // `recipient` non nul pré-remplit le destinataire (bouton « Répondre ») ; le serveur
   // nous le renvoie dans l'ack, on n'a donc rien à mémoriser ici.
-  ModeCmd(kCmdBeginWrite, static_cast<int>(reinterpret_cast<uintptr_t>(recipient)),
+  rag::ActiveModeSendMsgSafe(kCmdBeginWrite, static_cast<int>(reinterpret_cast<uintptr_t>(recipient)),
           0, 0, 0);
 }
 
@@ -1142,8 +1131,8 @@ void RodexWindow::AttachItem(int index, int amount) {
   // Séquence EXACTE du drop natif (OnMsg case 0x26) : la commande d'ajout puis la
   // commande d'application. Le serveur (clif_parse_Mail_setattach) borne lui-même
   // la quantité et refuse ce qui n'est pas envoyable.
-  ModeCmd(kCmdAttach, index, amount, 0, 0);
-  ModeCmd(kCmdApply, 0, 0, 0, 0);
+  rag::ActiveModeSendMsgSafe(kCmdAttach, index, amount, 0, 0);
+  rag::ActiveModeSendMsgSafe(kCmdApply, 0, 0, 0, 0);
 }
 
 void RodexWindow::RemoveAttachment(int index, int amount) {

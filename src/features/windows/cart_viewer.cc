@@ -361,7 +361,7 @@ void CartViewer::OnTick() {
     // Retour au natif : le viewer s'efface, la native reprend son service à la
     // prochaine demande (elle n'existe plus, donc le client la recréera).
     open_ = false;
-    win_valid_ = false;
+    win_rect_.Invalidate();
     drag_active_ = false;
     return;
   }
@@ -383,12 +383,14 @@ void CartViewer::OnTick() {
   // resterait affiché sans rien pour l'effacer.
   if (!open_) {
     hover_desc_id_ = 0; hover_desc_idx_ = -1;
-    win_valid_ = false; drag_active_ = false;
+    win_rect_.Invalidate(); drag_active_ = false;
   }
 }
 
 void CartViewer::OnRenderUI() {
-  if (!open_ || !imgui_enabled_) return;
+  // Pas dessinee ce frame => elle n a plus de rect : un depot lache sur sa
+  // derniere position connue ne doit pas lui etre route.
+  if (!open_ || !imgui_enabled_) { win_rect_.Invalidate(); return; }
   MaybeFlushTextures();  // device reset/TDR -> lâche les handles morts
 
   if (need_pos_) {
@@ -408,18 +410,19 @@ void CartViewer::OnRenderUI() {
     ImGui::SetNextWindowSizeConstraints(
         ImVec2(ro::grid::Snap().chromew + minGrid, ro::grid::Snap().chromeh + minGrid),
         ImVec2(10000.0f, 10000.0f), ro::grid::SnapWindowSize);
-  } else if (ro::grid::Snap().valid && win_valid_) {
+  } else if (ro::grid::Snap().valid && win_rect_.valid()) {
     // Taille VERROUILLÉE : le callback de snap ne tourne plus (il n'agit que pendant
     // un redimensionnement), donc la fenêtre resterait sur une hauteur quelconque —
     // dernière ligne coupée. On la recale une fois sur le palier le plus proche.
     const float step = ro::grid::Snap().cell + ro::grid::Snap().gap;
-    int cols = static_cast<int>((win_w_ - ro::grid::Snap().chromew + ro::grid::Snap().gap) / step + 0.5f);
-    int rows = static_cast<int>((win_h_ - ro::grid::Snap().chromeh + ro::grid::Snap().gap) / step + 0.5f);
+    int cols = static_cast<int>((win_rect_.w() - ro::grid::Snap().chromew + ro::grid::Snap().gap) / step + 0.5f);
+    int rows = static_cast<int>((win_rect_.h() - ro::grid::Snap().chromeh + ro::grid::Snap().gap) / step + 0.5f);
     if (cols < 5) cols = 5;
     if (rows < 5) rows = 5;
     const ImVec2 snapped(ro::grid::Snap().chromew + cols * step - ro::grid::Snap().gap,
                          ro::grid::Snap().chromeh + rows * step - ro::grid::Snap().gap);
-    if (std::fabs(snapped.x - win_w_) > 0.5f || std::fabs(snapped.y - win_h_) > 0.5f)
+    if (std::fabs(snapped.x - win_rect_.w()) > 0.5f ||
+        std::fabs(snapped.y - win_rect_.h()) > 0.5f)
       ImGui::SetNextWindowSize(snapped, ImGuiCond_Always);
   }
 
@@ -434,7 +437,9 @@ void CartViewer::OnRenderUI() {
   // X du viewer : l'état d'ouverture est le NÔTRE maintenant, il n'y a plus de
   // fenêtre native à fermer. Réarme show_panel_ pour la prochaine ouverture.
   if (!show_panel_) { open_ = false; show_panel_ = true; }
-  if (!begun) { ro::EndRoWindow(); return; }
+  // Repliee ou clippee : ImGui ne l a pas dessinee, son rect deplie ne vaut
+  // plus rien comme cible de depot.
+  if (!begun) { win_rect_.Invalidate(); ro::EndRoWindow(); return; }
 
   // Pendant la composition d'un shop, le serveur refuse TOUT mouvement touchant
   // le cart : autant l'annoncer une fois en clair, en plus des entrées grisées.
@@ -443,8 +448,7 @@ void CartViewer::OnRenderUI() {
                        i18n::Tr("Shop en composition : les transferts sont figés."));
 
   const ImVec2 wp = ImGui::GetWindowPos(), ws = ImGui::GetWindowSize();
-  win_x_ = wp.x; win_y_ = wp.y; win_w_ = ws.x; win_h_ = ws.y;
-  win_valid_ = true;
+  win_rect_.Capture(wp.x, wp.y, ws.x, ws.y);
 
   // ── Action en attente (transfert d'une pile) -> prompt quantité ──
   auto do_move = [this](int amount) {
@@ -805,8 +809,7 @@ void CartViewer::OnRenderUI() {
     } else {  // relâché ce frame
       int action = -1;
       if (drag_index_ > 0) {
-        const bool over_self = drag_mx_ >= win_x_ && drag_my_ >= win_y_ &&
-                               drag_mx_ < win_x_ + win_w_ && drag_my_ < win_y_ + win_h_;
+        const bool over_self = win_rect_.Contains(drag_mx_, drag_my_);
         if (!over_self) {
           if (viewers::MouseOverStorage(drag_mx_, drag_my_))        action = kPendToStorage;
           // Entrepôt ouvert => le serveur refuse cart -> inventaire (storage_flag,

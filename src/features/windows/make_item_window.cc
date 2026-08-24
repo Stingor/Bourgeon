@@ -338,14 +338,6 @@ constexpr float kMatIcon = 18.0f;
 // ImU32 -> ImVec4, pour les widgets qui prennent une couleur flottante.
 inline ImVec4 V4(ImU32 c) { return ImGui::ColorConvertU32ToFloat4(c); }
 
-// Envoie une commande au dispatcher du mode actif (le chemin des boutons natifs).
-void SendModeCmd(int cmd, int a, int b = 0, int c = 0, int d = 0) {
-  __try {
-    // ⚠ Mode lu BRUT (rag::ActiveMode), pas le getter gaté (cf. globals.h).
-    rag::ModeSendMsg(rag::ActiveMode(), cmd, a, b, c, d);
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
-}
-
 // Commande 130 : elle attend un TABLEAU de trois ItemSkillInfo et en lit le
 // champ +0x2c par atoi (§3.4). On les construit vides -> trois matériaux à 0.
 //
@@ -1769,10 +1761,10 @@ void MakeItemWindow::SendConfirm(uint32_t item_id) {
           forge_slot_[1], forge_slot_[2]);
   switch (proto_) {
     case Proto::kArrow:
-      SendModeCmd(kCmdMakeArrow, static_cast<int>(item_id));
+      rag::RawModeSendMsgSafe(kCmdMakeArrow, static_cast<int>(item_id));
       break;
     case Proto::kMaking:
-      SendModeCmd(kCmdMakeItem, static_cast<int>(item_id), mk_type_);
+      rag::RawModeSendMsgSafe(kCmdMakeItem, static_cast<int>(item_id), mk_type_);
       break;
     case Proto::kProduce:
       // ⚠ Ici le natif BIFURQUE, et le critère qu'il emploie est le MAUVAIS : la
@@ -1827,8 +1819,8 @@ void MakeItemWindow::SendCancel() {
   LogDiag("[make] annulation proto={} mk_type={}", static_cast<int>(proto_),
           mk_type_);
   switch (proto_) {
-    case Proto::kArrow:  SendModeCmd(kCmdMakeArrow, -1); break;
-    case Proto::kMaking: SendModeCmd(kCmdMakeItem, -1, mk_type_); break;
+    case Proto::kArrow:  rag::RawModeSendMsgSafe(kCmdMakeArrow, -1); break;
+    case Proto::kMaking: rag::RawModeSendMsgSafe(kCmdMakeItem, -1, mk_type_); break;
     case Proto::kProduce: SendProduceCmd(0); break;  // itemId = 0 = annulation
     default: break;
   }
@@ -1908,7 +1900,7 @@ void MakeItemWindow::SendRecast() {
   // reference_cmode_sendmsg_use_skill — Arrow Vulcan partait sur soi-même).
   // Le NIVEAU est celui du lancement observé, pas 1 : c'est lui que le serveur
   // range dans `menuskill_val` et qui décide de ce que la liste contiendra.
-  SendModeCmd(kCmdUseSkill, skill_id_, static_cast<int>(aid), skill_lv_);
+  rag::RawModeSendMsgSafe(kCmdUseSkill, skill_id_, static_cast<int>(aid), skill_lv_);
   // 🔴 On remet l'horloge à l'heure NOUS-MÊMES, exactement comme SendReuseItem le
   // fait côté objet. Notre envoi ne repasse PAS par l'observation : le hook de
   // CMode::SendMsg ne note qu'au niveau le plus externe (`g_send_msg_depth == 1`)

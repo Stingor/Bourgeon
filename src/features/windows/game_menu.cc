@@ -83,17 +83,6 @@ constexpr int kMsgMoveToSavePoint = 1548;  // MSI_MOVETO_SAVEPOINT
 using HasToken_t = char(__thiscall*)(void*);
 using StatusHas_t = int(__stdcall*)(int);
 
-// Envoie une commande au mode actif. Renvoie false si le mode est indisponible —
-// l'appelant doit alors NE RIEN faire plutôt que réessayer autrement.
-bool SendModeCmd(int cmd, int p1) {
-  __try {
-    void* mode = rag::ActiveModeSafe();
-    if (!mode) return false;
-    rag::ModeSendMsg(mode, cmd, p1, 0, 0, 0);
-    return true;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
-}
-
 bool PlayerIsDead() {
   __try {
     void* mode = rag::ActiveModeSafe();
@@ -270,7 +259,7 @@ void GameMenu::DriveNativeCommand(int native_cmd) {
     LogDiag("[GameMenu] MakeWindow(155) refusée -> repli direct pour la cmd {}",
             native_cmd);
     if (native_cmd == kNativeCmdCharSelect &&
-        SendModeCmd(kCmdRestart, kRestartTypeCharSelect)) {
+        rag::ActiveModeSendMsgSafe(kCmdRestart, kRestartTypeCharSelect)) {
       uiwnd::SafeCloseWindow(kEscMenuWndId);
       uiwnd::SafeCloseWindow(kWndAlsoClosedA);
       uiwnd::SafeCloseWindow(kWndAlsoClosedB);
@@ -293,11 +282,11 @@ void GameMenu::RunPendingAction() {
     case Action::kSavePoint:
       // CZ_RESTART type 0. Branchement natif entièrement connu (modale puis envoi),
       // et la modale est la NÔTRE — on ne route donc pas.
-      if (SendModeCmd(kCmdRestart, kRestartTypeSavePoint)) Close();
+      if (rag::ActiveModeSendMsgSafe(kCmdRestart, kRestartTypeSavePoint)) Close();
       break;
 
     case Action::kResurrect:
-      if (SendModeCmd(kCmdStandingResurrect, 0)) Close();
+      if (rag::ActiveModeSendMsgSafe(kCmdStandingResurrect, 0)) Close();
       break;
 
     case Action::kExitToWindows:
@@ -305,7 +294,7 @@ void GameMenu::RunPendingAction() {
       // vient de ZC_ACK_REQ_DISCONNECT 0x018B. Court-circuiter par un ExitProcess
       // perdrait la sauvegarde serveur des raccourcis (docs §4.8).
       Close();
-      SendModeCmd(kCmdRequestDisconnect, 0);
+      rag::ActiveModeSendMsgSafe(kCmdRequestDisconnect, 0);
       break;
 
     case Action::kOpenChatMacros:

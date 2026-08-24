@@ -3,6 +3,7 @@
 #include <Windows.h>
 
 #include "utils/log_console.h"
+#include "utils/game_focus.h"  // win::GameHasFocus
 
 // ── Réglages ──────────────────────────────────────────────────────────────────
 
@@ -47,18 +48,6 @@ static bool    g_had_focus      = true;
 
 // ── Implémentation ────────────────────────────────────────────────────────────
 
-// Sans focus, le jeu et Windows brident le rendu : toutes les frames deviennent
-// longues et seraient comptées comme des pics. On sort du mesurage tant que la
-// fenêtre au premier plan n'appartient pas à ce processus, et on ré-amorce la
-// baseline au retour (la première frame après un alt-tab n'est pas représentative).
-static bool HasFocus() {
-  const HWND fg = GetForegroundWindow();
-  if (!fg) return false;
-  DWORD pid = 0;
-  GetWindowThreadProcessId(fg, &pid);
-  return pid == GetCurrentProcessId();
-}
-
 void FrameProfiler_Tick() {
   LARGE_INTEGER now;
   QueryPerformanceCounter(&now);
@@ -75,7 +64,11 @@ void FrameProfiler_Tick() {
   const double dt = static_cast<double>(now.QuadPart - g_last_frame_qpc) * g_qpc_to_ms;
   g_last_frame_qpc = now.QuadPart;
 
-  if (!HasFocus()) {          // en arrière-plan : on ne mesure rien
+  // Sans focus, le jeu et Windows brident le rendu : toutes les frames deviennent
+  // longues et seraient comptées comme des pics. On sort donc du mesurage, et on
+  // ré-amorce la baseline au retour — la première frame après un alt-tab n'est
+  // pas représentative.
+  if (!win::GameHasFocus()) {  // en arrière-plan : on ne mesure rien
     g_had_focus = false;
     return;
   }

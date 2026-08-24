@@ -4,7 +4,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#include "features/plugin.h"
+#include "features/windows/item_viewer_base.h"
 
 // ── StorageWindow ───────────────────────────────────────────────────────────
 //
@@ -32,7 +32,7 @@
 // packetvers anciens. moonlight n'envoie que 0x0b09/0x0b39 ; la purge de OnTick
 // est le filet si l'une d'elles arrivait quand même.)
 
-class StorageWindow : public Plugin {
+class StorageWindow : public ItemViewerBase {
  public:
 
   // Contenu de sa section dans le panneau Moonlight. Rend true si un réglage
@@ -47,27 +47,23 @@ class StorageWindow : public Plugin {
   // Reçoit les prix de vente du storage (ZC_BOURGEON_STORAGE_PRICES 0x0F0F).
   void OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
 
-  bool& show_panel() { return show_panel_; }
-
-  // Une session storage est-elle ouverte ? À interroger par les AUTRES modules
-  // (inventaire, cart) au lieu de chercher la fenêtre native : elle ne naît plus
-  // en mode ImGui, et un `FindWindow(0x21)` nul y passerait pour « storage
-  // fermé ». Or plusieurs de leurs règles en dépendent — le serveur refuse
-  // inventaire <-> cart tant qu'un storage est ouvert (sd->state.storage_flag),
-  // et ces modules n'arment le transfert que sur ce test.
-  bool IsOpen() const { return open_; }
+  // (`IsOpen()`, `PointOverViewer()`, `show_panel()`, `desc_tooltip()`,
+  // `show_filter()`, `tabs_vertical()`, `cur_tab()` et la bascule
+  // `imgui_enabled_` sont sur ItemViewerBase — les trois viewers d'objets les
+  // portaient à l'identique. Ce qui suit est PROPRE à l'entrepôt.
+  //
+  // Une raison de plus d'interroger `IsOpen()` plutôt que la fenêtre native,
+  // celle-ci : le serveur refuse inventaire <-> cart tant qu'un storage est
+  // ouvert (sd->state.storage_flag), et les deux autres viewers n'arment leur
+  // transfert que sur ce test.)
 
   // ── Settings PERSISTANTS (bourgeon_settings.yaml, section « Storage » du
   // panneau Moonlight ; chargés/sauvés par MoonlightUi comme imgui_enabled_).
-  // Description au SURVOL : ouvre la VRAIE fenêtre de description (celle du clic
-  // droit) tant que la souris reste sur la ligne, et la ferme en sortant.
-  bool& desc_tooltip()   { return show_desc_tooltip_; }
   bool& show_index_col() { return show_index_col_; }
   bool& show_id_col()    { return show_id_col_; }
   bool& show_slots_col() { return show_slots_col_; }
   bool& show_value_col() { return show_value_col_; }
   bool& show_total_value() { return show_total_value_; }
-  bool& show_filter()    { return show_filter_; }
   // Filtres par TYPE d'item : les onglets de catégorie (Tout / Favoris / Consos
   // / Armes…) ET le combo « Sous-type » qui en dépend. Décoché, la fenêtre est
   // une liste unique — comme le champ de filtre, on ne laisse rien de masqué
@@ -78,20 +74,11 @@ class StorageWindow : public Plugin {
   // ne fait qu'afficher la rangée. Décoché, tout le reste de la fenêtre est
   // strictement identique à avant.
   bool& show_storage_tabs() { return show_storage_tabs_; }
-  // Disposition des onglets de catégorie : false = horizontale (TabBar, défaut),
-  // true = verticale à gauche (comme la fenêtre native).
-  bool& tabs_vertical()  { return tabs_vertical_; }
   // Disposition VERTICALE uniquement : true = tuiles images du client (tab_*.bmp),
   // false = onglets texte au libellé tourné à 90°.
+  // (`tabs_vertical()` lui-même est sur ItemViewerBase ; ⚠ c'est la seule des
+  // trois fenêtres à le vouloir FAUX par défaut — son constructeur le pose.)
   bool& tab_images()     { return tab_images_; }
-  int&  cur_tab()        { return cur_tab_; }
-
-  // Setting PERSISTANT (bourgeon_settings.yaml "storage_imgui", géré par MoonlightUi) :
-  // ON = viewer ImGui, la fenêtre native ne s'ouvre plus ; OFF = storage natif
-  // seul, aucun viewer. Pas de cohabitation — et le réglage n'est jamais touché
-  // seul : SetModernInterface l'écrit avec tout le groupe « Interface moderne ».
-  // Public pour que MoonlightUi le charge/sauve (comme sb->enabled_).
-  bool imgui_enabled_ = false;
 
   // Favoris 100 % CLIENT (aucun paquet, aucun flag serveur — le storage n'a pas de
   // flag favori par item, contrairement à l'inventaire). Set d'ids d'items marqués
@@ -124,14 +111,6 @@ class StorageWindow : public Plugin {
   // de l'inventaire ou du cart. « Interface moderne » étant un groupe tout-ou-rien,
   // ces deux fenêtres sont des viewers ImGui dès que celle-ci l'est, et leurs
   // natives masquées sont hors hit-test — plus aucun drag natif ne peut en partir.)
-
-  // True si (mx,my) est au-dessus de la fenêtre du viewer storage (ImGui) ouverte.
-  // Sert aux viewers INVENTAIRE et CART pour router un dépôt par glisser : c'est
-  // la SEULE cible possible, la fenêtre native n'existant plus.
-  bool PointOverViewer(int mx, int my) const {
-    return open_ && imgui_enabled_ && win_valid_ && mx >= win_x_ && my >= win_y_ &&
-           mx < win_x_ + win_w_ && my < win_y_ + win_h_;
-  }
 
  private:
   // 🔴 Le décodage, sur le FIL PRINCIPAL. OnRecvPacket (fil réseau) ne fait que
@@ -171,11 +150,9 @@ class StorageWindow : public Plugin {
   // map, le viewer resterait ouvert sur un storage qui n'existe plus.
   void CloseLocal();
 
-  bool  show_panel_ = true;   // transitoire : détection du clic sur le X (ferme la session)
   bool  show_id_col_ = false; // setting : afficher une colonne avec l'id d'item
   bool  show_index_col_ = false;  // setting : afficher l'index storage (slot)
   bool  show_slots_col_ = false;  // setting : afficher une colonne nb de slots carte
-  bool  show_desc_tooltip_ = false;  // setting : description native au survol
   // « Remettre l'ordre d'origine » (colonnes) demandé depuis le panneau de
   // réglages. PAS un setting : l'ordre lui-même vit dans imgui.ini, tenu par
   // ImGui. Le drapeau attend la prochaine table — le panneau s'ouvre aussi
@@ -183,39 +160,12 @@ class StorageWindow : public Plugin {
   bool  reset_col_order_ = false;
   bool  show_value_col_ = true;    // setting : colonne prix de revente (NPC * qté)
   bool  show_total_value_ = true;  // setting : valeur estimée du storage (en-tête)
-  bool  show_filter_ = true;  // setting : afficher le champ de filtre par nom
   bool  show_storage_tabs_ = false;  // setting (opt-in) : onglets de storage
   bool  show_type_tabs_ = true;      // setting : onglets de catégorie + sous-type
-  bool  tabs_vertical_ = false;  // setting : onglets verticaux à gauche (natif)
   bool  tab_images_ = true;      // setting (vertical) : tuiles images vs texte 90°
-  int   cur_tab_ = 0;         // onglet catégorie sélectionné (0 = Tout), persisté
-  // Item survolé ce frame (0 = aucun) : alimente l'aperçu de description, un
-  // panneau RO simplifié dessiné au curseur après la fenêtre du viewer. L'INDEX
-  // sert à retrouver cartes/options (données d'instance) ; il n'est valable que
-  // dans la frame courante, items_ étant reconstruit à chaque tick.
-  uint32_t hover_desc_id_ = 0;
-  int      hover_desc_idx_ = -1;
-  // ── Verrou « description en vol » (anti-flicker) ────────────────────────────
-  // Le menu contextuel masque l'aperçu au survol tant qu'il est ouvert. Au clic
-  // sur « Description » le menu se ferme AVANT que la fenêtre de description
-  // n'apparaisse : le curseur retombe sur la ligne et l'aperçu se rouvrait pour
-  // quelques frames -> flicker. On le bloque donc dès la DEMANDE de description,
-  // jusqu'à ce que le curseur bouge vraiment (le geste est fini), avec un
-  // garde-fou de temps si la fenêtre n'arrive jamais.
-  bool     desc_pending_ = false;
-  float    desc_pending_x_ = 0.0f, desc_pending_y_ = 0.0f;
-  uint32_t desc_pending_tick_ = 0;
-  // Arme le verrou (à appeler juste avant OpenItemDesc).
-  void MarkDescPending();
-  // Met à jour le verrou et renvoie true si l'aperçu doit rester masqué.
-  bool DescPendingBlocksHover();
   // Onglet persisté déjà ré-appliqué au TabBar ? (une seule fois par session)
   bool  tab_applied_ = false;
 
-  // Rect écran du viewer (capturé au rendu) : sert aux AUTRES viewers pour tester
-  // qu'un glisser est relâché dessus (PointOverViewer).
-  float win_x_ = 0, win_y_ = 0, win_w_ = 0, win_h_ = 0;
-  bool  win_valid_ = false;
   std::unordered_map<uint32_t, uint32_t> prices_;  // id -> prix de vente NPC (serveur)
   // Métadonnées item (serveur, statiques) pour les sous-catégories : subtype = type
   // d'arme (W_*) ou de munition (A_*) ; equip = masque de slot d'équipement.
@@ -223,32 +173,18 @@ class StorageWindow : public Plugin {
   std::unordered_map<uint32_t, ItemMeta> meta_;    // id -> {subtype, equip}
   int cur_sub_ = -1;  // sous-catégorie sélectionnée (clé SubCat, -1 = Tout)
   // Sens d'un déplacement en attente — les deux sens SORTANTS, les seuls que
-  // cette fenêtre émette ; `pend_index_` est donc toujours un index STORAGE. Ce
-  // qui entre dans le storage part de la fenêtre d'origine (inventaire, cart),
-  // qui envoie son propre paquet.
+  // cette fenêtre émette ; `pend_index_` (sur ItemViewerBase) est donc toujours
+  // un index STORAGE. Ce qui entre dans le storage part de la fenêtre d'origine
+  // (inventaire, cart), qui envoie son propre paquet.
   enum PendAction { kPendStoToInv, kPendStoToCart };
-  int   pend_id_ = 0;      // 0 = aucune action en attente
-  int   pend_index_ = 0;   // index storage de la source
-  int   pend_max_ = 0;     // quantité max (stack)
-  bool  pend_open_prompt_ = false;  // ouvrir le prompt quantité au prochain rendu
-  int   pend_action_ = kPendStoToInv;  // sens du déplacement en attente
-  // Retrait par drag (viewer -> viewer inventaire) : suivi du drag en cours.
-  bool  drag_active_ = false;
-  int   drag_index_ = 0, drag_amount_ = 0;
-  float drag_mx_ = 0, drag_my_ = 0;  // dernière pos souris pendant le drag
-  // Session storage ouverte ? Posé par le paquet d'ouverture (0x0b08 pour un
-  // invType de storage), levé par CloseLocal. Ne se déduit plus de la présence
-  // d'une fenêtre native.
-  bool  open_ = false;
-  // Valeur d'imgui_enabled_ au tick précédent : sert à voir la BASCULE de mode,
-  // qui doit être traitée pendant qu'une session est ouverte (cf. OnTick).
-  bool  prev_imgui_enabled_ = false;
-  bool  need_pos_ = false;    // poser la position par défaut à la 1re ouverture
+  // Le défaut de `pend_action_` est posé à 0 dans la base pour les trois
+  // viewers : ce n'est correct que tant que le premier énumérateur vaut 0.
+  static_assert(kPendStoToInv == 0, "pend_action_ = 0 doit valoir kPendStoToInv");
+
   int   used_ = 0, max_ = 0;  // compteur du serveur (ZC_NOTIFY_STOREITEM_COUNTINFO)
   // Nom du storage ouvert, envoyé par le serveur dans ZC_INVENTORY_START (0x0b08,
   // invType STORAGE=2) : "Storage" / "Guild Storage" / nom premium. Sert de titre.
   char  storage_name_[32] = {0};
-  int   item_count_ = 0;      // nb d'items valides dans items_
   Item  items_[kMaxItems];
 
   // ── Onglets de STORAGE (ZC 0x0F1E / CZ 0x0F1D) ──────────────────────────────

@@ -15,6 +15,7 @@
 #include "ui/ro_imgui.h"    // ro::RoCheckbox
 #include "ui/ro_widgets.h"  // mui::HelpMarker, mui::WheelSliderInt
 #include "utils/i18n.h"
+#include "utils/game_focus.h"  // win::GameHasFocus
 #include "ragnarok/job_ids.h"  // rag::IsPlayerJob / IsMonsterJob
 
 // ── Adresses (client 20250716, no-ASLR : addr Ghidra == live) ────────────────
@@ -76,19 +77,6 @@ constexpr unsigned kJobWarpPortal = 45;  // catégorie 0 mais non ciblable
 // (marcher, par exemple) et ne doit pas se retrouver associée à un déclenchement
 // à la souris survenu entre-temps.
 constexpr uint32_t kPendingKeyLifetimeMs = 250;
-
-// La fenêtre du jeu est-elle au premier plan ? `GetAsyncKeyState` lit l'état
-// PHYSIQUE du clavier, sans se soucier du focus : une touche restée enfoncée au
-// moment d'un alt-tab continue donc de répondre « oui » alors que le joueur tape
-// ailleurs. Sans ce garde-fou, la répétition tournait dans le dos de l'utilisateur
-// — et pour un objet, elle viderait son sac. (Même patron que utils/frame_profiler.)
-bool GameHasFocus() {
-  const HWND fg = GetForegroundWindow();
-  if (!fg) return false;
-  DWORD pid = 0;
-  GetWindowThreadProcessId(fg, &pid);
-  return pid == GetCurrentProcessId();
-}
 
 // ── Appel de Actor_OnMsg via la vtable (+8) ─────────────────────────────────
 // Le natif empile TOUJOURS 13 dwords : un mot de tête à 0, le message en 64 bits,
@@ -329,7 +317,7 @@ bool QuickCast::CanCastNow() const {
   // Jeu au second plan : la touche est peut-être toujours enfoncée
   // physiquement, mais elle ne s'adresse plus à lui (cf. GameHasFocus). Sans
   // effet sur le premier lancement — il vient d'une frappe reçue par le jeu.
-  if (!GameHasFocus()) return false;
+  if (!win::GameHasFocus()) return false;
   // ⚠ Le curseur n'est PLUS testé ici. Il ne conditionne que les visées à la
   // souris, et c'est EmitCast qui les distingue désormais (MouseAimsAtWorld) :
   // une visée par le HUD n'a que faire de l'endroit où le curseur se trouve.
@@ -576,7 +564,7 @@ void QuickCast::UpdateItemRepeat() {
   if (!item_enabled_) { item_vk_ = 0; return; }
   // Jeu passé au second plan (alt-tab la touche enfoncée) : elle ne s'adresse
   // plus à lui. On arrête net plutôt que de vider le sac en arrière-plan.
-  if (!GameHasFocus()) { item_vk_ = 0; return; }
+  if (!win::GameHasFocus()) { item_vk_ = 0; return; }
   // Saisie en cours dans notre interface : la frappe appartient au champ de
   // texte, pas à la barre de raccourcis. (Ouvrir le chat sans lâcher la touche.)
   if (ImGui::GetCurrentContext() != nullptr && ImGui::GetIO().WantTextInput) {

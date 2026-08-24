@@ -4,7 +4,7 @@
 #include <unordered_map>
 
 #include "features/net_inbox.h"
-#include "features/plugin.h"
+#include "features/windows/item_viewer_base.h"
 
 // ── InventoryViewer ──────────────────────────────────────────────────────────
 //
@@ -29,8 +29,12 @@
 //
 // Réutilise de storage_window.cc : cache d'icônes, BuildDisplayName, OpenItemDesc
 // (MakeWindow 0xc + OnMsg 0x18), skin ro::, lecture du payload de drag natif.
+//
+// L'état que les trois viewers d'objets ont en commun — session ouverte, rect
+// écran, glisser en cours, action en attente, onglets — est sur
+// `ItemViewerBase` ; ici ne reste que ce qui est PROPRE à l'inventaire.
 
-class InventoryViewer : public Plugin {
+class InventoryViewer : public ItemViewerBase {
  public:
 
   // Contenu de sa section dans le panneau Moonlight. Rend true si un réglage
@@ -47,22 +51,12 @@ class InventoryViewer : public Plugin {
   // et rien d'autre, le décodage repart à la frame (cf. features/net_inbox.h).
   void OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
 
-  // Setting PERSISTANT (bourgeon_settings.yaml "inventory_imgui", géré par
-  // MoonlightUi comme storage_imgui) : ON = viewer ImGui + natif caché ; OFF =
-  // inventaire natif seul, aucun viewer. Public pour le chargement/sauvegarde.
-  bool imgui_enabled_ = false;  // OPT-IN : inventaire natif par defaut
-
-  bool& show_panel() { return show_panel_; }
-
-  // ── Settings PERSISTANTS (bourgeon_settings.yaml, section « Inventaire » du
-  // panneau Moonlight ; chargés/sauvés par MoonlightUi comme imgui_enabled_).
-  bool& show_filter()   { return show_filter_; }
-  // Aperçu de description RO au survol d'une case (comme le storage) ; OFF = simple
-  // tooltip texte (nom + quantité).
-  bool& desc_tooltip()  { return show_desc_tooltip_; }
-  // Disposition des onglets de catégorie : true = verticale à gauche (défaut,
-  // comme le natif), false = rangée horizontale au-dessus de la grille.
-  bool& tabs_vertical() { return tabs_vertical_; }
+  // ── Settings PERSISTANTS propres à l'inventaire (section « Inventaire » du
+  // panneau Moonlight ; chargés/sauvés par MoonlightUi). La clé de bascule
+  // "inventory_imgui" et les quatre réglages communs (filtre, aperçu de
+  // description au survol, onglets verticaux, onglet courant) sont sur
+  // ItemViewerBase.
+  //
   // Taille de la fenêtre verrouillée (plus de redimensionnement).
   bool& lock_size()     { return lock_size_; }
   // Placement LIBRE des items sur les cases (au lieu du remplissage automatique).
@@ -108,17 +102,8 @@ class InventoryViewer : public Plugin {
   // émettre un glisser vers ce viewer — équipement, cart et storage sont tous des
   // viewers ImGui, et leurs natives ne naissent plus.)
 
-  // L'inventaire est-il ouvert ? À interroger par les AUTRES modules au lieu de
-  // chercher la fenêtre native : elle ne naît plus en mode ImGui.
-  bool IsOpen() const { return open_; }
-
-  // True si (mx,my) est au-dessus de la fenêtre du viewer inventaire (ImGui) ouverte.
-  // Sert au viewer STORAGE pour router un retrait par glisser quand les deux sont des
-  // viewers ImGui (le rect natif de l'inventaire est caché -> MouseOverInventory échoue).
-  bool PointOverViewer(int mx, int my) const {
-    return open_ && imgui_enabled_ && win_valid_ && mx >= win_x_ && my >= win_y_ &&
-           mx < win_x_ + win_w_ && my < win_y_ + win_h_;
-  }
+  // (`IsOpen()` et `PointOverViewer()` sont sur ItemViewerBase : les trois
+  // viewers répondent aux deux mêmes questions, pour les deux autres.)
 
   // Équipe l'item d'inventaire ACTUELLEMENT GLISSÉ (index/type/loc SERVEUR stables du
   // drag en cours) — le serveur place/swappe automatiquement. No-op si aucun drag actif
@@ -217,59 +202,24 @@ class InventoryViewer : public Plugin {
   // celui en cours (évite de re-demander à chaque frame d'ouverture du sous-menu).
   void RequestCompatCards(int equipInvIndex);
 
-  bool show_panel_ = true;    // transitoire : clic sur le X (ferme la session)
-  bool show_filter_ = true;      // setting : champ de filtre par nom
-  bool show_desc_tooltip_ = false;  // setting : aperçu de description au survol
-  bool tabs_vertical_ = true;    // setting : onglets verticaux (défaut) ou horizontaux
   bool lock_size_ = false;       // setting : taille de fenêtre verrouillée
   bool free_layout_ = false;     // setting : placement libre (exige lock_size_)
-  int  cur_tab_ = 0;          // onglet catégorie sélectionné
   bool sort_enabled_ = true;  // bouton Tri (footer, onglet Favoris) : trie la vue
 
-  // Rect écran du viewer (capturé au rendu) pour tester un drop natif dessus.
-  float win_x_ = 0, win_y_ = 0, win_w_ = 0, win_h_ = 0;
-  bool  win_valid_ = false;
-
-  // Action en attente (posée par un drag/clic, traitée au rendu, + prompt qté).
+  // Les sept actions que cette fenêtre peut mettre en attente ; le
+  // `pend_action_` qui les transporte est sur ItemViewerBase.
   enum PendAction { kPendUse, kPendEquip, kPendDrop, kPendToCart, kPendToStorage,
                     kPendToTrade, kPendToMail };
-  int  pend_id_ = 0;      // 0 = aucune action en attente
-  int  pend_index_ = 0;   // index inventaire de l'item concerné
-  int  pend_max_ = 0;     // quantité max (stack) pour le prompt
-  bool pend_open_prompt_ = false;
-  int  pend_action_ = kPendUse;
+  // Le défaut de `pend_action_` est posé à 0 dans la base pour les trois
+  // viewers : ce n'est correct que tant que le premier énumérateur vaut 0.
+  static_assert(kPendUse == 0, "pend_action_ = 0 doit valoir kPendUse");
 
-  // Drag d'un item du viewer (-> équip/sol/cart selon la cible).
-  bool  drag_active_ = false;
-  int   drag_index_ = 0, drag_amount_ = 0, drag_type_ = 0;
+  // Ce que l'inventaire glisse EN PLUS des quatre champs communs : le drop sur
+  // le doll et sur la barre d'action a besoin du type, du nameid et du masque
+  // d'emplacement, que les deux autres viewers n'ont pas à connaître.
+  int      drag_type_ = 0;
   uint32_t drag_id_ = 0;   // nameid de l'item glissé (drag-drop vers la barre d'action)
   uint32_t drag_loc_ = 0;  // info+8 de l'item glissé (arg2 équip sur drop fenêtre Équip)
-  float drag_mx_ = 0, drag_my_ = 0;
 
-  bool open_ = false;         // inventaire ouvert ce frame ?
-  // Valeur d'imgui_enabled_ au tick précédent : détecte la BASCULE de mode, qui
-  // doit adopter un inventaire déjà ouvert au lieu de le faire disparaître.
-  bool prev_imgui_enabled_ = false;
-  bool need_pos_ = false;     // repositionner près du natif à l'ouverture
-  int  item_count_ = 0;       // nb d'items valides dans items_
-  // Case survolée ce frame pour l'aperçu de description (0 = aucune) ; l'aperçu est
-  // dessiné APRÈS la fenêtre, en tooltip (cf. storage_window).
-  uint32_t hover_desc_id_ = 0;
-  int      hover_desc_idx_ = -1;
-
-  // ── Verrou « description en vol » (anti-flicker) ────────────────────────────
-  // Le menu contextuel masque l'aperçu au survol tant qu'il est ouvert. Au clic
-  // sur « Description » le menu se ferme AVANT que la fenêtre de description
-  // n'apparaisse : le curseur retombe sur la case et l'aperçu se rouvrait pour
-  // quelques frames -> flicker. On le bloque donc dès la DEMANDE de description,
-  // jusqu'à ce que le curseur bouge vraiment (le geste est fini), avec un
-  // garde-fou de temps si la fenêtre n'arrive jamais.
-  bool     desc_pending_ = false;
-  float    desc_pending_x_ = 0.0f, desc_pending_y_ = 0.0f;
-  uint32_t desc_pending_tick_ = 0;
-  // Arme le verrou (à appeler juste avant/après OpenItemDesc).
-  void MarkDescPending();
-  // Met à jour le verrou et renvoie true si l'aperçu doit rester masqué.
-  bool DescPendingBlocksHover();
   Item items_[kMaxItems];
 };

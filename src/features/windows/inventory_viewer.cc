@@ -113,7 +113,9 @@ constexpr int kCmdToStorage = 0x37;  // storage KAFRA.
 //     Donc bascule : envoyer (déjà favori ? 1 : 0). index = index CLIENT (info+4).
 constexpr uint16_t kOpDrop     = 0x0363;  // CZ_ITEM_THROW. ATTENTION SHUFFLE : 0x0438 reecrit -> UseSkillToId (len 10) = disconnect ; drop shuffle = 0x0363 (clif_shuffle.hpp bloc > 20180307). Format [op:2][index:2][amount:2] inchange.
 constexpr uint16_t kOpFavorite = 0x0907;
-constexpr uint16_t kOpUnequip  = 0x00AB;  // CZ_REQ_TAKEOFF_EQUIP {op, invIndex} : dés-équiper.
+// (Pas de CZ_REQ_TAKEOFF_EQUIP ici : le déséquipement part de la FICHE DE
+// PERSONNAGE, y compris quand le geste consiste à lâcher une pièce portée sur
+// l'inventaire — c'est elle qui possède le doll et donc l'index à retirer.)
 
 // Fenêtres cible d'un transfert (cart / storage), pour le drag-out + menu.
 // Le cart se cherche par ID au gestionnaire (cf. CartWnd plus bas) ; le storage
@@ -319,15 +321,6 @@ void SendDrop(int index, int amount) {
 
 // (Le décodage du glisser NATIF — ReadDraggedItem, CancelNativeDrag et les
 // offsets de sa charge — a disparu avec les fenêtres qui pouvaient en émettre.)
-
-// CZ_REQ_TAKEOFF_EQUIP 0x00AB {op, invIndex} : dés-équipe l'item à cet index inventaire.
-void SendUnequip(int index) {
-  if (index <= 0) return;
-  uint8_t pkt[4];
-  *reinterpret_cast<uint16_t*>(pkt + 0) = kOpUnequip;
-  *reinterpret_cast<uint16_t*>(pkt + 2) = static_cast<uint16_t>(index);
-  Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
-}
 
 
 // (Pas de déduction « échange en cours » ici : les objets mis en échange sont
@@ -1067,33 +1060,6 @@ bool InventoryViewer::MailDraggedItem() {
 // chat focalisé). Réutilisé par character_sheet (Maj+clic gauche sur un slot équipé).
 void InventoryViewer::LinkItemToChat(int invIndex) { PostItemLinkToChat(invIndex); }
 
-// ── Verrou « description en vol » (anti-flicker de l'aperçu au survol) ────────
-// Armé au moment où l'utilisateur DEMANDE une description (menu contextuel ou
-// Ctrl+clic droit) : la fenêtre de description met quelques frames à apparaître,
-// et pendant ce trou le curseur est de nouveau sur la case -> l'aperçu au survol
-// se rouvrait puis disparaissait (flicker). Le verrou tient jusqu'au prochain
-// VRAI mouvement du curseur (le geste souris/menu est alors terminé), avec un
-// garde-fou de temps au cas où la fenêtre n'arriverait jamais.
-void InventoryViewer::MarkDescPending() {
-  const ImVec2 mouse_pos = ImGui::GetIO().MousePos;
-  desc_pending_ = true;
-  desc_pending_x_ = mouse_pos.x;
-  desc_pending_y_ = mouse_pos.y;
-  desc_pending_tick_ = GetTickCount();
-}
-
-bool InventoryViewer::DescPendingBlocksHover() {
-  if (!desc_pending_) return false;
-  constexpr float kMoveThreshold = 6.0f;   // px : ignore le micro-jitter de la souris
-  constexpr uint32_t kMaxHoldMs = 1500;    // garde-fou : jamais bloqué indéfiniment
-  const ImVec2 mouse_pos = ImGui::GetIO().MousePos;
-  const bool moved = std::fabs(mouse_pos.x - desc_pending_x_) +
-                     std::fabs(mouse_pos.y - desc_pending_y_) > kMoveThreshold;
-  if (moved || GetTickCount() - desc_pending_tick_ > kMaxHoldMs)
-    desc_pending_ = false;
-  return desc_pending_;
-}
-
 // Fin de la session de sertissage. Il n'y a plus rien à fermer côté natif : le
 // popup 0x4A ne naît plus (son handler créateur est à nous). On oublie simplement
 // l'état, et le front montant se réarme pour la prochaine ouverture.
@@ -1437,7 +1403,9 @@ void InventoryViewer::OnRenderUI() {
   // early-return ci-dessous (ResolveIcon gère lui-même l'epoch du device).
   RenderCardInsert();
 
-  if (!open_ || !imgui_enabled_) return;
+  // Pas dessinee ce frame => elle n a plus de rect : un depot lache sur sa
+  // derniere position connue ne doit pas lui etre route.
+  if (!open_ || !imgui_enabled_) { win_rect_.Invalidate(); return; }
   MaybeFlushTextures();  // device reset/TDR -> lâche les handles morts
 
   if (need_pos_) {
@@ -1460,20 +1428,21 @@ void InventoryViewer::OnRenderUI() {
     ImGui::SetNextWindowSizeConstraints(
         ImVec2(ro::grid::Snap().chromew + minGrid, ro::grid::Snap().chromeh + minGrid),
         ImVec2(10000.0f, 10000.0f), ro::grid::SnapWindowSize);
-  } else if (ro::grid::Snap().valid && win_valid_) {
+  } else if (ro::grid::Snap().valid && win_rect_.valid()) {
     // Taille VERROUILLÉE : le callback de snap ne tourne plus (il n'agit que pendant
     // un redimensionnement), donc la fenêtre reste figée sur la hauteur qu'elle avait
     // — presque jamais un multiple exact de tuiles, d'où une dernière ligne coupée,
     // items ou pas. On la recale une fois sur le palier le plus proche ; la frame
     // suivante la taille correspond déjà et plus rien n'est forcé.
     const float step = ro::grid::Snap().cell + ro::grid::Snap().gap;
-    int cols = static_cast<int>((win_w_ - ro::grid::Snap().chromew + ro::grid::Snap().gap) / step + 0.5f);
-    int rows = static_cast<int>((win_h_ - ro::grid::Snap().chromeh + ro::grid::Snap().gap) / step + 0.5f);
+    int cols = static_cast<int>((win_rect_.w() - ro::grid::Snap().chromew + ro::grid::Snap().gap) / step + 0.5f);
+    int rows = static_cast<int>((win_rect_.h() - ro::grid::Snap().chromeh + ro::grid::Snap().gap) / step + 0.5f);
     if (cols < 5) cols = 5;
     if (rows < 5) rows = 5;
     const ImVec2 snapped(ro::grid::Snap().chromew + cols * step - ro::grid::Snap().gap,
                          ro::grid::Snap().chromeh + rows * step - ro::grid::Snap().gap);
-    if (std::fabs(snapped.x - win_w_) > 0.5f || std::fabs(snapped.y - win_h_) > 0.5f)
+    if (std::fabs(snapped.x - win_rect_.w()) > 0.5f ||
+        std::fabs(snapped.y - win_rect_.h()) > 0.5f)
       ImGui::SetNextWindowSize(snapped, ImGuiCond_Always);
   }
 
@@ -1493,7 +1462,9 @@ void InventoryViewer::OnRenderUI() {
   // X du viewer : l'état d'ouverture est le NÔTRE maintenant, il n'y a plus de
   // fenêtre native à fermer. Réarme show_panel_ pour la prochaine ouverture.
   if (!show_panel_) { open_ = false; show_panel_ = true; }
-  if (!begun) { ro::EndRoWindow(); return; }
+  // Repliee ou clippee : ImGui ne l a pas dessinee, son rect deplie ne vaut
+  // plus rien comme cible de depot.
+  if (!begun) { win_rect_.Invalidate(); ro::EndRoWindow(); return; }
 
   // Bandeau pendant la composition d'un shop, comme dans les viewers cart et
   // storage. Il est ENCORE plus nécessaire ici : les entrées grisées « Vers le
@@ -1504,8 +1475,7 @@ void InventoryViewer::OnRenderUI() {
                        i18n::Tr("Shop en composition : les transferts sont figés."));
 
   const ImVec2 wp = ImGui::GetWindowPos(), ws = ImGui::GetWindowSize();
-  win_x_ = wp.x; win_y_ = wp.y; win_w_ = ws.x; win_h_ = ws.y;
-  win_valid_ = true;
+  win_rect_.Capture(wp.x, wp.y, ws.x, ws.y);
 
   // ── Action en attente (drop/transfert d'une pile) -> prompt quantité ──
   auto do_move = [this](int amount) {
@@ -1860,7 +1830,7 @@ void InventoryViewer::OnRenderUI() {
         // est dessiné après la fenêtre (cf. fin de OnRenderUI) et REMPLACE le tooltip
         // texte. Pas pendant un glisser : l'aperçu masquerait la cible du drop.
         if (show_desc_tooltip_ && !ImGui::IsMouseDown(ImGuiMouseButton_Left) &&
-            ImGui::GetDragDropPayload() == nullptr && !DescPendingBlocksHover()) {
+            ImGui::GetDragDropPayload() == nullptr && !desc_lock_.BlocksHover()) {
           hover_desc_id_ = it.id;
           hover_desc_idx_ = idx;
         } else if (!show_desc_tooltip_) {
@@ -1890,7 +1860,7 @@ void InventoryViewer::OnRenderUI() {
       // Menu contextuel : clic DROIT sur la case (pas sur le fond vide) -> popup
       if (IsLastItemRightClicked()) {
         if (mods.KeyCtrl) {
-          MarkDescPending();  // bloque l'aperçu au survol jusqu'à la fenêtre de desc
+          desc_lock_.Arm();  // bloque l'aperçu au survol jusqu'à la fenêtre de desc
           POINT pt; if (GetCursorPos(&pt)) OpenItemDesc(it.index, pt.x, pt.y);
         } else if (mods.KeyShift) {
           SendFavoriteToggle(it.index, it.favorite != 0);
@@ -1954,7 +1924,7 @@ void InventoryViewer::OnRenderUI() {
         if (ImGui::MenuItem(i18n::Tr("Description"))) {
           // Le menu se ferme AVANT que la fenêtre de description n'apparaisse :
           // sans ce verrou, l'aperçu au survol se rouvre entre les deux (flicker).
-          MarkDescPending();
+          desc_lock_.Arm();
           POINT pt; if (GetCursorPos(&pt)) OpenItemDesc(it.index, pt.x, pt.y);
         }
         // Une carte (type 6) n'est ni « utilisée » ni « équipée » : le double-clic
@@ -2144,8 +2114,7 @@ void InventoryViewer::OnRenderUI() {
     } else {
       int action = -1;
       if (drag_index_ > 0) {
-        const bool over_self = drag_mx_ >= win_x_ && drag_my_ >= win_y_ &&
-                               drag_mx_ < win_x_ + win_w_ && drag_my_ < win_y_ + win_h_;
+        const bool over_self = win_rect_.Contains(drag_mx_, drag_my_);
         // Lâcher DANS l'inventaire : le placement libre et les onglets ont déjà tout
         // traité, il n'y a plus rien à router. Testé EN PREMIER pour qu'une autre
         // fenêtre posée dessous (viewer storage, native cachée) ne puisse jamais

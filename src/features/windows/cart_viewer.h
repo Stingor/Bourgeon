@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-#include "features/plugin.h"
+#include "features/windows/item_viewer_base.h"
 
 // ── CartViewer ───────────────────────────────────────────────────────────────
 //
@@ -10,6 +10,8 @@
 // 0x28, vtable 0x0103d538, cherchée par ID au gestionnaire), calquée sur
 // InventoryViewer — la fenêtre cart EST une sœur de l'inventaire dans le
 // client : même framework de fenêtre, mêmes offsets de rect, même modèle d'item.
+// C'est cette parenté que `ItemViewerBase` porte désormais : de ce fichier, il
+// ne reste que ce qui est PROPRE au chariot.
 //
 // Elle REMPLACE la native (masquée par le flag de visibilité wnd+0x28) quand
 // imgui_enabled_, qui n'est PAS un réglage isolé : le cart fait partie du lot
@@ -31,7 +33,7 @@
 // UICartWnd_OnMsg case 38) : cart -> inventaire 0x4d, cart -> storage 0x4f,
 // inventaire -> cart 0x4c, storage -> cart 0x4e.
 
-class CartViewer : public Plugin {
+class CartViewer : public ItemViewerBase {
  public:
   const char* name() const override { return "CartViewer"; }
 
@@ -41,14 +43,8 @@ class CartViewer : public Plugin {
   // Contenu de sa section dans le panneau Moonlight. True si un réglage a changé.
   bool DrawSettings();
 
-  // Setting PERSISTANT (bourgeon_settings.yaml "cart_imgui"), basculé en GROUPE par
-  // SetModernInterface. Public pour le chargement/sauvegarde par MoonlightUi.
-  bool imgui_enabled_ = false;  // OPT-IN : cart natif par défaut
-
-  // ── Settings PERSISTANTS (section « Cart » du panneau Moonlight) ─────────
-  bool& show_filter()   { return show_filter_; }
-  bool& desc_tooltip()  { return show_desc_tooltip_; }
-  bool& tabs_vertical() { return tabs_vertical_; }
+  // Setting PERSISTANT propre au cart ; les quatre communs (filtre, aperçu de
+  // description, onglets verticaux, onglet courant) sont sur ItemViewerBase.
   bool& lock_size()     { return lock_size_; }
 
   // Appelé par le hook MakeWindow de WindowPosTweaks à la création de la fenêtre
@@ -57,18 +53,6 @@ class CartViewer : public Plugin {
   // 🔴 Détruite, pas masquée : toute bascule du client fait « ferme si elle
   // existe, sinon crée », donc une native vivante avalerait un appui sur deux.
   void HandleNativeCreation(void* win);
-
-  // Le cart est-il ouvert ? À interroger par les AUTRES modules au lieu de
-  // chercher la fenêtre native : elle ne naît plus en mode ImGui.
-  bool IsOpen() const { return open_; }
-
-  // True si (mx,my) est au-dessus du viewer cart ouvert. Sert aux AUTRES viewers
-  // (inventaire, storage) pour router un dépôt par glisser : quand le cart est
-  // moderne, sa fenêtre native est cachée, donc leur test de rect natif échoue.
-  bool PointOverViewer(int mx, int my) const {
-    return open_ && imgui_enabled_ && win_valid_ && mx >= win_x_ && my >= win_y_ &&
-           mx < win_x_ + win_w_ && my < win_y_ + win_h_;
-  }
 
  private:
   // Un item du cart, extrait en POD (sous SEH) pour un rendu hors __try.
@@ -93,39 +77,14 @@ class CartViewer : public Plugin {
   // Remplit items_/item_count_ depuis le modèle session. SEH (POD only).
   void Extract();
 
-  bool show_panel_ = true;          // transitoire : clic sur le X
-  bool show_filter_ = true;         // setting : champ de filtre par nom
-  bool show_desc_tooltip_ = false;  // setting : aperçu de description au survol
-  bool tabs_vertical_ = true;       // setting : onglets verticaux (défaut) ou horizontaux
   bool lock_size_ = false;          // setting : taille de fenêtre verrouillée
-  int  cur_tab_ = 0;                // onglet catégorie sélectionné
 
-  // Rect écran du viewer (capturé au rendu), pour PointOverViewer.
-  float win_x_ = 0, win_y_ = 0, win_w_ = 0, win_h_ = 0;
-  bool  win_valid_ = false;
-
-  // Action en attente (posée par un drag/menu, traitée au rendu, + prompt qté).
+  // Les deux sens SORTANTS, les seuls que cette fenêtre émette ; le
+  // `pend_action_` qui les transporte est sur ItemViewerBase.
   enum PendAction { kPendToBody, kPendToStorage };
-  int  pend_id_ = 0;      // 0 = aucune action en attente
-  int  pend_index_ = 0;   // index cart de l'item concerné
-  int  pend_max_ = 0;     // quantité max (stack) pour le prompt
-  bool pend_open_prompt_ = false;
-  int  pend_action_ = kPendToBody;
-
-  // Drag d'un item du viewer (-> inventaire / storage selon la cible).
-  bool  drag_active_ = false;
-  int   drag_index_ = 0, drag_amount_ = 0;
-  float drag_mx_ = 0, drag_my_ = 0;
-
-  bool open_ = false;      // cart ouvert ce frame ?
-  // Valeur d'imgui_enabled_ au tick précédent : détecte la BASCULE de mode, qui
-  // doit adopter un cart déjà ouvert au lieu de le faire disparaître.
-  bool prev_imgui_enabled_ = false;
-  bool need_pos_ = false;  // repositionner sur la native à l'ouverture
-  int  item_count_ = 0;
-  // Case survolée ce frame pour l'aperçu de description (0 = aucune).
-  uint32_t hover_desc_id_ = 0;
-  int      hover_desc_idx_ = -1;
+  // Le défaut de `pend_action_` est posé à 0 dans la base pour les trois
+  // viewers : ce n'est correct que tant que le premier énumérateur vaut 0.
+  static_assert(kPendToBody == 0, "pend_action_ = 0 doit valoir kPendToBody");
 
   Item items_[kMaxItems];
 };

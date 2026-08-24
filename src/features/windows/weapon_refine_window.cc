@@ -324,14 +324,6 @@ bool ReadWndPos(uint8_t* wnd, int* x, int* y) {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
-// Envoie une commande au dispatcher du mode actif (le chemin des boutons natifs).
-void SendModeCmd(int cmd, int a, int b = 0, int c = 0, int d = 0) {
-  __try {
-    // ⚠ Lecture BRUTE du pointeur, pas rag::ActiveModeIfReady() (cf. globals.h).
-    rag::ModeSendMsg(*reinterpret_cast<void**>(rag::kActiveModePtr), cmd, a, b, c, d);
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
-}
-
 // Libellé COMPLET d'une arme (préfixes de cartes, refine, forge).
 //
 // ⚠ Le `this` de BuildDisplayName n'est pas décoratif, et ce n'est PAS une
@@ -1162,7 +1154,7 @@ void WeaponRefineWindow::FlushPending() {
       // Le chemin EXACT du bouton OK natif : cmd 182 avec l'index reçu du
       // serveur, tel quel, puis fermeture de la fenêtre (le natif enchaîne les
       // deux dans son OnMsg case 6).
-      SendModeCmd(kCmdRefine, idx);
+      rag::RawModeSendMsgSafe(kCmdRefine, idx);
       uiwnd::CloseWindow(kWinRefine);
       awaiting_result_ = true;
       awaiting_since_  = GetTickCount();
@@ -1223,7 +1215,7 @@ void WeaponRefineWindow::FlushPending() {
       // dans clif_upgrade_list. Sur une liste vide il n'y a donc rien à désarmer, et
       // `empty_list_` est justement calé sur ce même compte (cf. OnRecvPacket).
       if (session_armed_) {
-        SendModeCmd(kCmdRefine, -1);
+        rag::RawModeSendMsgSafe(kCmdRefine, -1);
         session_armed_ = false;
       }
       // Filet du basculement d'interrupteur : si une native traîne (elle n'est
@@ -1238,7 +1230,7 @@ void WeaponRefineWindow::FlushPending() {
       const int level = std::max(1, RefineSkillLevel());
       const uint32_t self = rag::OwnAccountIdSafe();
       if (self) {
-        SendModeCmd(kCmdUseSkill, kSkillWeaponRefine, static_cast<int>(self),
+        rag::RawModeSendMsgSafe(kCmdUseSkill, kSkillWeaponRefine, static_cast<int>(self),
                     level);
         // Relance EN VOL. Le serveur peut la jeter (délai de cast) sans qu'aucune
         // liste ne revienne : c'est ce marqueur qui permet de s'en apercevoir, via

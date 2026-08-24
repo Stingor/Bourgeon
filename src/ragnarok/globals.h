@@ -221,6 +221,50 @@ inline int ActiveModeSendMsg(int cmd, int p2 = 0, int p3 = 0, int p4 = 0,
   return ModeSendMsg(ActiveModeIfReady(), cmd, p2, p3, p4, p5);
 }
 
+// ── Les deux formes SOUS SEH, et pourquoi il y en a DEUX ─────────────────────
+// Presque toutes nos fenêtres envoient leurs commandes depuis un rendu ImGui :
+// une exception qui traverserait la frame laisserait la pile de dessin à moitié
+// empilée. Elles enveloppaient donc l'envoi dans un `__try` — CINQ fichiers en
+// portaient leur propre copie, sous TROIS noms (`ModeCmd`, `SendModeCmd`, et une
+// variante rendant un bool).
+//
+// 🔴 Mais ces cinq copies ne faisaient pas toutes la même chose, et RIEN dans
+// leur nom ne le disait : rodex, trade et game_menu passaient par le getter GATÉ
+// (`ActiveModeIfReady`), tandis que weapon_refine et make_item lisaient le
+// pointeur BRUT — l'un écrivant `*(void**)kActiveModePtr`, l'autre
+// `ActiveMode()`, deux orthographes de la même chose. Les deux dernières
+// portaient un commentaire « ⚠ lecture brute » : l'intention était donc
+// délibérée, et les fondre aurait changé leur comportement pendant un
+// changement de carte (cf. le bloc ActiveModeIfReady plus haut).
+//
+// D'où deux fonctions et non une, dont le NOM porte enfin la distinction.
+// Le bool rend « un mode était là et la commande est partie » — game_menu s'en
+// sert pour ne pas refermer son menu quand il n'y a personne à qui parler ; les
+// autres appelants l'ignorent, ce qui est correct.
+
+// Mode actif GATÉ sur l'état du gestionnaire — la forme à utiliser par défaut.
+inline bool ActiveModeSendMsgSafe(int cmd, int p2 = 0, int p3 = 0, int p4 = 0,
+                                  int p5 = 0) {
+  __try {
+    void* mode = ActiveModeIfReady();
+    if (!mode) return false;
+    ModeSendMsg(mode, cmd, p2, p3, p4, p5);
+    return true;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
+// Pointeur du mode lu BRUT, sans la garde d'état. Ne l'employer que là où c'est
+// un choix assumé : elle répond encore pendant les instants où la gatée rend 0.
+inline bool RawModeSendMsgSafe(int cmd, int p2 = 0, int p3 = 0, int p4 = 0,
+                               int p5 = 0) {
+  __try {
+    void* mode = ActiveMode();
+    if (!mode) return false;
+    ModeSendMsg(mode, cmd, p2, p3, p4, p5);
+    return true;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
 // Quelques commandes RENDENT un objet plutôt qu'un code — la 8 du mode de login
 // rend le CHARACTER_INFO d'un slot, ou nullptr si le slot est vide ou la liste
 // pas encore arrivée. Même appel, seul le type de retour déclaré change : sur

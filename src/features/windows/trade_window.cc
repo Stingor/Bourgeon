@@ -33,17 +33,6 @@
 // ── Constantes RE (client 20250716, base 0x400000 ; cf. docs/trade_window_re.md) ──
 namespace {
 
-// CMode::SendMsg (thread principal UNIQUEMENT). No-op si aucun mode n'est actif.
-// La descente « manager -> état 1 -> dispatcher -> vtable+0x18 » n'est plus
-// écrite ici : c'est exactement ce que `rag::ActiveModeSendMsg` fait, et les
-// trois constantes qu'elle demandait (0x58, +4, l'index 6) étaient en dur.
-void ModeCmd(int cmd, int a, int b, int c, int d) {
-  __try {
-    rag::ActiveModeSendMsg(cmd, a, b, c, d);
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
-}
-
-
 // UIWindowMgr + factory.
 
 // Fenêtre d'échange — RE LIVE 2026-07-23 : c'est la NOUVELLE classe CUIExchangeUI
@@ -497,7 +486,7 @@ void TradeWindow::Commit() {
     // Ce texte PART au natif (cmd 0x44) : il doit rester en CP949, d'où Cp949
     // et non Utf8 — c'est toute la raison d'être des deux entrées.
     const char* txt = msgstr::Cp949(kMsgScrPayload);
-    ModeCmd(kCmdScreenshot,
+    rag::ActiveModeSendMsgSafe(kCmdScreenshot,
             static_cast<int>(reinterpret_cast<uintptr_t>(txt)), 0, 0, 0);
   }
   SendOpcodeOnly(kCzExec);
