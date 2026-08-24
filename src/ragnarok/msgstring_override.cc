@@ -99,6 +99,40 @@ std::vector<char> FormatSequence(const std::string& text) {
   return seq;
 }
 
+// ── Espaces de bord ──────────────────────────────────────────────────────────
+// 🔴 UN ESPACE DE BORD EST UN CONTRAT, AU MÊME TITRE QU'UN `%s`.
+//
+// Le client CONCATÈNE une partie de ces textes au lieu de les afficher seuls :
+// « Beloved » (MSI_NAMED_PET) est PRÉFIXÉ au nom d'un œuf de familier, « 's Fire »
+// s'insère entre le nom d'un forgeron et celui de sa lame, « Price: » précède un
+// montant. L'espace final n'est pas de la mise en forme, c'est le SÉPARATEUR.
+// D'autres entrées ouvrent sur des espaces d'ALIGNEMENT dans un widget natif
+// (« ....BGM »), qui jouent le même rôle positionnel.
+//
+// Et un traducteur le perd forcément, parce qu'un espace en fin de chaîne NE SE
+// VOIT PAS. Le relevé sur nos deux catalogues en a dénombré 100 par langue —
+// dont le « Bien-aimé[carré]ring Egg » qui a mené ici. Compter sur la vigilance
+// humaine pour un caractère invisible, c'est reconduire le bug à chaque langue
+// ajoutée et à chaque ligne retouchée.
+//
+// On RESTAURE plutôt qu'on ne refuse, contrairement aux formats. Refuser
+// jetterait une traduction juste pour un caractère qu'on ne peut pas voir, alors
+// que recopier les bords de l'original ne peut jamais faire pire que l'original
+// lui-même — c'est lui le contrat. Corollaire assumé : une traduction ne choisit
+// PAS ses propres espaces de bord.
+std::string WithOriginalEdges(const std::string& english, const std::string& value) {
+  const std::size_t lead = english.find_first_not_of(' ');
+  if (lead == std::string::npos) return value;  // original tout blanc : rien à copier
+  const std::size_t trail = english.size() - 1 - english.find_last_not_of(' ');
+
+  const std::size_t begin = value.find_first_not_of(' ');
+  if (begin == std::string::npos) return value;  // traduction toute blanche
+  const std::size_t end = value.find_last_not_of(' ');
+
+  return std::string(lead, ' ') + value.substr(begin, end - begin + 1) +
+         std::string(trail, ' ');
+}
+
 // ── Lecture du csv du client ─────────────────────────────────────────────────
 // Deux colonnes en base64 : clé `MSI_*`, texte. L'index de LIGNE est l'id.
 
@@ -307,6 +341,7 @@ void LoadCatalogNow() {
   g_by_text.clear();
   g_stats.entries = 0;
   g_stats.rejected = 0;
+  g_stats.restored = 0;
   g_stats.language = i18n::LanguageCode();
 
   // Le client parle déjà anglais : rien à surcharger si c'est la langue demandée.
@@ -340,8 +375,14 @@ void LoadCatalogNow() {
       continue;
     }
 
+    // 🔴 Les espaces de bord de l'original sont RESTAURÉS : ils font partie du
+    // contrat au même titre que les formats, et un traducteur ne peut pas les
+    // voir (cf. `WithOriginalEdges`).
+    const std::string fixed = WithOriginalEdges(english, value);
+    if (fixed != value) ++g_stats.restored;
+
     // Conversion UNE fois, vers la code-page que le natif sait dessiner.
-    const char* local = ro::Utf8ToLocal(value.c_str());
+    const char* local = ro::Utf8ToLocal(fixed.c_str());
     if (!local) continue;
     g_storage.emplace_back(local);
     // ⚠ `emplace` et non `operator[]` : deux clés peuvent porter le MÊME texte
@@ -351,8 +392,10 @@ void LoadCatalogNow() {
     ++g_stats.entries;
   }
 
-  LogInfo("[msgstring] {} : {} traduction(s) active(s), {} refusée(s) sur {} entrées",
-          g_stats.language, g_stats.entries, g_stats.rejected, g_stats.table);
+  LogInfo("[msgstring] {} : {} traduction(s) active(s), {} refusée(s), "
+          "{} bord(s) restauré(s) sur {} entrées",
+          g_stats.language, g_stats.entries, g_stats.rejected, g_stats.restored,
+          g_stats.table);
 }
 
 }  // namespace
@@ -384,6 +427,7 @@ void Reload() {
   g_by_text.clear();
   g_stats.entries = 0;
   g_stats.rejected = 0;
+  g_stats.restored = 0;
   g_pending = true;
 }
 

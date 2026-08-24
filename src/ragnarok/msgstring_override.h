@@ -66,6 +66,7 @@ const char* Lookup(int id);
 struct Stats {
   std::size_t entries = 0;    // traductions actives
   std::size_t rejected = 0;   // refusées : séquence de formats différente
+  std::size_t restored = 0;   // espaces de bord recopiés depuis l'original
   std::size_t table = 0;      // entrées lues dans le csv du client
   bool hooked = false;        // détour posé
   std::string language;       // code de la langue chargée

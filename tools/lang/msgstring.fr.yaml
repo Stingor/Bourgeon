@@ -11,6 +11,12 @@
 # n'a pas la meme sequence que l'original, et journalise le refus -- une
 # ligne fautive afficherait n'importe quoi, ou ferait planter le client.
 #
+# Les espaces de DEBUT et de FIN, eux, n'ont pas a etre reproduits : le
+# chargeur recopie ceux de l'original, quoi que porte la traduction. Ils
+# font partie du contrat -- le client CONCATENE une partie de ces textes,
+# « Beloved » se prefixe au nom d'un oeuf de familier -- et un espace en fin
+# de chaine ne se voit pas, donc on ne compte pas dessus.
+#
 # Genere par tools/lang/gen_msgstring.py -- les traductions deja ecrites
 # sont conservees a la regeneration.
 
