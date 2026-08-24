@@ -81,9 +81,9 @@ constexpr int kMaterialStride  = 8;
 constexpr int kTreeWalkGuard = 64;
 
 // ── Fonctions natives ───────────────────────────────────────────────────────
-// `CMode::SendMsg` = vt+0x18 du mode actif, soit l'entrée 6 de la vtable. Six
-// arguments après `this`, comme partout ailleurs dans Bourgeon.
-using DispatchFn = int (__thiscall*)(void*, int, int, int, int, int);
+// (`CMode::SendMsg` n'est plus redescendu ici : c'est `rag::RawModeSendMsgSafe`,
+// qui fait la même chose — même entrée 6 de la vtable, même lecture BRUTE du
+// pointeur de mode, même SEH. Les trois envois de ce fichier la réécrivaient.)
 // docs §11 — ITID d'œuf -> classe de mob. 🔴 `__thiscall`, `this` = la SESSION :
 // la fonction va chercher l'état Lua en `[ecx+0x59B8]` et appelle le global
 // `GetPetJTID_by_PetEggITID`. La déclarer `__cdecl` faisait deux dégâts d'un
@@ -113,7 +113,6 @@ constexpr uintptr_t kEggToMobAddr = 0x00d823f0;
 constexpr uintptr_t kForbidden1 = 0x0120451c;
 constexpr uintptr_t kForbidden2 = 0x01204534;
 
-constexpr int kMsgSendMsgVtIndex = 6;
 constexpr int kModeMsgCommandPet = 150;
 constexpr int kModeMsgRenamePet  = 145;
 constexpr int kModeMsgSelectEgg  = 146;
@@ -385,27 +384,18 @@ bool NameHasBannedWord(const char* wire_name) {
 }
 
 bool SendCommand(int cmd) {
-  __try {
-    void* mode = rag::ActiveMode();
-    if (!mode) return false;
-    void** vtable = *reinterpret_cast<void***>(mode);
-    reinterpret_cast<DispatchFn>(vtable[kMsgSendMsgVtIndex])(
-        mode, kModeMsgCommandPet, cmd, 0, 0, 0);
-    return true;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+  return rag::RawModeSendMsgSafe(kModeMsgCommandPet, cmd);
 }
 
 bool SendRename(const char* wire_name) {
   if (!wire_name || !wire_name[0]) return false;
+  if (!rag::RawModeSendMsgSafe(
+          kModeMsgRenamePet,
+          static_cast<int>(reinterpret_cast<intptr_t>(wire_name))))
+    return false;
+  // Le natif recopie ensuite le nom dans le global. Sans ça la fiche
+  // afficherait l'ancien jusqu'au prochain `ZC_PROPERTY_PET`.
   __try {
-    void* mode = rag::ActiveMode();
-    if (!mode) return false;
-    void** vtable = *reinterpret_cast<void***>(mode);
-    reinterpret_cast<DispatchFn>(vtable[kMsgSendMsgVtIndex])(
-        mode, kModeMsgRenamePet,
-        static_cast<int>(reinterpret_cast<intptr_t>(wire_name)), 0, 0, 0);
-    // Le natif recopie ensuite le nom dans le global. Sans ça la fiche
-    // afficherait l'ancien jusqu'au prochain `ZC_PROPERTY_PET`.
     auto* dst = reinterpret_cast<char*>(kName);
     std::strncpy(dst, wire_name, kNameMaxBytes - 1);
     dst[kNameMaxBytes - 1] = '\0';
@@ -415,14 +405,7 @@ bool SendRename(const char* wire_name) {
 
 bool SendSelectEgg(int inv_index) {
   if (inv_index < 0) return false;
-  __try {
-    void* mode = rag::ActiveMode();
-    if (!mode) return false;
-    void** vtable = *reinterpret_cast<void***>(mode);
-    reinterpret_cast<DispatchFn>(vtable[kMsgSendMsgVtIndex])(
-        mode, kModeMsgSelectEgg, inv_index, 0, 0, 0);
-    return true;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+  return rag::RawModeSendMsgSafe(kModeMsgSelectEgg, inv_index);
 }
 
 void SendAutoFeed(bool on) {

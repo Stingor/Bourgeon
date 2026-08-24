@@ -106,24 +106,27 @@ using WorldToTileFn = void (__thiscall*)(void*, float, float, int*, int*,
 // et le `using` garde les points d'appel de ce fichier tels quels.
 using rag::Read;
 
-// Recopie une `std::string` du client, SSO comprise.
-// ⚠ SEH ⇒ AUCUN objet C++ dans cette fonction (C2712).
-// ⚠ PAS `GameMode()` : `bourgeon.h` amène la classe `GameMode` du client, et un
-// appel non qualifié devient alors ambigu (C2872) — le compilateur hésite entre
-// notre fonction et le constructeur de la classe.
+// ✅ Question tranchée le 2026-08-24 : ce fichier lisait le pointeur de mode
+// BRUT (`rag::ActiveMode`) là où huit autres passaient par le getter GATÉ, sous
+// un nom — `ActiveGameMode()` — que rien ne distinguait des leurs. Ses deux
+// appels sont passés à `rag::ActiveModeSafe()` et l'enveloppe locale a disparu.
 //
-// 🔴 PAS `rag::ActiveModeSafe()` NON PLUS, et le nom le dit maintenant : celle-là
-// passe par `ActiveModeIfReady()`, GATÉ sur l'état du manager, quand celle-ci lit
-// le pointeur BRUT. Pendant un changement de carte les deux ne rendent pas la
-// même chose (cf. globals.h). Ce fichier était le seul des neuf à lire le brut,
-// sous un nom que rien ne distinguait des huit autres — d'où ce renommage.
-// ⚠ À TRANCHER : si le brut n'était pas un choix mais une recopie distraite, ces
-// deux appels doivent passer à `rag::ActiveModeSafe()` comme partout ailleurs.
-void* ActiveModeRaw() {
-  __try {
-    return rag::ActiveMode();
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
-}
+// Ce n'était PAS un choix : le commit qui a créé l'inspecteur (`e77f60a`) ne
+// justifiait qu'une chose, le NOM de l'enveloppe — `bourgeon.h` amène la classe
+// `GameMode` du client, et un appel non qualifié devenait ambigu (C2872). Rien
+// sur la lecture brute elle-même. Un appel QUALIFIÉ n'a pas ce problème, donc
+// l'enveloppe n'avait plus de raison d'être non plus.
+//
+// 🔴 Et gâter ferme un vrai trou. `Bourgeon::RenderUI` s'arrête déjà sur
+// `IsMapLoading()` et hors du monde, mais `IsGameActive()` repose sur un
+// BATTEMENT d'une seconde : pendant jusqu'à ~1 s après que CGameMode a cessé de
+// tourner, les modules rendent encore. Le pointeur brut y désigne un mode en
+// cours de démolition, et `NameDictContains` appelle alors le std::map du client
+// sur un `dict` de hasard. Le `__try` ne rattrape pas ça — un bloc libéré mais
+// toujours mappé rend des OCTETS, pas une exception. Le getter gaté, lui, rend 0
+// dès que le manager quitte l'état 1, et l'inspecteur ne montre rien pendant ces
+// quelques frames — ce qui est exactement ce qu'il doit faire : il n'y a plus
+// d'entité à inspecter.
 
 bool NameDictContains(void* game_mode, uint32_t gid) {
   __try {
@@ -360,7 +363,7 @@ void EntityInspector::RequestServer() {
 // ── Relecture ────────────────────────────────────────────────────────────────
 
 void EntityInspector::Refresh(Snapshot* out) {
-  void* game_mode = ActiveModeRaw();
+  void* game_mode = rag::ActiveModeSafe();
   if (!game_mode || gid_ == 0) return;
 
   // ── Plaque de nom ──────────────────────────────────────────────────────────
@@ -414,7 +417,7 @@ void EntityInspector::ReadActor(Snapshot* out) {
     return;
   }
 
-  void* game_mode = ActiveModeRaw();
+  void* game_mode = rag::ActiveModeSafe();
   out->guild_id = gamescene::ActorGuildId(actor);
   out->cell_ok  = ActorCell(game_mode, actor, &out->cell_x, &out->cell_y);
   out->own_cell_ok = ActorCell(game_mode, OwnActor(game_mode), &out->own_cell_x,
