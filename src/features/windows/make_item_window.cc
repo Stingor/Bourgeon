@@ -458,44 +458,57 @@ int DetectIndexOffset(unsigned wanted, int hits_out[kIndexCandidateCount]) {
   return -1;
 }
 
-uint32_t InvIdByIndex(unsigned item_index) {
-  const int kNodeIndex = g_index_offset;
-  if (kNodeIndex < 0) return 0;  // offset pas encore établi
+// ── Le parcours, UNE fois ────────────────────────────────────────────────────
+// Les deux correspondances id <-> index sont le MÊME parcours lu dans les deux
+// sens : mêmes offsets, même garde-fou, même SEH, même filtre `amount > 0`.
+// Seuls changent le critère d'arrêt et le champ rendu.
+//
+// `want_id` non nul  -> cherche cet id, écrit son index dans `*out_index` ;
+// `want_id` nul      -> cherche `want_index`, écrit son id dans `*out_id`.
+// Renvoie false si la liste est illisible, l'offset d'index inconnu, ou l'objet
+// absent — les deux sorties valent alors 0.
+bool FindInvNode(uint32_t want_id, unsigned want_index, uint32_t* out_id,
+                 unsigned* out_index) {
+  *out_id = 0;
+  *out_index = 0;
+  const int node_index_off = g_index_offset;
+  if (node_index_off < 0) return false;  // offset pas encore établi
   __try {
     uint8_t* head = *reinterpret_cast<uint8_t**>(rag::kInventoryListAddr);
-    if (!head) return 0;
+    if (!head) return false;
     uint8_t* node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
     int guard = 0;
     while (node && node != head && guard++ < kMaxInvNodes) {
       const uint8_t* info = node + kNodeInfo;
-      const unsigned idx  = *reinterpret_cast<const unsigned*>(node + kNodeIndex);
+      const unsigned idx  = *reinterpret_cast<const unsigned*>(node + node_index_off);
       const int amount    = *reinterpret_cast<const int*>(node + kNodeAmount);
-      node = *reinterpret_cast<uint8_t**>(node + kNodeNext);
-      if (amount > 0 && idx == item_index) return rag::itemlist::ItemId(info);
+      node = *reinterpret_cast<uint8_t**>(node + kNodeNext);  // avancer AVANT de lire
+      if (amount <= 0) continue;
+      const uint32_t id = rag::itemlist::ItemId(info);
+      if (want_id ? (id == want_id) : (idx == want_index)) {
+        *out_id = id;
+        *out_index = idx;
+        return true;
+      }
     }
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
-  return 0;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+  return false;
+}
+
+uint32_t InvIdByIndex(unsigned item_index) {
+  uint32_t id = 0;
+  unsigned idx = 0;
+  FindInvNode(0, item_index, &id, &idx);
+  return id;
 }
 
 // 0 = « plus en inventaire ». Les index natifs commencent à 2 (le serveur fait
 // `n = index - 2`), donc 0 est une sentinelle sûre et non un index valide.
 unsigned InvIndexById(uint32_t item_id) {
-  const int kNodeIndex = g_index_offset;
-  if (kNodeIndex < 0) return 0;  // offset pas encore établi
-  __try {
-    uint8_t* head = *reinterpret_cast<uint8_t**>(rag::kInventoryListAddr);
-    if (!head) return 0;
-    uint8_t* node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
-    int guard = 0;
-    while (node && node != head && guard++ < kMaxInvNodes) {
-      const uint8_t* info = node + kNodeInfo;
-      const unsigned idx  = *reinterpret_cast<const unsigned*>(node + kNodeIndex);
-      const int amount    = *reinterpret_cast<const int*>(node + kNodeAmount);
-      node = *reinterpret_cast<uint8_t**>(node + kNodeNext);
-      if (amount > 0 && rag::itemlist::ItemId(info) == item_id) return idx;
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
-  return 0;
+  uint32_t id = 0;
+  unsigned idx = 0;
+  FindInvNode(item_id, 0, &id, &idx);
+  return idx;
 }
 
 // Relevé BRUT du premier nœud d'inventaire, pour lever le doute sur l'offset de

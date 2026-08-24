@@ -14,15 +14,18 @@ constexpr int kNodeValue  = 0x08;
 constexpr int kOffValid   = 0x04;
 constexpr int kOffId      = 0x08;
 constexpr int kOffLvLocal = 0x10;
+constexpr int kOffSp      = 0x14;  // coût SP au niveau courant
 constexpr int kOffLearned = 0x30;  // int16, VÉRITÉ SERVEUR
 constexpr int kJobTabs    = 4;
 constexpr int kMaxNodes   = 256;
 
 }  // namespace
 
-int LearnedSkillLevel(int skill_id) {
+int LearnedSkillLevel(int skill_id, int* sp_cost) {
+  if (sp_cost) *sp_cost = 0;
   if (skill_id <= 0) return 0;
   int found = 0;
+  int sp = 0;
   __try {
     // Les cinq listes du bundle : quatre onglets de job + la liste plate. Une
     // compétence peut n'apparaître que dans l'une d'elles selon la classe, d'où le
@@ -44,11 +47,29 @@ int LearnedSkillLevel(int skill_id) {
         if (*reinterpret_cast<const int*>(value + kOffId) != skill_id) continue;
         int level = *reinterpret_cast<const int16_t*>(value + kOffLearned);
         if (level <= 0) level = *reinterpret_cast<const int*>(value + kOffLvLocal);
-        found = level;
-        break;
+        // 🔴 PAS DE `break` ICI, ET C'EST UN CORRECTIF, pas un détail de style.
+        //
+        // Une liste d'onglet peut contenir DEUX FOIS la même compétence :
+        // l'insertion native (sub_007381D0) ne cherche jamais l'id avant
+        // d'empiler, et la construction rejoue InitSkillTreeView pour chaque job
+        // de la chaîne d'héritage — plusieurs peuvent viser le même onglet (le
+        // cas Doram, où les jobs 4218/4220 et le sommet de chaîne vont tous dans
+        // l'onglet 0). Le niveau appris peut n'avoir été écrit que sur la
+        // SECONDE fiche.
+        //
+        // S'arrêter au premier match rendait alors 0 pour une compétence
+        // réellement connue. Le Grimoire de la feuille de personnage avait
+        // rencontré et documenté ce doublon ; les deux lectures « un seul
+        // niveau », elles, ne l'avaient jamais appris. On garde le MEILLEUR
+        // niveau vu, et le coût SP de la fiche qui le porte.
+        if (level > found) {
+          found = level;
+          sp = *reinterpret_cast<const int*>(value + kOffSp);
+        }
       }
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
+  if (sp_cost) *sp_cost = sp > 0 ? sp : 0;  // négatif ou absent = « je ne sais pas »
   return found;
 }
 

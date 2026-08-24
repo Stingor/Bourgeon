@@ -119,35 +119,24 @@ int ReadBadgeCmdIds(void* wnd, int* out, int cap) {
   return n;
 }
 
-// Loads \<dir><name>.bmp via the game, decodes BGRA->A8R8G8B8 with magenta
-// colorkey, uploads to a D3D9 texture. Returns the texture or nullptr (and
-// fills w/h when known). `dir` porte le dossier ET le préfixe de nom, parce que
-// les deux changent d'une famille d'icônes à l'autre (« menu_icon\bt_ » pour la
-// grille, « basic_interface\ » pour le bouton du cash shop).
+// Charge \<dir><name>.bmp par le loader du jeu. `dir` porte le dossier ET le
+// préfixe de nom, parce que les deux changent d'une famille d'icônes à l'autre
+// (« menu_icon\bt_ » pour la grille, « basic_interface\ » pour le bouton du
+// cash shop) — c'est TOUT ce que cette fonction ajoute.
+//
+// ⚠ Elle portait sa propre copie du décodage : lecture des trois champs de la
+// CTexture, garde-fou de dimensions, boucle de color-key magenta, téléversement.
+// `ro::TextureFromGameFile` fait exactement cela, et passe par le chemin
+// indépendant du moteur (surface DirectDraw en DX7, texture D3D9 en DX9 — sans
+// quoi les icônes sont invisibles dans le rendu qui ne correspond pas).
 void* LoadIconTexture(const char* dir, const char* name, int* out_w, int* out_h) {
-  std::string path = std::string(ro::uipath::kUiRoot) + "\\" + dir + name + ".bmp";
-  void* tex = ro::texmgr::LoadResource(path.c_str());
-  if (!tex) return nullptr;
-  const int w = *reinterpret_cast<int*>(static_cast<char*>(tex) + ro::texmgr::kTexWidth);
-  const int h = *reinterpret_cast<int*>(static_cast<char*>(tex) + ro::texmgr::kTexHeight);
-  void* bgra  = *reinterpret_cast<void**>(static_cast<char*>(tex) + ro::texmgr::kTexPixels);
-  if (w <= 0 || h <= 0 || w > 4096 || h > 4096 || !bgra) return nullptr;
-  std::vector<unsigned char> argb(static_cast<size_t>(w) * h * 4);
-  const unsigned char* src = static_cast<const unsigned char*>(bgra);
-  for (int i = 0; i < w * h; ++i) {
-    const unsigned char b = src[i * 4 + 0], g = src[i * 4 + 1], r = src[i * 4 + 2];
-    const bool key = (r == 0xFF && g == 0x00 && b == 0xFF);
-    argb[i * 4 + 0] = b;
-    argb[i * 4 + 1] = g;
-    argb[i * 4 + 2] = r;
-    argb[i * 4 + 3] = key ? 0 : 0xFF;
-  }
-  *out_w = w;
-  *out_h = h;
-  // Route through the renderer-agnostic helper so icons upload as a DirectDraw
-  // surface in DX7 mode and a D3D9 texture in DX9 mode (else they're invisible
-  // in whichever renderer doesn't match the upload path).
-  return Overlay_CreateTextureARGB(argb.data(), w, h);
+  const std::string path =
+      std::string(ro::uipath::kUiRoot) + "\\" + dir + name + ".bmp";
+  const ro::GameTexture t = ro::TextureFromGameFile(path.c_str());
+  if (!t.tex) return nullptr;
+  if (out_w) *out_w = t.w;
+  if (out_h) *out_h = t.h;
+  return t.tex;
 }
 
 // Dossier + préfixe de nom des bitmaps de la grille, sous 유저인터페이스\.

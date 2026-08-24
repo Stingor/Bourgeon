@@ -162,18 +162,14 @@ constexpr int kMsgFailMaterial   = 914;  // MSI_ITEM_REFINE_FAIL_MATERIAL
 // WS_WEAPONREFINE, qui EST le plafond de refine côté serveur
 // (`item->refine >= sd.menuskill_val` refuse). Même source que le Grimoire de la
 // feuille de personnage — cf. docs/skill_tree_re.md partie II.
-using GetTabList_t = void* (__fastcall*)(void*, void*, int);
-constexpr int kSkNodeValue  = 0x08;
-constexpr int kSkOffValid   = 0x04;
-constexpr int kSkOffId      = 0x08;
-constexpr int kSkOffLvLocal = 0x10;
-// Coût SP au niveau courant, écrit par le PAQUET serveur (docs/skill_tree_re.md
-// §9.1). C'est la seule source honnête : le recopier depuis skill_db.yml en ferait
-// une constante à nous, fausse le jour où le serveur change son coût.
-constexpr int kSkOffSp      = 0x14;
-constexpr int kSkOffLearned = 0x30;  // int16, VÉRITÉ SERVEUR
-constexpr int kSkillJobTabs = 4;
-constexpr int kSkillMaxNodes = 256;
+// Le parcours et ses huit offsets vivaient ICI, recopiés de `rag::player_skills`
+// sous des noms préfixés `kSk*` — ce qui les rendait introuvables en cherchant
+// les noms de l'original. Ils sont partis avec `RefineSkillLevel` : cf.
+// `rag::LearnedSkillLevel(id, &sp)`, qui rend aussi le coût SP.
+//
+// ⚠ Le coût SP est lu sur la FICHE, pas dans skill_db.yml : c'est le paquet
+// serveur qui l'écrit (docs/skill_tree_re.md §9.1). Le recopier depuis le yml en
+// ferait une constante à nous, fausse le jour où le serveur change son coût.
 
 // Opcodes observés (le handler natif continue de tourner : on ne fait que lire).
 constexpr uint16_t kOpRefineList = 0x0221;  // ZC_NOTIFY_WEAPONITEMLIST (VARIABLE)
@@ -1241,40 +1237,15 @@ int WeaponRefineWindow::OreCount(uint32_t nameid) const {
   return itemcell::CountById(rag::kInventoryListAddr, nameid);
 }
 
+// Le niveau appris de WS_WEAPONREFINE, qui EST le plafond de refine côté serveur
+// (`item->refine >= sd.menuskill_val` refuse), et son coût SP.
+//
+// Le parcours des cinq listes du bundle vivait ici, recopié à l'identique de
+// `rag::LearnedSkillLevel` — mêmes offsets, même garde-fou, même SEH, sous des
+// noms différents. Le module partagé rend maintenant aussi le coût SP, qui était
+// la seule chose que cette copie savait faire en plus.
 int WeaponRefineWindow::RefineSkillLevel(int* sp_cost) {
-  int found = 0;
-  int sp    = 0;
-  __try {
-    // Les cinq listes du bundle : quatre onglets de job + la liste plate.
-    for (int tab = -1; tab < kSkillJobTabs && !found; ++tab) {
-      uint8_t* list_obj = reinterpret_cast<uint8_t*>(rag::kSkillFlatListAddr);
-      if (tab >= 0)
-        list_obj = reinterpret_cast<uint8_t*>(reinterpret_cast<GetTabList_t>(
-            rag::kSkillGetTabListAddr)(reinterpret_cast<void*>(rag::kSkillBundleAddr), nullptr, tab));
-      if (!list_obj) continue;
-      uint8_t* head = *reinterpret_cast<uint8_t**>(list_obj);
-      if (!head) continue;
-      uint8_t* node = *reinterpret_cast<uint8_t**>(head);
-      int guard = 0;
-      while (node && node != head && guard++ < kSkillMaxNodes) {
-        const uint8_t* v = node + kSkNodeValue;
-        node = *reinterpret_cast<uint8_t**>(node);  // avancer AVANT de lire
-        if (*reinterpret_cast<const int*>(v + kSkOffValid) == 0) continue;
-        if (*reinterpret_cast<const int*>(v + kSkOffId) != kSkillWeaponRefine)
-          continue;
-        // +0x30 (int16) fait foi — c'est la vérité serveur ; +0x10 sert de repli.
-        int lv = *reinterpret_cast<const int16_t*>(v + kSkOffLearned);
-        if (lv <= 0) lv = *reinterpret_cast<const int*>(v + kSkOffLvLocal);
-        found = lv;
-        // Coût SP au niveau courant, lu sur la MÊME fiche : le chercher à part
-        // rejouerait tout le parcours pour retomber sur ce nœud-ci.
-        sp = *reinterpret_cast<const int*>(v + kSkOffSp);
-        break;
-      }
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
-  if (sp_cost) *sp_cost = sp > 0 ? sp : 0;  // négatif ou absent = « je ne sais pas »
-  return found;
+  return rag::LearnedSkillLevel(kSkillWeaponRefine, sp_cost);
 }
 
 // ── Rendu ────────────────────────────────────────────────────────────────────

@@ -1669,9 +1669,16 @@ void EmblemCanvasPaint(int cx, int cy, uint32_t color) {
   }
 }
 
-// Relie deux cellules (Bresenham) : à 60 images/s la souris saute plusieurs pixels
-// entre deux frames, et un trait rapide laisserait sinon des pointillés.
-void EmblemCanvasStroke(int x0, int y0, int x1, int y1, uint32_t color) {
+// ── Bresenham, UNE fois ──────────────────────────────────────────────────────
+// L'algorithme était écrit DEUX fois dans ce fichier, à l'identique : une pour
+// peindre (`EmblemCanvasStroke`), une pour marquer un masque (`MaskLine`, plus
+// bas). Seule différait l'action à chaque cellule. Un algorithme recopié est un
+// algorithme qu'on ne peut plus corriger qu'à moitié.
+//
+// `plot` reçoit (x, y). Le gabarit n'a aucun coût : l'appelant passe une lambda,
+// le compilateur l'incorpore.
+template <typename Plot>
+void BresenhamLine(int x0, int y0, int x1, int y1, Plot plot) {
   int dx = (x1 > x0) ? (x1 - x0) : (x0 - x1);
   int dy = (y1 > y0) ? (y1 - y0) : (y0 - y1);
   const int sx = (x0 < x1) ? 1 : -1;
@@ -1679,12 +1686,19 @@ void EmblemCanvasStroke(int x0, int y0, int x1, int y1, uint32_t color) {
   dy = -dy;
   int err = dx + dy;
   for (;;) {
-    EmblemCanvasPaint(x0, y0, color);
+    plot(x0, y0);
     if (x0 == x1 && y0 == y1) break;
     const int err2 = 2 * err;
     if (err2 >= dy) { err += dy; x0 += sx; }
     if (err2 <= dx) { err += dx; y0 += sy; }
   }
+}
+
+// Relie deux cellules : à 60 images/s la souris saute plusieurs pixels entre deux
+// frames, et un trait rapide laisserait sinon des pointillés.
+void EmblemCanvasStroke(int x0, int y0, int x1, int y1, uint32_t color) {
+  BresenhamLine(x0, y0, x1, y1,
+                [color](int x, int y) { EmblemCanvasPaint(x, y, color); });
 }
 
 // Remplissage par proximité (4-connexité), sur la couleur pointée.
@@ -1723,19 +1737,7 @@ void MaskSet(bool* mask, int cx, int cy) {
   }
 }
 void MaskLine(bool* mask, int x0, int y0, int x1, int y1) {
-  int dx = (x1 > x0) ? (x1 - x0) : (x0 - x1);
-  int dy = (y1 > y0) ? (y1 - y0) : (y0 - y1);
-  const int sx = (x0 < x1) ? 1 : -1;
-  const int sy = (y0 < y1) ? 1 : -1;
-  dy = -dy;
-  int err = dx + dy;
-  for (;;) {
-    MaskSet(mask, x0, y0);
-    if (x0 == x1 && y0 == y1) break;
-    const int err2 = 2 * err;
-    if (err2 >= dy) { err += dy; x0 += sx; }
-    if (err2 <= dx) { err += dx; y0 += sy; }
-  }
+  BresenhamLine(x0, y0, x1, y1, [mask](int x, int y) { MaskSet(mask, x, y); });
 }
 // `tool` vaut kToolLine / kToolRect / kToolEllipse ; (x0,y0)-(x1,y1) = coins tirés.
 void EmblemShapeMask(int tool, bool filled, int x0, int y0, int x1, int y1, bool* mask) {

@@ -69,25 +69,6 @@ int InputTextResizeCb(ImGuiInputTextCallbackData* data) {
 
 }  // namespace
 
-const char* Cp949ToUtf8(const char* cp949) {
-  std::string& out = NextScratch();
-  out.clear();
-  if (!cp949 || !*cp949) return out.c_str();
-
-  int wlen = MultiByteToWideChar(kCp949, 0, cp949, -1, nullptr, 0);
-  if (wlen <= 1) return out.c_str();  // includes the null terminator
-  std::wstring wide(wlen, L'\0');
-  MultiByteToWideChar(kCp949, 0, cp949, -1, wide.data(), wlen);
-
-  int ulen = WideCharToMultiByte(CP_UTF8, 0, wide.data(), -1, nullptr, 0,
-                                 nullptr, nullptr);
-  if (ulen <= 1) return out.c_str();
-  out.resize(ulen - 1);  // drop the trailing null from the buffer size
-  WideCharToMultiByte(CP_UTF8, 0, wide.data(), -1, out.data(), ulen, nullptr,
-                      nullptr);
-  return out.c_str();
-}
-
 // La code-page que le client s'est posée d'après son servicetype. SEH : appelée
 // depuis des chemins de rendu, et l'adresse n'est peuplée qu'après FUN_00a72440.
 static UINT ClientCodePage() {
@@ -115,6 +96,21 @@ static const char* Recode(const char* in, UINT from, UINT to) {
   out.resize(olen - 1);
   WideCharToMultiByte(to, 0, wide.data(), -1, out.data(), olen, nullptr, nullptr);
   return out.c_str();
+}
+
+// 🔴 CP949 EN DUR, et c'est le SEUL cas où c'est juste : cette entrée-ci ne sert
+// qu'aux chaînes dont l'encodage est connu PAR CONSTRUCTION — un littéral CP949
+// de nos sources (les chemins « 유저인터페이스\… »), un fichier dont on sait
+// qu'il est coréen. Pour tout ce qui vient du CLIENT, c'est `LocalToUtf8`.
+//
+// ⚠ Elle portait sa propre copie du corps de `Recode`, à la ligne près. La
+// différence n'était pas dans la conversion mais dans l'ÉCHEC : cette copie
+// rendait une chaîne VIDE là où `Recode` retombe sur les octets bruts. Le repli
+// de `Recode` est le bon — « mieux vaut du texte douteux qu'une chaîne vide, on
+// perdrait l'information » — et il n'avait tout simplement jamais atteint
+// celle-ci. En passant par le corps commun, elle l'obtient.
+const char* Cp949ToUtf8(const char* cp949) {
+  return Recode(cp949, kCp949, CP_UTF8);
 }
 
 const char* LocalToUtf8(const char* local) {
@@ -1112,28 +1108,22 @@ bool g_collapse_allowed = true;  // faux hors du jeu (cf. SetWindowCollapseAllow
 
 // Charge un bmp d'UI (chemin RELATIF sous 유저인터페이스\) via le loader natif,
 // décode BGRA->A8R8G8B8 avec magenta #FF00FF -> alpha. null si absent/échec.
+//
+// ⚠ N'ajoute QUE le préfixe : le reste — chargement, garde-fou de dimensions,
+// color-key, téléversement — est `ro::TextureFromGameFile`, qui existait déjà
+// dans ui/game_texture. Cette fonction en portait une TROISIÈME copie (avec
+// `menu_icons::LoadIconTexture`), et l'en-tête de game_texture énumère déjà les
+// trois précédentes qu'il avait fallu rassembler. Une copie de plus s'était
+// reformée depuis, sans que personne la voie : elle ne partageait aucun nom avec
+// les autres.
 void* LoadClientBmp(const char* rel_path, int* out_w, int* out_h) {
-  char full[192];
+  char full[260];
   std::snprintf(full, sizeof(full), "%s\\%s", ro::uipath::kUiRoot, rel_path);
-  void* tex = ro::texmgr::LoadResource(full);
-  if (!tex) return nullptr;
-  const int w = *reinterpret_cast<int*>(static_cast<char*>(tex) + ro::texmgr::kTexWidth);
-  const int h = *reinterpret_cast<int*>(static_cast<char*>(tex) + ro::texmgr::kTexHeight);
-  void* bgra = *reinterpret_cast<void**>(static_cast<char*>(tex) + ro::texmgr::kTexPixels);
-  if (w <= 0 || h <= 0 || w > 4096 || h > 4096 || !bgra) return nullptr;
-  std::vector<unsigned char> argb(static_cast<size_t>(w) * h * 4);
-  const unsigned char* src = static_cast<const unsigned char*>(bgra);
-  for (int i = 0; i < w * h; ++i) {
-    const unsigned char b = src[i * 4 + 0], g = src[i * 4 + 1], r = src[i * 4 + 2];
-    const bool keyed = (r == 0xFF && g == 0x00 && b == 0xFF);
-    argb[i * 4 + 0] = b;
-    argb[i * 4 + 1] = g;
-    argb[i * 4 + 2] = r;
-    argb[i * 4 + 3] = keyed ? 0 : 0xFF;
-  }
-  *out_w = w;
-  *out_h = h;
-  return Overlay_CreateTextureARGB(argb.data(), w, h);
+  const ro::GameTexture t = ro::TextureFromGameFile(full);
+  if (!t.tex) return nullptr;
+  if (out_w) *out_w = t.w;
+  if (out_h) *out_h = t.h;
+  return t.tex;
 }
 
 // ── Époque des pièces de skin ───────────────────────────────────────────────

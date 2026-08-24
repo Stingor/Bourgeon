@@ -571,26 +571,34 @@ bool IsWav(const std::string& s) {
 }
 }  // namespace
 
-const char* SpriteFrameSound(const SpriteRes& res, unsigned action,
-                             unsigned frame) {
+namespace {
+
+// L'entrée que la frame désigne dans `sound_files`, ou nullptr. Les deux
+// fonctions publiques ci-dessous ne différaient QUE par le sens du ternaire
+// final — le reste (chargement, borne, index négatif) était recopié ligne pour
+// ligne, et le commentaire de l'une disait déjà « complément exact » de l'autre.
+const std::string* FrameSoundEntry(const SpriteRes& res, unsigned action,
+                                   unsigned frame) {
   Entry* e = static_cast<Entry*>(res.res);
   if (!EnsureLoaded(e)) return nullptr;
   const spract::Frame* f = FrameAt(e, action, frame);
   if (!f || f->sound_id < 0) return nullptr;
   if (static_cast<size_t>(f->sound_id) >= e->res.sound_files.size()) return nullptr;
-  const std::string& s = e->res.sound_files[f->sound_id];
-  return IsWav(s) ? s.c_str() : nullptr;
+  return &e->res.sound_files[f->sound_id];
+}
+
+}  // namespace
+
+const char* SpriteFrameSound(const SpriteRes& res, unsigned action,
+                             unsigned frame) {
+  const std::string* s = FrameSoundEntry(res, action, frame);
+  return (s && IsWav(*s)) ? s->c_str() : nullptr;
 }
 
 const char* SpriteFrameEvent(const SpriteRes& res, unsigned action,
                              unsigned frame) {
-  Entry* e = static_cast<Entry*>(res.res);
-  if (!EnsureLoaded(e)) return nullptr;
-  const spract::Frame* f = FrameAt(e, action, frame);
-  if (!f || f->sound_id < 0) return nullptr;
-  if (static_cast<size_t>(f->sound_id) >= e->res.sound_files.size()) return nullptr;
-  const std::string& s = e->res.sound_files[f->sound_id];
-  return IsWav(s) ? nullptr : s.c_str();  // complément exact de SpriteFrameSound
+  const std::string* s = FrameSoundEntry(res, action, frame);
+  return (s && !IsWav(*s)) ? s->c_str() : nullptr;
 }
 
 const char* SpriteMainSound(const SpriteRes& res) {

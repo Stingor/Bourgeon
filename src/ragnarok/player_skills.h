@@ -15,10 +15,19 @@
 // `__try` est interdit dans toute fonction abritant un objet à destructeur non trivial
 // (C2712). Le corps vit donc dans le .cc, jamais en inline.
 //
-// 🔜 Les deux copies existantes gardent leur PARCOURS : elles fonctionnent et
-// sont sous test. Seules leurs ADRESSES ont été mutualisées (bloc ci-dessous) —
-// c'est-à-dire la partie qui bougera au prochain portage d'exe. Reprendre le
-// reste quand le chantier fabrication sera soldé.
+// ✅ DETTE SOLDÉE (2026-08-24). L'en-tête annonçait « les deux copies gardent
+// leur parcours, reprendre le reste plus tard ». Repris : le refine appelle
+// désormais cette fonction, et ses huit constantes redéclarées ont disparu.
+//
+// La feuille de personnage, elle, GARDE son parcours — et ce n'est pas un
+// abandon : elle ne cherche pas UN niveau, elle relève l'arbre ENTIER (position
+// dans la grille, prérequis, dédoublonnage inter-onglets). Deux travaux
+// différents qui partagent un squelette, pas une copie.
+//
+// 🔴 Et la fusion a rendu un défaut : voir le commentaire sur l'absence de
+// `break` dans le .cc — les deux lectures « un seul niveau » s'arrêtaient au
+// premier match, alors que le Grimoire avait DÉJÀ documenté qu'un onglet peut
+// porter deux fiches de la même compétence.
 
 #include <cstdint>
 
@@ -41,6 +50,10 @@ constexpr uintptr_t kSkillGetTabListAddr = 0x00738370;  // __thiscall(bundle, ta
 // ⚠ Deux champs portent un niveau dans un nœud du bundle : `+0x30` (int16) est la
 // VÉRITÉ SERVEUR — jamais modifiée en local — et `+0x10` ne sert que de repli. Les
 // confondre donnerait le niveau d'affichage d'un onglet en cours d'édition.
-int LearnedSkillLevel(int skill_id);
+//
+// `sp_cost` (optionnel) reçoit le coût SP AU NIVEAU COURANT, lu sur la MÊME
+// fiche. Le demander à part rejouerait tout le parcours pour retomber sur le
+// même nœud. 0 = inconnu.
+int LearnedSkillLevel(int skill_id, int* sp_cost = nullptr);
 
 }  // namespace rag

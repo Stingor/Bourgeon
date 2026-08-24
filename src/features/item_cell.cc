@@ -717,19 +717,67 @@ void FlushDeferredDesc() {
 
 // ── Parcours des listes de session ───────────────────────────────────────────
 
+namespace {
+
+// ── Le parcours d'une liste d'objets, UNE fois ───────────────────────────────
+// Quatre fonctions de ce fichier le récitaient. Trois d'entre elles le faisaient
+// sous un `__try` GLOBAL — et c'est précisément la structure que l'extracteur
+// (plus bas) a dû abandonner après le bug « 16 objets au lieu de 22 » : un seul
+// nœud abîmé y avorte TOUT le parcours.
+//
+// 🔴 Pour une RECHERCHE, cet abandon rend « pas trouvé » ; pour un COMPTE, il
+// rend un total PARTIEL, sans rien signaler. `CountById` est le compteur de
+// stock du projet — la fenêtre de fabrication en tire ses « N possédés ». Un
+// sous-compte silencieux y est pire qu'une absence de réponse.
+//
+// La garde est donc PAR NŒUD, comme dans l'extracteur : un nœud fautif est sauté
+// (ou arrête le parcours s'il casse le chaînage), sans perdre les précédents.
+//
+// `visit(info)` renvoie true pour arrêter. Tout est POD ici, et les lambdas des
+// appelants ne capturent que par référence : rien à dérouler, donc pas de C2712.
+template <typename Visit>
+void WalkItemList(uintptr_t list_head, Visit visit) {
+  uint8_t* head = nullptr;
+  uint8_t* node = nullptr;
+  __try {
+    head = *reinterpret_cast<uint8_t**>(list_head);
+    if (head) node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return; }
+  // 🔴 `list_head` est l'adresse du GLOBAL ; le nœud sentinelle est ce qu'il
+  // CONTIENT, et c'est lui — pas le global — qui ferme la liste circulaire.
+  // Comparer le nœud courant à l'adresse du global fait boucler jusqu'au
+  // garde-fou et repasser des centaines de fois sur la même liste. La fenêtre de
+  // fabrication a payé ce défaut en affichant « 28300 possédés » pour 200 objets.
+  if (!head) return;
+
+  int guard = 0;
+  while (node && node != head && guard++ < kWalkGuard) {
+    // Le SUIVANT d'abord, sous sa propre garde : un chaînage corrompu arrête net,
+    // sans boucle infinie, et sans perdre ce qui a déjà été lu.
+    uint8_t* next = nullptr;
+    __try { next = *reinterpret_cast<uint8_t**>(node + kNodeNext); }
+    __except (EXCEPTION_EXECUTE_HANDLER) { return; }
+
+    bool stop = false;
+    __try { stop = visit(node + kNodeInfo); }
+    __except (EXCEPTION_EXECUTE_HANDLER) { stop = false; }  // ce nœud-là, pas les autres
+    if (stop) return;
+
+    node = next;
+  }
+}
+
+}  // namespace
+
 void* FindInfoById(uintptr_t list_head, uint32_t id) {
   if (id == 0) return nullptr;
-  __try {
-    uint8_t* head = *reinterpret_cast<uint8_t**>(list_head);
-    if (!head) return nullptr;
-    uint8_t* node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
-    for (int guard = 0; node && node != head && guard < kWalkGuard; ++guard) {
-      uint8_t* info = node + kNodeInfo;
-      if (rag::itemlist::ItemId(info) == id) return info;
-      node = *reinterpret_cast<uint8_t**>(node + kNodeNext);
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
-  return nullptr;
+  void* found = nullptr;
+  WalkItemList(list_head, [&](uint8_t* info) {
+    if (rag::itemlist::ItemId(info) != id) return false;
+    found = info;
+    return true;
+  });
+  return found;
 }
 
 // 🔴 LE COMPTEUR DE STOCK DU PROJET. Quatre fichiers en portaient leur propre
@@ -744,38 +792,22 @@ void* FindInfoById(uintptr_t list_head, uint32_t id) {
 int CountById(uintptr_t list_head, uint32_t id) {
   if (id == 0) return 0;
   int total = 0;
-  __try {
-    // 🔴 `list_head` est l'adresse du GLOBAL ; le nœud sentinelle est ce qu'il
-    // CONTIENT, et c'est lui — pas le global — qui ferme la liste circulaire.
-    // Comparer le nœud courant à l'adresse du global fait boucler jusqu'au
-    // garde-fou et additionne la liste des centaines de fois. La fenêtre de
-    // fabrication a payé ce défaut en affichant « 28300 possédés » pour 200
-    // objets réels.
-    uint8_t* head = *reinterpret_cast<uint8_t**>(list_head);
-    if (!head) return 0;
-    uint8_t* node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
-    for (int guard = 0; node && node != head && guard < kWalkGuard; ++guard) {
-      uint8_t* info = node + kNodeInfo;
-      const int amount = *reinterpret_cast<int*>(info + kInfoAmount);
-      if (amount > 0 && rag::itemlist::ItemId(info) == id) total += amount;
-      node = *reinterpret_cast<uint8_t**>(node + kNodeNext);
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return total; }
+  WalkItemList(list_head, [&](uint8_t* info) {
+    const int amount = *reinterpret_cast<int*>(info + kInfoAmount);
+    if (amount > 0 && rag::itemlist::ItemId(info) == id) total += amount;
+    return false;  // toute la liste : un même objet peut occuper plusieurs nœuds
+  });
   return total;
 }
 
 void* FindInfoByIndex(uintptr_t list_head, int index) {
-  __try {
-    uint8_t* head = *reinterpret_cast<uint8_t**>(list_head);
-    if (!head) return nullptr;
-    uint8_t* node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
-    for (int guard = 0; node && node != head && guard < kWalkGuard; ++guard) {
-      uint8_t* info = node + kNodeInfo;
-      if (*reinterpret_cast<int*>(info + kInfoIndex) == index) return info;
-      node = *reinterpret_cast<uint8_t**>(node + kNodeNext);
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
-  return nullptr;
+  void* found = nullptr;
+  WalkItemList(list_head, [&](uint8_t* info) {
+    if (*reinterpret_cast<int*>(info + kInfoIndex) != index) return false;
+    found = info;
+    return true;
+  });
+  return found;
 }
 
 // Les champs d'`ItemSkillInfo` que le viewer montre, en plus de ceux que
@@ -796,59 +828,42 @@ constexpr int kMaxOpts      = 5;     // ce que porte `ItemRow::opts`
 int ExtractList(uintptr_t list_head, ItemRow* out, int max) {
   if (!out || max <= 0) return 0;
 
-  uint8_t* head = nullptr;
-  uint8_t* node = nullptr;
-  __try {
-    head = *reinterpret_cast<uint8_t**>(list_head);
-    if (head) node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
-  if (!head) return 0;
-
   int count = 0;
-  int guard = 0;
-  while (node && node != head && count < max && guard < kWalkGuard) {
-    // Le SUIVANT d'abord, sous sa propre garde : un nœud corrompu arrête net,
-    // sans boucle infinie, et sans perdre ce qui a déjà été lu.
-    uint8_t* next = nullptr;
-    __try { next = *reinterpret_cast<uint8_t**>(node + kNodeNext); }
-    __except (EXCEPTION_EXECUTE_HANDLER) { break; }
-
-    // 🔴 Un `__try` PAR ITEM. Sous un `__try` global, un seul item fautif fait
-    // avorter toute l'énumération — c'est le bug « 16 objets au lieu de 22 ».
-    __try {
-      ItemRow& it = out[count];
-      uint8_t* info = node + kNodeInfo;
-      it.id         = rag::itemlist::ItemId(info);
-      it.amount     = *reinterpret_cast<int*>(info + kInfoAmount);
-      it.index      = *reinterpret_cast<int*>(info + kInfoIndex);
-      it.loc        = *reinterpret_cast<uint32_t*>(info + kInfoLoc);
-      it.refine     = *reinterpret_cast<int*>(info + kInfoRefine);
-      it.type       = *reinterpret_cast<int*>(info + kInfoType);
-      it.identified = *reinterpret_cast<uint8_t*>(info + kInfoIdent);
-      it.damaged    = *reinterpret_cast<uint8_t*>(info + kInfoDamaged);
-      it.favorite   = *reinterpret_cast<uint8_t*>(info + kInfoFav);
-      for (int k = 0; k < 4; ++k)
-        it.cards[k] = *reinterpret_cast<uint32_t*>(info + kInfoCards + k * 4);
-      int nopt = *reinterpret_cast<int*>(info + kInfoOptCount);
-      if (nopt < 0) nopt = 0;
-      if (nopt > kMaxOpts) nopt = kMaxOpts;
-      it.opt_count = nopt;
-      for (int k = 0; k < nopt; ++k) {
-        const uint8_t* e = info + kInfoOpts + k * 5;
-        it.opts[k].index = *reinterpret_cast<const int16_t*>(e);
-        it.opts[k].value = *reinterpret_cast<const int16_t*>(e + 2);
-        it.opts[k].param = e[4];
-      }
-      // Les deux briques partagées portent leur PROPRE SEH, par item — et
-      // `BuildDisplayName` rend désormais de l'UTF-8, plus rien à convertir ici.
-      BuildDisplayName(info, it.name, sizeof(it.name));
-      it.total_slots = SlotCount(info);
-      ++count;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {}
-
-    node = next;
-    ++guard;
-  }
+  // 🔴 La garde PAR NŒUD est celle de `WalkItemList` — c'est cette fonction-ci
+  // qui l'a inventée, après le bug « 16 objets au lieu de 22 » : sous un `__try`
+  // global, un seul item fautif avorte toute l'énumération. `count` n'est
+  // incrémenté qu'en FIN de visite, donc un item illisible ne consomme pas de
+  // place et les suivants sont lus normalement.
+  WalkItemList(list_head, [&](uint8_t* info) {
+    ItemRow& it = out[count];
+    it.id         = rag::itemlist::ItemId(info);
+    it.amount     = *reinterpret_cast<int*>(info + kInfoAmount);
+    it.index      = *reinterpret_cast<int*>(info + kInfoIndex);
+    it.loc        = *reinterpret_cast<uint32_t*>(info + kInfoLoc);
+    it.refine     = *reinterpret_cast<int*>(info + kInfoRefine);
+    it.type       = *reinterpret_cast<int*>(info + kInfoType);
+    it.identified = *reinterpret_cast<uint8_t*>(info + kInfoIdent);
+    it.damaged    = *reinterpret_cast<uint8_t*>(info + kInfoDamaged);
+    it.favorite   = *reinterpret_cast<uint8_t*>(info + kInfoFav);
+    for (int k = 0; k < 4; ++k)
+      it.cards[k] = *reinterpret_cast<uint32_t*>(info + kInfoCards + k * 4);
+    int nopt = *reinterpret_cast<int*>(info + kInfoOptCount);
+    if (nopt < 0) nopt = 0;
+    if (nopt > kMaxOpts) nopt = kMaxOpts;
+    it.opt_count = nopt;
+    for (int k = 0; k < nopt; ++k) {
+      const uint8_t* e = info + kInfoOpts + k * 5;
+      it.opts[k].index = *reinterpret_cast<const int16_t*>(e);
+      it.opts[k].value = *reinterpret_cast<const int16_t*>(e + 2);
+      it.opts[k].param = e[4];
+    }
+    // Les deux briques partagées portent leur PROPRE SEH, par item — et
+    // `BuildDisplayName` rend désormais de l'UTF-8, plus rien à convertir ici.
+    BuildDisplayName(info, it.name, sizeof(it.name));
+    it.total_slots = SlotCount(info);
+    ++count;
+    return count >= max;  // tampon plein : on s'arrête là
+  });
   return count;
 }
 
