@@ -5161,7 +5161,7 @@ void ChatWindow::DrawGameEmoteGrid(int whisper_index) {
   // conversation, un outil de maintenance n'a rien à faire sous le nez du joueur.
   if (whisper_index < 0 && IsStaff() && emote_export_) {
     ImGui::Separator();
-    if (ImGui::SmallButton(i18n::Tr("Exporter en GIF"))) {
+    if (ro::RoSmallButton(i18n::Tr("Exporter en GIF"))) {
       const std::string dir = paths::GameDir() + "emotes_export";
       const int written = ro::emote::ExportGifs(dir.c_str(), 2);
       if (written < 0)

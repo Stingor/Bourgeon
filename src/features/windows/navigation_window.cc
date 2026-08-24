@@ -1887,7 +1887,9 @@ bool NavigationWindow::RouteIconButton(int icon, float side, const char* id) {
   } else {
     char label[16];
     std::snprintf(label, sizeof(label), "%d", icon);
-    clicked = ImGui::Button(label, ImVec2(side, side));
+    // ⚠ `RoButton` prend DEUX floats, pas un `ImVec2` — la signature diffère de
+    // celle d'ImGui, et l'oublier ne se voit qu'à la compilation.
+    clicked = ro::RoButton(label, side, side);
   }
   ImGui::PopID();
   return clicked;

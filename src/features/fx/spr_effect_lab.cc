@@ -326,10 +326,10 @@ void DrawDebugControls() {
 
   const bool on = (g_wanted_ordinal != 0);
   if (!on) {
-    if (ImGui::Button(i18n::Tr("Spawn + afficher au centre"))) {
+    if (ro::RoButton(i18n::Tr("Spawn + afficher au centre"))) {
       g_wanted_ordinal = g_ui_ordinal;    }
   } else {
-    if (ImGui::Button(i18n::Tr("Arrêter"))) {
+    if (ro::RoButton(i18n::Tr("Arrêter"))) {
       g_wanted_ordinal = 0;    }
   }
   ImGui::SameLine();
@@ -337,13 +337,13 @@ void DrawDebugControls() {
   // CEffectMgr. Si le z-order des chapeaux/costumes natifs redevient correct en cochant, c'est ce
   // hook qui perturbe le rendu ; sinon il est hors de cause. ⚠ Seul écrivain de ce réglage.
   static bool s_no_effmgr = false;
-  if (ImGui::Checkbox(i18n::Tr("Couper le hook CEffectMgr (diag)"), &s_no_effmgr))
+  if (ro::RoCheckbox(i18n::Tr("Couper le hook CEffectMgr (diag)"), &s_no_effmgr))
     ez_capture::SetEffMgrCaptureEnabled(!s_no_effmgr);
   ImGui::SameLine();
   // DIAGNOSTIC : lever l'exclusion de la famille .str. Si un effet rend en jeu mais n'est JAMAIS
   // capturé (0 dessin le concernant), c'est peut-être NOUS qui l'écartons par sa vtable.
   static bool s_capture_str = false;
-  if (ImGui::Checkbox(i18n::Tr("Capturer aussi les .str (diag)"), &s_capture_str))
+  if (ro::RoCheckbox(i18n::Tr("Capturer aussi les .str (diag)"), &s_capture_str))
     ez_capture::SetCaptureStrEffects(s_capture_str);
   if (ImGui::IsItemHovered())
     ImGui::SetTooltip(i18n::Tr("Les instances CEZ2STREffect sont normalement écartées (autre pipeline).\n"
@@ -482,7 +482,7 @@ void DrawDebugControls() {
   // L'adresse qui n'apparaît QUE lorsque l'effet tourne est la fonction cherchée.
   {
     static bool show_callers = false;
-    ImGui::Checkbox(i18n::Tr("Appelants du puits (diag)"), &show_callers);
+    ro::RoCheckbox(i18n::Tr("Appelants du puits (diag)"), &show_callers);
     if (ImGui::IsItemHovered())
       ImGui::SetTooltip(i18n::Tr("Adresses de retour des fonctions qui soumettent des primitives, avec leur\n"
                         "nombre d'appels sur la dernière frame.\n"
@@ -500,7 +500,7 @@ void DrawDebugControls() {
     }
   }
 
-  ImGui::Checkbox(i18n::Tr("Cacher en jeu (overlay seul)"), &g_suppress);
+  ro::RoCheckbox(i18n::Tr("Cacher en jeu (overlay seul)"), &g_suppress);
   ImGui::SetNextItemWidth(ro::Px(180.0f));
   ImGui::Combo("Blend", &g_blend_mode,
                i18n::Tr("Natif par primitive\0Alpha normal\0Additif global\0"));
@@ -521,7 +521,7 @@ void DrawDebugControls() {
     ImGui::TextDisabled(i18n::Tr("blends: -"));
   }
 
-  ImGui::Checkbox(i18n::Tr("Debug capture (brut + ancre)"), &g_debug);
+  ro::RoCheckbox(i18n::Tr("Debug capture (brut + ancre)"), &g_debug);
   if (ImGui::IsItemHovered())
     ImGui::SetTooltip(i18n::Tr("Dessine la capture BRUTE (positions écran natives) + l'ancre (point cyan) et\n"
                       "le cercle du rayon, SANS reprojection. Décoche « Cacher en jeu » pour\n"
@@ -530,7 +530,7 @@ void DrawDebugControls() {
   ImGui::TextDisabled(i18n::Tr("ancre (%.0f,%.0f)%s"), g_dbg_ax, g_dbg_ay, g_dbg_proj_ok ? "" : i18n::Tr(" [non projetée]"));
 
   ImGui::SetNextItemWidth(ro::Px(180.0f));
-  ImGui::SliderFloat("Rayon (px)", &g_max_r, 100.0f, 3000.0f, "%.0f");
+  ro::RoSliderFloat("Rayon (px)", &g_max_r, 100.0f, 3000.0f, "%.0f");
   if (ImGui::IsItemHovered())
     ImGui::SetTooltip(i18n::Tr("Garde-fou large par défaut (la géométrie « traînée » est LÉGITIME :\n"
                       "le natif la rend en additif + dégradé d'alpha). À baisser seulement si\n"
@@ -538,7 +538,7 @@ void DrawDebugControls() {
 
   // ── Catalogue : liste NATIVE des ordinaux d'effets .spr/EZ (aucune liste hardcodée) ──
   ImGui::Separator();
-  if (ImGui::Button(g_catalog_built ? "Rescanner" : i18n::Tr("Scanner le catalogue"))) BuildCatalog();
+  if (ro::RoButton(g_catalog_built ? "Rescanner" : i18n::Tr("Scanner le catalogue"))) BuildCatalog();
   ImGui::SameLine();
   ImGui::TextDisabled(i18n::Tr("%d effets EZ, dont %d implémentés (clic = spawn)"),
                       static_cast<int>(g_catalog.size()), g_catalog_impl);
@@ -548,7 +548,7 @@ void DrawDebugControls() {
     ImGui::SetNextItemWidth(ro::Px(180.0f));
     ImGui::InputText("filtre", filter, sizeof(filter));
     ImGui::SameLine();
-    ImGui::Checkbox(i18n::Tr("implémentés seulement"), &only_impl);
+    ro::RoCheckbox(i18n::Tr("implémentés seulement"), &only_impl);
     if (ImGui::IsItemHovered())
       ImGui::SetTooltip(i18n::Tr("Un effect id sans entrée dans la table de saut du client (0x00bc2e04)\n"
                         "tombe sur un DEFAULT `mov al,1 ; ret` : le nœud est créé et tické, mais\n"

@@ -255,7 +255,7 @@ void CheatDetector::OnRenderUI() {
   const DWORD since = (last_scan_tick_ > 0) ? (now - last_scan_tick_) / 1000 : 0;
   ImGui::Text(i18n::Tr("Scans: %d  |  Dernier: il y a %us"), scan_count_, since);
   ImGui::SameLine();
-  if (ImGui::SmallButton(i18n::Tr("Scanner")) && !scan_busy_.load()) {
+  if (ro::RoSmallButton(i18n::Tr("Scanner")) && !scan_busy_.load()) {
     last_scan_tick_ = 0;  // force next StartScanIfReady to launch immediately
     StartScanIfReady();
   }

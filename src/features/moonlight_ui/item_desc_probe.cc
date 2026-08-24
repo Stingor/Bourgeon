@@ -180,26 +180,27 @@ void MoonlightUi::DrawAlootOverlay() {
         if (aloot_ids_[k] == g_last_viewed_item) { ov_idx = k; break; }
 
       SameLine();
+      // ⚠ Le rouge et le vert qui teintaient ces deux boutons ont été RETIRÉS
+      // avec la conversion : `RoSmallButton` peint son 9-slice lui-même et
+      // IGNORE `ImGuiCol_Button` — la couleur serait devenue un `PushStyleColor`
+      // mort. Ce n'est pas une perte : c'est le LIBELLÉ qui porte l'état, « -
+      // alootid » face à « + alootid », et il le dit mieux qu'une teinte.
       if (ov_idx >= 0) {
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.65f, 0.18f, 0.18f, 1.0f));
-        if (ImGui::SmallButton(i18n::Tr("- alootid"))) {
+        if (ro::RoSmallButton(i18n::Tr("- alootid"))) {
           SendSetting(kSettingAlootIdRemove, aloot_ids_[ov_idx]);
           aloot_ids_.erase(aloot_ids_.begin() + ov_idx);
         }
-        ImGui::PopStyleColor();
       } else {
         const bool can_add = (aloot_ids_.size() < 50);
         if (!can_add) ImGui::BeginDisabled();
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.48f, 0.18f, 1.0f));
-        if (ImGui::SmallButton(i18n::Tr("+ alootid"))) {
+        if (ro::RoSmallButton(i18n::Tr("+ alootid"))) {
           aloot_ids_.push_back(g_last_viewed_item);
           SendSetting(kSettingAlootId, g_last_viewed_item);
         }
-        ImGui::PopStyleColor();
         if (!can_add) ImGui::EndDisabled();
       }
       SameLine();
-      if (ImGui::SmallButton("x"))
+      if (ro::RoSmallButton("x"))
         g_item_desc_visible = false;
     }
     ImGui::End();

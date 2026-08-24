@@ -845,7 +845,7 @@ void StatusIconBar::DrawSettings() {
   Unindent();
   ImGui::EndDisabled();
 
-  if (ImGui::Button(i18n::Tr("Réinitialiser (origine)"))) {
+  if (ro::RoButton(i18n::Tr("Réinitialiser (origine)"))) {
     g_cfg.corner = kTopRight; g_cfg.margin_x = 32; g_cfg.margin_y = 185;
     g_cfg.step_dir = kDown; g_cfg.wrap_dir = kLeft; g_cfg.per_line = 17;
     g_cfg.icon_pitch = 3; g_cfg.line_pitch = 13; g_cfg.sort_mode = kSortNone;

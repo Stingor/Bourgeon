@@ -340,7 +340,7 @@ void MoonlightUi::DrawInterfacePanel() {
       if (IsStaff() && i18n::MissingCount() > 0) {
         ImGui::TextDisabled(i18n::Tr("%zu textes sans traduction"), i18n::MissingCount());
         SameLine();
-        if (ImGui::SmallButton(i18n::Tr("Exporter"))) {
+        if (ro::RoSmallButton(i18n::Tr("Exporter"))) {
           std::string exported_path;
           // Le chemin est journalisé dans les DEUX cas : en échec, c'est lui qui
           // dit pourquoi (dossier absent, fichier verrouillé), ce qu'un simple
@@ -632,8 +632,8 @@ void MoonlightUi::DrawInterfacePanel() {
           ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
         } else {
           bool changed = false;
-          changed |= ImGui::Checkbox(i18n::Tr("Afficher la grille de groupe"),
-                                     &pf->enabled_);
+          changed |= ro::RoCheckbox(i18n::Tr("Afficher la grille de groupe"),
+                                    &pf->enabled_);
           SameLine(); HelpMarker(i18n::Tr(
               "Remplace le HUD de groupe du client par une grille de tuiles : la "
               "barre de vie EST le fond de la tuile, et sa couleur dit l'état du "
@@ -641,8 +641,8 @@ void MoonlightUi::DrawInterfacePanel() {
               "active."));
           if (!pf->enabled_) ImGui::BeginDisabled();
 
-          changed |= ImGui::Checkbox(i18n::Tr("Verrouiller la position"),
-                                     &pf->locked_);
+          changed |= ro::RoCheckbox(i18n::Tr("Verrouiller la position"),
+                                    &pf->locked_);
           SameLine(); HelpMarker(i18n::Tr(
               "Fige le cadre et laisse passer les clics vers le jeu.\n\n"
               "Maintenir MAJ le déverrouille le temps d'un déplacement : pas "
@@ -671,20 +671,20 @@ void MoonlightUi::DrawInterfacePanel() {
 
           // ── Contenu d'une tuile ───────────────────────────────────────────
           SeparatorText(i18n::Tr("Contenu"));
-          changed |= ImGui::Checkbox(i18n::Tr("Icône de classe"),
-                                     &pf->show_job_icon_);
+          changed |= ro::RoCheckbox(i18n::Tr("Icône de classe"),
+                                    &pf->show_job_icon_);
           SameLine(); HelpMarker(i18n::Tr(
               "L'art du client. C'est ce qui rend une grille lisible d'un coup "
               "d'œil : on reconnaît le soigneur à sa silhouette, pas à son nom."));
-          changed |= ImGui::Checkbox(i18n::Tr("M'inclure dans la grille"),
-                                     &pf->show_self_);
-          changed |= ImGui::Checkbox(i18n::Tr("Garder les membres hors ligne"),
-                                     &pf->show_offline_);
-          changed |= ImGui::Checkbox(i18n::Tr("Afficher le niveau"),
-                                     &pf->show_level_);
-          changed |= ImGui::Checkbox(i18n::Tr("Afficher les PV chiffrés"),
-                                     &pf->show_hp_text_);
-          changed |= ImGui::Checkbox(i18n::Tr("Barre de SP"), &pf->show_sp_);
+          changed |= ro::RoCheckbox(i18n::Tr("M'inclure dans la grille"),
+                                    &pf->show_self_);
+          changed |= ro::RoCheckbox(i18n::Tr("Garder les membres hors ligne"),
+                                    &pf->show_offline_);
+          changed |= ro::RoCheckbox(i18n::Tr("Afficher le niveau"),
+                                    &pf->show_level_);
+          changed |= ro::RoCheckbox(i18n::Tr("Afficher les PV chiffrés"),
+                                    &pf->show_hp_text_);
+          changed |= ro::RoCheckbox(i18n::Tr("Barre de SP"), &pf->show_sp_);
           SameLine(); HelpMarker(i18n::Tr(
               "Le SP d'un autre joueur ne circule dans AUCUN paquet du jeu : il "
               "est demandé au serveur membre par membre. Il n'apparaît donc que "

@@ -81,8 +81,9 @@ void MoonlightUi::DrawCommandsPanel() {
             // pas BeginCombo — il dessine le champ à la main et ouvre un
             // ImGui::BeginPopup. Le refermer avec EndCombo laissait cinq
             // PushStyleColor et un PushID sur la pile à CHAQUE frame où le combo
-            // était déroulé. (Le BeginCombo natif de la ligne ~411, lui, se ferme
-            // bien par ImGui::EndCombo : ne pas « corriger » celui-là.)
+            // était déroulé. Le combo des presets d'alootid, plus bas, était le
+            // dernier `ImGui::BeginCombo` nu du fichier : converti lui aussi, il
+            // n'y a plus d'exception à retenir ici.
             ro::RoEndCombo();
           }
           SameLine(); HelpMarker(i18n::Tr("Kill Steal Protection — empêche d'autres joueurs de voler vos kills MVP.\nSelf = toi seulement, Party = ta party, Guild = ta guilde. (@noks)"));
@@ -416,7 +417,7 @@ void MoonlightUi::DrawCommandsPanel() {
               preview = "-- choisir --";
             }
             ImGui::SetNextItemWidth(ro::Px(120.0f));
-            if (ImGui::BeginCombo("##preset_select", preview)) {
+            if (ro::RoBeginCombo("##preset_select", preview)) {
               for (const auto& p : alootid_presets_) {
                 const bool sel = (p.slot_no == alootid_selected_preset_);
                 char label[66];
@@ -425,7 +426,7 @@ void MoonlightUi::DrawCommandsPanel() {
                   alootid_selected_preset_ = p.slot_no;
                 if (sel) ImGui::SetItemDefaultFocus();
               }
-              ImGui::EndCombo();
+              ro::RoEndCombo();  // JAMAIS ImGui::EndCombo, cf. le combo @noks
             }
             SameLine();
             const bool has_sel = sel_preset != nullptr;

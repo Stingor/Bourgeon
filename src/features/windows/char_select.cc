@@ -1867,7 +1867,7 @@ void CharSelect::OnRenderLoginUI() {
                        ImGuiWindowFlags_AlwaysAutoResize |
                        ImGuiWindowFlags_NoSavedSettings);
       ImGui::TextUnformatted(i18n::Tr("Gestion native en cours…"));
-      if (ImGui::Button(i18n::Tr("Revenir à la table"))) {
+      if (ro::RoButton(i18n::Tr("Revenir à la table"))) {
         native_op_ = false;
         op_prev_nfilled_ = -1;
       }
