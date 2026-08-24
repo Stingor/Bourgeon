@@ -10,6 +10,7 @@
 #include "features/moonlight_ui/moonlight_ui.h"
 #include "imgui.h"
 #include "ui/ro_imgui.h"
+#include "ragnarok/game_scene.h"  // gamescene::kPickQuadMinSizeAddr
 #include "ui/ro_widgets.h"
 #include "utils/i18n.h"
 #include "utils/log_console.h"
@@ -36,9 +37,9 @@ int  g_percent   = 25;
 // × 40 ou × 34) puis plus jamais relu ailleurs que dans la construction du quad
 // de sa famille. Ordre = MinAreaFamily.
 constexpr uintptr_t kMinAreaGlobals[3] = {
-    0x015E5B40,  // acteurs (joueurs, monstres, pets) — facteur 40
-    0x015F81D0,  // PNJ de carte, portails — facteur 34
-    0x016025B8,  // unités de compétence — facteur 34
+    gamescene::kPickQuadMinSizeAddr,  // acteurs (joueurs, monstres, pets) — facteur 40
+    0x015F81D0,                       // PNJ de carte, portails — facteur 34
+    0x016025B8,                       // unités de compétence — facteur 34
 };
 
 int  g_min_defaults[3] = {0, 0, 0};

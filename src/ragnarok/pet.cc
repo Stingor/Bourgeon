@@ -17,7 +17,10 @@ namespace {
 // ── Le bloc de globals du pet (client 20250716, base 0x400000) ──────────────
 // docs/pet_re.md §1. Écrit par `ZC_PROPERTY_PET` (0x01A2, case 418 du dispatch)
 // et par `ZC_CHANGESTATE_PET` (0x01A4). Toutes ces valeurs ont été relevées live.
-constexpr uintptr_t kAid         = 0x015fb3b0;
+// ⚠ La TÊTE du bloc est publiée dans pet.h : le menu contextuel d'entité en a
+// besoin pour reconnaître SON familier parmi les acteurs cliqués. Elle est donc
+// reprise d'ici plutôt que réécrite — le reste du bloc, lui, ne sort pas.
+constexpr uintptr_t kAid         = kOwnPetAidAddr;
 constexpr uintptr_t kRenameFlag  = 0x015fb3b4;  // 0 = renommable une fois
 constexpr uintptr_t kName        = 0x015fb3b8;  // char[32] (le paquet n'en donne que 24)
 constexpr uintptr_t kAccessory   = 0x015fb3d8;  // ITID ; 0 = aucun
