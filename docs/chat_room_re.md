@@ -620,6 +620,49 @@ ci-dessus bascule. Règle à retenir : **avant de détruire une fenêtre native,
 slot de manager dans le reste du binaire** — ici trois consommateurs, tous muets en cas
 d'échec.
 
+**2bis. ✅ LES 20 XREFS DU SLOT, TOUTES OUVERTES (2026-08-24).** Le point 2 dit de chercher le
+slot dans tout le binaire ; voici le résultat, parce que « 20 consommateurs » sans le détail
+mène à surestimer les dégâts — trois avaient été catalogués « régressions » avant lecture, et
+aucun n'en était une.
+
+| Sites | Ce que le slot y fait | Statut |
+|---|---|---|
+| `0x00C9E785`, `0x00CA189B`, `0x00CA4582` (`RecvLoop_DispatchPackets`), `0x00CC84AF` (`ZC 0x008D`), `0x00CCBDE0` (`ZC 0x008E`), `0x00CCEEE7` | aiguillage `ChatAction(5)` / `ChatAction(1)` | **repris** (`ClaimPublicChatLine`) |
+| `0x00C8C2D1`, `0x00C8C6AC`, `0x00C8C7D5`, `0x00C8DCE4` (dans `CMode::SendMsg`) | gardes de `SendMsg(44/48/…)`, refus SILENCIEUX | **contourné** (paquet brut) |
+| `0x0095F6B2` (`UIBasicInfoWnd_OnMsg`) | garde « déjà dans un salon » | **rejoué** |
+| `0x00C7627E`, `0x00C74BEA`, `0x00C759C7` | **PAS un blocage de déplacement** | **sans effet** ↓ |
+| `0x00958B12`, `0x00D0A002`, `0x00D0A0E2` | modale `MSI 587` | **sans effet** ↓ |
+| `0x00CBB80B`, `0x00CC88B9`, `0x00CE4B25` | hors fonction dans l'IDB, zone des handlers ZC de chat | non ouverts |
+
+**Les trois sites de « déplacement » sont la MÊME branche, écrite trois fois** — clic au sol,
+clic maintenu (boucle de frame) et pas de suivi d'une cible :
+
+```c
+if (g_UIChatRoomWnd_Slot || *(mode+0x70) == 6)  SendMsg(16, x, y);   // brut
+else { /* Cell_IsMoveTargetValid, Move_ClampToReachableCell, ferme le menu 18 */
+       SendMsg(17, x, y); }                                          // marche
+```
+
+Ce n'est donc pas une garde : c'est un **choix de sélecteur**, `push 10h` au lieu de `push 11h`,
+qui saute au passage tout le pathfinding local. Le blocage réel est au SERVEUR et il est
+inconditionnel — `pc_cant_act(sd)` inclut `sd->chatID` (`pc.hpp:1261`). Slot à zéro, le client
+calcule un chemin pour rien et envoie 17 : le serveur refuse pareil. *(Ce que fait exactement
+le sélecteur 16 n'est pas tranché — la table de dispatch de `CMode::SendMsg` retombe en plein
+milieu de queues d'envoi partagées.)*
+
+**Et les trois sites « échoppe »** — le bouton OK de `UIMerchantShopMakeWnd`, plus les deux
+handlers de réception `ZC 0x0A7E` / son jumeau « buying store » — affichent la modale
+`MsgString 587 = MSI_CANT_OPEN_STORE_WHILE_CHAT` puis annulent par `SendMsg(297)`. Vraie garde,
+mais **inatteignable** : `skill_check_condition_castbegin` (`skill.cpp:8377`) commence par
+`if (sd.chatID) return false;` — **aucun skill n'est lançable en salon**, donc `MC_VENDING` ne
+part pas, `state.prevend` reste à 0 et `vending_openvending` sort en 1. Politesse du client,
+pas un verrou.
+
+⇒ **La leçon du point 2 tient, mais il faut la finir : ouvrir les N sites.** Le slot porte
+quatre gardes qui comptent (le chat, deux `SendMsg`, la garde de Basic Info) et une dizaine de
+raffinements que le serveur reprend derrière. Compter les xrefs dit l'ampleur du RISQUE, jamais
+celle du dégât.
+
 **3. 🔴 On ne reçoit JAMAIS l'écho de ses propres lignes.**
 `clif_parse_GlobalMessage` route en `CHAT_WOS` = *« current chatroom, **without self** »*.
 Et le client n'écho pas non plus (le `case 6` de `CMode::SendMsg` n'appelle `ChatAction` que
