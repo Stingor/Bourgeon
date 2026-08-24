@@ -6801,6 +6801,23 @@ void ChatWindow::PruneItemLinks() {
   item_links_.swap(kept);
 }
 
+// ── La mécanique commune des poseurs de lien ─────────────────────────────────
+// Cf. l'en-tête : huit des neuf `Append*Link` récitaient ces deux blocs.
+bool ChatWindow::LinkSlotAvailable() {
+  PruneItemLinks();
+  return static_cast<int>(item_links_.size()) < kMaxItemLinks;
+}
+
+bool ChatWindow::PostPendingLink(PendingLink pending) {
+  std::string insert = pending.display;
+  insert += ' ';
+  if (!AppendToActiveInput(insert)) return false;
+  item_links_.push_back(std::move(pending));
+  if (battle_mode_) input_open_ = true;
+  focus_input_next_ = true;
+  return true;
+}
+
 bool ChatWindow::AppendItemLink(void* info) {
   if (!imgui_enabled_ || !input_bar_ || info == nullptr) return false;
 
@@ -6823,26 +6840,18 @@ bool ChatWindow::AppendItemLink(void* info) {
   display += ">";
   if (display.size() <= 2) return false;  // nom vide : rien à poser
 
-  PruneItemLinks();
-  if (static_cast<int>(item_links_.size()) >= kMaxItemLinks) return false;
+  if (!LinkSlotAvailable()) return false;
 
   // Un séparateur entre deux liens collés : sans lui, deux noms bout à bout ne se
   // distinguent plus à la lecture, et la substitution retrouverait le second au
   // milieu du premier si l'un est le préfixe de l'autre.
-  std::string insert = display;
-  insert += ' ';
-  if (!AppendToActiveInput(insert)) return false;
-
   PendingLink pending;
   pending.wire    = wire;
   pending.item    = link;  // la balise relue : même source que le libellé ci-dessus
   pending.display = display;
-  item_links_.push_back(std::move(pending));
-  // Le geste vient d'une AUTRE fenêtre (inventaire, fiche de personnage) : sans
-  // ça, le joueur devrait encore cliquer dans la barre avant de pouvoir taper.
-  if (battle_mode_) input_open_ = true;
-  focus_input_next_ = true;
-  return true;
+  // ⚠ `kind` non posé : le défaut de PendingLink vaut déjà Run::kItem, et c'est
+  // bien un lien d'objet. Les sept autres poseurs l'écrivent explicitement.
+  return PostPendingLink(std::move(pending));
 }
 
 // RELAYER un lien d'objet : le reposer dans la saisie sans posséder l'objet. La
@@ -6873,22 +6882,14 @@ bool ChatWindow::AppendItemLinkFromLink(const itemcell::ChatLink& link) {
   display += ">";
   if (display.size() <= 2) return false;
 
-  PruneItemLinks();
-  if (static_cast<int>(item_links_.size()) >= kMaxItemLinks) return false;
-
-  std::string insert = display;
-  insert += ' ';
-  if (!AppendToActiveInput(insert)) return false;
+  if (!LinkSlotAvailable()) return false;
 
   PendingLink pending;
   pending.wire    = wire;
   pending.item    = link;
   pending.display = display;
   pending.kind    = Run::kItem;
-  item_links_.push_back(std::move(pending));
-  if (battle_mode_) input_open_ = true;
-  focus_input_next_ = true;
-  return true;
+  return PostPendingLink(std::move(pending));
 }
 
 // Poser une RÉFÉRENCE d'objet — l'objet de base, sans instance. C'est le chemin
@@ -6907,26 +6908,18 @@ bool ChatWindow::AppendItemRefLink(uint32_t item_id, const char* name_utf8) {
   if (name.find('<') != std::string::npos || name.find('>') != std::string::npos)
     return false;
 
-  PruneItemLinks();
-  if (static_cast<int>(item_links_.size()) >= kMaxItemLinks) return false;
+  if (!LinkSlotAvailable()) return false;
 
   const std::string display = "<" + name + ">";
   char wire[256];
   std::snprintf(wire, sizeof(wire), "<ITMR>%u:%s</ITMR>", item_id, name.c_str());
-
-  std::string insert = display;
-  insert += ' ';
-  if (!AppendToActiveInput(insert)) return false;
 
   PendingLink pending;
   pending.wire    = wire;
   pending.display = display;
   pending.kind    = Run::kItem;
   pending.item.id = item_id;
-  item_links_.push_back(std::move(pending));
-  if (battle_mode_) input_open_ = true;
-  focus_input_next_ = true;
-  return true;
+  return PostPendingLink(std::move(pending));
 }
 
 // Poser le lien d'une RECETTE — « [Recette: Acid Bottle] ». Ce n'est pas un lien
@@ -6946,26 +6939,18 @@ bool ChatWindow::AppendRecipeLink(uint32_t item_id, const char* name_utf8) {
   if (name.find('<') != std::string::npos || name.find('>') != std::string::npos)
     return false;
 
-  PruneItemLinks();
-  if (static_cast<int>(item_links_.size()) >= kMaxItemLinks) return false;
+  if (!LinkSlotAvailable()) return false;
 
   const std::string display = links::RecipeLinkLabel(name);
   char wire[256];
   std::snprintf(wire, sizeof(wire), "<CRAF>%u:%s</CRAF>", item_id, name.c_str());
-
-  std::string insert = display;
-  insert += ' ';
-  if (!AppendToActiveInput(insert)) return false;
 
   PendingLink pending;
   pending.wire    = wire;
   pending.display = display;
   pending.kind    = Run::kRecipe;
   pending.item.id = item_id;
-  item_links_.push_back(std::move(pending));
-  if (battle_mode_) input_open_ = true;
-  focus_input_next_ = true;
-  return true;
+  return PostPendingLink(std::move(pending));
 }
 
 // Poser le lien d'une DESTINATION DE RÉGLAGES — « [Réglage: Objet obtenu] ». Même
@@ -6982,8 +6967,7 @@ bool ChatWindow::AppendSettingLink(const char* key) {
   const char* label = iface::DestLabel(key);
   if (label == nullptr) return false;
 
-  PruneItemLinks();
-  if (static_cast<int>(item_links_.size()) >= kMaxItemLinks) return false;
+  if (!LinkSlotAvailable()) return false;
 
   const std::string display = links::SettingLabel(key);
   if (display.empty()) return false;
@@ -6994,19 +6978,12 @@ bool ChatWindow::AppendSettingLink(const char* key) {
   // dans laquelle l'expéditeur joue.
   std::snprintf(wire, sizeof(wire), "<SETL>%s:%s</SETL>", key, label);
 
-  std::string insert = display;
-  insert += ' ';
-  if (!AppendToActiveInput(insert)) return false;
-
   PendingLink pending;
   pending.wire        = wire;
   pending.display     = display;
   pending.kind        = Run::kSetting;
   pending.setting_key = key;
-  item_links_.push_back(std::move(pending));
-  if (battle_mode_) input_open_ = true;
-  focus_input_next_ = true;
-  return true;
+  return PostPendingLink(std::move(pending));
 }
 
 // Poser un lien de RECHERCHE de navigation : « [Carte: Prontera] ».
@@ -7028,8 +7005,7 @@ bool ChatWindow::AppendNaviSearchLink(uint8_t kind, const char* term_utf8,
   if (!imgui_enabled_ || !input_bar_) return false;
   if (term_utf8 == nullptr || term_utf8[0] == '\0') return false;
 
-  PruneItemLinks();
-  if (static_cast<int>(item_links_.size()) >= kMaxItemLinks) return false;
+  if (!LinkSlotAvailable()) return false;
 
   // ⚠ Le contexte occupe un champ du MILIEU : il ne peut porter ni blanc (le
   // lecteur s'en sert pour le distinguer d'un terme à deux-points), ni
@@ -7051,10 +7027,6 @@ bool ChatWindow::AppendNaviSearchLink(uint8_t kind, const char* term_utf8,
                                     map != nullptr ? map : "", term_utf8);
   if (written <= 0 || written >= static_cast<int>(sizeof(wire))) return false;
 
-  std::string insert = display;
-  insert += ' ';
-  if (!AppendToActiveInput(insert)) return false;
-
   PendingLink pending;
   pending.wire      = wire;
   pending.display   = display;
@@ -7062,10 +7034,7 @@ bool ChatWindow::AppendNaviSearchLink(uint8_t kind, const char* term_utf8,
   pending.navi_term = term_utf8;
   pending.navi_kind = kind;
   pending.navi_map  = map != nullptr ? map : "";
-  item_links_.push_back(std::move(pending));
-  if (battle_mode_) input_open_ = true;
-  focus_input_next_ = true;
-  return true;
+  return PostPendingLink(std::move(pending));
 }
 
 // Poser le lien d'un STYLE : « [Style: Pseudo] ».
@@ -7082,8 +7051,7 @@ bool ChatWindow::AppendStyleLink(const char* code, const char* owner_utf8) {
   if (!imgui_enabled_ || !input_bar_ || code == nullptr || *code == '\0')
     return false;
 
-  PruneItemLinks();
-  if (static_cast<int>(item_links_.size()) >= kMaxItemLinks) return false;
+  if (!LinkSlotAvailable()) return false;
 
   // Étiquette absente = notre PSEUDO. C'est ici qu'il se résout, et pas chez
   // l'appelant : le getter natif et la conversion depuis la code-page du fil
@@ -7114,20 +7082,13 @@ bool ChatWindow::AppendStyleLink(const char* code, const char* owner_utf8) {
   std::snprintf(display, sizeof(display), "[%s: %s]", i18n::Tr("Style"),
                 owner.empty() ? "?" : owner.c_str());
 
-  std::string insert = display;
-  insert += ' ';
-  if (!AppendToActiveInput(insert)) return false;
-
   PendingLink pending;
   pending.wire        = wire;
   pending.display     = display;
   pending.kind        = Run::kStyle;
   pending.style_code  = code;
   pending.style_owner = owner;
-  item_links_.push_back(std::move(pending));
-  if (battle_mode_) input_open_ = true;
-  focus_input_next_ = true;
-  return true;
+  return PostPendingLink(std::move(pending));
 }
 
 // Poser le lien d'un LIEU — la balise du bouton « Share » de la navigation.
@@ -7186,18 +7147,13 @@ bool ChatWindow::AppendMobLink(uint32_t mob_id, int rank, const char* name_utf8)
   if (name.find('<') != std::string::npos || name.find('>') != std::string::npos)
     return false;
 
-  PruneItemLinks();
-  if (static_cast<int>(item_links_.size()) >= kMaxItemLinks) return false;
+  if (!LinkSlotAvailable()) return false;
 
   const std::string display =
       "<" + std::string(MobRankTag(static_cast<uint8_t>(rank))) + " " + name + ">";
   char wire[256];
   std::snprintf(wire, sizeof(wire), "<MOBL>%u:%d:%s</MOBL>", mob_id, rank,
                 name.c_str());
-
-  std::string insert = display;
-  insert += ' ';
-  if (!AppendToActiveInput(insert)) return false;
 
   PendingLink pending;
   pending.wire     = wire;
@@ -7206,10 +7162,7 @@ bool ChatWindow::AppendMobLink(uint32_t mob_id, int rank, const char* name_utf8)
   pending.mob_id   = mob_id;
   pending.mob_rank = static_cast<uint8_t>(rank);
   pending.mob_name = name;
-  item_links_.push_back(std::move(pending));
-  if (battle_mode_) input_open_ = true;
-  focus_input_next_ = true;
-  return true;
+  return PostPendingLink(std::move(pending));
 }
 
 void ChatWindow::QueueSend() {

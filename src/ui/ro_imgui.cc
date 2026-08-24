@@ -1736,31 +1736,46 @@ bool BeginRoWindow(const char* title, bool* p_open, int imgui_window_flags) {
   return open;
 }
 
+// Scrollbar RO peinte pendant que la fenêtre est encore courante. On repeint la
+// fenêtre ET ses descendantes (child windows + fenêtres internes de tables
+// ScrollY, ex. le storage) : leur scrollbar ImGui a été rendue transparente par
+// le style poussé, donc sans ça elle serait invisible.
+//
+// Rend la fenêtre principale — la chatbox en a besoin ensuite pour ses bandes de
+// redimensionnement — ou nullptr si le contexte n'est pas exploitable.
+ImGuiWindow* PaintRoScrollbars() {
+  ImGuiWindow* main = ImGui::GetCurrentWindow();
+  ImGuiContext* g = ImGui::GetCurrentContext();
+  if (!main || !g) return nullptr;
+  for (ImGuiWindow* cw : g->Windows) {
+    if (cw && cw->Active && cw->ScrollbarY && cw->RootWindow == main)
+      DrawRoScrollbar(cw);
+  }
+  return main;
+}
+
+// Dépile les styles poussés à l'ouverture et remet les compteurs à zéro. Les
+// deux styles de fenêtre tiennent LEURS PROPRES compteurs — la chatbox ne passe
+// pas par PushSkinColors, dont le corps clair est exactement ce qu'elle ne veut
+// pas — d'où le passage par référence plutôt que deux globales en dur.
+void PopSkinStyle(int& vars, int& colors) {
+  if (vars) {
+    ImGui::PopStyleVar(vars);
+    vars = 0;
+  }
+  if (colors) {
+    ImGui::PopStyleColor(colors);
+    colors = 0;
+  }
+}
+
 void EndRoWindow() {
-  // Scrollbar RO peinte pendant que la fenêtre est encore courante. On repeint
-  // la fenêtre ET ses descendantes (child windows + fenêtres internes de tables
-  // ScrollY, ex. le storage) : leur scrollbar ImGui a été rendue transparente par
-  // le style poussé, donc sans ça elle serait invisible.
   if (g_skin_active) {
-    ImGuiWindow* main = ImGui::GetCurrentWindow();
-    ImGuiContext* g = ImGui::GetCurrentContext();
-    if (main && g) {
-      for (ImGuiWindow* cw : g->Windows) {
-        if (cw && cw->Active && cw->ScrollbarY && cw->RootWindow == main)
-          DrawRoScrollbar(cw);
-      }
-    }
+    PaintRoScrollbars();
     g_skin_active = false;
   }
   ImGui::End();
-  if (g_skin_vars) {
-    ImGui::PopStyleVar(g_skin_vars);
-    g_skin_vars = 0;
-  }
-  if (g_skin_colors) {
-    ImGui::PopStyleColor(g_skin_colors);
-    g_skin_colors = 0;
-  }
+  PopSkinStyle(g_skin_vars, g_skin_colors);
 }
 
 // ── 3e style : la CHATBOX ────────────────────────────────────────────────────
@@ -2015,13 +2030,7 @@ static void ChatEdgeResize(ImGuiWindow* w) {
 
 void EndRoChatWindow() {
   if (g_skin_active) {
-    ImGuiWindow* main = ImGui::GetCurrentWindow();
-    ImGuiContext* g = ImGui::GetCurrentContext();
-    if (main && g) {
-      for (ImGuiWindow* cw : g->Windows) {
-        if (cw && cw->Active && cw->ScrollbarY && cw->RootWindow == main)
-          DrawRoScrollbar(cw);
-      }
+    if (ImGuiWindow* main = PaintRoScrollbars()) {
       // Verrouillée : on ne pose PAS les bandes. Les laisser en les rendant
       // inertes coûterait le même curseur « main » au survol, donc la promesse
       // muette d'un geste qui ne se produira pas.
@@ -2031,14 +2040,7 @@ void EndRoChatWindow() {
     g_skin_active = false;
   }
   ImGui::End();
-  if (g_chat_vars) {
-    ImGui::PopStyleVar(g_chat_vars);
-    g_chat_vars = 0;
-  }
-  if (g_chat_colors) {
-    ImGui::PopStyleColor(g_chat_colors);
-    g_chat_colors = 0;
-  }
+  PopSkinStyle(g_chat_vars, g_chat_colors);
 }
 
 // ── Boîte de dialogue MODALE façon RO ──────────────────────────────────────────

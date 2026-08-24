@@ -1181,6 +1181,29 @@ class ChatWindow : public Plugin {
   // un lien doit pouvoir en reposer un autre sans buter sur le plafond de trois.
   void PruneItemLinks();
 
+  // ── La mécanique commune des NEUF `Append*Link` ─────────────────────────────
+  // Chaque sorte de lien a sa propre matière — un objet, une recette, un monstre,
+  // une destination de réglages… — mais toutes finissent par le MÊME geste :
+  // élaguer, vérifier le quota, poser le libellé dans la saisie, mettre la balise
+  // de côté pour la substitution à l'envoi, et rendre la main au clavier.
+  //
+  // 🔴 Ce geste était recopié dans HUIT d'entre elles. Le relevé de doublons n'en
+  // appariait que DEUX — les six autres composent leur libellé et leur balise
+  // différemment, ce qui les faisait passer sous le seuil de similarité.
+
+  // Élague puis dit s'il reste de la place. `false` = la ligne porte déjà le
+  // maximum de liens.
+  bool LinkSlotAvailable();
+
+  // Pose `pending.display` dans la saisie active et retient `pending` pour la
+  // substitution à l'envoi. `false` si la barre refuse le texte — l'appelant n'a
+  // alors rien laissé derrière lui.
+  //
+  // ⚠ Le focus est donné ICI, et ce n'est pas cosmétique : le geste vient souvent
+  // d'une AUTRE fenêtre (inventaire, fiche de personnage), et sans ça le joueur
+  // devrait encore cliquer dans la barre avant de pouvoir taper.
+  bool PostPendingLink(PendingLink pending);
+
   // ── 🔴 PRÉVENIR IMGUI QU'ON A ÉCRIT DANS `input_` DANS SON DOS ──────────────
   // TANT QUE LE CHAMP EST ACTIF, IL ÉDITE SA PROPRE COPIE et la réécrit dans notre
   // buffer à chaque frame. Un lien posé pendant que la saisie a le focus est donc
