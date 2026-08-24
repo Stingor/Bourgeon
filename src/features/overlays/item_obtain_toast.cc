@@ -22,6 +22,8 @@
 #include "ui/ro_widgets.h"               // mui::
 #include "utils/i18n.h"
 #include "utils/log_console.h"
+#include "utils/memory_patch.h"  // mem::PatchValue
+#include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 
 using namespace mui;
 
@@ -50,7 +52,6 @@ constexpr int kMsiObtain = 696;
 // (mêmes offsets et mêmes noms que features/item_cell.cc et inventory_viewer.cc)
 constexpr int kInfoNum     = 0x10;  // int    : quantité
 constexpr int kInfoIdStr   = 0x2c;  // std::string : l'itemId EN TEXTE
-constexpr int kInfoIdCap   = 0x40;  // capacité SSO (= 0x2c+0x14) ; >15 => heap
 constexpr int kInfoIdent   = 0x5c;  // octet  : identifié
 constexpr int kInfoDamaged = 0x5d;  // octet  : cassé
 constexpr int kInfoRefine  = 0x60;  // int    : niveau d'affinage
@@ -120,10 +121,7 @@ std::vector<Toast> g_live;     // la pile affichée, propriété du fil de rendu
 bool ReadInfo(const void* info, Toast* out) {
   __try {
     const auto* p = static_cast<const uint8_t*>(info);
-    const uint32_t cap = *reinterpret_cast<const uint32_t*>(p + kInfoIdCap);
-    const char* ids = (cap > 0xf)
-                          ? *reinterpret_cast<const char* const*>(p + kInfoIdStr)
-                          : reinterpret_cast<const char*>(p + kInfoIdStr);
+    const char* ids = rag::clientstr::Data(p + kInfoIdStr);
     if (!ids) return false;
     out->id         = static_cast<uint32_t>(std::atoi(ids));
     out->amount     = *reinterpret_cast<const int*>(p + kInfoNum);
@@ -192,17 +190,6 @@ int __fastcall OnMsgHook(void* self, void* edx, int a0, int msg,
   return r;
 }
 
-template <typename T>
-void PatchValue(uintptr_t addr, T value) {
-  DWORD old_protect;
-  if (VirtualProtect(reinterpret_cast<void*>(addr), sizeof(T),
-                     PAGE_EXECUTE_READWRITE, &old_protect)) {
-    *reinterpret_cast<T*>(addr) = value;
-    VirtualProtect(reinterpret_cast<void*>(addr), sizeof(T), old_protect, &old_protect);
-    FlushInstructionCache(GetCurrentProcess(), reinterpret_cast<void*>(addr), sizeof(T));
-  }
-}
-
 // ── Helpers de rendu ────────────────────────────────────────────────────────
 
 inline ImU32 RgbToImU32(int rgb, int alpha = 255) {
@@ -218,12 +205,6 @@ inline void RgbToF4(int rgb, float* f) {
   f[2] = (rgb & 0xff) / 255.0f;
   f[3] = 1.0f;
 }
-inline int F3ToRgb(const float* f) {
-  return (static_cast<int>(f[0] * 255.0f + 0.5f) << 16) |
-         (static_cast<int>(f[1] * 255.0f + 0.5f) << 8) |
-         static_cast<int>(f[2] * 255.0f + 0.5f);
-}
-
 // Le format ne porte-t-il QU'UNE conversion, et est-elle entière ? « %% » ne
 // compte pas (c'est un pour-cent littéral). Tout le reste — %s, %n, deux
 // conversions, un drapeau de largeur exotique — est refusé.
@@ -339,7 +320,7 @@ ItemObtainToast::ItemObtainToast() {
   const uintptr_t cur = *reinterpret_cast<uintptr_t*>(kMsgSlot);
   if (cur == kMsgOrig) {
     g_msg_orig = reinterpret_cast<OnMsg_t>(kMsgOrig);
-    PatchValue<uintptr_t>(kMsgSlot, reinterpret_cast<uintptr_t>(&OnMsgHook));
+    mem::PatchValue<uintptr_t>(kMsgSlot, reinterpret_cast<uintptr_t>(&OnMsgHook));
   } else {
     LogDiag("[ItemObtainToast] slot OnMsg inattendu ({:#x}), detour non pose", cur);
   }
@@ -659,7 +640,7 @@ void ItemObtainToast::DrawSettings() {
   float bgc[4];
   RgbToF4(g_cfg.bg_rgb, bgc);
   if (ColorEdit4WithAlphaBar(i18n::Tr("Couleur du fond"), bgc)) {
-    g_cfg.bg_rgb = F3ToRgb(bgc);
+    g_cfg.bg_rgb = ro::F3ToRgb(bgc);
     g_needs_save = true;
   }
   g_needs_save |= WheelSliderInt(i18n::Tr("Opacité du fond"), &g_cfg.bg_alpha,
@@ -672,7 +653,7 @@ void ItemObtainToast::DrawSettings() {
   float bdc[4];
   RgbToF4(g_cfg.border_rgb, bdc);
   if (ColorEdit4WithAlphaBar(i18n::Tr("Couleur de la bordure"), bdc)) {
-    g_cfg.border_rgb = F3ToRgb(bdc);
+    g_cfg.border_rgb = ro::F3ToRgb(bdc);
     g_needs_save = true;
   }
   g_needs_save |= WheelSliderInt(i18n::Tr("Opacité de la bordure"),
@@ -687,11 +668,11 @@ void ItemObtainToast::DrawSettings() {
   RgbToF4(g_cfg.text_rgb, tc);
   RgbToF4(g_cfg.qty_rgb, qc);
   if (ColorEdit4WithAlphaBar(i18n::Tr("Couleur du nom"), tc)) {
-    g_cfg.text_rgb = F3ToRgb(tc);
+    g_cfg.text_rgb = ro::F3ToRgb(tc);
     g_needs_save = true;
   }
   if (ColorEdit4WithAlphaBar(i18n::Tr("Couleur de la quantité"), qc)) {
-    g_cfg.qty_rgb = F3ToRgb(qc);
+    g_cfg.qty_rgb = ro::F3ToRgb(qc);
     g_needs_save = true;
   }
 

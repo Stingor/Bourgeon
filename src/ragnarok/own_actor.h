@@ -55,6 +55,14 @@ struct OwnActorSprites {
 // ressusciterait une arme déséquipée.
 bool ReadOwnActorSprites(OwnActorSprites* out);
 
+// L'ACTEUR du joueur lui-même, ou nullptr hors session. Descente gardée : mode
+// actif -> gestionnaire d'acteurs -> l'emplacement DÉDIÉ (notre acteur n'est PAS
+// dans la liste, cf. game_scene.h).
+//
+// Deux fichiers portaient cette descente mot pour mot, sous deux noms
+// (`GetOwnActor` et `GetOwnActorLive`), et chacun redéclarait l'offset 0x2c.
+void* OwnActor();
+
 // Le chemin du `.spr` chargé dans un emplacement de N'IMPORTE QUEL acteur —
 // base sans extension, préfixée `data\`, exactement comme les champs ci-dessus.
 //

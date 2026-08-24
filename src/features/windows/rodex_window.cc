@@ -25,9 +25,22 @@
 #include "utils/hooking/hook_manager.h"  // détour du handler de contenu ZC 0x0B63
 #include "utils/log_console.h"
 #include "utils/i18n.h"
+#include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
+
 
 // ── Constantes RE (client 20250716, base 0x400000 ; cf. docs/rodex_re.md) ──
 namespace {
+
+// CMode::SendMsg (thread principal UNIQUEMENT). No-op si aucun mode n'est actif.
+// La descente « manager -> état 1 -> dispatcher -> vtable+0x18 » n'est plus
+// écrite ici : c'est exactement ce que `rag::ActiveModeSendMsg` fait, et les
+// trois constantes qu'elle demandait (0x58, +4, l'index 6) étaient en dur.
+void ModeCmd(int cmd, int a, int b, int c, int d) {
+  __try {
+    rag::ActiveModeSendMsg(cmd, a, b, c, d);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
 
 // Fenêtres natives à masquer + fermeture propre (persiste la position, comme le X).
 
@@ -543,20 +556,6 @@ void PurgeStaleMails() {
   __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
-// CMode::SendMsg (thread principal UNIQUEMENT). No-op si aucun mode n'est actif.
-void ModeCmd(int cmd, int a, int b, int c, int d) {
-  __try {
-    uint8_t* mgr = reinterpret_cast<uint8_t*>(rag::kModeMgrAddr);
-    if (*reinterpret_cast<int*>(mgr + 0x58) != 1) return;  // aucun mode actif
-    void* disp = *reinterpret_cast<void**>(mgr + 4);
-    if (disp) {
-      void** vt = *reinterpret_cast<void***>(disp);
-      using Fn = int(__thiscall*)(void*, int, int, int, int, int);
-      reinterpret_cast<Fn>(vt[6])(disp, cmd, a, b, c, d);
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
-}
-
 // std::string MSVC : {buf[16] | ptr, size @+0x10, capacité @+0x14}. Au-delà de
 // 15 caractères le texte part sur le tas et les 4 premiers octets sont alors le
 // pointeur. Buffer vidé sur structure incohérente, plutôt que de lire au hasard.
@@ -570,8 +569,7 @@ size_t CopyStdString(const uint8_t* base, char* out, size_t cap) {
     const uint32_t size = *reinterpret_cast<const uint32_t*>(base + 0x10);
     const uint32_t capacity = *reinterpret_cast<const uint32_t*>(base + 0x14);
     if (size == 0 || capacity < size || size > 0x4000) return 0;
-    const char* text = (capacity > 15) ? *reinterpret_cast<const char* const*>(base)
-                                       : reinterpret_cast<const char*>(base);
+    const char* text = rag::clientstr::Data(base);
     if (!text) return 0;
     size_t n = size;
     if (n > cap - 1) n = cap - 1;
@@ -722,8 +720,7 @@ bool ReadAttachSlot(int slot, RawAttachSlot* out) {
     // itemId en TEXTE (std::string SSO : au-delà de 15 caractères, les 4 premiers
     // octets sont un pointeur) — même décodage que l'échange et l'inventaire.
     const char* sso = reinterpret_cast<const char*>(base + kInfoIdStr);
-    const uint32_t capacity = *reinterpret_cast<const uint32_t*>(base + kInfoIdStr + 0x14);
-    const char* text = (capacity > 15) ? *reinterpret_cast<const char* const*>(sso) : sso;
+    const char* text = rag::clientstr::Data(sso);
     out->item_id   = text ? static_cast<uint32_t>(std::atoi(text)) : 0;
     out->amount    = amount;
     out->inv_index = *reinterpret_cast<const int*>(base + kInfoIndex);

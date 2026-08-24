@@ -22,6 +22,7 @@
 #include "ui/ro_imgui.h"
 #include "ui/ro_widgets.h"
 #include "utils/i18n.h"
+#include "ragnarok/job_ids.h"  // rag::IsPlayerJob / IsMonsterJob
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -75,20 +76,9 @@ constexpr int kPk_SrcGid  = 0x00;  // dword
 constexpr int kPk_SkillId = 0x0c;  // u16   (= +0x0E dans le paquet complet)
 constexpr int kPk_Length  = 0x12;  // dword (= +0x14 dans le paquet complet)
 
-// Prédicats de type, réimplémentés d'après Job_IsPlayerJobId / Job_IsMonsterId
-// (fonctions feuilles) — mêmes bornes que features/overlays/entity_names.cc.
-inline bool IsPlayerJob(unsigned id) {
-  return (id <= 0x1e) || (id - 0xfa1u <= 0x7ceu);
-}
-inline bool IsMonsterJob(unsigned id) {
-  return (static_cast<int>(id) >= 0x3e9 && static_cast<int>(id) <= 0xf9e) ||
-         (id - 0x4e35u <= 0x2ecau);
-}
-
-template <typename T>
-inline T Read(const void* base, int off) {
-  return *reinterpret_cast<const T*>(reinterpret_cast<const uint8_t*>(base) + off);
-}
+// Un champ à un offset : la lecture est celle de tout le monde (globals.h),
+// et le `using` garde les points d'appel de ce fichier tels quels.
+using rag::Read;
 
 inline ImU32 ColU32(const float rgba[4], float alpha_factor) {
   return ImGui::ColorConvertFloat4ToU32(
@@ -378,8 +368,8 @@ void CastBar::DrawBars() {
 
     const bool is_own = (actor == own_actor);
     const unsigned job = Read<uint32_t>(actor, kAct_BaseJob);
-    const bool is_mob = !is_own && IsMonsterJob(job);
-    const bool is_ply = !is_own && !is_mob && IsPlayerJob(job);
+    const bool is_mob = !is_own && rag::IsMonsterJob(job);
+    const bool is_ply = !is_own && !is_mob && rag::IsPlayerJob(job);
     if (is_own) {
       if (hide_own_) return;
     } else {

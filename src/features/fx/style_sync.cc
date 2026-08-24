@@ -19,19 +19,6 @@
 
 namespace {
 
-// Les deux identités du joueur, lues sous SEH. Elles ne font qu'envelopper les
-// accesseurs de `ragnarok/globals.h` : ce fichier tourne sur le fil réseau comme
-// sur celui du rendu, et rien n'y garantit qu'une session existe.
-//
-// ⚠ Garder l'enveloppe plutôt qu'appeler `rag::` directement est un CHOIX :
-// l'accesseur du catalogue est nu, et c'est la forme qu'ont prise tous les
-// autres appelants du projet (target_frame, social, party_friend_window,
-// weapon_refine_window) — le `__try` englobant couvre l'accesseur inliné.
-uint32_t OwnGid() {
-  __try {
-    return rag::OwnAccountId();
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
-}
 uint32_t OwnCharId() {
   __try {
     return rag::OwnCharId();
@@ -282,7 +269,7 @@ int LocalVariantCount() { return static_cast<int>(g_local_variants.size()); }
 void ForgetLocal() {
   g_local_variants.clear();
   g_local_default = 0;
-  const uint32_t self = OwnGid();
+  const uint32_t self = rag::OwnAccountIdSafe();
   if (self != 0) g_remote.erase(self);
 }
 
@@ -382,7 +369,7 @@ void StyleSync::HandlePacket(uint16_t opcode, const uint8_t* data,
                     (static_cast<int>(data[1]) << 8);
   if (count <= 0) return;
 
-  const uint32_t self = OwnGid();
+  const uint32_t self = rag::OwnAccountIdSafe();
   const uint8_t* p = data + 2;
   int available = (len - 2) / fx::style_sync::kZcEntryBytes;
   if (available > count) available = count;
@@ -636,7 +623,7 @@ int StyleSync::RefreshChangedBodies() {
     // l'apparence que le joueur a partagée, celle que les autres voient déjà.
     // S'en abstenir pendant l'édition laisserait justement le personnage sur ses
     // couleurs périmées au moment où le joueur les regarde.
-    if (gid == OwnGid() && !g_local_variants.empty()) {
+    if (gid == rag::OwnAccountIdSafe() && !g_local_variants.empty()) {
       Remote r;
       r.variants = g_local_variants;
       r.default_key = g_local_default;
@@ -759,7 +746,7 @@ int StyleSync::AutoRepair(int budget) {
 // machine), le joueur voit donc brièvement les anciennes — infiniment moins
 // gênant que de voir un corps qui n'est pas le sien.
 void StyleSync::RestoreLocalFromCache() {
-  const uint32_t gid = OwnGid();
+  const uint32_t gid = rag::OwnAccountIdSafe();
   const uint32_t cid = OwnCharId();
   if (gid == 0 || cid == 0) return;  // pas encore en jeu
   if (g_restored_cid == cid) return;
@@ -836,7 +823,7 @@ void StyleSync::ForgetPreviousCharacter() {
   const uint32_t precedent = g_session_cid;
   g_session_cid = cid;
 
-  const uint32_t gid = OwnGid();
+  const uint32_t gid = rag::OwnAccountIdSafe();
 
   // ── 🔴🔴 L'INJECTION HÉRITÉE, et pourquoi elle survivait ───────────────────
   //
@@ -910,7 +897,7 @@ void StyleSync::ForgetPreviousCharacter() {
 // Ici l'acteur n'existe plus : `ForgetActor` est donc obligatoire, `ClearRecipe`
 // écrirait dans un pointeur caduc et rendrait de surcroît un chemin périmé.
 void StyleSync::ForgetLocalActor() {
-  const uint32_t gid = OwnGid();
+  const uint32_t gid = rag::OwnAccountIdSafe();
   if (gid == 0) return;
   // 🔴🔴 L'ACTEUR EXISTE-T-IL ENCORE ? Cette fonction n'est appelée que sur le
   // chemin « hors du monde », et ce chemin se décide sur `IsGameActive()`, qui

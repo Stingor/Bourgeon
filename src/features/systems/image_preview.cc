@@ -12,6 +12,7 @@
 
 #include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB / _DeviceEpoch
 #include "utils/log_console.h"
+#include "utils/text.h"  // text::ToLowerAscii / ContainsNoCase
 
 #pragma comment(lib, "winhttp.lib")
 #pragma comment(lib, "windowscodecs.lib")
@@ -117,12 +118,6 @@ std::wstring Widen(const std::string& s) {
   return out;
 }
 
-std::string ToLower(std::string s) {
-  for (char& c : s)
-    if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
-  return s;
-}
-
 // L'hôte d'une adresse (« https://cdn.discordapp.com/x.png » -> « cdn.discordapp.com »).
 // Vide si l'adresse n'a pas de forme exploitable.
 std::string HostOf(const std::string& url) {
@@ -138,7 +133,7 @@ std::string HostOf(const std::string& url) {
   // l'hôte réel serait evil.tld alors que l'œil lit Discord. On REFUSE la forme.
   const std::string authority = url.substr(start, end - start);
   if (authority.find('@') != std::string::npos) return std::string();
-  return ToLower(authority);
+  return text::ToLowerAscii(authority);
 }
 
 bool MatchesList(const std::string& host,
@@ -185,7 +180,7 @@ bool HostAllowedSafe(const std::string& host) {
 // balise et on en extrait un champ, sur un extrait borné à quelques dizaines de
 // kio (les balises og vivent dans le <head>).
 bool ExtractOgImage(const std::vector<uint8_t>& html, std::string* out) {
-  const std::string s = ToLower(
+  const std::string s = text::ToLowerAscii(
       std::string(reinterpret_cast<const char*>(html.data()),
                   std::min<size_t>(html.size(), 64u * 1024u)));
   const size_t marker = s.find("og:image");
@@ -378,7 +373,7 @@ bool FetchImage(const std::string& start_url, std::vector<uint8_t>* out) {
       return false;
     }
 
-    const std::string lower = ToLower(ctype);
+    const std::string lower = text::ToLowerAscii(ctype);
     if (lower.compare(0, 6, "image/") == 0) return true;
 
     // Une PAGE : une seule tentative og:image, jamais en chaîne.
@@ -863,7 +858,7 @@ void AllowOnce(const char* url) {
 
 void AllowHost(const char* host) {
   if (host == nullptr || host[0] == '\0') return;
-  const std::string h = ToLower(std::string(host));
+  const std::string h = text::ToLowerAscii(std::string(host));
   std::lock_guard<std::mutex> lock(g_mutex);
   for (const std::string& x : g_user_hosts)
     if (x == h) return;
@@ -872,7 +867,7 @@ void AllowHost(const char* host) {
 
 void ForgetHost(const char* host) {
   if (host == nullptr || host[0] == '\0') return;
-  const std::string h = ToLower(std::string(host));
+  const std::string h = text::ToLowerAscii(std::string(host));
   std::lock_guard<std::mutex> lock(g_mutex);
   for (size_t i = 0; i < g_user_hosts.size(); ++i) {
     if (g_user_hosts[i] != h) continue;
@@ -913,7 +908,7 @@ void SetUserHostsCsv(const std::string& csv) {
   while (start <= csv.size()) {
     size_t sep = csv.find(';', start);
     if (sep == std::string::npos) sep = csv.size();
-    std::string h = ToLower(csv.substr(start, sep - start));
+    std::string h = text::ToLowerAscii(csv.substr(start, sep - start));
     while (!h.empty() && (h.front() == ' ')) h.erase(h.begin());
     while (!h.empty() && (h.back() == ' ')) h.pop_back();
     if (!h.empty()) g_user_hosts.push_back(h);
@@ -925,7 +920,7 @@ void SetHostWhitelist(const std::vector<std::string>& hosts) {
   std::lock_guard<std::mutex> lock(g_mutex);
   g_hosts.clear();
   for (const std::string& h : hosts)
-    if (!h.empty()) g_hosts.push_back(ToLower(h));
+    if (!h.empty()) g_hosts.push_back(text::ToLowerAscii(h));
   if (g_hosts.empty()) EnsureHosts();  // liste vide = on retombe sur le défaut
 }
 

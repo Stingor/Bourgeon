@@ -4,6 +4,14 @@
 
 #include "imgui.h"
 
+// La poignée de texture du client, telle qu'ImGui l'attend. Cette ligne était
+// recopiée dans NEUF fichiers, toujours identique : c'est le genre de trivialité
+// que personne ne songe à partager, et qui finit par être le symbole le plus
+// dupliqué du dépôt.
+inline ImTextureID TexId(void* native_texture) {
+  return reinterpret_cast<ImTextureID>(native_texture);
+}
+
 // ── ro_widgets : helpers ImGui génériques, partagés par tous les plugins ──────
 // Extraits de features/moonlight_ui/moonlight_ui.h, où ils avaient été écrits faute d'un endroit
 // mieux placé. Ils n'ont RIEN à voir avec le panneau de réglages : ce sont des

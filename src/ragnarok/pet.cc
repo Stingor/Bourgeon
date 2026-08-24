@@ -9,6 +9,7 @@
 #include "ragnarok/globals.h"
 #include "ragnarok/uiwnd.h"
 #include "ui/ro_imgui.h"
+#include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 
 namespace rag {
 namespace pet {
@@ -111,7 +112,6 @@ constexpr uintptr_t kEggToMobAddr = 0x00d823f0;
 // 16, sinon `+0x00` pointe le heap. Capacité en `+0x14`.
 constexpr uintptr_t kForbidden1 = 0x0120451c;
 constexpr uintptr_t kForbidden2 = 0x01204534;
-constexpr int kStdStringCapOff = 0x14;
 
 constexpr int kMsgSendMsgVtIndex = 6;
 constexpr int kModeMsgCommandPet = 150;
@@ -131,11 +131,9 @@ constexpr uint16_t kOpPetEvolution = 0x09fb;
 inline int  ReadInt(uintptr_t a) { return *reinterpret_cast<int*>(a); }
 inline void* ReadPtr(uintptr_t a) { return *reinterpret_cast<void**>(a); }
 
-// Le corps d'une `std::string` du client, SSO comprise.
+// Adaptateur d'ADRESSE : ce fichier désigne les champs par des `uintptr_t`.
 const char* StdStringData(uintptr_t s) {
-  const unsigned cap = *reinterpret_cast<unsigned*>(s + kStdStringCapOff);
-  return cap >= 16 ? *reinterpret_cast<const char**>(s)
-                   : reinterpret_cast<const char*>(s);
+  return rag::clientstr::Data(reinterpret_cast<const void*>(s));
 }
 
 // La map de recettes, ou nullptr. Descente d'arbre binaire ordinaire : la clé

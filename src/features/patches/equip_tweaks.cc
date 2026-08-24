@@ -10,6 +10,7 @@
 #include "bourgeon.h"
 #include "features/moonlight_ui/moonlight_ui.h"
 #include "utils/log_console.h"
+#include "utils/memory_patch.h"  // mem::PatchValue
 
 // ===========================================================================
 // UIEquipWnd widen (20250716 client / Moonlight-Destiny.exe, base 0x400000)
@@ -161,17 +162,6 @@ int __fastcall EquipMsgHook(void* self, void* edx, int arg0, int msg, int p2,
   }
 }
 
-template <typename T>
-void PatchValue(uintptr_t addr, T value) {
-  DWORD old_protect;
-  if (VirtualProtect(reinterpret_cast<void*>(addr), sizeof(T),
-                     PAGE_EXECUTE_READWRITE, &old_protect)) {
-    *reinterpret_cast<T*>(addr) = value;
-    VirtualProtect(reinterpret_cast<void*>(addr), sizeof(T), old_protect, &old_protect);
-    FlushInstructionCache(GetCurrentProcess(), reinterpret_cast<void*>(addr), sizeof(T));
-  }
-}
-
 }  // namespace
 
 EquipTweaks::EquipTweaks() {
@@ -179,7 +169,7 @@ EquipTweaks::EquipTweaks() {
   // message handler (vtable +0x94) so the window remembers where it was.
   const uintptr_t cur_msg = *reinterpret_cast<uintptr_t*>(kMsgSlot);
   if (cur_msg == kMsgOrig) {
-    PatchValue<void*>(kMsgSlot, reinterpret_cast<void*>(&EquipMsgHook));
+    mem::PatchValue<void*>(kMsgSlot, reinterpret_cast<void*>(&EquipMsgHook));
     // LogInfo("[Equip] message-handler hook installed (position persistence)");
   } else {
     LogError("[Equip] msg vtable slot 0x{:x} = 0x{:x}, expected 0x{:x}; pos-persist skipped",
@@ -197,14 +187,14 @@ EquipTweaks::EquipTweaks() {
   // 1) Window width: own + view-other instances (both stock 0x118).
   bool ok = true;
   if (*reinterpret_cast<uint32_t*>(kWidthOwnImm) == kStockWidth) {
-    PatchValue<uint32_t>(kWidthOwnImm, new_width);
+    mem::PatchValue<uint32_t>(kWidthOwnImm, new_width);
   } else {
     LogError("[Equip] own-width imm @0x{:x} = {}, expected 280; width patch skipped",
              kWidthOwnImm, *reinterpret_cast<uint32_t*>(kWidthOwnImm));
     ok = false;
   }
   if (*reinterpret_cast<uint32_t*>(kWidthOtherImm) == kStockWidth) {
-    PatchValue<uint32_t>(kWidthOtherImm, new_width);
+    mem::PatchValue<uint32_t>(kWidthOtherImm, new_width);
   } else {
     LogError("[Equip] other-width imm @0x{:x} = {}, expected 280; width patch skipped",
              kWidthOtherImm, *reinterpret_cast<uint32_t*>(kWidthOtherImm));
@@ -213,14 +203,14 @@ EquipTweaks::EquipTweaks() {
   // 2) Right column icon x (= 251 + extra) and name x (= 167 + shift, to clear the
   //    enlarged centred avatar). The name gains room between it and the icon.
   if (*reinterpret_cast<uint32_t*>(kRightIconImm) == kStockRightIcon) {
-    PatchValue<uint32_t>(kRightIconImm, new_icon);
+    mem::PatchValue<uint32_t>(kRightIconImm, new_icon);
   } else {
     LogError("[Equip] right-icon imm @0x{:x} = {}, expected 251; icon patch skipped",
              kRightIconImm, *reinterpret_cast<uint32_t*>(kRightIconImm));
     ok = false;
   }
   if (*reinterpret_cast<uint32_t*>(kRightNameImm) == kStockRightName) {
-    PatchValue<uint32_t>(kRightNameImm, kStockRightName + static_cast<uint32_t>(kRightNameShift));
+    mem::PatchValue<uint32_t>(kRightNameImm, kStockRightName + static_cast<uint32_t>(kRightNameShift));
   } else {
     LogError("[Equip] right-name imm @0x{:x} = {}, expected 167; name-x patch skipped",
              kRightNameImm, *reinterpret_cast<uint32_t*>(kRightNameImm));
@@ -232,7 +222,7 @@ EquipTweaks::EquipTweaks() {
   //    headgear names wrapping while body names didn't.
   for (uintptr_t cap : kNameCapImm) {
     if (*reinterpret_cast<uint8_t*>(cap) == kStockNameCap) {
-      PatchValue<uint8_t>(cap, static_cast<uint8_t>(kNameCap));
+      mem::PatchValue<uint8_t>(cap, static_cast<uint8_t>(kNameCap));
     } else {
       LogError("[Equip] name-cap imm @0x{:x} = {}, expected 70; cap patch skipped",
                cap, *reinterpret_cast<uint8_t*>(cap));
@@ -243,12 +233,12 @@ EquipTweaks::EquipTweaks() {
   // 3b) Right-column DRAG grip-rect + hover-highlight follow the moved icon
   //     (General + Costume). Without these the right items grip at the old spot.
   if (*reinterpret_cast<int32_t*>(kDragRectImm) == kStockDragRect)
-    PatchValue<int32_t>(kDragRectImm, -static_cast<int32_t>(kStockRightIcon + kExtraWidth));
+    mem::PatchValue<int32_t>(kDragRectImm, -static_cast<int32_t>(kStockRightIcon + kExtraWidth));
   else
     LogError("[Equip] drag-rect disp @0x{:x} = {}, expected -251; grip patch skipped",
              kDragRectImm, *reinterpret_cast<int32_t*>(kDragRectImm));
   if (*reinterpret_cast<uint32_t*>(kHighlightImm) == kStockHighlight)
-    PatchValue<uint32_t>(kHighlightImm, kStockHighlight + static_cast<uint32_t>(kExtraWidth));
+    mem::PatchValue<uint32_t>(kHighlightImm, kStockHighlight + static_cast<uint32_t>(kExtraWidth));
 
   if (ok) {
     // LogInfo("[Equip] widened: window {}px, right icon x={}, name cap {}px",
@@ -259,21 +249,21 @@ EquipTweaks::EquipTweaks() {
   if (kEnableSwap) {
     const uint32_t swap_title = new_width / 2;  // re-centre the title
     if (*reinterpret_cast<uint32_t*>(kSwapWidthImm) == kStockWidth)
-      PatchValue<uint32_t>(kSwapWidthImm, new_width);
+      mem::PatchValue<uint32_t>(kSwapWidthImm, new_width);
     else
       LogError("[Equip] swap-width imm = {}, expected 280; skipped",
                *reinterpret_cast<uint32_t*>(kSwapWidthImm));
     if (*reinterpret_cast<uint32_t*>(kSwapTitleImm) == kSwapStockTitle)
-      PatchValue<uint32_t>(kSwapTitleImm, swap_title);
+      mem::PatchValue<uint32_t>(kSwapTitleImm, swap_title);
     if (*reinterpret_cast<uint32_t*>(kSwapRightIconImm) == kSwapStockRightIcon)
-      PatchValue<uint32_t>(kSwapRightIconImm,
+      mem::PatchValue<uint32_t>(kSwapRightIconImm,
                            kSwapStockRightIcon + static_cast<uint32_t>(kExtraWidth));
     if (*reinterpret_cast<uint32_t*>(kSwapRightNameImm) == kSwapStockRightName)
-      PatchValue<uint32_t>(kSwapRightNameImm,
+      mem::PatchValue<uint32_t>(kSwapRightNameImm,
                            kSwapStockRightName + static_cast<uint32_t>(kRightNameShift));
     for (uintptr_t cap : kSwapNameCapImm) {
       if (*reinterpret_cast<uint8_t*>(cap) == kStockNameCap)
-        PatchValue<uint8_t>(cap, static_cast<uint8_t>(kNameCap));
+        mem::PatchValue<uint8_t>(cap, static_cast<uint8_t>(kNameCap));
     }
     // LogInfo("[Equip] swap window widened: {}px, title x={}", new_width, swap_title);
   }

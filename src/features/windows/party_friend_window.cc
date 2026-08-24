@@ -6,7 +6,6 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
-#include <unordered_map>
 #include <utility>
 
 #include "bourgeon.h"
@@ -20,173 +19,15 @@
 #include "ui/ro_imgui.h"
 #include "ui/ro_widgets.h"
 #include "utils/i18n.h"
-#include "ragnarok/social.h"  // rag::social::kFriendListAddByNameAddr
+#include "ragnarok/social.h"  // lecture des listes, noms de classe, icones
 
 namespace {
-
-// ── Le manager social : des champs de la SESSION ─────────────────────────────
-// Les deux listes sont des std::list circulaires dont la session ne garde que le
-// POINTEUR de sentinelle ; `next` est le premier dword du nœud et la donnée
-// commence à `nœud+8`. Confirmé par trois chemins indépendants : les accesseurs
-// (0x00d5a0d0 / 0x00d5da80), le vidage de session (0x00d70220) et le départ de
-// groupe (0x00d56530). Cf. docs/party_friend_re.md §2.
-constexpr int kSes_PartyListPtr  = 0x17bc;
-constexpr int kSes_PartyCount    = 0x17c0;
-constexpr int kSes_FriendListPtr = 0x17c4;
-constexpr int kSes_FriendCount   = 0x17c8;
-
-// ── L'entrée sociale (0x50 octets, MÊME type pour les amis et le groupe) ─────
-constexpr int kNode_Data   = 0x08;  // la donnée commence après {next, prev}
-constexpr int kEnt_Gid     = 0x04;
-constexpr int kEnt_Id2     = 0x08;
-constexpr int kEnt_Name    = 0x0c;  // std::string
-constexpr int kEnt_Map     = 0x24;  // std::string
-constexpr int kEnt_Leader  = 0x3c;  // 🔴 0 = CHEF (le natif dessine la couronne si == 0)
-constexpr int kEnt_Offline = 0x40;
-constexpr int kEnt_Color   = 0x44;
-constexpr int kEnt_Job     = 0x48;  // u16
-constexpr int kEnt_Level   = 0x4a;  // u16 — prouvé au désassemblage (cf. l'en-tête)
-
-// std::string MSVC : buffer SSO de 16 o, puis taille et capacité.
-// (7e exemplaire de ce lecteur dans le dépôt — il mériterait la factorisation
-// qu'a reçue `uiwnd.h` pour les fenêtres. Hors périmètre de ce chantier.)
-constexpr int kStr_Cap = 0x14;
-
-// ── L'acteur, pour le HP ─────────────────────────────────────────────────────
-// `Actor_FindByGid(gid)` __stdcall : raccourci global qui résout le mode lui-même
-// (le même que target_frame). La `UIPcGage` de +0x488 est celle que le client pose
-// justement pour LES MEMBRES DE PARTY ; PV courants en +0xA0, maximum en +0xA4.
-constexpr int       kAct_PcGage     = 0x488;
-constexpr int       kGage_Hp        = 0x0a0;
-constexpr int       kGage_MaxHp     = 0x0a4;
 
 // (`g_Own_InParty` 0x015FF804 existe et garde les cases 0x3D / 0x3E du switch
 // natif, mais il reste à 0 pour un membre qui a REJOINT un groupe — inutilisable
 // pour savoir si l'on est en groupe. Voir DrawPartyTab.)
 
-// Résolveur de nom de classe, même convention d'appel que celle déjà éprouvée par
-// character_sheet : __fastcall(session /*ecx*/, nullptr /*edx*/, jobId, -1).
-
 constexpr int kWinMessengerGroup = 0x45;
-
-// Le natif dimensionne 40 jauges et 40 boutons de job : c'est sa borne de lignes.
-// On garde la même, avec une marge, pour ne jamais boucler sans fin sur une liste
-// corrompue.
-constexpr int kMaxRows = 64;
-
-// 🔴 MAX_PARTY = 24 SUR MOONLIGHT (`src/common/mmo.hpp:99`), PAS 12.
-//
-// Le client, lui, pousse `0Ch` en littéral dans le compteur de sa fenêtre native
-// (@0x00704820) : il affiche donc « N/12 » et se trompera dès le 13e membre. On ne
-// reproduit pas ce plafond-là — on prend celui du SERVEUR, qui est la vraie limite.
-//
-// ⚠ Ne pas déduire cette valeur d'un autre émulateur : Hercules dit 12, rAthena
-// amont aussi. C'est bien le dépôt Moonlight qui fait foi (miroir local
-// `D:\Mes documents\GitHub\moonlight`, serveur `~/moonlight` en SSH).
-constexpr int kMaxPartyMembers = 24;
-
-// MAX_FRIENDS, même source : Moonlight `src/common/mmo.hpp:168`.
-// ⚠ Contrairement à MAX_PARTY, le CLIENT ne connaît pas cette valeur — elle est
-// purement serveur, et nous la recopions ici. Si elle change côté serveur, ce
-// nombre-là ment jusqu'à ce qu'on le suive : c'est le seul endroit à corriger.
-constexpr int kMaxFriends = 40;
-
-// ── Lectures brutes, toutes sous SEH ─────────────────────────────────────────
-// 🔴 Aucune de ces fonctions ne manipule d'objet à destructeur : MSVC refuse
-// `__try` dans une fonction qui demande du déroulement. La conversion vers des
-// std::string se fait chez l'appelant, hors du bloc protégé.
-
-struct RawRow {
-  uint32_t gid = 0, id2 = 0, color = 0;
-  uint16_t job = 0, level = 0;
-  bool     leader = false;
-  bool     offline = false;
-  char     name[64] = {0};
-  char     map[32]  = {0};
-};
-
-void ReadStdStringSEH(uintptr_t addr, char* out, int cap) {
-  out[0] = '\0';
-  __try {
-    const uint8_t* s = reinterpret_cast<const uint8_t*>(addr);
-    const uint32_t capacity = *reinterpret_cast<const uint32_t*>(s + kStr_Cap);
-    const char* p = (capacity > 15) ? *reinterpret_cast<const char* const*>(s)
-                                    : reinterpret_cast<const char*>(s);
-    if (p) {
-      int i = 0;
-      for (; i < cap - 1 && p[i]; ++i) out[i] = p[i];
-      out[i] = '\0';
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
-}
-
-// Collecte les NŒUDS de la liste (pointeurs seulement). Renvoie le nombre lu.
-// Trois bornes, et c'est voulu : la sentinelle (fin normale du tour), le compteur
-// que la session tient à côté de la liste, et `cap`. Le compteur seul ne suffirait
-// pas — il peut être en avance ou en retard d'un élément le temps d'un ajout — et
-// la sentinelle seule laisserait boucler sans fin sur une liste remaniée pendant
-// qu'on la parcourt.
-int CollectNodesSEH(int list_ptr_offset, int count_offset, const void** nodes,
-                    int cap) {
-  int n = 0;
-  __try {
-    const uintptr_t sentinel = rag::SessionField<uintptr_t>(list_ptr_offset);
-    if (!sentinel) return 0;
-    const int announced = rag::SessionField<int>(count_offset);
-    int limit = cap;
-    if (announced > 0 && announced < limit) limit = announced;
-    uintptr_t node = *reinterpret_cast<const uintptr_t*>(sentinel);
-    while (node && node != sentinel && n < limit) {
-      nodes[n++] = reinterpret_cast<const void*>(node);
-      node = *reinterpret_cast<const uintptr_t*>(node);
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) { /* liste en cours de remaniement */ }
-  return n;
-}
-
-bool ReadNodeSEH(const void* node, RawRow& out) {
-  uintptr_t data = 0;
-  __try {
-    data = reinterpret_cast<uintptr_t>(node) + kNode_Data;
-    out.gid     = *reinterpret_cast<const uint32_t*>(data + kEnt_Gid);
-    out.id2     = *reinterpret_cast<const uint32_t*>(data + kEnt_Id2);
-    out.color   = *reinterpret_cast<const uint32_t*>(data + kEnt_Color);
-    out.job     = *reinterpret_cast<const uint16_t*>(data + kEnt_Job);
-    // 🔴 Le natif code le chef par ZÉRO, pas par un.
-    out.leader  = (*reinterpret_cast<const uint32_t*>(data + kEnt_Leader) == 0);
-    out.offline = (*reinterpret_cast<const uint32_t*>(data + kEnt_Offline) != 0);
-    out.level   = *reinterpret_cast<const uint16_t*>(data + kEnt_Level);
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
-  ReadStdStringSEH(data + kEnt_Name, out.name, sizeof(out.name));
-  ReadStdStringSEH(data + kEnt_Map,  out.map,  sizeof(out.map));
-  return true;
-}
-
-// PV d'un membre. Rend false quand l'acteur n'est pas chargé — ce qui n'est PAS
-// une erreur : c'est l'état normal d'un membre hors de portée, et le client
-// officiel n'affiche rien non plus dans ce cas.
-bool ReadHpSEH(uint32_t gid, int* hp, int* max_hp) {
-  __try {
-    if (gid && gid == rag::OwnAccountId()) {
-      *hp     = rag::OwnHp();
-      *max_hp = rag::OwnMaxHp();
-      return *max_hp > 0;
-    }
-    using FindActorFn = void* (__stdcall*)(uint32_t);
-    void* actor = reinterpret_cast<FindActorFn>(gamescene::kFindActorByGidAddr)(gid);
-    if (!actor) return false;
-    void* gage = *reinterpret_cast<void* const*>(
-        reinterpret_cast<const uint8_t*>(actor) + kAct_PcGage);
-    if (!gage) return false;
-    const uint8_t* g = reinterpret_cast<const uint8_t*>(gage);
-    const int cur = *reinterpret_cast<const int*>(g + kGage_Hp);
-    const int max = *reinterpret_cast<const int*>(g + kGage_MaxHp);
-    if (max <= 0) return false;
-    *hp = cur;
-    *max_hp = max;
-    return true;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
-}
 
 // ── Les commandes du client ──────────────────────────────────────────────────
 //
@@ -241,24 +82,6 @@ constexpr int kMsgPickShared  = 0x122;  // « Party Share »
 constexpr int kMsgDivEach     = 0x2e3;  // « Individual »
 constexpr int kMsgDivShared   = 0x2e4;  // « Shared »
 
-// Nombre de membres, directement au manager — la même fonction que chat_window et
-// emotion_hotkey utilisent déjà. Sert de garde « suis-je en groupe ? » hors rendu,
-// là où la liste relue par frame n'est pas disponible.
-
-int PartyMemberCountSEH() {
-  __try {
-    using Fn = int(__thiscall*)(void*);
-    return reinterpret_cast<Fn>(rag::kPartyMemberCountAddr)(
-        reinterpret_cast<void*>(rag::kSessionAddr));
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
-}
-
-int ReadOptSEH(uintptr_t addr) {
-  __try {
-    return *reinterpret_cast<const int*>(addr);
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
-}
-
 // Les deux paquets qui DEMANDENT quelque chose au joueur.
 // ⚠ 0x02C6 et non 0x00FE : le serveur bascule dès PACKETVER >= 20070821.
 constexpr uint16_t kOpPartyJoinReq = 0x02c6;  // { partyid:4, groupName[24] }
@@ -282,40 +105,6 @@ void AddFriendSEH(const char* name24) {
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
-// Mon AID. C'est ce que le natif compare pour choisir `icon_party_me`.
-uint32_t OwnAidSEH() {
-  __try {
-    return rag::OwnAccountId();
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
-}
-
-const char* JobNameSEH(int job_id) {
-  __try {
-    using GetClassName_t = const char* (__fastcall*)(void*, void*, unsigned, int);
-    const char* n = reinterpret_cast<GetClassName_t>(rag::kJobNameOrResNameAddr)(
-        reinterpret_cast<void*>(rag::kSessionAddr), nullptr,
-        static_cast<unsigned>(job_id), -1);
-    return n ? n : "";
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return ""; }
-}
-
-// Le résolveur passe par la table Lua des classes : on met en cache, comme le fait
-// character_sheet pour les membres de guilde.
-const char* JobName(int job_id) {
-  static std::unordered_map<int, std::string> cache;
-  auto it = cache.find(job_id);
-  if (it != cache.end()) return it->second.c_str();
-  const char* n = JobNameSEH(job_id);
-  char buf[64];
-  if (n && n[0]) {
-    std::strncpy(buf, n, sizeof(buf) - 1);
-    buf[sizeof(buf) - 1] = '\0';
-  } else {
-    std::snprintf(buf, sizeof(buf), i18n::Tr("Classe %d"), job_id);
-  }
-  return (cache[job_id] = buf).c_str();
-}
-
 // ── L'art du client, tel que le natif le compose ─────────────────────────────
 //
 // Racine des bitmaps d'interface, en CP949 (유저인터페이스), en octets verbatim :
@@ -326,7 +115,6 @@ const char* JobName(int job_id) {
 // le job est lu en `[esi+50h]` — nœud+0x50, donc data+0x48. La variante `_die`
 // existe (mort), pilotée par un flag distinct de « hors ligne » que nous n'avons
 // pas encore identifié : on ne l'utilise donc pas.
-constexpr char kJobIconFmt[] = "%s\\renewalparty\\icon_jobs_%u.bmp";
 // (Le natif a aussi `\renewalparty\icon_party_me|on|off.bmp` pour la pastille de
 // statut. On ne s'en sert PAS : ~11 px de haut, ces bitmaps deviennent illisibles
 // dès qu'on les met à l'échelle de l'interface. La pastille est dessinée — voir
@@ -455,36 +243,20 @@ void PartyFriendWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
 
 // ── Lecture des listes ───────────────────────────────────────────────────────
 
-void PartyFriendWindow::ReadList(bool party, std::vector<SocialRow>& out) {
-  out.clear();
-  const void* nodes[kMaxRows] = {nullptr};
-  const int n = CollectNodesSEH(party ? kSes_PartyListPtr : kSes_FriendListPtr,
-                                party ? kSes_PartyCount : kSes_FriendCount,
-                                nodes, kMaxRows);
-  out.reserve(static_cast<size_t>(n));
-  for (int i = 0; i < n; ++i) {
-    RawRow raw;
-    if (!ReadNodeSEH(nodes[i], raw)) continue;
-    SocialRow row;
-    row.gid       = raw.gid;
-    row.id2       = raw.id2;
-    row.name      = raw.name;
-    row.map       = raw.map;
-    row.is_leader = raw.leader;
-    row.offline   = raw.offline;
-    row.color     = raw.color;
-    row.job       = raw.job;
-    row.level     = raw.level;
-    if (party) FillHp(row);
-    out.push_back(std::move(row));
-  }
+void PartyFriendWindow::ReadList(bool party, std::vector<rag::social::Entry>& out) {
+  // Les PV des membres visibles sont remplis au passage, comme le fait
+  // UpdateMemberHpGauges : c'est `social` qui sait ou les prendre.
+  if (party)
+    rag::social::ReadParty(out);
+  else
+    rag::social::ReadFriends(out);
   // Suis-je le chef ? C'est ce qui ouvre « nommer chef » et « expulser ». On le
   // recalcule à chaque relecture : le commandement peut changer sans nous
   // prévenir (le chef part, le serveur le transmet).
   if (party) {
-    const uint32_t mine = OwnAidSEH();
+    const uint32_t mine = rag::social::OwnAid();
     i_am_leader_ = false;
-    for (const SocialRow& r : out) {
+    for (const rag::social::Entry& r : out) {
       if (r.gid == mine) { i_am_leader_ = r.is_leader; break; }
     }
   }
@@ -602,16 +374,6 @@ void PartyFriendWindow::FlushPending() {
   pending_gid_ = 0;
   pending_id2_ = 0;
   pending_name_.clear();
-}
-
-void PartyFriendWindow::FillHp(SocialRow& row) const {
-  int hp = 0, max_hp = 0;
-  // Un membre hors ligne n'a pas d'acteur : le natif masque sa jauge sans même
-  // chercher. On fait pareil, pour ne pas afficher les PV d'un homonyme chargé.
-  if (row.offline) { row.has_hp = false; return; }
-  row.has_hp = ReadHpSEH(row.gid, &hp, &max_hp);
-  row.hp = hp;
-  row.max_hp = max_hp;
 }
 
 // ── Bascule natif / ImGui ────────────────────────────────────────────────────
@@ -784,7 +546,7 @@ void PartyFriendWindow::DrawPartyTab() {
   ImGui::SameLine();
   if (ro::RoButton(i18n::Tr("Quitter le groupe"))) {
     confirm_      = Action::kLeaveParty;
-    confirm_gid_  = OwnAidSEH();
+    confirm_gid_  = rag::social::OwnAid();
     confirm_name_.clear();
     open_confirm_ = true;
   }
@@ -806,7 +568,7 @@ void PartyFriendWindow::DrawPartyTab() {
   // (Pas d'équivalent pour les amis : le client n'y affiche aucun plafond, et
   // MAX_FRIENDS est une valeur SERVEUR qu'on ne peut pas lire d'ici.)
   ImGui::TextDisabled("%s %d/%d", msgstr::Utf8Or(0xC9F, i18n::Tr("Membres :")),
-                      static_cast<int>(party_.size()), kMaxPartyMembers);
+                      static_cast<int>(party_.size()), rag::social::kMaxPartyMembers);
 }
 
 void PartyFriendWindow::DrawFriendTab() {
@@ -841,7 +603,7 @@ void PartyFriendWindow::DrawFriendTab() {
   // ajout, pas une reprise du natif — lui n'affiche aucun compteur ici.
   ImGui::Separator();
   ImGui::TextDisabled("%s %d/%d", i18n::Tr("Amis :"),
-                      static_cast<int>(friends_.size()), kMaxFriends);
+                      static_cast<int>(friends_.size()), rag::social::kMaxFriends);
 }
 
 // ── Une ligne de GROUPE, calquée sur le natif ────────────────────────────────
@@ -853,7 +615,7 @@ void PartyFriendWindow::DrawFriendTab() {
 // d'icône 50×50 à gauche, « Lv.%d » suivi de « %s(%s) » (nom, carte), la jauge
 // enfant, puis « %d/%d » juste à droite d'elle, et la pastille de statut à 80 %
 // de la largeur.
-void PartyFriendWindow::DrawPartyRow(const SocialRow& row) {
+void PartyFriendWindow::DrawPartyRow(const rag::social::Entry& row) {
   const float icon = ro::Px(kJobIconSize);
   char path[160];
 
@@ -863,8 +625,7 @@ void PartyFriendWindow::DrawPartyRow(const SocialRow& row) {
   const float row_w = ImGui::GetContentRegionAvail().x;
 
   // ── L'icône de classe ──────────────────────────────────────────────────────
-  std::snprintf(path, sizeof(path), kJobIconFmt, ro::uipath::kUiRoot,
-                static_cast<unsigned>(row.job));
+  rag::social::JobIconPath(row.job, path, sizeof(path));
   const ro::GameTexture job_icon = ro::CachedTextureFromGameFile(path);
   if (job_icon.tex) {
     // Hors ligne : la même icône, assombrie — le natif grise toute la ligne.
@@ -884,7 +645,7 @@ void PartyFriendWindow::DrawPartyRow(const SocialRow& row) {
   // (`UITextButton_SetName`, DrawContent) : on le rend en infobulle, seul endroit
   // où il tient sans encombrer la ligne.
   if (ImGui::IsItemHovered())
-    ImGui::SetTooltip("%s", ro::LocalToUtf8(JobName(row.job)));
+    ImGui::SetTooltip("%s", ro::LocalToUtf8(rag::social::JobName(row.job)));
   ImGui::SameLine();
 
   ImGui::BeginGroup();
@@ -960,7 +721,7 @@ void PartyFriendWindow::DrawPartyRow(const SocialRow& row) {
   // ── La pastille de statut, calée à droite de la ligne ─────────────────────
   // Même arbitrage que le natif : hors ligne -> OFF, moi -> ME (comparaison à
   // g_Account_Aid, pas à un champ de l'entrée), tout le reste -> ON.
-  const bool is_me = (row.gid == OwnAidSEH());
+  const bool is_me = (row.gid == rag::social::OwnAid());
   DrawStatusBadge(row.offline ? "OFF" : (is_me ? "ME" : "ON"),
                   row.offline ? IM_COL32(105, 105, 105, 255)
                   : is_me     ? IM_COL32(58, 110, 190, 255)
@@ -1004,9 +765,9 @@ void PartyFriendWindow::DrawPartyRow(const SocialRow& row) {
 // part de l'ÉTAT, donc elle est juste quelle que soit l'origine du changement
 // (nous, le chef, ou un autre client).
 void PartyFriendWindow::PollPartyOptions() {
-  const int exp    = ReadOptSEH(kOptExpAddr);
-  const int pickup = ReadOptSEH(kOptPickupAddr);
-  const int share  = ReadOptSEH(kOptShareAddr);
+  const int exp    = rag::ReadInt(kOptExpAddr);
+  const int pickup = rag::ReadInt(kOptPickupAddr);
+  const int share  = rag::ReadInt(kOptShareAddr);
   if (exp == seen_exp_ && pickup == seen_pickup_ && share == seen_share_) return;
 
   const bool was_known = opts_known_;
@@ -1019,7 +780,7 @@ void PartyFriendWindow::PollPartyOptions() {
   // Rien à annoncer au tout premier relevé, ni hors groupe — quitter un groupe
   // remet ces globales à zéro, et « Expérience : Individuelle » à ce moment-là
   // n'aurait aucun sens.
-  if (!was_known || PartyMemberCountSEH() <= 0) return;
+  if (!was_known || rag::social::PartyMemberCount() <= 0) return;
   QueuePartyOptionsMessage();
 }
 
@@ -1106,10 +867,10 @@ void PartyFriendWindow::DrawPartyOptions() {
 //
 // Rien n'agit ici : chaque entrée ARME `pending_` (ou demande une confirmation).
 // Cf. FlushPending pour le pourquoi.
-void PartyFriendWindow::DrawRowContextMenu(const SocialRow& row, bool party) {
+void PartyFriendWindow::DrawRowContextMenu(const rag::social::Entry& row, bool party) {
   if (!ImGui::BeginPopup("##rowmenu")) return;
 
-  const bool is_me = (row.gid == OwnAidSEH());
+  const bool is_me = (row.gid == rag::social::OwnAid());
 
   ImGui::TextDisabled("%s", ro::LocalToUtf8(row.name.c_str()));
   ImGui::Separator();
@@ -1279,7 +1040,7 @@ void PartyFriendWindow::DrawInvitePopup() {
   ro::EndRoPopupModal();
 }
 
-void PartyFriendWindow::DrawFriendRow(const SocialRow& row) {
+void PartyFriendWindow::DrawFriendRow(const rag::social::Entry& row) {
   const ImVec2 origin = ImGui::GetCursorScreenPos();
   const float row_w = ImGui::GetContentRegionAvail().x;
 

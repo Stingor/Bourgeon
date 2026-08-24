@@ -10,6 +10,7 @@
 #include "ragnarok/uiwnd.h"
 #include "ui/ro_imgui.h"  // ro::LocalToUtf8
 #include "ragnarok/render.h"  // render::kSpriteRefCacheAddr
+#include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 
 namespace gamesettings {
 namespace {
@@ -249,12 +250,6 @@ void* SoundMgr() {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
 }
 
-void* ActiveGameMode() {
-  __try {
-    return rag::ActiveModeIfReady();
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
-}
-
 // Un `std::string` de MSVC, recopié en UTF-8 dans `out`.
 //
 // Représentation : seize octets qui portent SOIT le texte court, SOIT un
@@ -263,12 +258,9 @@ void* ActiveGameMode() {
 void CopyClientString(const uint8_t* field, char* out, size_t out_size) {
   out[0] = '\0';
   __try {
-    const uint32_t capacity = *reinterpret_cast<const uint32_t*>(field + 0x14);
-    const uint32_t size     = *reinterpret_cast<const uint32_t*>(field + 0x10);
+    const uint32_t size = rag::clientstr::Size(field);
     if (size == 0 || size > 0x4000) return;  // vide, ou champ manifestement faux
-    const char* data = (capacity >= 16)
-                           ? *reinterpret_cast<const char* const*>(field)
-                           : reinterpret_cast<const char*>(field);
+    const char* data = rag::clientstr::Data(field);
     if (!data) return;
     // ⚠ La conversion se fait dans la code-page du CLIENT, pas en CP949 fixe :
     // ces textes viennent de son Lua, donc de son encodage (même règle que la
@@ -286,19 +278,7 @@ void CopyClientString(const uint8_t* field, char* out, size_t out_size) {
 // y écrirait un texte que lui ne sait pas relire — et il s'agit ici du nom
 // d'adaptateur qu'il comparera au démarrage.
 void CopyClientStringRaw(const uint8_t* field, char* out, size_t out_size) {
-  out[0] = '\0';
-  __try {
-    const uint32_t capacity = *reinterpret_cast<const uint32_t*>(field + 0x14);
-    const uint32_t size     = *reinterpret_cast<const uint32_t*>(field + 0x10);
-    if (size == 0 || size > 0x4000) return;
-    const char* data = (capacity >= 16)
-                           ? *reinterpret_cast<const char* const*>(field)
-                           : reinterpret_cast<const char*>(field);
-    if (!data) return;
-    const size_t take = (size < out_size - 1) ? size : out_size - 1;
-    std::memcpy(out, data, take);
-    out[take] = '\0';
-  } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
+  rag::clientstr::CopyTruncating(field, out, static_cast<int>(out_size));
 }
 
 // Adresse de l'enregistrement `index`, ou nul.
@@ -532,7 +512,7 @@ void SetBgmEnabled(bool on) {
   // 🔴 Le devoir caché : sans ce message, couper la musique laisse le morceau en
   // cours jouer jusqu'au bout, et la rallumer ne relance rien.
   __try {
-    void* mode = ActiveGameMode();
+    void* mode = rag::ActiveModeSafe();
     if (mode) rag::ModeSendMsg(mode, kCmdBgmToggled, 0, 0, 0, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }

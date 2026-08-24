@@ -15,6 +15,7 @@
 #include "ui/ro_imgui.h"    // ro::RoCheckbox
 #include "ui/ro_widgets.h"  // mui::HelpMarker, mui::WheelSliderInt
 #include "utils/i18n.h"
+#include "ragnarok/job_ids.h"  // rag::IsPlayerJob / IsMonsterJob
 
 // ── Adresses (client 20250716, no-ASLR : addr Ghidra == live) ────────────────
 namespace {
@@ -89,13 +90,6 @@ bool GameHasFocus() {
   return pid == GetCurrentProcessId();
 }
 
-// Prédicat monstre réimplémenté d'après Job_IsMonsterId (0x00c44470, fonction
-// feuille) — même copie que features/overlays/entity_names.cc.
-inline bool IsMonsterJob(unsigned id) {
-  return (static_cast<int>(id) >= 0x3e9 && static_cast<int>(id) <= 0xf9e) ||
-         (id - 0x4e35u <= 0x2ecau);
-}
-
 // ── Appel de Actor_OnMsg via la vtable (+8) ─────────────────────────────────
 // Le natif empile TOUJOURS 13 dwords : un mot de tête à 0, le message en 64 bits,
 // puis CINQ paramètres 64 bits (les inutilisés restent à 0). Vérifié sur les
@@ -139,18 +133,6 @@ __declspec(noinline) void ActorSendMsg(void* actor, int msg,
     mov  esp, esi
     pop  esi
   }
-}
-
-// Mode courant, pour la boucle de répétition (qui, elle, ne reçoit pas le `cmode`
-// du hook). Même chaîne que KeyboardMove/PlayerJump.
-void* GetGameMode() {
-  void* gm = nullptr;
-  __try {
-    gm = rag::ActiveModeIfReady();
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-    gm = nullptr;
-  }
-  return gm;
 }
 
 // Acteur joueur, ou nullptr. Valide d'abord que `cmode` est bien un CGameMode :
@@ -233,7 +215,7 @@ unsigned PickTargetGid(int mode) {
       // désormais la règle — le chemin natif qui la portait
       // (CursorMgr_UpdateHover) n'est plus emprunté.
       if (aid == rag::OwnAccountId()) return 0;
-      if (!IsMonsterJob(job)) return 0;  // joueur : PVP/GVG au clic manuel
+      if (!rag::IsMonsterJob(job)) return 0;  // joueur : PVP/GVG au clic manuel
     }
     return aid;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
@@ -516,7 +498,7 @@ void QuickCast::UpdateDisarm() {
   const int armed_mode = arm_mode_;
   arm_vk_ = 0;
 
-  void* cmode = GetGameMode();
+  void* cmode = rag::ActiveModeSafe();
   if (!cmode || !GetOwnActor(cmode)) return;  // valide aussi la vtable du mode
 
   int mode = 0, skill = 0, level = 0;
@@ -546,7 +528,7 @@ void QuickCast::Update() {
 
   if (!CanCastNow()) return;
 
-  void* cmode = GetGameMode();
+  void* cmode = rag::ActiveModeSafe();
   if (!cmode) return;
   void* actor = GetOwnActor(cmode);  // valide aussi la vtable du mode
   if (!actor) return;

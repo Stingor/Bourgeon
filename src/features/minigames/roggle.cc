@@ -42,8 +42,6 @@ constexpr float kBallTimeout = 12.0f;       // s — safety against a stuck ball
 // State machine.
 enum { kAiming = 0, kFlying = 1, kWon = 2, kLost = 3 };
 
-void PlayRoSound(const char* name);  // fwd — plays a RO .wav via the sound mgr
-
 struct Peg { float x, y; bool orange; bool hit; bool removed; };
 
 struct Game {
@@ -183,7 +181,7 @@ void StepPhysics(float dt) {
         // Real RO hit sounds (present at wav\effect\...; the drop_*.wav the
         // item-drop code references aren't in this client's GRF). Two different
         // hit clips so orange/blue pegs sound distinct.
-        PlayRoSound(p.orange ? "effect\\EF_hit2.wav" : "effect\\EF_hit4.wav");
+        audio::Play3D(p.orange ? "effect\\EF_hit2.wav" : "effect\\EF_hit4.wav");
       }
     }
   }
@@ -191,7 +189,7 @@ void StepPhysics(float dt) {
   // Bucket catch near the bottom (chime once on the transition).
   if (g.by > kBucketY - kBucketH && g.by < kBucketY + kBucketH &&
       g.bx > g.bucket_x - kBucketW * 0.5f && g.bx < g.bucket_x + kBucketW * 0.5f) {
-    if (!g.bucket_caught) PlayRoSound("_heal_effect.wav");  // reward chime
+    if (!g.bucket_caught) audio::Play3D("_heal_effect.wav");  // reward chime
     g.bucket_caught = true;
   }
 
@@ -226,16 +224,6 @@ constexpr uint32_t kItemBlue   = 717;  // Blue Gemstone (bonus pegs)
 // which is exactly the "crash on peg hit inside StepPhysics" this caused.
 using PlaySoundFn = void(__fastcall*)(void*, void*, const char*, float, float,
                                       float, int, int, float, int);
-void PlayRoSound(const char* name) {
-  __try {
-    void* mgr = audio::SoundMgr();
-    if (mgr)
-      reinterpret_cast<PlaySoundFn>(audio::kPlay3DAddr)(
-          mgr, nullptr, name, 0.0f, 0.0f, 0.0f, 250, 40, 1.0f, 0);
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-  }
-}
-
 struct IconTex { void* tex = nullptr; int w = 0, h = 0; int attempts = 0; bool gave_up = false; };
 IconTex g_tex_orange, g_tex_blue;
 

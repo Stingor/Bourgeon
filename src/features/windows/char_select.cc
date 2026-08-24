@@ -364,14 +364,6 @@ T Read(const void* base, int off) {
   return v;
 }
 
-int ReadCount(uintptr_t addr) {
-  __try {
-    return *reinterpret_cast<const int*>(addr);
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-    return 0;
-  }
-}
-
 // Nom lisible d'un job — getter NATIF `rag::kJobNameOrResNameAddr` :
 //   char* __thiscall(void* this = 0x015fa3c0 (adresse LITTÉRALE, pas un pointeur à
 //                    déréférencer), unsigned classId, int sex)   // sex 0=F, 1=M
@@ -679,9 +671,9 @@ CharSelect::CharSelect(MoonlightAuth* auth) : auth_(auth) {
 }
 
 int CharSelect::SlotCapacity() const {
-  const int sum = ReadCount(kNormalSlots) + ReadCount(kPremiumSlots) +
-                  ReadCount(kBillingSlots);
-  const int creatable = ReadCount(kCreatableSlots);
+  const int sum = rag::ReadInt(kNormalSlots) + rag::ReadInt(kPremiumSlots) +
+                  rag::ReadInt(kBillingSlots);
+  const int creatable = rag::ReadInt(kCreatableSlots);
   int cap = sum > creatable ? sum : creatable;
   if (cap < 0) cap = 0;
   if (cap > 128) cap = 128;  // garde-fou (MAX_CHARS serveur monte à 60)
@@ -1926,7 +1918,7 @@ void CharSelect::OnRenderLoginUI() {
     return i >= 0 && i < cap && i < 128 && views[i].occupied &&
            views[i].del_rev_date == 0;
   };
-  const bool creatable_all = (ReadCount(kCreatableSlots) > 0);
+  const bool creatable_all = (rag::ReadInt(kCreatableSlots) > 0);
 
   const ImGuiIO& io = ImGui::GetIO();
   // Un popup modal (ex. confirmation de suppression) est ouvert ? BeginPopupModal

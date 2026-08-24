@@ -95,6 +95,17 @@ std::string LangMissingPath(const std::string& code) {
   return LangDir() + "\\" + code + ".missing.yaml";
 }
 
+bool GameDirW(std::wstring& out) {
+  wchar_t buf[MAX_PATH];
+  const DWORD n = GetModuleFileNameW(nullptr, buf, MAX_PATH);
+  if (n == 0 || n >= MAX_PATH) return false;
+  const std::wstring path(buf, n);
+  const size_t slash = path.find_last_of(L'\\');
+  if (slash == std::wstring::npos) return false;
+  out = path.substr(0, slash + 1);
+  return true;
+}
+
 std::string InGameDir(const std::string& relative) { return GameDir() + relative; }
 
 }  // namespace paths

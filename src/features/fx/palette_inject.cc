@@ -14,6 +14,7 @@
 #include "ui/sprite_path.h"      // HairPaletteRelForSprite
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
+#include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 
 namespace fx {
 namespace palette_inject {
@@ -304,14 +305,7 @@ bool ReadActorPalettePath(void* actor, char* out, size_t out_size) {
     // de 15 caractères le buffer devient un pointeur — le chemin d'un `.pal`
     // dépasse souvent cette limite, donc les deux cas comptent.
     const char* base = reinterpret_cast<const char*>(actor) + kOffActorPalettePath;
-    const size_t size = *reinterpret_cast<const size_t*>(base + 16);
-    const size_t cap = *reinterpret_cast<const size_t*>(base + 20);
-    const char* p = (cap >= 16) ? *reinterpret_cast<const char* const*>(base)
-                                : base;
-    if (!p || size == 0 || size >= out_size) return false;
-    std::memcpy(out, p, size);
-    out[size] = '\0';
-    return true;
+    return rag::clientstr::Copy(base, out, out_size);
   } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; return false; }
 }
 

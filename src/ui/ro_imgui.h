@@ -641,6 +641,22 @@ float SkinImageBrightness();
 // et storage_window, chacun sous le nom `SkinImgTint` dans son namespace anonyme.
 ImU32 SkinImageTint();
 
+// ── La couleur « 0xRRGGBB » du client <-> trois flottants d'ImGui ────────────
+// Trois fichiers portaient ce couple, avec deux écritures de l'aller-retour.
+// L'arrondi à +0.5f n'est pas décoratif : sans lui, un réglage relu puis
+// réécrit DÉRIVE d'une unité à chaque tour.
+inline void RgbToF3(int rgb, float* f) {
+  f[0] = ((rgb >> 16) & 0xff) / 255.0f;
+  f[1] = ((rgb >> 8) & 0xff) / 255.0f;
+  f[2] = (rgb & 0xff) / 255.0f;
+}
+inline int F3ToRgb(const float* f) {
+  const int r = static_cast<int>(f[0] * 255.0f + 0.5f);
+  const int g = static_cast<int>(f[1] * 255.0f + 0.5f);
+  const int b = static_cast<int>(f[2] * 255.0f + 0.5f);
+  return (r << 16) | (g << 8) | b;
+}
+
 
 // InputText dont le buffer est du CP949 en entrée ET en sortie : la saisie
 // (coréen via IME, latin) est éditée en UTF-8 en interne puis re-convertie en

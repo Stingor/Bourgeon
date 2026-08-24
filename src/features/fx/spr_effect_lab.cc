@@ -25,7 +25,6 @@ namespace {
 
 // ── Adresses / offsets natifs (client 20250716, base 0x400000) ────────────────
 // Réutilisés à l'identique de la RE existante (cf. basic_info.cc, docs/hat_effect_re.md).
-constexpr int       kOffOwnActor      = 0x2c;        // actorMgr -> acteur joueur
 
 // Bridge Lua brut (Lua 5.1) — pour appeler GetHatEffectID(ordinal) = getter NATIF de l'id concret
 // (ordinal -> id d'effet interne). Mêmes adresses/mécanique que basic_info.cc (HatLuaNum) :
@@ -73,18 +72,6 @@ void* g_applied_actor     = nullptr;  // acteur sur lequel on a appliqué. ⚠�
 // les chiffres et les tracés incluent les autres effets du joueur.
 bool IsOurs(const ez_capture::Prim& p) {
   return g_applied_concrete > 0 && p.effect_id == g_applied_concrete;
-}
-
-void* GetOwnActor() {
-  void* actor = nullptr;
-  __try {
-    void* gm = rag::ActiveModeIfReady();
-    if (gm) {
-      void* mgr = *reinterpret_cast<void**>(reinterpret_cast<char*>(gm) + gamescene::kGmActorMgr);
-      if (mgr) actor = *reinterpret_cast<void**>(reinterpret_cast<char*>(mgr) + kOffOwnActor);
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) { actor = nullptr; }
-  return actor;
 }
 
 // GetHatEffectID(ordinal) NATIF : ordinal (87) -> id concret (1240). AUCUN hardcode.
@@ -176,7 +163,7 @@ void Reconcile() {
   if (Bourgeon::Instance().IsMapLoading() || !Bourgeon::Instance().IsGameActive())
     return;  // défense en profondeur (RenderFrame est déjà gardé en amont)
 
-  void* actor = GetOwnActor();
+  void* actor = rag::OwnActor();
 
   // DÉTECTION DE PERTE : UNIQUEMENT le changement de pointeur d'acteur (warp/@refresh : l'acteur est
   // détruit+recréé -> nouveau pointeur, RE confirmée). ⚠ NE PAS re-toggler sur le MÊME acteur :

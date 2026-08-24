@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "features/plugin.h"
+#include "ragnarok/social.h"  // rag::social::Entry — la ligne, lue une seule fois
 
 // ── PartyFriendWindow ────────────────────────────────────────────────────────
 //
@@ -131,44 +132,14 @@ class PartyFriendWindow : public Plugin {
   int& cur_tab() { return cur_tab_; }
 
  private:
-  // ── Une entrée sociale, telle que le manager la stocke ────────────────────
-  //
-  // Le natif emploie LE MÊME type des deux côtés (amis et groupe) : structure de
-  // 0x50 octets, copy-ctor 0x00701df0, rangée dans une liste chaînée circulaire
-  // dont la donnée est à `nœud+8`. On ne recopie ici que ce qu'on affiche.
-  //
-  // Le NIVEAU (+0x4A) est prouvé depuis le désassemblage : le site du « Lv.%d »
-  // (0x0070433d) pousse `movzx eax, word ptr [esi+52h]`, soit nœud+0x52 = data+0x4A.
-  // Le décompilateur ne le montrait pas — l'argument passe par un sprintf
-  // variadique — d'où le passage par le désassemblage.
-  // ⚠ Reste non identifié : +0x4C (u32).
-  struct SocialRow {
-    uint32_t    gid    = 0;      // +0x04 — GID/AID, la clé des acteurs
-    uint32_t    id2    = 0;      // +0x08 — second id (char id), clé du getter 0xd5d740
-    std::string name;            // +0x0C
-    std::string map;             // +0x24 — nom brut, à passer par MapDisplayName
-    bool        is_leader = false;  // +0x3C — 🔴 le natif code 0 = CHEF
-    bool        offline   = false;  // +0x40
-    // +0x44 — couleur du nom. L'OFFSET est sûr (le natif la passe directement à
-    // DrawText), mais son ENCODAGE ne l'est pas : le moteur du client compose ses
-    // couleurs en BGR à plusieurs endroits. Lue et transportée, PAS encore
-    // affichée — à trancher avant de s'en servir, sous peine de noms illisibles.
-    uint32_t    color  = 0;
-    uint16_t    job    = 0;      // +0x48 — alimente \renewalparty\icon_jobs_<job>.bmp
-    uint16_t    level  = 0;      // +0x4A — le « Lv.%d » du natif
-    // HP : renseigné SEULEMENT si l'acteur est chargé (cf. bandeau). `has_hp` faux
-    // veut dire « hors de portée », pas « mort ».
-    bool        has_hp = false;
-    int         hp     = 0;
-    int         max_hp = 0;
-  };
+  // Une entrée sociale : le MÊME type que celui du HUD de groupe, décrit et lu
+  // une seule fois dans `ragnarok/social.h`. La fenêtre n'en connaît plus ni les
+  // offsets ni les lecteurs — elle ne fait que présenter ce qu'on lui rend.
 
-  // Relit une liste entière depuis le manager. `party` choisit la liste (groupe ou
-  // amis) ; c'est le seul endroit qui connaît les offsets.
+  // Relit une liste entière depuis le manager. `party` choisit la liste (groupe
+  // ou amis).
   // (Pas `const` : pour la liste de groupe, elle met aussi `i_am_leader_` à jour.)
-  void ReadList(bool party, std::vector<SocialRow>& out);
-  // Complète `hp`/`max_hp` en interrogeant l'acteur, comme UpdateMemberHpGauges.
-  void FillHp(SocialRow& row) const;
+  void ReadList(bool party, std::vector<rag::social::Entry>& out);
   // Détruit la fenêtre native si elle traîne (cf. « DÉTRUIRE, pas masquer »).
   void KillNative(bool adopt_open_state);
 
@@ -177,11 +148,11 @@ class PartyFriendWindow : public Plugin {
   // Une ligne de GROUPE, calquée sur le natif : icône de classe à gauche, puis
   // « Lv.N Nom(Carte) » et la barre de vie avec ses PV, et le pastille de statut
   // (moi / en ligne / hors ligne) à droite.
-  void DrawPartyRow(const SocialRow& row);
-  void DrawFriendRow(const SocialRow& row);
+  void DrawPartyRow(const rag::social::Entry& row);
+  void DrawFriendRow(const rag::social::Entry& row);
   // Le menu contextuel d'une ligne (clic droit), et la demande de confirmation
   // des actions irréversibles. Ni l'un ni l'autre n'agit : ils ARMENT `pending_`.
-  void DrawRowContextMenu(const SocialRow& row, bool party);
+  void DrawRowContextMenu(const rag::social::Entry& row, bool party);
   void DrawConfirmPopup();
   // La demande reçue (groupe ou amitié), en remplacement des fenêtres natives
   // 35 (UIJoinPartyAcceptWnd) et 109 (UIJoinFriendAcceptWnd).
@@ -278,8 +249,8 @@ class PartyFriendWindow : public Plugin {
 
   // Listes relues à chaque frame de rendu (comme le fait le natif). Membres plutôt
   // que locales pour ne pas réallouer 40 std::string par frame.
-  std::vector<SocialRow> party_;
-  std::vector<SocialRow> friends_;
+  std::vector<rag::social::Entry> party_;
+  std::vector<rag::social::Entry> friends_;
 
   bool open_       = false;
   bool need_pos_   = false;  // (re)placer la fenêtre à la première ouverture

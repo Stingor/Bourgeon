@@ -23,6 +23,7 @@
 #include "ui/ro_imgui.h"
 #include "ui/ro_widgets.h"
 #include "utils/i18n.h"
+#include "utils/text.h"  // text::ToLowerAscii / ContainsNoCase
 
 namespace {
 
@@ -242,22 +243,6 @@ std::string FormatAdapterLabel(const gamesettings::graphics::Adapter& adapter,
   std::snprintf(out, sizeof(out), i18n::Tr("%s  —  écran %d"), adapter.name, number);
   std::strncat(out, details, sizeof(out) - std::strlen(out) - 1);
   return out;
-}
-
-// Recherche insensible à la casse, sur une sous-chaîne.
-bool Contains(const char* haystack, const char* needle) {
-  if (!needle || !*needle) return true;
-  if (!haystack || !*haystack) return false;
-  const size_t n = std::strlen(needle);
-  for (const char* p = haystack; *p; ++p) {
-    size_t i = 0;
-    while (i < n && p[i] &&
-           std::tolower(static_cast<unsigned char>(p[i])) ==
-               std::tolower(static_cast<unsigned char>(needle[i])))
-      ++i;
-    if (i == n) return true;
-  }
-  return false;
 }
 
 }  // namespace
@@ -1375,9 +1360,9 @@ void GameSettings::DrawListTab(int tab) {
     for (size_t i = 0; i < rows_.size(); ++i) {
       const Row& row = rows_[i];
       if (!all_mode && row.option.tab != tab) continue;
-      if (filter_[0] && !Contains(row.option.title, filter_) &&
-          !Contains(row.option.tooltip, filter_) &&
-          !Contains(row.option.description, filter_))
+      if (filter_[0] && !text::ContainsNoCase(row.option.title, filter_) &&
+          !text::ContainsNoCase(row.option.tooltip, filter_) &&
+          !text::ContainsNoCase(row.option.description, filter_))
         continue;
 
       ++shown;

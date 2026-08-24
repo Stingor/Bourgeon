@@ -20,6 +20,7 @@
 #include "ui/ro_widgets.h"
 #include "utils/i18n.h"
 #include "utils/log_console.h"  // LogDiag
+#include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 
 namespace {
 
@@ -164,7 +165,6 @@ void Gauge(const char* label, int cur, int max, const ImVec4& col) {
 // fait un `atoi` dessus (`UIPetInfoWnd_OnCreate` @0x00879ad1).
 constexpr int kInfoNameStr = 0x2c;
 constexpr int kInfoCards = 0x1c;
-constexpr int kStdStringCapOff = 0x14;
 
 // L'ITID d'un ItemInfo. Voir ci-dessus pour le `atoi` : le client le range en
 // TEXTE. 0 = illisible.
@@ -172,9 +172,7 @@ int InfoItid(void* info) {
   if (!info) return 0;
   __try {
     auto* s = reinterpret_cast<uint8_t*>(info) + kInfoNameStr;
-    const unsigned cap = *reinterpret_cast<unsigned*>(s + kStdStringCapOff);
-    const char* text = cap >= 16 ? *reinterpret_cast<const char**>(s)
-                                 : reinterpret_cast<const char*>(s);
+    const char* text = rag::clientstr::Data(s);
     return (text && text[0]) ? std::atoi(text) : 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
 }
@@ -203,8 +201,6 @@ bool ReadInfoCards(void* info, uint32_t* out4) {
 // est ouvert en fin de panneau. Même montage que la table des drops de la fiche
 // de monstre.
 links::MenuAnchor g_link_menu;
-
-inline ImTextureID TexId(void* t) { return reinterpret_cast<ImTextureID>(t); }
 
 // Une CELLULE d'objet cliquable : icône optionnelle + libellé, avec la totale —
 // aperçu de description au survol, description au clic gauche, menu contextuel

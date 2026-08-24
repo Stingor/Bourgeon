@@ -19,6 +19,7 @@
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 #include "utils/i18n.h"
+#include "utils/text.h"  // text::Base62Digit
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -34,17 +35,10 @@ using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 //
 // Base62 alphabet (rAthena utilities.cpp): 0-9=0-9, a-z=10-35, A-Z=36-61
 
-static int B62Digit(unsigned char c) {
-  if (c >= '0' && c <= '9') return c - '0';
-  if (c >= 'a' && c <= 'z') return c - 'a' + 10;
-  if (c >= 'A' && c <= 'Z') return c - 'A' + 36;
-  return -1;
-}
-
 static uint32_t B62Decode(const char* s, size_t len) {
   uint32_t v = 0;
   for (size_t i = 0; i < len; i++)
-    v = v * 62u + static_cast<uint32_t>(B62Digit(static_cast<unsigned char>(s[i])));
+    v = v * 62u + static_cast<uint32_t>(text::Base62Digit(static_cast<unsigned char>(s[i])));
   return v;
 }
 
@@ -57,7 +51,7 @@ static std::string InjectItemIcons(const char* text) {
     // Parse nameid: <ITEML>(7) + equip(5) + slot_flag(1) = offset 13
     const char* data = tag + 13;
     size_t id_len = 0;
-    while (B62Digit(static_cast<unsigned char>(data[id_len])) >= 0) id_len++;
+    while (text::Base62Digit(static_cast<unsigned char>(data[id_len])) >= 0) id_len++;
     if (id_len > 0 && B62Decode(data, id_len) > 0) {
       // ^i{<base62 id>} — reuse the tag's own base62 nameid verbatim; the leaf
       // hook decodes it back, so no decode→re-encode round-trip is needed.  Uses

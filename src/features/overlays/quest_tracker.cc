@@ -12,6 +12,7 @@
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 #include "utils/i18n.h"
+#include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -48,11 +49,6 @@ constexpr int kRecCur      = 0xf8;   // short[i] (Quest+0xe0)
 constexpr int kRecTgt      = 0x198;  // short[i] (Quest+0x180)
 constexpr int kMaxHunt     = 3;
 
-// std::string (MSVC, 32-bit): _Bx(16) + _Mysize(0x10) + _Myres(0x14).
-constexpr int kStrSize = 0x10;
-constexpr int kStrCap  = 0x14;
-constexpr uint32_t kStrSso = 16;
-
 // __thiscall(this) emulated as __fastcall + dummy edx (project convention).
 using DrawFn_t = void(__fastcall*)(void* self, void* edx);
 DrawFn_t g_draw_orig = nullptr;
@@ -71,25 +67,6 @@ struct QuestEntry {
   int  hunt_count;
 };
 constexpr int kMaxCollect = 16;
-
-// Copy a game std::string at address `s` into `out` (SEH-guarded, POD only).
-void ReadStdString(const void* s, char* out, int cap) {
-  out[0] = '\0';
-  __try {
-    const uint8_t* S = reinterpret_cast<const uint8_t*>(s);
-    uint32_t len = *reinterpret_cast<const uint32_t*>(S + kStrSize);
-    uint32_t res = *reinterpret_cast<const uint32_t*>(S + kStrCap);
-    const char* src =
-        (res >= kStrSso) ? *reinterpret_cast<const char* const*>(S)
-                         : reinterpret_cast<const char*>(S);
-    if (!src) return;
-    if (len > static_cast<uint32_t>(cap - 1)) len = cap - 1;
-    for (uint32_t i = 0; i < len; ++i) out[i] = src[i];
-    out[len] = '\0';
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-    out[0] = '\0';
-  }
-}
 
 inline uint8_t B(const uint8_t* p, int off) { return *(p + off); }
 inline int16_t I16(const uint8_t* p, int off) {
@@ -118,8 +95,8 @@ int CollectQuests(QuestEntry* out, int cap) {
       if (B(node, kRecActive) == 1 && B(node, kRecTracked) == 1) {
         QuestEntry& q = out[n];
         q.id = *reinterpret_cast<int*>(node + kRecId);
-        ReadStdString(node + kRecTitle, q.title, sizeof(q.title));
-        ReadStdString(node + kRecObjective, q.objective, sizeof(q.objective));
+        rag::clientstr::CopyTruncating(node + kRecTitle, q.title, sizeof(q.title));
+        rag::clientstr::CopyTruncating(node + kRecObjective, q.objective, sizeof(q.objective));
         int sc = *reinterpret_cast<signed char*>(node + kRecHuntCnt);
         if (sc < 0) sc = 0;
         if (sc > kMaxHunt) sc = kMaxHunt;
@@ -161,18 +138,6 @@ void SortById(QuestEntry* a, int n) {
 inline ImU32 RgbToImU32(int rgb, int alpha = 255) {
   return IM_COL32((rgb >> 16) & 0xff, (rgb >> 8) & 0xff, rgb & 0xff, alpha);
 }
-inline void RgbToF3(int rgb, float* f) {
-  f[0] = ((rgb >> 16) & 0xff) / 255.0f;
-  f[1] = ((rgb >> 8) & 0xff) / 255.0f;
-  f[2] = (rgb & 0xff) / 255.0f;
-}
-inline int F3ToRgb(const float* f) {
-  int r = static_cast<int>(f[0] * 255.0f + 0.5f);
-  int g = static_cast<int>(f[1] * 255.0f + 0.5f);
-  int b = static_cast<int>(f[2] * 255.0f + 0.5f);
-  return (r << 16) | (g << 8) | b;
-}
-
 // Native DrawContent replacement.  When the custom overlay is on we draw
 // nothing (the ImGui window replaces it); otherwise forward to stock.
 void __fastcall DrawContentHook(void* self, void* edx) {
@@ -344,19 +309,19 @@ void QuestTracker::DrawSettings() {
 
   SeparatorText(i18n::Tr("Couleurs"));
   float tc[3], dc[3], hc[3];
-  RgbToF3(g_cfg.title_rgb, tc);
-  RgbToF3(g_cfg.desc_rgb, dc);
-  RgbToF3(g_cfg.hunt_rgb, hc);
+  ro::RgbToF3(g_cfg.title_rgb, tc);
+  ro::RgbToF3(g_cfg.desc_rgb, dc);
+  ro::RgbToF3(g_cfg.hunt_rgb, hc);
   if (ColorEdit4WithAlphaBar(i18n::Tr("Couleur titre"), tc)) {
-    g_cfg.title_rgb = F3ToRgb(tc);
+    g_cfg.title_rgb = ro::F3ToRgb(tc);
     g_needs_save = true;
   }
   if (ColorEdit4WithAlphaBar(i18n::Tr("Couleur objectif"), dc)) {
-    g_cfg.desc_rgb = F3ToRgb(dc);
+    g_cfg.desc_rgb = ro::F3ToRgb(dc);
     g_needs_save = true;
   }
   if (ColorEdit4WithAlphaBar(i18n::Tr("Couleur chasse"), hc)) {
-    g_cfg.hunt_rgb = F3ToRgb(hc);
+    g_cfg.hunt_rgb = ro::F3ToRgb(hc);
     g_needs_save = true;
   }
 

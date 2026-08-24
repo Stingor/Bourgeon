@@ -8,6 +8,7 @@
 
 #include "utils/log_console.h"
 #include "ragnarok/item_db.h"  // itemdb::kItemIdToWeaponClassAddr
+#include "utils/memory_patch.h"  // mem::WriteCode
 
 namespace {
 
@@ -205,18 +206,6 @@ using ItemIdToClassFn = int(__stdcall*)(int);
 // Cible du saut final, en mémoire : un `jmp dword ptr [...]` ne consomme aucun
 // registre, là où passer par eax obligerait à le libérer.
 void* g_real_arrow_spawn = reinterpret_cast<void*>(kArrowSpawn);
-
-// Écrit `n` octets de code, en ouvrant la page le temps de l'écriture.
-bool WriteCode(uintptr_t addr, const uint8_t* bytes, size_t n) {
-  DWORD old_protect;
-  if (!VirtualProtect(reinterpret_cast<void*>(addr), n, PAGE_EXECUTE_READWRITE,
-                      &old_protect))
-    return false;
-  std::memcpy(reinterpret_cast<void*>(addr), bytes, n);
-  VirtualProtect(reinterpret_cast<void*>(addr), n, old_protect, &old_protect);
-  FlushInstructionCache(GetCurrentProcess(), reinterpret_cast<void*>(addr), n);
-  return true;
-}
 
 // Lecture protégée du champ d'arme. Déportée pour que le `__try` ne cohabite
 // pas avec un objet à destructeur (MSVC C2712).
@@ -447,7 +436,7 @@ uintptr_t PoserSlot(uintptr_t slot, uintptr_t attendu, uintptr_t detour) {
     return 0;
   }
   const uintptr_t valeur = detour;
-  if (!WriteCode(slot, reinterpret_cast<const uint8_t*>(&valeur), sizeof(valeur))) {
+  if (!mem::WriteCode(slot, reinterpret_cast<const uint8_t*>(&valeur), sizeof(valeur))) {
     LogDiag("[WandBolt] slot 0x{:08X} : page non ouvrable, NON crochete", slot);
     return 0;
   }
@@ -478,7 +467,7 @@ WandBolt::WandBolt() {
     const int32_t new_rel = static_cast<int32_t>(
         reinterpret_cast<uintptr_t>(&ArrowSpawnDetour) - (call_site + 5));
     std::memcpy(patch + 1, &new_rel, sizeof(new_rel));
-    if (!WriteCode(call_site, patch, sizeof(patch)))
+    if (!mem::WriteCode(call_site, patch, sizeof(patch)))
       LogDiag("[WandBolt] page non ouvrable en 0x{:08X} : site IGNORE", call_site);
   }
 
@@ -517,7 +506,7 @@ WandBolt::WandBolt() {
       reinterpret_cast<uintptr_t>(&Bourgeon_HeureEcheanceDegats) -
       (kDamageDueTimeCall + 5));
   std::memcpy(patch_degats + 1, &rel_degats, sizeof(rel_degats));
-  if (!WriteCode(kDamageDueTimeCall, patch_degats, sizeof(patch_degats))) {
+  if (!mem::WriteCode(kDamageDueTimeCall, patch_degats, sizeof(patch_degats))) {
     LogDiag("[WandBolt] site des degats 0x{:08X} : page non ouvrable", kDamageDueTimeCall);
     return;
   }

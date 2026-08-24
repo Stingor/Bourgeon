@@ -395,4 +395,10 @@ bool CanPostToChat();
 // modale. Même piège et même remède que `ro::OpenQuantityPrompt`.
 void DrawUrlConfirm();
 
+// Le LIBELLÉ d'un lien de recette, « [Recette: <produit>] ». Deux surfaces en
+// posent — la chatbox et le dialogue NPC — et chacune le composait. Le format
+// vient du catalogue de traduction : deux copies, c'était deux clés à tenir
+// d'accord, sans que rien ne le signale si l'une dérivait.
+std::string RecipeLinkLabel(const std::string& product_name);
+
 }  // namespace links

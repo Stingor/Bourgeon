@@ -30,6 +30,7 @@
 #include "yaml-cpp/yaml.h"
 #include "ragnarok/msgstring_override.h"
 #include "utils/i18n.h"
+#include "utils/text.h"  // text::ToLowerAscii / ContainsNoCase
 
 namespace {
 
@@ -124,12 +125,6 @@ std::string DpapiDecryptFromFile(const std::string& path) {
   std::string plain(reinterpret_cast<const char*>(out.pbData), out.cbData);
   LocalFree(out.pbData);
   return plain;
-}
-
-std::string ToLower(std::string s) {
-  std::transform(s.begin(), s.end(), s.begin(),
-                 [](unsigned char c) { return std::tolower(c); });
-  return s;
 }
 
 // Liste ordonnée des <display>…</display> de clientinfo.xml (mêmes noms/ordre que
@@ -568,10 +563,10 @@ void MoonlightAuth::ResolveServer() {
   server_count_ = static_cast<int>(names.size());
   server_index_ = 0;  // défaut = 1ʳᵉ connexion (Moonlight-Destiny, base clientinfo)
   server_name_ = ParseServerArg();  // envoyé au site pour cibler la bonne DB
-  const std::string want = ToLower(server_name_);
+  const std::string want = text::ToLowerAscii(server_name_);
   if (!want.empty()) {
     for (int i = 0; i < server_count_; ++i) {
-      if (ToLower(names[i]) == want) {
+      if (text::ToLowerAscii(names[i]) == want) {
         server_index_ = i;
         break;
       }

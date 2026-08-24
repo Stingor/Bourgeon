@@ -14,6 +14,7 @@
 #include "ui/ro_widgets.h"
 #include "utils/i18n.h"
 #include "utils/log_console.h"
+#include "utils/memory_patch.h"  // mem::WriteCode
 
 namespace {
 
@@ -68,18 +69,6 @@ bool WriteIntSafe(uintptr_t addr, int value) {
 
 std::atomic<unsigned int> g_hits{0};
 bool g_first_hit_logged = false;
-
-// Écrit `n` octets de code, en ouvrant la page le temps de l'écriture.
-bool WriteCode(uintptr_t addr, const uint8_t* bytes, size_t n) {
-  DWORD old_protect;
-  if (!VirtualProtect(reinterpret_cast<void*>(addr), n, PAGE_EXECUTE_READWRITE,
-                      &old_protect))
-    return false;
-  std::memcpy(reinterpret_cast<void*>(addr), bytes, n);
-  VirtualProtect(reinterpret_cast<void*>(addr), n, old_protect, &old_protect);
-  FlushInstructionCache(GetCurrentProcess(), reinterpret_cast<void*>(addr), n);
-  return true;
-}
 
 }  // namespace
 
@@ -165,7 +154,7 @@ PickQuadTweaks::PickQuadTweaks() {
   const int32_t new_rel = static_cast<int32_t>(
       reinterpret_cast<uintptr_t>(&InsertDetour) - (kCallSite + 5));
   std::memcpy(patch + 1, &new_rel, sizeof(new_rel));
-  g_installed = WriteCode(kCallSite, patch, sizeof(patch));
+  g_installed = mem::WriteCode(kCallSite, patch, sizeof(patch));
   if (!g_installed)
     LogDiag("[PickQuad] page non ouvrable en 0x{:08X} : detour NON pose",
             kCallSite);

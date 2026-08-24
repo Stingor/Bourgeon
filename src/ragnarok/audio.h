@@ -11,6 +11,7 @@
 // En-tête volontairement MINUSCULE (`<cstdint>` seul), comme uiwnd.h.
 
 #include <cstdint>
+#include <excpt.h>  // __try/__except de Play3D (meme choix qu'uiwnd.h : PAS <Windows.h>)
 
 namespace audio {
 
@@ -38,5 +39,25 @@ inline void* SoundMgr() { return *reinterpret_cast<void**>(kSoundMgrPtr); }
 // l'écran de connexion n'a pas encore. La parade d'ouverture passe par un autre
 // chemin — cf. features/overlays/login_parade.cc.
 constexpr uintptr_t kPlay3DAddr = 0x00600770;
+
+// Jouer un son du client par son nom de fichier. Trois fichiers portaient cet
+// appel, chacun avec sa propre déclaration du type de la fonction — et deux
+// façons d'atteindre le manager (SoundMgr() ou la déréférence à la main).
+//
+// Les deux entiers 250 et 40 sont le rayon et l'atténuation que le client
+// emploie lui-même pour un son d'interface ; les trois zéros sont la position,
+// ignorée à ce rayon-là.
+inline void Play3D(const char* name) {
+  if (name == nullptr || name[0] == '\0') return;
+  __try {
+    void* mgr = SoundMgr();
+    if (mgr == nullptr) return;
+    using Play3DFn = void(__fastcall*)(void*, void*, const char*, float, float,
+                                       float, int, int, float, int);
+    reinterpret_cast<Play3DFn>(kPlay3DAddr)(mgr, nullptr, name, 0.0f, 0.0f, 0.0f,
+                                            250, 40, 1.0f, 0);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+  }
+}
 
 }  // namespace audio

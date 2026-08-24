@@ -83,21 +83,11 @@ constexpr int kMsgMoveToSavePoint = 1548;  // MSI_MOVETO_SAVEPOINT
 using HasToken_t = char(__thiscall*)(void*);
 using StatusHas_t = int(__stdcall*)(int);
 
-// Le mode actif, par le GETTER natif et non par la lecture directe de
-// `kActiveModePtr` : le getter rend 0 tant que `mgr+0x58 != 1`, ce qui masque le
-// mode pendant les transitions (login, chargement de carte). C'est exactement ce
-// que fait `UIEscOptionWnd_OnMsg`, et la nuance est documentée dans globals.h.
-void* ActiveGameMode() {
-  __try {
-    return rag::ActiveModeIfReady();
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
-}
-
 // Envoie une commande au mode actif. Renvoie false si le mode est indisponible —
 // l'appelant doit alors NE RIEN faire plutôt que réessayer autrement.
 bool SendModeCmd(int cmd, int p1) {
   __try {
-    void* mode = ActiveGameMode();
+    void* mode = rag::ActiveModeSafe();
     if (!mode) return false;
     rag::ModeSendMsg(mode, cmd, p1, 0, 0, 0);
     return true;
@@ -106,7 +96,7 @@ bool SendModeCmd(int cmd, int p1) {
 
 bool PlayerIsDead() {
   __try {
-    void* mode = ActiveGameMode();
+    void* mode = rag::ActiveModeSafe();
     if (!mode) return false;
     return *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(mode) +
                                    kOffGameModeDead) != 0;
@@ -115,7 +105,7 @@ bool PlayerIsDead() {
 
 bool CanResurrectOnTheSpot() {
   __try {
-    void* mode = ActiveGameMode();
+    void* mode = rag::ActiveModeSafe();
     if (!mode) return false;
     if (reinterpret_cast<HasToken_t>(kOwnHasResurrectionTokenAddr)(mode) != 0)
       return true;

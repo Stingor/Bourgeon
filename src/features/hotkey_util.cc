@@ -21,11 +21,9 @@
 namespace hotkeys {
 namespace {
 
-int ReadInt(uintptr_t addr) {
-  __try { return *reinterpret_cast<const int*>(addr); }
-  __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
-}
-
+// La lecture gardée d'un int : celle de globals.h. Le `using` laisse les
+// points d'appel de ce fichier tels quels.
+using rag::ReadInt;
 // Frame ImGui du dernier PingCapture ; très négatif = aucune capture connue.
 int g_capture_frame = -1000;
 

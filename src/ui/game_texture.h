@@ -201,6 +201,17 @@ inline constexpr char kUiRoot[] = "\xC0\xAF\xC0\xFA\xC0\xCE\xC5\xCD\xC6\xE4\xC0\
 // Deux autres littéraux du binaire, chacun déclaré dans deux fichiers.
 constexpr uintptr_t kIconNum       = 0x0103dad4;  // « …\basic_interface\num_%d.bmp » (compteurs)
 constexpr uintptr_t kFmtMonsterSpr = 0x0103181c;  // « 몬스터\%s.spr » — le dossier des MONSTRES
+
+// Remplace le NOM DE FICHIER d'un chemin de l'exe par `file`, en gardant son
+// dossier. C'est ce qui permet de ne JAMAIS réécrire un préfixe CP949 à la
+// main : on part d'une chaîne du binaire et on n'en change que la dernière
+// composante.
+//
+// Quatre fichiers en portaient une variante — trois sous le nom
+// `BasicInterfacePath`, figé sur `kUiRootSample`, et un sous cette forme
+// générale dont il tirait aussi `inventory\` et `styleshop\`.
+void WithFileName(uintptr_t exe_path, const char* file, char* out, size_t out_size);
+
 }  // namespace uipath
 
 // Charge `path` (encodé en CP949, ex. « 유저인터페이스\item\501.bmp ») via le

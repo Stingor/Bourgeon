@@ -14,6 +14,8 @@
 #include "ragnarok/game_scene.h"
 #include "ui/ro_imgui.h"
 #include "utils/i18n.h"
+#include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
+#include "ragnarok/job_ids.h"  // rag::IsPlayerJob / IsMonsterJob
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -38,23 +40,12 @@ constexpr int kAct_Aid       = 0x110;  //  uint : AID (clé du dictionnaire de n
 
 // Taille et capacité de la std::string du NOM, mesurées depuis le début du
 // CNameInfo — donc la position du champ PLUS l'offset interne de la string.
-constexpr int kName_Size = gamescene::kNameStr + gamescene::kStrSize;
-constexpr int kName_Cap  = gamescene::kNameStr + gamescene::kStrCap;
+constexpr int kName_Size = gamescene::kNameStr + rag::clientstr::kSizeOff;
+constexpr int kName_Cap  = gamescene::kNameStr + rag::clientstr::kCapOff;
 
-// Prédicats de type réimplémentés d'après Job_IsPlayerJobId / Job_IsMonsterId
-// (fonctions feuilles) — évite tout appel natif pour la classification.
-inline bool IsPlayerJob(unsigned id) {
-  return (id <= 0x1e) || (id - 0xfa1u <= 0x7ceu);
-}
-inline bool IsMonsterJob(unsigned id) {
-  return (static_cast<int>(id) >= 0x3e9 && static_cast<int>(id) <= 0xf9e) ||
-         (id - 0x4e35u <= 0x2ecau);
-}
-
-template <typename T>
-inline T Read(const void* base, int off) {
-  return *reinterpret_cast<const T*>(reinterpret_cast<const uint8_t*>(base) + off);
-}
+// Un champ à un offset : la lecture est celle de tout le monde (globals.h),
+// et le `using` garde les points d'appel de ce fichier tels quels.
+using rag::Read;
 
 }  // namespace
 
@@ -107,8 +98,8 @@ void EntityNames::DrawNames() {
     if (actor == own_actor && !show_self_) return;
 
     const unsigned job = Read<uint32_t>(actor, kAct_BaseJob);
-    const bool is_mob = IsMonsterJob(job);
-    const bool is_ply = !is_mob && IsPlayerJob(job);
+    const bool is_mob = rag::IsMonsterJob(job);
+    const bool is_ply = !is_mob && rag::IsPlayerJob(job);
     const bool is_npc = !is_mob && !is_ply;
     if (is_mob && !show_monsters_) return;
     if (is_ply && !show_players_) return;

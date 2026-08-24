@@ -15,6 +15,7 @@
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 #include "utils/i18n.h"
+#include "ui/ro_widgets.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -493,24 +494,6 @@ const char* kTimeAnchors[] = {"Haut-gauche", "Haut", "Haut-droite",
                               "Gauche",      "Centre", "Droite",
                               "Bas-gauche",  "Bas",  "Bas-droite"};
 
-// Compact colour swatch + popup picker (same UX as the skill-bar text colours).
-bool ColorSwatch(const char* label, float col[4]) {
-  bool changed = false;
-  ImGui::PushID(label);
-  if (ImGui::ColorButton("##sw", ImVec4(col[0], col[1], col[2], col[3]),
-                         ImGuiColorEditFlags_AlphaPreview, ImVec2(20, 20)))
-    ImGui::OpenPopup("pick");
-  ImGui::SameLine();
-  ImGui::TextUnformatted(label);
-  if (ImGui::BeginPopup("pick")) {
-    changed = ImGui::ColorPicker4("##p", col,
-                        ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_NoSidePreview);
-    ImGui::EndPopup();
-  }
-  ImGui::PopID();
-  return changed;
-}
-
 // Unlocked edit mode: a translucent ImGui frame over the bar's bounding box.
 // Dragging it updates the corner margins (so Marge X/Y stay in sync) and flags
 // a rebuild.  The icons are engine-drawn, so this is an overlay, not the bar.
@@ -837,8 +820,8 @@ void StatusIconBar::DrawSettings() {
     ImGui::EndDisabled();
     changed |= ro::RoCheckbox(i18n::Tr("Texte \"gras\""), &g_cfg.time_bold);
     SameLine(); HelpMarker(i18n::Tr("Faux-gras (ImGui n'a pas de fonte grasse)."));
-    changed |= ColorSwatch(i18n::Tr("Couleur du texte"), g_cfg.col_time_text);
-    changed |= ColorSwatch(i18n::Tr("Couleur de l'ombre"), g_cfg.col_time_shadow);
+    changed |= mui::RoColorSwatch(i18n::Tr("Couleur du texte"), g_cfg.col_time_text);
+    changed |= mui::RoColorSwatch(i18n::Tr("Couleur de l'ombre"), g_cfg.col_time_shadow);
     SameLine(); HelpMarker(i18n::Tr("Contour/ombre 8 directions ; baissez l'alpha pour l'atténuer."));
     changed |= ro::RoCheckbox(i18n::Tr("Fond derrière le texte"), &g_cfg.time_bg);
     SameLine(); HelpMarker(i18n::Tr("Ajoute un fond sombre derrière le temps restant."));

@@ -21,6 +21,7 @@
 #include "ui/ro_imgui.h"
 #include "ui/ro_widgets.h"        // mui::IsLastItemRightClicked
 #include "utils/i18n.h"
+#include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 
 // ── Constantes RE (client 20250716, base 0x400000) ───────────────────────────
 // Source : docs/vending_window_re.md. Tout ce qui suit a été relu sur objet
@@ -627,9 +628,7 @@ int ReadRows(void* wnd, int list_off, RawRow* out, int max) {
       // nœud+0x34 = std::string MSVC (+0x14 = capacité) : au-delà de 15 octets le
       // buffer est déporté. Son contenu est l'itemId en TEXTE, pas le nom.
       const char* sbase = reinterpret_cast<const char*>(p + kNodeName);
-      const uint32_t cap = *reinterpret_cast<const uint32_t*>(sbase + 0x14);
-      const char* str = (cap > 15) ? *reinterpret_cast<const char* const*>(sbase)
-                                   : sbase;
+      const char* str = rag::clientstr::Data(sbase);
       r.id = str ? static_cast<uint32_t>(atoi(str)) : 0;
       // Le nom composé se fait APRÈS, hors du __try (cf. ResolveDisplayNames) :
       // il passe par un cache, donc par un conteneur C++.
@@ -823,9 +822,7 @@ void VendorName(uint32_t gid, char* out, size_t cap) {
         reinterpret_cast<NameDictGetEntry_t>(gamescene::kNameDictGetEntryOrRequestAddr)(name_dict, gid);
     if (!info) return;
     const char* sbase = reinterpret_cast<const char*>(info) + kNameInfoStr;
-    const uint32_t scap = *reinterpret_cast<const uint32_t*>(sbase + 0x14);
-    const char* str =
-        (scap > 15) ? *reinterpret_cast<const char* const*>(sbase) : sbase;
+    const char* str = rag::clientstr::Data(sbase);
     if (!str) return;
     std::strncpy(out, str, cap - 1);
     out[cap - 1] = '\0';
@@ -889,9 +886,7 @@ void OpenDescFromList(void* wnd, int list_off, int index, uint32_t id, int mx,
     uint8_t* node = *reinterpret_cast<uint8_t**>(head);
     for (int guard = 0; node && node != head && guard < 512; ++guard) {
       const char* sbase = reinterpret_cast<const char*>(node + kNodeName);
-      const uint32_t cap = *reinterpret_cast<const uint32_t*>(sbase + 0x14);
-      const char* str = (cap > 15) ? *reinterpret_cast<const char* const*>(sbase)
-                                   : sbase;
+      const char* str = rag::clientstr::Data(sbase);
       if (str && static_cast<uint32_t>(atoi(str)) == id) {
         if (!first_by_id) first_by_id = node + 0x08;  // ISI à nœud+0x08
         if (*reinterpret_cast<int*>(node + kNodeIndex) == index) {

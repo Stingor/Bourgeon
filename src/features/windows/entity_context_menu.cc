@@ -28,6 +28,8 @@
 #include "utils/log_console.h"
 #include "utils/i18n.h"
 #include "ragnarok/pet.h"  // rag::pet::kOwnPetAidAddr
+#include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
+#include "ragnarok/job_ids.h"  // rag::IsPlayerJob / IsMonsterJob
 
 using namespace mui;
 
@@ -119,8 +121,6 @@ constexpr int kNode_Parent  = 0x04;
 constexpr int kNode_Right   = 0x08;
 constexpr int kNode_IsNil   = 0x0d;
 constexpr int kNode_Val     = 0x10;
-constexpr int kNode_ValSize = 0x20;
-constexpr int kNode_ValCap  = 0x24;
 constexpr int kTreeWalkGuard = 512;
 // Le prédicat d'adoption du client (`sub_D99860`) : niveau >= 70, non monté, en
 // couple, cible éligible… C'est LUI qui décide de l'entrée « Adopter » dans le
@@ -170,7 +170,6 @@ constexpr int kPartyWalkGuard     = 64;    // un groupe plafonne à 12 : garde-f
 // Acteur : `vtable+0xC4` rend l'**id de guilde**. C'est l'appel exact que
 // `GameMode_ShowEntityContextMenu` fait (`call [edx+0C4h]` @0x00c6f4e2) pour
 // décider de proposer, ou non, l'invitation en guilde.
-constexpr int kActorVt_GetGuildId = 0xc4;
 
 // Type d'acteur (`acteur+0x314`) : le champ `objecttype` du paquet de spawn,
 // que les handlers recopient tel quel (`mov [ebx+314h], al`). Deux valeurs sont
@@ -345,7 +344,6 @@ void SendPlayerAdmin(uint32_t aid, uint8_t action, int32_t param = 0) {
 }
 
 using PushBackFn   = void   (__thiscall*)(void*, const int*);
-using GetGuildIdFn = uint32_t (__thiscall*)(void*);
 using ContainsNameFn = int  (__thiscall*)(void*, const char*);
 // ⚠ Deux conventions différentes, et confondre les deux décale la pile de 4
 // octets à chaque appel : ActiveIdSet_Contains est __cdecl (l'appelant dépile),
@@ -369,10 +367,9 @@ using ShowMenuFn   = int    (__fastcall*)(void*, void*, int, int);
 // Les intervertir rendrait un quad de pick au client sous forme de drapeau.
 using RouteHoverFn = int*   (__fastcall*)(void*, void*, int*, int*);
 
-template <typename T>
-inline T Read(const void* base, int off) {
-  return *reinterpret_cast<const T*>(reinterpret_cast<const uint8_t*>(base) + off);
-}
+// Un champ à un offset : la lecture est celle de tout le monde (globals.h),
+// et le `using` garde les points d'appel de ce fichier tels quels.
+using rag::Read;
 inline int  ReadGlobalInt(uintptr_t a) { return *reinterpret_cast<int*>(a); }
 inline void WriteGlobalInt(uintptr_t a, int v) { *reinterpret_cast<int*>(a) = v; }
 inline void* ReadGlobalPtr(uintptr_t a) { return *reinterpret_cast<void**>(a); }
@@ -404,21 +401,6 @@ bool IsHostileOrSpecialUnit(uint32_t aid, uint32_t job) {
 // ⚠ SEH ⇒ AUCUN objet C++ dans cette fonction (C2712 : « __try dans une fonction
 // qui exige un déroulement d'objet »). C'est la raison de ces buffers bruts, pas
 // un goût pour le C.
-bool CopyClientString(const void* str, char* out, size_t out_size) {
-  __try {
-    if (!str) return false;
-    const unsigned size = Read<unsigned>(str, gamescene::kStrSize);
-    const unsigned cap  = Read<unsigned>(str, gamescene::kStrCap);
-    if (size == 0 || size >= out_size) return false;
-    const char* src = (cap >= 16) ? Read<const char*>(str, 0)
-                                  : reinterpret_cast<const char*>(str);
-    if (!src) return false;
-    memcpy(out, src, size);
-    out[size] = '\0';
-    return true;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
-}
-
 // Un champ BRUT de la plaque de nom d'une entité (pseudo, groupe, guilde…), tel
 // que le dictionnaire du client le porte. Comme le natif, un GID inconnu
 // déclenche la demande au serveur (l'info arrivera plus tard, et le menu
@@ -432,7 +414,7 @@ bool ReadNameFieldRaw(void* game_mode, uint32_t aid, int field, char* out,
     if (!entry) return false;
     str = reinterpret_cast<const uint8_t*>(entry) + field;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
-  return CopyClientString(str, out, out_size);
+  return rag::clientstr::Copy(str, out, out_size);
 }
 
 std::string EntityName(void* game_mode, uint32_t aid) {
@@ -478,11 +460,8 @@ bool ChatBlockListContains(const char* wire_name) {
       }
       if (top == 0) return false;  // parcours terminé, rien trouvé
       node = stack[--top];
-      const unsigned size = Read<unsigned>(node, kNode_ValSize);
-      const unsigned cap  = Read<unsigned>(node, kNode_ValCap);
-      const char* name = (cap >= 16)
-                             ? Read<const char*>(node, kNode_Val)
-                             : reinterpret_cast<const char*>(node + kNode_Val);
+      const unsigned size = rag::clientstr::Size(node + kNode_Val);
+      const char* name    = rag::clientstr::Data(node + kNode_Val);
       if (name && size != 0 && _stricmp(name, wire_name) == 0) return true;
       node = Read<const uint8_t*>(node, kNode_Right);
     }
@@ -534,32 +513,6 @@ bool OwnPartyContains(uint32_t aid) {
     return false;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
-
-// L'id de guilde que porte l'acteur visé, 0 s'il n'en a pas (ou s'il n'est pas
-// dans la liste d'acteurs). Même chemin que le natif : acteur puis vtable+0xC4.
-uint32_t ActorGuildId(void* actor) {
-  __try {
-    if (!actor) return 0;
-    void** vtable = *reinterpret_cast<void***>(actor);
-    return reinterpret_cast<GetGuildIdFn>(
-        vtable[kActorVt_GetGuildId / sizeof(void*)])(actor);
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
-}
-
-// Prédicats de classe, réimplémentés d'après les fonctions feuilles du client
-// (docs §3) — aucun appel natif, donc utilisables même à moitié chargé.
-inline bool IsPlayerJob(uint32_t id) {
-  return (id <= 0x1e) || (id - 0xfa1u <= 0x7ceu);
-}
-inline bool IsMonsterJob(uint32_t id) {
-  return (static_cast<int>(id) >= 0x3e9 && static_cast<int>(id) <= 0xf9e) ||
-         (id - 0x4e35u <= 0x2ecau);
-}
-inline bool IsNpcOrPortalJob(uint32_t id) {
-  return (id >= 45 && id < 1000) || (id - 10001u <= 0x270du);
-}
-inline bool IsSpecialUnitJob(uint32_t id) { return id - 6001u <= 0x33u; }
-constexpr uint32_t kJobPortal = 45;  // warp : le natif n'y attache aucune action
 
 // ── Rejouer une entrée de menu par le dispatcher du client (docs §9.2) ───────
 // Les trois gestes du natif, puis « la ligne 0 a été cliquée ». Rien n'est
@@ -988,7 +941,7 @@ void EntityContextMenu::FillTargetAndOpen(void* game_mode, uint32_t aid,
   if (kind == Kind::kPlayer) {
     target_in_party_  = OwnPartyContains(aid);
     target_has_party_ = target_in_party_ || TargetHasParty(game_mode, aid);
-    target_guild_id_  = ActorGuildId(FindActor(game_mode, aid));
+    target_guild_id_  = gamescene::ActorGuildId(FindActor(game_mode, aid));
     // Amis et ignorés se cherchent par nom BRUT, pas par sa conversion UTF-8.
     char wire_name[64] = {};
     ReadNameFieldRaw(game_mode, aid, gamescene::kNameStr, wire_name, sizeof(wire_name));
@@ -1055,16 +1008,16 @@ EntityContextMenu::Kind EntityContextMenu::ClassifyTarget(void* game_mode,
   // en aucun cas voir réécrites.
   if (IsFixedIdNpc(aid)) return Kind::kNpc;
 
-  if (category == kPickSpecial || IsSpecialUnitJob(job)) return Kind::kOther;
-  if (IsMonsterJob(job)) return Kind::kMonster;
+  if (category == kPickSpecial || rag::IsSpecialUnitJob(job)) return Kind::kOther;
+  if (rag::IsMonsterJob(job)) return Kind::kMonster;
   // 🔴 APRÈS le monstre, AVANT le joueur. Un PNJ scripté porte souvent une
   // classe de JOUEUR (kafra, marchand d'événement, PNJ de quête) : c'est ce
   // prédicat que le natif consulte pour REFUSER son menu joueur (docs §4.1).
   // Le placer après `IsMonsterJob` garantit qu'un monstre reste un monstre —
   // ce prédicat est vrai aussi pour des types d'acteur particuliers.
   if (IsHostileOrSpecialUnit(aid, job)) return Kind::kNpc;
-  if (IsNpcOrPortalJob(job)) return Kind::kNpc;
-  if (IsPlayerJob(job)) return Kind::kPlayer;
+  if (rag::IsNpcOrPortalJob(job)) return Kind::kNpc;
+  if (rag::IsPlayerJob(job)) return Kind::kPlayer;
   return Kind::kOther;
 }
 
@@ -1298,11 +1251,11 @@ void EntityContextMenu::BuildItems() {
       // ⚠ Cette entrée-là RESTE active sur un NPC bloqué, et c'est voulu : le
       // blocage vise le clic accidentel, pas la volonté de parler. Elle envoie
       // CZ_CONTACTNPC directement, sans repasser par le routeur détourné.
-      if (target_job_ != kJobPortal) add(i18n::Tr("Interagir"), 0, Local::kTalkToNpc);
+      if (target_job_ != rag::kJobPortal) add(i18n::Tr("Interagir"), 0, Local::kTalkToNpc);
       // ⚠ Pas sur un PORTAIL, et pas sur un anonyme : le lien est une RECHERCHE
       // par le nom, et un warp n'en a pas d'utile. Chercher « » ouvrirait le
       // panneau sur rien.
-      if (target_job_ != kJobPortal && !target_name_.empty() &&
+      if (target_job_ != rag::kJobPortal && !target_name_.empty() &&
           links::CanPostToChat())
         add(i18n::Tr("Linker ce NPC"), 0, Local::kChatLinkNpc);
       add(i18n::Tr("Copier le nom"), 0, Local::kCopyName, true);

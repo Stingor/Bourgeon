@@ -22,9 +22,12 @@
 // structures sans aucun rapport. C'est le NOM, dans son fichier, qui dit de quoi
 // on parle — et c'est pour ça que ceux-ci sont qualifiés `gamescene::`.
 //
-// En-tête volontairement MINUSCULE (`<cstdint>` seul), sur le modèle d'uiwnd.h.
+// En-tête volontairement MINUSCULE, sur le modèle d'uiwnd.h : `<cstdint>` et
+// `<excpt.h>` seuls — surtout PAS `<Windows.h>`, qu'il traînerait alors dans
+// chacun de ses consommateurs.
 
 #include <cstdint>
+#include <excpt.h>  // __try/__except (les deux accesseurs gardés, plus bas)
 
 namespace gamescene {
 
@@ -46,12 +49,11 @@ constexpr int kNodeActor   = 0x08;  //  node+8     = valeur du nœud (Actor*)
 // Trois std::string MSVC côte à côte. Les offsets ci-dessous sont relatifs au
 // BLOC ; ceux de la std::string elle-même (taille, capacité) sont relatifs au
 // CHAMP — d'où les deux familles, à ne pas additionner de travers.
+// (Cette seconde famille vit dans `ragnarok/client_string.h`, avec les lecteurs
+// qui vont avec.)
 constexpr int kNameStr   = 0x04;  // le pseudo
 constexpr int kNameParty = 0x1c;  // le nom de son GROUPE
 constexpr int kNameGuild = 0x34;  // le nom de sa GUILDE
-
-constexpr int kStrSize = 0x10;  // std::string : _Mysize, relatif au champ
-constexpr int kStrCap  = 0x14;  // std::string : _Myres  ; >= 0x10 => tas
 
 // ── Fonctions natives ────────────────────────────────────────────────────────
 // `CNameDict_GetEntryOrRequest(dict, gid)` __thiscall : rend le CNameInfo si le
@@ -82,6 +84,29 @@ constexpr uintptr_t kNameDictContainsAddr          = 0x005a18e0;
 // groupe trop loin sont inconnus plutôt que nuls.
 constexpr uintptr_t kActorListFindByGidAddr = 0x00a69eb0;
 constexpr uintptr_t kFindActorByGidAddr     = 0x00d806a0;
+
+// La commodité globale, sous SEH. Quatre fichiers déclaraient chacun leur
+// `FindActorFn` et leur propre emballage — dont deux mot pour mot identiques.
+inline void* FindActorByGid(uint32_t gid) {
+  __try {
+    using FindActorFn = void* (__stdcall*)(uint32_t);
+    return reinterpret_cast<FindActorFn>(kFindActorByGidAddr)(gid);
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
+}
+
+// L'id de guilde que porte un acteur, 0 s'il n'en a pas. Même chemin que le
+// natif : l'acteur, puis sa vtable en +0xC4. Deux fichiers en portaient une
+// copie mot pour mot, chacun avec sa propre déclaration de l'offset.
+constexpr int kActorVt_GetGuildId = 0xc4;
+inline uint32_t ActorGuildId(void* actor) {
+  __try {
+    if (!actor) return 0;
+    using GetGuildIdFn = uint32_t (__thiscall*)(void*);
+    void** vtable = *reinterpret_cast<void***>(actor);
+    return reinterpret_cast<GetGuildIdFn>(
+        vtable[kActorVt_GetGuildId / sizeof(void*)])(actor);
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+}
 
 // `PostActorClickAction` __thiscall(gm, aid, flag) : la suite que le client
 // donne à un clic sur un acteur (approche, ciblage, ouverture). On la rejoue

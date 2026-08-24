@@ -17,6 +17,7 @@
 #include "ui/mob_sprite.h"  // sprite du monstre par son id de classe
 #include "ui/ro_imgui.h"  // skin RO (BeginRoWindow / RoButton / RoCheckbox)
 #include "utils/i18n.h"
+#include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 
 // (Pas de `using namespace mui;` ici : ce panneau n'emploie que les primitives
 // de `ro::` et l'API ImGui brute, et `ui/ro_widgets.h` n'est pas inclus.)
@@ -674,17 +675,7 @@ size_t SafeReadCellPath(NavigationWindow::PathPoint* out, size_t max) {
 bool SafeReadStdString(int offset, char* out, size_t out_size) {
   out[0] = '\0';
   __try {
-    const uint8_t* str = Nav() + offset;
-    const uint32_t size     = *reinterpret_cast<const uint32_t*>(str + 16);
-    const uint32_t capacity = *reinterpret_cast<const uint32_t*>(str + 20);
-    if (size == 0 || size >= out_size) return false;
-    const char* text = capacity >= 16
-                           ? *reinterpret_cast<const char* const*>(str)
-                           : reinterpret_cast<const char*>(str);
-    if (!text) return false;
-    std::memcpy(out, text, size);
-    out[size] = '\0';
-    return true;
+    return rag::clientstr::Copy(Nav() + offset, out, out_size);
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 

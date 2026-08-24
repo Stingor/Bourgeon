@@ -14,6 +14,7 @@
 #include "utils/game_paths.h"
 #include "utils/startup_settings.h"
 #include "yaml-cpp/yaml.h"
+#include "utils/text.h"  // text::ToLowerAscii / ContainsNoCase
 
 namespace {
 
@@ -29,12 +30,6 @@ std::string Narrow(const wchar_t* w) {
   return s;
 }
 
-std::string ToLower(std::string s) {
-  std::transform(s.begin(), s.end(), s.begin(),
-                 [](unsigned char c) { return std::tolower(c); });
-  return s;
-}
-
 std::string Trim(const std::string& s) {
   const auto b = s.find_first_not_of(" \t\r\n");
   if (b == std::string::npos) return "";
@@ -44,7 +39,7 @@ std::string Trim(const std::string& s) {
 
 // Interprets common truthy/falsy spellings; returns `fallback` if unrecognised.
 bool ParseBool(const std::string& s, bool fallback) {
-  const std::string v = ToLower(Trim(s));
+  const std::string v = text::ToLowerAscii(Trim(s));
   if (v == "true" || v == "1" || v == "yes" || v == "on") return true;
   if (v == "false" || v == "0" || v == "no" || v == "off") return false;
   return fallback;
@@ -150,9 +145,9 @@ void AutoLogin::ResolveServerFromClientInfo() {
   server_index_ = 0;
   if (server_.empty()) return;
 
-  const std::string target = ToLower(server_);
+  const std::string target = text::ToLowerAscii(server_);
   for (int i = 0; i < server_count_; ++i) {
-    if (ToLower(names[i]) == target) {
+    if (text::ToLowerAscii(names[i]) == target) {
       server_index_ = i;
       return;
     }

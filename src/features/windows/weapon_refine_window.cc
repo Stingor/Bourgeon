@@ -24,6 +24,8 @@
 #include "ui/ro_imgui.h"
 #include "utils/hooking/hook_manager.h"
 #include "utils/i18n.h"
+#include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
+#include "ui/ro_widgets.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -83,7 +85,6 @@ constexpr int kNodeNext  = 0x00;  // nœud std::list : next
 constexpr int kNodeInfo  = 0x08;  // nœud : value = ItemSkillInfo
 constexpr int kNodeAmt   = 0x18;  // nœud : quantité
 constexpr int kInfoIdStr = 0x2c;  // std::string de l'id (le jeu fait atoi dessus)
-constexpr int kInfoIdCap = 0x40;  // capacité SSO de cette std::string (+0x2c+0x14)
 constexpr int kMaxInvNodes = 4096;  // garde-fou de parcours
 
 // Minerais de refine, par niveau d'arme (serveur : skill_weaponrefine, §7).
@@ -195,8 +196,6 @@ constexpr uint16_t kSkillFailLen = 12;
 constexpr uint16_t kRefineAckLen = 8;
 constexpr int kRefineEntrySize = 23;        // §2 : 2 + 4 + 1 + 4*4
 constexpr int kMaxRefineEntries = 512;      // garde-fou (un inventaire fait 400 max)
-
-inline ImTextureID TexId(void* t) { return reinterpret_cast<ImTextureID>(t); }
 
 // ── Palette de la fenêtre ────────────────────────────────────────────────────
 // Le corps d'une fenêtre RO est CLAIR. Les teintes vives ou pâles s'y délavent :
@@ -325,13 +324,6 @@ bool ReadWndPos(uint8_t* wnd, int* x, int* y) {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
-// Notre AID (= notre GID), lu sous SEH. Même raison de vivre à part.
-uint32_t OwnAid() {
-  __try {
-    return rag::OwnAccountId();
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
-}
-
 // Envoie une commande au dispatcher du mode actif (le chemin des boutons natifs).
 void SendModeCmd(int cmd, int a, int b = 0, int c = 0, int d = 0) {
   __try {
@@ -392,10 +384,7 @@ const char* SkipRefinePrefix(const char* name, int refine) {
 // Lit l'id d'un ItemSkillInfo (std::string SSO à +0x2c).
 uint32_t InfoId(const uint8_t* info) {
   __try {
-    const uint32_t cap = *reinterpret_cast<const uint32_t*>(info + kInfoIdCap);
-    const char* s = (cap >= 16)
-                        ? *reinterpret_cast<const char* const*>(info + kInfoIdStr)
-                        : reinterpret_cast<const char*>(info + kInfoIdStr);
+    const char* s = rag::clientstr::Data(info + kInfoIdStr);
     if (!s) return 0;
     return static_cast<uint32_t>(std::strtoul(s, nullptr, 10));
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
@@ -1247,7 +1236,7 @@ void WeaponRefineWindow::FlushPending() {
       // cooldown côté client compris) — un CZ_USE_SKILL fabriqué à la main les
       // sauterait tous.
       const int level = std::max(1, RefineSkillLevel());
-      const uint32_t self = OwnAid();
+      const uint32_t self = rag::OwnAccountIdSafe();
       if (self) {
         SendModeCmd(kCmdUseSkill, kSkillWeaponRefine, static_cast<int>(self),
                     level);

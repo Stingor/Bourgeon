@@ -118,6 +118,8 @@ set(BOURGEON_FILES
 	"features/windows/vending_window.h"
 	"features/windows/view_equip_window.cc"
 	"features/windows/view_equip_window.h"
+	"features/windows/viewer_probes.cc"
+	"features/windows/viewer_probes.h"
 	"features/windows/weapon_refine_window.cc"
 	"features/windows/weapon_refine_window.h"
 	"features/windows/make_item_window.cc"
@@ -256,6 +258,8 @@ set(BOURGEON_FILES
 	"features/minigames/rojeweled.h"
 
 	# UI toolkit (socle ImGui « façon RO »)
+	"ui/item_grid_chrome.cc"
+	"ui/item_grid_chrome.h"
 	"ui/ro_imgui.cc"
 	"ui/ro_imgui.h"
 	"ui/ro_skin_blobs.hpp"
@@ -386,6 +390,8 @@ set(BOURGEON_FILES
 	"utils/i18n.h"
 	"utils/log_console.cc"
 	"utils/log_console.h"
+	"utils/text.cc"
+	"utils/text.h"
 	"utils/startup_settings.cc"
 	"utils/startup_settings.h"
 	"utils/tinf_inflate.h"

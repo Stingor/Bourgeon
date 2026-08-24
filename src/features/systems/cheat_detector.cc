@@ -13,6 +13,7 @@
 #include "ui/ro_imgui.h"  // ro::Px (échelle de l'interface, largeurs de colonnes)
 #include "utils/log_console.h"
 #include "utils/i18n.h"
+#include "utils/text.h"  // text::ToLowerAscii / ContainsNoCase
 
 // ── Signature table ───────────────────────────────────────────────────────────
 // Patterns must be lowercase.
@@ -60,14 +61,6 @@ static const Sig kSigs[] = {
 static constexpr int kSigCount = static_cast<int>(std::size(kSigs));
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-static std::string ToLower(const char* s) {
-  std::string r(s);
-  for (auto& c : r)
-    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-  return r;
-}
-
 
 // ── CheatDetector ─────────────────────────────────────────────────────────────
 
@@ -140,7 +133,7 @@ void CheatDetector::ScanProcesses(std::vector<Detection>& out) {
   PROCESSENTRY32 pe = { sizeof(pe) };
   if (Process32First(snap, &pe)) {
     do {
-      const std::string exe = ToLower(pe.szExeFile);
+      const std::string exe = text::ToLowerAscii(pe.szExeFile);
       for (int i = 0; i < kSigCount; ++i) {
         bool hit = false;
         if (kSigs[i].type == SigType::kProcess)
@@ -166,7 +159,7 @@ void CheatDetector::ScanModules(std::vector<Detection>& out) {
   MODULEENTRY32 me = { sizeof(me) };
   if (Module32First(snap, &me)) {
     do {
-      const std::string mod = ToLower(me.szModule);
+      const std::string mod = text::ToLowerAscii(me.szModule);
       for (int i = 0; i < kSigCount; ++i) {
         if (kSigs[i].type != SigType::kModule) continue;
         if (mod.find(kSigs[i].pattern) != std::string::npos)
@@ -186,7 +179,7 @@ BOOL CALLBACK CheatDetector::WindowEnumProc(HWND hwnd, LPARAM lparam) {
   auto* out = reinterpret_cast<std::vector<Detection>*>(lparam);
   char cls[256] = {};
   GetClassNameA(hwnd, cls, sizeof(cls));
-  const std::string cls_lower = ToLower(cls);
+  const std::string cls_lower = text::ToLowerAscii(cls);
   const DWORD now = GetTickCount();
   for (int i = 0; i < kSigCount; ++i) {
     if (kSigs[i].type != SigType::kWindowClass) continue;

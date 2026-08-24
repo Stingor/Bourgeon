@@ -20,6 +20,14 @@ namespace paths {
 // Calculé une seule fois : le chemin de l'exe ne change pas d'une exécution.
 const std::string& GameDir();
 
+// Le même, en WIDE et avec le séparateur final. Deux services de démarrage
+// (l'avertissement DX7 et le contrôle d'intégrité) en portaient chacun une copie
+// mot pour mot : ils comparent des chemins Unicode, là où le reste du projet
+// travaille en octets.
+// Rend false si le chemin n'a pas de séparateur — cas qui n'arrive pas, mais que
+// les deux copies traitaient déjà.
+bool GameDirW(std::wstring& out);
+
 // Les fichiers que Bourgeon écrit à côté de l'exe. Un seul littéral pour chacun.
 //
 // ⚠ bourgeon_settings.yaml est PARTAGÉ : moonlight_ui, auto_login, char_select et

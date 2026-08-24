@@ -30,6 +30,7 @@
 #include <excpt.h>  // __try / __except
 
 #include "ragnarok/globals.h"  // rag::kSessionAddr
+#include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 
 namespace rag {
 namespace equip {
@@ -55,7 +56,6 @@ constexpr int kOffWear     = 0x0c;  // != 0 = portée
 constexpr int kOffPresent  = 0x10;  // == 1 = l'emplacement est occupé
 constexpr int kOffCards    = 0x1c;  // 4 × uint32 (cartes, ou identité du forgeron)
 constexpr int kOffResname  = 0x2c;  // std::string (SSO) : l'id d'objet EN TEXTE
-constexpr int kOffResCap   = 0x40;  // capacité SSO : > 15 => la chaîne est sur le tas
 constexpr int kOffDamaged  = 0x5d;  // octet : équipement CASSÉ
 constexpr int kOffRefine   = 0x60;
 constexpr int kOffView     = 0x70;  // look (sprite d'arme / de coiffe)
@@ -121,10 +121,7 @@ inline bool ReadWorn(int slot, int base, WornPiece* out) {
 
     // L'identifiant d'objet est rangé en TEXTE dans une std::string à SSO : au
     // delà de 15 caractères de capacité, le tampon est un pointeur.
-    const uint32_t cap = *reinterpret_cast<const uint32_t*>(e + kOffResCap);
-    const char* rn = (cap > 15)
-                         ? *reinterpret_cast<const char* const*>(e + kOffResname)
-                         : reinterpret_cast<const char*>(e + kOffResname);
+    const char* rn = rag::clientstr::Data(e + kOffResname);
     out->nameid = (rn && rn[0]) ? static_cast<uint32_t>(std::atoi(rn)) : 0;
     return out->nameid != 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) {

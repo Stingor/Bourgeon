@@ -1231,4 +1231,10 @@ void DrawHostConfirm() {
   ro::EndRoPopupModal();
 }
 
+std::string RecipeLinkLabel(const std::string& product_name) {
+  char buf[256];
+  std::snprintf(buf, sizeof(buf), i18n::Tr("[Recette: %s]"), product_name.c_str());
+  return buf;
+}
+
 }  // namespace links

@@ -28,6 +28,10 @@
 #include "imgui.h"
 #include "ui/qty_prompt.h"             // ro::QuantityPrompt (dialogue « combien ? »)
 #include "ui/ro_imgui.h"               // skin RO (BeginRoWindow / RoCheckbox / …)
+#include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
+#include "features/windows/viewer_probes.h"  // etat des fenetres voisines
+#include "ui/item_grid_chrome.h"  // ro::grid : le decor commun aux grilles
+#include "ui/ro_widgets.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -60,7 +64,6 @@ constexpr int kNodeAmt  = 0x18;  // nœud : quantité (= info+0x10)
 constexpr int kInfoType   = 0x00;
 constexpr int kInfoIndex  = 0x04;  // index CHARIOT (arg des commandes de transfert)
 constexpr int kInfoIdStr  = 0x2c;  // std::string id (le jeu fait atoi dessus)
-constexpr int kInfoIdCap  = 0x40;  // capacité SSO de la std::string id
 constexpr int kInfoIdent  = 0x5c;  // byte : item identifié ?
 constexpr int kInfoDamaged = 0x5d; // byte : équipement CASSÉ (rendu rouge, cf. itemcell)
 constexpr int kInfoRefine = 0x60;
@@ -110,45 +113,6 @@ uint8_t* CartWnd() {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
 }
 
-// États des fenêtres voisines : toutes des viewers ImGui, plus aucun rect natif
-// à interroger. Le storage compte ici parce que le SERVEUR impose cart -> storage
-// tant qu'il est ouvert (sd->state.storage_flag).
-bool InventoryOpen() {
-  auto* inventory = Bourgeon::Instance().inventory_viewer();
-  return inventory && inventory->IsOpen();
-}
-bool StorageOpen() {
-  auto* storage = Bourgeon::Instance().storage_window();
-  return storage && storage->IsOpen();
-}
-
-// Composition d'échoppe en cours. Le serveur lève alors `sd->state.prevend` et
-// REFUSE EN SILENCE tout mouvement touchant le chariot : pc_getitemfromcart /
-// pc_putitemtocart et storage_storageaddfromcart / storage_storagegettocart le
-// testent explicitement, et pc_cant_act2() l'inclut. Autrement dit, TOUT ce que
-// cette fenêtre sait faire est mort tant qu'une échoppe se compose.
-bool VendingComposing() {
-  auto* vending = Bourgeon::Instance().vending_window();
-  return vending && vending->IsComposing();
-}
-
-// Cibles de dépôt : les rects des VIEWERS, les seuls qui existent encore.
-bool OverInventory(float x, float y) {
-  auto* inventory = Bourgeon::Instance().inventory_viewer();
-  return inventory && inventory->PointOverViewer(static_cast<int>(x), static_cast<int>(y));
-}
-bool OverStorage(float x, float y) {
-  auto* storage = Bourgeon::Instance().storage_window();
-  return storage && storage->PointOverViewer(static_cast<int>(x), static_cast<int>(y));
-}
-
-// Objet mode courant (dispatcher), ou nullptr hors d'un mode jouable. SEH-gardé.
-void* Dispatcher() {
-  __try {
-    return rag::ActiveModeIfReady();
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
-}
-
 // Envoie une commande UI native (transfert) via le dispatcher.
 void SendCmd(int cmd, int index, int amount) {
   if (amount <= 0) return;
@@ -156,9 +120,9 @@ void SendCmd(int cmd, int index, int amount) {
   // mais un raccourci (double-clic, Alt+clic droit) ne passe pas par un widget
   // désactivé. Le serveur jetterait la requête sans un mot ; autant ne pas la
   // faire partir.
-  if (VendingComposing()) return;
+  if (viewers::VendingComposing()) return;
   __try {
-    void* d = Dispatcher();
+    void* d = rag::ActiveModeSafe();
     if (d) rag::ModeSendMsg(d, cmd, index, amount, 0, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
@@ -240,86 +204,37 @@ const Cat kCats[] = {
 };
 constexpr int kNumCats = 6;
 
-// Convertit une texture jeu en ImTextureID ImGui.
-inline ImTextureID TexId(void* t) { return reinterpret_cast<ImTextureID>(t); }
-
 // ── Assets natifs : barre 3-slice + fond de tuile + icônes du footer ───────────
 // Préfixe CP949 pris sur les strings de l'exe (jamais reconstruit à la main).
 
 using BarTex = ro::GameTexture;
-BarTex g_bar[3];      // btnbar 3-slice : 0=left, 1=mid, 2=right
-BarTex g_tile;        // itemwin_mid.bmp : fond de tuile d'item (32px)
-BarTex g_ico_weight;  // icon_weight.bmp (footer)
-BarTex g_ico_num;     // icon_num.bmp (footer)
 BarTex g_tab[kNumCats][2];   // onglets VERTICAUX   [cat][0=actif, 1=inactif]
 BarTex g_tabh[kNumCats][2];  // onglets HORIZONTAUX (jeu tabh_*)
 bool   g_assets_tried = false;
-
-// `<préfixe basic_interface\> + <file>`, préfixe repris de la string exe du btnbar.
-void BasicInterfacePath(const char* file, char* out, size_t out_sz) {
-  const char* base = reinterpret_cast<const char*>(ro::uipath::kUiRootSample);
-  const char* slash = std::strrchr(base, '\\');
-  const size_t n = slash ? static_cast<size_t>(slash - base + 1) : 0;
-  if (n && n < out_sz) std::memcpy(out, base, n);
-  std::snprintf(out + n, out_sz - n, "%s", file);
-}
 
 void LoadAssets() {
   if (g_assets_tried) return;
   g_assets_tried = true;
   char path[160];
-  const char* names[3] = {"btnbar_left3.bmp", "btnbar_mid3.bmp", "btnbar_right3.bmp"};
-  for (int i = 0; i < 3; ++i) {
-    BasicInterfacePath(names[i], path, sizeof(path));
-    g_bar[i] = ro::TextureFromGameFile(path);
-  }
-  BasicInterfacePath("itemwin_mid.bmp", path, sizeof(path));
-  g_tile = ro::TextureFromGameFile(path);
-  g_ico_weight = ro::TextureFromGameFile(reinterpret_cast<const char*>(ro::uipath::kIconWeight));
-  g_ico_num    = ro::TextureFromGameFile(reinterpret_cast<const char*>(ro::uipath::kIconNum));
   for (int c = 0; c < kNumCats; ++c) {
     const char* base = kCats[c].img;
     if (!base) continue;
     char nm[48];
     std::snprintf(nm, sizeof(nm), "%s1.bmp", base);
-    BasicInterfacePath(nm, path, sizeof(path)); g_tab[c][0] = ro::TextureFromGameFile(path);
+    ro::grid::BasicInterfacePath(nm, path, sizeof(path)); g_tab[c][0] = ro::TextureFromGameFile(path);
     std::snprintf(nm, sizeof(nm), "%s2.bmp", base);
-    BasicInterfacePath(nm, path, sizeof(path)); g_tab[c][1] = ro::TextureFromGameFile(path);
+    ro::grid::BasicInterfacePath(nm, path, sizeof(path)); g_tab[c][1] = ro::TextureFromGameFile(path);
     char hbase[40];
     std::snprintf(hbase, sizeof(hbase), "tabh%s", base + 3);  // saute « tab »
     std::snprintf(nm, sizeof(nm), "%s1.bmp", hbase);
-    BasicInterfacePath(nm, path, sizeof(path)); g_tabh[c][0] = ro::TextureFromGameFile(path);
+    ro::grid::BasicInterfacePath(nm, path, sizeof(path)); g_tabh[c][0] = ro::TextureFromGameFile(path);
     std::snprintf(nm, sizeof(nm), "%s2.bmp", hbase);
-    BasicInterfacePath(nm, path, sizeof(path)); g_tabh[c][1] = ro::TextureFromGameFile(path);
+    ro::grid::BasicInterfacePath(nm, path, sizeof(path)); g_tabh[c][1] = ro::TextureFromGameFile(path);
   }
 }
 
 // Teinte des AddImage = luminosité + opacité du skin RO (les images du jeu sont
 // dessinées en draw-list brut, elles échapperaient sinon à ces réglages).
-
-// Barre 3-slice du footer dans [x0..x1] à y0 (hauteur barH). Repli rect plein RO.
-void DrawFooterBar(ImDrawList* dl, float x0, float y0, float x1, float barH) {
-  const float y1 = y0 + barH;
-  const float lw = g_bar[0].w > 0 ? static_cast<float>(g_bar[0].w) : 0.0f;
-  const float rw = g_bar[2].w > 0 ? static_cast<float>(g_bar[2].w) : 0.0f;
-  if (g_bar[1].tex) {
-    const ImU32 t = ro::SkinImageTint();
-    if (g_bar[0].tex) dl->AddImage(TexId(g_bar[0].tex), ImVec2(x0, y0), ImVec2(x0 + lw, y1), ImVec2(0, 0), ImVec2(1, 1), t);
-    dl->AddImage(TexId(g_bar[1].tex), ImVec2(x0 + lw, y0), ImVec2(x1 - rw, y1), ImVec2(0, 0), ImVec2(1, 1), t);  // étiré
-    if (g_bar[2].tex) dl->AddImage(TexId(g_bar[2].tex), ImVec2(x1 - rw, y0), ImVec2(x1, y1), ImVec2(0, 0), ImVec2(1, 1), t);
-  } else {
-    dl->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y1),
-                      ImGui::GetColorU32(ImGuiCol_FrameBg), 2.0f);
-  }
-}
-
-// Icône BarTex centrée verticalement à (x, cy) ; renvoie sa largeur (0 si absente).
-float DrawFooterIcon(ImDrawList* dl, const BarTex& ic, float x, float cy) {
-  if (!ic.tex || ic.w <= 0 || ic.h <= 0) return 0.0f;
-  dl->AddImage(TexId(ic.tex), ImVec2(x, cy - ic.h * 0.5f),
-               ImVec2(x + ic.w, cy + ic.h * 0.5f), ImVec2(0, 0), ImVec2(1, 1), ro::SkinImageTint());
-  return static_cast<float>(ic.w);
-}
 
 // Largeur du strip d'onglets VERTICAL / hauteur de la rangée HORIZONTALE : la
 // dimension TRANSVERSE (jamais étirée), l'autre se déduit du ratio de l'image.
@@ -340,43 +255,7 @@ float TabStripHeightH() {
 
 // itemwin_mid PAVÉ (répété à sa taille native) dans [mn..mx], aligné sur `origin`
 // (la 1re tuile) pour que le fond et les items partagent la même marge.
-void DrawTiledBg(ImDrawList* dl, const BarTex& tile, ImVec2 origin, ImVec2 mn, ImVec2 mx) {
-  if (!tile.tex || tile.w <= 0 || tile.h <= 0) {
-    dl->AddRectFilled(mn, mx, ImGui::GetColorU32(ImGuiCol_FrameBg));
-    return;
-  }
-  // À l'échelle, comme les cases qu'elles pavent (cf. inventory_viewer).
-  const float tw = ro::Px(static_cast<float>(tile.w));
-  const float th = ro::Px(static_cast<float>(tile.h));
-  auto floorTo = [](float v, float o, float step) {
-    int n = static_cast<int>((v - o) / step);
-    if (o + n * step > v) --n;
-    return o + n * step;
-  };
-  const float sx = floorTo(mn.x, origin.x, tw);
-  const float sy = floorTo(mn.y, origin.y, th);
-  dl->PushClipRect(mn, mx, true);
-  for (float y = sy; y < mx.y; y += th)
-    for (float x = sx; x < mx.x; x += tw)
-      dl->AddImage(TexId(tile.tex), ImVec2(x, y), ImVec2(x + tw, y + th),
-                   ImVec2(0, 0), ImVec2(1, 1), ro::SkinImageTint());
-  dl->PopClipRect();
-}
 
-// ── Resize par PALIER de tuile (même mécanique que l'inventaire) ──────────────
-// La fenêtre saute d'une COLONNE / LIGNE de tuiles : jamais de colonne partielle.
-struct SnapState { float cell = 32, gap = 0, chromew = 0, chromeh = 0; bool valid = false; };
-SnapState g_snap;
-void SnapWindowSize(ImGuiSizeCallbackData* d) {
-  const SnapState& s = g_snap;
-  const float step = s.cell + s.gap;
-  int cols = static_cast<int>((d->DesiredSize.x - s.chromew + s.gap) / step + 0.5f);
-  int rows = static_cast<int>((d->DesiredSize.y - s.chromeh + s.gap) / step + 0.5f);
-  if (cols < 5) cols = 5;
-  if (rows < 5) rows = 5;
-  d->DesiredSize.x = s.chromew + cols * step - s.gap;
-  d->DesiredSize.y = s.chromeh + rows * step - s.gap;
-}
 
 // Vide les caches de textures quand le device D3D a été reset/recréé (handles morts).
 unsigned g_tex_epoch = 0;
@@ -384,8 +263,6 @@ void MaybeFlushTextures() {
   const unsigned e = Overlay_DeviceEpoch();
   if (e == g_tex_epoch) return;
   g_tex_epoch = e;
-  for (auto& b : g_bar) b = BarTex{};
-  g_tile = g_ico_weight = g_ico_num = BarTex{};
   for (auto& row : g_tab)  for (auto& b : row) b = BarTex{};
   for (auto& row : g_tabh) for (auto& b : row) b = BarTex{};
   g_assets_tried = false;
@@ -445,9 +322,7 @@ void CartViewer::Extract() {
     __try {
       Item& it = items_[item_count_];
       uint8_t* info = node + kNodeInfo;
-      const uint32_t idcap = *reinterpret_cast<uint32_t*>(info + kInfoIdCap);
-      const char* ids = (idcap > 0xf) ? *reinterpret_cast<char**>(info + kInfoIdStr)
-                                      : reinterpret_cast<const char*>(info + kInfoIdStr);
+      const char* ids = rag::clientstr::Data(info + kInfoIdStr);
       it.id = ids ? static_cast<uint32_t>(atoi(ids)) : 0;
       it.identified = *reinterpret_cast<uint8_t*>(info + kInfoIdent);
       it.damaged = *reinterpret_cast<uint8_t*>(info + kInfoDamaged);
@@ -528,22 +403,22 @@ void CartViewer::OnRenderUI() {
     need_pos_ = false;
   }
   ImGui::SetNextWindowSize(ImVec2(kSpawnW, kSpawnH), ImGuiCond_FirstUseEver);
-  if (g_snap.valid && !lock_size_) {
-    const float minGrid = 5.0f * (g_snap.cell + g_snap.gap) - g_snap.gap;  // min 5 tuiles
+  if (ro::grid::Snap().valid && !lock_size_) {
+    const float minGrid = 5.0f * (ro::grid::Snap().cell + ro::grid::Snap().gap) - ro::grid::Snap().gap;  // min 5 tuiles
     ImGui::SetNextWindowSizeConstraints(
-        ImVec2(g_snap.chromew + minGrid, g_snap.chromeh + minGrid),
-        ImVec2(10000.0f, 10000.0f), SnapWindowSize);
-  } else if (g_snap.valid && win_valid_) {
+        ImVec2(ro::grid::Snap().chromew + minGrid, ro::grid::Snap().chromeh + minGrid),
+        ImVec2(10000.0f, 10000.0f), ro::grid::SnapWindowSize);
+  } else if (ro::grid::Snap().valid && win_valid_) {
     // Taille VERROUILLÉE : le callback de snap ne tourne plus (il n'agit que pendant
     // un redimensionnement), donc la fenêtre resterait sur une hauteur quelconque —
     // dernière ligne coupée. On la recale une fois sur le palier le plus proche.
-    const float step = g_snap.cell + g_snap.gap;
-    int cols = static_cast<int>((win_w_ - g_snap.chromew + g_snap.gap) / step + 0.5f);
-    int rows = static_cast<int>((win_h_ - g_snap.chromeh + g_snap.gap) / step + 0.5f);
+    const float step = ro::grid::Snap().cell + ro::grid::Snap().gap;
+    int cols = static_cast<int>((win_w_ - ro::grid::Snap().chromew + ro::grid::Snap().gap) / step + 0.5f);
+    int rows = static_cast<int>((win_h_ - ro::grid::Snap().chromeh + ro::grid::Snap().gap) / step + 0.5f);
     if (cols < 5) cols = 5;
     if (rows < 5) rows = 5;
-    const ImVec2 snapped(g_snap.chromew + cols * step - g_snap.gap,
-                         g_snap.chromeh + rows * step - g_snap.gap);
+    const ImVec2 snapped(ro::grid::Snap().chromew + cols * step - ro::grid::Snap().gap,
+                         ro::grid::Snap().chromeh + rows * step - ro::grid::Snap().gap);
     if (std::fabs(snapped.x - win_w_) > 0.5f || std::fabs(snapped.y - win_h_) > 0.5f)
       ImGui::SetNextWindowSize(snapped, ImGuiCond_Always);
   }
@@ -563,7 +438,7 @@ void CartViewer::OnRenderUI() {
 
   // Pendant la composition d'un shop, le serveur refuse TOUT mouvement touchant
   // le cart : autant l'annoncer une fois en clair, en plus des entrées grisées.
-  if (VendingComposing())
+  if (viewers::VendingComposing())
     ImGui::TextColored(ImVec4(0.85f, 0.15f, 0.15f, 1.0f),
                        i18n::Tr("Shop en composition : les transferts sont figés."));
 
@@ -725,10 +600,10 @@ void CartViewer::OnRenderUI() {
     const float availw = ImGui::GetContentRegionAvail().x;  // exclut déjà la scrollbar
     const float availh = ImGui::GetContentRegionAvail().y;
     // Mesure du chrome (fenêtre - zone grille) pour le snap de resize (frame +1).
-    g_snap.cell = cell; g_snap.gap = gap;
-    g_snap.chromew = mainW - availw;
-    g_snap.chromeh = mainH - availh;
-    g_snap.valid = true;
+    ro::grid::Snap().cell = cell; ro::grid::Snap().gap = gap;
+    ro::grid::Snap().chromew = mainW - availw;
+    ro::grid::Snap().chromeh = mainH - availh;
+    ro::grid::Snap().valid = true;
     int cols = static_cast<int>((availw + gap) / (cell + gap));
     if (cols < 1) cols = 1;
     ImDrawList* dl = ImGui::GetWindowDrawList();
@@ -736,7 +611,7 @@ void CartViewer::OnRenderUI() {
       const ImVec2 gridOrigin = ImGui::GetCursorScreenPos();  // = 1re tuile
       const ImVec2 gmn = ImGui::GetWindowPos();
       const ImVec2 gsz = ImGui::GetWindowSize();
-      DrawTiledBg(dl, g_tile, gridOrigin, gmn, ImVec2(gmn.x + gsz.x, gmn.y + gsz.y));
+      ro::grid::DrawTiledBg(dl, ro::grid::Assets().tile, gridOrigin, gmn, ImVec2(gmn.x + gsz.x, gmn.y + gsz.y));
     }
 
     // Aperçu de description au survol : recalculé à chaque frame (0 = aucune case).
@@ -786,7 +661,7 @@ void CartViewer::OnRenderUI() {
         // vers le storage — exactement l'arbitrage du natif (ALT + clic droit
         // envoie au storage dès qu'il est ouvert, sinon à l'inventaire).
         if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
-          SendCmd(StorageOpen() ? kCmdCartToStorage : kCmdCartToBody, it.index,
+          SendCmd(viewers::StorageOpen() ? kCmdCartToStorage : kCmdCartToBody, it.index,
                   it.amount);
       }
 
@@ -802,8 +677,8 @@ void CartViewer::OnRenderUI() {
         if (mods.KeyCtrl) {
           POINT pt; if (GetCursorPos(&pt)) OpenItemDesc(it.index, pt.x, pt.y);
         } else if (mods.KeyAlt) {
-          if (StorageOpen())        SendCmd(kCmdCartToStorage, it.index, it.amount);
-          else if (InventoryOpen()) SendCmd(kCmdCartToBody, it.index, it.amount);
+          if (viewers::StorageOpen())        SendCmd(kCmdCartToStorage, it.index, it.amount);
+          else if (viewers::InventoryOpen()) SendCmd(kCmdCartToBody, it.index, it.amount);
         } else {
           ImGui::OpenPopup("ctx");
         }
@@ -824,10 +699,10 @@ void CartViewer::OnRenderUI() {
         // seul moment où l'on peut encore renoncer (entrepôt ouvert = pas de
         // cart -> inventaire).
         const ImVec2 drag_mouse = ImGui::GetMousePos();
-        if (VendingComposing())
+        if (viewers::VendingComposing())
           ImGui::TextColored(ImVec4(0.85f, 0.15f, 0.15f, 1.0f),
                              i18n::Tr("Shop en composition : le cart est figé"));
-        else if (StorageOpen() && OverInventory(drag_mouse.x, drag_mouse.y))
+        else if (viewers::StorageOpen() && viewers::MouseOverInventory(drag_mouse.x, drag_mouse.y))
           ImGui::TextColored(ImVec4(0.85f, 0.15f, 0.15f, 1.0f),
                              i18n::Tr("Storage ouvert : vers l'inventaire impossible"));
         ImGui::EndDragDropSource();
@@ -860,8 +735,8 @@ void CartViewer::OnRenderUI() {
         // son ALT+clic droit bascule sur « vers le storage » dès qu'il est ouvert).
         // Même nature que `storage_open` : une règle SERVEUR qu'on rend visible
         // au lieu de laisser un clic sans effet.
-        const bool vending_lock = VendingComposing();
-        const bool storage_open = StorageOpen();
+        const bool vending_lock = viewers::VendingComposing();
+        const bool storage_open = viewers::StorageOpen();
         const bool to_body_off = storage_open || vending_lock;
         // Retrait vers l'inventaire : une PILE ouvre le prompt de quantité.
         if (it.amount <= 1) {
@@ -933,11 +808,11 @@ void CartViewer::OnRenderUI() {
         const bool over_self = drag_mx_ >= win_x_ && drag_my_ >= win_y_ &&
                                drag_mx_ < win_x_ + win_w_ && drag_my_ < win_y_ + win_h_;
         if (!over_self) {
-          if (OverStorage(drag_mx_, drag_my_))        action = kPendToStorage;
+          if (viewers::MouseOverStorage(drag_mx_, drag_my_))        action = kPendToStorage;
           // Entrepôt ouvert => le serveur refuse cart -> inventaire (storage_flag,
           // cf. le menu contextuel) : on n'arme RIEN, plutôt que d'ouvrir un prompt
           // de quantité dont la validation partirait à la poubelle.
-          else if (OverInventory(drag_mx_, drag_my_) && !StorageOpen())
+          else if (viewers::MouseOverInventory(drag_mx_, drag_my_) && !viewers::StorageOpen())
             action = kPendToBody;
         }
       }
@@ -969,7 +844,7 @@ void CartViewer::OnRenderUI() {
     const float fy1 = fwp.y + fws.y - style.WindowPadding.y;
     const float fy0 = fy1 - footerH;
     ImDrawList* dl = ImGui::GetWindowDrawList();
-    DrawFooterBar(dl, fx0, fy0, fx1, footerH);
+    ro::grid::DrawFooterBar(dl, fx0, fy0, fx1, footerH);
     const float cy1 = fy0 + footerH * 0.25f;  // centre ligne 1
     const float cy2 = fy0 + footerH * 0.75f;  // centre ligne 2
     const float gripM = 16.0f;                // marge de la poignée de resize
@@ -982,13 +857,13 @@ void CartViewer::OnRenderUI() {
     // natif du cart met les deux sur une seule ligne, compteur d'abord — il n'y
     // a donc pas d'ordre natif à respecter sur deux lignes.)
     float x = fx0 + 6.0f;
-    x += DrawFooterIcon(dl, g_ico_weight, x, cy1) + 3.0f;
+    x += ro::grid::DrawFooterIcon(dl, ro::grid::Assets().weight, x, cy1) + 3.0f;
     std::snprintf(buf, sizeof(buf), "%d/%d", fv.weight, fv.maxweight);
     dl->AddText(ImVec2(x, cy1 - lineH * 0.5f),
                 (fv.maxweight > 0 && fv.weight >= fv.maxweight) ? colOver : colText, buf);
 
     x = fx0 + 6.0f;
-    x += DrawFooterIcon(dl, g_ico_num, x, cy2) + 3.0f;
+    x += ro::grid::DrawFooterIcon(dl, ro::grid::Assets().num, x, cy2) + 3.0f;
     std::snprintf(buf, sizeof(buf), "%d/%d", fv.num, fv.maxnum);
     dl->AddText(ImVec2(x, cy2 - lineH * 0.5f),
                 (fv.maxnum > 0 && fv.num >= fv.maxnum) ? colOver : colText, buf);

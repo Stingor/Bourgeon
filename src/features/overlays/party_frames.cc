@@ -38,12 +38,6 @@ constexpr unsigned kPollIntervalMs = 250;
 // figer une vieille valeur.
 constexpr unsigned kVitalsStaleMs = 3000;
 
-int ReadIntSEH(uintptr_t addr) {
-  __try {
-    return *reinterpret_cast<const int*>(addr);
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
-}
-
 // Masque/rend une fenêtre native sans lever si elle n'existe pas.
 void SetNativeVisible(int window_id, bool visible) {
   __try {
@@ -295,8 +289,8 @@ void PartyFrames::DrawTile(const rag::social::Entry& m, ImVec2 p0, ImVec2 p1,
   if (show_sp_ && !m.offline) {
     int sp = 0, maxsp = 0;
     if (is_me) {
-      sp    = ReadIntSEH(rag::kOwnSpAddr);
-      maxsp = ReadIntSEH(rag::kOwnMaxSpAddr);
+      sp    = rag::ReadInt(rag::kOwnSpAddr);
+      maxsp = rag::ReadInt(rag::kOwnMaxSpAddr);
     } else {
       auto it = vitals_.find(m.gid);
       if (it != vitals_.end() &&

@@ -37,6 +37,7 @@
 #include "features/moonlight_ui/moonlight_ui.h"  // API autolootid (bouton +/- réintégré)
 #include "utils/i18n.h"
 #include "utils/log_console.h"
+#include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -248,12 +249,6 @@ std::unordered_map<uint32_t, IconTex> g_icon_cache;
 // vtable. Renvoie null si slot vide ou vtable inattendue. SEH-gardé.
 uint8_t* ReadValidWnd(uintptr_t slot, uintptr_t expected_vtable) {
   return uiwnd::WndAtSlot(slot, expected_vtable);
-}
-
-// c_str d'une std::string MSVC embarquée à base (SSO : heap si cap>0xf).
-const char* MsvcStr(const uint8_t* base, uint32_t cap) {
-  return (cap > 0xf) ? *reinterpret_cast<const char* const*>(base)
-                     : reinterpret_cast<const char*>(base);
 }
 
 // Résout le .bmp de collection en pixels bruts BGRA (appels natifs, POD only).
@@ -485,10 +480,9 @@ bool ExtractItem(uint8_t* wnd, ItemExtract* e) {
       LocalizeInPlace(e->name, sizeof(e->name));
     }
 
-    const uint32_t iconcap = *reinterpret_cast<uint32_t*>(wnd + kItemIconCap);
     const uint32_t iconlen = *reinterpret_cast<uint32_t*>(wnd + kItemIconLen);
     if (iconlen > 0) {
-      const char* path = MsvcStr(wnd + kItemIconPath, iconcap);
+      const char* path = rag::clientstr::Data(wnd + kItemIconPath);
       std::strncpy(e->iconpath, path ? path : "", sizeof(e->iconpath) - 1);
       e->has_icon = e->iconpath[0] != '\0';
     }
@@ -523,8 +517,7 @@ bool ExtractItem(uint8_t* wnd, ItemExtract* e) {
     // L'ITID, lu là où le client le range : en TEXTE, dans la std::string de
     // info+0x2c (d'où l'`atoi`). Il était déjà relu plus bas pour le nombre
     // d'emplacements ; il sert désormais aussi ICI.
-    const char* id_str_for_kind =
-        MsvcStr(info + 0x2c, *reinterpret_cast<uint32_t*>(info + 0x40));
+    const char* id_str_for_kind = rag::clientstr::Data(info + 0x2c);
     const uint32_t extracted_id =
         id_str_for_kind ? static_cast<uint32_t>(atoi(id_str_for_kind)) : 0u;
     // 🔴 L'ŒUF DE FAMILIER n'est ni forgé ni serti : ses slots portent la fiche
@@ -562,8 +555,7 @@ bool ExtractItem(uint8_t* wnd, ItemExtract* e) {
     // natif le formate " [%d]" via FUN_006a4c40 ; 0 = non-sloté). Guard 1..4.
     e->card_slots = 0;
     {
-      const char* idstr =
-          MsvcStr(info + 0x2c, *reinterpret_cast<uint32_t*>(info + 0x40));
+      const char* idstr = rag::clientstr::Data(info + 0x2c);
       const int item_id = idstr ? atoi(idstr) : 0;
       if (!forged && item_id > 0) {  // forgé -> pas d'emplacements ni de suffixe [N]
         void* rec = reinterpret_cast<DescLookup_t>(itemdb::kLookupAddr)(
@@ -625,8 +617,7 @@ void ReadRichTextLines(uint8_t* box, ItemExtract* e) {
     for (uint8_t* el = first;
          el + kStdStringSize <= last && e->line_count < kMaxLines;
          el += kStdStringSize) {
-      const uint32_t cap = *reinterpret_cast<uint32_t*>(el + 0x14);
-      const char* s = MsvcStr(el, cap);  // SSO si cap<=0xf, sinon heap
+      const char* s = rag::clientstr::Data(el);
       char* dst = e->lines[e->line_count];
       int i = 0;
       while (i < kLineLen - 1 && s && s[i]) { dst[i] = s[i]; ++i; }
@@ -640,8 +631,7 @@ void ReadRichTextLines(uint8_t* box, ItemExtract* e) {
 void ReadSkillName(uint8_t* wnd, char* out, int outsz) {
   out[0] = '\0';
   __try {
-    const uint32_t cap = *reinterpret_cast<uint32_t*>(wnd + kSkillIntStr + 0x14);
-    const char* nm = MsvcStr(wnd + kSkillIntStr, cap);
+    const char* nm = rag::clientstr::Data(wnd + kSkillIntStr);
     int i = 0;
     while (i < outsz - 1 && nm && nm[i]) { out[i] = nm[i]; ++i; }
     out[i] = '\0';
@@ -1205,8 +1195,7 @@ bool ExtractBookPage(uint8_t* wnd, BookExtract* e) {
       const int idx = start + i;
       if (idx < 0 || idx >= total) break;
       const uint8_t* str = first + idx * kStdStringSize;
-      const uint32_t cap = *reinterpret_cast<const uint32_t*>(str + 0x14);
-      const char* txt = MsvcStr(str, cap);
+      const char* txt = rag::clientstr::Data(str);
       std::strncpy(e->lines[e->line_count], txt ? txt : "", kLineLen - 1);
       ++e->line_count;
     }

@@ -31,6 +31,8 @@
 #include "ui/ro_imgui.h"
 #include "utils/log_console.h"  // LogDiag — journal staff en jeu
 #include "utils/i18n.h"
+#include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
+#include "ui/ro_widgets.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -216,7 +218,6 @@ constexpr int kNodeNext   = 0x00;
 constexpr int kNodeInfo   = 0x08;
 constexpr int kNodeAmt    = 0x18;
 constexpr int kInfoIdStr  = 0x2c;  // std::string de l'id — le jeu fait atoi dessus (§4.4)
-constexpr int kInfoIdCap  = 0x40;  // capacité SSO de cette std::string (+0x2c + 0x14)
 constexpr int kMaxInvNodes = 4096; // garde-fou de parcours
 
 // ItemSkillInfo : ctor/dtor natifs. Nécessaires UNIQUEMENT pour la commande 130,
@@ -306,12 +307,6 @@ constexpr unsigned kAutoReuseDelayMs = 300;
 
 constexpr int       kCmdUseSkill  = 0x45;  // { skillId, cibleGID, niveau }
 
-uint32_t OwnAid() {
-  __try {
-    return rag::OwnAccountId();
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
-}
-
 // ── Palette ──────────────────────────────────────────────────────────────────
 // Le corps d'une fenêtre RO est CLAIR : tout ce qui est coloré ici est SATURÉ et
 // SOMBRE, sinon ça se délave (leçon du plugin de refine).
@@ -392,10 +387,8 @@ void SendProduceCmd(int item_id, const uint32_t mats[3] = nullptr) {
 uint32_t InfoItemId(const void* info) {
   __try {
     const auto base = reinterpret_cast<uintptr_t>(info);
-    const auto cap  = *reinterpret_cast<const uint32_t*>(base + kInfoIdCap);
-    const char* s = (cap >= 16)
-                        ? *reinterpret_cast<const char* const*>(base + kInfoIdStr)
-                        : reinterpret_cast<const char*>(base + kInfoIdStr);
+    const char* s = rag::clientstr::Data(
+        reinterpret_cast<const void*>(base + kInfoIdStr));
     if (!s) return 0;
     return static_cast<uint32_t>(std::atoi(s));
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
@@ -828,8 +821,6 @@ void CancelNativeIfClass(int window_id, uintptr_t expected_vtable) {
     uiwnd::OnMsg(w, kMsgUiAction, kBtnCancelId);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
-
-inline ImTextureID TexId(void* t) { return reinterpret_cast<ImTextureID>(t); }
 
 // ── Lecteurs de paquet, déportés ─────────────────────────────────────────────
 // 🔴 C2712 se juge sur la fonction ENTIÈRE : un `__try` est interdit dès qu'un
@@ -1910,7 +1901,7 @@ void MakeItemWindow::NotifyItemUse(unsigned item_index) {
 
 void MakeItemWindow::SendRecast() {
   if (skill_id_ <= 0) return;
-  const uint32_t aid = OwnAid();
+  const uint32_t aid = rag::OwnAccountIdSafe();
   if (!aid) return;
   // Cible = soi : toutes les compétences concernées sont des self-cast, et 0x45
   // impose la cible (⚠ à ne PAS employer pour une compétence ciblée, cf.
@@ -1954,9 +1945,9 @@ void MakeItemWindow::SendReuseItem() {
   }
 
   const unsigned idx  = InvIndexById(source_item_id_);
-  const bool     sent = SendUseItemPacket(idx, OwnAid());
+  const bool     sent = SendUseItemPacket(idx, rag::OwnAccountIdSafe());
   LogDiag("[make] SendReuseItem: id={} -> index={} aid={} envoyé={}",
-          source_item_id_, idx, OwnAid(), sent ? 1 : 0);
+          source_item_id_, idx, rag::OwnAccountIdSafe(), sent ? 1 : 0);
   if (!sent) {
     // Stock épuisé : c'est la fin NORMALE d'une chaîne par objet, et le seul
     // arrêt qui compte vraiment pour le joueur — on le nomme.

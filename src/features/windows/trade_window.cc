@@ -27,9 +27,22 @@
 #include "ui/ro_imgui.h"    // BeginRoWindow (skin RO)
 #include "ui/ro_widgets.h"  // mui::IsLastItemRightClicked
 #include "utils/i18n.h"
+#include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
+
 
 // ── Constantes RE (client 20250716, base 0x400000 ; cf. docs/trade_window_re.md) ──
 namespace {
+
+// CMode::SendMsg (thread principal UNIQUEMENT). No-op si aucun mode n'est actif.
+// La descente « manager -> état 1 -> dispatcher -> vtable+0x18 » n'est plus
+// écrite ici : c'est exactement ce que `rag::ActiveModeSendMsg` fait, et les
+// trois constantes qu'elle demandait (0x58, +4, l'index 6) étaient en dur.
+void ModeCmd(int cmd, int a, int b, int c, int d) {
+  __try {
+    rag::ActiveModeSendMsg(cmd, a, b, c, d);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {}
+}
+
 
 // UIWindowMgr + factory.
 
@@ -63,7 +76,6 @@ constexpr uintptr_t kInvDecrease = 0x00d57a30;
 
 constexpr int kInfoAmount = 0x10;   // int : quantité possédée
 constexpr int kInfoIdStr  = 0x2c;   // std::string SSO : itemId EN TEXTE (atoi)
-constexpr int kInfoIdCap  = 0x40;   // capacité SSO (+0x2c+0x14 ; >15 => heap)
 constexpr int kInfoDamaged = 0x5d;  // byte : équipement CASSÉ (rendu rouge, cf. itemcell)
 constexpr int kInfoRefine = 0x60;   // int : refine
 
@@ -253,26 +265,9 @@ void* FindTradeWnd(int* out_id) {
   return FindTradeWndInMap(out_id);
 }
 
-// CMode::SendMsg via le dispatcher [0x0121333c] (vtable+0x18 = slot 6). Thread
-// principal UNIQUEMENT (jamais depuis OnRecvPacket).
-void ModeCmd(int cmd, int a, int b, int c, int d) {
-  __try {
-    uint8_t* mgr = reinterpret_cast<uint8_t*>(rag::kModeMgrAddr);
-    if (*reinterpret_cast<int*>(mgr + 0x58) != 1) return;  // aucun mode actif
-    void* disp = *reinterpret_cast<void**>(mgr + 4);        // = *(0x121333c)
-    if (disp) {
-      void** vt = *reinterpret_cast<void***>(disp);
-      using Fn = int(__thiscall*)(void*, int, int, int, int, int);
-      reinterpret_cast<Fn>(vt[6])(disp, cmd, a, b, c, d);
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) {}
-}
-
 // Nom d'item par id : itemcell::NameById (DB de descriptions du client, cache
 // partagé). L'échange ne voit que des ids et un refine — le paquet ne porte pas
 // d'ItemSkillInfo — d'où le « +N » composé à la main à l'affichage.
-
-
 
 
 
@@ -631,9 +626,7 @@ void TradeWindow::ResolveMyAdds() {
     it.amount = amount;
     __try {
       uint8_t* p = reinterpret_cast<uint8_t*>(info);
-      const uint32_t cap = *reinterpret_cast<uint32_t*>(p + kInfoIdCap);
-      const char* ids = (cap > 15) ? *reinterpret_cast<char**>(p + kInfoIdStr)
-                                   : reinterpret_cast<const char*>(p + kInfoIdStr);
+      const char* ids = rag::clientstr::Data(p + kInfoIdStr);
       it.id      = ids ? static_cast<uint32_t>(std::atoi(ids)) : 0;
       it.refine  = *reinterpret_cast<int*>(p + kInfoRefine);
       it.damaged = *reinterpret_cast<uint8_t*>(p + kInfoDamaged);

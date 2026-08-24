@@ -44,6 +44,7 @@
 #include "utils/log_console.h"
 #include "utils/i18n.h"
 #include "ragnarok/social.h"  // rag::social::kFriendListAddByNameAddr
+#include "features/link_gesture.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -58,15 +59,6 @@ namespace {
 
 // Pointeur direct vers la UINewChatWnd vivante (nul = pas de fenêtre native).
 // C'est lui qui arbitre laquelle des deux sources d'ingestion est en service.
-
-// Le libellé visible d'un lien de RECETTE. Composé LOCALEMENT à partir du seul
-// nom transporté, jamais transmis tout fait : chacun le lit ainsi dans SA langue,
-// et le « [Recette: ] » d'un expéditeur anglophone n'impose rien au lecteur.
-std::string RecipeLinkLabel(const std::string& product_name) {
-  char buf[256];
-  std::snprintf(buf, sizeof(buf), i18n::Tr("[Recette: %s]"), product_name.c_str());
-  return buf;
-}
 
 // Registres de canaux : std::map<int, {nom, filtre[25]}>. Nœud MSVC :
 // +0x0D isnil, +0x10 clé (index), +0x14 nom (std::string SSO 0x18 octets),
@@ -1229,8 +1221,6 @@ bool ContainsNoCase(const std::string& haystack, const char* needle) {
 
 // (Le base62 des liens d'items vit désormais dans `itemcell::ParseChatLink`, avec
 //  l'encodeur qui lui répond : une balise se lit là où elle s'écrit.)
-
-inline ImTextureID TexId(void* t) { return reinterpret_cast<ImTextureID>(t); }
 
 // ── Les DEUX couleurs du chat n'ont pas le même ordre d'octets ───────────────
 // La couleur d'une LIGNE est un COLORREF Windows — `0x00BBGGRR`, rouge en octet
@@ -2905,7 +2895,7 @@ void ChatWindow::ParseUtf8(const std::string& text, Line* out) const {
             link.kind    = Run::kRecipe;
             link.item_id = id;
             link.item.id = id;
-            link.text    = RecipeLinkLabel(name);
+            link.text    = links::RecipeLinkLabel(name);
             out->runs.push_back(link);
           }
           p = close + 7;
@@ -6961,7 +6951,7 @@ bool ChatWindow::AppendRecipeLink(uint32_t item_id, const char* name_utf8) {
   PruneItemLinks();
   if (static_cast<int>(item_links_.size()) >= kMaxItemLinks) return false;
 
-  const std::string display = RecipeLinkLabel(name);
+  const std::string display = links::RecipeLinkLabel(name);
   char wire[256];
   std::snprintf(wire, sizeof(wire), "<CRAF>%u:%s</CRAF>", item_id, name.c_str());
 

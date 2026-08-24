@@ -17,6 +17,7 @@
 #include "ui/ro_imgui.h"
 #include "ui/ro_widgets.h"
 #include "utils/i18n.h"
+#include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 
 using namespace mui;
 
@@ -58,9 +59,6 @@ constexpr int kName_Title   = 0x64;
 constexpr int kName_Extra   = 0x7c;
 constexpr int kName_TitleId = 0x94;
 constexpr int kName_Valid   = 0x98;
-constexpr int kField_Size   = 0x10;
-constexpr int kField_Cap    = 0x14;
-
 // CActor — les seuls champs établis (les autres attendent leur RE ; en montrer
 // un « au jugé » serait exactement le contraire de ce que fait cette fenêtre).
 constexpr int kActor_PosX      = 0x10;   // float, position monde X
@@ -69,7 +67,6 @@ constexpr int kActor_PosZ      = 0x18;   // float, position monde Z
 constexpr int kActor_Gid       = 0x110;  // GID/AID porté par l'acteur lui-même
 constexpr int kActor_Type      = 0x314;  // byte ; {1, 6, 12} = hostile/spécial
 constexpr int kActor_HeightOff = 0x3f4;  // float, offset de hauteur (le saut)
-constexpr int kActorVt_GetGuildId = 0xc4;
 
 // Catégories du quad de picking (docs/entity_context_menu_re.md §3).
 // 🔴 La 3, c'est le PET : seul `CActorSprite_SubmitNameplateQuad` @0x00c58c48
@@ -99,40 +96,30 @@ const ImVec4 kLabelCol(0.35f, 0.35f, 0.42f, 1.0f);
 const ImVec4 kValueCol(0.10f, 0.10f, 0.13f, 1.0f);
 const ImVec4 kMissingCol(0.55f, 0.33f, 0.08f, 1.0f);
 
-using FindActorFn  = void*    (__stdcall*)(uint32_t);
 using ContainsFn   = bool     (__thiscall*)(void*, uint32_t);
 using GetEntryFn   = void*    (__thiscall*)(void*, uint32_t);
 using JobNameFn    = const char* (__fastcall*)(void*, void*, unsigned, int);
-using GetGuildIdFn = uint32_t (__thiscall*)(void*);
 using WorldToTileFn = void (__thiscall*)(void*, float, float, int*, int*,
                                          unsigned*, unsigned*);
 
-template <typename T>
-inline T Read(const void* base, int off) {
-  return *reinterpret_cast<const T*>(reinterpret_cast<const uint8_t*>(base) + off);
-}
+// Un champ à un offset : la lecture est celle de tout le monde (globals.h),
+// et le `using` garde les points d'appel de ce fichier tels quels.
+using rag::Read;
 
 // Recopie une `std::string` du client, SSO comprise.
 // ⚠ SEH ⇒ AUCUN objet C++ dans cette fonction (C2712).
-bool CopyClientString(const void* str, char* out, size_t out_size) {
-  __try {
-    if (!str) return false;
-    const unsigned size = Read<unsigned>(str, kField_Size);
-    const unsigned cap  = Read<unsigned>(str, kField_Cap);
-    if (size == 0 || size >= out_size) return false;
-    const char* src = (cap >= 16) ? Read<const char*>(str, 0)
-                                  : reinterpret_cast<const char*>(str);
-    if (!src) return false;
-    memcpy(out, src, size);
-    out[size] = '\0';
-    return true;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
-}
-
 // ⚠ PAS `GameMode()` : `bourgeon.h` amène la classe `GameMode` du client, et un
 // appel non qualifié devient alors ambigu (C2872) — le compilateur hésite entre
 // notre fonction et le constructeur de la classe.
-void* ActiveGameMode() {
+//
+// 🔴 PAS `rag::ActiveModeSafe()` NON PLUS, et le nom le dit maintenant : celle-là
+// passe par `ActiveModeIfReady()`, GATÉ sur l'état du manager, quand celle-ci lit
+// le pointeur BRUT. Pendant un changement de carte les deux ne rendent pas la
+// même chose (cf. globals.h). Ce fichier était le seul des neuf à lire le brut,
+// sous un nom que rien ne distinguait des huit autres — d'où ce renommage.
+// ⚠ À TRANCHER : si le brut n'était pas un choix mais une recopie distraite, ces
+// deux appels doivent passer à `rag::ActiveModeSafe()` comme partout ailleurs.
+void* ActiveModeRaw() {
   __try {
     return rag::ActiveMode();
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
@@ -168,19 +155,13 @@ void ReadNameField(const void* entry, int field, char* out, size_t out_size) {
     if (!entry) return;
     str = reinterpret_cast<const uint8_t*>(entry) + field;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return; }
-  CopyClientString(str, out, out_size);
+  rag::clientstr::Copy(str, out, out_size);
 }
 
 int ReadTitleId(const void* entry) {
   __try {
     return entry ? Read<int>(entry, kName_TitleId) : 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
-}
-
-void* FindActor(uint32_t gid) {
-  __try {
-    return reinterpret_cast<FindActorFn>(gamescene::kFindActorByGidAddr)(gid);
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
 }
 
 void* OwnActor(void* game_mode) {
@@ -190,15 +171,6 @@ void* OwnActor(void* game_mode) {
     if (!scene) return nullptr;
     return Read<void*>(scene, kScene_OwnActor);
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
-}
-
-uint32_t ActorGuildId(void* actor) {
-  __try {
-    if (!actor) return 0;
-    void** vtable = *reinterpret_cast<void***>(actor);
-    return reinterpret_cast<GetGuildIdFn>(
-        vtable[kActorVt_GetGuildId / sizeof(void*)])(actor);
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
 }
 
 bool ActorCell(void* game_mode, void* actor, int* cx, int* cy) {
@@ -388,7 +360,7 @@ void EntityInspector::RequestServer() {
 // ── Relecture ────────────────────────────────────────────────────────────────
 
 void EntityInspector::Refresh(Snapshot* out) {
-  void* game_mode = ActiveGameMode();
+  void* game_mode = ActiveModeRaw();
   if (!game_mode || gid_ == 0) return;
 
   // ── Plaque de nom ──────────────────────────────────────────────────────────
@@ -423,7 +395,7 @@ void EntityInspector::Refresh(Snapshot* out) {
 }
 
 void EntityInspector::ReadActor(Snapshot* out) {
-  void* actor = FindActor(gid_);
+  void* actor = gamescene::FindActorByGid(gid_);
   if (!actor) return;
   out->actor_found = true;
   out->actor_addr  = reinterpret_cast<uint32_t>(actor);
@@ -442,8 +414,8 @@ void EntityInspector::ReadActor(Snapshot* out) {
     return;
   }
 
-  void* game_mode = ActiveGameMode();
-  out->guild_id = ActorGuildId(actor);
+  void* game_mode = ActiveModeRaw();
+  out->guild_id = gamescene::ActorGuildId(actor);
   out->cell_ok  = ActorCell(game_mode, actor, &out->cell_x, &out->cell_y);
   out->own_cell_ok = ActorCell(game_mode, OwnActor(game_mode), &out->own_cell_x,
                                &out->own_cell_y);

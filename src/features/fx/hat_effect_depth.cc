@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "utils/log_console.h"
+#include "utils/memory_patch.h"  // mem::WriteCode
 
 // Portage à l'exécution du patch WARP « AllHatEffectsWorldDepthOracle » (bytes
 // validés en jeu). On reproduit le code machine à l'identique ; voir le header
@@ -81,15 +82,11 @@ bool VerifySig(intptr_t delta, const SigCheck& s) {
   return true;
 }
 
-// Écrit `bytes` (5 o) à `va+delta` en levant temporairement la protection.
+// Écrit `bytes` (5 o) à `va+delta`. Seule la RELOCATION est propre à ce fichier
+// (les adresses sont relevées sur l'image de base) ; l'écriture elle-même est
+// celle de tout le monde.
 bool PatchSite(intptr_t delta, uint32_t va, const uint8_t* bytes, size_t n) {
-  void* dst = reinterpret_cast<void*>(va + delta);
-  DWORD old = 0;
-  if (!VirtualProtect(dst, n, PAGE_EXECUTE_READWRITE, &old)) return false;
-  memcpy(dst, bytes, n);
-  VirtualProtect(dst, n, old, &old);
-  FlushInstructionCache(GetCurrentProcess(), dst, n);
-  return true;
+  return mem::WriteCode(static_cast<uintptr_t>(va + delta), bytes, n);
 }
 
 // Construit le wrapper 32 o (arme le flag autour de l'appel boucle STR).

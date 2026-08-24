@@ -40,6 +40,7 @@
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 #include "utils/i18n.h"
+#include "utils/memory_patch.h"  // mem::PatchValue
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -161,7 +162,6 @@ constexpr uintptr_t kHeadMidView = 0x015fb29c;  // g_OwnLook_HeadMidViewId
 constexpr int kCTexOffDX9 = 0x12c, kCTexOffDX7 = 0x128;
 
 // Chaîne CMode -> gestionnaire d'acteurs -> acteur du joueur.
-constexpr int kOffOwnActor = 0x2c;
 
 // ── Le chariot, posé à plat ──────────────────────────────────────────────────
 //
@@ -555,21 +555,6 @@ void InstallEzCapture() {
   ez_capture::EnsureInstalled();
 }
 
-// Acteur joueur live : GameMode_GetActive(0x1213338) -> CMode -> *(+0xcc)=actorMgr ->
-// *(+0x2c)=ownActor. nullptr hors-jeu. POD/SEH. (Même chaîne que
-// `rag::ReadOwnActorSprites`.)
-void* GetOwnActorLive() {
-  void* actor = nullptr;
-  __try {
-    void* gm = rag::ActiveModeIfReady();
-    if (gm) {
-      void* mgr = *reinterpret_cast<void**>(reinterpret_cast<char*>(gm) + gamescene::kGmActorMgr);
-      if (mgr) actor = *reinterpret_cast<void**>(reinterpret_cast<char*>(mgr) + kOffOwnActor);
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) { actor = nullptr; }
-  return actor;
-}
-
 // ── Aperçu cashshop d'un effet EZ/CEffectMgr NON équipé (« try before you buy ») ──────────────
 // Appelé CHAQUE frame de survol d'un item-effet EZ (keep-alive). ReconcileEzPreview (OnTick) applique la
 // différence : spawn/despawn temporaire de l'effet SUR LE JOUEUR via Actor_ToggleEffectId -> il rend en
@@ -587,7 +572,7 @@ void ReconcileEzPreview() {
   int wanted = g_ez_preview_ord;
   if (wanted != 0 && GetTickCount() - g_ez_preview_tick > 300) wanted = 0;  // survol terminé -> despawn
   if (wanted == g_ez_preview_active) return;                                 // rien à faire
-  void* actor = GetOwnActorLive();
+  void* actor = rag::OwnActor();
   if (!actor) return;                          // hors-jeu : on retentera (l'état actif reste, resync au retour)
   using ToggleFn = void(__thiscall*)(void*, int, char);
   const ToggleFn toggle = reinterpret_cast<ToggleFn>(rag::kActorToggleEffectIdAddr);
@@ -2428,16 +2413,6 @@ int __fastcall BIMsgHook(void* self, void* edx, int arg0, int msg, int p2, int p
   }
 }
 
-template <typename T>
-void BIPatchPtr(uintptr_t addr, T val) {
-  DWORD old;
-  if (VirtualProtect(reinterpret_cast<void*>(addr), sizeof(T), PAGE_EXECUTE_READWRITE, &old)) {
-    *reinterpret_cast<T*>(addr) = val;
-    VirtualProtect(reinterpret_cast<void*>(addr), sizeof(T), old, &old);
-    FlushInstructionCache(GetCurrentProcess(), reinterpret_cast<void*>(addr), sizeof(T));
-  }
-}
-
 // ── Barres d'EXP de la Basic Info NATIVE : plafonds de niveau client vs serveur ──
 //
 // `UIBasicInfoWnd_LayoutChildren` (0x0095dfb0) ne « cache » pas les jauges d'exp : il les
@@ -2518,7 +2493,7 @@ BasicInfo::BasicInfo() {
   void* cur = *reinterpret_cast<void**>(kBIMsgSlot);
   if (cur && cur != reinterpret_cast<void*>(&BIMsgHook)) {
     g_bi_orig_msg = reinterpret_cast<BIMsg_t>(cur);
-    BIPatchPtr<void*>(kBIMsgSlot, reinterpret_cast<void*>(&BIMsgHook));
+    mem::PatchValue<void*>(kBIMsgSlot, reinterpret_cast<void*>(&BIMsgHook));
   }
   // Plafonds de niveau des jauges d'exp natives : le client les tient d'ExternalSettings
   // (99 / 70) alors que Moonlight monte plus haut, ce qui escamote les barres au niveau 99
@@ -2649,7 +2624,7 @@ void BasicInfo::OnTick() {
   if (own_hat_effects_.empty() && g_ez_preview_active == 0) {
     g_ez_owner_actor = nullptr;
   } else {
-    void* live = GetOwnActorLive();
+    void* live = rag::OwnActor();
     if (live) g_ez_last_actor = live;
     g_ez_owner_actor = live ? live : g_ez_last_actor;
   }

@@ -36,6 +36,9 @@
 #include "ui/qty_prompt.h"             // ro::QuantityPrompt (dialogue « combien ? »)
 #include "ui/ro_imgui.h"               // BeginRoWindow / RoButton (skin RO)
 #include "utils/i18n.h"
+#include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
+#include "features/windows/viewer_probes.h"  // etat des fenetres voisines
+#include "ui/item_grid_chrome.h"  // ro::grid : le decor commun aux grilles
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -60,7 +63,6 @@ constexpr int kNodeInfo = 0x08;  // value = ItemSkillInfo (arg de GetBaseName)
 // l'id est une std::string à +0x2c (le jeu fait atoi dessus pour l'icône), le
 // flag identifié est à +0x5c. (node+0xc N'EST PAS l'id fiable pour la liste vue.)
 constexpr int kInfoIdStr = 0x2c;  // std::string id (SSO ; heap si cap>0xf)
-constexpr int kInfoIdCap = 0x40;  // capacité de la std::string id (= +0x2c+0x14)
 constexpr int kInfoIdent = 0x5c;  // byte : item identifié ?
 
 // Le nom d'affichage complet (raffinement / [slots] / cartes / enchant) passe par
@@ -132,43 +134,13 @@ void OpenItemDesc(int index, int mx, int my) {
 constexpr int       kCmdWithdraw = 0x38;         // storage -> body/inventaire
 
 // Défini plus bas, avec les autres émetteurs.
-bool VendingComposing();
-
 void WithdrawItem(int index, int amount) {
-  if (amount <= 0 || VendingComposing()) return;
+  if (amount <= 0 || viewers::VendingComposing()) return;
   __try {
     void* disp = *reinterpret_cast<void**>(rag::kActiveModePtr);
     if (disp)
       rag::ModeSendMsg(disp, kCmdWithdraw, index, amount, 0, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
-}
-
-// ── Cibles d'un glisser PARTANT du viewer ───────────────────────────────────
-// Uniquement les rects des VIEWERS ImGui : « Interface moderne » est un groupe
-// tout-ou-rien (SetModernInterface), donc si ce viewer-ci est actif, ceux de
-// l'inventaire et du cart le sont aussi et leurs fenêtres natives sont masquées
-// — un rect natif ne peut plus être une cible ici.
-bool MouseOverInventory(float x, float y) {
-  auto* inventory = Bourgeon::Instance().inventory_viewer();
-  return inventory &&
-         inventory->PointOverViewer(static_cast<int>(x), static_cast<int>(y));
-}
-
-constexpr int kWinCart          = 0x28;   // UICartWnd
-bool MouseOverCart(float x, float y) {
-  auto* cart = Bourgeon::Instance().cart_viewer();
-  return cart && cart->PointOverViewer(static_cast<int>(x), static_cast<int>(y));
-}
-
-// Le cart est-il OUVERT (natif classique OU remplacé par son viewer ImGui) ?
-// ⚠ Ne teste PAS la visibilité, contrairement aux hit-tests ci-dessus : en
-// « Interface moderne » la native est cachée alors que le cart est bel et bien
-// ouvert. Sert à proposer « Vers le cart » dans le menu contextuel.
-bool CartOpen() {
-  __try {
-    auto* cart = reinterpret_cast<uint8_t*>(uiwnd::FindWindow(kWinCart));
-    return cart && *reinterpret_cast<uintptr_t*>(cart) == uiwnd::kCartWndVTable;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
 // ── Onglets de catégorie (groupes de types d'item, repris du filtre natif) ──
@@ -231,15 +203,6 @@ bool   g_tabs_tried = false;
 unsigned g_tab_epoch = 0;
 
 
-// `<préfixe basic_interface\> + <file>`, préfixe pris sur la string exe du btnbar.
-void BasicInterfacePath(const char* file, char* out, size_t out_sz) {
-  const char* base = reinterpret_cast<const char*>(ro::uipath::kUiRootSample);
-  const char* slash = std::strrchr(base, '\\');
-  const size_t n = slash ? static_cast<size_t>(slash - base + 1) : 0;
-  if (n && n < out_sz) std::memcpy(out, base, n);
-  std::snprintf(out + n, out_sz - n, "%s", file);
-}
-
 // Charge (une fois) les onglets images. Les textures sont en D3DPOOL_DEFAULT :
 // mortes après un reset de device -> rechargées quand l'epoch change.
 void EnsureTabTextures() {
@@ -257,25 +220,25 @@ void EnsureTabTextures() {
     const char* base = kStgCats[c].img;
     if (!base) continue;
     std::snprintf(nm, sizeof(nm), "%s1.bmp", base);
-    BasicInterfacePath(nm, path, sizeof(path)); g_tab[c][0] = ro::TextureFromGameFile(path);
+    ro::grid::BasicInterfacePath(nm, path, sizeof(path)); g_tab[c][0] = ro::TextureFromGameFile(path);
     std::snprintf(nm, sizeof(nm), "%s2.bmp", base);
-    BasicInterfacePath(nm, path, sizeof(path)); g_tab[c][1] = ro::TextureFromGameFile(path);
+    ro::grid::BasicInterfacePath(nm, path, sizeof(path)); g_tab[c][1] = ro::TextureFromGameFile(path);
     // Jeu HORIZONTAL : mêmes noms avec un « h » après « tab » (tab_all -> tabh_all).
     char hbase[40];
     std::snprintf(hbase, sizeof(hbase), "tabh%s", base + 3);  // saute "tab"
     std::snprintf(nm, sizeof(nm), "%s1.bmp", hbase);
-    BasicInterfacePath(nm, path, sizeof(path)); g_tabh[c][0] = ro::TextureFromGameFile(path);
+    ro::grid::BasicInterfacePath(nm, path, sizeof(path)); g_tabh[c][0] = ro::TextureFromGameFile(path);
     std::snprintf(nm, sizeof(nm), "%s2.bmp", hbase);
-    BasicInterfacePath(nm, path, sizeof(path)); g_tabh[c][1] = ro::TextureFromGameFile(path);
+    ro::grid::BasicInterfacePath(nm, path, sizeof(path)); g_tabh[c][1] = ro::TextureFromGameFile(path);
   }
   // Cadres des onglets de storage (un seul jeu, indépendant des catégories).
-  BasicInterfacePath("tab_sto1.bmp", path, sizeof(path));
+  ro::grid::BasicInterfacePath("tab_sto1.bmp", path, sizeof(path));
   g_stg_tab[0] = ro::TextureFromGameFile(path);
-  BasicInterfacePath("tab_sto2.bmp", path, sizeof(path));
+  ro::grid::BasicInterfacePath("tab_sto2.bmp", path, sizeof(path));
   g_stg_tab[1] = ro::TextureFromGameFile(path);
-  BasicInterfacePath("tabh_sto1.bmp", path, sizeof(path));
+  ro::grid::BasicInterfacePath("tabh_sto1.bmp", path, sizeof(path));
   g_stg_tabh[0] = ro::TextureFromGameFile(path);
-  BasicInterfacePath("tabh_sto2.bmp", path, sizeof(path));
+  ro::grid::BasicInterfacePath("tabh_sto2.bmp", path, sizeof(path));
   g_stg_tabh[1] = ro::TextureFromGameFile(path);
 }
 
@@ -482,17 +445,6 @@ constexpr uint16_t  kOpCloseStorage = 0x0193;
 // On envoie items_[idx].index (= index storage CLIENT, le serveur fait -1). PAS remappé.
 constexpr uint16_t  kOpStorageToCart = 0x0128;
 
-// Composition d'un shop en cours (cf. VendingWindow::IsComposing).
-//   - cart <-> storage : REFUSÉ par le serveur (storage_storageaddfromcart /
-//     storage_storagegettocart testent sd->state.prevend).
-//   - inventaire <-> storage : le serveur l'AUTORISE (clif_parse_MoveToKafra ne
-//     teste que pc_istrading). On le fige quand même côté client pour que rien ne
-//     bouge sous une composition en cours ; un bandeau le dit dans la fenêtre.
-bool VendingComposing() {
-  auto* vending = Bourgeon::Instance().vending_window();
-  return vending && vending->IsComposing();
-}
-
 // Demande au serveur de fermer le storage (CZ_CloseKafra, 2 octets = juste l'opcode).
 // Le serveur ferme la session et répond 0x00f8, qui lève `open_` (cf. CloseLocal).
 void SendCloseStorage() {
@@ -503,7 +455,7 @@ void SendCloseStorage() {
 // storage -> cart : envoie un item du storage vers le cart. index = index
 // storage CLIENT (items_[idx].index) ; le serveur applique server_storage_index (-1).
 void SendStorageToCart(int index, int amount) {
-  if (amount <= 0 || VendingComposing()) return;
+  if (amount <= 0 || viewers::VendingComposing()) return;
   uint8_t pkt[8];
   *reinterpret_cast<uint16_t*>(pkt + 0) = kOpStorageToCart;
   *reinterpret_cast<uint16_t*>(pkt + 2) = static_cast<uint16_t>(index);
@@ -831,10 +783,7 @@ void StorageWindow::Extract() {
       Item& it = items_[item_count_];
       uint8_t* info = node + kNodeInfo;  // node+8 = ItemSkillInfo
       // id : lu de la std::string à info+0x2c (là où le jeu le lit pour l'icône).
-      const uint32_t idcap = *reinterpret_cast<uint32_t*>(info + kInfoIdCap);
-      const char* ids = (idcap > 0xf)
-                            ? *reinterpret_cast<char**>(info + kInfoIdStr)
-                            : reinterpret_cast<const char*>(info + kInfoIdStr);
+      const char* ids = rag::clientstr::Data(info + kInfoIdStr);
       it.id = ids ? static_cast<uint32_t>(atoi(ids)) : 0;
       it.identified = *reinterpret_cast<uint8_t*>(info + kInfoIdent);
       it.amount = *reinterpret_cast<int*>(node + kNodeAmt);
@@ -1169,7 +1118,7 @@ void StorageWindow::OnRenderUI() {
   // fenêtre sont bloqués (cf. VendingComposing). Les émetteurs refusent déjà,
   // mais un refus muet passerait pour un bug — on le dit une fois, en clair,
   // plutôt que de griser une trentaine de cases et de cibles de glisser.
-  if (VendingComposing())
+  if (viewers::VendingComposing())
     ImGui::TextColored(ImVec4(0.85f, 0.15f, 0.15f, 1.0f),
                        i18n::Tr("Shop en composition : les transferts sont figés."));
 
@@ -2230,7 +2179,7 @@ void StorageWindow::OnRenderUI() {
         // Cart ouvert : même offre que pour l'inventaire. Le serveur AUTORISE
         // storage <-> cart pendant que le storage est ouvert (CZ 0x0128/0x0129,
         // hors pc_cant_act2) — contrairement à inventaire <-> cart.
-        if (CartOpen()) {
+        if (viewers::CartOpen()) {
           ImGui::Separator();
           if (ImGui::MenuItem(i18n::Tr("Vers le cart (1)"))) SendStorageToCart(index, 1);
           if (amt > 1) {
@@ -2377,8 +2326,8 @@ void StorageWindow::OnRenderUI() {
         if (over_self) {
           // rien
         }
-        else if (MouseOverInventory(drag_mx_, drag_my_)) action = kPendStoToInv;
-        else if (MouseOverCart(drag_mx_, drag_my_))      action = kPendStoToCart;
+        else if (viewers::MouseOverInventory(drag_mx_, drag_my_)) action = kPendStoToInv;
+        else if (viewers::MouseOverCart(drag_mx_, drag_my_))      action = kPendStoToCart;
       }
       if (action != -1) {
         pend_id_ = drag_index_;

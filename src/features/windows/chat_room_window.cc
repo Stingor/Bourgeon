@@ -15,6 +15,7 @@
 #include "ui/ro_imgui.h"         // skin RO (BeginRoWindow / RoButton / InputTextCp949)
 #include "ui/ro_widgets.h"       // enveloppes mui:: (WheelSliderInt, HelpMarker)
 #include "utils/i18n.h"
+#include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 
 using namespace mui;
 
@@ -213,14 +214,7 @@ constexpr int kModeRoomLimitOff  = 0x400;  // int
 // Lit une std::string MSVC (SSO 15, sinon pointeur) dans un tampon POD.
 void ReadStdStringPod(const uint8_t* str, char* out, size_t out_size) {
   out[0] = 0;
-  const uint32_t cap  = *reinterpret_cast<const uint32_t*>(str + 0x14);
-  const uint32_t size = *reinterpret_cast<const uint32_t*>(str + 0x10);
-  const char* data = (cap > 15) ? *reinterpret_cast<const char* const*>(str)
-                                : reinterpret_cast<const char*>(str);
-  size_t n = 0;
-  if (data)
-    for (; n + 1 < out_size && n < size; ++n) out[n] = data[n];
-  out[n] = 0;
+  rag::clientstr::CopyTruncating(str, out, static_cast<int>(out_size));
 }
 
 // Le bloc, en une lecture SEH. POD only (règle C2712).

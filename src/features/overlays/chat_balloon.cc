@@ -69,10 +69,9 @@ inline uint32_t KeyForActor(void* actor, uint32_t aid) {
   return (aid != 0) ? aid : static_cast<uint32_t>(reinterpret_cast<uintptr_t>(actor));
 }
 
-template <typename T>
-inline T Read(const void* base, int off) {
-  return *reinterpret_cast<const T*>(reinterpret_cast<const uint8_t*>(base) + off);
-}
+// Un champ à un offset : la lecture est celle de tout le monde (globals.h),
+// et le `using` garde les points d'appel de ce fichier tels quels.
+using rag::Read;
 
 void* g_tramp_settext = nullptr;
 void* g_tramp_paint   = nullptr;

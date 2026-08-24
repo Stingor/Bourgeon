@@ -32,6 +32,7 @@
 #include "utils/log_console.h"
 #include "utils/i18n.h"
 #include "ragnarok/user_hotkey.h"  // userhotkey::kGetHotKeyAddr
+#include "ui/ro_widgets.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -798,25 +799,6 @@ void ShowSlotTooltip(int region, int slot) {
 bool g_sb_bilinear = false;
 void SbApplyFilter(const ImDrawList*, const ImDrawCmd*) { Overlay_SetTextureFilter(g_sb_bilinear); }
 
-// Sélecteur de couleur = même pattern que le fond du chat (swatch -> popup ColorPicker4).
-// Renvoie true si la couleur a changé (pour marquer la config à persister).
-bool ColorSwatch(const char* label, float col[4]) {
-  bool changed = false;
-  ImGui::PushID(label);
-  if (ImGui::ColorButton("##sw", ImVec4(col[0], col[1], col[2], col[3]),
-                         ImGuiColorEditFlags_AlphaPreview, ImVec2(20, 20)))
-    ImGui::OpenPopup("pick");
-  ImGui::SameLine();
-  ImGui::TextUnformatted(label);
-  if (ImGui::BeginPopup("pick")) {
-    changed = ImGui::ColorPicker4("##p", col,
-                        ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_NoSidePreview);
-    ImGui::EndPopup();
-  }
-  ImGui::PopID();
-  return changed;
-}
-
 }  // namespace
 
 SkillBar::SkillBar() {
@@ -1095,15 +1077,15 @@ void SkillBar::DrawSettings() {
   }
 
   SeparatorText(i18n::Tr("Couleurs"));
-  changed |= ColorSwatch(i18n::Tr("Fond du cadre"), col_frame_);
-  changed |= ColorSwatch(i18n::Tr("Fond objet"), col_item_);
-  changed |= ColorSwatch(i18n::Tr("Fond skill"), col_skill_);
-  changed |= ColorSwatch(i18n::Tr("Fond vide"), col_empty_);
-  changed |= ColorSwatch(i18n::Tr("Bordure"), col_border_);
-  changed |= ColorSwatch(i18n::Tr("Bordure survol"), col_borderhi_);
-  changed |= ColorSwatch(i18n::Tr("Texte touches"), col_keytext_);
-  changed |= ColorSwatch(i18n::Tr("Texte nombre (count/lv)"), col_count_);
-  changed |= ColorSwatch(i18n::Tr("Contour texte (ombre)"), col_textout_);
+  changed |= mui::RoColorSwatch(i18n::Tr("Fond du cadre"), col_frame_);
+  changed |= mui::RoColorSwatch(i18n::Tr("Fond objet"), col_item_);
+  changed |= mui::RoColorSwatch(i18n::Tr("Fond skill"), col_skill_);
+  changed |= mui::RoColorSwatch(i18n::Tr("Fond vide"), col_empty_);
+  changed |= mui::RoColorSwatch(i18n::Tr("Bordure"), col_border_);
+  changed |= mui::RoColorSwatch(i18n::Tr("Bordure survol"), col_borderhi_);
+  changed |= mui::RoColorSwatch(i18n::Tr("Texte touches"), col_keytext_);
+  changed |= mui::RoColorSwatch(i18n::Tr("Texte nombre (count/lv)"), col_count_);
+  changed |= mui::RoColorSwatch(i18n::Tr("Contour texte (ombre)"), col_textout_);
 
   SeparatorText(i18n::Tr("Aide : souris"));
   TextWrapped(

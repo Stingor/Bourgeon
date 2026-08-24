@@ -158,6 +158,33 @@ inline void* ActiveModeIfReady() {
       static_cast<int>(kModeMgrAddr));
 }
 
+// Le même, sous SEH. Ces trois lignes étaient recopiées dans HUIT fichiers sous
+// trois noms concurrents — ActiveGameMode(), Dispatcher(), GetGameMode() — et un
+// neuvième portait le même nom en appelant `ActiveMode()`, l'autre porte : à
+// lecture rapide rien ne distinguait les neuf.
+inline void* ActiveModeSafe() {
+  __try {
+    return ActiveModeIfReady();
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
+}
+
+// Un `int` à une adresse ABSOLUE, sous SEH. Six fichiers portaient ces trois
+// lignes, sous quatre noms — ReadInt, ReadIntSEH, ReadCount, ReadOptSEH.
+inline int ReadInt(uintptr_t addr) {
+  __try {
+    return *reinterpret_cast<const int*>(addr);
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+}
+
+// Un champ à un offset d'octets, SANS protection : réservé aux lectures déjà
+// prises dans le `__try` de l'appelant. Sept fichiers en portaient leur propre
+// copie, tous sous le nom `Read` — d'où le `using rag::Read;` qui les remplace,
+// et qui laisse les deux cents points d'appel intacts.
+template <typename T>
+inline T Read(const void* base, int off) {
+  return *reinterpret_cast<const T*>(reinterpret_cast<const uint8_t*>(base) + off);
+}
+
 // ── CMode::SendMsg — le dispatcher de commandes du mode de zone ──────────────
 // C'est par lui que passent presque toutes nos actions rejouées : utiliser une
 // compétence, retirer du chariot, monter une stat, basculer la musique…
@@ -272,6 +299,14 @@ constexpr uintptr_t kOwnCharNameAddr  = 0x01602568;  // char[] NU, pas une std::
 constexpr uintptr_t kOwnJobIdAddr     = 0x015fb9c8;  // g_Own_JobId (le job RÉEL)
 
 inline uint32_t OwnAccountId() { return *reinterpret_cast<uint32_t*>(kOwnAccountIdAddr); }
+// Le même, sous SEH : cinq fichiers le portaient, sous trois noms (OwnAid,
+// OwnGid, OwnAidSEH). C'est le GID du joueur autant que son AID — le client
+// n'en fait qu'un (cf. la fiche « durée de vie d'un état »).
+inline uint32_t OwnAccountIdSafe() {
+  __try {
+    return OwnAccountId();
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+}
 inline uint32_t OwnCharId()    { return *reinterpret_cast<uint32_t*>(kOwnCharIdAddr); }
 inline int      OwnJobId()     { return *reinterpret_cast<int*>(kOwnJobIdAddr); }
 

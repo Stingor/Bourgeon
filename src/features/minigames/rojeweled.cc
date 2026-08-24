@@ -86,16 +86,6 @@ void LoadMon(Mon& m) {
 // Honours the player's SFX setting internally. Play centred (0,0,0).
 using PlaySoundFn = void(__fastcall*)(void*, void*, const char*, float, float,
                                       float, int, int, float, int);
-void PlayRoSound(const char* name) {
-  __try {
-    void* mgr = audio::SoundMgr();
-    if (mgr)
-      reinterpret_cast<PlaySoundFn>(audio::kPlay3DAddr)(
-          mgr, nullptr, name, 0.0f, 0.0f, 0.0f, 250, 40, 1.0f, 0);
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-  }
-}
-
 // ── Match-3 game state ────────────────────────────────────────────────────────
 // A short-lived clear "explosion" spawned at a matched cell (rendered as an
 // expanding fading ring + sparks in ImGui, in the monster's colour).
@@ -234,7 +224,7 @@ int ResolveCascades() {
     ++combo;
     g.score += m * kBaseScore * combo;  // chained cascades score more
     total += m;
-    PlayRoSound("_stone_explosion.wav");  // one boom per cascade step
+    audio::Play3D("_stone_explosion.wav");  // one boom per cascade step
     // clear (spawn an explosion in each cleared monster's colour)
     for (int r = 0; r < kN; ++r)
       for (int c = 0; c < kN; ++c)

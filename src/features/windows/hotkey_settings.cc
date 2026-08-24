@@ -25,6 +25,7 @@
 #include "utils/i18n.h"
 #include "utils/log_console.h"
 #include "ragnarok/globals.h"  // rag::kBattleModeFlagAddr / BattleModeOn
+#include "utils/text.h"  // text::ToLowerAscii / ContainsNoCase
 
 namespace {
 
@@ -134,23 +135,6 @@ int ModifierVk(bool ctrl, bool alt, bool shift) {
 
 int ModifierCount(bool ctrl, bool alt, bool shift) {
   return (ctrl ? 1 : 0) + (alt ? 1 : 0) + (shift ? 1 : 0);
-}
-
-// Recherche insensible à la casse, sur l'ASCII seulement — suffisant : ces deux
-// textes viennent du client et sont en pratique latins.
-bool Contains(const char* haystack, const char* needle) {
-  if (!needle || !*needle) return true;
-  if (!haystack || !*haystack) return false;
-  const size_t n = std::strlen(needle);
-  for (const char* p = haystack; *p; ++p) {
-    size_t i = 0;
-    while (i < n && p[i] &&
-           std::tolower(static_cast<unsigned char>(p[i])) ==
-               std::tolower(static_cast<unsigned char>(needle[i])))
-      ++i;
-    if (i == n) return true;
-  }
-  return false;
 }
 
 }  // namespace
@@ -968,9 +952,9 @@ void HotkeySettings::OnRenderUI() {
     for (int i = 0; i < static_cast<int>(rows_.size()); ++i) {
       const Row& entry = rows_[i];
       const userhotkey::Binding& binding = entry.binding;
-      if (!Contains(binding.label, filter_) &&
-          !Contains(binding.key_name, filter_) &&
-          !Contains(entry.fallback.key_name, filter_))
+      if (!text::ContainsNoCase(binding.label, filter_) &&
+          !text::ContainsNoCase(binding.key_name, filter_) &&
+          !text::ContainsNoCase(entry.fallback.key_name, filter_))
         continue;
       ++shown;
 

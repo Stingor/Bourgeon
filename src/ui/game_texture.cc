@@ -1,5 +1,8 @@
 #include "ui/game_texture.h"
 
+#include <cstdio>
+#include <cstring>
+
 #include <Windows.h>
 
 #include <string>
@@ -107,5 +110,18 @@ void InvalidateGameTextures() {
   }
   cache.clear();
 }
+
+namespace uipath {
+
+void WithFileName(uintptr_t exe_path, const char* file, char* out, size_t out_size) {
+  if (!out || out_size == 0) return;
+  const char* base  = reinterpret_cast<const char*>(exe_path);
+  const char* slash = std::strrchr(base, '\\');
+  const size_t n = slash ? static_cast<size_t>(slash - base + 1) : 0;
+  if (n && n < out_size) std::memcpy(out, base, n);
+  std::snprintf(out + n, out_size - n, "%s", file);
+}
+
+}  // namespace uipath
 
 }  // namespace ro

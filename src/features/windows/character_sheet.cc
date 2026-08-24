@@ -51,6 +51,7 @@
 #include "utils/tinf_inflate.h"  // inflate zlib pour les emblèmes de guilde (.ebm)
 #include "utils/log_console.h"   // LogDiag : échecs de chargement de l'arbre de guilde
 #include "utils/i18n.h"
+#include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 
 //  Constantes RE (client 20250716, base 0x400000 ; cf. project_character_sheet)
 namespace {
@@ -162,11 +163,9 @@ constexpr int kAnimCombat = 4;  // en combat, on limite à 4 directions cardinal
 // (ex. "MC_PUSHCART"), pas par l'id numérique. Lua_GetSkillIdName(id) -> idname, puis
 // "유저인터페이스\item\<idname>.bmp" (source native, indép. de l'appris ; cf. skill_bar).
 
-int ReadInt(uintptr_t addr) {
-  __try { return *reinterpret_cast<const int*>(addr); }
-  __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
-}
-
+// La lecture gardée d'un int : celle de globals.h. Le `using` laisse les
+// points d'appel de ce fichier tels quels.
+using rag::ReadInt;
 //  Lecture in-place d'un slot equipe (SEH, POD)
 // ⚠ `viewId` et `location` sont typés à leur largeur SÉMANTIQUE, pas à celle du
 // champ natif : un viewID tient sur 16 bits, `location` est un masque EQP_* et
@@ -196,9 +195,7 @@ bool ReadEquipSlot(int slot, bool costume, EquipItem* out) {
     // 16 bits SUFFISENT : le champ natif en fait 4, mais tout ce qui consomme un
     // viewID le tronque à 16 — autant le dire ici. Little-endian : mêmes bits.
     out->viewId   = *reinterpret_cast<const uint16_t*>(e + kOffEquipView);
-    const uint32_t cap = *reinterpret_cast<const uint32_t*>(e + kOffEquipResCap);
-    const char* rn = (cap > 15) ? *reinterpret_cast<const char* const*>(e + kOffEquipResname)
-                                : reinterpret_cast<const char*>(e + kOffEquipResname);
+    const char* rn = rag::clientstr::Data(e + kOffEquipResname);
     out->nameid = (rn && rn[0]) ? static_cast<uint32_t>(std::atoi(rn)) : 0;
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
@@ -236,9 +233,7 @@ bool ReadEquippedAmmo(AmmoItem* out) {
         out->amount   = *reinterpret_cast<const int*>(info + kOffEquipAmount);
         out->location = *reinterpret_cast<const uint32_t*>(info + kOffEquipLocation);
         out->viewId   = *reinterpret_cast<const uint16_t*>(info + kOffEquipView);
-        const uint32_t cap = *reinterpret_cast<const uint32_t*>(info + kOffEquipResCap);
-        const char* rn = (cap > 15) ? *reinterpret_cast<const char* const*>(info + kOffEquipResname)
-                                    : reinterpret_cast<const char*>(info + kOffEquipResname);
+        const char* rn = rag::clientstr::Data(info + kOffEquipResname);
         out->nameid = (rn && rn[0]) ? static_cast<uint32_t>(std::atoi(rn)) : 0;
         return out->nameid != 0;
       }
@@ -315,9 +310,7 @@ bool ReadEquipLite(int slot, InvItemLite* out, bool costume = false) {
     out->grade    = *reinterpret_cast<const short*>(e + kOffEquipGrade);
     for (int c = 0; c < 4; ++c)
       out->cards[c] = *reinterpret_cast<const uint32_t*>(e + kOffEquipCards + c * 4);
-    const uint32_t cap = *reinterpret_cast<const uint32_t*>(e + kOffEquipResCap);
-    const char* rn = (cap > 15) ? *reinterpret_cast<const char* const*>(e + kOffEquipResname)
-                                : reinterpret_cast<const char*>(e + kOffEquipResname);
+    const char* rn = rag::clientstr::Data(e + kOffEquipResname);
     out->nameid = (rn && rn[0]) ? static_cast<uint32_t>(std::atoi(rn)) : 0;
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
@@ -510,20 +503,11 @@ constexpr char     kCmdBreakGuild[]   = "@breakguild";
 
 constexpr int kMaxGuildMembers = 128;  // MAX_GUILD serveur = 76 ; marge confortable
 
-// Copie une std::string MSVC (SSO/heap) de `addr` vers un buffer C (null-terminé). SEH.
+// Adaptateur d'ADRESSE, et rien de plus : les globales de guilde sont désignées
+// par des `uintptr_t` nus dans tout ce fichier, là où la lecture partagée prend
+// un pointeur. Le décodage de la std::string, lui, n'est plus ici.
 void ReadStdStringSEH(uintptr_t addr, char* out, int outCap) {
-  out[0] = '\0';
-  __try {
-    const uint8_t* s = reinterpret_cast<const uint8_t*>(addr);
-    const uint32_t cap = *reinterpret_cast<const uint32_t*>(s + 0x14);  // capacité SSO
-    const char* p = (cap > 15) ? *reinterpret_cast<const char* const*>(s)
-                               : reinterpret_cast<const char*>(s);
-    if (p) {
-      int i = 0;
-      for (; i < outCap - 1 && p[i]; ++i) out[i] = p[i];
-      out[i] = '\0';
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
+  rag::clientstr::CopyTruncating(reinterpret_cast<const void*>(addr), out, outCap);
 }
 
 struct GuildInfo {
@@ -1209,10 +1193,7 @@ void GetEmblemPathSafe(int guildId, char* out, int outCap) {
     uint8_t sbuf[0x18];  // std::string non-init (GetEmblemPath l'écrase sans la lire)
     reinterpret_cast<GetEmblemPath_t>(kGetEmblemPath)(
         mgr, reinterpret_cast<void*>(sbuf), reinterpret_cast<void*>(guildId));
-    const uint32_t cap = *reinterpret_cast<const uint32_t*>(sbuf + 0x14);  // capacité SSO
-    const char* p = (cap > 15) ? *reinterpret_cast<char* const*>(sbuf)
-                               : reinterpret_cast<const char*>(sbuf);
-    if (p) { int i = 0; for (; i < outCap - 1 && p[i]; ++i) out[i] = p[i]; out[i] = '\0'; }
+    rag::clientstr::CopyTruncating(sbuf, out, outCap);
   } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
 }
 // Décode un BMP d'emblème (24x24) en texture ImGui. 24-bit et 8-bit palettisé : le
@@ -2142,10 +2123,7 @@ void ResolveTitleSEH(int id, char* out, size_t cap) {
     std::memset(sbuf, 0, sizeof(sbuf));
     reinterpret_cast<TitleGetStr_t>(kTitleGetStr)(
         reinterpret_cast<void*>(rag::kSessionAddr), nullptr, sbuf, id);
-    const uint32_t scap = *reinterpret_cast<const uint32_t*>(sbuf + 0x14);
-    const char* p = (scap > 15) ? *reinterpret_cast<char* const*>(sbuf)
-                                : reinterpret_cast<const char*>(sbuf);
-    if (p) { size_t i = 0; for (; i + 1 < cap && p[i]; ++i) out[i] = p[i]; out[i] = '\0'; }
+    rag::clientstr::CopyTruncating(sbuf, out, static_cast<int>(cap));
     reinterpret_cast<StrDtor_t>(rag::kStdStringDtorAddr)(sbuf, nullptr);
   } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
 }

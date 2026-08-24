@@ -169,17 +169,6 @@ PokeAudio ClassifyActionAudio(const ro::MobSpriteRes& res, unsigned action) {
 using PlaySound3DFn = void(__fastcall*)(void*, void*, const char*, float, float,
                                         float, int, int, float, int);
 
-void PlayRoSound(const char* name) {
-  if (name == nullptr || name[0] == '\0') return;
-  __try {
-    void* mgr = *reinterpret_cast<void**>(audio::kSoundMgrPtr);
-    if (mgr != nullptr)
-      reinterpret_cast<PlaySound3DFn>(audio::kPlay3DAddr)(mgr, nullptr, name, 0.0f,
-                                                    0.0f, 0.0f, 250, 40, 1.0f, 0);
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-  }
-}
-
 // Repli quand le .act ne déclare aucun wav — le cas de la plupart des monstres.
 // C'est le son de COUP du jeu : celui qu'on entend en tapant le monstre.
 constexpr const char* kPokeFallbackWav = "effect\\EF_hit2.wav";
@@ -930,13 +919,13 @@ void MonsterInfoWindow::DrawHeader(MobInfo& mob) {
       if (static_cast<int>(frame) != poke_frame_) {
         poke_frame_ = static_cast<int>(frame);
         if (const char* wav = ro::SpriteFrameSound(sprite_.sprite, action, frame)) {
-          PlayRoSound(wav);
+          audio::Play3D(wav);
         } else if (poke_hit_pending_ &&
                    ro::SpriteFrameEvent(sprite_.sprite, action, frame)) {
           // Action muette mais marquée (« atk ») : le son de coup part sur
           // l'image du contact, une seule fois par chatouille.
           poke_hit_pending_ = false;
-          PlayRoSound(kPokeFallbackWav);
+          audio::Play3D(kPokeFallbackWav);
         }
       }
     } else {
@@ -1188,7 +1177,7 @@ void MonsterInfoWindow::PokeSprite() {
   switch (ClassifyActionAudio(sprite_, action)) {
     case PokeAudio::kFrameWav: break;                          // le dessin s'en charge
     case PokeAudio::kOnMarker: poke_hit_pending_ = true; break;  // à l'image « atk »
-    case PokeAudio::kNow:      PlayRoSound(kPokeFallbackWav); break;
+    case PokeAudio::kNow:      audio::Play3D(kPokeFallbackWav); break;
   }
 }
 

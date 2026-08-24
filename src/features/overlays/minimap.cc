@@ -21,6 +21,7 @@
 #include "utils/hooking/hook_manager.h"
 #include "utils/i18n.h"
 #include "utils/log_console.h"
+#include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -179,16 +180,9 @@ inline void PopRoPopupColors() { ImGui::PopStyleColor(4); }
 // le client ajoute à son nom de fichier de scène ; on la retire à l'usage.
 char g_map_fallback[64] = {};
 
-template <typename T>
-inline T Read(const void* base, int off) {
-  return *reinterpret_cast<const T*>(reinterpret_cast<const uint8_t*>(base) + off);
-}
-
-void* ActiveGameMode() {
-  __try {
-    return rag::ActiveModeIfReady();
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
-}
+// Un champ à un offset : la lecture est celle de tout le monde (globals.h),
+// et le `using` garde les points d'appel de ce fichier tels quels.
+using rag::Read;
 
 // Nom LISIBLE d'un lieu — « PvP : Room Copass » pour `pvp_n_3-5`. C'est le
 // premier `%s` du titre de la grande carte native.
@@ -375,31 +369,14 @@ constexpr int kTownRec_Bitmap = 0x24;  // std::string : chemin CP949 de l'icône
 // std::string de MSVC (32 bits) : seize octets qui portent SOIT le texte court,
 // SOIT un pointeur, puis la taille et la capacité. C'est la CAPACITÉ qui
 // tranche — au-delà de 15, le texte est ailleurs.
-constexpr int kStr_Size = 0x10;
-constexpr int kStr_Cap  = 0x14;
-constexpr uint32_t kStrSso = 16;
-
 // Copie une std::string du client. LECTURE SEULE : on ne touche ni sa taille ni
 // sa capacité, donc aucun risque côté allocateur.
 bool ReadClientString(const void* field, char* out, int cap) {
-  out[0] = '\0';
-  __try {
-    const uint8_t* s = reinterpret_cast<const uint8_t*>(field);
-    const uint32_t len = *reinterpret_cast<const uint32_t*>(s + kStr_Size);
-    const uint32_t res = *reinterpret_cast<const uint32_t*>(s + kStr_Cap);
-    const char* src = (res >= kStrSso)
-                          ? *reinterpret_cast<const char* const*>(s)
-                          : reinterpret_cast<const char*>(s);
-    if (!src) return false;
-    uint32_t n = len;
-    if (n > static_cast<uint32_t>(cap - 1)) n = cap - 1;
-    for (uint32_t i = 0; i < n; ++i) out[i] = src[i];
-    out[n] = '\0';
-    return n > 0;
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-    out[0] = '\0';
-    return false;
-  }
+  rag::clientstr::CopyTruncating(field, out, cap);
+  // Le contrat d'origine était « j'ai copié au moins un caractère ». Un tampon
+  // resté vide dit exactement la même chose, et les trois appelants s'en servent
+  // comme d'un « ai-je quelque chose à lire ? ».
+  return out[0] != '\0';
 }
 
 struct TownIcon {
@@ -518,7 +495,7 @@ int CollectTownIcons(const char* map_name, TownIcon* out, int cap) {
 // autres lecteurs de ce fichier.
 bool ReadBossCell(int* out_x, int* out_y) {
   __try {
-    void* gm = ActiveGameMode();
+    void* gm = rag::ActiveModeSafe();
     if (!gm || Read<uint8_t>(gm, kGm_BossKnown) == 0) return false;
     const int bx = Read<int>(gm, kGm_BossX);
     const int by = Read<int>(gm, kGm_BossY);
@@ -542,7 +519,7 @@ struct Snapshot {
 
 bool ReadSnapshot(Snapshot* out) {
   __try {
-    void* gm = ActiveGameMode();
+    void* gm = rag::ActiveModeSafe();
     if (!gm) return false;
     void* world = Read<void*>(gm, kGm_World);
     if (!world) return false;
@@ -686,18 +663,6 @@ void SizeCbSquare(ImGuiSizeCallbackData* data) {
 inline ImU32 RgbToImU32(int rgb, int alpha = 255) {
   return IM_COL32((rgb >> 16) & 0xff, (rgb >> 8) & 0xff, rgb & 0xff, alpha);
 }
-inline void RgbToF3(int rgb, float* f) {
-  f[0] = ((rgb >> 16) & 0xff) / 255.0f;
-  f[1] = ((rgb >> 8) & 0xff) / 255.0f;
-  f[2] = (rgb & 0xff) / 255.0f;
-}
-inline int F3ToRgb(const float* f) {
-  const int r = static_cast<int>(f[0] * 255.0f + 0.5f);
-  const int g = static_cast<int>(f[1] * 255.0f + 0.5f);
-  const int b = static_cast<int>(f[2] * 255.0f + 0.5f);
-  return (r << 16) | (g << 8) | b;
-}
-
 // ── Détour du dessin natif ───────────────────────────────────────────────────
 
 // Trampoline rendu par le HookManager : l'appel volé, RELOGÉ (`DetourCopyInstruction`
@@ -1218,7 +1183,7 @@ void Minimap::OnRenderUI() {
         // type : `\basic_interface\quest_%d.bmp`.
         if (g_cfg.show_quests) {
           Marker quests[kMaxMarkers];
-          const int nq = CollectTree(ActiveGameMode(), kGm_QuestMap, TreeKind::kQuest,
+          const int nq = CollectTree(rag::ActiveModeSafe(), kGm_QuestMap, TreeKind::kQuest,
                                      quests, kMaxMarkers);
           const float qh = (half * 0.8f < 4.0f) ? 4.0f : half * 0.8f;
           for (int i = 0; i < nq; ++i) {
@@ -1243,7 +1208,7 @@ void Minimap::OnRenderUI() {
         const float mk = (half * 0.5f < 2.0f) ? 2.0f : half * 0.5f;
         if (g_cfg.show_guild) {
           Marker gm_[kMaxMarkers];
-          const int ng = CollectTree(ActiveGameMode(), kGm_GuildMap, TreeKind::kPosColor,
+          const int ng = CollectTree(rag::ActiveModeSafe(), kGm_GuildMap, TreeKind::kPosColor,
                                      gm_, kMaxMarkers);
           for (int i = 0; i < ng; ++i) {
             ImVec2 at;
@@ -1254,7 +1219,7 @@ void Minimap::OnRenderUI() {
         }
         if (g_cfg.show_party) {
           Marker pm[kMaxMarkers];
-          const int np = CollectTree(ActiveGameMode(), kGm_PartyMap, TreeKind::kPosColor,
+          const int np = CollectTree(rag::ActiveModeSafe(), kGm_PartyMap, TreeKind::kPosColor,
                                      pm, kMaxMarkers);
           for (int i = 0; i < np; ++i) {
             ImVec2 at;
@@ -1273,7 +1238,7 @@ void Minimap::OnRenderUI() {
         // différents clignotent donc en décalé, ce qui les distingue.
         if (g_cfg.show_viewpoints) {
           Marker vps[kMaxMarkers];
-          const int nv = CollectTree(ActiveGameMode(), kGm_ViewpointMap,
+          const int nv = CollectTree(rag::ActiveModeSafe(), kGm_ViewpointMap,
                                      TreeKind::kViewpoint, vps, kMaxMarkers);
           const float vh = (half * 0.22f < 1.0f) ? 1.0f : half * 0.22f;
           const unsigned now = GetTickCount();
@@ -1722,9 +1687,9 @@ void Minimap::DrawSettings() {
   // 🔴 QUATRE flottants, pas trois : ColorEdit4WithAlphaBar appelle
   // ImGui::ColorEdit4, qui LIT la composante alpha même si on n'en fait rien.
   float mc[4] = {0.0f, 0.0f, 0.0f, 1.0f};
-  RgbToF3(g_cfg.marker_tint, mc);
+  ro::RgbToF3(g_cfg.marker_tint, mc);
   if (ColorEdit4WithAlphaBar(i18n::Tr("Teinte de la flèche"), mc)) {
-    g_cfg.marker_tint = F3ToRgb(mc);
+    g_cfg.marker_tint = ro::F3ToRgb(mc);
     g_needs_save = true;
   }
   SameLine();

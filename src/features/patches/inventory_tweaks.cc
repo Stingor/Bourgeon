@@ -10,6 +10,7 @@
 #include <cstring>
 
 #include "utils/log_console.h"
+#include "utils/memory_patch.h"  // mem::PatchValue
 
 // ===========================================================================
 // Inventory weight readout + bigger-resize (20250716 client, base 0x400000)
@@ -294,8 +295,6 @@ inline void* TabImg(int i, bool active) {
   return primary ? primary : fallback;
 }
 
-template <typename T> void PatchValue(uintptr_t addr, T value);  // defined below
-
 // Sample colorchip.bmp pixel (x,y) -> game colour 0x00BBGGRR.
 inline unsigned ChipColor(int x, int y) {
   unsigned r = 0, g = 0, b = 0;
@@ -420,10 +419,10 @@ void __fastcall DrawContentHook(void* wnd, void* /*edx*/) {
       s_tabBorder = ChipColor(kBorderChipX, kBorderChipY);
       // window-title text colour (DrawTitleBar, shared by ALL windows): patch the
       // PUSH 0xffffff immediate once from a colorchip chip.
-      PatchValue<uint32_t>(kTitleColorImm, ChipColor(kTitleChipX, kTitleChipY));
+      mem::PatchValue<uint32_t>(kTitleColorImm, ChipColor(kTitleChipX, kTitleChipY));
       // item-quantity white outline (FUN_008711a0, 4 immediates): patch once.
       const unsigned itemCol = ChipColor(kItemChipX, kItemChipY);
-      for (int i = 0; i < 4; ++i) PatchValue<uint32_t>(kItemNumImm[i], itemCol);
+      for (int i = 0; i < 4; ++i) mem::PatchValue<uint32_t>(kItemNumImm[i], itemCol);
       s_haveTabCol = true;
     }
     if (void* tab = Child(wnd, kTabCtrl)) {
@@ -662,24 +661,13 @@ int __fastcall MsgHook(void* self, void* edx, int arg0, int msg, int p2, int p3,
   }
 }
 
-template <typename T>
-void PatchValue(uintptr_t addr, T value) {
-  DWORD old_protect;
-  if (VirtualProtect(reinterpret_cast<void*>(addr), sizeof(T),
-                     PAGE_EXECUTE_READWRITE, &old_protect)) {
-    *reinterpret_cast<T*>(addr) = value;
-    VirtualProtect(reinterpret_cast<void*>(addr), sizeof(T), old_protect, &old_protect);
-    FlushInstructionCache(GetCurrentProcess(), reinterpret_cast<void*>(addr), sizeof(T));
-  }
-}
-
 }  // namespace
 
 InventoryTweaks::InventoryTweaks() {
   // 1) Swap the DrawContent vtable slot (in .data, RW) for the weight readout.
   const uintptr_t cur_slot = *reinterpret_cast<uintptr_t*>(kDrawSlot);
   if (cur_slot == kDrawOrig) {
-    PatchValue<void*>(kDrawSlot, reinterpret_cast<void*>(&DrawContentHook));
+    mem::PatchValue<void*>(kDrawSlot, reinterpret_cast<void*>(&DrawContentHook));
     // LogInfo("[Inventory] DrawContent vtable hook installed (weight readout)");
   } else {
     LogError("[Inventory] vtable slot 0x0103d4b0 = 0x{:x}, expected 0x00946da0; "
@@ -691,7 +679,7 @@ InventoryTweaks::InventoryTweaks() {
   //     switches and map changes. Guarded per-instance via IsInventoryTab.
   const uintptr_t tab_slot = *reinterpret_cast<uintptr_t*>(kTabDrawSlot);
   if (tab_slot == kTabDrawOrig) {
-    PatchValue<void*>(kTabDrawSlot, reinterpret_cast<void*>(&TabDrawContentHook));
+    mem::PatchValue<void*>(kTabDrawSlot, reinterpret_cast<void*>(&TabDrawContentHook));
     // LogInfo("[Inventory] tab DrawContent vtable hook installed (tab images)");
   } else {
     LogError("[Inventory] tab vtable slot 0x{:x} = 0x{:x}, expected 0x{:x}; "
@@ -704,7 +692,7 @@ InventoryTweaks::InventoryTweaks() {
   //     pass straight through. DrawContentHook appends the 5th tab + filters cards.
   const uintptr_t msg_slot = *reinterpret_cast<uintptr_t*>(kMsgSlot);
   if (kEnableCardsFilter && msg_slot == kMsgOrig) {
-    PatchValue<void*>(kMsgSlot, reinterpret_cast<void*>(&MsgHook));
+    mem::PatchValue<void*>(kMsgSlot, reinterpret_cast<void*>(&MsgHook));
     // LogInfo("[Inventory] message-handler vtable hook installed (Cards tab)");
   } else if (kEnableCardsFilter) {
     LogError("[Inventory] msg vtable slot 0x{:x} = 0x{:x}, expected 0x{:x}; "
@@ -718,7 +706,7 @@ InventoryTweaks::InventoryTweaks() {
   if (kEnableCardsFilter) {
     const uint8_t bound = *reinterpret_cast<uint8_t*>(kLayoutTabBoundImm);
     if (bound == 3) {
-      PatchValue<uint8_t>(kLayoutTabBoundImm, 4);
+      mem::PatchValue<uint8_t>(kLayoutTabBoundImm, 4);
       // LogInfo("[Inventory] layout-restore tab bound 3->4 (Cards layout persists)");
     } else {
       LogError("[Inventory] layout bound imm @0x{:x} = {}, expected 3; patch skipped",
@@ -732,7 +720,7 @@ InventoryTweaks::InventoryTweaks() {
     //     on Card favorites the item and dropping on Fav does nothing.
     const uint8_t favSlot = *reinterpret_cast<uint8_t*>(kFavDropSlotImm);
     if (favSlot == 3) {
-      PatchValue<uint8_t>(kFavDropSlotImm, kFavSlot);
+      mem::PatchValue<uint8_t>(kFavDropSlotImm, kFavSlot);
       // LogInfo("[Inventory] drag-drop favorite tab slot 3->{} (Fav moved past Cards)",
               // kFavSlot);
     } else {
@@ -748,8 +736,8 @@ InventoryTweaks::InventoryTweaks() {
   const uint32_t cw = *reinterpret_cast<uint32_t*>(kMaxWidthImm);
   const uint32_t ch = *reinterpret_cast<uint32_t*>(kMaxHeightImm);
   if (cw == kStockMaxW && ch == kStockMaxH) {
-    PatchValue<uint32_t>(kMaxWidthImm, kNewMaxW);
-    PatchValue<uint32_t>(kMaxHeightImm, kNewMaxH);
+    mem::PatchValue<uint32_t>(kMaxWidthImm, kNewMaxW);
+    mem::PatchValue<uint32_t>(kMaxHeightImm, kNewMaxH);
     // LogInfo("[Inventory] resize max unlocked to {}x{}", kNewMaxW, kNewMaxH);
   } else {
     // LogInfo("[Inventory] resize clamp already non-stock (w=0x{:x} h=0x{:x}); "
@@ -765,8 +753,8 @@ InventoryTweaks::InventoryTweaks() {
   for (uintptr_t a : kRsvNeg)
     if (*reinterpret_cast<uint8_t*>(a) != static_cast<uint8_t>(-kRsvOld)) rsv_ok = false;
   if (rsv_ok) {
-    for (uintptr_t a : kRsvPos) PatchValue<uint8_t>(a, kRsvNew);
-    for (uintptr_t a : kRsvNeg) PatchValue<uint8_t>(a, static_cast<uint8_t>(-kRsvNew));
+    for (uintptr_t a : kRsvPos) mem::PatchValue<uint8_t>(a, kRsvNew);
+    for (uintptr_t a : kRsvNeg) mem::PatchValue<uint8_t>(a, static_cast<uint8_t>(-kRsvNew));
     // LogInfo("[Inventory] bottom reserve enlarged 0x{:x}->0x{:x} (3-line bar)",
             // kRsvOld, kRsvNew);
   } else {

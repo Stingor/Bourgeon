@@ -13,6 +13,8 @@
 #include "ragnarok/item_db.h"
 #include "ragnarok/uiwnd.h"
 #include "ui/ro_imgui.h"
+#include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
+#include "utils/text.h"  // text::Base62Digit
 
 namespace itemcell {
 namespace {
@@ -70,7 +72,6 @@ constexpr int kNodeNext  = 0x00;
 constexpr int kNodeInfo  = 0x08;
 constexpr int kInfoIndex = 0x04;  // int : index client (arg des commandes)
 constexpr int kInfoIdStr = 0x2c;  // std::string : l'itemId EN TEXTE (le jeu fait atoi)
-constexpr int kInfoIdCap = 0x40;  // capacité SSO (= +0x2c+0x14) ; >15 => heap
 // int : la QUANTITÉ de la pile (`num_`), l'un des deux seuls champs du layout
 // d'ItemInfo qui soient confirmés en jeu (cf. ragnarok/item_info.h).
 constexpr int kInfoAmount = 0x10;
@@ -217,9 +218,7 @@ bool BuildChatLink(void* info, char* out, size_t out_size) {
     const uint8_t* p = static_cast<const uint8_t*>(info);
     const int      type  = *reinterpret_cast<const int*>(p + 0x00);
     const uint32_t equip = *reinterpret_cast<const uint32_t*>(p + 0x08);
-    const uint32_t cap   = *reinterpret_cast<const uint32_t*>(p + 0x40);
-    const char*    ids   = (cap > 0xf) ? *reinterpret_cast<const char* const*>(p + 0x2c)
-                                       : reinterpret_cast<const char*>(p + 0x2c);
+    const char*    ids   = rag::clientstr::Data(p + kInfoIdStr);
     const uint32_t id     = ids ? static_cast<uint32_t>(std::atoi(ids)) : 0u;
     const uint32_t refine = *reinterpret_cast<const uint32_t*>(p + 0x60);
     const uint32_t look   = *reinterpret_cast<const uint32_t*>(p + 0x70);
@@ -298,20 +297,10 @@ bool BuildChatLink(void* info, char* out, size_t out_size) {
 // ── Le lien de chat RELU ─────────────────────────────────────────────────────
 namespace {
 
-// L'inverse de `kB62` : rang du caractère, -1 s'il n'est pas un chiffre base62.
-// C'est aussi le test « fin de champ » du parse, les sept séparateurs du format
-// (`%&')+,-`) étant justement hors alphabet.
-int B62Digit(char c) {
-  if (c >= '0' && c <= '9') return c - '0';
-  if (c >= 'a' && c <= 'z') return c - 'a' + 10;
-  if (c >= 'A' && c <= 'Z') return c - 'A' + 36;
-  return -1;
-}
-
 uint32_t B62Decode(const char* s, size_t len) {
   uint32_t v = 0;
   for (size_t i = 0; i < len; ++i) {
-    const int d = B62Digit(s[i]);
+    const int d = text::Base62Digit(s[i]);
     if (d < 0) break;
     v = v * 62u + static_cast<uint32_t>(d);
   }
@@ -382,7 +371,7 @@ bool ParseChatLink(const char* tag, const char* end, ChatLink* out,
   out->equipable = (*p++ == '1');
 
   size_t n = 0;
-  while (p + n < stop && B62Digit(p[n]) >= 0) ++n;
+  while (p + n < stop && text::Base62Digit(p[n]) >= 0) ++n;
   if (n == 0) return false;
   out->id = B62Decode(p, n);
   p += n;
@@ -394,7 +383,7 @@ bool ParseChatLink(const char* tag, const char* end, ChatLink* out,
   while (p < stop) {
     const char sep = *p++;
     size_t k = 0;
-    while (p + k < stop && B62Digit(p[k]) >= 0) ++k;
+    while (p + k < stop && text::Base62Digit(p[k]) >= 0) ++k;
     const uint32_t v = (k > 0) ? B62Decode(p, k) : 0;
     p += k;
     const int slot = out->opt_count;
@@ -654,9 +643,7 @@ void* FindInfoById(uintptr_t list_head, uint32_t id) {
     uint8_t* node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
     for (int guard = 0; node && node != head && guard < kWalkGuard; ++guard) {
       uint8_t* info = node + kNodeInfo;
-      const uint32_t cap = *reinterpret_cast<uint32_t*>(info + kInfoIdCap);
-      const char* ids = (cap > 0xf) ? *reinterpret_cast<char**>(info + kInfoIdStr)
-                                    : reinterpret_cast<const char*>(info + kInfoIdStr);
+      const char* ids = rag::clientstr::Data(info + kInfoIdStr);
       if (ids && static_cast<uint32_t>(atoi(ids)) == id) return info;
       node = *reinterpret_cast<uint8_t**>(node + kNodeNext);
     }
@@ -677,9 +664,7 @@ int CountById(uintptr_t list_head, uint32_t id) {
     uint8_t* node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
     for (int guard = 0; node && node != head && guard < kWalkGuard; ++guard) {
       uint8_t* info = node + kNodeInfo;
-      const uint32_t cap = *reinterpret_cast<uint32_t*>(info + kInfoIdCap);
-      const char* ids = (cap > 0xf) ? *reinterpret_cast<char**>(info + kInfoIdStr)
-                                    : reinterpret_cast<const char*>(info + kInfoIdStr);
+      const char* ids = rag::clientstr::Data(info + kInfoIdStr);
       if (ids && static_cast<uint32_t>(atoi(ids)) == id)
         total += *reinterpret_cast<int*>(info + kInfoAmount);
       node = *reinterpret_cast<uint8_t**>(node + kNodeNext);

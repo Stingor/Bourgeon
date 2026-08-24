@@ -23,6 +23,8 @@
 #include "ui/ro_imgui.h"    // WireToUtf8
 #include "ui/ro_widgets.h"
 #include "utils/i18n.h"
+#include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
+#include "ragnarok/job_ids.h"  // rag::IsPlayerJob / IsMonsterJob
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -101,9 +103,6 @@ constexpr int kGm_Selection = 0x0f4;  // AID de la DERNIÈRE ENTITÉ CLIQUÉE
 // elles — party = « Lv. X | HP: Y% », guilde = race, rang = élément.
 constexpr int kName_Guild = 0x34;
 constexpr int kName_Rank  = 0x4c;
-constexpr int kField_Size = 0x10;
-constexpr int kField_Cap  = 0x14;
-
 // ── Apparence d'un acteur (CActorSprite / CPlayer) ──────────────────────────
 // Relevée dans `CActorSprite_SetSexAndRebuildLook` (0x00d36280), qui passe TOUS
 // ces champs à vt+76 dans l'ordre, et recoupée avec les constructeurs de couches
@@ -181,7 +180,6 @@ constexpr int kAct_HeadGage    = 0x488;
 constexpr int kGage_Hp    = 0xa0;
 constexpr int kGage_MaxHp = 0xa4;
 
-using FindActorFn = void* (__stdcall*)(uint32_t);
 using GetEntryFn  = void* (__thiscall*)(void*, uint32_t);
 
 // Types d'entité tels qu'ils voyagent dans ZC 0x0F2A (e_bourgeon_target_type).
@@ -243,29 +241,11 @@ void AppendPart(char* dst, size_t dst_size, const char* part) {
   strncat_s(dst, dst_size, part, _TRUNCATE);
 }
 
-template <typename T>
-inline T Read(const void* base, int off) {
-  return *reinterpret_cast<const T*>(reinterpret_cast<const uint8_t*>(base) + off);
-}
-
-// Prédicats de type réimplémentés d'après Job_IsPlayerJobId / Job_IsMonsterId
-// (fonctions feuilles) — mêmes bornes que entity_names.cc. Ils servent au REPLI :
-// dès que le serveur a répondu, c'est `srv_type_` qui tranche.
-inline bool IsPlayerJob(unsigned id) {
-  return (id <= 0x1e) || (id - 0xfa1u <= 0x7ceu);
-}
-inline bool IsMonsterJob(unsigned id) {
-  return (static_cast<int>(id) >= 0x3e9 && static_cast<int>(id) <= 0xf9e) ||
-         (id - 0x4e35u <= 0x2ecau);
-}
+// Un champ à un offset : la lecture est celle de tout le monde (globals.h),
+// et le `using` garde les points d'appel de ce fichier tels quels.
+using rag::Read;
 
 // ⚠ SEH ⇒ AUCUN objet C++ dans les fonctions ci-dessous (C2712).
-
-uint32_t OwnAid() {
-  __try {
-    return rag::OwnAccountId();
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0u; }
-}
 
 // Les options d'état de l'entité (virtuelle `vtable+0x34` de l'acteur).
 unsigned ActorOptions(void* actor) {
@@ -321,22 +301,10 @@ bool ClickEngagesAnAttack(void* game_mode, void* actor) {
   __try {
     if (!game_mode || !actor) return false;
     if (Read<int32_t>(game_mode, kGm_SkillTargetMode) != 0) return false;
-    const uint32_t own = OwnAid();
+    const uint32_t own = rag::OwnAccountIdSafe();
     if (own != 0 && Read<uint32_t>(actor, kAct_OwnerAid) == own) return false;
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
-}
-
-void* ActiveGameMode() {
-  __try {
-    return rag::ActiveModeIfReady();
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
-}
-
-void* FindActor(uint32_t gid) {
-  __try {
-    return reinterpret_cast<FindActorFn>(gamescene::kFindActorByGidAddr)(gid);
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
 }
 
 uint32_t ReadSelection(void* game_mode) {
@@ -398,13 +366,13 @@ int ReadActorInt(void* actor, int off) {
 // elle, peut en garder un (un sort de résurrection le désigne).
 uint32_t ValidSkillTarget(uint32_t gid, int mode) {
   __try {
-    void* actor = FindActor(gid);
+    void* actor = gamescene::FindActorByGid(gid);
     if (!actor) return 0u;
     if (ActorOptions(actor) & kOptionHiddenMask) return 0u;
-    const uint32_t own = OwnAid();
+    const uint32_t own = rag::OwnAccountIdSafe();
     if (own != 0 && gid == own) return 0u;
     if (mode == 2) {  // offensif
-      if (!IsMonsterJob(static_cast<unsigned>(Read<uint32_t>(actor, kAct_BaseJob))))
+      if (!rag::IsMonsterJob(static_cast<unsigned>(Read<uint32_t>(actor, kAct_BaseJob))))
         return 0u;    // un joueur reste au clic manuel (PVP/GVG)
       if (Read<int32_t>(actor, kAct_State) == 3) return 0u;  // cadavre
     }
@@ -415,21 +383,6 @@ uint32_t ValidSkillTarget(uint32_t gid, int mode) {
 // Recopie une `std::string` du client, SSO comprise. Rend false si le champ est
 // vide ou aberrant — le cas normal pour la guilde d'un monstre quand le serveur
 // n'y met rien.
-bool CopyClientString(const void* str, char* out, size_t out_size) {
-  __try {
-    if (!str) return false;
-    const unsigned size = Read<unsigned>(str, kField_Size);
-    const unsigned cap  = Read<unsigned>(str, kField_Cap);
-    if (size == 0 || size >= out_size) return false;
-    const char* src = (cap >= 16) ? Read<const char*>(str, 0)
-                                  : reinterpret_cast<const char*>(str);
-    if (!src) return false;
-    memcpy(out, src, size);
-    out[size] = '\0';
-    return true;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
-}
-
 // Un champ du CNameInfo de ce GID. `field` est l'un des kName_*.
 // L'entrée du dictionnaire de noms pour ce GID. 🔴 `CNameDict_GetEntryOrRequest`
 // n'est PAS un simple accesseur : sur un défaut, il empile le GID dans la file
@@ -458,7 +411,7 @@ void* NameEntry(void* game_mode, uint32_t gid) {
 bool ReadNameField(void* entry, int field, char* out, size_t out_size) {
   if (out_size) out[0] = '\0';
   if (!entry) return false;
-  return CopyClientString(reinterpret_cast<const uint8_t*>(entry) + field, out,
+  return rag::clientstr::Copy(reinterpret_cast<const uint8_t*>(entry) + field, out,
                           out_size);
 }
 
@@ -629,7 +582,7 @@ int CollectScreenTargets(void* gm, CycleCandidate* out, int max) {
       if (!actor) continue;
 
       const unsigned job = Read<uint32_t>(actor, kAct_BaseJob);
-      if (!IsMonsterJob(job)) continue;
+      if (!rag::IsMonsterJob(job)) continue;
       // Vivant, et visible : un cadavre ou un monstre masqué ne se cible pas au
       // clavier (le sort sur cadavre a son propre chemin, cf. NoteSkillTarget).
       if (Read<int32_t>(actor, kAct_State) == 3) continue;
@@ -723,7 +676,7 @@ bool TargetFrame::TargetNearest() {
   // Le mode éteint, le raccourci ne fait rien : c'est le prix d'un interrupteur
   // maître honnête, et le panneau le dit noir sur blanc.
   if (!enabled_) return false;
-  void* gm = ActiveGameMode();
+  void* gm = rag::ActiveModeSafe();
   if (!gm) return false;
 
   CycleCandidate found[kMaxCycleTargets];
@@ -742,7 +695,7 @@ bool TargetFrame::CycleTarget(bool forward) {
   // Le mode éteint, le raccourci ne fait rien : c'est le prix d'un interrupteur
   // maître honnête, et le panneau le dit noir sur blanc.
   if (!enabled_) return false;
-  void* gm = ActiveGameMode();
+  void* gm = rag::ActiveModeSafe();
   if (!gm) return false;
 
   CycleCandidate found[kMaxCycleTargets];
@@ -815,7 +768,7 @@ bool TargetFrame::SuppressClickEngage(void* game_mode, uint32_t target_aid) {
   if (!click_no_attack_ || target_aid == 0) return false;
   // Les offsets sont ceux de CE build : ailleurs, on ne s'interpose pas.
   if (Bourgeon::Instance().client().timestamp() != 20250716) return false;
-  if (!ClickEngagesAnAttack(game_mode, FindActor(target_aid))) return false;
+  if (!ClickEngagesAnAttack(game_mode, gamescene::FindActorByGid(target_aid))) return false;
 
   // ── 🔴 Le double-clic ne se détecte PAS ici, et ne le peut pas ─────────
   // ⏱ Mesuré : un double-clic sur une entité ne produit qu'UN SEUL passage dans
@@ -869,11 +822,11 @@ void TargetFrame::FlushWorldDoubleClick() {
   if (bourgeon.client().timestamp() != 20250716) return;
   if (bourgeon.IsMapLoading() || !bourgeon.IsGameActive()) return;
 
-  void* gm = ActiveGameMode();
+  void* gm = rag::ActiveModeSafe();
   if (!gm) return;
   // La cible est celle que le PREMIER appui vient d'écrire (`+0xF4`).
   const uint32_t sel = ReadSelection(gm);
-  void* actor = sel != 0 ? FindActor(sel) : nullptr;
+  void* actor = sel != 0 ? gamescene::FindActorByGid(sel) : nullptr;
   if (!actor) return;
   // Une compétence armée a son propre chemin, et un compagnon garde ses ordres.
   if (ReadSkillTargetMode(gm) != 0) return;
@@ -914,14 +867,14 @@ bool TargetFrame::WantsSelectionMarker(int* world_x, int* world_z) {
   // Mêmes offsets, même garde qu'au rendu : sur un autre client, on ne touche à
   // rien plutôt que de lire au hasard.
   if (bourgeon.client().timestamp() != 20250716) return false;
-  return ReadMarkerPos(FindActor(gid_), world_x, world_z);
+  return ReadMarkerPos(gamescene::FindActorByGid(gid_), world_x, world_z);
 }
 
 void TargetFrame::NoteSkillTarget(uint32_t gid) {
   if (gid == 0) return;
   // Un sort sur SOI-MÊME ne change pas de cible : sinon le moindre soin
   // personnel effacerait ce que le joueur regardait.
-  const uint32_t own = OwnAid();
+  const uint32_t own = rag::OwnAccountIdSafe();
   if (own != 0 && gid == own) return;
   pending_gesture_gid_ = gid;
 }
@@ -1033,7 +986,7 @@ void TargetFrame::OnRenderUI() {
 }
 
 void TargetFrame::DrawHud() {
-  void* gm = ActiveGameMode();
+  void* gm = rag::ActiveModeSafe();
   if (!gm) { gid_ = 0; return; }
 
   // ── Un GESTE désigne la cible, pas un sondage ─────────────────────────────
@@ -1069,7 +1022,7 @@ void TargetFrame::DrawHud() {
 
   void* actor = nullptr;
   if (gid_ != 0 && !hidden_) {
-    actor = FindActor(gid_);
+    actor = gamescene::FindActorByGid(gid_);
     // 🔴 Trois façons de PERDRE la cible, et toutes les trois lui coûtent son
     // GID : elle quitte le monde du client (mort, ou sortie d'AREA_SIZE via
     // ZC_NOTIFY_VANISH), ou elle se CACHE — Hiding, Cloaking, @hide du staff.
@@ -1100,8 +1053,8 @@ void TargetFrame::DrawHud() {
     if (name_[0] == '\0') RequestTargetName();
 
     const unsigned job = static_cast<unsigned>(ReadActorInt(actor, kAct_BaseJob));
-    is_mob_ = IsMonsterJob(job);
-    is_player_ = !is_mob_ && IsPlayerJob(job);
+    is_mob_ = rag::IsMonsterJob(job);
+    is_player_ = !is_mob_ && rag::IsPlayerJob(job);
     // Dès que le serveur a parlé, c'est lui qui classe : il connaît le type réel,
     // là où la classe affichée ment sur un monstre déguisé ou un NPC de type PC.
     if (srv_valid_) {
@@ -1486,7 +1439,7 @@ void TargetFrame::OnGameFramePulse() {
   // jour, et il ne tourne ni pendant un chargement de carte, ni hors du monde.
   if (bourgeon.IsMapLoading() || !bourgeon.IsGameActive()) return;
 
-  void* gm = ActiveGameMode();
+  void* gm = rag::ActiveModeSafe();
   if (!gm) return;
 
   // ── Clic DROIT : le menu contextuel de l'entité ───────────────────────────
@@ -1494,7 +1447,7 @@ void TargetFrame::OnGameFramePulse() {
   // `EntityContextMenu` qui décide de ce qu'il contient et de ce qu'il grise —
   // on ne lui donne que la cible.
   if (menu != 0) {
-    void* actor = FindActor(menu);
+    void* actor = gamescene::FindActorByGid(menu);
     if (actor) {
       if (auto* ctx = bourgeon.entity_context_menu())
         ctx->OpenForEntity(gm, menu,
@@ -1506,7 +1459,7 @@ void TargetFrame::OnGameFramePulse() {
   if (gid == 0) return;
   // La cible a pu disparaître entre le clic et ce battement (elle est morte, on
   // l'a perdue de vue) : cliquer un GID qui n'existe plus n'a pas de sens.
-  if (!FindActor(gid)) return;
+  if (!gamescene::FindActorByGid(gid)) return;
 
   // Le ciblage est relu MAINTENANT, pas celui de la frame du clic : c'est lui
   // que le natif va consulter. Il n'a de toute façon pas pu changer entre les

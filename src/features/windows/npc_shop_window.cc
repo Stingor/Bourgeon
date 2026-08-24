@@ -27,6 +27,7 @@
 #include "ui/ro_imgui.h"          // BeginRoWindow (skin RO)
 #include "ui/ro_widgets.h"        // mui::IsLastItemRightClicked
 #include "utils/i18n.h"
+#include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 
 // ── Constantes RE (client 20250716, base 0x400000 ; cf. project_npc_shop_re) ──
 namespace {
@@ -74,7 +75,6 @@ constexpr uintptr_t kParamCompareVTable = 0x010323ec;  // UIItemParamChangeDispl
 constexpr int kInfoNum   = 0x10;  // quantité possédée
 constexpr int kInfoCards = 0x1c;  // 4 emplacements de carte (uint32 chacun)
 constexpr int kInfoIdStr = 0x2c;  // std::string « itemId » (MSVC : +0x14 = capacité)
-constexpr int kInfoIdCap = kInfoIdStr + 0x14;
 constexpr int kInfoDamaged = 0x5d;  // octet : équipement CASSÉ (cf. itemcell)
 constexpr int kInfoRefine  = 0x60;  // niveau de raffinage (int)
 constexpr int kInfoFav   = 0x74;  // flag « favori » (onglet Favoris de l'inventaire)
@@ -566,10 +566,7 @@ void NpcShopWindow::ResolveSellItems() {
     uint8_t favorite = 0;
     __try {
       uint8_t* p = reinterpret_cast<uint8_t*>(info);
-      const uint32_t idcap = *reinterpret_cast<uint32_t*>(p + kInfoIdCap);
-      const char* ids = (idcap > 0xf)
-                            ? *reinterpret_cast<char**>(p + kInfoIdStr)
-                            : reinterpret_cast<const char*>(p + kInfoIdStr);
+      const char* ids = rag::clientstr::Data(p + kInfoIdStr);
       s.id     = ids ? static_cast<uint32_t>(atoi(ids)) : 0;
       s.amount = *reinterpret_cast<int*>(p + kInfoNum);
       favorite = *(p + kInfoFav);

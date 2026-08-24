@@ -31,17 +31,6 @@ constexpr int kOffActorState = 0x70;   // acteur -> état (6 = pas de pathfindin
 constexpr int kMsgWalkTo    = 0x11;  // Actor_OnMsg : « marche vers (x,y) »
 constexpr int kMsgWalkToRaw = 0x10;  // idem, variante sans validation client
 
-// Acteur joueur live, ou nullptr hors-jeu (même chaîne que PlayerJump).
-void* GetGameMode() {
-  void* gm = nullptr;
-  __try {
-    gm = rag::ActiveModeIfReady();
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-    gm = nullptr;
-  }
-  return gm;
-}
-
 void* GetOwnActor(void* gm) {
   void* actor = nullptr;
   __try {
@@ -277,7 +266,7 @@ void KeyboardMove::Update() {
     if (pressed(kLeft)  || pressed(kAltLeft))  --screen_x;
   }
 
-  void* gm = GetGameMode();
+  void* gm = rag::ActiveModeSafe();
   void* actor = GetOwnActor(gm);
   if (!gm || !actor) { Reset(); return; }
 

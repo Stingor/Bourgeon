@@ -20,6 +20,7 @@
 #include "ui/ro_imgui.h"
 #include "ui/ro_widgets.h"
 #include "utils/i18n.h"
+#include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -29,7 +30,6 @@ constexpr int       kNodeNext     = 0x00;
 constexpr int       kNodeInfo     = 0x08;
 constexpr int       kNodeAmt      = 0x18;
 constexpr int       kInfoIdStr    = 0x2c;  // std::string : l'id EN TEXTE (le jeu fait atoi)
-constexpr int       kInfoIdCap    = 0x40;  // capacité SSO (+0x2c + 0x14) ; > 15 => heap
 constexpr int       kMaxInvNodes  = 4096;  // garde-fou de parcours
 
 // Résolveur de nom de compétence LOCALISÉ (wrapper Lua natif, cf. skill_bar et
@@ -48,16 +48,11 @@ constexpr ImU32 kColWarn = IM_COL32(166, 102,   0, 255);
 constexpr ImU32 kColText = IM_COL32( 20,  20,  20, 255);
 
 inline ImVec4      V4(ImU32 c)   { return ImGui::ColorConvertU32ToFloat4(c); }
-inline ImTextureID TexId(void* t) { return reinterpret_cast<ImTextureID>(t); }
-
 // L'itemId d'un ItemSkillInfo : une std::string sur laquelle le jeu fait atoi
 // (§4.4 de docs/make_item_list_re.md). Petite chaîne = tampon INTERNE, grande =
 // pointeur ; la capacité tranche.
 uint32_t InfoItemId(const uint8_t* info) {
-  const uint32_t cap = *reinterpret_cast<const uint32_t*>(info + kInfoIdCap);
-  const char* ids = (cap > 0xf)
-                        ? *reinterpret_cast<char* const*>(info + kInfoIdStr)
-                        : reinterpret_cast<const char*>(info + kInfoIdStr);
+  const char* ids = rag::clientstr::Data(info + kInfoIdStr);
   return ids ? static_cast<uint32_t>(std::atoi(ids)) : 0u;
 }
 

@@ -21,10 +21,10 @@
 // groupe, en plus de la fenêtre) — même raisonnement que `uiwnd.h` pour les
 // fenêtres : une adresse recopiée dans deux fichiers finit par diverger.
 //
-// ⚠ DETTE ASSUMÉE, À SOLDER : `features/windows/party_friend_window.cc` porte
-// ENCORE sa propre copie de ces offsets et de ces lecteurs, antérieure à ce
-// fichier. Elle doit migrer ici — tant que ce n'est pas fait, toute correction
-// d'offset est à appliquer AUX DEUX endroits.
+// ✅ Dette soldée le 2026-08-24 : `features/windows/party_friend_window.cc`
+// portait sa propre copie de ces offsets et de ces lecteurs, antérieure à ce
+// fichier — sept fonctions et vingt-deux constantes en double. Elle a migré ici,
+// et la fenêtre comme le HUD de groupe lisent maintenant les mêmes octets.
 namespace rag::social {
 
 // ── L'entrée sociale (0x50 octets) ──────────────────────────────────────────
@@ -34,12 +34,17 @@ struct Entry {
   uint32_t    gid    = 0;   // +0x04 — GID/AID, la clé des acteurs
   uint32_t    id2    = 0;   // +0x08 — second id (char id), clé du getter 0xd5d740
   std::string name;         // +0x0C
-  std::string map;          // +0x24 — nom brut, tel que le serveur l'envoie
+  std::string map;          // +0x24 — nom BRUT : à passer par MapDisplayName
   bool        is_leader = false;  // +0x3C — 🔴 le natif code 0 = CHEF
   bool        offline   = false;  // +0x40
   uint32_t    color  = 0;   // +0x44 — encodage RGB/BGR NON tranché : ne pas rendre
   uint16_t    job    = 0;   // +0x48 — alimente icon_jobs_<job>.bmp
-  uint16_t    level  = 0;   // +0x4A — le « Lv.%d » du natif
+  // +0x4A — le « Lv.%d » du natif. Prouvé au DÉSASSEMBLAGE et non au
+  // décompilateur : le site du « Lv.%d » (0x0070433d) pousse
+  // `movzx eax, word ptr [esi+52h]`, soit nœud+0x52 = data+0x4A. L'argument
+  // passant par un sprintf variadique, le décompilateur ne le montrait pas.
+  uint16_t    level  = 0;
+  // ⚠ Reste non identifié dans la structure native : +0x4C (u32).
 
   // PV. 🔴 `has_hp` FAUX veut dire « hors de portée », pas « mort » : les PV
   // viennent du `CPc` de l'ACTEUR (cf. UpdateMemberHpGauges), donc un membre trop

@@ -21,6 +21,7 @@
 #include "utils/log_console.h"
 #include "utils/i18n.h"
 #include "ragnarok/game_settings.h"  // gamesettings::kFlagGetRawAddr / kFlagSetRawAddr
+#include "utils/memory_patch.h"  // mem::PatchValue
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -148,16 +149,6 @@ void* LoadIconTexture(const char* dir, const char* name, int* out_w, int* out_h)
   // surface in DX7 mode and a D3D9 texture in DX9 mode (else they're invisible
   // in whichever renderer doesn't match the upload path).
   return Overlay_CreateTextureARGB(argb.data(), w, h);
-}
-
-template <typename T>
-void PatchValue(uintptr_t addr, T value) {
-  DWORD old;
-  if (VirtualProtect(reinterpret_cast<void*>(addr), sizeof(T),
-                     PAGE_EXECUTE_READWRITE, &old)) {
-    *reinterpret_cast<T*>(addr) = value;
-    VirtualProtect(reinterpret_cast<void*>(addr), sizeof(T), old, &old);
-  }
 }
 
 // Dossier + préfixe de nom des bitmaps de la grille, sous 유저인터페이스\.
@@ -399,7 +390,7 @@ float MenuIcons::SnapIcon(float v, float ext, int self, bool y_axis) const {
 void MenuIcons::HideNativeGrid(bool hide) {
   if (hide && !grid_hidden_) {
     if (*reinterpret_cast<uintptr_t*>(kGridDrawSlot) == kGridDrawOrig) {
-      PatchValue<void*>(kGridDrawSlot, reinterpret_cast<void*>(&GridClear));
+      mem::PatchValue<void*>(kGridDrawSlot, reinterpret_cast<void*>(&GridClear));
       grid_hidden_ = true;
       // Drop the already-built render nodes now so the native grid disappears
       // immediately (otherwise it lingers until the next relayout / map reload).
@@ -411,7 +402,7 @@ void MenuIcons::HideNativeGrid(bool hide) {
       pending_refresh_ = true;
     }
   } else if (!hide && grid_hidden_) {
-    PatchValue<void*>(kGridDrawSlot, reinterpret_cast<void*>(kGridDrawOrig));
+    mem::PatchValue<void*>(kGridDrawSlot, reinterpret_cast<void*>(kGridDrawOrig));
     grid_hidden_ = false;
     // Symmetric to enable: refresh so the restored native grid re-composites and
     // reappears immediately (otherwise it waits for the next natural relayout).

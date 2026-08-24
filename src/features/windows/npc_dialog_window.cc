@@ -188,8 +188,6 @@ std::string AnsiToUtf8(const std::string& in) {
 // charge le bmp ; colorkey magenta -> alpha ; texture ImGui cachée (jetée au reset device).
 
 
-inline ImTextureID TexId(void* t) { return reinterpret_cast<ImTextureID>(t); }
-
 // ── Métrique du menu ────────────────────────────────────────────────────────
 // Hauteur d'une option. Volontairement plus serrée qu'une ligne ImGui standard :
 // un menu NPC est une liste, pas un formulaire. Une SEULE définition, parce que
@@ -255,12 +253,6 @@ const char* MobRankTag(int rank) {
   if (rank == 2) return "[MVP]";
   if (rank == 1) return "[Boss]";
   return "[Mob]";
-}
-
-std::string RecipeLinkLabel(const std::string& product_name) {
-  char buf[256];
-  std::snprintf(buf, sizeof(buf), i18n::Tr("[Recette: %s]"), product_name.c_str());
-  return buf;
 }
 
 // Recherche d'un motif dans [begin, end) : le corps d'un paquet n'est pas garanti
@@ -799,7 +791,7 @@ const char* NpcDialogWindow::TryOwnTag(const char* p, const char* end, Run* out)
     // le fragment reste alors du texte ordinaire. Un lien qui n'ouvre rien vaut
     // moins que pas de lien — même règle que dans le chat.
     out->target = links::FromRecipe(id, name.c_str());
-    out->text   = RecipeLinkLabel(name);
+    out->text   = links::RecipeLinkLabel(name);
     return after;
   }
   if (TagBody(p, end, "<SETL>", "</SETL>", &b, &be, &after)) {

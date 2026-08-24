@@ -8,6 +8,7 @@
 
 #include "ragnarok/globals.h"  // rag::ActiveModeIfReady
 #include "utils/log_console.h"
+#include "utils/memory_patch.h"  // mem::WriteCode
 
 namespace {
 
@@ -173,19 +174,6 @@ void* __fastcall CopyEntityNameDetour(void* mode, void* edx, void* sortie,
   return resultat;
 }
 
-// Écrit `n` octets de code, en ouvrant la page le temps de l'écriture.
-bool WriteCode(uintptr_t addr, const uint8_t* octets, size_t n) {
-  DWORD ancienne_protection;
-  if (!VirtualProtect(reinterpret_cast<void*>(addr), n, PAGE_EXECUTE_READWRITE,
-                      &ancienne_protection))
-    return false;
-  std::memcpy(reinterpret_cast<void*>(addr), octets, n);
-  VirtualProtect(reinterpret_cast<void*>(addr), n, ancienne_protection,
-                 &ancienne_protection);
-  FlushInstructionCache(GetCurrentProcess(), reinterpret_cast<void*>(addr), n);
-  return true;
-}
-
 // Réécrit un `E8 rel32` après avoir vérifié qu'il vise bien ce qu'on croit. Sur
 // toute autre disposition on s'abstient : écrire cinq octets au hasard dans le
 // chemin des dégâts tuerait le client.
@@ -203,7 +191,7 @@ bool PatcherAppel(uintptr_t site, uintptr_t attendu, uintptr_t detour) {
   uint8_t patch[5] = {0xE8, 0, 0, 0, 0};
   const int32_t nouveau = static_cast<int32_t>(detour - (site + 5));
   std::memcpy(patch + 1, &nouveau, sizeof(nouveau));
-  if (!WriteCode(site, patch, sizeof(patch))) {
+  if (!mem::WriteCode(site, patch, sizeof(patch))) {
     LogDiag("[DamageNameFix] page non ouvrable en 0x{:08X} : site IGNORE", site);
     return false;
   }

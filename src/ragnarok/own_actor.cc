@@ -236,4 +236,19 @@ bool ReadOwnActorSprites(OwnActorSprites* out) {
   return true;
 }
 
+void* OwnActor() {
+  void* actor = nullptr;
+  __try {
+    void* gm = rag::ActiveModeIfReady();
+    if (gm) {
+      void* mgr = *reinterpret_cast<void**>(
+          reinterpret_cast<char*>(gm) + gamescene::kGmActorMgr);
+      if (mgr)
+        actor = *reinterpret_cast<void**>(
+            reinterpret_cast<char*>(mgr) + gamescene::kAmOwnPlayer);
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) { actor = nullptr; }
+  return actor;
+}
+
 }  // namespace rag

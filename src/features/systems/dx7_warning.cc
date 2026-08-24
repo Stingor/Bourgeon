@@ -10,6 +10,7 @@
 #include "ui/ro_imgui.h"
 #include "utils/log_console.h"
 #include "utils/i18n.h"
+#include "utils/game_paths.h"
 
 // Armé par le proxy DirectDraw au premier EndScene du chemin DX7
 // (ddraw/proxy_idirectdraw.cc). Faux => le client rend en Direct3D 9.
@@ -30,25 +31,11 @@ constexpr char kPopupId[] = "Mode DirectX 7 détecté###dx7_warning";
 // BeginPopupModal continuent de se répondre quelle que soit la langue.
 inline const char* PopupTitle() { return i18n::Tr(kPopupId); }
 
-// Dossier de l'exécutable du jeu, backslash final inclus. Comme pour le patcher
-// (integrity_check), on part du module et pas du CWD : un raccourci peut lancer
-// le client depuis n'importe où, l'outil de config est toujours à côté de l'exe.
-bool GameDir(std::wstring& out) {
-  wchar_t buf[MAX_PATH];
-  const DWORD n = GetModuleFileNameW(nullptr, buf, MAX_PATH);
-  if (n == 0 || n >= MAX_PATH) return false;
-  const std::wstring path(buf, n);
-  const size_t slash = path.find_last_of(L'\\');
-  if (slash == std::wstring::npos) return false;
-  out = path.substr(0, slash + 1);
-  return true;
-}
-
 // L'outil de configuration livré avec le client (ici OpenSetup, renommé
 // Setup.exe). On ne propose le bouton que s'il est réellement présent.
 bool FindSetupExe(std::wstring& out) {
   std::wstring dir;
-  if (!GameDir(dir)) return false;
+  if (!paths::GameDirW(dir)) return false;
   for (const wchar_t* name : {L"Setup.exe", L"opensetup.exe", L"OpenSetup.exe"}) {
     std::wstring path = dir + name;
     const DWORD attr = GetFileAttributesW(path.c_str());
@@ -74,7 +61,7 @@ void LaunchSetup() {
   const std::wstring& exe = SetupExe();
   if (exe.empty()) return;
   std::wstring dir;
-  GameDir(dir);
+  paths::GameDirW(dir);
 
   // ShellExecute plutôt que CreateProcess : le Setup peut demander une élévation
   // (écriture registre), et le shell gère l'invite UAC pour nous.

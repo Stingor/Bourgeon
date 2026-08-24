@@ -15,6 +15,7 @@
 #include "ui/ro_imgui.h"  // BeginRoPopupModal : le cadre RO de la modale
 #include "utils/log_console.h"
 #include "utils/i18n.h"
+#include "utils/game_paths.h"
 
 namespace {
 
@@ -61,20 +62,6 @@ bool Sha256OfFile(const std::wstring& path, uint8_t* out, ULONG out_len) {
   return Sha256(data.data(), data.size(), out, out_len);
 }
 
-// Directory of the game executable, with a trailing backslash. Preferred over
-// GetCurrentDirectory: the CWD can be anything if the client was started from a
-// shortcut, whereas the patcher always sits next to the exe it launches.
-bool GameDir(std::wstring& out) {
-  wchar_t buf[MAX_PATH];
-  const DWORD n = GetModuleFileNameW(nullptr, buf, MAX_PATH);
-  if (n == 0 || n >= MAX_PATH) return false;
-  std::wstring path(buf, n);
-  const size_t slash = path.find_last_of(L'\\');
-  if (slash == std::wstring::npos) return false;
-  out = path.substr(0, slash + 1);
-  return true;
-}
-
 // Minimal extraction of an integer field from rpatchur's cache file. The file is
 // a single flat JSON object written by serde ({"last_patch_index":42}), so a
 // scan for the key beats pulling in a JSON parser for one number.
@@ -103,7 +90,7 @@ bool ReadJsonInt(const std::wstring& path, const char* key, int32_t& out) {
 
 void IntegrityCheck::DiscoverPatcher() {
   std::wstring dir;
-  if (!GameDir(dir)) {
+  if (!paths::GameDirW(dir)) {
     LogError("[Integrity] cannot resolve game directory — patcher discovery skipped");
     return;
   }
@@ -178,7 +165,7 @@ void IntegrityCheck::LaunchPatcher() const {
   if (patcher_exe_.empty()) return;
 
   std::wstring dir;
-  if (!GameDir(dir)) return;
+  if (!paths::GameDirW(dir)) return;
 
   // ShellExecute rather than CreateProcess: rpatchur elevates itself via the
   // "runas" verb, and the shell handles the UAC prompt for us. The patcher only

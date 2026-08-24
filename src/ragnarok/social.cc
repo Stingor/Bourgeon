@@ -8,6 +8,7 @@
 #include "ragnarok/game_scene.h"
 #include "ui/game_texture.h"  // ro::uipath::kUiRoot (racine CP949 des bitmaps d'interface)
 #include "utils/i18n.h"
+#include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 
 namespace rag::social {
 namespace {
@@ -35,9 +36,6 @@ constexpr int kEnt_Color   = 0x44;
 constexpr int kEnt_Job     = 0x48;  // u16
 constexpr int kEnt_Level   = 0x4a;  // u16
 
-// std::string MSVC : buffer SSO de 16 o, puis taille et capacité.
-constexpr int kStr_Cap = 0x14;
-
 // ── L'acteur, pour les PV ────────────────────────────────────────────────────
 // `Actor_FindByGid(gid)` __stdcall : raccourci global qui résout le mode lui-même
 // (le même que target_frame). La `UIPcGage` de +0x488 est celle que le client pose
@@ -62,21 +60,6 @@ struct RawRow {
   char     name[64] = {0};
   char     map[32]  = {0};
 };
-
-void ReadStdStringSEH(uintptr_t addr, char* out, int cap) {
-  out[0] = '\0';
-  __try {
-    const uint8_t* s = reinterpret_cast<const uint8_t*>(addr);
-    const uint32_t capacity = *reinterpret_cast<const uint32_t*>(s + kStr_Cap);
-    const char* p = (capacity > 15) ? *reinterpret_cast<const char* const*>(s)
-                                    : reinterpret_cast<const char*>(s);
-    if (p) {
-      int i = 0;
-      for (; i < cap - 1 && p[i]; ++i) out[i] = p[i];
-      out[i] = '\0';
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
-}
 
 // Collecte les NŒUDS de la liste (pointeurs seulement). Renvoie le nombre lu.
 // Trois bornes, et c'est voulu : la sentinelle (fin normale du tour), le compteur
@@ -115,8 +98,8 @@ bool ReadNodeSEH(const void* node, RawRow& out) {
     out.leader  = (*reinterpret_cast<const uint32_t*>(data + kEnt_Leader) == 0);
     out.offline = (*reinterpret_cast<const uint32_t*>(data + kEnt_Offline) != 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
-  ReadStdStringSEH(data + kEnt_Name, out.name, sizeof(out.name));
-  ReadStdStringSEH(data + kEnt_Map,  out.map,  sizeof(out.map));
+  rag::clientstr::CopyTruncating(reinterpret_cast<const void*>(data + kEnt_Name), out.name, sizeof(out.name));
+  rag::clientstr::CopyTruncating(reinterpret_cast<const void*>(data + kEnt_Map),  out.map,  sizeof(out.map));
   return true;
 }
 
@@ -196,11 +179,7 @@ void ReadList(bool party, std::vector<Entry>& out) {
 void ReadParty(std::vector<Entry>& out)   { ReadList(true, out); }
 void ReadFriends(std::vector<Entry>& out) { ReadList(false, out); }
 
-uint32_t OwnAid() {
-  __try {
-    return rag::OwnAccountId();
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
-}
+uint32_t OwnAid() { return rag::OwnAccountIdSafe(); }
 
 int PartyMemberCount() {
   __try {

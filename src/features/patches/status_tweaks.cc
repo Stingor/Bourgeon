@@ -13,6 +13,7 @@
 #include "bourgeon.h"
 #include "features/moonlight_ui/moonlight_ui.h"
 #include "utils/log_console.h"
+#include "utils/memory_patch.h"  // mem::PatchValue
 
 // ===========================================================================
 // UIStatusWnd relayout (20250716 client / Moonlight-Destiny.exe, base 0x400000)
@@ -295,17 +296,6 @@ int __fastcall StatusMsgHook(void* self, void* edx, int arg0, int msg, int p2,
   }
 }
 
-template <typename T>
-void PatchValue(uintptr_t addr, T value) {
-  DWORD old_protect;
-  if (VirtualProtect(reinterpret_cast<void*>(addr), sizeof(T),
-                     PAGE_EXECUTE_READWRITE, &old_protect)) {
-    *reinterpret_cast<T*>(addr) = value;
-    VirtualProtect(reinterpret_cast<void*>(addr), sizeof(T), old_protect, &old_protect);
-    FlushInstructionCache(GetCurrentProcess(), reinterpret_cast<void*>(addr), sizeof(T));
-  }
-}
-
 }  // namespace
 
 StatusTweaks::StatusTweaks() {
@@ -313,8 +303,8 @@ StatusTweaks::StatusTweaks() {
   const uint32_t cur_h = *reinterpret_cast<uint32_t*>(kHeightImm);
   const uint32_t cur_w = *reinterpret_cast<uint32_t*>(kWidthImm);
   if (cur_h == 141 && cur_w == 280) {
-    PatchValue<uint32_t>(kHeightImm, kNewHeight);
-    PatchValue<uint32_t>(kWidthImm, kNewWidth);
+    mem::PatchValue<uint32_t>(kHeightImm, kNewHeight);
+    mem::PatchValue<uint32_t>(kWidthImm, kNewWidth);
     // LogInfo("[Status] window size patched to {}x{}", kNewWidth, kNewHeight);
   } else {
     LogError("[Status] SetSize immediates unexpected (w={} h={}); size patch skipped",
@@ -324,7 +314,7 @@ StatusTweaks::StatusTweaks() {
   // 2) Swap the DrawContent vtable slot to our relayout (slot is in .data, RW).
   const uintptr_t cur_slot = *reinterpret_cast<uintptr_t*>(kDrawSlot);
   if (cur_slot == kDrawOrig) {
-    PatchValue<void*>(kDrawSlot, reinterpret_cast<void*>(&DrawContentHook));
+    mem::PatchValue<void*>(kDrawSlot, reinterpret_cast<void*>(&DrawContentHook));
     // LogInfo("[Status] DrawContent vtable hook installed");
   } else {
     LogError("[Status] vtable slot 0x01032a24 = 0x{:x}, expected 0x008b66a0; hook skipped",
@@ -335,8 +325,8 @@ StatusTweaks::StatusTweaks() {
   const int guard = *reinterpret_cast<int*>(kRectGuardAddr);
   if (guard == 108 || guard == 130) {  // stock (108) or already-patched (130)
     for (const HoverRect& r : kHoverRects) {
-      PatchValue<int32_t>(r.xa, r.nx);
-      PatchValue<int32_t>(r.ya, r.ny);
+      mem::PatchValue<int32_t>(r.xa, r.nx);
+      mem::PatchValue<int32_t>(r.ya, r.ny);
     }
     // LogInfo("[Status] 16 tooltip hit-rects relocated to new layout");
   } else {
@@ -347,10 +337,10 @@ StatusTweaks::StatusTweaks() {
   // 4) GLOBAL title-bar text offset — moves EVERY window's title text (shared
   //    DrawTitleBar). y-disp8 = -(base - dy): base 13/14, +dy moves down.
   if (*reinterpret_cast<uint8_t*>(kTitleWhiteX) == 0x13) {
-    PatchValue<uint8_t>(kTitleWhiteX, static_cast<uint8_t>(19 + kTitleDx));
-    PatchValue<uint8_t>(kTitleBlackX, static_cast<uint8_t>(18 + kTitleDx));
-    PatchValue<uint8_t>(kTitleWhiteY, static_cast<uint8_t>(kTitleDy - 13));
-    PatchValue<uint8_t>(kTitleBlackY, static_cast<uint8_t>(kTitleDy - 14));
+    mem::PatchValue<uint8_t>(kTitleWhiteX, static_cast<uint8_t>(19 + kTitleDx));
+    mem::PatchValue<uint8_t>(kTitleBlackX, static_cast<uint8_t>(18 + kTitleDx));
+    mem::PatchValue<uint8_t>(kTitleWhiteY, static_cast<uint8_t>(kTitleDy - 13));
+    mem::PatchValue<uint8_t>(kTitleBlackY, static_cast<uint8_t>(kTitleDy - 14));
     // LogInfo("[Status] title-bar text offset patched dx={} dy={} (all windows)",
             // kTitleDx, kTitleDy);
   } else {
@@ -362,7 +352,7 @@ StatusTweaks::StatusTweaks() {
   //    engine never saves for id 0xb: snapshot x/y on close, re-apply on open.
   const uintptr_t cur_msg = *reinterpret_cast<uintptr_t*>(kMsgSlot);
   if (cur_msg == kMsgOrig) {
-    PatchValue<void*>(kMsgSlot, reinterpret_cast<void*>(&StatusMsgHook));
+    mem::PatchValue<void*>(kMsgSlot, reinterpret_cast<void*>(&StatusMsgHook));
     // LogInfo("[Status] message-handler hook installed (position persistence)");
   } else {
     LogError("[Status] msg vtable slot 0x{:x} = 0x{:x}, expected 0x{:x}; pos-persist skipped",
