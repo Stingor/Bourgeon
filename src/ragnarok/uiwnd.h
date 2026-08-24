@@ -138,23 +138,29 @@ constexpr uintptr_t kDrawTextAddr    = 0x00a25a70;  // __thiscall(this,x,y,s,len
 constexpr uintptr_t kDrawTextRightAddr = 0x00a27b50;  // idem, ALIGNÉ À DROITE sur x
 constexpr uintptr_t kMeasureTextWidthAddr = 0x00a21c90;  // __thiscall(this,s,len,face,size,_,_) -> largeur
 
-// ── Montrer / cacher une fenêtre SANS la détruire ───────────────────────────
-// `UIWindow_SetVisible` __thiscall(this, visible), la méthode de vtable+0x38.
+// ── `UIWnd_SetVisible` NATIVE, à distinguer de notre `SetVisible` ───────────
+// __thiscall(this, visible). Deux fichiers la déclaraient, l'un sous
+// `kSetVisibleFn`, l'autre sous `kHideNative`.
 //
-// 🔴 CE N'EST PAS ÉQUIVALENT À ÉCRIRE `kOffVisible`. Le champ ne fait que
-// retirer la fenêtre du rendu et du hit-test ; la méthode propage aussi aux
-// CONTRÔLES ENFANTS et re-lie ce qu'il faut. C'est pour cette raison que la
-// barre de raccourcis la DÉTOURNE plutôt que de forcer le champ : sans cela, le
-// client relie la barre native et ses boutons par une autre voie et elle
-// réapparaît. Écrire le champ reste bon pour un masquage ponctuel qu'on tient
-// soi-même à chaque frame.
+// 🔴 CE QU'ELLE FAIT DE PLUS QUE `uiwnd::SetVisible` (plus bas), au
+// désassemblage (2026-08-24) — parce que les deux écrivent le MÊME champ et
+// qu'on pourrait les croire interchangeables :
+//
+//     *(this + 0x28) = visible;              // identique à notre SetVisible
+//     si visible == 0 :  un appel de plus (0x00a2e5c0)
+//     sinon           :  OnMsg(msg 23) via vtable+0x94, puis vtable+0x98,
+//                        puis 0x00a4ccf0
+//
+// Autrement dit : écrire le champ suffit à faire DISPARAÎTRE une fenêtre, mais
+// la NATIVE prévient en plus la fenêtre de son changement d'état. C'est
+// pourquoi la barre de raccourcis DÉTOURNE cette fonction au lieu de forcer le
+// champ — ce qu'elle veut intercepter, c'est justement la notification par
+// laquelle le client re-lie la barre et ses boutons.
+//
+// ⚠ Pas d'enveloppe ici, volontairement : ses deux appelants ne l'APPELLENT pas
+// de la même façon — l'un pose un détour dessus, l'autre l'invoque. Une
+// enveloppe ne servirait qu'au second, et son nom se heurterait à `SetVisible`.
 constexpr uintptr_t kSetVisibleAddr = 0x009030c0;
-
-inline void SetVisible(void* wnd, bool visible) {
-  if (!wnd) return;
-  reinterpret_cast<void(__fastcall*)(void*, void*, int)>(kSetVisibleAddr)(
-      wnd, nullptr, visible ? 1 : 0);
-}
 
 // ── Méthodes virtuelles d'une UIWindow ───────────────────────────────────────
 constexpr int kVfSetPos = 0x10;  // vtable+0x10 : SetPos(x, y)
@@ -240,6 +246,10 @@ inline int ListWindowIds(int* out_ids, int max_ids) {
 // UIWindow_SetVisible (0x005aad80) écrit `*((_DWORD*)this + 10)`, soit +0x28 en
 // DWORD entier. Une écriture d'un seul octet laisserait +0x29..+0x2b porter un
 // vestige non nul, que le natif relirait comme « visible ».
+//
+// ⚠ À ne pas confondre avec `kSetVisibleAddr` (0x009030c0) plus haut : elle
+// écrit le même champ de la même façon, mais NOTIFIE en plus la fenêtre. Celle-ci
+// est le geste nu, celle-là le geste complet du client.
 inline bool IsVisible(const void* wnd) {
   return *reinterpret_cast<const int*>(
              reinterpret_cast<const uint8_t*>(wnd) + kOffVisible) != 0;
