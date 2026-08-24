@@ -23,6 +23,13 @@ namespace rag {
 // ⚠ C'est l'OBJET lui-même, PAS un pointeur vers lui : les 13 fichiers qui
 // l'utilisent font tous soit `kSessionAddr + offset` pour lire un champ, soit le
 // passent en `this`. Aucun ne déréférence. (Même forme que g_UIWindowMgr.)
+//
+// 🔴 UN SEUL OBJET, CINQ MÉTIERS APPARENTS. Il était redéclaré sous les noms
+// `kUIWindowContextKey` (chat, macros d'émotion), `kOptionContextAddr` (réglages
+// du jeu), `kUiCtx` (homoncule), `kJobNameCtx` (sprites de monstre) et
+// `kSessionAddr` — cinq façons de nommer la MÊME adresse, selon la méthode
+// native qu'on venait lui demander. Chacune laissait croire à un objet distinct,
+// et personne ne pouvait voir que les cinq allaient bouger ensemble au portage.
 constexpr uintptr_t kSessionAddr = 0x015fa3c0;
 
 inline void* Session() { return reinterpret_cast<void*>(kSessionAddr); }
@@ -174,6 +181,216 @@ constexpr uintptr_t kJobLevelAddr  = 0x015fb9f8;
 inline int BaseLevel() { return *reinterpret_cast<int*>(kBaseLevelAddr); }
 inline int JobLevel()  { return *reinterpret_cast<int*>(kJobLevelAddr); }
 
+// ── Le reste du bloc « personnage LOCAL » (g_Own_*) ──────────────────────────
+// Le client tient un cache plat de l'identité et des stats du joueur, semé au
+// char-select (CharSelectMode_OnMsg case 0x2719, entrée de 0xAF octets) puis
+// tenu à jour paquet par paquet par le dispatcher ZC_PAR_CHANGE
+// (FUN_00cceff0). Ce cache est la source de TOUT ce que le HUD natif affiche.
+//
+// Le projet le recopiait par morceaux dans une vingtaine de fichiers, chacun
+// rebaptisant ce qu'il prenait — l'AID à lui seul portait SIX noms
+// (kAccountAid, kOwnAccountAid, kOwnAccountId, kOwnAid, kOwnAidAddr,
+// kOwnHandlePtr), tous sur 0x015fb9a4, aucun ne sachant les autres. Les voici
+// une fois, sous les noms de l'IDB.
+//
+// ⚠ Ces globales n'existent QU'EN JEU. Au char-select et à l'écran de login
+// elles portent un vestige de la session précédente : un lecteur qui tourne
+// hors map doit d'abord se demander s'il est en jeu, pas y croire sur parole.
+
+// Identité. kOwnAccountIdAddr est l'AID du compte, qui sert AUSSI de GID à
+// notre propre acteur — c'est par lui qu'on se reconnaît dans une liste
+// d'acteurs ou dans un paquet de zone. kOwnCharIdAddr est le CID du
+// personnage, un tout autre nombre : les confondre fait échouer en silence
+// tout ce qui s'adresse au personnage (RODEX, guilde, groupe).
+constexpr uintptr_t kOwnAccountIdAddr = 0x015fb9a4;  // g_Account_Aid
+constexpr uintptr_t kOwnCharIdAddr    = 0x015fb9a8;  // g_Own_CharId
+constexpr uintptr_t kOwnCharNameAddr  = 0x01602568;  // char[] NU, pas une std::string
+constexpr uintptr_t kOwnJobIdAddr     = 0x015fb9c8;  // g_Own_JobId (le job RÉEL)
+
+inline uint32_t OwnAccountId() { return *reinterpret_cast<uint32_t*>(kOwnAccountIdAddr); }
+inline uint32_t OwnCharId()    { return *reinterpret_cast<uint32_t*>(kOwnCharIdAddr); }
+inline int      OwnJobId()     { return *reinterpret_cast<int*>(kOwnJobIdAddr); }
+
+// Expérience. Quatre INT64 ; la plupart des lecteurs n'en prennent que le mot
+// bas, ce qui suffit tant que la valeur tient sur 31 bits — au-delà (serveurs à
+// très haut taux) il faut lire les huit octets.
+constexpr uintptr_t kOwnBaseExpAddr     = 0x015fb9d0;
+constexpr uintptr_t kOwnBaseExpNextAddr = 0x015fb9d8;
+constexpr uintptr_t kOwnJobExpNextAddr  = 0x015fb9e0;  // ⚠ NEXT avant COURANT
+constexpr uintptr_t kOwnJobExpAddr      = 0x015fb9e8;
+
+// Points non dépensés.
+constexpr uintptr_t kOwnStatusPointsAddr = 0x015fb9f4;
+constexpr uintptr_t kOwnSkillPointsAddr  = 0x015fb9fc;
+
+// Coût de la PROCHAINE montée de chaque stat, même ordre et même pas de 4 que
+// kStatBaseAddr — le serveur l'envoie, le client ne le recalcule pas.
+// ⚠ Pas d'accesseur ici, contrairement à StatBase/StatBonus : les trois
+// appelants lisent ce bloc à travers LEUR lecteur gardé par SEH, et un accesseur
+// nu leur ferait perdre cette garde. C'est l'adresse qu'ils partagent.
+constexpr uintptr_t kStatRaiseCostAddr = 0x015fba3c;
+
+// Sous-stats de combat, telles que la fenêtre Status les montre. Le bloc
+// atk/def/matk/mdef était recopié À L'IDENTIQUE dans trois fichiers (la fenêtre
+// Status retouchée, la feuille de personnage et le diagnostic), aux mêmes
+// valeurs et sous les mêmes noms — trois occasions de se tromper au portage.
+//
+// ⚠ Chaque paire est {partie de l'ÉQUIPEMENT, partie des STATS} : la fenêtre
+// native les affiche « a + b » et non additionnées.
+constexpr uintptr_t kOwnAtk1Addr  = 0x015fba58;  // ATK équipement
+constexpr uintptr_t kOwnAtk2Addr  = 0x015fba6c;  // ATK stats
+constexpr uintptr_t kOwnMdefSoftAddr = 0x015fba5c;
+constexpr uintptr_t kOwnDefSoftAddr  = 0x015fba64;
+constexpr uintptr_t kOwnDefHardAddr  = 0x015fba68;
+constexpr uintptr_t kOwnMatkMaxAddr  = 0x015fba70;
+constexpr uintptr_t kOwnMatkMinAddr  = 0x015fba74;
+constexpr uintptr_t kOwnMdefHardAddr = 0x015fba78;
+
+constexpr uintptr_t kOwnHitAddr          = 0x015fba7c;
+constexpr uintptr_t kOwnFleeAddr         = 0x015fba80;
+constexpr uintptr_t kOwnCritAddr         = 0x015fba84;
+constexpr uintptr_t kOwnPerfectDodgeAddr = 0x015fba88;
+
+// 🔴 CE N'EST PAS L'ASPD — c'est l'amotion, le délai entre deux coups en
+// millisecondes, tel que le SERVEUR le calcule et l'envoie. status_tweaks
+// l'appelait `kAspdRaw`, ce qui laissait croire à une ASPD qu'il suffirait
+// d'afficher : le nombre que le joueur lit est DÉRIVÉ, et plus l'amotion est
+// GRANDE plus l'ASPD est petite. La conversion est ci-dessous ; elle était
+// recopiée à l'identique dans cinq fichiers.
+constexpr uintptr_t kOwnAttackDelayAddr = 0x015fba54;  // g_Own_AttackDelay (ms)
+
+inline int AspdFromAmotion(int amotion_ms) { return (2000 - amotion_ms) / 10; }
+
+// Divers champs du même bloc.
+constexpr uintptr_t kAmmoEquippedInvIndexAddr = 0x015fba8c;  // 0 = aucune munition
+constexpr uintptr_t kOwnWalkSpeedAddr         = 0x015fba94;  // ms par cellule
+constexpr uintptr_t kOwnMannerAddr            = 0x015fba98;  // négatif = muet
+constexpr uintptr_t kWeightMaxAddr            = 0x015fba9c;
+constexpr uintptr_t kWeightCurAddr            = 0x015fbaa0;
+
+// Vitalité. Ces quatre-là sont dans un bloc SÉPARÉ (0x015ff9xx), pas avec les
+// stats — c'est pour ça qu'on les retrouvait recopiées même dans les fichiers
+// qui tenaient déjà une partie du reste.
+constexpr uintptr_t kOwnHpAddr    = 0x015ff908;
+constexpr uintptr_t kOwnMaxHpAddr = 0x015ff90c;
+constexpr uintptr_t kOwnSpAddr    = 0x015ff910;
+constexpr uintptr_t kOwnMaxSpAddr = 0x015ff914;
+
+inline int OwnHp()    { return *reinterpret_cast<int*>(kOwnHpAddr); }
+inline int OwnMaxHp() { return *reinterpret_cast<int*>(kOwnMaxHpAddr); }
+inline int OwnSp()    { return *reinterpret_cast<int*>(kOwnSpAddr); }
+inline int OwnMaxSp() { return *reinterpret_cast<int*>(kOwnMaxSpAddr); }
+
+// ── Modèles SESSION des trois conteneurs ─────────────────────────────────────
+// Inventaire, chariot et storage sont TROIS `std::list<ItemSkillInfo>` de même
+// forme, chacune publiée dans un global qui porte sa sentinelle. C'est le modèle
+// que le client tient à jour sur les paquets serveur, QUEL QUE SOIT l'état de ses
+// fenêtres — à ne pas confondre avec la liste d'AFFICHAGE d'une fenêtre native
+// (wnd+0xe8), que masquer la fenêtre vide.
+//
+// `kInventoryListAddr` était redéclarée sous le nom `kInvListHead` dans NEUF
+// fichiers, à l'identique. C'était la plus recopiée du projet après la session
+// elle-même.
+//
+// 🔴 CES CONSTANTES SONT L'ADRESSE DU GLOBAL, PAS LA SENTINELLE. La sentinelle
+// est ce que le global CONTIENT, et c'est à elle qu'il faut comparer pour
+// terminer le parcours : la liste est CIRCULAIRE, donc s'arrêter sur l'adresse du
+// global ne rencontre jamais la condition de fin et resomme le conteneur jusqu'au
+// garde-fou. (Piège payé par craft_atlas.)
+//
+// ⚠ La liste d'inventaire EXCLUT les pièces portées ; le serveur, lui, les
+// compte. Un total calculé dessus est donc plus petit que celui du serveur — cf.
+// inventory_viewer, qui recolle les deux.
+//
+// Sources natives : `Inventory_GetCount` = *(session+0x16f4) et `FUN_00d5acb0`
+// qui parcourt la liste ; côté chariot `Cart_GetCount` = *(session+0x1724) et
+// `Cart_CopyItemAt`.
+constexpr uintptr_t kInventoryListAddr  = 0x015fbab0;  // session+0x16f0
+constexpr uintptr_t kInventoryCountAddr = 0x015fbab4;  // _Mysize de la liste
+constexpr uintptr_t kStorageListAddr    = 0x015fbad8;  // session+0x1718
+constexpr uintptr_t kCartListAddr       = 0x015fbae0;  // session+0x1720
+constexpr uintptr_t kCartCountAddr      = 0x015fbae4;  // session+0x1724
+
+// ── Guilde du joueur ─────────────────────────────────────────────────────────
+// L'objet CGuild du client (relevé x32dbg 2026-07-11) : +0 = nom de guilde en
+// std::string MSVC (donc SSO — buffer en place tant que la capacité < 0x10,
+// pointeur au-delà), +0xA8 = l'id.
+//
+// ⚠ Le label Ghidra « ActiveTabIndex » sur 0x0159c230 est FAUX : c'est bien
+// l'id de guilde. Quatre fichiers le lisaient déjà sous ce nom-là sans le
+// savoir.
+constexpr uintptr_t kGuildObjAddr      = 0x0159c188;
+constexpr uintptr_t kGuildLevelAddr    = 0x0159c1e8;
+constexpr uintptr_t kOwnGuildIdAddr    = 0x0159c230;
+constexpr uintptr_t kGuildIsMasterAddr = 0x0159c23c;
+constexpr int       kGuildNameOffset   = 0x00;  // std::string, relatif à kGuildObjAddr
+constexpr int       kGuildListHeadOff  = 0xdc;  // sentinelle du roster, idem
+
+inline int OwnGuildId() { return *reinterpret_cast<int*>(kOwnGuildIdAddr); }
+
+// ── Nom d'une CLASSE, et la classe ajustée par la monture ────────────────────
+// `Job_GetDisplayNameOrResName` : __thiscall(session, classId, sex) -> const
+// char*, dans la CODE-PAGE du client (cf. kClientCodePageAddr) — jamais en
+// UTF-8. Chaîne vide si l'id est hors de la table `jobName.lub`.
+//
+// 🔴 SON NOM DIT VRAI : elle rend TANTÔT un libellé à afficher, TANTÔT un nom de
+// FICHIER, et c'est la même table qui porte les deux. Le projet l'avait donc
+// déclarée sous `kJobDisplayName` dans cinq fichiers, `kJobNameAddr` dans un
+// sixième et `kJobResName` dans un septième, chacun croyant nommer un getter
+// différent. Ce n'en est qu'un — et le nom qu'il rend ne coïncide PAS avec
+// l'AegisName du serveur (`JT_CHONCHON` -> « Chocho », fichier `Chocho.spr`).
+//
+// ⚠ Le résultat pointe dans la table du client : le RECOPIER, ne pas garder le
+// pointeur. Et l'appel traverse une table Lua — les appelants qui le font par
+// entité et par frame doivent mettre en cache (cf. ragnarok/social.h).
+constexpr uintptr_t kJobNameOrResNameAddr = 0x00d5bb40;
+
+// `Job_ResolveMountedClassFromOption` : __thiscall(session) -> int. La classe
+// telle que le client l'AFFICHE, monture comprise — elle lit l'état d'option du
+// joueur (peco, dragon, madogear…) et rend la classe montée correspondante.
+//
+// 🔴 À NE PAS CONFONDRE avec `kOwnJobIdAddr`, qui porte la classe BRUTE. Les deux
+// sont légitimes et ne s'échangent pas : le nom affiché au joueur veut celle-ci,
+// le sprite de CORPS veut l'autre (`Job_ResolveBodyClass` refait lui-même le
+// remap à partir des deux).
+constexpr uintptr_t kJobResolveMountedClassAddr = 0x00d5b580;
+
+// `Social_GetPartyMemberCount` : __thiscall(session) -> int. Zéro quand on n'est
+// dans aucun groupe — c'est le test « suis-je en groupe ? » que le client se pose
+// lui-même. Redéclarée dans quatre fichiers sous deux noms.
+constexpr uintptr_t kPartyMemberCountAddr = 0x00d5cf50;
+
+// ── Position du curseur, en pixels ÉCRAN ─────────────────────────────────────
+// Ce que le client a retenu du dernier WM_MOUSEMOVE, et donc ce sur quoi ses
+// propres hit-tests raisonnent.
+//
+// ⚠ La lire ICI plutôt que d'appeler GetCursorPos : en plein écran, avec un
+// device redimensionné, les deux ne coïncident pas — et c'est CELLE-CI qui
+// décide de ce que le natif croit survoler.
+constexpr uintptr_t kMouseScreenXAddr = 0x011e40d4;
+constexpr uintptr_t kMouseScreenYAddr = 0x011e40d8;
+
+// ── Le formateur à séparateurs de milliers du client ─────────────────
+// __cdecl(valeur, tampon, taille) : écrit « 1,234,567 ». Le prendre au client
+// plutôt que de le réécrire garantit que nos chiffres se lisent comme les
+// siens — même séparateur, même regroupement.
+constexpr uintptr_t kFormatThousandsAddr = 0x00a948d0;
+
+// ── Le mode FAVORIS de l'inventaire ────────────────────────────
+// Un OCTET, basculé par le bouton « Deal » du pied de l'inventaire. Purement
+// client : le serveur l'ignore complètement.
+//
+// 🔴 UN SEUL DRAPEAU, DEUX CONSÉQUENCES — et c'est pour ça que le projet le
+// déclarait sous deux noms sans voir qu'il s'agissait du même octet :
+//   * `kFavFlag` (retouche d'inventaire) : il ajoute la catégorie « favoris »
+//     aux onglets, d'où le `3 + drapeau` du compte de catégories ;
+//   * `kDealLockGlobal` (viewer, boutique NPC) : il EXCLUT les favoris de la
+//     liste vendable — `if (trouvé && (!favori || !drapeau))` dans
+//     `NpcSell_BuildSellableList`.
+// Reprendre la place du handler natif oblige donc à rejouer ce filtre
+// soi-même, sinon plus personne ne le lit et les favoris redeviennent vendables.
+constexpr uintptr_t kFavoriteModeFlagAddr = 0x01600553;
+
 // ── Code-page EFFECTIVE du client ────────────────────────────────────────────
 // 949 (Corée), 1252 (Europe) ou 0 (= CP_ACP), posée au démarrage par
 // FUN_00a72440 d'après g_ServiceType. C'est ELLE que le natif passe à
@@ -210,6 +427,16 @@ constexpr uintptr_t kGameOperatorDeleteAddr = 0x00dbbc7f;  // __cdecl(ptr)
 // celle-ci. Une seule fonction, deux portes d'entrée — tout le monde passe
 // désormais par l'adresse réelle.
 constexpr uintptr_t kStdStringDtorAddr = 0x004f08f0;
+
+// `std::string::assign(const char*)` du CLIENT — __thiscall(this, src) -> this.
+// Le pendant du _Tidy ci-dessus : c'est par elle qu'on REMPLIT une std::string
+// que le natif nous a donnée à remplir (le tampon de saisie du chat, le champ de
+// destination d'un lien de navigation…). Elle était redéclarée dans cinq
+// fichiers sous deux noms, `kStdStringAssign` et `kStdStringAssignAddr`.
+//
+// ⚠ Elle alloue avec l'operator new du CLIENT : la string reste cohérente pour
+// lui, et c'est bien à `kStdStringDtorAddr` qu'il faudra la rendre.
+constexpr uintptr_t kStdStringAssignAddr = 0x004f1940;
 
 // ── Carte COURANTE, telle que le client la nomme ─────────────────────────────
 // Le global que le client injecte lui-même dans son gabarit de minimap

@@ -40,6 +40,38 @@ constexpr uintptr_t kEnsureCachePtr   = 0x0125510c;
 constexpr uintptr_t kInfoCtorAddr  = 0x006a1b20;
 constexpr uintptr_t kInfoSetIdAddr = 0x006a6570;
 
+// `ClientDB_FillInfoById` : __stdcall(ItemSkillInfo* out, int id) -> out.
+// Construit l'info dans `out` en allant la chercher dans CELLE des bases du
+// client qui couvre cet id.
+//
+// 🔴 CONTRADICTION TRANCHÉE AU DÉCOMPILATEUR (2026-08-23). Deux fichiers la
+// déclaraient, sous DEUX noms qui se contredisaient — `kGetInvItemAddr` (barre
+// de raccourcis) et `kSkillEntryFill` (feuille de personnage) — et le premier
+// est franchement faux : elle ne touche JAMAIS à l'inventaire. C'est un
+// AIGUILLEUR par plage d'identifiant :
+//
+//     id ∈ [8000,  8060]                  -> base « 8000 »
+//     id ∈ [8200,  8241] ∪ [8400, 8457]   -> base « 2008 »
+//     id ∈ [10000, 10019]                 -> base « 10000 »
+//     sinon                               -> la liste des compétences APPRISES
+//
+// ⚠ C'est cette dernière branche qui explique le défaut historique de la barre
+// de raccourcis : pour la compétence d'une AUTRE classe (personnage GM
+// multi-classe), la liste apprise ne rend rien et le nom de ressource sort vide.
+// Quand on veut le nom d'une compétence INDÉPENDAMMENT de l'appris, il faut
+// passer par `lua::kGetSkillIdNameAddr`, pas par ici.
+//
+// ⚠ `out` est construit par la fonction : l'appelant DOIT le détruire avec
+// `kInfoDtorAddr` ci-dessous.
+constexpr uintptr_t kFillInfoByIdAddr = 0x00d7fa90;
+
+// Le destructeur de la structure. 🔴 IL EST OBLIGATOIRE quand on a fait
+// remplir un ItemSkillInfo par le client : elle porte des std::string, dont la
+// capacité peut déborder le SSO — les abandonner fuit dans le tas DU CLIENT.
+// Trois fichiers l'appelaient, sous les noms kSkillEntryDtor, kSkillInfoDtor et
+// un littéral au milieu d'un `reinterpret_cast`.
+constexpr uintptr_t kInfoDtorAddr  = 0x00739cd0;
+
 // ── Noms d'affichage ─────────────────────────────────────────────────────────
 // kBuildDisplayNameAddr compose le nom complet (préfixes de cartes, refine,
 // grade…) ; kBaseNameFallbackAddr est le repli quand il échoue. Les appels sont

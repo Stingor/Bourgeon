@@ -1,4 +1,5 @@
 #include "ragnarok/globals.h"
+#include "ragnarok/audio.h"
 #include "ui/game_texture.h"
 #include "ui/mob_sprite.h"
 #include "features/minigames/roggle.h"
@@ -205,8 +206,7 @@ void StepPhysics(float dt) {
 // exactly D3DFMT_A8R8G8B8 byte order, so we colour-key magenta -> transparent and
 // hand the buffer to D3D9_CreateTextureARGB. Item icons: 512=Apple (ball),
 // 502=Orange Potion (orange pegs), 505=Blue Potion (blue pegs).
-constexpr uintptr_t kEngBuildPath = 0x00d5a720;  // __fastcall(session, 0, idstr, outbuf, 0)
-using BuildPath_t = void* (__fastcall*)(void*, void*, const char*, char*, int);
+using BuildPath_t = void (__stdcall*)(const char*, char*, int);  // cf. ro::texmgr::kBuildItemIconPath
 using TexMgr_t    = void* (__cdecl*)();
 using MakeKey_t   = void* (__cdecl*)(const char*);
 using LoadTex_t   = void* (__fastcall*)(void*, void*, void*);
@@ -232,9 +232,9 @@ using PlaySoundFn = void(__fastcall*)(void*, void*, const char*, float, float,
                                       float, int, int, float, int);
 void PlayRoSound(const char* name) {
   __try {
-    void* mgr = *reinterpret_cast<void**>(0x01253d0c);
+    void* mgr = audio::SoundMgr();
     if (mgr)
-      reinterpret_cast<PlaySoundFn>(0x00600770)(
+      reinterpret_cast<PlaySoundFn>(audio::kPlay3DAddr)(
           mgr, nullptr, name, 0.0f, 0.0f, 0.0f, 250, 40, 1.0f, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {
   }
@@ -251,8 +251,7 @@ bool LoadItemIcon(uint32_t id, IconTex* out) {
     char idbuf[16];
     std::snprintf(idbuf, sizeof(idbuf), "%u", id);
     char path[260] = {0};
-    reinterpret_cast<BuildPath_t>(kEngBuildPath)(
-        reinterpret_cast<void*>(rag::kSessionAddr), nullptr, idbuf, path, 0);
+    reinterpret_cast<BuildPath_t>(ro::texmgr::kBuildItemIconPath)(idbuf, path, 0);
     void* mgr  = reinterpret_cast<TexMgr_t>(ro::texmgr::kGet)();
     void* key  = reinterpret_cast<MakeKey_t>(ro::texmgr::kMakeKey)(path);
     void* texv = reinterpret_cast<LoadTex_t>(ro::texmgr::kLoad)(mgr, nullptr, key);

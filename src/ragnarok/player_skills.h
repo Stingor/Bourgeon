@@ -15,10 +15,26 @@
 // `__try` est interdit dans toute fonction abritant un objet à destructeur non trivial
 // (C2712). Le corps vit donc dans le .cc, jamais en inline.
 //
-// 🔜 Les deux copies existantes n'ont PAS été migrées : elles fonctionnent et sont
-// sous test. À reprendre quand le chantier fabrication sera soldé.
+// 🔜 Les deux copies existantes gardent leur PARCOURS : elles fonctionnent et
+// sont sous test. Seules leurs ADRESSES ont été mutualisées (bloc ci-dessous) —
+// c'est-à-dire la partie qui bougera au prochain portage d'exe. Reprendre le
+// reste quand le chantier fabrication sera soldé.
+
+#include <cstdint>
 
 namespace rag {
+
+// ── Le bundle, et par où on y entre ─────────────────────────────────────────
+// Les trois adresses du parcours, jusqu'ici recopiées à l'identique dans les
+// trois consommateurs (ce module, la feuille de personnage, le refine) — la
+// dette que l'entête ci-dessus annonçait, soldée pour la partie ADRESSES.
+//
+// ⚠ Les deux copies gardent leur PARCOURS : elles fonctionnent et sont sous
+// test. Ce qui est mutualisé ici, ce sont les points d'entrée, c'est-à-dire
+// exactement ce qui bougera au prochain portage d'exe.
+constexpr uintptr_t kSkillBundleAddr   = 0x015fa3cc;  // CPlayerSkillBundle (session+0x0C)
+constexpr uintptr_t kSkillFlatListAddr = 0x015fa3e0;  // bundle+0x14 : l'onglet « divers »
+constexpr uintptr_t kSkillGetTabListAddr = 0x00738370;  // __thiscall(bundle, tab) -> std::list*
 
 // Niveau APPRIS de la compétence, 0 si elle n'est pas connue (ou illisible).
 //

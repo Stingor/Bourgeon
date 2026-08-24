@@ -60,6 +60,25 @@ constexpr uintptr_t kCheckStackAddr = 0x0051b570;  // lua_checkstack(L, extra)
 constexpr uintptr_t kCallGlobalVaAddr = 0x00a9a7d0;
 constexpr uintptr_t kExecFileAddr     = 0x00a9bc90;
 
+// ── Deux raccourcis natifs vers les tables de compétences ────────────────────
+// Le client se donne à lui-même des accesseurs C sur ses tables Lua, ce qui
+// évite d'avoir à monter un appel `lua_pcall` pour une simple lecture. Ils sont
+// `__cdecl(int id) -> char*`, et rendent une chaîne STATIQUE du client (à
+// recopier, pas à conserver).
+//
+// 🔴 CE SONT DEUX TABLES DIFFÉRENTES, et c'est la distinction qui compte :
+//   * kGetSkillNameAddr   -> le LIBELLÉ affiché (« Blessing ») ;
+//   * kGetSkillIdNameAddr -> l'IDENTIFIANT (« AL_BLESSING »), qui est aussi le
+//     nom du .bmp d'icône.
+// Les deux lisent la DB Lua `SkillInfoList`, donc INDÉPENDAMMENT de ce que le
+// personnage a appris — contrairement aux getters qui passent par la liste
+// apprise et rendent du vide pour la compétence d'une autre classe.
+//
+// ⚠ Sentinelles à rejeter plutôt qu'à afficher : « Zero Skill », et tout ce qui
+// contient « nknown ».
+constexpr uintptr_t kGetSkillNameAddr   = 0x0073a1f0;  // GetSkillName(id)
+constexpr uintptr_t kGetSkillIdNameAddr = 0x0073a140;  // GetSkillIdName(id)
+
 // ── Enveloppes ───────────────────────────────────────────────────────────────
 // Toute l'API C de Lua est __cdecl. Signatures vérifiées identiques dans les
 // quatre appelants avant extraction.

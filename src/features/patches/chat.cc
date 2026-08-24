@@ -1,4 +1,5 @@
 #include "ragnarok/globals.h"
+#include "ragnarok/uiwnd.h"
 #include "ui/game_texture.h"
 #include "features/patches/chat.h"
 
@@ -99,9 +100,8 @@ namespace {
 // Engine glue (20250716).  All calls match dis-assembled conventions from
 // ItemBtn_LoadIconByResName (0x00857350): a render-node-backed image blit that
 // the engine composites as part of the owning window's draw pass.
-constexpr uintptr_t kEngBuildPath = 0x00d5a720;  // __thiscall(session, idstr, outbuf, byte)
 
-using BuildPath_t = void* (__fastcall*)(void*, void*, const char*, char*, int);
+using BuildPath_t = void (__stdcall*)(const char*, char*, int);  // cf. ro::texmgr::kBuildItemIconPath
 using TexMgr_t    = void* (__cdecl*)();
 using MakeKey_t   = void* (__cdecl*)(const char*);
 using LoadTex_t   = void* (__fastcall*)(void*, void*, void*);
@@ -188,7 +188,6 @@ void __cdecl CharWrapHook(char* text, int* outlist, int maxchars) {
 // skipping just this one blit (when a custom width is active) leaves a clean
 // scaling border instead of a stuck 600px bar.  Return-addr gated to that single
 // call site (0x008f3498); the blit has many other callers, all untouched.
-constexpr uintptr_t kBlitImageToNode = 0x00a1d260;  // __thiscall(this,x,y,tex,flag)
 constexpr uintptr_t kDialogBgBlitRet = 0x008f3498;  // return addr of the dialog_bg blit
 using BlitFn = void (__fastcall*)(void*, void*, int, int, int, int);
 BlitFn g_blit_orig = nullptr;
@@ -452,8 +451,7 @@ static void BlitIconAtSEH(void* ctx, int x, int y, uint32_t id) {
     char idbuf[16];
     std::snprintf(idbuf, sizeof(idbuf), "%u", id);
     char path[260] = {0};
-    reinterpret_cast<BuildPath_t>(kEngBuildPath)(
-        reinterpret_cast<void*>(rag::kSessionAddr), nullptr, idbuf, path, 0);
+    reinterpret_cast<BuildPath_t>(ro::texmgr::kBuildItemIconPath)(idbuf, path, 0);
     void* mgr = reinterpret_cast<TexMgr_t>(ro::texmgr::kGet)();
     void* key = reinterpret_cast<MakeKey_t>(ro::texmgr::kMakeKey)(path);
     void* texv = reinterpret_cast<LoadTex_t>(ro::texmgr::kLoad)(mgr, nullptr, key);
@@ -907,7 +905,7 @@ ChatTweaks::ChatTweaks() {
   g_blit_orig = reinterpret_cast<BlitFn>(
       hooking::HookManager::Instance().SetHook(
           hooking::HookType::kJmpHook,
-          reinterpret_cast<uint8_t*>(kBlitImageToNode),
+          reinterpret_cast<uint8_t*>(uiwnd::kBlitImageToNodeAddr),
           reinterpret_cast<uint8_t*>(BlitHook)));
   if (!g_blit_orig) {
     LogError("[Chat] failed to hook UIWindow_BlitImageToNode at 0x00a1d260");

@@ -7,6 +7,7 @@
 #include <cstdint>
 
 #include "d3d9/d3d9_hook.h"  // D3D9_ExplicitBlendCallback / D3D9_AdditiveBlendCallback
+#include "ragnarok/game_scene.h"
 #include "utils/hooking/hook_manager.h"
 
 // Backend actif (DX9 vs DX7) : choisit l'offset du handle GPU natif dans CTexture.
@@ -16,7 +17,6 @@ namespace ez_capture {
 namespace {
 
 // ── Adresses natives (client 20250716, base 0x400000) ─────────────────────────
-constexpr int       kOffActorMgr       = 0xcc;        // CMode -> actorMgr
 constexpr int       kOffOwnActor       = 0x2c;        // actorMgr -> acteur joueur
 constexpr int       kOffCamera         = 0xd0;        // CMode -> caméra
 constexpr int       kOffViewMtx        = 0x98;        // caméra -> matrice de vue
@@ -41,7 +41,6 @@ constexpr int       kEzNodeWorldPos    = 0x10;        // nœud EZ -> position mo
 //   - la position monde de l'instance est à +0x8 (et non +0x10 comme sur un nœud EZ).
 constexpr uintptr_t kEffRenderFn      = 0x00ae8480;  // EffectInstance_RenderDraw (__fastcall, ECX = effet)
 constexpr int       kEffOwnerHnd      = 0x20;        // effet -> handle de l'acteur propriétaire
-constexpr uintptr_t kOwnHandlePtr     = 0x015fb9a4;  // handle/AID du joueur
 constexpr uintptr_t kCEZ2STRVtbl      = 0x010758d8;  // CEZ2STREffect (.str name-based) -> à EXCLURE
 constexpr int       kEffWorldPos      = 0x08;        // instance CEffectMgr -> position monde (x,y,z)
 // Id de l'instance CEffectMgr (RE 2026-07-19) : posé par Effect_SetEffectId 0x00ae84c0 (vtable +0x6c)
@@ -186,7 +185,7 @@ void RefreshOwnerActor() {
   __try {
     void* gm = reinterpret_cast<void*(__fastcall*)(int)>(rag::kModeMgrGetActiveAddr)(static_cast<int>(rag::kModeMgrAddr));
     if (gm) {
-      void* mgr = *reinterpret_cast<void**>(reinterpret_cast<char*>(gm) + kOffActorMgr);
+      void* mgr = *reinterpret_cast<void**>(reinterpret_cast<char*>(gm) + gamescene::kGmActorMgr);
       if (mgr) actor = *reinterpret_cast<void**>(reinterpret_cast<char*>(mgr) + kOffOwnActor);
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) { actor = nullptr; }
@@ -251,7 +250,7 @@ void __fastcall Hooked_EffRender(void* self, void* edx) {
     __try {
       const int owner = *reinterpret_cast<int*>(reinterpret_cast<char*>(self) + kEffOwnerHnd);
       in_eff    = true;                                        // owner lu : le contexte est fiable
-      is_player = (owner == *reinterpret_cast<int*>(kOwnHandlePtr));
+      is_player = (owner == *reinterpret_cast<int*>(rag::kOwnAccountIdAddr));
       if (is_player) {                                         // effet du JOUEUR ?
         // Exclut les .str name-based : ils relèvent d'un autre pipeline (billboard STR).
         // ⚠ Exclusion levable en DIAGNOSTIC : un effet qui rend en jeu sans être capturé peut très

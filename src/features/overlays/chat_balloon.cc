@@ -15,6 +15,8 @@
 #include "features/moonlight_ui/moonlight_ui.h"
 #include "features/systems/image_preview.h"  // imgprev : emotes Discord deja en cache
 #include "features/windows/chat_window.h"
+#include "ragnarok/game_scene.h"
+#include "ragnarok/uiwnd.h"
 #include "ui/game_emotes.h"   // ro::emote : les emotes du JEU (emotion.act)
 #include "ui/icon_cache.h"    // ro::ItemIcon : le cache d'icones partage avec le chat
 #include "ui/ro_imgui.h"
@@ -46,16 +48,12 @@ constexpr uintptr_t kQueueDestroyWindow = 0x00a447d0;
 // ⚠ Le gestionnaire de fenêtres EST l'objet global, pas un pointeur vers lui :
 // le natif fait `mov ecx, OFFSET dword_131F4E8`. Le déréférencer donnerait un
 // `this` aberrant.
-constexpr uintptr_t kUIWindowMgr = 0x0131f4e8;
 
 // GameMode_GetActive(mgr) __fastcall : le CGameMode actif, 0 hors jeu.
 using GetActiveFn = void*(__fastcall*)(int);
 using QueueDestroyFn = void(__thiscall*)(void*, void*);
 
 // Offsets (cf. docs/entity_nameplate_re.md et entity_chat_balloon_re.md).
-constexpr int kGm_ActorMgr  = 0xcc;   // *(gm+0xcc)       = actorMgr
-constexpr int kAm_ListHead  = 0x10;   // *(actorMgr+0x10) = sentinelle std::list<Actor*>
-constexpr int kAm_OwnPlayer = 0x2c;   // *(actorMgr+0x2c) = acteur du joueur local
 constexpr int kNode_Actor   = 0x08;   //  node+8          = pointeur acteur
 constexpr int kAct_ScreenX  = 0xac;   //  int  : X écran projeté (pieds)
 constexpr int kAct_ScreenY  = 0xb0;   //  int  : Y écran projeté (pieds)
@@ -187,15 +185,15 @@ bool ChatBalloon::IsActorBalloon(void* window) {
   void* gm = reinterpret_cast<GetActiveFn>(rag::kModeMgrGetActiveAddr)(
       static_cast<int>(rag::kModeMgrAddr));
   if (!gm) return false;
-  void* actor_mgr = Read<void*>(gm, kGm_ActorMgr);
+  void* actor_mgr = Read<void*>(gm, gamescene::kGmActorMgr);
   if (!actor_mgr) return false;
-  void* sentinel = Read<void*>(actor_mgr, kAm_ListHead);
+  void* sentinel = Read<void*>(actor_mgr, gamescene::kAmListHead);
   if (!sentinel) return false;
 
   auto owns = [&](void* actor) {
     return actor != nullptr && Read<void*>(actor, kAct_Balloon) == window;
   };
-  bool found = owns(Read<void*>(actor_mgr, kAm_OwnPlayer));  // hors liste !
+  bool found = owns(Read<void*>(actor_mgr, gamescene::kAmOwnPlayer));  // hors liste !
   int guard = 0;
   for (void* node = Read<void*>(sentinel, 0);
        !found && node && node != sentinel && guard < 4096;
@@ -286,7 +284,7 @@ void ChatBalloon::SyncGuarded() {
 // pu mourir ou changer de map.
 void ChatBalloon::DestroyAdopted(const std::vector<Doomed>& doomed) {
   auto queue_destroy = reinterpret_cast<QueueDestroyFn>(kQueueDestroyWindow);
-  void* mgr = reinterpret_cast<void*>(kUIWindowMgr);
+  void* mgr = reinterpret_cast<void*>(uiwnd::kUIWindowMgrAddr);
   // ⚠ Boucle indexée, pas un range-for : en debug MSVC les itérateurs de vecteur
   // sont des objets à dérouler, ce que `__try` interdit dans la même fonction
   // (C2712) — le même piège que dans OnRenderUI.
@@ -310,11 +308,11 @@ void ChatBalloon::SyncWithActors() {
   void* gm = reinterpret_cast<GetActiveFn>(rag::kModeMgrGetActiveAddr)(
       static_cast<int>(rag::kModeMgrAddr));
   if (!gm) { balloons_.clear(); return; }
-  void* actor_mgr = Read<void*>(gm, kGm_ActorMgr);
+  void* actor_mgr = Read<void*>(gm, gamescene::kGmActorMgr);
   if (!actor_mgr) { balloons_.clear(); return; }
-  void* sentinel = Read<void*>(actor_mgr, kAm_ListHead);
+  void* sentinel = Read<void*>(actor_mgr, gamescene::kAmListHead);
   if (!sentinel) return;
-  void* own_actor = Read<void*>(actor_mgr, kAm_OwnPlayer);
+  void* own_actor = Read<void*>(actor_mgr, gamescene::kAmOwnPlayer);
 
   // Les textes captés depuis la dernière frame.
   std::vector<Pending> pending;
@@ -558,9 +556,9 @@ void ChatBalloon::DrawBalloons() {
   void* gm = reinterpret_cast<GetActiveFn>(rag::kModeMgrGetActiveAddr)(
       static_cast<int>(rag::kModeMgrAddr));
   if (!gm) return;
-  void* actor_mgr = Read<void*>(gm, kGm_ActorMgr);
+  void* actor_mgr = Read<void*>(gm, gamescene::kGmActorMgr);
   if (!actor_mgr) return;
-  void* sentinel = Read<void*>(actor_mgr, kAm_ListHead);
+  void* sentinel = Read<void*>(actor_mgr, gamescene::kAmListHead);
   if (!sentinel) return;
 
   const ImGuiIO& io = ImGui::GetIO();
@@ -664,7 +662,7 @@ void ChatBalloon::DrawBalloons() {
   // Le joueur local, qui n'est PAS dans la liste (vérifié en live : sentinelle
   // pointant sur elle-même, acteur propre à `actorMgr+0x2C`). Sans cette ligne,
   // sa bulle existerait dans notre modèle mais ne serait jamais dessinée.
-  draw_one(Read<void*>(actor_mgr, kAm_OwnPlayer));
+  draw_one(Read<void*>(actor_mgr, gamescene::kAmOwnPlayer));
 }
 
 // ── Réglages ─────────────────────────────────────────────────────────────────

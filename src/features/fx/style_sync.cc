@@ -13,19 +13,11 @@
 #include "features/fx/palette_inject.h"
 #include "features/systems/bourgeon_opcodes.h"
 #include "features/windows/palette_editor.h"  // ouverture pilotée par un NPC
+#include "ragnarok/globals.h"                 // rag::kOwnAccountIdAddr / kOwnCharIdAddr
 #include "ui/sprite_path.h"                   // ro::BodySpriteKey
 #include "utils/log_console.h"
 
 namespace {
-
-// AID de notre compte — et GID de notre acteur. Même adresse que dans
-// quick_cast / make_item_window / char_select : la constante est recopiée là où
-// elle sert, comme partout dans ce projet.
-constexpr uintptr_t kOwnAidAddr = 0x015FB9A4;
-// 🔴 `g_Own_CharId`, à ne PAS confondre avec l'AID ci-dessus. C'est lui qui
-// identifie un PERSONNAGE — et c'est la même valeur que `CHARACTER_INFO+0x00` au
-// char-select, donc la seule clé de cache que les deux écrans partagent.
-constexpr uintptr_t kOwnCharIdAddr = 0x015FB9A8;
 
 uint32_t ReadGlobalU32(uintptr_t addr) {
   __try {
@@ -33,8 +25,8 @@ uint32_t ReadGlobalU32(uintptr_t addr) {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
 }
 
-uint32_t OwnGid() { return ReadGlobalU32(kOwnAidAddr); }
-uint32_t OwnCharId() { return ReadGlobalU32(kOwnCharIdAddr); }
+uint32_t OwnGid() { return ReadGlobalU32(rag::kOwnAccountIdAddr); }
+uint32_t OwnCharId() { return ReadGlobalU32(rag::kOwnCharIdAddr); }
 
 // Le style d'un joueur : une recette par CORPS, plus celle qui sert de repli.
 struct Remote {

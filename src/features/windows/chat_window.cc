@@ -14,6 +14,7 @@
 #include <string>
 #include <unordered_map>
 
+#include "ragnarok/game_scene.h"
 #include "yaml-cpp/yaml.h"       // disposition des onglets (SaveData\bourgeon_chat.yaml)
 
 #include "bourgeon.h"            // Bourgeon::Instance().IsGameActive / IsMapLoading
@@ -53,17 +54,9 @@ namespace {
 // couleurRGB, sender, TYPE)`, __thiscall, 5 arguments pile. action 1 = ajouter
 // une ligne, 0x13 = la même chose par le msg 0x73 (voie morte côté natif, mais
 // elle porte du texte).
-constexpr uintptr_t kChatActionAddr = 0x00a4ad20;
 
 // Pointeur direct vers la UINewChatWnd vivante (nul = pas de fenêtre native).
 // C'est lui qui arbitre laquelle des deux sources d'ingestion est en service.
-constexpr uintptr_t kNewChatWndPtr = 0x0131f6b0;
-
-// Modèle SESSION de l'inventaire — la std::list que le client tient à jour quel
-// que soit l'état de ses fenêtres (même source que les viewers). Sert ici à une
-// seule question : possède-t-on l'objet dont on pose le lien ? Le client bloque
-// l'envoi d'un `<ITEML>` sinon.
-constexpr uintptr_t kInvListHead = 0x015fbab0;
 
 // Le libellé visible d'un lien de RECETTE. Composé LOCALEMENT à partir du seul
 // nom transporté, jamais transmis tout fait : chacun le lit ainsi dans SA langue,
@@ -93,8 +86,6 @@ constexpr size_t    kSsoCapacity   = 15;
 // CMode::SendMsg. C'est exactement ce qu'il nous faut, et ça évite de
 // réimplémenter la moindre règle de jeu.
 constexpr uintptr_t kPendingSendText    = 0x0131f9c4;  // std::string
-constexpr uintptr_t kStdStringAssign    = 0x004f1940;  // __thiscall(this, src, len)
-constexpr uintptr_t kStdStringDtor      = 0x004f08f0;  // __thiscall(this)
 // 🔴 CE GARDE N'EST PAS CELUI DE L'ENTRÉE — il appartient aux MACROS, et le
 // copier ici refusait tout message contenant un lien d'objet.
 //
@@ -122,17 +113,13 @@ constexpr int kCmdIdSaveChat         = 0x33;  // TT_REQ_SAVE_CHAT
 constexpr int kCmdIdSaveChatFromRoom = 0x34;  // TT_REQ_SAVE_CHAT_FROM_CHATROOM
 
 constexpr uintptr_t kCmdHandlerMap      = 0x00d7f1a0;  // __thiscall(ctxKey, texte)
-constexpr uintptr_t kUIWindowContextKey = 0x015fa3c0;
 // 🔴 __thiscall, PAS __stdcall : le natif charge `ecx = g_UIWindowContextKey`
 // juste avant l'appel (0x00a4769c). Ce n'est pas décoratif — quand le nom tapé
 // n'est PAS dans la table statique, la fonction retombe sur la table dynamique
 // (`0x00d60804` → `sub_D5CD30(ecx, nom)`) et déréférence ce contexte. Appelée
 // sans, elle part sur un ecx quelconque et lève une exception.
 constexpr uintptr_t kLookupSlashCmd     = 0x00d5e590;  // __thiscall(ctx, texte, &id, args[3])
-constexpr uintptr_t kCurrentModePtr     = 0x0121333c;  // CMode* courant
 constexpr uintptr_t kInputTargetMode    = 0x015ff838;  // 0 public 1 groupe 2 guilde 3 clan 4 alliés
-constexpr uintptr_t kOwnGuildId         = 0x0159c230;
-constexpr uintptr_t kPartyMemberCount   = 0x00d5cf50;  // __thiscall(ctxKey)
 constexpr uintptr_t kClanStatePtr       = 0x0159c07c;  // *(byte*)(*ptr + 0x5C) = clan
 // `/battlechat` : quand il est armé, l'ENTRÉE native envoie tout au champ de
 // bataille et ne consulte NI le mode NI les préfixes (0x00c7a905).
@@ -297,7 +284,7 @@ bool SafeCopyChatText(const char* text, RawChatLine* out) {
 bool NativeChatAlive() {
   bool alive = false;
   __try {
-    alive = *reinterpret_cast<void**>(kNewChatWndPtr) != nullptr;
+    alive = *reinterpret_cast<void**>(uiwnd::kChatWndSlot) != nullptr;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     alive = false;
   }
@@ -619,7 +606,7 @@ bool ReadOwnCharName(char* out, size_t out_size) {
   using OwnNameFn = const char*(__thiscall*)(void*);
   __try {
     const char* name = reinterpret_cast<OwnNameFn>(kOwnGetCharName)(
-        reinterpret_cast<void*>(kUIWindowContextKey));
+        reinterpret_cast<void*>(rag::kSessionAddr));
     if (name == nullptr || name[0] == '\0') return false;
     size_t n = 0;
     for (; n + 1 < out_size && name[n] != '\0'; ++n) out[n] = name[n];
@@ -637,7 +624,7 @@ bool WhisperPopupWanted(const char* name_wire) {
   __try {
     const bool is_friend =
         reinterpret_cast<HasNameFn>(kFriendListHasName)(
-            reinterpret_cast<void*>(kUIWindowContextKey), name_wire) != 0;
+            reinterpret_cast<void*>(rag::kSessionAddr), name_wire) != 0;
     const uint32_t* option = reinterpret_cast<const uint32_t*>(
         is_friend ? kFriendOptOpenFromFriend : kFriendOptOpenFromStranger);
     return *option != 0;
@@ -774,14 +761,14 @@ bool CommandRejectsItemTag(int cmd_id) {
 
 // `g_ChatPendingSendText = text` : le tampon que TOUS les envois relisent.
 void SetPendingSendText(const char* text) {
-  reinterpret_cast<StdStringAssign_t>(kStdStringAssign)(
+  reinterpret_cast<StdStringAssign_t>(rag::kStdStringAssignAddr)(
       reinterpret_cast<void*>(kPendingSendText), text, std::strlen(text));
 }
 
 // CMode::SendMsg(cmd, p2..p5) sur le mode de zone courant. Rend false si aucun
 // mode n'est actif (écran de login, changement de carte).
 bool ModeSendMsg(int cmd, int p2 = 0, int p3 = 0, int p4 = 0, int p5 = 0) {
-  void* mode = *reinterpret_cast<void**>(kCurrentModePtr);
+  void* mode = *reinterpret_cast<void**>(rag::kActiveModePtr);
   if (mode == nullptr) return false;
   void** vt = *reinterpret_cast<void***>(mode);
   reinterpret_cast<SendMsg_t>(vt[kSendMsgVtOff / 4])(mode, cmd, p2, p3, p4, p5);
@@ -790,8 +777,8 @@ bool ModeSendMsg(int cmd, int p2 = 0, int p3 = 0, int p4 = 0, int p5 = 0) {
 
 // Nombre de membres de mon groupe. ⚠ Appel natif : sous SEH seulement.
 int PartyMemberCount() {
-  return reinterpret_cast<PartyCount_t>(kPartyMemberCount)(
-      reinterpret_cast<void*>(kUIWindowContextKey));
+  return reinterpret_cast<PartyCount_t>(rag::kPartyMemberCountAddr)(
+      reinterpret_cast<void*>(rag::kSessionAddr));
 }
 
 // Les trois touches que l'ENTRÉE native consulte au moment où l'on valide. Même
@@ -897,7 +884,7 @@ int ResolveSendCommand(ChatWindow::SendToggles toggles) {
   if (*reinterpret_cast<int*>(kBattleChatModeOn) != 0) return kMsgBattle;
 
   const int  mode     = *reinterpret_cast<int*>(kInputTargetMode);
-  const bool in_guild = *reinterpret_cast<uint32_t*>(kOwnGuildId) != 0;
+  const bool in_guild = rag::OwnGuildId() != 0;
   if (mode == 2 && in_guild) return toggles.guild ? kMsgPublic : kMsgGuild;
   if (mode == 1) {
     if (toggles.party) return kMsgPublic;
@@ -964,7 +951,7 @@ const char* NativeSendChatText(const char* text, const char* whisper_target,
       // Commandes : d'abord la map de handlers (commandes désactivables par le
       // serveur) ; si elle a traité, c'est fini. Sinon la table slash historique
       // donne l'id et jusqu'à trois arguments, et Chat_HandleChatMessage exécute.
-      void* ctx = reinterpret_cast<void*>(kUIWindowContextKey);
+      void* ctx = reinterpret_cast<void*>(rag::kSessionAddr);
       if (reinterpret_cast<CmdHandlerMap_t>(kCmdHandlerMap)(ctx, text) == 0) {
         NativeString args[3];
         for (NativeString& arg : args) NativeStringInit(&arg);
@@ -990,7 +977,7 @@ const char* NativeSendChatText(const char* text, const char* whisper_target,
                       static_cast<int>(reinterpret_cast<intptr_t>(args)));
         }
         for (NativeString& arg : args)
-          reinterpret_cast<StdStringDtor_t>(kStdStringDtor)(&arg);
+          reinterpret_cast<StdStringDtor_t>(rag::kStdStringDtorAddr)(&arg);
       }
     } else if (whisper_target != nullptr && whisper_target[0] != '\0') {
       // Chuchotement : même chemin que la box destinataire du chat natif —
@@ -1058,9 +1045,6 @@ struct GuildProbe {
 // `CNameDict_GetEntryOrRequest` rend le bloc CNameInfo s'il est connu, et sinon
 // met le GID en file de REQUÊTE serveur : c'est ce qui fait apparaître la guilde
 // quelques frames plus tard, sans que nous ayons de paquet à écrire.
-constexpr uintptr_t kNameDictGetEntryOrRequest = 0x005a1460;
-constexpr int       kGmNameDict   = 0x160;
-constexpr int       kNameInfoGuild = 0x34;  // nom +0x04, party +0x1C, guilde +0x34
 
 bool ProbeGuildsFromNameDict(GuildProbe* items, int count) {
   if (count <= 0) return false;
@@ -1070,12 +1054,12 @@ bool ProbeGuildsFromNameDict(GuildProbe* items, int count) {
     void* gm = reinterpret_cast<GetActiveFn>(rag::kModeMgrGetActiveAddr)(
         static_cast<int>(rag::kModeMgrAddr));
     if (gm == nullptr) return false;
-    void* dict = reinterpret_cast<uint8_t*>(gm) + kGmNameDict;
-    auto get_entry = reinterpret_cast<GetNameEntryFn>(kNameDictGetEntryOrRequest);
+    void* dict = reinterpret_cast<uint8_t*>(gm) + gamescene::kGmNameDict;
+    auto get_entry = reinterpret_cast<GetNameEntryFn>(gamescene::kNameDictGetEntryOrRequestAddr);
     for (int i = 0; i < count; ++i) {
       void* entry = get_entry(dict, items[i].aid);
       if (entry == nullptr) continue;
-      ReadStdString(reinterpret_cast<const uint8_t*>(entry) + kNameInfoGuild,
+      ReadStdString(reinterpret_cast<const uint8_t*>(entry) + gamescene::kNameGuild,
                     items[i].guild, sizeof(items[i].guild));
     }
     return true;
@@ -1505,10 +1489,10 @@ ChatWindow::ChatWindow() {
   // Le détour porte DEUX besoins (filtre système + ingestion) parce qu'il n'y a
   // qu'un seul jeu d'octets à détourner à cette adresse — cf. l'en-tête.
   g_tramp_chat_action = hooking::HookManager::Instance().SetHook(
-      hooking::HookType::kJmpHook, reinterpret_cast<uint8_t*>(kChatActionAddr),
+      hooking::HookType::kJmpHook, reinterpret_cast<uint8_t*>(uiwnd::kMgrSendMsgAddr),
       reinterpret_cast<uint8_t*>(&ChatActionStub));
   if (g_tramp_chat_action == nullptr)
-    LogError("[chat] detour ChatAction 0x{:08x} NON pose", kChatActionAddr);
+    LogError("[chat] detour ChatAction 0x{:08x} NON pose", uiwnd::kMgrSendMsgAddr);
 
   // Garde-fou permanent, posé même si la chatbox ImGui est éteinte : il ne coûte
   // qu'un `test ecx, ecx` quand la native est vivante, et il protège quinze
@@ -1604,8 +1588,8 @@ bool ChatWindow::IsOwnName(const char* utf8) const {
 
 bool ChatWindow::InParty() const {
   __try {
-    return reinterpret_cast<PartyCount_t>(kPartyMemberCount)(
-               reinterpret_cast<void*>(kUIWindowContextKey)) != 0;
+    return reinterpret_cast<PartyCount_t>(rag::kPartyMemberCountAddr)(
+               reinterpret_cast<void*>(rag::kSessionAddr)) != 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     return false;
   }
@@ -1613,7 +1597,7 @@ bool ChatWindow::InParty() const {
 
 bool ChatWindow::InGuild() const {
   __try {
-    return *reinterpret_cast<uint32_t*>(kOwnGuildId) != 0;
+    return rag::OwnGuildId() != 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     return false;
   }
@@ -6906,7 +6890,7 @@ bool ChatWindow::AppendItemLinkFromLink(const itemcell::ChatLink& link) {
   //
   // Le test porte sur le MODÈLE SESSION (même liste que les viewers), pas sur une
   // fenêtre : cacher l'inventaire natif vide la seconde, jamais le premier.
-  if (itemcell::FindInfoById(kInvListHead, link.id) == nullptr)
+  if (itemcell::FindInfoById(rag::kInventoryListAddr, link.id) == nullptr)
     return AppendItemRefLink(link.id, itemcell::NameById(link.id));
 
   char wire[192];

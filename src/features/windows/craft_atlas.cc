@@ -14,6 +14,8 @@
 #include "features/moonlight_ui/moonlight_ui.h"
 #include "features/windows/chat_window.h"  // poser un lien de recette
 #include "imgui.h"
+#include "ragnarok/globals.h"
+#include "ragnarok/lua.h"
 #include "ui/icon_cache.h"
 #include "ui/ro_imgui.h"
 #include "ui/ro_widgets.h"
@@ -23,13 +25,6 @@ using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
 namespace {
 
-// ── Modèle SESSION de l'inventaire ───────────────────────────────────────────
-// La std::list que le client tient à jour quel que soit l'état de ses fenêtres —
-// même source qu'InventoryViewer et MakeItemWindow. 🔴 `kInvListHead` est
-// l'adresse du GLOBAL ; la SENTINELLE est ce qu'il contient, et c'est elle qui
-// termine le parcours (la liste est CIRCULAIRE : comparer au global ne rencontre
-// jamais la condition d'arrêt et resomme l'inventaire jusqu'au garde-fou).
-constexpr uintptr_t kInvListHead  = 0x015fbab0;
 constexpr int       kNodeNext     = 0x00;
 constexpr int       kNodeInfo     = 0x08;
 constexpr int       kNodeAmt      = 0x18;
@@ -40,7 +35,6 @@ constexpr int       kMaxInvNodes  = 4096;  // garde-fou de parcours
 // Résolveur de nom de compétence LOCALISÉ (wrapper Lua natif, cf. skill_bar et
 // character_sheet) : char* GetSkillName(int id), « Unknown-Skill » si inconnu.
 // C'est la seule source qui couvre TOUTES les compétences, custom comprises.
-constexpr uintptr_t kGetSkillNameLua = 0x0073a1f0;
 using GetSkillNameLua_t = char* (__cdecl*)(int);
 
 constexpr int kRoCursorHand = 2;  // *(CursorMgr+0x50) : la main du client
@@ -136,7 +130,7 @@ void CraftAtlas::RebuildOwned() {
   // reparcourrait des dizaines de fois pour la même image, et l'Atlas montre le
   // stock sur presque chaque ligne.
   __try {
-    uint8_t* head = *reinterpret_cast<uint8_t**>(kInvListHead);
+    uint8_t* head = *reinterpret_cast<uint8_t**>(rag::kInventoryListAddr);
     if (!head) return;
     uint8_t* node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
     int guard = 0;
@@ -188,7 +182,7 @@ const char* CraftAtlas::SkillLabel(int skill, int recipe_lv) {
     if (recipe_lv >= 11 && recipe_lv <= 20) return i18n::Tr("Cuisine (kit)");
     return i18n::Tr("Sans compétence (objet ou script)");
   }
-  const char* n = reinterpret_cast<GetSkillNameLua_t>(kGetSkillNameLua)(skill);
+  const char* n = reinterpret_cast<GetSkillNameLua_t>(lua::kGetSkillNameAddr)(skill);
   return (n && n[0]) ? n : "?";
 }
 

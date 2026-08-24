@@ -8,9 +8,6 @@ namespace rag {
 namespace {
 
 // Adresses et offsets du bundle de compétences (20250716, base 0x400000).
-constexpr uintptr_t kSkillBundle     = 0x015fa3cc;  // CPlayerSkillBundle (session+0x0C)
-constexpr uintptr_t kSkillFlatList   = 0x015fa3e0;  // bundle+0x14 : onglet « divers »
-constexpr uintptr_t kSkillGetTabList = 0x00738370;  // __thiscall(bundle, tab) -> std::list*
 using GetTabList_t = void* (__fastcall*)(void*, void*, int);
 
 constexpr int kNodeValue  = 0x08;
@@ -31,10 +28,10 @@ int LearnedSkillLevel(int skill_id) {
     // compétence peut n'apparaître que dans l'une d'elles selon la classe, d'où le
     // balayage complet plutôt qu'un seul onglet « probable ».
     for (int tab = -1; tab < kJobTabs && !found; ++tab) {
-      uint8_t* list_obj = reinterpret_cast<uint8_t*>(kSkillFlatList);
+      uint8_t* list_obj = reinterpret_cast<uint8_t*>(rag::kSkillFlatListAddr);
       if (tab >= 0)
         list_obj = reinterpret_cast<uint8_t*>(reinterpret_cast<GetTabList_t>(
-            kSkillGetTabList)(reinterpret_cast<void*>(kSkillBundle), nullptr, tab));
+            rag::kSkillGetTabListAddr)(reinterpret_cast<void*>(rag::kSkillBundleAddr), nullptr, tab));
       if (!list_obj) continue;
       uint8_t* head = *reinterpret_cast<uint8_t**>(list_obj);
       if (!head) continue;

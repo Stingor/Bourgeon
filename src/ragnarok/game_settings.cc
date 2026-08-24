@@ -4,6 +4,7 @@
 
 #include <cstring>
 
+#include "ragnarok/audio.h"
 #include "ragnarok/globals.h"
 #include "ragnarok/talktype.h"
 #include "ragnarok/uiwnd.h"
@@ -84,7 +85,6 @@ constexpr int kRecDescriptionOffset = 0x40;
 constexpr int kRecDefaultOffset     = 0x58;
 
 // ── Son ─────────────────────────────────────────────────────────────────────
-constexpr uintptr_t kSoundMgrAddr = 0x01253d0c;
 constexpr int kSndEffectVolumeOffset = 0xe0;  // écrit par SetEffectVolume
 constexpr int kSndBgmVolumeOffset    = 0xe4;
 constexpr int kSndMaster2DOffset     = 0xe8;  // CE curseur-ci, côté fenêtre
@@ -206,7 +206,6 @@ constexpr uintptr_t kAdapterEqualsAddr = 0x00560d60;
 // survive à une fin de partie brutale.
 using OptionSave_t = void(__thiscall*)(void*);
 constexpr uintptr_t kOptionSaveAddr    = 0x00d78970;
-constexpr uintptr_t kOptionContextAddr = 0x015fa3c0;  // la session
 
 // La déconnexion propre puis l'arrêt du mode courant — les deux gestes du
 // [Apply] natif qui, eux, marchent parfaitement. Sans le drapeau de « relance »
@@ -219,7 +218,6 @@ constexpr int kCmdShutdown = 2;
 
 // ⚠ Le mode que le natif interroge dans son [Apply] est ce GLOBAL, pas celui que
 // rend le gestionnaire de modes. Les deux peuvent différer, et on suit le natif.
-constexpr uintptr_t kCurrentModePtrAddr = 0x0121333c;
 
 // `this` en ecx ; le client appelle indifféremment en __thiscall ou __fastcall.
 using StrDtor_t = void(__thiscall*)(void*);
@@ -251,7 +249,7 @@ void* Mgr() {
 
 void* SoundMgr() {
   __try {
-    return *reinterpret_cast<void**>(kSoundMgrAddr);
+    return *reinterpret_cast<void**>(audio::kSoundMgrPtr);
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
 }
 
@@ -909,7 +907,7 @@ bool ApplyStructural(int system, int adapter_index, int width, int height,
   // fermeture emporterait le réglage, et le joueur croirait le panneau menteur.
   __try {
     reinterpret_cast<OptionSave_t>(kOptionSaveAddr)(
-        reinterpret_cast<void*>(kOptionContextAddr));
+        reinterpret_cast<void*>(rag::kSessionAddr));
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
   return true;
 }
@@ -919,7 +917,7 @@ void ShutdownClient() {
     void* connection = reinterpret_cast<ConnGetInstance_t>(kConnGetInstanceAddr)();
     if (connection)
       reinterpret_cast<ConnDisconnect_t>(kConnDisconnectAddr)(connection);
-    void* mode = *reinterpret_cast<void**>(kCurrentModePtrAddr);
+    void* mode = *reinterpret_cast<void**>(rag::kActiveModePtr);
     if (mode) uiwnd::Vf<DispCmd_t>(mode, kVfDispCmd)(mode, kCmdShutdown, 0, 0, 0, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }

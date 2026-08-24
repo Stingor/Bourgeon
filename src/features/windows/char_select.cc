@@ -209,8 +209,6 @@ constexpr int kRenameCnt = 0xaa;  // u32 renommages restants (coupon 12790)
 // UINewSelectCharWnd_OnMsg 0x0079d737 (Own_SetSex avant l'entrée en jeu).
 // Lu en OCTET : le natif ne consomme que le low byte (cast (char) avant Actor_Init).
 constexpr uintptr_t kAccountSex = 0x015FB23C;
-// Account ID (g_Account_Aid) — requis par CH_REQ_IS_VALID_CHARNAME 0x028d (rename).
-constexpr uintptr_t kAccountAid = 0x015FB9A4;
 
 using DispCmd_t = void*(__thiscall*)(void*, int, int, int, int, int);
 
@@ -377,7 +375,7 @@ int ReadCount(uintptr_t addr) {
   }
 }
 
-// Nom lisible d'un job — getter NATIF `Job_GetDisplayNameOrResName` 0x00d5bb40 :
+// Nom lisible d'un job — getter NATIF `rag::kJobNameOrResNameAddr` :
 //   char* __thiscall(void* this = 0x015fa3c0 (adresse LITTÉRALE, pas un pointeur à
 //                    déréférencer), unsigned classId, int sex)   // sex 0=F, 1=M
 // C'est exactement ce qu'appelle le char-select NATIF (FUN_0079f150 @0x0079f1d7)
@@ -395,7 +393,7 @@ const char* JobName(int job, int sex) {
   using GetJobName_t = const char*(__fastcall*)(void*, void*, unsigned, int);
   const char* n = nullptr;
   __try {
-    n = reinterpret_cast<GetJobName_t>(0x00d5bb40)(
+    n = reinterpret_cast<GetJobName_t>(rag::kJobNameOrResNameAddr)(
         rag::Session(), nullptr,
         static_cast<unsigned>(job), sex);
   } __except (EXCEPTION_EXECUTE_HANDLER) {

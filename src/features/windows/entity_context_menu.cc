@@ -19,7 +19,9 @@
 #include "features/windows/monster_info_window.h"
 #include "features/windows/view_equip_window.h"
 #include "ragnarok/globals.h"
+#include "ragnarok/game_scene.h"
 #include "ragnarok/ui_window_mgr.h"  // UIM_PUSHINTOCHATHISTORY (avis de blocage)
+#include "ragnarok/uiwnd.h"
 #include "ui/ro_imgui.h"
 #include "ui/ro_widgets.h"
 #include "utils/hooking/hook_manager.h"
@@ -94,14 +96,10 @@ constexpr int kClickConsumed = 1;
 // §8 — helpers natifs réutilisés.
 constexpr uintptr_t kStdVectorIntPushBack = 0x007a7fa0;  // __thiscall(vec*, int*)
 constexpr uintptr_t kActiveIdSetContains  = 0x00a727f0;  // __cdecl(aid) -> bool
-constexpr uintptr_t kNameDictGetEntry     = 0x005a1460;  // __thiscall(dict, gid)
-constexpr uintptr_t kPostActorClickAction = 0x00c753a0;  // __thiscall(gm, aid, flag)
-constexpr uintptr_t kActorListFindByGid   = 0x00a69eb0;  // __thiscall(actorMgr, gid)
 // La liste d'amis, interrogée par NOM — le prédicat que le natif consulte lui
 // aussi (@0x00c6f699) pour ne pas proposer « ajouter en ami » deux fois.
 // ⚠ `this` est l'ADRESSE du global, pas son contenu (`mov ecx, offset …`).
 constexpr uintptr_t kFriendListContains   = 0x00a388f0;  // __thiscall(mgr, name)
-constexpr uintptr_t kUIWindowMgrAddr      = 0x0131f4e8;
 
 // ── La liste d'ignorés du chat : `std::set<std::string>` ─────────────────────
 // Derrière le pointeur global 0x01251824. `ChatBlockList_Contains` (0x005ee940)
@@ -145,19 +143,9 @@ constexpr uintptr_t kIsHostileOrSpecial   = 0x00d9d220;  // __stdcall(aid, job) 
 // ⚠ Le dictionnaire n'a PAS d'entrée pour soi-même : `CNameDict_GetEntryOrRequest`
 // rend alors un objet vide STATIQUE (0x01251678), tous champs à "". Ne jamais s'y
 // fier pour lire ses propres infos — cf. docs §9.6.
-constexpr int       kGm_NameDict          = 0x160;
-constexpr int       kName_Str             = 0x04;   // le pseudo
-constexpr int       kName_Party           = 0x1c;   // le nom de son GROUPE
-constexpr int       kNameField_Size       = 0x10;   // relatifs au champ, pas
-constexpr int       kNameField_Cap        = 0x14;   // à CNameInfo
 
-// Globaux de session lus pour décider quelles entrées ont un sens (§5.4).
-constexpr uintptr_t kOwnAccountAid = 0x015fb9a4;
-constexpr uintptr_t kOwnGuildId    = 0x0159c230;
-constexpr uintptr_t kGuildIsMaster = 0x0159c23c;
 constexpr uintptr_t kInPartyFlag   = 0x015ff804;
 constexpr uintptr_t kOwnPetAid     = 0x015fb3b0;
-constexpr uintptr_t kSessionAddr   = 0x015fa3c0;
 // ⚠ Ces deux offsets sont ceux des comparaisons `*((int*)session + N)` du client,
 // pas les noms qu'IDA leur a donnés : 5462*4 = 0x5558 et 5506*4 = 0x5608.
 constexpr int kSess_HomunAid = 0x5558;  // GameMode_IsCurrentId5558
@@ -421,8 +409,8 @@ bool IsHostileOrSpecialUnit(uint32_t aid, uint32_t job) {
 bool CopyClientString(const void* str, char* out, size_t out_size) {
   __try {
     if (!str) return false;
-    const unsigned size = Read<unsigned>(str, kNameField_Size);
-    const unsigned cap  = Read<unsigned>(str, kNameField_Cap);
+    const unsigned size = Read<unsigned>(str, gamescene::kStrSize);
+    const unsigned cap  = Read<unsigned>(str, gamescene::kStrCap);
     if (size == 0 || size >= out_size) return false;
     const char* src = (cap >= 16) ? Read<const char*>(str, 0)
                                   : reinterpret_cast<const char*>(str);
@@ -441,8 +429,8 @@ bool ReadNameFieldRaw(void* game_mode, uint32_t aid, int field, char* out,
                       size_t out_size) {
   const void* str = nullptr;
   __try {
-    void* dict = reinterpret_cast<uint8_t*>(game_mode) + kGm_NameDict;
-    void* entry = reinterpret_cast<GetEntryFn>(kNameDictGetEntry)(dict, aid);
+    void* dict = reinterpret_cast<uint8_t*>(game_mode) + gamescene::kGmNameDict;
+    void* entry = reinterpret_cast<GetEntryFn>(gamescene::kNameDictGetEntryOrRequestAddr)(dict, aid);
     if (!entry) return false;
     str = reinterpret_cast<const uint8_t*>(entry) + field;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
@@ -451,7 +439,7 @@ bool ReadNameFieldRaw(void* game_mode, uint32_t aid, int field, char* out,
 
 std::string EntityName(void* game_mode, uint32_t aid) {
   char buffer[64] = {};
-  if (!ReadNameFieldRaw(game_mode, aid, kName_Str, buffer, sizeof(buffer)))
+  if (!ReadNameFieldRaw(game_mode, aid, gamescene::kNameStr, buffer, sizeof(buffer)))
     return std::string();
   // Les noms voyagent dans l'encodage du client : on affiche en UTF-8.
   const char* utf8 = ro::WireToUtf8(buffer);
@@ -462,7 +450,7 @@ void* FindActor(void* game_mode, uint32_t aid) {
   __try {
     void* actor_mgr = Read<void*>(game_mode, kGm_ActorMgr);
     if (!actor_mgr) return nullptr;
-    return reinterpret_cast<FindActorFn>(kActorListFindByGid)(actor_mgr, aid);
+    return reinterpret_cast<FindActorFn>(gamescene::kActorListFindByGidAddr)(actor_mgr, aid);
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
 }
 
@@ -510,7 +498,7 @@ bool FriendListContainsName(const char* wire_name) {
   if (!wire_name || !*wire_name) return false;
   __try {
     return reinterpret_cast<ContainsNameFn>(kFriendListContains)(
-               reinterpret_cast<void*>(kUIWindowMgrAddr), wire_name) != 0;
+               reinterpret_cast<void*>(uiwnd::kUIWindowMgrAddr), wire_name) != 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
@@ -526,7 +514,7 @@ bool FriendListContainsName(const char* wire_name) {
 // tout est vide et on ne grise rien : on ne bloque jamais sur une ignorance.
 bool TargetHasParty(void* game_mode, uint32_t aid) {
   char party[64] = {};
-  return ReadNameFieldRaw(game_mode, aid, kName_Party, party, sizeof(party));
+  return ReadNameFieldRaw(game_mode, aid, gamescene::kNameParty, party, sizeof(party));
 }
 
 // La cible est-elle DÉJÀ dans notre groupe ? Le natif se posait la question
@@ -537,7 +525,7 @@ bool TargetHasParty(void* game_mode, uint32_t aid) {
 // ⚠ SEH ⇒ aucun objet C++ ici.
 bool OwnPartyContains(uint32_t aid) {
   __try {
-    void* session = reinterpret_cast<void*>(kSessionAddr);
+    void* session = reinterpret_cast<void*>(rag::kSessionAddr);
     void** head = Read<void**>(session, kSess_PartyListHead);
     if (!head) return false;
     void** node = reinterpret_cast<void**>(*head);
@@ -609,7 +597,7 @@ bool RunNativeActorClick(uint32_t aid) {
   __try {
     void* game_mode = ReadGlobalPtr(rag::kActiveModePtr);
     if (!game_mode) return false;
-    reinterpret_cast<ClickFn>(kPostActorClickAction)(game_mode, aid, 1);
+    reinterpret_cast<ClickFn>(gamescene::kPostActorClickActionAddr)(game_mode, aid, 1);
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
@@ -1005,7 +993,7 @@ void EntityContextMenu::FillTargetAndOpen(void* game_mode, uint32_t aid,
     target_guild_id_  = ActorGuildId(FindActor(game_mode, aid));
     // Amis et ignorés se cherchent par nom BRUT, pas par sa conversion UTF-8.
     char wire_name[64] = {};
-    ReadNameFieldRaw(game_mode, aid, kName_Str, wire_name, sizeof(wire_name));
+    ReadNameFieldRaw(game_mode, aid, gamescene::kNameStr, wire_name, sizeof(wire_name));
     target_is_friend_    = FriendListContainsName(wire_name);
     target_chat_blocked_ = ChatBlockListContains(wire_name);
   }
@@ -1036,7 +1024,7 @@ EntityContextMenu::Kind EntityContextMenu::ClassifyTarget(void* game_mode,
   // Ses propres compagnons, avant tout test de job : ce sont les seuls cas où le
   // natif ouvrait autre chose qu'un menu de joueur.
   {
-    void* session = reinterpret_cast<void*>(kSessionAddr);
+    void* session = reinterpret_cast<void*>(rag::kSessionAddr);
     if (aid == static_cast<uint32_t>(ReadGlobalInt(kOwnPetAid))) {
       // La condition d'entrée du menu pet natif est, mot pour mot,
       // `quad[6] == g_Own_PetAid && acteur[0x314] == 7` (@0x00c6ecdb). Sa
@@ -1059,7 +1047,7 @@ EntityContextMenu::Kind EntityContextMenu::ClassifyTarget(void* game_mode,
   // on n'en garde que l'identité, c'est-à-dire le menu de diagnostic du staff.
   if (category == kPickPet) return Kind::kOther;
 
-  if (aid == static_cast<uint32_t>(ReadGlobalInt(kOwnAccountAid))) return Kind::kSelf;
+  if (aid == rag::OwnAccountId()) return Kind::kSelf;
 
   // 🔴 Un GID de la plage réservée ne peut être qu'un NPC épinglé, QUEL QUE SOIT
   // le sprite qu'il porte : un NPC déguisé (`@eventdisguise`) garde un job de
@@ -1188,7 +1176,7 @@ void EntityContextMenu::ToggleAloot(uint32_t nameid) {
 void EntityContextMenu::BuildItems() {
   items_.clear();
   const bool staff = staff_extras_ && IsStaff();
-  const uint32_t own_aid = static_cast<uint32_t>(ReadGlobalInt(kOwnAccountAid));
+  const uint32_t own_aid = rag::OwnAccountId();
   const bool client_admin = ClientAdminListContains(own_aid);
 
   auto add = [&](const char* label, int code, Local local = Local::kNone,
@@ -1211,10 +1199,9 @@ void EntityContextMenu::BuildItems() {
 
   switch (kind_) {
     case Kind::kPlayer: {
-      const uint32_t own_guild =
-          static_cast<uint32_t>(ReadGlobalInt(kOwnGuildId));
+      const uint32_t own_guild = static_cast<uint32_t>(rag::OwnGuildId());
       const bool in_guild  = own_guild != 0;
-      const bool is_master = in_guild && ReadGlobalInt(kGuildIsMaster) != 0;
+      const bool is_master = in_guild && ReadGlobalInt(rag::kGuildIsMasterAddr) != 0;
       const bool in_party  = ReadGlobalInt(kInPartyFlag) != 0;
 
       add(i18n::Tr("Voir l'équipement"), kCodeViewEquip);

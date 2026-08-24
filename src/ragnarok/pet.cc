@@ -5,6 +5,7 @@
 #include <cstring>
 
 #include "bourgeon.h"
+#include "ragnarok/game_scene.h"
 #include "ragnarok/globals.h"
 #include "ragnarok/uiwnd.h"
 #include "ui/ro_imgui.h"
@@ -99,9 +100,7 @@ using BannedFn   = char (__stdcall*)(const char*);
 // donc nullptr proprement hors jeu. Le même que celui de l'inspecteur d'entité.
 using FindActorFn = void* (__stdcall*)(uint32_t);
 
-constexpr uintptr_t kActorFindByGid = 0x00d806a0;
 constexpr uintptr_t kEggToMobAddr = 0x00d823f0;
-constexpr uintptr_t kJobNameAddr  = 0x00d5bb40;
 constexpr uintptr_t kBannedAddr   = 0x00a85be0;
 // Le `this` de `Job_GetDisplayNameOrResName`, c'est la session — le même objet
 // que `g_UIWindowContextKey`. On prend celui de globals.h, pas une redéclaration.
@@ -204,7 +203,7 @@ bool Present() {
     //    `Actor_FindByGid` est le raccourci du client (GameMode actif puis
     //    ActorList_FindByGID) : il rend nullptr proprement hors jeu, là où lire
     //    le mode à la main tomberait sur celui du login.
-    return reinterpret_cast<FindActorFn>(kActorFindByGid)(
+    return reinterpret_cast<FindActorFn>(gamescene::kFindActorByGidAddr)(
                static_cast<uint32_t>(aid)) != nullptr;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
@@ -351,7 +350,7 @@ int EggItidToMobClass(int egg_itid) {
 const char* MobDisplayNameUtf8(int mob_class) {
   const char* raw = nullptr;
   __try {
-    raw = reinterpret_cast<JobNameFn>(kJobNameAddr)(rag::Session(), mob_class, -1);
+    raw = reinterpret_cast<JobNameFn>(rag::kJobNameOrResNameAddr)(rag::Session(), mob_class, -1);
   } __except (EXCEPTION_EXECUTE_HANDLER) { raw = nullptr; }
   return (raw && raw[0]) ? ro::LocalToUtf8(raw) : "";
 }

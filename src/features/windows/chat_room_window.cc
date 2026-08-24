@@ -361,7 +361,6 @@ constexpr int kVfModeSendMsg         = 0x18;  // CMode::SendMsg, vtable+0x18
 // Le CRT du JEU — jamais celui de la DLL : ces `std::string` sont détruites par du
 // code natif, et allouées par un autre tas elles le feraient planter.
 constexpr uintptr_t kStdStringCtorCStr = 0x004e5330;  // __thiscall(this, cstr)
-constexpr uintptr_t kStdStringDtor     = 0x004f08f0;  // __thiscall(this)
 
 // Envoie la demande par le chemin natif. Rend false si le mode de jeu n'est pas
 // disponible (transition de carte, char-select) ou si l'appel a levé.
@@ -382,7 +381,7 @@ bool SendCreateChatRoom(const char* title_cp949, const char* password_cp949,
     using StrCtor_t = void*(__fastcall*)(void*, void*, const char*);
     using StrDtor_t = void(__fastcall*)(void*, void*);
     auto* ctor = reinterpret_cast<StrCtor_t>(kStdStringCtorCStr);
-    auto* dtor = reinterpret_cast<StrDtor_t>(kStdStringDtor);
+    auto* dtor = reinterpret_cast<StrDtor_t>(rag::kStdStringDtorAddr);
 
     ctor(req.title, nullptr, title_cp949);
     // Un salon public n'a pas de mot de passe : le natif envoie ce que porte son
@@ -895,12 +894,11 @@ bool SafeLocalToUtf8(const char* local, char* out, size_t out_size) {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
-constexpr uintptr_t kOwnCharNamePlain = 0x01602568;
 bool OwnCharName(char* out, size_t out_size) {
   if (!out || out_size == 0) return false;
   out[0] = '\0';
   __try {
-    const char* src = reinterpret_cast<const char*>(kOwnCharNamePlain);
+    const char* src = reinterpret_cast<const char*>(rag::kOwnCharNameAddr);
     if (src[0] == '\0') return false;
     // Le nom vient de la MÉMOIRE du client : sa code-page, donc.
     const char* utf8 = ro::LocalToUtf8(src);

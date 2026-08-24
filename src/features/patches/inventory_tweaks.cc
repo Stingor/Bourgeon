@@ -45,16 +45,9 @@ constexpr uint32_t kNewMaxH   = 0x400;  // 1024
 // ---- engine functions ------------------------------------------------------
 constexpr uintptr_t kDrawText  = 0x00a25a70;  // __thiscall(this,x,y,str,len,face,size,color,bold,ital)
 constexpr uintptr_t kMeasureW  = 0x00a21c90;  // __thiscall(this,str,len,face,size,_,_) -> width
-constexpr uintptr_t kBlit      = 0x00a1d260;  // __thiscall(this,x,y,img,flag)
 constexpr uintptr_t kFill      = 0x00a1d460;  // __thiscall(this,x,y,w,h,color) filled rect
-constexpr uintptr_t kIconPath  = 0x0103db00;  // "유저인터페이스\inventory\icon_weight.bmp"
-constexpr uintptr_t kBtnbarPath = 0x010357b8; // "유저인터페이스\basic_interface\btnbar_left.bmp" (bottom-frame height)
 constexpr int       kBarHeight  = 0x29;       // btnbar bmp height fallback (41px) if the live read fails
-constexpr uintptr_t kFmtComma  = 0x00a948d0;  // __cdecl(value,buf,size) -> thousands-separated
 
-// ---- session globals -------------------------------------------------------
-constexpr uintptr_t kWeightCur     = 0x015fbaa0;  // current weight (raw)
-constexpr uintptr_t kWeightMax     = 0x015fba9c;  // max weight (raw)
 constexpr uintptr_t kOverweightPct = 0x01602324;  // red-tint % threshold
 
 // ---- inventory slot-count "X / max" readout (drawn by the native FUN_00946da0) --
@@ -102,7 +95,6 @@ constexpr int kBarX        = 0x16;   // bottom-bar strip LEFT margin (clears the
 constexpr int kBarXR       = 0x0c;   // bottom-bar strip RIGHT margin (reach the right frame, fill the gap)
 constexpr int kLine2Y      = 0x26;   // weight/zeny baseline = height - this (raised into the 41px btnbar)
 constexpr int kTabCat      = 0x10c;  // UIItemWnd current category (3 + DAT_01600553 == FAV view)
-constexpr uintptr_t kFavFlag = 0x01600553;  // FAV-mode global (matches FUN_00946da0)
 
 // ---- bottom-reserve enlarge: ONLY the grid-EXTENT uses of 0x26 move to kRsvNew
 //      (row count, resize snap/final-height, scrollbar, slot-cell rows) so the
@@ -323,7 +315,7 @@ inline unsigned ChipColor(int x, int y) {
 void LoadTabImages() {
   static char s_paths[kTabCount][2][128] = {};
   if (s_paths[0][0][0] == 0) {
-    const char* base = reinterpret_cast<const char*>(kBtnbarPath);
+    const char* base = reinterpret_cast<const char*>(ro::uipath::kUiRootSample);
     const char* slash = std::strrchr(base, '\\');
     const size_t n = slash ? static_cast<size_t>(slash - base + 1) : 0;
     for (int i = 0; i < kTabCount; ++i)
@@ -465,10 +457,10 @@ void __fastcall DrawContentHook(void* wnd, void* /*edx*/) {
     }
     {
       const bool fav = *reinterpret_cast<int*>(w + kTabCat) == 3 &&
-                       *reinterpret_cast<uint8_t*>(kFavFlag) == 1;
+                       *reinterpret_cast<uint8_t*>(rag::kFavoriteModeFlagAddr) == 1;
       void* bmgr = reinterpret_cast<TexMgr_t>(ro::texmgr::kGet)();
       void* bkey = reinterpret_cast<MakeKey_t>(ro::texmgr::kMakeKey)(
-          reinterpret_cast<const char*>(kBtnbarPath));
+          reinterpret_cast<const char*>(ro::uipath::kUiRootSample));
       void* btex = reinterpret_cast<LoadTex_t>(ro::texmgr::kLoad)(bmgr, nullptr, bkey);
       const int btnbarH = btex
           ? *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(btex) + kTexH)
@@ -480,9 +472,9 @@ void __fastcall DrawContentHook(void* wnd, void* /*edx*/) {
             width - kBarX - kBarXR, frameTop - gridBottom, fav ? s_gapFav : s_gapNormal);
     }
 
-    const int max = RD(kWeightMax);
+    const int max = RD(rag::kWeightMaxAddr);
     if (max <= 0) return;  // weight not populated yet (pre-world)
-    const int cur = RD(kWeightCur);
+    const int cur = RD(rag::kWeightCurAddr);
     const int pct = static_cast<int>(static_cast<long long>(cur) * 100 / max);
 
     char buf[64];
@@ -492,7 +484,7 @@ void __fastcall DrawContentHook(void* wnd, void* /*edx*/) {
     // The cart's weight scale icon (texture manager caches by key per frame).
     void* mgr = reinterpret_cast<TexMgr_t>(ro::texmgr::kGet)();
     void* key = reinterpret_cast<MakeKey_t>(ro::texmgr::kMakeKey)(
-        reinterpret_cast<const char*>(kIconPath));
+        reinterpret_cast<const char*>(ro::uipath::kIconWeight));
     void* tex = reinterpret_cast<LoadTex_t>(ro::texmgr::kLoad)(mgr, nullptr, key);
     int iconW = 0, iconH = 0;
     if (tex) {
@@ -507,13 +499,13 @@ void __fastcall DrawContentHook(void* wnd, void* /*edx*/) {
 
     const int iconX = kLeftMargin;
     const int iconY = textY - (iconH - 11) / 2;  // center icon against the glyphs
-    if (tex) reinterpret_cast<Blit_t>(kBlit)(wnd, nullptr, iconX, iconY, tex, 1);
+    if (tex) reinterpret_cast<Blit_t>(uiwnd::kBlitImageToNodeAddr)(wnd, nullptr, iconX, iconY, tex, 1);
     reinterpret_cast<DrawText_t>(kDrawText)(
         wnd, nullptr, iconX + iconW + kIconGap, textY, buf, 0, 0, 0xb, color, 0, 0);
 
     // Zeny, right-aligned, comma-formatted like the basic-info window.
     char zbuf[40];
-    reinterpret_cast<FmtComma_t>(kFmtComma)(RD(rag::kZenyAddr), zbuf, sizeof(zbuf));
+    reinterpret_cast<FmtComma_t>(rag::kFormatThousandsAddr)(RD(rag::kZenyAddr), zbuf, sizeof(zbuf));
     char zline[64];
     std::snprintf(zline, sizeof(zline), "%sz", zbuf);
     const int zW = reinterpret_cast<MeasureW_t>(kMeasureW)(
@@ -562,7 +554,7 @@ void __fastcall TabDrawContentHook(void* tabobj, void* /*edx*/) {
         if (void* ttex = TabImg(i, i == sel)) {
           const int iw = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(ttex) + kTexW);
           const int bx = (sw > iw) ? (sw - iw) / 2 : 0;  // centre in the strip width
-          reinterpret_cast<Blit_t>(kBlit)(tabobj, nullptr, bx, y, ttex, 0);
+          reinterpret_cast<Blit_t>(uiwnd::kBlitImageToNodeAddr)(tabobj, nullptr, bx, y, ttex, 0);
         }
         if (sz) y += sz[i] - 1;
       }

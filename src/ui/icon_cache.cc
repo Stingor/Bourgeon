@@ -8,11 +8,11 @@
 #include <unordered_map>
 
 #include "d3d9/d3d9_hook.h"  // Overlay_DeviceEpoch
+#include "ui/game_texture.h"  // ro::texmgr::kBuildItemIconPath
 
 namespace {
 
 // __stdcall(id_str, out[128], identified) -> « 유저인터페이스\item\<res>.bmp »
-constexpr uintptr_t kBuildIconPath = 0x00d5a720;
 using BuildIconPath_t = void(__stdcall*)(const char*, char*, int);
 
 // Une icône est identifiée par (nameid, identified) : le client bâtit deux
@@ -40,7 +40,7 @@ bool BuildIconPathSafe(uint32_t nameid, char* out, int identified) {
   std::snprintf(idstr, sizeof(idstr), "%u", nameid);
   out[0] = '\0';
   __try {
-    reinterpret_cast<BuildIconPath_t>(kBuildIconPath)(idstr, out, identified);
+    reinterpret_cast<BuildIconPath_t>(ro::texmgr::kBuildItemIconPath)(idstr, out, identified);
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }

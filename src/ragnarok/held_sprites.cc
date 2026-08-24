@@ -7,6 +7,7 @@
 #include <cstring>
 #include <vector>
 
+#include "ragnarok/globals.h"  // rag::kStdStringDtorAddr
 #include "ui/spr_act.h"
 
 namespace rag {
@@ -38,7 +39,6 @@ constexpr uintptr_t kShieldSpr = 0x00d5e240;
 constexpr uintptr_t kShieldGenSpr = 0x00d8a080;
 constexpr uintptr_t kShieldGenAct = 0x00d8a0f0;
 // Destructeur de std::string du client (__fastcall, ecx = la chaîne).
-constexpr uintptr_t kStrDtor = 0x004f08f0;
 
 // std::string de la CRT du client (msvcr110) : 16 octets de tampon interne
 // réunis avec le pointeur, puis la taille et la capacité. 24 octets en tout.
@@ -76,7 +76,7 @@ void TakeAndStrip(NativeStr* s, char* dst, size_t dst_size) {
     // Uniquement l'extension du NOM : un dossier peut contenir un point.
     if (dot && !std::strchr(dot, '\\') && !std::strchr(dot, '/')) *dot = '\0';
   }
-  reinterpret_cast<DtorFn_t>(kStrDtor)(s);
+  reinterpret_cast<DtorFn_t>(rag::kStdStringDtorAddr)(s);
 }
 
 // Le fichier existe-t-il dans le VFS ? Sert au repli « vue -> classe », comme le

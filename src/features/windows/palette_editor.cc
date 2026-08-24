@@ -37,17 +37,6 @@ namespace {
 constexpr uintptr_t kGetSex = 0x00D84760;
 // `Job_ResolveMountedClassFromOption(session)` — la classe AFFICHÉE, montures
 // comprises.
-constexpr uintptr_t kGetJob = 0x00D5B580;
-// La classe BRUTE du joueur. 🔴 C'est elle qui nomme le sprite de corps : c'est
-// le `body` de `Job_ResolveBodyClass`, pas le job ajusté par la monture.
-constexpr uintptr_t kOwnJobId = 0x015FB9C8;
-// AID du joueur local — et son GID côté acteur, d'où la clé de recette.
-constexpr uintptr_t kOwnAid = 0x015FB9A4;
-// 🔴 `g_Own_CharId`, à ne PAS confondre avec l'AID ci-dessus : c'est lui qui
-// identifie un PERSONNAGE, donc la clé sous laquelle se range un brouillon. Deux
-// personnages du même compte partagent l'AID et n'ont pourtant ni le même corps
-// ni le même style.
-constexpr uintptr_t kOwnCharId = 0x015FB9A8;
 
 // Délai d'inactivité avant d'écrire le brouillon sur disque. Assez long pour
 // qu'un glissement de curseur ne produise qu'une écriture, assez court pour que
@@ -62,12 +51,12 @@ int OwnSex() {
       reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
 }
 int OwnJob() {
-  return reinterpret_cast<GetJobFn>(kGetJob)(
+  return reinterpret_cast<GetJobFn>(rag::kJobResolveMountedClassAddr)(
       reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
 }
-int OwnBody() { return *reinterpret_cast<int*>(kOwnJobId); }
-uint32_t OwnGid() { return *reinterpret_cast<uint32_t*>(kOwnAid); }
-uint32_t OwnCharId() { return *reinterpret_cast<uint32_t*>(kOwnCharId); }
+int OwnBody() { return rag::OwnJobId(); }
+uint32_t OwnGid() { return rag::OwnAccountId(); }
+uint32_t OwnCharId() { return rag::OwnCharId(); }
 
 // Apparence courante, telle que le client la tient à jour sur ZC_SPRITE_CHANGE.
 // Mêmes globales que `BuildOwnDollLook` (features/overlays/basic_info.cc).

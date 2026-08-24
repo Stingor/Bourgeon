@@ -70,10 +70,6 @@ constexpr uintptr_t kParamCompareVTable = 0x010323ec;  // UIItemParamChangeDispl
 // liste de vente ne se lit plus dans la fenêtre native — elle n'existe plus. Elle
 // vient du paquet 0x00c7, croisé avec le modèle session ci-dessous.)
 
-// ── Inventaire (modèle SESSION) ──────────────────────────────────────────────
-// La liste que le natif consultait lui-même pour remplir sa fenêtre de vente.
-// Cacher ou supprimer une fenêtre ne la touche pas : c'est la source stable.
-constexpr uintptr_t kInvListHead = 0x015fbab0;  // sentinelle std::list<ItemSkillInfo>
 // Champs de l'ItemSkillInfo utilisés ici (mêmes offsets que l'InventoryViewer).
 constexpr int kInfoNum   = 0x10;  // quantité possédée
 constexpr int kInfoCards = 0x1c;  // 4 emplacements de carte (uint32 chacun)
@@ -92,9 +88,8 @@ constexpr int kInfoOpts   = 0x9c;  // entrées de 5 octets {index:2, value:2, pa
 // place : `if (trouve && (!favori || !g_inv_dealLock))`. En le remplaçant on a
 // emporté le filtre avec lui : le verrou basculait toujours, mais plus personne ne
 // le lisait, et les favoris réapparaissaient dans la liste — vendables.
-constexpr uintptr_t kDealLockGlobal = 0x01600553;
 bool DealLockOn() {
-  __try { return *reinterpret_cast<uint8_t*>(kDealLockGlobal) != 0; }
+  __try { return *reinterpret_cast<uint8_t*>(rag::kFavoriteModeFlagAddr) != 0; }
   __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
@@ -559,7 +554,7 @@ void NpcShopWindow::ResolveSellItems() {
   const bool deal_lock = DealLockOn();
 
   for (const SellRaw& r : sell_raw_) {
-    void* info = itemcell::FindInfoByIndex(kInvListHead, r.index);
+    void* info = itemcell::FindInfoByIndex(rag::kInventoryListAddr, r.index);
     if (!info) continue;  // vendu entre-temps : l'entrée n'a plus d'objet
     SellItem s;
     s.index = r.index;

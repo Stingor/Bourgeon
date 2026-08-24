@@ -366,13 +366,12 @@ int __stdcall Detour_ApplyCheckNameAck(int char_id, int job_class, int base_leve
 // Nom de métier lisible (« Lord Knight »…) depuis l'id de classe. Getter natif —
 // jamais de table en dur : elle est chargée des .lub au boot et suit la langue du
 // client. Le pointeur rendu appartient au client (ne pas libérer, ne pas garder).
-constexpr uintptr_t kJobDisplayName = 0x00d5bb40;  // __thiscall(ctx, classId, sex)
 using JobDisplayName_t = const char*(__thiscall*)(void*, unsigned int, int);
 
 bool JobNameAnsi(int job_class, char* out, size_t cap) {
   out[0] = '\0';
   __try {
-    const char* name = reinterpret_cast<JobDisplayName_t>(kJobDisplayName)(
+    const char* name = reinterpret_cast<JobDisplayName_t>(rag::kJobNameOrResNameAddr)(
         reinterpret_cast<void*>(rag::kSessionAddr), static_cast<unsigned int>(job_class), 99);
     if (!name || !*name) return false;
     std::strncpy(out, name, cap - 1);
@@ -388,7 +387,6 @@ bool JobNameAnsi(int job_class, char* out, size_t cap) {
 // Les chemins sont lus DANS l'exe, jamais recopiés : les strings RODEX y sont
 // stockées SANS le dossier de tête (le code natif le prépend), on emprunte donc
 // celui du btnbar — le même préfixe CP949 que l'inventaire ImGui utilise déjà.
-constexpr uintptr_t kUiPrefixPath  = 0x010357b8;  // « 유저인터페이스\basic_interface\btnbar_left.bmp »
 constexpr uintptr_t kIcoZenyPath   = 0x01021e9e;  // « \…\rodexsystem\renewal\icon_zeny.bmp »
 constexpr uintptr_t kIcoItemPath   = 0x01022ad6;  // « …\icon_item.bmp »
 constexpr uintptr_t kIcoBothPath   = 0x01022a8e;  // « …\icon_zeny_n_item.bmp »
@@ -398,7 +396,7 @@ constexpr uintptr_t kIcoBothPath   = 0x01022a8e;  // « …\icon_zeny_n_item.bmp
 void RodexTexPath(uintptr_t leaf_string, char* out, size_t cap) {
   out[0] = '\0';
   __try {
-    const char* base = reinterpret_cast<const char*>(kUiPrefixPath);
+    const char* base = reinterpret_cast<const char*>(ro::uipath::kUiRootSample);
     const char* sep = std::strchr(base, '\\');
     const size_t n = sep ? static_cast<size_t>(sep - base) : 0;
     if (n == 0 || n >= cap) return;

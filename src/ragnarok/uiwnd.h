@@ -100,6 +100,26 @@ constexpr uintptr_t kInventoryWndSlot   = 0x0131f6bc;  // inventaire, id 8
 constexpr uintptr_t kInventoryWndVTable = 0x0103d460;
 constexpr uintptr_t kStorageWndSlot     = 0x0131f770;  // UIItemStoreWnd, id 0x21 (slot = mgr+0x288)
 constexpr uintptr_t kStorageWndVTable   = 0x0103ca40;
+constexpr uintptr_t kCartWndVTable      = 0x0103d538;  // UIMerchantItemWnd, id 0x28
+constexpr uintptr_t kChatWndSlot        = 0x0131f6b0;  // UINewChatWnd
+
+// ⚠ La vtable du chariot sert de SIGNATURE, pas de slot : trois fichiers la
+// lisent pour reconnaître une fenêtre dont ils tiennent le pointeur sans en
+// connaître l'identifiant. C'est exactement l'usage de `SafeVTableOf`.
+
+// ── Deux méthodes natives que le projet appelait de partout ───────────
+// `UIWindowMgr::SendMsg` est le point d'entrée général du gestionnaire. Son
+// usage le plus courant chez nous est d'ÉCRIRE UNE LIGNE DANS LE CHAT — d'où
+// le nom `kChatAddLine` que lui donnait la banque, et `kChatActionAddr` que lui
+// donnait le chat. Deux noms tirés de l'usage, pour une méthode qui n'en est
+// pas propriétaire.
+constexpr uintptr_t kMgrSendMsgAddr = 0x00a4ad20;
+
+// `UIWindow_BlitImageToNode` __thiscall(this, x, y, image, flag) : compose une
+// image dans la passe de dessin de la fenêtre qui la porte. C'est par elle que
+// passent les retouches de fenêtres natives (chat, inventaire, statut), et les
+// trois la déclaraient chacune de leur côté (kBlit, kBlitImageToNode).
+constexpr uintptr_t kBlitImageToNodeAddr = 0x00a1d260;
 
 // ── Méthodes virtuelles d'une UIWindow ───────────────────────────────────────
 constexpr int kVfSetPos = 0x10;  // vtable+0x10 : SetPos(x, y)

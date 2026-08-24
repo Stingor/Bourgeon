@@ -4,6 +4,7 @@
 
 #include <cstdint>
 
+#include "ragnarok/globals.h"
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 
@@ -39,7 +40,6 @@ constexpr int kOffTab     = 0x254;
 constexpr int kOffScroll  = 0x258;   // 600: scroll row (this+600 in FUN_00975730)
 constexpr int kOffPoints  = 0x26c;   // "has skill points" gate
 constexpr int kOffDirty   = 0x271;   // game dirty byte (set by input handlers)
-constexpr uintptr_t kSkillPointLvl = 0x015fb9fc;  // changes when points are spent
 
 DrawContent_t g_orig_draw = nullptr;
 
@@ -56,7 +56,7 @@ void __fastcall DrawContentHook(void* self, void* edx) {
   const uint8_t dirty = *(static_cast<uint8_t*>(self) + kOffDirty);
   const Snap cur{RdI(self, kOffWidth),  RdI(self, kOffHeight), RdI(self, kOffHovered),
                  RdI(self, kOffTab),    RdI(self, kOffScroll), RdI(self, kOffPoints),
-                 *reinterpret_cast<int*>(kSkillPointLvl)};
+                 *reinterpret_cast<int*>(rag::kOwnSkillPointsAddr)};
 
   const bool changed =
       dirty != 0 || cur.width != g_snap.width || cur.height != g_snap.height ||

@@ -50,7 +50,6 @@ constexpr uintptr_t kChangeHotKeyAddr = 0x005d56d0;
 constexpr uintptr_t kSaveUserKeysAddr = 0x005d54c0;
 // std_string_assign __thiscall(str, src, len) : gère SSO et tas avec l'allocateur
 // du jeu — indispensable, un libellé peut dépasser les 15 caractères du SSO.
-constexpr uintptr_t kStdStringAssignAddr = 0x004f1940;
 
 using ChangeHotKey_t = int(__stdcall*)(int, int, int, int, const void*);
 using SaveUserKeys_t = int(__stdcall*)();
@@ -246,7 +245,7 @@ bool WriteBinding(int category, int command_index, int key1, int key2,
     alignas(4) uint8_t str[0x18];
     std::memset(str, 0, sizeof(str));
     *reinterpret_cast<unsigned*>(str + 0x14) = 15;
-    reinterpret_cast<StrAssign_t>(kStdStringAssignAddr)(str, local, len);
+    reinterpret_cast<StrAssign_t>(rag::kStdStringAssignAddr)(str, local, len);
 
     reinterpret_cast<ChangeHotKey_t>(kChangeHotKeyAddr)(category, command_index,
                                                        key1, key2, str);

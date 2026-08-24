@@ -1,6 +1,7 @@
 #include "ragnarok/globals.h"
 #include "features/gameplay/player_jump.h"
 
+#include "ragnarok/game_scene.h"
 #include "ragnarok/uiwnd.h"
 #include <Windows.h>
 
@@ -15,8 +16,6 @@
 // ── Adresses (client 20250716, no-ASLR : addr Ghidra == live) ────────────────
 namespace {
 constexpr uintptr_t kTerrainHeight = 0x007110c0;  // Terrain_GetHeightAt(world,x,z)->float
-constexpr uintptr_t kFindByGID     = 0x00a69eb0;  // ActorList_FindByGID(actorMgr,gid)->acteur
-constexpr int kOffActorMgr  = 0xcc;   // CMode    -> actorMgr
 constexpr int kOffOwnActor  = 0x2c;   // actorMgr -> acteur joueur
 constexpr int kOffWorld     = 0x30;   // actorMgr -> objet monde/terrain (.gnd)
 constexpr int kActorPosX      = 0x10;   // ACTEUR -> position monde X (float)
@@ -43,7 +42,7 @@ WorldRefs GetWorldRefs() {
         static_cast<int>(rag::kModeMgrAddr));
     if (gm) {
       void* mgr =
-          *reinterpret_cast<void**>(reinterpret_cast<char*>(gm) + kOffActorMgr);
+          *reinterpret_cast<void**>(reinterpret_cast<char*>(gm) + gamescene::kGmActorMgr);
       if (mgr) {
         refs.actor_mgr = mgr;
         refs.world =
@@ -68,7 +67,7 @@ void* ResolveActor(const WorldRefs& refs, uint32_t gid) {
       actor = *reinterpret_cast<void**>(
           reinterpret_cast<char*>(refs.actor_mgr) + kOffOwnActor);
     } else {
-      actor = reinterpret_cast<FindByGidFn>(kFindByGID)(refs.actor_mgr, gid);
+      actor = reinterpret_cast<FindByGidFn>(gamescene::kActorListFindByGidAddr)(refs.actor_mgr, gid);
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     actor = nullptr;

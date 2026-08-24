@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "bourgeon.h"
+#include "ragnarok/globals.h"      // rag::kOwnCharIdAddr (clé des presets d'équipement)
 #include "ragnarok/uiwnd.h"        // uiwnd::kUIWindowMgrAddr (focus d'une saisie native)
 #include "ragnarok/user_hotkey.h"  // raccourcis du CLIENT (les quatre catégories)
 #include "features/hotkey_actions.h"            // actions Bourgeon liables
@@ -19,9 +20,6 @@
 
 namespace hotkeys {
 namespace {
-
-// ── Constantes RE (client 20250716, no-ASLR : addr Ghidra == live) ───────────
-constexpr uintptr_t kOwnCharId = 0x015fb9a8;  // g_Own_CharId (cf. project_own_session_globals)
 
 int ReadInt(uintptr_t addr) {
   __try { return *reinterpret_cast<const int*>(addr); }
@@ -186,7 +184,7 @@ int FindConflicts(int vkey, bool ctrl, bool alt, bool shift, Owner self, int sel
 
   // a) Un preset d'équipement du personnage courant (le sien exclu).
   if (auto* character_sheet = Bourgeon::Instance().character_sheet()) {
-    const uint32_t cid = static_cast<uint32_t>(ReadInt(kOwnCharId));
+    const uint32_t cid = static_cast<uint32_t>(ReadInt(rag::kOwnCharIdAddr));
     const std::vector<EquipPreset>& presets = character_sheet->equip_presets();
     for (int i = 0; i < static_cast<int>(presets.size()); ++i) {
       if (self == Owner::kEquipPreset && i == self_index) continue;

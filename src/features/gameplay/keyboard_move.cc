@@ -1,6 +1,7 @@
 #include "ragnarok/globals.h"
 #include "features/gameplay/keyboard_move.h"
 
+#include "ragnarok/game_scene.h"
 #include "ragnarok/uiwnd.h"
 #include <Windows.h>
 
@@ -20,7 +21,6 @@ constexpr uintptr_t kClampReach   = 0x00c69160;  // Move_ClampToReachableCell
 constexpr uintptr_t kNoPathFlag   = 0x0131f764;  // != 0 -> le natif passe en msg 0x10
 constexpr uintptr_t kCameraVtable = 0x0104dee4;  // g_CCamera_vtable (valide pCam)
 
-constexpr int kOffActorMgr = 0xcc;   // CGameMode -> scène (actorMgr)
 constexpr int kOffOwnActor = 0x2c;   // scène -> acteur joueur
 constexpr int kOffCamera   = 0xd0;   // CGameMode -> pCam
 constexpr int kOffViewMat  = 0x98;   // pCam -> matrice de vue (12 floats)
@@ -49,7 +49,7 @@ void* GetOwnActor(void* gm) {
   __try {
     if (gm) {
       void* mgr =
-          *reinterpret_cast<void**>(reinterpret_cast<char*>(gm) + kOffActorMgr);
+          *reinterpret_cast<void**>(reinterpret_cast<char*>(gm) + gamescene::kGmActorMgr);
       if (mgr)
         actor = *reinterpret_cast<void**>(reinterpret_cast<char*>(mgr) +
                                           kOffOwnActor);

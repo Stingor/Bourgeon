@@ -15,6 +15,7 @@
 #include "bourgeon.h"  // Bourgeon::Instance().SendPacket
 #include "features/moonlight_ui/moonlight_ui.h"  // SaveSettings (case Grille)
 #include "imgui.h"
+#include "ragnarok/game_scene.h"
 #include "ragnarok/uiwnd.h"
 #include "ui/icon_cache.h"
 #include "ui/ro_imgui.h"
@@ -287,7 +288,6 @@ constexpr int kMaxOpts      = 5;
 using GameModeGetActive_t = void*(__fastcall*)(int);
 using NameDictGetEntry_t  = void*(__thiscall*)(void*, unsigned);
 constexpr uintptr_t kNameDictGetEntry  = 0x005A1460;
-constexpr int       kGmNameDict        = 0x160;  // objet EMBARQUÉ, pas un pointeur
 constexpr int       kNameInfoStr       = 0x04;   // std::string du nom
 
 // ── Bouton « Import » (cmd 560) ──────────────────────────────────────────────
@@ -820,7 +820,7 @@ void VendorName(uint32_t gid, char* out, size_t cap) {
     void* game_mode =
         reinterpret_cast<GameModeGetActive_t>(rag::kModeMgrGetActiveAddr)(static_cast<int>(rag::kModeMgrAddr));
     if (!game_mode) return;
-    void* name_dict = reinterpret_cast<uint8_t*>(game_mode) + kGmNameDict;
+    void* name_dict = reinterpret_cast<uint8_t*>(game_mode) + gamescene::kGmNameDict;
     void* info =
         reinterpret_cast<NameDictGetEntry_t>(kNameDictGetEntry)(name_dict, gid);
     if (!info) return;

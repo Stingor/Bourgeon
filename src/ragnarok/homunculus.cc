@@ -5,6 +5,7 @@
 #include <cstring>
 
 #include "ragnarok/globals.h"
+#include "ragnarok/item_db.h"
 #include "ragnarok/uiwnd.h"
 
 namespace rag {
@@ -63,8 +64,6 @@ constexpr int kOffRange   = 0x1c;
 // dispatcher — on emprunte le même, la struct étant un objet C++ qu'on ne sait pas
 // construire soi-même.
 constexpr uintptr_t kSkillGetAt = 0x00d80810;
-constexpr uintptr_t kSkillInfoDtor = 0x00739cd0;  // ItemSkillInfo_Dtor
-constexpr uintptr_t kUiCtx = 0x015fa3c0;          // g_UIWindowContextKey
 constexpr int kInfoOffFound = 0x04;               // fiche utilisable
 constexpr int kInfoOffLevel = 0x10;               // niveau appris
 constexpr int kVfDispCmd     = 0x18;              // CGameMode::SendMsg (vtable+0x18)
@@ -143,7 +142,7 @@ bool LaunchSEH(int pos, int level) {
     void* d = *reinterpret_cast<void**>(rag::kActiveModePtr);
     if (!d || pos < 0) return false;
     alignas(8) uint8_t info[0xC0] = {};
-    reinterpret_cast<GetAt_t>(kSkillGetAt)(reinterpret_cast<void*>(kUiCtx), nullptr, info, pos);
+    reinterpret_cast<GetAt_t>(kSkillGetAt)(reinterpret_cast<void*>(rag::kSessionAddr), nullptr, info, pos);
     if (*reinterpret_cast<const int*>(info + kInfoOffFound)) {
       const int owned = *reinterpret_cast<const int*>(info + kInfoOffLevel);
       int lv = level < 1 ? 1 : level;
@@ -154,7 +153,7 @@ bool LaunchSEH(int pos, int level) {
       sent = true;
     }
     // Objet C++ : détruit dans tous les cas, y compris quand rien n'a été envoyé.
-    reinterpret_cast<void(__fastcall*)(void*)>(kSkillInfoDtor)(info);
+    reinterpret_cast<void(__fastcall*)(void*)>(itemdb::kInfoDtorAddr)(info);
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
   return sent;
 }

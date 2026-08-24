@@ -45,7 +45,6 @@ namespace {
 // essai — le hook de création masquait la native pendant que le viewer, aveugle,
 // ne dessinait rien. Le client DÉTRUIT ses fenêtres à la fermeture
 // (SaveWindowRect -> QueueDestroyWindow), donc FindWindow non-nul == ouverte.
-constexpr uintptr_t kCartVTable = 0x0103d538;
 constexpr int kWinCart    = 0x28;
 // Placement et taille par défaut du viewer, à la toute 1re ouverture seulement
 // (avant, ils étaient lus sur la fenêtre native, qui ne naît plus).
@@ -54,10 +53,6 @@ constexpr float kSpawnW = 300.0f, kSpawnH = 300.0f;
 constexpr int kOffWidth   = 0x14;
 constexpr int kOffHeight  = 0x18;
 
-// Modèle SESSION du cart (indépendant de la fenêtre => marche natif caché).
-// RE : Cart_GetCount = *(g_session+0x1724) ; Cart_CopyItemAt parcourt la std::list
-// @ g_session+0x1720. g_session = 0x015fa3c0 (inventaire = +0x16f0, storage = +0x1718).
-constexpr uintptr_t kCartListHead = 0x015fbae0;  // sentinelle std::list (head)
 constexpr int kNodeNext = 0x00;  // nœud : next
 constexpr int kNodeInfo = 0x08;  // nœud : value = ItemSkillInfo
 constexpr int kNodeAmt  = 0x18;  // nœud : quantité (= info+0x10)
@@ -113,7 +108,7 @@ uint8_t* CartWnd() {
   __try {
     auto* w = reinterpret_cast<uint8_t*>(uiwnd::FindWindow(kWinCart));
     if (!w) return nullptr;
-    if (*reinterpret_cast<uintptr_t*>(w) != kCartVTable) return nullptr;
+    if (*reinterpret_cast<uintptr_t*>(w) != uiwnd::kCartWndVTable) return nullptr;
     return w;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
 }
@@ -195,7 +190,7 @@ void CloseCart() {
 // DIFFÉRÉE au relâchement du bouton (itemcell::FlushDeferredDesc) : ouverte dès
 // le clic, un appui PROLONGÉ faisait passer la description DERRIÈRE nous.
 void OpenItemDesc(int index, int mx, int my) {
-  itemcell::DeferDescFromIndex(kCartListHead, index, mx, my);
+  itemcell::DeferDescFromIndex(rag::kCartListAddr, index, mx, my);
 }
 
 // Maj + clic gauche : le lien de l'objet dans la barre de saisie du chat. Le
@@ -203,7 +198,7 @@ void OpenItemDesc(int index, int mx, int my) {
 // même branche `GetAsyncKeyState(VK_SHIFT)` que l'inventaire) ; le viewer ImGui
 // n'avait jamais repris ce geste.
 void PostItemLinkToChat(int index) {
-  void* info = itemcell::FindInfoByIndex(kCartListHead, index);
+  void* info = itemcell::FindInfoByIndex(rag::kCartListAddr, index);
   if (!info) return;
   if (auto* chat = Bourgeon::Instance().chat_window()) chat->AppendItemLink(info);
 }
@@ -253,8 +248,6 @@ inline ImTextureID TexId(void* t) { return reinterpret_cast<ImTextureID>(t); }
 
 // ── Assets natifs : barre 3-slice + fond de tuile + icônes du footer ───────────
 // Préfixe CP949 pris sur les strings de l'exe (jamais reconstruit à la main).
-constexpr uintptr_t kBtnbarPath     = 0x010357b8;  // …\basic_interface\btnbar_left.bmp
-constexpr uintptr_t kIconWeightPath = 0x0103db00;  // …\inventory\icon_weight.bmp
 constexpr uintptr_t kIconNumPath    = 0x0103dad4;  // …\inventory\icon_num.bmp
 
 using BarTex = ro::GameTexture;
@@ -268,7 +261,7 @@ bool   g_assets_tried = false;
 
 // `<préfixe basic_interface\> + <file>`, préfixe repris de la string exe du btnbar.
 void BasicInterfacePath(const char* file, char* out, size_t out_sz) {
-  const char* base = reinterpret_cast<const char*>(kBtnbarPath);
+  const char* base = reinterpret_cast<const char*>(ro::uipath::kUiRootSample);
   const char* slash = std::strrchr(base, '\\');
   const size_t n = slash ? static_cast<size_t>(slash - base + 1) : 0;
   if (n && n < out_sz) std::memcpy(out, base, n);
@@ -286,7 +279,7 @@ void LoadAssets() {
   }
   BasicInterfacePath("itemwin_mid.bmp", path, sizeof(path));
   g_tile = ro::TextureFromGameFile(path);
-  g_ico_weight = ro::TextureFromGameFile(reinterpret_cast<const char*>(kIconWeightPath));
+  g_ico_weight = ro::TextureFromGameFile(reinterpret_cast<const char*>(ro::uipath::kIconWeight));
   g_ico_num    = ro::TextureFromGameFile(reinterpret_cast<const char*>(kIconNumPath));
   for (int c = 0; c < kNumCats; ++c) {
     const char* base = kCats[c].img;
@@ -416,7 +409,7 @@ void MaybeFlushTextures() {
 void CartViewer::HandleNativeCreation(void* win) {
   if (!win || !imgui_enabled_) return;
   __try {
-    if (*reinterpret_cast<uintptr_t*>(win) != kCartVTable) return;
+    if (*reinterpret_cast<uintptr_t*>(win) != uiwnd::kCartWndVTable) return;
     *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + uiwnd::kOffVisible) = 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return; }
   // Reconstruction du HUD au changement de map : ce n'est pas le joueur qui
@@ -438,7 +431,7 @@ void CartViewer::Extract() {
   uint8_t* head = nullptr;
   uint8_t* node = nullptr;
   __try {
-    head = *reinterpret_cast<uint8_t**>(kCartListHead);
+    head = *reinterpret_cast<uint8_t**>(rag::kCartListAddr);
     if (head) node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
   } __except (EXCEPTION_EXECUTE_HANDLER) { return; }
   if (!head) return;

@@ -1,10 +1,11 @@
 #include "ragnarok/lua.h"
 #include "ragnarok/item_db.h"
+#include "ragnarok/navigation.h"
 #include "ui/game_texture.h"
 #include "features/windows/item_desc_window.h"
 #include "ui/ro_widgets.h"
 
-#include "ragnarok/globals.h"  // rag::rag::kGameOperatorDeleteAddrAddr
+#include "ragnarok/globals.h"  // rag::kGameOperatorDeleteAddr
 #include "ragnarok/msgstring.h"  // libellé d'intimité d'un œuf, celui du client
 #include "ragnarok/pet.h"        // œuf de familier : slots = fiche du pet, pas des cartes
 #include "ragnarok/uiwnd.h"
@@ -114,8 +115,6 @@ constexpr int       kMaxOpts      = 5;
 // __thiscall(this=navMgr, std::string map BYVAL 0x18o, int type, int flags,
 // int a24, int x, int y, int a30). Pour un lien navi item : type=field3,
 // x=field1, y=field2 ; flags=1, a24=1, a30=0 (constantes observées).
-constexpr uintptr_t kNaviRoute = 0x00b314f0;  // CNavigation::SearchRoute
-constexpr uintptr_t kNaviMgr   = 0x015c3090;  // &DAT_015c3090 (nav manager)
 
 // Lua : appel d'un global via wrapper varargs. __cdecl(luaStatePtr, std::string
 // funcName BYVAL, const char* fmt "d>s", <args in> , <ptrs out>). Renvoie 1 si OK.
@@ -710,8 +709,8 @@ void StartNavigation(const char* map, int x, int y, int type) {
     s.size = static_cast<uint32_t>(n);
     s.cap  = 15;  // SSO
     // flags=1, a24=1, a30=0 : constantes observées pour un lien navi item.
-    reinterpret_cast<NaviRoute_t>(kNaviRoute)(
-        reinterpret_cast<void*>(kNaviMgr), s, type, 1, 1, x, y, 0);
+    reinterpret_cast<NaviRoute_t>(navi::kSearchRouteAddr)(
+        reinterpret_cast<void*>(navi::kNavigationAddr), s, type, 1, 1, x, y, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 

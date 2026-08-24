@@ -10,6 +10,7 @@
 #include "features/moonlight_ui/moonlight_ui.h"  // SaveSettings (géométrie du cadre)
 #include "features/systems/bourgeon_opcodes.h"   // bopcodes:: (catalogue partagé)
 #include "imgui.h"
+#include "ragnarok/globals.h"
 #include "ragnarok/uiwnd.h"
 #include "ui/game_texture.h"  // ro::CachedTextureFromGameFile (icône de classe)
 #include "ui/ro_imgui.h"
@@ -36,12 +37,6 @@ constexpr unsigned kPollIntervalMs = 250;
 // éloigné (le serveur ne répond plus) et sa barre doit s'éteindre plutôt que de
 // figer une vieille valeur.
 constexpr unsigned kVitalsStaleMs = 3000;
-
-// Mon propre SP, dans les globales du client. Ce sont EXACTEMENT celles que
-// Basic Info lit pour sa barre « ###BISp » — chemin déjà éprouvé en jeu, pas une
-// extrapolation à partir des PV voisins (0x015FF908 / 0x015FF90C).
-constexpr uintptr_t kOwnSp    = 0x015ff910;
-constexpr uintptr_t kOwnMaxSp = 0x015ff914;
 
 int ReadIntSEH(uintptr_t addr) {
   __try {
@@ -300,8 +295,8 @@ void PartyFrames::DrawTile(const rag::social::Entry& m, ImVec2 p0, ImVec2 p1,
   if (show_sp_ && !m.offline) {
     int sp = 0, maxsp = 0;
     if (is_me) {
-      sp    = ReadIntSEH(kOwnSp);
-      maxsp = ReadIntSEH(kOwnMaxSp);
+      sp    = ReadIntSEH(rag::kOwnSpAddr);
+      maxsp = ReadIntSEH(rag::kOwnMaxSpAddr);
     } else {
       auto it = vitals_.find(m.gid);
       if (it != vitals_.end() &&

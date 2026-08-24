@@ -48,17 +48,17 @@ constexpr int kOffMyListW     = 0xE4;   // widget liste MES objets
 constexpr int kOffPtListW     = 0xF8;   // widget liste objets PARTENAIRE
 constexpr int kOffWidgetLock  = 0xC4;   // (widget liste) octet : côté verrouillé (>0)
 
-// ── Inventaire (modèle SESSION) ──────────────────────────────────────────────
+// ── Inventaire (modèle SESSION : rag::kInventoryListAddr) ────────────────────
 // MES objets offerts ne sont plus lus dans un tableau de deal rempli par le natif :
 // le serveur ne me renvoie qu'un ACQUITTEMENT ({index, result}), et l'objet lui-même
 // se retrouve par son index dans l'inventaire — qui, lui, ne bouge pas pendant
 // l'échange (le serveur ne retire les objets qu'au commit).
-constexpr uintptr_t kInvListHead = 0x015fbab0;  // sentinelle std::list<ItemSkillInfo>
+//
 // Offsets DANS l'ItemSkillInfo (identiques à character_sheet / inventory_viewer).
 // Inventory_DecreaseOrRemoveByInvIndex(session, invIndex, amount) : retire la
 // quantité du nœud d'inventaire, détruit le nœud s'il tombe à zéro, puis rafraîchit
 // les fenêtres d'objets. __thiscall, this = la session — son `this + 5872` EST
-// kInvListHead (0x015FA3C0 + 0x16F0 = 0x015FBAB0), vérifié au désassemblage.
+// rag::kInventoryListAddr (0x015FA3C0 + 0x16F0 = 0x015FBAB0), vérifié au désassemblage.
 constexpr uintptr_t kInvDecrease = 0x00d57a30;
 
 constexpr int kInfoAmount = 0x10;   // int : quantité possédée
@@ -554,7 +554,7 @@ void TradeWindow::AddItemToTrade(int invIndex, int amount) {
   // qui est acquitté, et un stack entièrement offert n'a même plus de nœud.
   // Ne reste à retrancher que ce qui est EN VOL, pas encore acquitté.
   int stock = 0;
-  void* info = itemcell::FindInfoByIndex(kInvListHead, invIndex);
+  void* info = itemcell::FindInfoByIndex(rag::kInventoryListAddr, invIndex);
   if (!info) { add_error_ = kErrAlreadyAllOffered; return; }
   __try { stock = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(info) + kInfoAmount); }
   __except (EXCEPTION_EXECUTE_HANDLER) { return; }
@@ -624,7 +624,7 @@ void TradeWindow::ResolveMyAdds() {
       pending_adds_.erase(pending_adds_.begin() + k);
       break;
     }
-    void* info = itemcell::FindInfoByIndex(kInvListHead, index);
+    void* info = itemcell::FindInfoByIndex(rag::kInventoryListAddr, index);
     if (!info) continue;
     TradeItem it;
     it.index  = index;

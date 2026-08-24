@@ -8,6 +8,7 @@
 #include "features/overlays/target_frame.h"  // la cible du HUD, comme source de visée
 #include "features/staff_gate.h"
 #include "imgui.h"
+#include "ragnarok/game_scene.h"
 #include "ragnarok/globals.h"
 #include "ragnarok/skill_cooldowns.h"
 #include "ragnarok/uiwnd.h"
@@ -35,11 +36,6 @@ constexpr int kQuadCat = 8;  // dword : catégorie de pick (0 = acteur)
 constexpr uintptr_t kWndAtPointAddr = 0x00a336d0;
 
 // Position écran de la souris, tenue par le WndProc du jeu.
-constexpr uintptr_t kMouseScreenXAddr = 0x011e40d4;
-constexpr uintptr_t kMouseScreenYAddr = 0x011e40d8;
-
-// AID de notre propre compte (= GID de notre acteur).
-constexpr uintptr_t kOwnAidAddr = 0x015fb9a4;
 
 // vtable de CGameMode. Sert de GARDE : CMode::SendMsg est aussi le dispatch des
 // autres modes (login, char-select), et +0x408 n'y voudrait rien dire. Relevée
@@ -51,7 +47,6 @@ constexpr int kOffTargetingMode  = 0x408;  // 1 sol, 2 cible, 4 soutien
 constexpr int kOffTargetingSkill = 0x40c;
 constexpr int kOffTargetingLevel = 0x414;
 
-constexpr int kOffScene    = 0xcc;  // CGameMode -> scène
 constexpr int kOffOwnActor = 0x2c;  // scène -> acteur joueur
 
 // Acteur -> état de mouvement/action. C'est la SEULE donnée « suis-je prêt ? »
@@ -169,7 +164,7 @@ void* GetOwnActor(void* cmode) {
   __try {
     if (*reinterpret_cast<uintptr_t*>(cmode) != kGameModeVtable) return nullptr;
     char* scene = *reinterpret_cast<char**>(reinterpret_cast<char*>(cmode) +
-                                            kOffScene);
+                                            gamescene::kGmActorMgr);
     if (scene) actor = *reinterpret_cast<void**>(scene + kOffOwnActor);
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     actor = nullptr;
@@ -199,8 +194,8 @@ bool CursorOverNativeWindow() {
     using WndAtPoint_t = void*(__thiscall*)(void*, int, int);
     return reinterpret_cast<WndAtPoint_t>(kWndAtPointAddr)(
                reinterpret_cast<void*>(uiwnd::kUIWindowMgrAddr),
-               *reinterpret_cast<int*>(kMouseScreenXAddr),
-               *reinterpret_cast<int*>(kMouseScreenYAddr)) != nullptr;
+               *reinterpret_cast<int*>(rag::kMouseScreenXAddr),
+               *reinterpret_cast<int*>(rag::kMouseScreenYAddr)) != nullptr;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     return true;  // dans le doute, on laisse le ciblage natif
   }
@@ -229,8 +224,8 @@ unsigned PickTargetGid(int mode) {
     using QueryPoint_t = float*(__thiscall*)(void*, float, float);
     const float* quad = reinterpret_cast<QueryPoint_t>(kQuadTreeQueryPointAddr)(
         reinterpret_cast<void*>(kNameplateQuadTreeAddr),
-        static_cast<float>(*reinterpret_cast<int*>(kMouseScreenXAddr)),
-        static_cast<float>(*reinterpret_cast<int*>(kMouseScreenYAddr)));
+        static_cast<float>(*reinterpret_cast<int*>(rag::kMouseScreenXAddr)),
+        static_cast<float>(*reinterpret_cast<int*>(rag::kMouseScreenYAddr)));
     if (!quad) return 0;
     const int* q = reinterpret_cast<const int*>(quad);
     if (q[kQuadCat] != 0) return 0;  // 1 NPC, 2 unité de skill, 3/4 spéciaux
@@ -241,7 +236,7 @@ unsigned PickTargetGid(int mode) {
       // Offensif : monstre uniquement, et jamais soi-même. C'est ICI que vit
       // désormais la règle — le chemin natif qui la portait
       // (CursorMgr_UpdateHover) n'est plus emprunté.
-      if (aid == *reinterpret_cast<unsigned*>(kOwnAidAddr)) return 0;
+      if (aid == rag::OwnAccountId()) return 0;
       if (!IsMonsterJob(job)) return 0;  // joueur : PVP/GVG au clic manuel
     }
     return aid;

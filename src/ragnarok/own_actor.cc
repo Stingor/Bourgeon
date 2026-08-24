@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstring>
 
+#include "ragnarok/game_scene.h"
 #include "ragnarok/globals.h"
 
 namespace rag {
@@ -14,7 +15,6 @@ namespace {
 // ── Chaîne jusqu'à l'acteur du joueur ────────────────────────────────────────
 // Validée au débogueur : `GameMode_GetActive` -> CMode, gestionnaire d'acteurs
 // à +0xcc, acteur du joueur à +0x2c (vtable 0x01094810, gid @+0x110 = AID).
-constexpr int kOffActorMgr = 0xcc;
 constexpr int kOffOwnActor = 0x2c;
 
 // Les deux vecteurs d'emplacements. `CActorSprite_SetSlotAct` (0x00d3fd90)
@@ -182,7 +182,7 @@ bool ReadOwnActorSprites(OwnActorSprites* out) {
         static_cast<int>(kModeMgrAddr));
     if (!mode) return false;
     void* mgr = *reinterpret_cast<void**>(
-        reinterpret_cast<char*>(mode) + kOffActorMgr);
+        reinterpret_cast<char*>(mode) + gamescene::kGmActorMgr);
     if (!mgr) return false;
     actor = *reinterpret_cast<void**>(
         reinterpret_cast<char*>(mgr) + kOffOwnActor);

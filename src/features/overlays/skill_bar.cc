@@ -1,5 +1,6 @@
 #include "ragnarok/item_db.h"
 #include "ragnarok/globals.h"
+#include "ragnarok/lua.h"
 #include "ui/game_texture.h"
 #include "features/overlays/skill_bar.h"
 
@@ -94,7 +95,6 @@ constexpr int kItemSkillInfoSize = 0x100;  // struct ~0xf4 o
 //   skills standard (les skills custom ~12622 sont, eux, aussi dans la DB item).
 constexpr int kItemNameEn  = 0x04;  // record+0x04 = nom anglais (ASCII, propre à l'affichage)
 constexpr int kItemNameLoc = 0x08;  // record+0x08 = nom localisé (CP949, repli)
-constexpr uintptr_t kGetSkillNameLua = 0x0073a1f0;  // char* GetSkillName(int id) (__cdecl, via Lua)
 
 using SetVisible_t = void  (__fastcall*)(void*, void*, int);
 using SetSlot_t    = void  (__fastcall*)(void*, void*, int, int, int, int, int);
@@ -252,9 +252,8 @@ int __fastcall ShortCutOnMsgHook(void* self, void* edx, int arg0, int msg,
 // OnMsg 0x29) : dispatcher (*(0x0121333c)) ->vtable[0x18](0x71, info, count, 0, 0) (__thiscall).
 using SetItemSlot_t = void  (__thiscall*)(void*, int, int);
 using DispUse_t     = void  (__thiscall*)(void*, int, void*, int, int, int);
-using GetInvItemU_t = void* (__stdcall*)(void*, int);   // 0x00d7fa90 (out, id) ; found out+0x04, qty out+0x10
+using GetInvItemU_t = void* (__stdcall*)(void*, int);   // itemdb::kFillInfoByIdAddr ; found out+0x04, qty out+0x10
 constexpr uintptr_t kSetItemSlot    = 0x00da8f90;
-constexpr uintptr_t kGetInvItemAddr = 0x00d7fa90;
 
 // Lit le slot logique i de la région `region` directement dans le store global (record 7 o). SEH.
 SlotRec ReadSlot(int region, int i) {
@@ -548,7 +547,7 @@ using TexMgr_t  = void* (__cdecl*)();
 using MakeKey_t = void* (__cdecl*)(const char*);
 using LoadTex_t = void* (__fastcall*)(void*, void*, void*);
 // Chemin d'icône construit par fonctions natives (RE) :
-//   OBJET : BuildItemIconGrfPath 0x00d5a720 __stdcall(id_str, out) -> "유저인터페이스\item\<resname>.bmp"
+//   OBJET : ro::texmgr::kBuildItemIconPath __stdcall(id_str, out, identified)
 //           (resname via ResolveItemResNameById/DB objets -> marche même HORS inventaire). C'est la clé :
 //           les .bmp du GRF sont nommés par resource-name CP949, pas par id.
 //   SKILL : Lua_GetSkillIdName 0x0073a140 __cdecl(id) -> identifiant du skill (ex. "AL_BLESSING"),
@@ -558,10 +557,9 @@ using LoadTex_t = void* (__fastcall*)(void*, void*, void*);
 //           la liste apprise via FUN_00737e00 -> resname VIDE pour un skill d'une AUTRE classe -> icône
 //           perdue après relog sur un perso GM multi-classe. Le nom du slot survivait car il vient de
 //           GetSkillName Lua, elle aussi indép. de l'appris.) Repli sur 0x00d7fa90 si idname invalide.
-using GetInvInfo_t = void* (__stdcall*)(void*, int);          // 0x00d7fa90 (out, id) — liste APPRISE
-using BuildPath_t  = void  (__stdcall*)(const char*, char*);  // 0x00d5a720 (id_str, out_path[>=260])
+using GetInvInfo_t = void* (__stdcall*)(void*, int);          // itemdb::kFillInfoByIdAddr (out, id)
+using BuildPath_t  = void  (__stdcall*)(const char*, char*, int);  // (id_str, out[>=260], identified)
 using GetSkillIdNameLua_t = char* (__cdecl*)(int);            // 0x0073a140 GetSkillIdName(id) -> idname
-constexpr uintptr_t kGetSkillIdNameLua = 0x0073a140;
 
 std::unordered_map<uint32_t, void*> g_iconCache;  // (type0?hi:0)|id -> ImTextureID (null=miss connu)
 
@@ -579,7 +577,11 @@ bool ItemPath(int id, char* out, int /*n*/) {
     char idstr[16];
     std::snprintf(idstr, sizeof(idstr), "%d", id);
     out[0] = '\0';
-    reinterpret_cast<BuildPath_t>(0x00d5a720)(idstr, out);  // écrit le chemin complet dans out
+    // 🔴 TROIS arguments : la fonction finit sur `retn 0Ch` et LIT son drapeau
+    // `identified`. En n'en passant que deux, on le lui laissait prendre dans de
+    // la pile non initialisée — donc un nom de ressource tiré au sort entre les
+    // deux que porte l'enregistrement. Cf. ro::texmgr::kBuildItemIconPath.
+    reinterpret_cast<BuildPath_t>(ro::texmgr::kBuildItemIconPath)(idstr, out, 1);
     if (LooksUnknown(out)) { out[0] = '\0'; return false; }  // pas de ressource -> ne pas charger
     return out[0] != '\0';
   } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; return false; }
@@ -589,7 +591,7 @@ bool SkillPath(int id, char* out, int n) {
     // 1) Source d'icône NATIVE, indépendante de l'état appris : Lua GetSkillIdName(id) -> identifiant
     //    (ex. "AL_BLESSING"). Marche pour un skill d'une AUTRE classe (perso GM multi-classe) alors que
     //    l'ancien getter renvoyait vide -> icône perdue après relog. Voir le bloc de commentaire ci-dessus.
-    const char* idn = reinterpret_cast<GetSkillIdNameLua_t>(kGetSkillIdNameLua)(id);
+    const char* idn = reinterpret_cast<GetSkillIdNameLua_t>(lua::kGetSkillIdNameAddr)(id);
     if (idn && idn[0] && !LooksUnknown(idn)) {                      // rejette "Zero Skill"/"Unknown"
       std::snprintf(out, n, "%s\\item\\%s.bmp", kUIDir, idn);
       return out[0] != '\0';
@@ -597,7 +599,7 @@ bool SkillPath(int id, char* out, int n) {
     // 2) Repli : ancien getter 0x00d7fa90 (resname de la liste APPRISE à +0x20). Utile si GetSkillIdName
     //    ne couvre pas un id custom mais que le skill est appris.
     alignas(8) uint8_t info[0xA0] = {};
-    reinterpret_cast<GetInvInfo_t>(0x00d7fa90)(info, id);          // __stdcall(out, id)
+    reinterpret_cast<GetInvInfo_t>(itemdb::kFillInfoByIdAddr)(info, id);          // __stdcall(out, id)
     const char* rn = *reinterpret_cast<const char**>(info + 0x20);  // resname (déréférencé)
     if (rn && rn[0] && !LooksUnknown(rn)) {                         // rejette "Unknown-Skill"
       std::snprintf(out, n, "%s\\item\\%s.bmp", kUIDir, rn);
@@ -630,7 +632,7 @@ void* UploadBmp(const char* path) {
 void* GetIconTex(uint8_t type, uint32_t id) {
   // CONVENTION NATIVE CERTIFIÉE (OnDrop 0x008dd70b + SetShortCutSlot + tooltip read) :
   // type/rec[0] == 0 => SKILL, == 1 => OBJET. Source d'icône par type : SKILL ->
-  // SkillPath (0x00d7fa90 ItemMgr_GetInvItemById, gère aussi les plages d'ids skills) ;
+  // SkillPath (itemdb::kFillInfoByIdAddr, qui aiguille par PLAGE d'id) ;
   // OBJET -> ItemPath (0x00d5a720 BuildItemIconGrfPath). On tente la bonne source en
   // 1er ; fallback 2-passes + garde LooksUnknown pour les cas limites.
   // Textures D3DPOOL_DEFAULT : mortes après reset/recréation du device -> vider.
@@ -655,7 +657,7 @@ void* GetIconTex(uint8_t type, uint32_t id) {
 void FlushIconCache() { g_iconCache.clear(); }  // changement de zone (textures fuient, négligeable)
 
 // Le joueur connaît-il / peut-il utiliser ce skill ? Réplique le test de rendu natif (OnDraw, branche
-// skill rec0!=0) : ItemMgr_GetInvItemById(0x00d7fa90)(out, id) -> out+0x04 (found) != 0 = connu/
+// skill rec0!=0) : itemdb::kFillInfoByIdAddr(out, id) -> out+0x04 (found) != 0 = connu/
 // utilisable (un skill lié à un item disparu repasse à found=0 -> le natif cesse de le dessiner).
 // Nettoyage via FUN_00739cd0 (même signature __fastcall(void*) que StrFree_t) -> pas de fuite malgré
 // l'appel par frame. SEH (POD only). id = id canonique stocké (rec+1), comme OnDraw.
@@ -668,9 +670,9 @@ bool SkillKnown(uint32_t id) {
   bool known = false;
   __try {
     alignas(8) uint8_t info[0xC0] = {};
-    reinterpret_cast<GetInvInfo_t>(0x00d7fa90)(info, static_cast<int>(id));
+    reinterpret_cast<GetInvInfo_t>(itemdb::kFillInfoByIdAddr)(info, static_cast<int>(id));
     known = (*reinterpret_cast<int*>(info + 0x04) != 0);
-    reinterpret_cast<StrFree_t>(0x00739cd0)(info);  // = FUN_00739cd0 (cleanup de la struct)
+    reinterpret_cast<StrFree_t>(itemdb::kInfoDtorAddr)(info);  // = FUN_00739cd0 (cleanup de la struct)
   } __except (EXCEPTION_EXECUTE_HANDLER) { known = false; }
   return known;
 }
@@ -775,7 +777,7 @@ void ShowSlotTooltip(int region, int slot) {
           // SKILL : nom via Lua GetSkillName(id) — les ids skills sont absents de la DB item (les
           // skills custom y sont parfois, mais GetSkillName couvre TOUT, source que la fenêtre de
           // skills/le tooltip natif utilisent). "" ou "Unknown-Skill" => repli ci-dessous.
-          const char* sn = reinterpret_cast<GetSkillNameLua_t>(kGetSkillNameLua)(id);
+          const char* sn = reinterpret_cast<GetSkillNameLua_t>(lua::kGetSkillNameAddr)(id);
           if (sn && *sn && std::strcmp(sn, "Unknown-Skill") != 0)
             std::snprintf(nm, sizeof(nm), "%s", sn);
         }

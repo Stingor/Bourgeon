@@ -16,6 +16,8 @@
 #include "features/moonlight_ui/moonlight_ui.h"
 #include "features/overlays/basic_info.h"
 #include "features/overlays/chat_balloon.h"
+#include "ragnarok/game_scene.h"
+#include "ragnarok/lua.h"
 #include "ragnarok/uiwnd.h"
 #include "ui/ro_imgui.h"
 #include "ui/ro_widgets.h"
@@ -32,13 +34,9 @@ using GetActiveFn = void*(__fastcall*)(int);
 
 // char* GetSkillName(int id) — wrapper Lua, renvoie « Unknown-Skill » si l'id
 // est inconnu. Même source que l'arbre de compétences et l'infobulle native.
-constexpr uintptr_t kGetSkillNameLua = 0x0073a1f0;
 using GetSkillNameLua_t = char*(__cdecl*)(int);
 
 // Offsets GameMode / gestionnaire d'acteurs / acteur.
-constexpr int kGm_ActorMgr  = 0xcc;   // *(gm+0xcc)       = actorMgr
-constexpr int kAm_ListHead  = 0x10;   // *(actorMgr+0x10) = sentinelle std::list<Actor*>
-constexpr int kAm_OwnPlayer = 0x2c;   // *(actorMgr+0x2c) = acteur du joueur local
 constexpr int kNode_Actor   = 0x08;   //  node+8          = pointeur acteur
 constexpr int kAct_ScreenX  = 0xac;   //  int   : X écran projeté (pieds)
 constexpr int kAct_ScreenY  = 0xb0;   //  int   : Y écran projeté (pieds)
@@ -114,7 +112,7 @@ void ResolveSkillName(int skill_id, char* out, size_t n) {
   if (n == 0) return;
   out[0] = '\0';
   __try {
-    const char* s = reinterpret_cast<GetSkillNameLua_t>(kGetSkillNameLua)(skill_id);
+    const char* s = reinterpret_cast<GetSkillNameLua_t>(lua::kGetSkillNameAddr)(skill_id);
     // « Unknown-Skill » est le repli du client : l'afficher serait pire que de
     // ne rien afficher.
     if (s == nullptr || s[0] == '\0' || std::strcmp(s, "Unknown-Skill") == 0) return;
@@ -242,10 +240,10 @@ void CastBar::SyncWithActors() {
   void* gm = reinterpret_cast<GetActiveFn>(rag::kModeMgrGetActiveAddr)(
       static_cast<int>(rag::kModeMgrAddr));
   if (!gm) { own_cast_ = OwnCast(); return; }
-  void* actor_mgr = Read<void*>(gm, kGm_ActorMgr);
+  void* actor_mgr = Read<void*>(gm, gamescene::kGmActorMgr);
   if (!actor_mgr) { own_cast_ = OwnCast(); return; }
-  void* sentinel = Read<void*>(actor_mgr, kAm_ListHead);
-  void* own_actor = Read<void*>(actor_mgr, kAm_OwnPlayer);
+  void* sentinel = Read<void*>(actor_mgr, gamescene::kAmListHead);
+  void* own_actor = Read<void*>(actor_mgr, gamescene::kAmOwnPlayer);
 
   const uint32_t now = ::timeGetTime();
 
@@ -311,9 +309,9 @@ void CastBar::RestoreNatives() {
     void* gm = reinterpret_cast<GetActiveFn>(rag::kModeMgrGetActiveAddr)(
         static_cast<int>(rag::kModeMgrAddr));
     if (!gm) return;
-    void* actor_mgr = Read<void*>(gm, kGm_ActorMgr);
+    void* actor_mgr = Read<void*>(gm, gamescene::kGmActorMgr);
     if (!actor_mgr) return;
-    void* sentinel = Read<void*>(actor_mgr, kAm_ListHead);
+    void* sentinel = Read<void*>(actor_mgr, gamescene::kAmListHead);
     int guard = 0;
     for (void* node = sentinel ? Read<void*>(sentinel, 0) : nullptr;
          node && node != sentinel && guard < 4096;
@@ -323,7 +321,7 @@ void CastBar::RestoreNatives() {
       void* gage = Read<void*>(actor, kAct_CastGage);
       if (gage) uiwnd::SetVisible(gage, true);
     }
-    void* own_actor = Read<void*>(actor_mgr, kAm_OwnPlayer);
+    void* own_actor = Read<void*>(actor_mgr, gamescene::kAmOwnPlayer);
     if (own_actor) {
       void* gage = Read<void*>(own_actor, kAct_CastGage);
       if (gage) uiwnd::SetVisible(gage, true);
@@ -348,10 +346,10 @@ void CastBar::DrawBars() {
   void* gm = reinterpret_cast<GetActiveFn>(rag::kModeMgrGetActiveAddr)(
       static_cast<int>(rag::kModeMgrAddr));
   if (!gm) return;
-  void* actor_mgr = Read<void*>(gm, kGm_ActorMgr);
+  void* actor_mgr = Read<void*>(gm, gamescene::kGmActorMgr);
   if (!actor_mgr) return;
-  void* sentinel = Read<void*>(actor_mgr, kAm_ListHead);
-  void* own_actor = Read<void*>(actor_mgr, kAm_OwnPlayer);
+  void* sentinel = Read<void*>(actor_mgr, gamescene::kAmListHead);
+  void* own_actor = Read<void*>(actor_mgr, gamescene::kAmOwnPlayer);
 
   const ImGuiIO& io = ImGui::GetIO();
   const float disp_w = io.DisplaySize.x;

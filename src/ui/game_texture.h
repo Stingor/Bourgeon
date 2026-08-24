@@ -37,7 +37,52 @@ constexpr uintptr_t kLoad    = 0x00a8d4a0;  // __fastcall(mgr, _, key) -> tex
 constexpr int kWidth  = 0x114;
 constexpr int kHeight = 0x118;
 constexpr int kPixels = 0x11c;  // BGRA brut
+
+// `BuildItemIconGrfPath` : le chemin GRF de l'icône d'un objet, construit par le
+// client lui-même — « 유저인터페이스\item\<resname>.bmp ». C'est LA façon de
+// nommer un .bmp d'icône : le GRF les range par nom de ressource CP949, jamais
+// par id, et `ResolveItemResNameById` fait la traduction depuis la DB d'objets
+// (donc même pour un objet qu'on n'a pas en inventaire).
+//
+// 🔴 SIGNATURE TRANCHÉE AU DÉSASSEMBLAGE (2026-08-23), parce que le projet en
+// portait QUATRE, toutes différentes, pour cette seule adresse :
+//
+//     void __stdcall(const char* id_str, char* out /*>=260*/, int identified)
+//
+// La fonction finit sur `retn 0Ch` — donc TROIS dwords, qu'elle dépile
+// elle-même — et son troisième argument est bel et bien LU (`cmp [ebp+arg_8], 0`
+// puis `[eax+8]` si non nul, `[eax+0x1C]` sinon) : c'est lui qui choisit entre
+// le nom de ressource IDENTIFIÉ et l'autre.
+//
+// ⚠ `identified` = 1 pour l'icône normale, 0 pour celle d'un objet non
+// identifié. Le déclarer à DEUX arguments — ce que faisait la barre de
+// raccourcis — pousse 8 octets quand la fonction en dépile 12 : elle lit alors
+// son drapeau dans de la pile NON INITIALISÉE et peut choisir l'autre nom de
+// ressource, ou un pointeur invalide. Le SEH de l'appelant masquait la seconde
+// moitié du symptôme en perdant simplement l'icône.
+//
+// ⚠ L'id part en CHAÎNE DÉCIMALE (la fonction fait `atoi` dessus), pas en entier.
+constexpr uintptr_t kBuildItemIconPath = 0x00d5a720;
 }  // namespace texmgr
+
+// ── Gabarits de chemin de l'interface, lus DANS le binaire du client ─────────
+// Ce ne sont pas des adresses de code : ce sont les littéraux CP949 que le
+// client garde dans ses données, et qu'on lui reprend tels quels.
+//
+// 🔴 POURQUOI NE PAS LES ÉCRIRE. Nos sources sont en UTF-8 : un
+// « 유저인터페이스\… » écrit ici serait encodé en UTF-8 et ne désignerait AUCUNE
+// entrée du GRF, qui est en CP949. Les lire dans le binaire est la seule façon
+// d'obtenir les bons octets sans coller d'échappement hexadécimal illisible.
+//
+// `kUiRootSample` est un chemin COMPLET dont la plupart des appelants ne
+// gardent que le PRÉFIXE — le dossier racine de l'interface. Cinq fichiers le
+// déclaraient : quatre le nommaient d'après le fichier qu'il désigne
+// (`kBtnbarPath`), un d'après l'usage qu'il en fait (`kUiPrefixPath`). Deux noms
+// pour deux façons de s'en servir, une seule chaîne.
+namespace uipath {
+constexpr uintptr_t kUiRootSample = 0x010357b8;  // « …\basic_interface\btnbar_left.bmp »
+constexpr uintptr_t kIconWeight   = 0x0103db00;  // « …\inventory\icon_weight.bmp »
+}  // namespace uipath
 
 // Charge `path` (encodé en CP949, ex. « 유저인터페이스\item\501.bmp ») via le
 // TexMgr natif et le convertit en texture ImGui.

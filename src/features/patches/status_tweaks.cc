@@ -1,6 +1,7 @@
 #include "ui/game_texture.h"
 #include "features/patches/status_tweaks.h"
 
+#include "ragnarok/globals.h"
 #include "ragnarok/msgstring.h"  // msgstr:: (libellés natifs du client)
 #include "ragnarok/uiwnd.h"
 #include <Windows.h>
@@ -67,7 +68,6 @@ constexpr uint32_t  kNewHeight = 132;         // 17 title bar + 115 bitmap
 constexpr uintptr_t kDrawTitleBar = 0x00898bc0;  // __thiscall(this, char hasClose, char* title, int width)
 constexpr uintptr_t kDrawText     = 0x00a25a70;  // __thiscall(this,x,y,str,len,face,size,color,bold,ital)  LEFT
 constexpr uintptr_t kDrawTextR    = 0x00a27b50;  // __thiscall(this,x,y,str,len,face,size,color,bold) RIGHT@x
-constexpr uintptr_t kBlit         = 0x00a1d260;  // __thiscall(this,x,y,img,flag)
 constexpr uintptr_t kBgNormalPath = 0x010361b4;  // "...\statuswnd\w_statwin_bg.bmp"
 
 // ---- GLOBAL title-bar text offset (shared UIWindow_DrawTitleBar 0x00898bc0) -
@@ -97,24 +97,17 @@ const auto g_status_msg_orig = reinterpret_cast<StatusMsg_t>(kMsgOrig);
 int g_posX = INT_MIN, g_posY = INT_MIN;  // saved STATUS window position (INT_MIN = unset)
 bool g_restorePending = false;           // a freshly-loaded position waiting to be re-applied
 
-// ---- session fields (g_session = 0x015fa3c0) -------------------------------
-const uintptr_t kBase[6]  = {0x015fba24, 0x015fba28, 0x015fba2c,
-                             0x015fba30, 0x015fba34, 0x015fba38};
-const uintptr_t kBonus[6] = {0x015fba0c, 0x015fba10, 0x015fba14,
-                             0x015fba18, 0x015fba1c, 0x015fba20};
-const uintptr_t kRaise[6] = {0x015fba3c, 0x015fba40, 0x015fba44,
-                             0x015fba48, 0x015fba4c, 0x015fba50};
-constexpr uintptr_t kAtk1     = 0x015fba58, kAtk2     = 0x015fba6c;
-constexpr uintptr_t kDefSoft  = 0x015fba64, kDefHard  = 0x015fba68;
-constexpr uintptr_t kMdefSoft = 0x015fba5c, kMdefHard = 0x015fba78;
-constexpr uintptr_t kMatkMin  = 0x015fba74, kMatkMax  = 0x015fba70;
-constexpr uintptr_t kHit      = 0x015fba7c, kCrit     = 0x015fba84;
-constexpr uintptr_t kFlee     = 0x015fba80, kPdodge   = 0x015fba88;
-constexpr uintptr_t kAspdRaw  = 0x015fba54;
-constexpr uintptr_t kStatusPt = 0x015fb9f4;
-constexpr uintptr_t kGuildLen = 0x0159c198;  // std::string _Mysize (0 == no guild)
-constexpr uintptr_t kGuildCap = 0x0159c19c;  // std::string _Myres  (>=0x10 => heap ptr)
-constexpr uintptr_t kGuildBuf = 0x0159c188;  // std::string buffer/ptr union
+// ---- session fields ---------------------------------------------------------
+// Les stats, les sous-stats de combat et l'objet guilde viennent de
+// `ragnarok/globals.h`. Les trois blocs STR..LUK étaient ici ÉNUMÉRÉS adresse par
+// adresse ; ils sont contigus, de pas 4, et `rag::` les indexe déjà — dix-huit
+// littéraux de moins à retrouver au portage.
+//
+// Le nom de guilde est une std::string MSVC posée à `rag::kGuildObjAddr` : la
+// longueur est à +0x10 et la capacité à +0x14, et c'est la CAPACITÉ qui dit où
+// vivent les octets (SSO en place sous 0x10, tas au-delà).
+constexpr uintptr_t kGuildLen = rag::kGuildObjAddr + 0x10;  // _Mysize (0 == no guild)
+constexpr uintptr_t kGuildCap = rag::kGuildObjAddr + 0x14;  // _Myres  (>=0x10 => heap ptr)
 
 const int kRowCenter[7] = {12, 28, 44, 60, 76, 92, 106}; // bitmap-Y of each label row, shared left/right
 
@@ -166,13 +159,13 @@ void DrawNormal(void* wnd, int blitY) {
   // ---- left column: base / +bonus / raise-cost --------------------------
   for (int i = 0; i < 6; ++i) {
     const int y = blitY + kRowCenter[i] - 6;
-    const int base = RD(kBase[i]);
+    const int base = RD(rag::kStatBaseAddr + i * 4);
     int txtsize = 13;
     if( base > 999) txtsize = 11;
     snprintf(buf, sizeof(buf), "%d", base);
     DTextL(wnd, 37, y, buf, txtsize);
     txtsize = 13;
-    const int bonus = RD(kBonus[i]);
+    const int bonus = RD(rag::kStatBonusAddr + i * 4);
     if (bonus != 0) {
       if( bonus > 999) txtsize = 11;
       snprintf(buf, sizeof(buf), (bonus > 0) ? "+" : "-");
@@ -181,67 +174,67 @@ void DrawNormal(void* wnd, int blitY) {
       DTextL(wnd, 61, y, buf, txtsize);
     }
 
-    snprintf(buf, sizeof(buf), "%d", RD(kRaise[i]));
+    snprintf(buf, sizeof(buf), "%d", RD(rag::kStatRaiseCostAddr + i * 4));
     DTextR(wnd, 121, y, buf, 13);
   }
 
   const int y6 = blitY + kRowCenter[6] - 6;  // row 7 (Status Point / Guild)
 
   // ---- left row 7: Status Point -----------------------------------------
-  snprintf(buf, sizeof(buf), "%d", RD(kStatusPt));
+  snprintf(buf, sizeof(buf), "%d", RD(rag::kOwnStatusPointsAddr));
   DTextR(wnd, 121, y6, buf, 13);
 
   // ---- right side --------------------------------------------------------
   const int y0 = blitY + kRowCenter[0] - 6;
-  snprintf(buf, sizeof(buf), "%d + %d", RD(kAtk1), RD(kAtk2));
+  snprintf(buf, sizeof(buf), "%d + %d", RD(rag::kOwnAtk1Addr), RD(rag::kOwnAtk2Addr));
   DTextR(wnd, 294, y0, buf, 13);
 
   const int y1 = blitY + kRowCenter[1] - 6;
-  snprintf(buf, sizeof(buf), "%d", (2000 - RD(kAspdRaw)) / 10);  // displayed ASPD
+  snprintf(buf, sizeof(buf), "%d", rag::AspdFromAmotion(RD(rag::kOwnAttackDelayAddr)));  // displayed ASPD
   DTextR(wnd, 208, y1, buf, 13);
-  snprintf(buf, sizeof(buf), "%d", RD(kFlee));
+  snprintf(buf, sizeof(buf), "%d", RD(rag::kOwnFleeAddr));
   DTextR(wnd, 294, y1, buf, 13);
 
   const int y2 = blitY + kRowCenter[2] - 6;
-  snprintf(buf, sizeof(buf), "%d + %d", RD(kDefSoft), RD(kDefHard));
+  snprintf(buf, sizeof(buf), "%d + %d", RD(rag::kOwnDefSoftAddr), RD(rag::kOwnDefHardAddr));
   DTextR(wnd, 208, y2, buf, 13);
-  snprintf(buf, sizeof(buf), "%d + %d", RD(kMdefSoft), RD(kMdefHard));
+  snprintf(buf, sizeof(buf), "%d + %d", RD(rag::kOwnMdefSoftAddr), RD(rag::kOwnMdefHardAddr));
   DTextR(wnd, 294, y2, buf, 13);
 
   const int y3 = blitY + kRowCenter[3] - 6;
-  snprintf(buf, sizeof(buf), "%d ~ %d", RD(kMatkMin), RD(kMatkMax));
+  snprintf(buf, sizeof(buf), "%d ~ %d", RD(rag::kOwnMatkMinAddr), RD(rag::kOwnMatkMaxAddr));
   DTextR(wnd, 294, y3, buf, 13);
 
   const int y4 = blitY + kRowCenter[4] - 6;
-  snprintf(buf, sizeof(buf), "%d", RD(kHit));
+  snprintf(buf, sizeof(buf), "%d", RD(rag::kOwnHitAddr));
   DTextR(wnd, 208, y4, buf, 13);  // col A (aligns under Aspd/Def)
 
   const int y5 = blitY + kRowCenter[5] - 6;
-  snprintf(buf, sizeof(buf), "%d", RD(kCrit));
+  snprintf(buf, sizeof(buf), "%d", RD(rag::kOwnCritAddr));
   DTextR(wnd, 208, y5, buf, 13);  // col A (aligns under Aspd/Def)
-  snprintf(buf, sizeof(buf), "%d", RD(kPdodge));
+  snprintf(buf, sizeof(buf), "%d", RD(rag::kOwnPerfectDodgeAddr));
   DTextR(wnd, 294, y5, buf, 13);
 
   // ---- right row 7: guild name (if any) ---------------------------------
   if (RD(kGuildLen) != 0) {
     const unsigned cap = *reinterpret_cast<unsigned*>(kGuildCap);
-    const char* gname = (cap < 0x10) ? reinterpret_cast<const char*>(kGuildBuf)
-                                     : *reinterpret_cast<const char**>(kGuildBuf);
+    const char* gname = (cap < 0x10) ? reinterpret_cast<const char*>(rag::kGuildObjAddr)
+                                     : *reinterpret_cast<const char**>(rag::kGuildObjAddr);
     DTextL(wnd, 163, y6 - 1, gname, 12, 0);  // left-aligned right after the Guild label
   }
 
   // ---- reposition the 6 stat-up arrow buttons into the box arrow-cell -----
   // Replicate the native show/hide rule (FUN_008cb7c0 case 0x23, RE-verified): show
   // the arrow only when the stat can still be raised (raise-cost != 0 — the server
-  // sends 0 at max level) AND the player has enough points (kStatusPt >= cost);
+  // sends 0 at max level) AND the player has enough points (rag::kOwnStatusPointsAddr >= cost);
   // otherwise hide it off-screen exactly like the native (-100,-100). We rewrite the
   // button x/y every frame, so without this our relayout re-showed arrows the native
   // had hidden. Mirror the native arithmetic literally — no extra max-level logic.
-  const int points = RD(kStatusPt);
+  const int points = RD(rag::kOwnStatusPointsAddr);
   for (int i = 0; i < 6; ++i) {
     void* btn = *reinterpret_cast<void**>(reinterpret_cast<uint8_t*>(wnd) + 0xb4 + i * 4);
     if (!btn) continue;
-    const int cost = RD(kRaise[i]);
+    const int cost = RD(rag::kStatRaiseCostAddr + i * 4);
     const bool show = (cost != 0) && (points >= cost);
     *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(btn) + 0x1c) = show ? 88 : -100;
     *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(btn) + 0x20) =
@@ -270,7 +263,7 @@ void __fastcall DrawContentHook(void* wnd, void* /*edx*/) {
     void* key = reinterpret_cast<MakeKey_t>(ro::texmgr::kMakeKey)(
         reinterpret_cast<const char*>(kBgNormalPath));
     void* tex = reinterpret_cast<LoadTex_t>(ro::texmgr::kLoad)(mgr, nullptr, key);
-    if (tex) reinterpret_cast<Blit_t>(kBlit)(wnd, nullptr, 0, blitY, tex, 1);
+    if (tex) reinterpret_cast<Blit_t>(uiwnd::kBlitImageToNodeAddr)(wnd, nullptr, 0, blitY, tex, 1);
 
     DrawNormal(wnd, blitY);
   } __except (EXCEPTION_EXECUTE_HANDLER) {

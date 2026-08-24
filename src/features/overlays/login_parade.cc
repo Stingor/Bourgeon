@@ -6,6 +6,7 @@
 #include <cstdint>
 
 #include "imgui.h"
+#include "ragnarok/audio.h"
 #include "ui/game_texture.h"
 #include "ui/mob_sprite.h"
 
@@ -24,7 +25,6 @@ namespace {
 // Le .act porte une table de noms de wav ; ui/sprite_view.h la lit et la filtre
 // (elle contient AUSSI des marqueurs d'animation, pas que des .wav). Il ne reste
 // ici que la lecture du wav, qui n'a rien à voir avec le format sprite.
-constexpr uintptr_t kSoundMgrPtr = 0x01253d0c;  // *ptr = SoundMgr (déréf 1×)
 constexpr uintptr_t kSoundMgrGet = 0x005ff990;  // getter/lazy-create du SoundMgr
 // ⚠ Au LOGIN, Sound_Play3D (0x00600770) est INUTILISABLE : il est gated par
 // OptionInfo_GetValue(0xb) (option effets sonores), or OptionInfo n'est chargé que
@@ -110,10 +110,10 @@ void PlayMobSound(const char* name) {
   if (!name || !name[0]) return;
   __try {
     if (*reinterpret_cast<int*>(kSoundModeVal) == 0) return;  // son coupé au setup (registre)
-    void* mgr = *reinterpret_cast<void**>(kSoundMgrPtr);
+    void* mgr = *reinterpret_cast<void**>(audio::kSoundMgrPtr);
     if (!mgr) {  // pas encore créé ? getter idempotent (lazy-create) puis relire
       reinterpret_cast<SndMgrGetFn>(kSoundMgrGet)();
-      mgr = *reinterpret_cast<void**>(kSoundMgrPtr);
+      mgr = *reinterpret_cast<void**>(audio::kSoundMgrPtr);
     }
     if (!mgr) return;
     void* tex = reinterpret_cast<TexMgrGetFn>(ro::texmgr::kGet)();

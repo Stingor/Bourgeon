@@ -11,6 +11,7 @@
 #include "features/item_cell.h"     // FindInfoByIndex : l'ITID de l'œuf du pet
 #include "features/link_gesture.h"  // gestes communs des liens (desc / menu / chat)
 #include "imgui.h"
+#include "ragnarok/globals.h"
 #include "ragnarok/msgstring.h"
 #include "ragnarok/ui_window_mgr.h"  // ligne de chat (UIM_PUSHINTOCHATHISTORY)
 #include "ragnarok/uiwnd.h"
@@ -164,7 +165,6 @@ void Gauge(const char* label, int cur, int max, const ImVec4& col) {
 constexpr int kInfoNameStr = 0x2c;
 constexpr int kInfoCards = 0x1c;
 constexpr int kStdStringCapOff = 0x14;
-constexpr uintptr_t kInvListHead = 0x015fbab0;
 
 // L'ITID d'un ItemInfo. Voir ci-dessus pour le `atoi` : le client le range en
 // TEXTE. 0 = illisible.
@@ -272,7 +272,7 @@ PetWindow::PetWindow() {
 // ── L'œuf porté ─────────────────────────────────────────────────────────────
 int PetWindow::EggItid(const rag::pet::State& pet) {
   if (pet.egg_index < 0) return 0;
-  return InfoItid(itemcell::FindInfoByIndex(kInvListHead, pet.egg_index));
+  return InfoItid(itemcell::FindInfoByIndex(rag::kInventoryListAddr, pet.egg_index));
 }
 
 // ── Cycle de vie ────────────────────────────────────────────────────────────
@@ -978,7 +978,7 @@ void PetWindow::DrawHatchWindow() {
     }
     for (int i = 0; i < hatch_count_; ++i) {
       const int idx = hatch_index_[i];
-      void* info = itemcell::FindInfoByIndex(kInvListHead, idx);
+      void* info = itemcell::FindInfoByIndex(rag::kInventoryListAddr, idx);
       const uint32_t itid = static_cast<uint32_t>(InfoItid(info));
       uint32_t cards[4] = {};
       ReadInfoCards(info, cards);
@@ -1079,7 +1079,7 @@ int PetWindow::InventoryCount(uint32_t itid) {
   // somme de la liste multipliée par le nombre de tours (315 en jeu : « 9450 »
   // pour 30 Yggdrasil Leaf). Le parcours vit à un seul endroit, avec les deux
   // recherches qui le partagent déjà.
-  return itemcell::CountById(kInvListHead, itid);
+  return itemcell::CountById(rag::kInventoryListAddr, itid);
 }
 
 // ── Réglages ────────────────────────────────────────────────────────────────

@@ -11,6 +11,7 @@
 
 #include "bourgeon.h"
 #include "imgui.h"
+#include "ragnarok/game_scene.h"
 #include "ragnarok/globals.h"
 #include "ragnarok/msgstring.h"      // msgstr::Utf8Or (libellés exacts du client)
 #include "ragnarok/ui_window_mgr.h"  // UIM_MAKE_WHISPER_WINDOW (ouverture d'un 1:1)
@@ -54,23 +55,16 @@ constexpr int kStr_Cap = 0x14;
 // `Actor_FindByGid(gid)` __stdcall : raccourci global qui résout le mode lui-même
 // (le même que target_frame). La `UIPcGage` de +0x488 est celle que le client pose
 // justement pour LES MEMBRES DE PARTY ; PV courants en +0xA0, maximum en +0xA4.
-constexpr uintptr_t kActorFindByGid = 0x00d806a0;
 constexpr int       kAct_PcGage     = 0x488;
 constexpr int       kGage_Hp        = 0x0a0;
 constexpr int       kGage_MaxHp     = 0x0a4;
 
-// Mes propres PV : le natif les lit dans ces deux globales plutôt que sur mon
-// acteur (cf. UpdateMemberHpGauges, branche `aid == g_Account_Aid`).
-constexpr uintptr_t kOwnHp    = 0x015ff908;
-constexpr uintptr_t kOwnMaxHp = 0x015ff90c;
-constexpr uintptr_t kOwnAid   = 0x015fb9a4;
 // (`g_Own_InParty` 0x015FF804 existe et garde les cases 0x3D / 0x3E du switch
 // natif, mais il reste à 0 pour un membre qui a REJOINT un groupe — inutilisable
 // pour savoir si l'on est en groupe. Voir DrawPartyTab.)
 
 // Résolveur de nom de classe, même convention d'appel que celle déjà éprouvée par
 // character_sheet : __fastcall(session /*ecx*/, nullptr /*edx*/, jobId, -1).
-constexpr uintptr_t kJobDisplayName = 0x00d5bb40;
 
 constexpr int kWinMessengerGroup = 0x45;
 
@@ -172,13 +166,13 @@ bool ReadNodeSEH(const void* node, RawRow& out) {
 // officiel n'affiche rien non plus dans ce cas.
 bool ReadHpSEH(uint32_t gid, int* hp, int* max_hp) {
   __try {
-    if (gid && gid == *reinterpret_cast<const uint32_t*>(kOwnAid)) {
-      *hp     = *reinterpret_cast<const int*>(kOwnHp);
-      *max_hp = *reinterpret_cast<const int*>(kOwnMaxHp);
+    if (gid && gid == rag::OwnAccountId()) {
+      *hp     = rag::OwnHp();
+      *max_hp = rag::OwnMaxHp();
       return *max_hp > 0;
     }
     using FindActorFn = void* (__stdcall*)(uint32_t);
-    void* actor = reinterpret_cast<FindActorFn>(kActorFindByGid)(gid);
+    void* actor = reinterpret_cast<FindActorFn>(gamescene::kFindActorByGidAddr)(gid);
     if (!actor) return false;
     void* gage = *reinterpret_cast<void* const*>(
         reinterpret_cast<const uint8_t*>(actor) + kAct_PcGage);
@@ -199,12 +193,11 @@ bool ReadHpSEH(uint32_t gid, int* hp, int* max_hp) {
 // false si aucun mode n'est actif (login, changement de carte).
 // (Ce petit pont est déjà recopié dans chat_window et game_settings ; il mériterait
 // la factorisation qu'a reçue `uiwnd.h`. Hors périmètre de ce chantier.)
-constexpr uintptr_t kCurrentModePtr = 0x0121333c;
 constexpr int       kSendMsgVtOff   = 0x18;
 
 bool ModeSendMsg(int cmd, int p2 = 0, int p3 = 0, int p4 = 0, int p5 = 0) {
   __try {
-    void* mode = *reinterpret_cast<void**>(kCurrentModePtr);
+    void* mode = *reinterpret_cast<void**>(rag::kActiveModePtr);
     if (mode == nullptr) return false;
     using SendMsg_t = int(__thiscall*)(void*, int, int, int, int, int);
     void** vt = *reinterpret_cast<void***>(mode);
@@ -252,12 +245,11 @@ constexpr int kMsgDivShared   = 0x2e4;  // « Shared »
 // Nombre de membres, directement au manager — la même fonction que chat_window et
 // emotion_hotkey utilisent déjà. Sert de garde « suis-je en groupe ? » hors rendu,
 // là où la liste relue par frame n'est pas disponible.
-constexpr uintptr_t kPartyMemberCountFn = 0x00d5cf50;  // __thiscall(session)
 
 int PartyMemberCountSEH() {
   __try {
     using Fn = int(__thiscall*)(void*);
-    return reinterpret_cast<Fn>(kPartyMemberCountFn)(
+    return reinterpret_cast<Fn>(rag::kPartyMemberCountAddr)(
         reinterpret_cast<void*>(rag::kSessionAddr));
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
 }
@@ -295,14 +287,14 @@ void AddFriendSEH(const char* name24) {
 // Mon AID. C'est ce que le natif compare pour choisir `icon_party_me`.
 uint32_t OwnAidSEH() {
   __try {
-    return *reinterpret_cast<const uint32_t*>(kOwnAid);
+    return rag::OwnAccountId();
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
 }
 
 const char* JobNameSEH(int job_id) {
   __try {
     using GetClassName_t = const char* (__fastcall*)(void*, void*, unsigned, int);
-    const char* n = reinterpret_cast<GetClassName_t>(kJobDisplayName)(
+    const char* n = reinterpret_cast<GetClassName_t>(rag::kJobNameOrResNameAddr)(
         reinterpret_cast<void*>(rag::kSessionAddr), nullptr,
         static_cast<unsigned>(job_id), -1);
     return n ? n : "";

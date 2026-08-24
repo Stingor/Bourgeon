@@ -27,6 +27,7 @@
 #include "features/windows/chat_window.h"           // WantsEscapeKey (avale VK_ESCAPE)
 #include "features/minigames/doom.h"
 #include "ragnarok/configuration.h"
+#include "ragnarok/globals.h"  // rag::kMouseScreenXAddr / kMouseScreenYAddr
 #include "ragnarok/object_factory.h"
 #include "ragnarok/packets.h"
 #include "ui/ro_imgui.h"
@@ -177,8 +178,8 @@ void __fastcall Hooked_CursorRender(void* thisptr) {
       auto* oy = reinterpret_cast<float*>(reinterpret_cast<char*>(thisptr) + 0x34);
       saved_ox = *ox;
       saved_oy = *oy;
-      const float mx = static_cast<float>(*reinterpret_cast<int*>(0x011e40d4));
-      const float my = static_cast<float>(*reinterpret_cast<int*>(0x011e40d8));
+      const float mx = static_cast<float>(*reinterpret_cast<int*>(rag::kMouseScreenXAddr));
+      const float my = static_cast<float>(*reinterpret_cast<int*>(rag::kMouseScreenYAddr));
       *ox = -mx - 4096.0f;
       *oy = -my - 4096.0f;
       fs_suppress = true;

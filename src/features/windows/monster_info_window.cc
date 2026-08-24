@@ -15,6 +15,7 @@
 #include "features/link_gesture.h"  // gestes communs des liens (item/monstre)
 #include "features/windows/chat_window.h"  // poser un lien de monstre dans la saisie
 #include "imgui.h"
+#include "ragnarok/audio.h"
 #include "ragnarok/globals.h"   // rag::BaseLevel / JobLevel (péremption de l'EXP estimée)
 #include "ragnarok/item_db.h"   // itemdb::kSkillDesc* (fenêtre native 0x2E)
 #include "ragnarok/lua.h"       // lua::State / GetField / PCall (GetSkillDescript)
@@ -166,17 +167,15 @@ PokeAudio ClassifyActionAudio(const ro::MobSpriteRes& res, unsigned action) {
 // ⚠ La fonction se termine par `RET 0x20` : elle dépile un dword de plus que ses
 // sept paramètres visibles. L'oublier corrompt la pile de l'APPELANT, et le
 // crash tombe après le retour — cf. le même appel dans minigames/roggle.cc.
-constexpr uintptr_t kSoundMgrPtr = 0x01253d0c;  // *ptr = SoundMgr (déréf 1x)
-constexpr uintptr_t kSoundPlay3D = 0x00600770;
 using PlaySound3DFn = void(__fastcall*)(void*, void*, const char*, float, float,
                                         float, int, int, float, int);
 
 void PlayRoSound(const char* name) {
   if (name == nullptr || name[0] == '\0') return;
   __try {
-    void* mgr = *reinterpret_cast<void**>(kSoundMgrPtr);
+    void* mgr = *reinterpret_cast<void**>(audio::kSoundMgrPtr);
     if (mgr != nullptr)
-      reinterpret_cast<PlaySound3DFn>(kSoundPlay3D)(mgr, nullptr, name, 0.0f,
+      reinterpret_cast<PlaySound3DFn>(audio::kPlay3DAddr)(mgr, nullptr, name, 0.0f,
                                                     0.0f, 0.0f, 250, 40, 1.0f, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {
   }
@@ -316,18 +315,14 @@ struct OwnCombatStats {
   bool valid = false;
   int  hit = 0, flee = 0, crit = 0, pdodge = 0;
 };
-constexpr uintptr_t kOwnHit    = 0x015fba7c;
-constexpr uintptr_t kOwnFlee   = 0x015fba80;
-constexpr uintptr_t kOwnCrit   = 0x015fba84;
-constexpr uintptr_t kOwnPdodge = 0x015fba88;
 
 OwnCombatStats ReadOwnCombatStats() {
   OwnCombatStats s;
   __try {
-    s.hit    = *reinterpret_cast<const int*>(kOwnHit);
-    s.flee   = *reinterpret_cast<const int*>(kOwnFlee);
-    s.crit   = *reinterpret_cast<const int*>(kOwnCrit);
-    s.pdodge = *reinterpret_cast<const int*>(kOwnPdodge);
+    s.hit    = *reinterpret_cast<const int*>(rag::kOwnHitAddr);
+    s.flee   = *reinterpret_cast<const int*>(rag::kOwnFleeAddr);
+    s.crit   = *reinterpret_cast<const int*>(rag::kOwnCritAddr);
+    s.pdodge = *reinterpret_cast<const int*>(rag::kOwnPerfectDodgeAddr);
     s.valid  = true;
   } __except (EXCEPTION_EXECUTE_HANDLER) { s.valid = false; }
   // Avant le premier ZC_STATUS, tout est à zéro : une simulation sur des zéros
@@ -390,14 +385,13 @@ const char* VariantQualifier(const std::string& aegis, bool summoned) {
 // Description : la fenêtre native 0x2E, pilotée par l'id BRUT (pas un
 // ItemSkillInfo, contrairement aux objets) — même chemin que la feuille de
 // personnage, cf. `CharacterSheet::OpenSkillDesc`.
-constexpr uintptr_t kGetSkillNameLua = 0x0073a1f0;
 using GetSkillNameLua_t = char* (__cdecl*)(int);
 
 // SEH ISOLÉ dans sa propre fonction : l'appelant manipule des std::string.
 bool SkillNameCp949(int id, char* out, size_t out_size) {
   bool ok = false;
   __try {
-    const char* n = reinterpret_cast<GetSkillNameLua_t>(kGetSkillNameLua)(id);
+    const char* n = reinterpret_cast<GetSkillNameLua_t>(lua::kGetSkillNameAddr)(id);
     if (n && *n && std::strcmp(n, "Unknown-Skill") != 0) {
       strncpy_s(out, out_size, n, _TRUNCATE);
       ok = true;
@@ -430,18 +424,18 @@ bool SkillNameCp949(int id, char* out, size_t out_size) {
 // API C Lua BRUTE et nom STATIQUE : le wrapper varargs du client détruit la
 // std::string qu'on lui passe par valeur. Cf. `ResolveOptName` (item_desc_window).
 //
-// Le job : la MÊME source que le natif — le global qu'il pousse lui-même, pas le
-// getter de session. Répondre « la fenêtre 0x2E aura-t-elle quelque chose à
-// dire ? » n'a de sens que si on l'interroge avec ses propres entrées.
-constexpr uintptr_t kOwnJobIdAddr = 0x015fb9c8;  // g_Own_JobId
-
+// Le job vient de `rag::kOwnJobIdAddr` : la MÊME source que le natif — le global
+// qu'il pousse lui-même, pas le getter de session. Répondre « la fenêtre 0x2E
+// aura-t-elle quelque chose à dire ? » n'a de sens que si on l'interroge avec ses
+// propres entrées.
+//
 // SEH ISOLÉ : pas de temporaire C++ dans cette fonction (C2712).
 bool SkillHasDescSEH(int skill_id) {
   bool ok = false;
   __try {
     void* L = lua::State();
     if (L) {
-      const int job = *reinterpret_cast<const int*>(kOwnJobIdAddr);
+      const int job = rag::OwnJobId();
       lua::GetField(L, lua::kGlobalsIndex, "GetSkillDescript");
       lua::PushNumber(L, static_cast<double>(job));       // 1er : le JOB
       lua::PushNumber(L, static_cast<double>(skill_id));  // 2e  : la compétence

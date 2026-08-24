@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstring>
 
+#include "ragnarok/globals.h"  // rag::kSessionAddr, kOwnGuildIdAddr, kStdStringAssignAddr
 #include "ragnarok/msgstring.h"
 #include "ui/ro_imgui.h"  // ro::Utf8ToLocal (les défauts viennent en UTF-8)
 
@@ -13,11 +14,6 @@ namespace {
 
 // ── Adresses (client 20250716, no-ASLR : addr IDA == live) ───────────────────
 // RE : docs/shortcut_list_re.md §3, §5 et §6.
-
-// Le sac d'état d'interface — le MÊME objet que le `g_SkillInfoMgr` de la barre
-// de raccourcis (l'IDB le nomme `g_UIWindowContextKey`). Les macros y sont à
-// +0xFD8, sous forme d'un std::vector<std::string>.
-constexpr uintptr_t kUIWindowContextKey = 0x015fa3c0;
 
 // 🔴 CES TROIS ADRESSES SONT LES CHAMPS D'UN std::vector, PAS UN TABLEAU.
 // `0x015FB398` contient le POINTEUR vers le premier `std::string` ; il faut le
@@ -36,7 +32,6 @@ constexpr size_t kSsoCapacity   = 15;
 // std::string::assign — __thiscall(this, src, len). L'annuaire (`ragnarok/globals.h`)
 // ne porte que le destructeur ; l'assign est redéclaré ici comme il l'est dans
 // `user_hotkey.cc` et `chat_window.cc`.
-constexpr uintptr_t kStdStringAssignAddr = 0x004f1940;
 
 // UserSettings_SaveJson — __thiscall, `this` = la VALEUR de 0x01251668 (vérifié au
 // désassemblage : `mov ecx, dword_1251668`, pas `mov ecx, offset`).
@@ -50,9 +45,7 @@ constexpr uintptr_t kSendMacroAddr = 0x00a47400;
 
 // La cible d'envoi et ses gardes d'appartenance (répliques du natif).
 constexpr uintptr_t kInputTargetMode  = 0x015ff838;
-constexpr uintptr_t kOwnGuildId       = 0x0159c230;
 constexpr uintptr_t kClanStatePtr     = 0x0159c07c;  // *(byte*)(*ptr + 0x5C)
-constexpr uintptr_t kPartyMemberCount = 0x00d5cf50;  // __thiscall(ctxKey)
 
 using StrAssign_t = void*(__thiscall*)(void*, const char*, size_t);
 using SaveJson_t  = int(__fastcall*)(void*, void*);
@@ -126,7 +119,7 @@ bool WriteLocal(int slot, const char* local) {
     // `EmotionHotkey_SaveFromEditBoxes`, donc la croissance hors-SSO passe par
     // l'allocateur du jeu et le vecteur reste cohérent pour ses propres
     // sauvegardes.
-    reinterpret_cast<StrAssign_t>(kStdStringAssignAddr)(s, local, len);
+    reinterpret_cast<StrAssign_t>(rag::kStdStringAssignAddr)(s, local, len);
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     return false;
   }
@@ -175,7 +168,7 @@ Target CurrentTarget() {
   // le client n'utilisera pas.
   if (mode == 2) {
     __try {
-      if (*reinterpret_cast<const uint32_t*>(kOwnGuildId) != 0)
+      if (rag::OwnGuildId() != 0)
         return Target::kGuild;
     } __except (EXCEPTION_EXECUTE_HANDLER) {}
     return Target::kPublic;
@@ -183,8 +176,8 @@ Target CurrentTarget() {
   if (mode == 1) {
     int count = 0;
     __try {
-      count = reinterpret_cast<PartyCount_t>(kPartyMemberCount)(
-          reinterpret_cast<void*>(kUIWindowContextKey), nullptr);
+      count = reinterpret_cast<PartyCount_t>(rag::kPartyMemberCountAddr)(
+          reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
     } __except (EXCEPTION_EXECUTE_HANDLER) {
       count = 0;
     }

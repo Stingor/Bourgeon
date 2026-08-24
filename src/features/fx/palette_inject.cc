@@ -69,7 +69,6 @@ constexpr uintptr_t kConvertRgbaToArgb1555 = 0x00566770;
 // de l'acteur a été allouée par le CRT statique du jeu ; la remplir avec notre
 // runtime ferait libérer son tampon par l'`operator delete` du jeu — un free
 // inter-tas.
-constexpr uintptr_t kStdStringAssign = 0x004F1940;
 
 // Vtable de `CPaletteRes`. Les consommateurs de palette n'appellent AUCUNE
 // méthode virtuelle sur l'objet (vérifié sur les 4 sites : ils ne font qu'un
@@ -343,7 +342,7 @@ bool ApplyPathToActor(void* actor, const char* relative_path,
     } else if (restore_color >= 0) {
       *reinterpret_cast<int*>(a + kOffActorClothesColor) = restore_color;
     }
-    reinterpret_cast<StringAssignFn>(kStdStringAssign)(
+    reinterpret_cast<StringAssignFn>(rag::kStdStringAssignAddr)(
         a + kOffActorPalettePath, relative_path, std::strlen(relative_path));
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
   return forced;
@@ -360,7 +359,7 @@ void ApplyHairToActor(void* actor, const char* relative_path) {
     // externe et garde les couleurs du sprite.
     if (*reinterpret_cast<int*>(a + kOffActorHairColor) == 0)
       *reinterpret_cast<int*>(a + kOffActorHairColor) = 1;
-    reinterpret_cast<StringAssignFn>(kStdStringAssign)(
+    reinterpret_cast<StringAssignFn>(rag::kStdStringAssignAddr)(
         a + kOffActorHairPalettePath, relative_path,
         std::strlen(relative_path));
   } __except (EXCEPTION_EXECUTE_HANDLER) {}

@@ -3,6 +3,7 @@
 #include "ragnarok/globals.h"
 #include "features/windows/character_sheet.h"
 #include "ragnarok/game_settings.h"  // IsOn : la bordure d'emblème
+#include "ragnarok/player_skills.h"
 #include "ui/game_texture.h"
 
 // Icônes d'item : ro::ItemIcon (ui/icon_cache.h) — cache partagé. Les caches
@@ -33,7 +34,7 @@
 
 #include "bourgeon.h"        // Bourgeon::Instance().SendPacket / session
 #include "features/windows/palette_editor.h"  // bouton « Mes couleurs »
-#include "features/systems/bourgeon_opcodes.h"  // kStatBonus (ZC 0x0F10)
+#include "features/systems/bourgeon_opcodes.h"  // bopcodes::kStatBonus (ZC 0x0F10)
 #include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB
 #include "imgui.h"
 #include "features/item_cell.h"              // itemcell::OpenDescById (description au clic droit)
@@ -85,24 +86,8 @@ constexpr int kEqpHandR    = 0x2;  // masque EQP main droite (arme) -> detecte l
 constexpr int kMaxPresetsPerChar = 5;  // plafond de presets par personnage
 
 //  Presets d'equipement : CID (clef par perso) + liste inventaire (session)
-constexpr uintptr_t kOwnCharId  = 0x015fb9a8;  // g_Own_CharId (cf. project_own_session_globals)
-constexpr uintptr_t kInvListHead = 0x015fbab0;  // std::list<ItemSkillInfo> (session+0x16f0)
-constexpr uintptr_t kInvCount    = 0x015fbab4;  // _Mysize
 
 //  Globals stats (cf. project_status_tweaks_plugin)
-constexpr uintptr_t kStatBase    = 0x015fba24;  // STR..LUK base (step 4)
-constexpr uintptr_t kStatBonus   = 0x015fba0c;  // bonus
-constexpr uintptr_t kRaiseCost   = 0x015fba3c;  // cout de montee
-constexpr uintptr_t kStatusPoint = 0x015fb9f4;
-constexpr uintptr_t kAtk1 = 0x015fba58, kAtk2 = 0x015fba6c;
-constexpr uintptr_t kDefSoft = 0x015fba64, kDefHard = 0x015fba68;
-constexpr uintptr_t kMatkMax = 0x015fba70, kMatkMin = 0x015fba74;
-constexpr uintptr_t kMdefSoft = 0x015fba5c, kMdefHard = 0x015fba78;
-constexpr uintptr_t kHit = 0x015fba7c, kCrit = 0x015fba84;
-constexpr uintptr_t kFlee = 0x015fba80, kPdodge = 0x015fba88, kAspdRaw = 0x015fba54;
-constexpr uintptr_t kBaseLvl = 0x015fb9f0, kJobLvl = 0x015fb9f8;
-constexpr uintptr_t kHp = 0x015ff908, kHpMax = 0x015ff90c;
-constexpr uintptr_t kSp = 0x015ff910, kSpMax = 0x015ff914;
 
 //  Opcodes (raw, envoyes via Bourgeon::SendPacket comme le shop)
 constexpr uint16_t kOpUnequip = 0x00AB;  // CZ_REQ_TAKEOFF_EQUIP {op, invIndex}
@@ -116,7 +101,6 @@ constexpr uint32_t kEqpAmmo        = 0x8000;  // munition
 
 //  Munition : PAS un slot du tableau equip -> invIndex dans un global dédié (cf. RE 2026-07-12).
 //  On lit l'item par cet invIndex dans la liste inventaire (in-place, donne la quantité).
-constexpr uintptr_t kAmmoInvIndex = 0x015fba8c;  // g_AmmoEquippedInvIndex (0 = aucune)
 constexpr int kOffEquipAmount = 0x10;   // quantité (item d'inventaire) ; == present pour un equip
 
 //  Compagnons : CZ_BOURGEON_COMPANION (bopcodes::kCompanion 0x0F15) {kind, action, arg}.
@@ -135,12 +119,9 @@ constexpr int       kCmdUseSkill     = 0x45;   // lancer une compétence sur une
 constexpr int       kCmdUseSkillSlot = 0x71;
 // Struct d'info compétence remplie par le natif : __stdcall(out, skillId). Champs utiles
 // +0x04 trouvée, +0x08 id, +0x0C INF, +0x10 niveau appris. À DÉTRUIRE (2 std::string).
-constexpr uintptr_t kSkillEntryFill  = 0x00d7fa90;
-constexpr uintptr_t kSkillEntryDtor  = 0x00739cd0;
 constexpr int       kSkillEntryFound = 0x04;
 constexpr int       kSkillEntryLevel = 0x10;
 // g_Own_AccountId : notre AID, qui est aussi le GID de notre acteur (cible d'un self-cast).
-constexpr uintptr_t kOwnAccountId    = 0x015fb9a4;
 constexpr uintptr_t kShowEquipFlag   = 0x015ffd14;  // 1 = équip visible des autres (validé live)
 constexpr uintptr_t kCostumeHideFlag = 0x016024c0;  // 0 = costumes affichés (validé live)
 constexpr uint16_t kOpStatUp  = 0x00BB;  // CZ_STATUS_CHANGE {op, statType, amount}
@@ -245,10 +226,10 @@ struct AmmoItem {  // largeurs sémantiques, cf. EquipItem
 };
 bool ReadEquippedAmmo(AmmoItem* out) {
   __try {
-    const int ammoIdx = *reinterpret_cast<const int*>(kAmmoInvIndex);
+    const int ammoIdx = *reinterpret_cast<const int*>(rag::kAmmoEquippedInvIndexAddr);
     if (ammoIdx == 0) return false;  // aucune munition équipée
-    void* sentinel = *reinterpret_cast<void* const*>(kInvListHead);
-    const int count = *reinterpret_cast<const int*>(kInvCount);
+    void* sentinel = *reinterpret_cast<void* const*>(rag::kInventoryListAddr);
+    const int count = *reinterpret_cast<const int*>(rag::kInventoryCountAddr);
     if (!sentinel || count <= 0) return false;
     void* node = *reinterpret_cast<void* const*>(sentinel);  // sentinelle->next = 1er noeud
     for (int i = 0; i < count && node && node != sentinel; ++i) {
@@ -284,13 +265,13 @@ struct InvItemLite {
   int      grade;
   bool     equipped;
 };
-//  Parcourt la std::list session (kInvListHead) et remplit out[] (POD). Renvoie le nombre lu.
+//  Parcourt la std::list session (rag::kInventoryListAddr) et remplit out[] (POD). Renvoie le nombre lu.
 //  MSVC std::list : *(head) = sentinelle ; node : next@+0, valeur(ItemSkillInfo)@+8.
 int ReadInventoryLite(InvItemLite* out, int cap) {
   int n = 0;
   __try {
-    void* sentinel = *reinterpret_cast<void* const*>(kInvListHead);
-    const int count = *reinterpret_cast<const int*>(kInvCount);
+    void* sentinel = *reinterpret_cast<void* const*>(rag::kInventoryListAddr);
+    const int count = *reinterpret_cast<const int*>(rag::kInventoryCountAddr);
     if (!sentinel || count <= 0) return 0;
     void* node = *reinterpret_cast<void* const*>(sentinel);  // sentinelle->next = 1er noeud
     for (int i = 0; i < count && n < cap && node && node != sentinel; ++i) {
@@ -385,30 +366,30 @@ struct Stats {
 bool ReadStats(Stats* s) {
   __try {
     for (int i = 0; i < 6; ++i) {
-      s->base[i]  = *reinterpret_cast<const int*>(kStatBase + i * 4);
-      s->bonus[i] = *reinterpret_cast<const int*>(kStatBonus + i * 4);
-      s->raise[i] = *reinterpret_cast<const int*>(kRaiseCost + i * 4);
+      s->base[i]  = *reinterpret_cast<const int*>(rag::kStatBaseAddr + i * 4);
+      s->bonus[i] = *reinterpret_cast<const int*>(rag::kStatBonusAddr + i * 4);
+      s->raise[i] = *reinterpret_cast<const int*>(rag::kStatRaiseCostAddr + i * 4);
     }
-    s->points   = *reinterpret_cast<const int*>(kStatusPoint);
-    s->atk1     = *reinterpret_cast<const int*>(kAtk1);
-    s->atk2     = *reinterpret_cast<const int*>(kAtk2);
-    s->def_s    = *reinterpret_cast<const int*>(kDefSoft);
-    s->def_h    = *reinterpret_cast<const int*>(kDefHard);
-    s->matk_min = *reinterpret_cast<const int*>(kMatkMin);
-    s->matk_max = *reinterpret_cast<const int*>(kMatkMax);
-    s->mdef_s   = *reinterpret_cast<const int*>(kMdefSoft);
-    s->mdef_h   = *reinterpret_cast<const int*>(kMdefHard);
-    s->hit      = *reinterpret_cast<const int*>(kHit);
-    s->crit     = *reinterpret_cast<const int*>(kCrit);
-    s->flee     = *reinterpret_cast<const int*>(kFlee);
-    s->pdodge   = *reinterpret_cast<const int*>(kPdodge);
-    s->aspd_raw = *reinterpret_cast<const int*>(kAspdRaw);
-    s->base_lvl = *reinterpret_cast<const int*>(kBaseLvl);
-    s->job_lvl  = *reinterpret_cast<const int*>(kJobLvl);
-    s->hp       = *reinterpret_cast<const int*>(kHp);
-    s->hp_max   = *reinterpret_cast<const int*>(kHpMax);
-    s->sp       = *reinterpret_cast<const int*>(kSp);
-    s->sp_max   = *reinterpret_cast<const int*>(kSpMax);
+    s->points   = *reinterpret_cast<const int*>(rag::kOwnStatusPointsAddr);
+    s->atk1     = *reinterpret_cast<const int*>(rag::kOwnAtk1Addr);
+    s->atk2     = *reinterpret_cast<const int*>(rag::kOwnAtk2Addr);
+    s->def_s    = *reinterpret_cast<const int*>(rag::kOwnDefSoftAddr);
+    s->def_h    = *reinterpret_cast<const int*>(rag::kOwnDefHardAddr);
+    s->matk_min = *reinterpret_cast<const int*>(rag::kOwnMatkMinAddr);
+    s->matk_max = *reinterpret_cast<const int*>(rag::kOwnMatkMaxAddr);
+    s->mdef_s   = *reinterpret_cast<const int*>(rag::kOwnMdefSoftAddr);
+    s->mdef_h   = *reinterpret_cast<const int*>(rag::kOwnMdefHardAddr);
+    s->hit      = *reinterpret_cast<const int*>(rag::kOwnHitAddr);
+    s->crit     = *reinterpret_cast<const int*>(rag::kOwnCritAddr);
+    s->flee     = *reinterpret_cast<const int*>(rag::kOwnFleeAddr);
+    s->pdodge   = *reinterpret_cast<const int*>(rag::kOwnPerfectDodgeAddr);
+    s->aspd_raw = *reinterpret_cast<const int*>(rag::kOwnAttackDelayAddr);
+    s->base_lvl = rag::BaseLevel();
+    s->job_lvl  = rag::JobLevel();
+    s->hp       = rag::OwnHp();
+    s->hp_max   = rag::OwnMaxHp();
+    s->sp       = rag::OwnSp();
+    s->sp_max   = rag::OwnMaxSp();
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
@@ -418,11 +399,6 @@ bool ReadStats(Stats* s) {
 //  est-maître @0x0159c23c, guildId @0x0159c230 (clé emblème = acteur+0x2e8 aussi). La
 //  POSITION du joueur = son enregistrement dans le roster : payload à node+8 (AID @+0,
 //  nom @+8, NOM DE POSTE std::string @+0x34), on matche par AID.
-constexpr uintptr_t kGuildObj      = 0x0159c188;
-constexpr int       kGuildListHead = 0xdc;
-constexpr uintptr_t kGuildLevel    = 0x0159c1e8;
-constexpr uintptr_t kGuildIsMaster = 0x0159c23c;
-constexpr uintptr_t kGuildIdAddr   = 0x0159c230;
 constexpr int       kMemAid    = 0x08;   // node+8    = AID du membre
 constexpr int       kMemPosStr = 0x3c;   // node+0x3c = nom de poste (std::string)
 
@@ -574,11 +550,11 @@ struct GuildInfo {
 };
 bool ReadGuild(GuildInfo* g) {
   __try {
-    g->guildId = *reinterpret_cast<const int*>(kGuildIdAddr);
-    ReadStdStringSEH(kGuildObj, g->name, sizeof(g->name));  // CGuild+0 = nom
+    g->guildId = rag::OwnGuildId();
+    ReadStdStringSEH(rag::kGuildObjAddr, g->name, sizeof(g->name));  // CGuild+0 = nom
     if (g->guildId <= 0 || g->name[0] == '\0') return false;  // pas en guilde
-    g->level   = *reinterpret_cast<const int*>(kGuildLevel);
-    g->master  = *reinterpret_cast<const int*>(kGuildIsMaster) != 0;
+    g->level   = *reinterpret_cast<const int*>(rag::kGuildLevelAddr);
+    g->master  = *reinterpret_cast<const int*>(rag::kGuildIsMasterAddr) != 0;
     g->online     = *reinterpret_cast<const int*>(kGuildOnlineNum);
     g->member_max = *reinterpret_cast<const int*>(kGuildMemberMax);
     g->avg_level  = *reinterpret_cast<const int*>(kGuildAvgLevel);
@@ -592,7 +568,7 @@ bool ReadGuild(GuildInfo* g) {
     // Position : parcourir le roster (liste chaînée) et matcher mon AID.
     const int aid = Bourgeon::Instance().client().session().aid();
     const uint8_t* sentinel =
-        *reinterpret_cast<uint8_t* const*>(kGuildObj + kGuildListHead);
+        *reinterpret_cast<uint8_t* const*>(rag::kGuildObjAddr + rag::kGuildListHeadOff);
     if (sentinel && aid != 0) {
       const uint8_t* node = *reinterpret_cast<uint8_t* const*>(sentinel);  // ->next
       for (int guard = 0; node && node != sentinel && guard < 512; ++guard) {
@@ -630,7 +606,7 @@ void ReadGuildRosterSEH(GuildRoster* out) {
   out->count = 0;
   __try {
     const uint8_t* sentinel =
-        *reinterpret_cast<uint8_t* const*>(kGuildObj + kGuildListHead);
+        *reinterpret_cast<uint8_t* const*>(rag::kGuildObjAddr + rag::kGuildListHeadOff);
     if (!sentinel) return;
     const uint8_t* node = *reinterpret_cast<uint8_t* const*>(sentinel);
     for (int guard = 0; node && node != sentinel && guard < kMaxGuildMembers; ++guard) {
@@ -766,7 +742,7 @@ void SendCreateGuild(const char* guildName) {
   uint8_t pkt[30];
   std::memset(pkt, 0, sizeof(pkt));
   *reinterpret_cast<uint16_t*>(pkt + 0) = kOpGuildCreate;
-  *reinterpret_cast<uint32_t*>(pkt + 2) = static_cast<uint32_t>(ReadInt(kOwnCharId));
+  *reinterpret_cast<uint32_t*>(pkt + 2) = static_cast<uint32_t>(ReadInt(rag::kOwnCharIdAddr));
   std::strncpy(reinterpret_cast<char*>(pkt + 6), guildName, 23);
   Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
 }
@@ -835,9 +811,9 @@ const char* ClassNameSEH() {
   __try {
     using GetJobId_t     = int (__fastcall*)(void*, void*);
     using GetClassName_t = const char* (__fastcall*)(void*, void*, unsigned, int);
-    const int jobid = reinterpret_cast<GetJobId_t>(0x00d5b580)(
+    const int jobid = reinterpret_cast<GetJobId_t>(rag::kJobResolveMountedClassAddr)(
         reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
-    const char* n = reinterpret_cast<GetClassName_t>(0x00d5bb40)(
+    const char* n = reinterpret_cast<GetClassName_t>(rag::kJobNameOrResNameAddr)(
         reinterpret_cast<void*>(rag::kSessionAddr), nullptr, static_cast<unsigned>(jobid), -1);
     return n ? n : "";
   } __except (EXCEPTION_EXECUTE_HANDLER) { return ""; }
@@ -850,7 +826,7 @@ std::unordered_map<int, std::string> g_job_name_cache;
 const char* JobNameSEH(int jobId) {
   __try {
     using GetClassName_t = const char* (__fastcall*)(void*, void*, unsigned, int);
-    const char* n = reinterpret_cast<GetClassName_t>(0x00d5bb40)(
+    const char* n = reinterpret_cast<GetClassName_t>(rag::kJobNameOrResNameAddr)(
         reinterpret_cast<void*>(rag::kSessionAddr), nullptr, static_cast<unsigned>(jobId), -1);
     return n ? n : "";
   } __except (EXCEPTION_EXECUTE_HANDLER) { return ""; }
@@ -1024,13 +1000,9 @@ void CbSkillIconFilterOff(const ImDrawList*, const ImDrawCmd*) {
 // source qu'elle, ce qui rend l'onglet Grimoire indépendant du natif — fenêtre
 // fermée ou masquée, les données sont là. Détail complet du modèle et de chaque
 // offset : docs/skill_tree_re.md, partie II.
-constexpr uintptr_t kSkillBundle      = 0x015fa3cc;  // CPlayerSkillBundle (session+0x0C)
-constexpr uintptr_t kSkillFlatList    = 0x015fa3e0;  // bundle+0x14 : l'onglet « divers »
-constexpr uintptr_t kSkillGetTabList  = 0x00738370;  // __thiscall(bundle, tab) -> std::list*
 constexpr uintptr_t kSkillSetUseLevel = 0x00738570;  // __thiscall(bundle, id, lv)
 constexpr uintptr_t kSkillGetUseLevel = 0x00d5e3c0;  // __thiscall(SESSION, id) — même tableau
 constexpr uintptr_t kIsLevelUseSkill  = 0x0073adb0;  // __cdecl(id) : l'effet dépend-il du niveau ?
-constexpr uintptr_t kSkillPointsAddr  = 0x015fb9fc;  // g_Own_SkillPoints
 using GetTabList_t  = void* (__fastcall*)(void*, void*, int);
 using SetUseLevel_t = void  (__fastcall*)(void*, void*, int, int);
 using GetUseLevel_t = int   (__fastcall*)(void*, void*, int);
@@ -1116,10 +1088,10 @@ struct SkillRaw {
 int ReadSkillTabSEH(int tab, SkillRaw* out, int cap) {
   int n = 0;
   __try {
-    uint8_t* list_obj = reinterpret_cast<uint8_t*>(kSkillFlatList);
+    uint8_t* list_obj = reinterpret_cast<uint8_t*>(rag::kSkillFlatListAddr);
     if (tab >= 0)
-      list_obj = reinterpret_cast<uint8_t*>(reinterpret_cast<GetTabList_t>(kSkillGetTabList)(
-          reinterpret_cast<void*>(kSkillBundle), nullptr, tab));
+      list_obj = reinterpret_cast<uint8_t*>(reinterpret_cast<GetTabList_t>(rag::kSkillGetTabListAddr)(
+          reinterpret_cast<void*>(rag::kSkillBundleAddr), nullptr, tab));
     if (!list_obj) return 0;
     uint8_t* head = *reinterpret_cast<uint8_t**>(list_obj);
     if (!head) return 0;
@@ -1183,7 +1155,7 @@ int ReadSkillTabSEH(int tab, SkillRaw* out, int cap) {
 
 // Points de compétence restants (globale de session, la même que lit le natif).
 int SkillPointsSEH() {
-  __try { return *reinterpret_cast<const int*>(kSkillPointsAddr); }
+  __try { return *reinterpret_cast<const int*>(rag::kOwnSkillPointsAddr); }
   __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
 }
 
@@ -1200,7 +1172,7 @@ int GetUseLevelSEH(int skillId) {
 void SetUseLevelSEH(int skillId, int level) {
   __try {
     reinterpret_cast<SetUseLevel_t>(kSkillSetUseLevel)(
-        reinterpret_cast<void*>(kSkillBundle), nullptr, skillId, level);
+        reinterpret_cast<void*>(rag::kSkillBundleAddr), nullptr, skillId, level);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 // L'effet de la compétence dépend-il du niveau ? Le natif n'affiche « n / m » que
@@ -2064,7 +2036,7 @@ void SendUseSkill(uint16_t skillId, int level) {
     bool dispatched = false;
     {
       alignas(8) uint8_t entry[0xC0] = {};
-      reinterpret_cast<void(__stdcall*)(void*, int)>(kSkillEntryFill)(entry, skillId);
+      reinterpret_cast<void(__stdcall*)(void*, int)>(itemdb::kFillInfoByIdAddr)(entry, skillId);
       const int found = *reinterpret_cast<const int*>(entry + kSkillEntryFound);
       const int owned = *reinterpret_cast<const int*>(entry + kSkillEntryLevel);
       // Le natif refuse de lancer au-dessus du niveau appris (garde `owned >= niveau`
@@ -2077,11 +2049,11 @@ void SendUseSkill(uint16_t skillId, int level) {
                                      lv, 0, 0);
         dispatched = true;
       }
-      reinterpret_cast<void(__fastcall*)(void*)>(kSkillEntryDtor)(entry);
+      reinterpret_cast<void(__fastcall*)(void*)>(itemdb::kInfoDtorAddr)(entry);
     }
     if (!dispatched) {
       // GID de notre acteur = notre AID : les compétences de guilde se lancent sur soi.
-      const uint32_t self = *reinterpret_cast<const uint32_t*>(kOwnAccountId);
+      const uint32_t self = rag::OwnAccountId();
       if (self)
         uiwnd::Vf<DispCmd_t>(d, kVfDispCmd)(d, kCmdUseSkill, skillId, static_cast<int>(self),
                                      level, 0);
@@ -2789,7 +2761,6 @@ struct ItemWire {          // miroir de PACKET_BOURGEON_STAT_ITEM
 
 // Résolveur de nom de skill localisé (wrapper Lua natif, cf. skill_bar) :
 // char* GetSkillName(int id) — renvoie « Unknown-Skill » si l'id est inconnu.
-constexpr uintptr_t kGetSkillNameLua = 0x0073a1f0;
 using GetSkillNameLua_t = char* (__cdecl*)(int);
 
 // Résolution du nom de STATUT (EFST) via le global Lua GetStateIconDescript(efst),
@@ -2825,7 +2796,7 @@ void ReadSkillTabNamesSEH(int jobId, char out[4][32]) {
 int OwnJobIdSEH() {
   __try {
     using GetJobId_t = int (__fastcall*)(void*, void*);
-    return reinterpret_cast<GetJobId_t>(0x00d5b580)(reinterpret_cast<void*>(rag::kSessionAddr),
+    return reinterpret_cast<GetJobId_t>(rag::kJobResolveMountedClassAddr)(reinterpret_cast<void*>(rag::kSessionAddr),
                                                     nullptr);
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
 }
@@ -3242,7 +3213,7 @@ void CharacterSheet::HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t
 // ── Presets d'equipement ─────────────────────────────────────────────────────
 void CharacterSheet::SaveCurrentEquipAsPreset(const char* name) {
   EquipPreset p;
-  p.cid  = static_cast<uint32_t>(ReadInt(kOwnCharId));
+  p.cid  = static_cast<uint32_t>(ReadInt(rag::kOwnCharIdAddr));
   p.name = name;
   for (int s = 0; s < kNormalSlots; ++s) {
     InvItemLite li{};  // identite COMPLETE lue directement du tableau equip (cartes/grade inclus)
@@ -3432,7 +3403,7 @@ void CharacterSheet::ProcessPresetHotkeys() {
   if (hk_capturing_ >= 0 || hotkeys::CaptureInProgress()) return;
   ImGuiIO& io = ImGui::GetIO();
   if (io.WantTextInput) return;    // saisie de texte (chat…) : ne pas déclencher
-  const uint32_t cid = static_cast<uint32_t>(ReadInt(kOwnCharId));
+  const uint32_t cid = static_cast<uint32_t>(ReadInt(rag::kOwnCharIdAddr));
   for (const EquipPreset& ep : equip_presets_) {
     if (ep.cid != cid || ep.hotkey_vk == 0) continue;
     if (io.KeyCtrl != ep.hotkey_ctrl || io.KeyAlt != ep.hotkey_alt || io.KeyShift != ep.hotkey_shift) continue;
@@ -3444,7 +3415,7 @@ void CharacterSheet::ProcessPresetHotkeys() {
 // Onglet Presets : pour chaque preset du perso, son nom + les ICÔNES de ses items (survol =
 // nom) + Charger/Suppr ; en bas, saisie du nom + Sauver l'équipement porté (cap 5).
 void CharacterSheet::DrawPresetsTab() {
-  const uint32_t cid = static_cast<uint32_t>(ReadInt(kOwnCharId));
+  const uint32_t cid = static_cast<uint32_t>(ReadInt(rag::kOwnCharIdAddr));
   std::vector<int> mine;  // indices (dans equip_presets_) des presets du perso courant
   for (int i = 0; i < static_cast<int>(equip_presets_.size()); ++i)
     if (equip_presets_[i].cid == cid) mine.push_back(i);
@@ -4103,7 +4074,7 @@ void CharacterSheet::DrawSkillsTab() {
   // Filtre par nom (le libellé localisé, pas l'idname).
   const bool filtering = skill_filter_buf_[0] != '\0';
   auto skill_name = [](int id) -> const char* {
-    const char* n = reinterpret_cast<GetSkillNameLua_t>(kGetSkillNameLua)(id);
+    const char* n = reinterpret_cast<GetSkillNameLua_t>(lua::kGetSkillNameAddr)(id);
     return (n && n[0]) ? n : "?";
   };
   auto icontains = [](const char* hay, const char* needle) {
@@ -5012,7 +4983,7 @@ void CharacterSheet::DrawHomunTab() {
          i18n::Tr("Esquive = min(niveau, 600) + AGI. Elle se retranche directement de la\n"
                   "précision de l'attaquant. -10 % par assaillant au-delà du deuxième.\n"
                   "L'esquive parfaite (LUK) n'est pas transmise pour un homoncule.")},
-        {"ASPD", (2000 - h.amotion) / 10, nullptr},  // infobulle bâtie plus bas (valeur brute)
+        {"ASPD", rag::AspdFromAmotion(h.amotion), nullptr},  // infobulle bâtie plus bas (valeur brute)
     };
     // ASPD : absente du paquet, le client la CALCULE — son infobulle se bâtit ici.
     char amo[176];
@@ -5084,7 +5055,7 @@ void CharacterSheet::DrawHomunTab() {
   }
 
   auto skill_name = [](int id) -> const char* {
-    const char* n = reinterpret_cast<GetSkillNameLua_t>(kGetSkillNameLua)(id);
+    const char* n = reinterpret_cast<GetSkillNameLua_t>(lua::kGetSkillNameAddr)(id);
     return (n && n[0]) ? n : "?";
   };
 
@@ -5886,7 +5857,7 @@ void CharacterSheet::DrawGuildTab() {
       SendGuildLeaveOrExpel(kOpGuildLeave, gi.guildId,
                             static_cast<uint32_t>(
                                 Bourgeon::Instance().client().session().aid()),
-                            static_cast<uint32_t>(ReadInt(kOwnCharId)), guild_reason_buf_);
+                            static_cast<uint32_t>(ReadInt(rag::kOwnCharIdAddr)), guild_reason_buf_);
       guild_status_ = i18n::Tr("Départ envoyé.");
       ImGui::CloseCurrentPopup();
     }
@@ -6204,7 +6175,7 @@ void CharacterSheet::DrawGuildSkillsTab() {
   // guilde ; puis le libellé du fichier d'arbre — seule source pour une verrouillée,
   // dont aucun paquet n'arrive ; enfin le nom technique du paquet.
   auto skill_label = [&](uint16_t id, const char* packet_name) -> const char* {
-    const char* lua_name = reinterpret_cast<GetSkillNameLua_t>(kGetSkillNameLua)(id);
+    const char* lua_name = reinterpret_cast<GetSkillNameLua_t>(lua::kGetSkillNameAddr)(id);
     if (lua_name && *lua_name && std::strcmp(lua_name, "Unknown-Skill") != 0) return lua_name;
     const GuildSkillTreeNode* node = tree_node(id);
     if (node && node->name[0]) return node->name;
@@ -7775,7 +7746,7 @@ void CharacterSheet::DrawDoll(float avail_w) {
   const std::string name = Bourgeon::Instance().client().session().GetCharName();
   char lvl[96];
   std::snprintf(lvl, sizeof(lvl), "%s   Nv %d / %d", ClassNameSEH(),
-                ReadInt(kBaseLvl), ReadInt(kJobLvl));
+                ReadInt(rag::kBaseLevelAddr), ReadInt(rag::kJobLevelAddr));
   centered(name.empty() ? "(perso)" : name.c_str());
   centered(lvl);
   // Ligne guilde : « Nom de guilde [Poste] » (le poste = le « rang »). Lue live du CGuild
@@ -8247,7 +8218,7 @@ void CharacterSheet::DrawStatsPanel() {
   // ce qui est au-dessus est simplement toujours vrai.
   std::snprintf(b, sizeof(b), "%d%%", s.crit);
   stat("CRI", b, i18n::Tr("Taux de coup critique (%) : un critique ignore la DEF et ne rate jamais."));
-  std::snprintf(b, sizeof(b), "%d", (2000 - s.aspd_raw) / 10);
+  std::snprintf(b, sizeof(b), "%d", rag::AspdFromAmotion(s.aspd_raw));
   stat("ASPD", b, i18n::Tr("Vitesse d'attaque : plus elle est haute, plus vous frappez souvent."));
   std::snprintf(b, sizeof(b), "%d%%", s.pdodge);
   stat("Esq.P", b, i18n::Tr("Esquive parfaite (%, via LUK) : évite totalement une attaque, même critique."));
@@ -8416,7 +8387,7 @@ void CharacterSheet::DrawStatsPanel() {
 
     // Bonus liés à un skill : nom résolu via le wrapper Lua natif (localisé).
     auto skillName = [](uint16_t id) -> const char* {
-      const char* n = reinterpret_cast<GetSkillNameLua_t>(kGetSkillNameLua)(id);
+      const char* n = reinterpret_cast<GetSkillNameLua_t>(lua::kGetSkillNameAddr)(id);
       return (n && *n) ? n : "?";
     };
     if (!bonus_.skills.empty() && ImGui::CollapsingHeader(i18n::Tr("Skills & statuts"), kSec))
@@ -9033,7 +9004,7 @@ void CharacterSheet::OnRenderUI() {
     show_ = !show_;
 
   // Raccourcis de presets : actifs EN JEU même fenêtre fermée (swap rapide sans ouvrir).
-  const bool in_game = ReadInt(kBaseLvl) > 0;
+  const bool in_game = ReadInt(rag::kBaseLevelAddr) > 0;
   if (in_game) ProcessPresetHotkeys();
 
   if (!show_) return;

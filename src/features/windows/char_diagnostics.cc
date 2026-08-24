@@ -17,6 +17,7 @@
 #include "features/patches/pick_quad_tweaks.h"  // capture centrale des minimums
 #include "features/staff_gate.h"
 #include "imgui.h"
+#include "ragnarok/game_scene.h"
 #include "ragnarok/globals.h"
 #include "ragnarok/own_actor.h"
 #include "ui/ro_imgui.h"
@@ -29,49 +30,22 @@ namespace {
 
 // ── Globales du client (20250716, base 0x400000) ─────────────────────────────
 //
-// Celles que `ragnarok/globals.h` publie déjà passent par lui. Les autres sont
-// ici, avec le nom que l'IDB leur donne — c'est la seule fenêtre qui les lise
-// toutes ensemble, et les recopier ailleurs n'aurait pas de sens.
-constexpr uintptr_t kOwnAid        = 0x015fb9a4;  // g_Account_Aid (= GID de notre acteur)
-constexpr uintptr_t kOwnCid        = 0x015fb9a8;  // g_Own_CharId
-constexpr uintptr_t kOwnCharName   = 0x01602568;  // g_Own_CharName_Plain (char[])
-constexpr uintptr_t kOwnJobId      = 0x015fb9c8;  // g_Own_JobId — le job RÉEL
-constexpr uintptr_t kStatusPoint   = 0x015fb9f4;  // g_Own_StatusPoints
-constexpr uintptr_t kSkillPoint    = 0x015fb9fc;  // g_Own_SkillPoints
-constexpr uintptr_t kManner        = 0x015fba98;  // g_Own_Manner
-constexpr uintptr_t kWeightMax     = 0x015fba9c;
-constexpr uintptr_t kWeight        = 0x015fbaa0;
-constexpr uintptr_t kHp            = 0x015ff908;
-constexpr uintptr_t kHpMax         = 0x015ff90c;
-constexpr uintptr_t kSp            = 0x015ff910;
-constexpr uintptr_t kSpMax         = 0x015ff914;
-constexpr uintptr_t kBaseExpLo     = 0x015fb9d0;  // + Hi à +4, idem pour les trois autres
-constexpr uintptr_t kBaseExpNextLo = 0x015fb9d8;
-constexpr uintptr_t kJobExpNextLo  = 0x015fb9e0;
-constexpr uintptr_t kJobExpLo      = 0x015fb9e8;
+// Tout le bloc « personnage local » (identité, stats, sous-stats de combat,
+// vitalité, poids, points) vient désormais de `ragnarok/globals.h` : c'est la
+// fenêtre qui en lisait le plus, et c'est elle qui en a exhumé le doublonnage.
+// Ne restent ici que les globales qu'AUCUN autre module ne lit.
+//
+// 🔴 Deux d'entre elles méritent leur avertissement :
+//   * `rag::kOwnAttackDelayAddr` est LE délai d'attaque en millisecondes, tel que
+//     le serveur l'a envoyé. La fenêtre Status n'en montre jamais que l'ASPD
+//     dérivée — `rag::AspdFromAmotion` — et c'est cette division qui fait croire
+//     à une « statistique » là où il y a un TEMPS. Tout le reste de cette fenêtre
+//     en découle.
+//   * `rag::kOwnWalkSpeedAddr` est en millisecondes PAR CELLULE (200 = vitesse de
+//     base) : plus il est petit, plus le personnage va vite.
 constexpr uintptr_t kBodyState     = 0x015fb2ac;  // g_OwnState_BodyState (opt1)
 constexpr uintptr_t kHealthState   = 0x015fb2b0;  // g_OwnState_HealthState (opt2)
 constexpr uintptr_t kEffectState   = 0x015fb2b4;  // g_OwnState_EffectState (option)
-
-// Stats — les mêmes adresses que la feuille de personnage, donc éprouvées en jeu.
-constexpr uintptr_t kStatBase  = 0x015fba24;  // STR..LUK, pas de 4
-constexpr uintptr_t kStatBonus = 0x015fba0c;
-constexpr uintptr_t kStatCost  = 0x015fba3c;  // coût de la prochaine montée
-constexpr uintptr_t kAtk1 = 0x015fba58, kAtk2 = 0x015fba6c;
-constexpr uintptr_t kDefSoft = 0x015fba64, kDefHard = 0x015fba68;
-constexpr uintptr_t kMatkMax = 0x015fba70, kMatkMin = 0x015fba74;
-constexpr uintptr_t kMdefSoft = 0x015fba5c, kMdefHard = 0x015fba78;
-constexpr uintptr_t kHit = 0x015fba7c, kFlee = 0x015fba80;
-constexpr uintptr_t kCrit = 0x015fba84, kPdodge = 0x015fba88;
-
-// 🔴 LE délai d'attaque, en millisecondes, tel que le serveur l'a envoyé. La
-// fenêtre Status n'en montre jamais que l'ASPD dérivée — `(2000 - amotion)/10` —
-// et c'est cette division qui fait croire à une « statistique » là où il y a un
-// TEMPS. Tout le reste de cette fenêtre en découle.
-constexpr uintptr_t kAttackDelay = 0x015fba54;
-
-// Vitesse de déplacement, en millisecondes par cellule (200 = vitesse de base).
-constexpr uintptr_t kWalkSpeed = 0x015fba94;  // g_Own_Speed
 
 // 🔴 Le PLAFOND de ralentissement de l'animation, en ms (432 dans l'exe livré,
 // mais lu vivant : rien ne garantit qu'un patch ne le bouge pas). Au-delà,
@@ -93,7 +67,6 @@ constexpr float kAnimTickMs = 24.0f;
 // `Job_GetDisplayNameOrResName` : id de classe -> nom lisible (tables Lua du
 // client). Même appel que l'inspecteur d'entités ; `sex = -1` laisse le client
 // trancher, ce qui vaut en jeu.
-constexpr uintptr_t kJobDisplayName = 0x00d5bb40;
 using JobNameFn = const char* (__fastcall*)(void*, void*, unsigned, int);
 
 // 🔴 `CActorSprite_ResolveDisplayJob(actor, -1)` : LA classe dont le client tire
@@ -132,7 +105,6 @@ constexpr int kActor_ShieldView  = 0x444;
 
 // Chaîne jusqu'à l'acteur du joueur, identique à `rag::ReadOwnActorSprites` :
 // mode actif -> gestionnaire d'acteurs (+0xcc) -> acteur du joueur (+0x2c).
-constexpr int kMode_ActorMgr = 0xcc;
 constexpr int kMgr_OwnActor  = 0x2c;
 
 // ── Offsets de la RESSOURCE .act ─────────────────────────────────────────────
@@ -220,7 +192,7 @@ void* OwnActor() {
         static_cast<int>(rag::kModeMgrAddr));
     if (!mode) return nullptr;
     void* mgr = *reinterpret_cast<void**>(reinterpret_cast<char*>(mode) +
-                                          kMode_ActorMgr);
+                                          gamescene::kGmActorMgr);
     if (!mgr) return nullptr;
     return *reinterpret_cast<void**>(reinterpret_cast<char*>(mgr) +
                                      kMgr_OwnActor);
@@ -301,7 +273,7 @@ int ResolveDisplayJob(void* actor) {
 bool JobDisplayName(int job, char* out, size_t out_size) {
   const char* name = nullptr;
   __try {
-    name = reinterpret_cast<JobNameFn>(kJobDisplayName)(
+    name = reinterpret_cast<JobNameFn>(rag::kJobNameOrResNameAddr)(
         rag::Session(), nullptr, static_cast<unsigned>(job), -1);
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
   if (!name) return false;
@@ -461,8 +433,6 @@ float CycleMs(int frames, float frame_delay) {
 // même forme que g_UIWindowMgr.
 constexpr uintptr_t kPickQuadTree  = 0x012135f0;
 constexpr uintptr_t kQuadTreeQuery = 0x00a797b0;
-constexpr uintptr_t kMouseScreenX  = 0x011e40d4;
-constexpr uintptr_t kMouseScreenY  = 0x011e40d8;
 
 // 🔴 `g_PickQuadMinSizePx` : la taille MINIMALE d'une zone cliquable, en pixels
 // (`échelle de scène × 40`, calculée une seule fois au premier quad). Tout quad
@@ -525,8 +495,8 @@ int CollectPickBoxes(PickBox* out) {
 // prendrait à cet instant.
 const float* HoveredQuad(float* out_mx, float* out_my) {
   __try {
-    const float mx = static_cast<float>(*reinterpret_cast<int*>(kMouseScreenX));
-    const float my = static_cast<float>(*reinterpret_cast<int*>(kMouseScreenY));
+    const float mx = static_cast<float>(*reinterpret_cast<int*>(rag::kMouseScreenXAddr));
+    const float my = static_cast<float>(*reinterpret_cast<int*>(rag::kMouseScreenYAddr));
     if (out_mx) *out_mx = mx;
     if (out_my) *out_my = my;
     using QueryPoint_t = float*(__thiscall*)(void*, float, float);
@@ -625,7 +595,7 @@ void CharDiagnostics::OnRecvPacket(uint16_t opcode, const uint8_t* data,
 
 void CharDiagnostics::HandlePacket(uint16_t opcode, const uint8_t* data,
                                    uint16_t len) {
-  const uint32_t me = static_cast<uint32_t>(ReadInt(kOwnAid));
+  const uint32_t me = static_cast<uint32_t>(ReadInt(rag::kOwnAccountIdAddr));
   if (me == 0 || data == nullptr) return;
 
   Blow blow;
@@ -677,56 +647,56 @@ void CharDiagnostics::HandlePacket(uint16_t opcode, const uint8_t* data,
 // ── Lecture : les globales de session ────────────────────────────────────────
 
 void CharDiagnostics::Refresh(Snapshot* out) {
-  out->aid = static_cast<uint32_t>(ReadInt(kOwnAid));
-  out->cid = static_cast<uint32_t>(ReadInt(kOwnCid));
+  out->aid = static_cast<uint32_t>(ReadInt(rag::kOwnAccountIdAddr));
+  out->cid = static_cast<uint32_t>(ReadInt(rag::kOwnCharIdAddr));
   __try {
-    lstrcpynA(out->char_name, reinterpret_cast<const char*>(kOwnCharName),
+    lstrcpynA(out->char_name, reinterpret_cast<const char*>(rag::kOwnCharNameAddr),
               static_cast<int>(sizeof(out->char_name)));
   } __except (EXCEPTION_EXECUTE_HANDLER) { out->char_name[0] = '\0'; }
 
-  out->job_real     = ReadInt(kOwnJobId);
+  out->job_real     = ReadInt(rag::kOwnJobIdAddr);
   JobDisplayName(out->job_real, out->job_real_name, sizeof(out->job_real_name));
   out->base_level   = rag::BaseLevel();
   out->job_level    = rag::JobLevel();
-  out->status_point = ReadInt(kStatusPoint);
-  out->skill_point  = ReadInt(kSkillPoint);
+  out->status_point = ReadInt(rag::kOwnStatusPointsAddr);
+  out->skill_point  = ReadInt(rag::kOwnSkillPointsAddr);
   out->zeny         = rag::Zeny();
-  out->manner       = ReadInt(kManner);
-  out->weight       = ReadInt(kWeight);
-  out->weight_max   = ReadInt(kWeightMax);
-  out->hp           = ReadInt(kHp);
-  out->hp_max       = ReadInt(kHpMax);
-  out->sp           = ReadInt(kSp);
-  out->sp_max       = ReadInt(kSpMax);
-  out->base_exp      = ReadInt64(kBaseExpLo);
-  out->base_exp_next = ReadInt64(kBaseExpNextLo);
-  out->job_exp       = ReadInt64(kJobExpLo);
-  out->job_exp_next  = ReadInt64(kJobExpNextLo);
+  out->manner       = ReadInt(rag::kOwnMannerAddr);
+  out->weight       = ReadInt(rag::kWeightCurAddr);
+  out->weight_max   = ReadInt(rag::kWeightMaxAddr);
+  out->hp           = ReadInt(rag::kOwnHpAddr);
+  out->hp_max       = ReadInt(rag::kOwnMaxHpAddr);
+  out->sp           = ReadInt(rag::kOwnSpAddr);
+  out->sp_max       = ReadInt(rag::kOwnMaxSpAddr);
+  out->base_exp      = ReadInt64(rag::kOwnBaseExpAddr);
+  out->base_exp_next = ReadInt64(rag::kOwnBaseExpNextAddr);
+  out->job_exp       = ReadInt64(rag::kOwnJobExpAddr);
+  out->job_exp_next  = ReadInt64(rag::kOwnJobExpNextAddr);
   out->body_state    = ReadInt(kBodyState);
   out->health_state  = ReadInt(kHealthState);
   out->effect_state  = ReadInt(kEffectState);
 
   for (int i = 0; i < 6; ++i) {
-    out->stat_base[i]  = ReadInt(kStatBase + i * 4);
-    out->stat_bonus[i] = ReadInt(kStatBonus + i * 4);
-    out->stat_cost[i]  = ReadInt(kStatCost + i * 4);
+    out->stat_base[i]  = ReadInt(rag::kStatBaseAddr + i * 4);
+    out->stat_bonus[i] = ReadInt(rag::kStatBonusAddr + i * 4);
+    out->stat_cost[i]  = ReadInt(rag::kStatRaiseCostAddr + i * 4);
   }
 
-  out->atk1      = ReadInt(kAtk1);
-  out->atk2      = ReadInt(kAtk2);
-  out->matk_min  = ReadInt(kMatkMin);
-  out->matk_max  = ReadInt(kMatkMax);
-  out->def_soft  = ReadInt(kDefSoft);
-  out->def_hard  = ReadInt(kDefHard);
-  out->mdef_soft = ReadInt(kMdefSoft);
-  out->mdef_hard = ReadInt(kMdefHard);
-  out->hit       = ReadInt(kHit);
-  out->flee      = ReadInt(kFlee);
-  out->pdodge    = ReadInt(kPdodge);
-  out->crit      = ReadInt(kCrit);
+  out->atk1      = ReadInt(rag::kOwnAtk1Addr);
+  out->atk2      = ReadInt(rag::kOwnAtk2Addr);
+  out->matk_min  = ReadInt(rag::kOwnMatkMinAddr);
+  out->matk_max  = ReadInt(rag::kOwnMatkMaxAddr);
+  out->def_soft  = ReadInt(rag::kOwnDefSoftAddr);
+  out->def_hard  = ReadInt(rag::kOwnDefHardAddr);
+  out->mdef_soft = ReadInt(rag::kOwnMdefSoftAddr);
+  out->mdef_hard = ReadInt(rag::kOwnMdefHardAddr);
+  out->hit       = ReadInt(rag::kOwnHitAddr);
+  out->flee      = ReadInt(rag::kOwnFleeAddr);
+  out->pdodge    = ReadInt(rag::kOwnPerfectDodgeAddr);
+  out->crit      = ReadInt(rag::kOwnCritAddr);
 
-  out->amotion    = ReadInt(kAttackDelay);
-  out->walk_speed = ReadInt(kWalkSpeed);
+  out->amotion    = ReadInt(rag::kOwnAttackDelayAddr);
+  out->walk_speed = ReadInt(rag::kOwnWalkSpeedAddr);
   out->motion_cap = ReadInt(kMotionSpeedCap);
 }
 
@@ -1003,7 +973,7 @@ void CharDiagnostics::DrawBody(const Snapshot& s) {
     RowFmt(i18n::Tr("amotion"), i18n::Tr("%d ms — soit %.2f coup(s)/s"),
            s.amotion, 1000.0f / static_cast<float>(s.amotion));
     RowFmt("ASPD", i18n::Tr("%d — c'est (2000 - amotion) / 10, rien de plus"),
-           (2000 - s.amotion) / 10);
+           rag::AspdFromAmotion(s.amotion));
   } else {
     Row(i18n::Tr("amotion"), i18n::Tr("0 — pas encore reçu du serveur"), true);
   }
@@ -1379,7 +1349,7 @@ std::string CharDiagnostics::BuildReport(const Snapshot& s) const {
   Line(&r, "");
   Line(&r, "-- Temps --");
   Line(&r, "amotion        : %d ms (ASPD %d)", s.amotion,
-       (2000 - s.amotion) / 10);
+       rag::AspdFromAmotion(s.amotion));
   Line(&r, "marche         : %d ms/cellule", s.walk_speed);
   Line(&r, "plafond anim   : %d ms", s.motion_cap);
   if (dealt_.seen)
@@ -1513,7 +1483,7 @@ void CharDiagnostics::DrawPickBoxes() {
   // fenêtres ImGui, sinon le panneau qu'on garde ouvert pour lire les mesures
   // masquerait justement la zone qu'on observe.
   ImDrawList* dl = ImGui::GetForegroundDrawList();
-  const uint32_t own_aid = static_cast<uint32_t>(ReadInt(kOwnAid));
+  const uint32_t own_aid = static_cast<uint32_t>(ReadInt(rag::kOwnAccountIdAddr));
 
   for (int i = 0; i < count; ++i) {
     const PickBox& b = boxes[i];

@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "imgui.h"
+#include "ragnarok/audio.h"
 #include "ui/imgui_escape.h"
 
 #include "d3d9/d3d9_hook.h"  // D3D9_AdditiveBlendCallback
@@ -87,9 +88,9 @@ using PlaySoundFn = void(__fastcall*)(void*, void*, const char*, float, float,
                                       float, int, int, float, int);
 void PlayRoSound(const char* name) {
   __try {
-    void* mgr = *reinterpret_cast<void**>(0x01253d0c);
+    void* mgr = audio::SoundMgr();
     if (mgr)
-      reinterpret_cast<PlaySoundFn>(0x00600770)(
+      reinterpret_cast<PlaySoundFn>(audio::kPlay3DAddr)(
           mgr, nullptr, name, 0.0f, 0.0f, 0.0f, 250, 40, 1.0f, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {
   }

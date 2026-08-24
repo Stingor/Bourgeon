@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <utility>
 
+#include "ragnarok/game_scene.h"
 #include "utils/i18n.h"
 
 namespace rag::social {
@@ -40,19 +41,9 @@ constexpr int kStr_Cap = 0x14;
 // `Actor_FindByGid(gid)` __stdcall : raccourci global qui résout le mode lui-même
 // (le même que target_frame). La `UIPcGage` de +0x488 est celle que le client pose
 // justement pour LES MEMBRES DE PARTY ; PV courants en +0xA0, maximum en +0xA4.
-constexpr uintptr_t kActorFindByGid = 0x00d806a0;
 constexpr int       kAct_PcGage     = 0x488;
 constexpr int       kGage_Hp        = 0x0a0;
 constexpr int       kGage_MaxHp     = 0x0a4;
-
-// Mes propres PV : le natif les lit dans ces deux globales plutôt que sur mon
-// acteur (cf. UpdateMemberHpGauges, branche `aid == g_Account_Aid`).
-constexpr uintptr_t kOwnHp    = 0x015ff908;
-constexpr uintptr_t kOwnMaxHp = 0x015ff90c;
-constexpr uintptr_t kOwnAidAddr = 0x015fb9a4;
-
-constexpr uintptr_t kJobDisplayName     = 0x00d5bb40;
-constexpr uintptr_t kPartyMemberCountFn = 0x00d5cf50;  // __thiscall(session)
 
 // Le natif dimensionne 40 jauges et 40 boutons de job : c'est sa borne de lignes.
 constexpr int kMaxRows = 64;
@@ -132,13 +123,13 @@ bool ReadNodeSEH(const void* node, RawRow& out) {
 // une erreur : c'est l'état normal d'un membre hors de portée.
 bool ReadHpSEH(uint32_t gid, int* hp, int* max_hp) {
   __try {
-    if (gid && gid == *reinterpret_cast<const uint32_t*>(kOwnAidAddr)) {
-      *hp     = *reinterpret_cast<const int*>(kOwnHp);
-      *max_hp = *reinterpret_cast<const int*>(kOwnMaxHp);
+    if (gid && gid == rag::OwnAccountId()) {
+      *hp     = rag::OwnHp();
+      *max_hp = rag::OwnMaxHp();
       return *max_hp > 0;
     }
     using FindActorFn = void* (__stdcall*)(uint32_t);
-    void* actor = reinterpret_cast<FindActorFn>(kActorFindByGid)(gid);
+    void* actor = reinterpret_cast<FindActorFn>(gamescene::kFindActorByGidAddr)(gid);
     if (!actor) return false;
     void* gage = *reinterpret_cast<void* const*>(
         reinterpret_cast<const uint8_t*>(actor) + kAct_PcGage);
@@ -160,7 +151,7 @@ const char* JobNameSEH(int job_id) {
     // celui du joueur ; la fenêtre de groupe passe 99, ce qui fait retomber sur
     // le nom de la classe de BASE (aucune variante de sexe).
     using GetClassName_t = const char* (__fastcall*)(void*, void*, unsigned, int);
-    const char* n = reinterpret_cast<GetClassName_t>(kJobDisplayName)(
+    const char* n = reinterpret_cast<GetClassName_t>(rag::kJobNameOrResNameAddr)(
         reinterpret_cast<void*>(rag::kSessionAddr), nullptr,
         static_cast<unsigned>(job_id), 99);
     return n ? n : "";
@@ -206,14 +197,14 @@ void ReadFriends(std::vector<Entry>& out) { ReadList(false, out); }
 
 uint32_t OwnAid() {
   __try {
-    return *reinterpret_cast<const uint32_t*>(kOwnAidAddr);
+    return rag::OwnAccountId();
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
 }
 
 int PartyMemberCount() {
   __try {
     using Fn = int(__thiscall*)(void*);
-    return reinterpret_cast<Fn>(kPartyMemberCountFn)(
+    return reinterpret_cast<Fn>(rag::kPartyMemberCountAddr)(
         reinterpret_cast<void*>(rag::kSessionAddr));
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
 }

@@ -10,6 +10,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "ragnarok/file_mgr.h"
 #include "ragnarok/msgstring.h"
 #include "ui/ro_imgui.h"  // ro::Utf8ToLocal
 #include "utils/game_paths.h"
@@ -139,9 +140,6 @@ std::string Base64Decode(const char* data, std::size_t len) {
 //
 // ⚠ Le tampon vient de VirtualAlloc : il se rend par `FileMgr_FreeBuffer`, jamais
 // par `free`/`delete[]` — ils corrompraient le processus.
-constexpr uintptr_t kFileMgrAddr     = 0x0159d410;  // g_FileMgr (l'OBJET)
-constexpr uintptr_t kLoadToMemoryAddr = 0x00a88ab0;
-constexpr uintptr_t kFreeBufferAddr   = 0x00a892c0;
 
 using LoadToMemoryFn = void*(__fastcall*)(void*, void*, const char*, DWORD*, char);
 using FreeBufferFn   = int(__stdcall*)(void*);
@@ -154,8 +152,8 @@ std::string Unescape(const std::string& s);
 // fonction qui doit dérouler des destructeurs (C2712).
 void* LoadClientFile(const char* path, DWORD* size) {
   __try {
-    return reinterpret_cast<LoadToMemoryFn>(kLoadToMemoryAddr)(
-        reinterpret_cast<void*>(kFileMgrAddr), nullptr, path, size, 0);
+    return reinterpret_cast<LoadToMemoryFn>(filemgr::kLoadToMemoryAddr)(
+        reinterpret_cast<void*>(filemgr::kFileMgrAddr), nullptr, path, size, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
 }
 
@@ -174,7 +172,7 @@ std::unordered_map<std::string, std::string> ReadClientTable() {
   if (!buffer || size == 0) {
     LogDiag("[msgstring] data\\msgstringtable.csv illisible — "
             "aucune traduction du client possible");
-    if (buffer) reinterpret_cast<FreeBufferFn>(kFreeBufferAddr)(buffer);
+    if (buffer) reinterpret_cast<FreeBufferFn>(filemgr::kFreeBufferAddr)(buffer);
     return keys;
   }
 
@@ -207,7 +205,7 @@ std::unordered_map<std::string, std::string> ReadClientTable() {
     p = (eol < end) ? eol + 1 : end;
   }
 
-  reinterpret_cast<FreeBufferFn>(kFreeBufferAddr)(buffer);
+  reinterpret_cast<FreeBufferFn>(filemgr::kFreeBufferAddr)(buffer);
   g_stats.table = keys.size();
   return keys;
 }

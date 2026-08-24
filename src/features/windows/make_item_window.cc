@@ -213,9 +213,6 @@ constexpr PotionBonus kPotionBonuses[] = {
 };
 using DispCmd_t = void(__thiscall*)(void*, int, int, int, int, int);
 
-// Modèle SESSION de l'inventaire : la std::list que le client tient à jour quel
-// que soit l'état de ses fenêtres. Même source qu'InventoryViewer.
-constexpr uintptr_t kInvListHead = 0x015fbab0;
 constexpr int kNodeNext   = 0x00;
 constexpr int kNodeInfo   = 0x08;
 constexpr int kNodeAmt    = 0x18;
@@ -309,13 +306,11 @@ constexpr int kMaxStaleShown = 8;
 // inventaire encore périmé.
 constexpr unsigned kAutoReuseDelayMs = 300;
 
-// Notre propre GID = notre AID : toutes ces compétences se lancent sur soi.
-constexpr uintptr_t kOwnAccountId = 0x015fb9a4;
 constexpr int       kCmdUseSkill  = 0x45;  // { skillId, cibleGID, niveau }
 
 uint32_t OwnAid() {
   __try {
-    return *reinterpret_cast<const uint32_t*>(kOwnAccountId);
+    return rag::OwnAccountId();
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
 }
 
@@ -420,12 +415,12 @@ uint32_t InfoItemId(const void* info) {
 int OwnedCount(uint32_t item_id) {
   int total = 0;
   __try {
-    // 🔴 `kInvListHead` est l'adresse du GLOBAL ; la SENTINELLE est ce qu'il
-    // contient. Écrit d'abord `node != kInvListHead`, ce parcours ne rencontrait
+    // 🔴 `rag::kInventoryListAddr` est l'adresse du GLOBAL ; la SENTINELLE est ce qu'il
+    // contient. Écrit d'abord `node != rag::kInventoryListAddr`, ce parcours ne rencontrait
     // jamais sa condition d'arrêt : la liste circulaire rebouclait et resommait
     // l'inventaire jusqu'au garde-fou des 4096 nœuds — d'où un « possédé » à
     // 28300 pour 200 objets réels. La sentinelle est le seul repère valide.
-    uint8_t* head = *reinterpret_cast<uint8_t**>(kInvListHead);
+    uint8_t* head = *reinterpret_cast<uint8_t**>(rag::kInventoryListAddr);
     if (!head) return 0;
     uint8_t* node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
     int guard = 0;
@@ -489,7 +484,7 @@ int DetectIndexOffset(unsigned wanted, int hits_out[kIndexCandidateCount]) {
   for (int i = 0; i < kIndexCandidateCount; ++i) hits_out[i] = 0;
   if (!wanted) return -1;
   __try {
-    uint8_t* head = *reinterpret_cast<uint8_t**>(kInvListHead);
+    uint8_t* head = *reinterpret_cast<uint8_t**>(rag::kInventoryListAddr);
     if (!head) return -1;
     uint8_t* node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
     int guard = 0;
@@ -514,7 +509,7 @@ uint32_t InvIdByIndex(unsigned item_index) {
   const int kNodeIndex = g_index_offset;
   if (kNodeIndex < 0) return 0;  // offset pas encore établi
   __try {
-    uint8_t* head = *reinterpret_cast<uint8_t**>(kInvListHead);
+    uint8_t* head = *reinterpret_cast<uint8_t**>(rag::kInventoryListAddr);
     if (!head) return 0;
     uint8_t* node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
     int guard = 0;
@@ -535,7 +530,7 @@ unsigned InvIndexById(uint32_t item_id) {
   const int kNodeIndex = g_index_offset;
   if (kNodeIndex < 0) return 0;  // offset pas encore établi
   __try {
-    uint8_t* head = *reinterpret_cast<uint8_t**>(kInvListHead);
+    uint8_t* head = *reinterpret_cast<uint8_t**>(rag::kInventoryListAddr);
     if (!head) return 0;
     uint8_t* node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
     int guard = 0;
@@ -566,7 +561,7 @@ struct InvProbe {
 InvProbe ProbeFirstInvNode() {
   InvProbe p;
   __try {
-    uint8_t* head = *reinterpret_cast<uint8_t**>(kInvListHead);
+    uint8_t* head = *reinterpret_cast<uint8_t**>(rag::kInventoryListAddr);
     if (!head) return p;
     uint8_t* node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
     if (!node || node == head) return p;
@@ -680,7 +675,7 @@ int ReadRecipeLines(uint32_t item_id, char out[][kRecipeLineMax], int max_lines)
 int SnapshotInventory(uint32_t* ids, int* amounts, int max) {
   int n = 0;
   __try {
-    uint8_t* head = *reinterpret_cast<uint8_t**>(kInvListHead);
+    uint8_t* head = *reinterpret_cast<uint8_t**>(rag::kInventoryListAddr);
     if (!head) return 0;
     uint8_t* node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
     int guard = 0;

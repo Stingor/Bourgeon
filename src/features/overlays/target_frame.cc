@@ -14,6 +14,7 @@
 #include "features/moonlight_ui/moonlight_ui.h"  // grille d'alignement partagée
 #include "features/systems/bourgeon_opcodes.h"
 #include "features/windows/entity_context_menu.h"  // clic droit sur un cadre
+#include "ragnarok/game_scene.h"
 #include "ragnarok/game_settings.h"  // gamesettings::IsOn (le drapeau /nc)
 #include "ragnarok/globals.h"
 #include "ui/doll.h"        // portrait d'un JOUEUR (pantin composé)
@@ -32,14 +33,12 @@ namespace {
 // `Actor_FindByGid(gid)` __stdcall : raccourci global qui résout lui-même le mode
 // actif (GameMode_GetActive puis ActorList_FindByGID). Il rend nullptr proprement
 // hors jeu, là où lire le pointeur de mode à la main tomberait sur celui du login.
-constexpr uintptr_t kActorFindByGid = 0x00d806a0;
 
 // `GameMode_PostActorClickAction(this, aid, type)` __thiscall : TOUT ce que le
 // clic gauche sur une entité produit. C'est elle qui traduit « on a cliqué ce
 // GID » en action, selon le ciblage armé (`CGameMode+0x408`) — armement d'une
 // approche/attaque quand rien n'est armé, lancement de la compétence sur la
 // cible en modes 2 et 4. Rien à imiter : on la rappelle avec notre GID.
-constexpr uintptr_t kPostActorClickAction = 0x00c753a0;
 // ── Le `type` du clic : UNE FOIS, ou EN CONTINU ─────────────────────────────
 // 🔴 Ce paramètre n'est pas décoratif : il finit dans l'action en attente de
 // l'acteur (`+0x500`), que `Actor_ProcessPendingAction_Tick` relance ensuite
@@ -83,7 +82,6 @@ constexpr int kSendMsgLeaveTarget = 0x47;
 // `CNameDict_GetEntryOrRequest(dict, gid)` __thiscall : rend l'entrée si le nom
 // est connu, sinon met le GID en file de demande au serveur et rend une entrée
 // vide statique. C'est aussi ce qui fait ARRIVER les noms encore inconnus.
-constexpr uintptr_t kNameDictGetEntry = 0x005a1460;
 
 // CGameMode
 // Mode de ciblage d'une compétence armée : 0 = aucune.
@@ -98,13 +96,10 @@ constexpr int kGm_Engaged = 0x28;
 // reconnaît « un compagnon à moi » (`0x00C787CC`).
 constexpr int kAct_OwnerAid = 0x2ec;
 constexpr int kGm_Selection = 0x0f4;  // AID de la DERNIÈRE ENTITÉ CLIQUÉE
-constexpr int kGm_NameDict  = 0x160;  // std::map<GID, CNameInfo>
 
 // CNameInfo : cinq `std::string` de 0x18 octets à la suite (taille +0x10,
 // capacité +0x14 DU CHAMP). Pour un MONSTRE, le serveur détourne trois d'entre
 // elles — party = « Lv. X | HP: Y% », guilde = race, rang = élément.
-constexpr int kName_Str   = 0x04;
-constexpr int kName_Party = 0x1c;
 constexpr int kName_Guild = 0x34;
 constexpr int kName_Rank  = 0x4c;
 constexpr int kField_Size = 0x10;
@@ -142,8 +137,6 @@ constexpr int kAct_DisplayClass = 0x4cc;  // celle qui nomme le chemin du corps
 // exactement le trou que ZC 0x0F2A vient combler.
 // Balayage des acteurs, pour le cyclage au clavier.
 constexpr int kGm_ActorMgr    = 0x0cc;  // *(gm+0xCC)      = actorMgr
-constexpr int kAm_ListHead    = 0x10;   // *(actorMgr+0x10) = sentinelle std::list
-constexpr int kAm_OwnPlayer   = 0x2c;   // *(actorMgr+0x2c) = acteur du joueur
 constexpr int kNode_Actor     = 0x08;   //  node+8          = pointeur acteur
 constexpr int kAct_PosX       = 0x10;   //  float, position monde X
 constexpr int kAct_PosZ       = 0x18;   //  float, position monde Z
@@ -270,12 +263,9 @@ inline bool IsMonsterJob(unsigned id) {
 
 // ⚠ SEH ⇒ AUCUN objet C++ dans les fonctions ci-dessous (C2712).
 
-// AID du joueur (`g_Account_Aid`) : sert à ignorer un sort lancé sur SOI-MÊME.
-constexpr uintptr_t kOwnAccountAid = 0x015fb9a4;
-
 uint32_t OwnAid() {
   __try {
-    return *reinterpret_cast<const uint32_t*>(kOwnAccountAid);
+    return rag::OwnAccountId();
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0u; }
 }
 
@@ -348,7 +338,7 @@ void* ActiveGameMode() {
 
 void* FindActor(uint32_t gid) {
   __try {
-    return reinterpret_cast<FindActorFn>(kActorFindByGid)(gid);
+    return reinterpret_cast<FindActorFn>(gamescene::kFindActorByGidAddr)(gid);
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
 }
 
@@ -366,14 +356,14 @@ int ReadSkillTargetMode(void* game_mode) {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
 }
 
-// Rejoue le clic natif sur une entité, avec NOTRE GID. Cf. kPostActorClickAction :
+// Rejoue le clic natif sur une entité, avec NOTRE GID. Cf. gamescene::kPostActorClickActionAddr :
 // c'est la fonction qui porte tout le sens du clic, y compris le lancement d'une
 // compétence armée. Rend true si l'appel a eu lieu.
 bool RunActorClick(void* game_mode, uint32_t gid, int click_type) {
   __try {
     if (!game_mode || gid == 0) return false;
     using ClickFn = int(__thiscall*)(void*, uint32_t, int);
-    reinterpret_cast<ClickFn>(kPostActorClickAction)(game_mode, gid, click_type);
+    reinterpret_cast<ClickFn>(gamescene::kPostActorClickActionAddr)(game_mode, gid, click_type);
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
@@ -465,8 +455,8 @@ bool CopyClientString(const void* str, char* out, size_t out_size) {
 void* NameEntry(void* game_mode, uint32_t gid) {
   __try {
     if (!game_mode || gid == 0) return nullptr;
-    void* dict = reinterpret_cast<uint8_t*>(game_mode) + kGm_NameDict;
-    return reinterpret_cast<GetEntryFn>(kNameDictGetEntry)(dict, gid);
+    void* dict = reinterpret_cast<uint8_t*>(game_mode) + gamescene::kGmNameDict;
+    return reinterpret_cast<GetEntryFn>(gamescene::kNameDictGetEntryOrRequestAddr)(dict, gid);
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
 }
 
@@ -628,7 +618,7 @@ int CollectScreenTargets(void* gm, CycleCandidate* out, int max) {
   __try {
     void* actor_mgr = Read<void*>(gm, kGm_ActorMgr);
     if (!actor_mgr) return 0;
-    void* own = Read<void*>(actor_mgr, kAm_OwnPlayer);
+    void* own = Read<void*>(actor_mgr, gamescene::kAmOwnPlayer);
     if (!own) return 0;
     const uint32_t own_gid = Read<uint32_t>(own, kAct_Aid);
     const float own_x = Read<float>(own, kAct_PosX);
@@ -637,7 +627,7 @@ int CollectScreenTargets(void* gm, CycleCandidate* out, int max) {
     const ImGuiIO& io = ImGui::GetIO();
     const float screen_w = io.DisplaySize.x;
     const float screen_h = io.DisplaySize.y;
-    void* sentinel = Read<void*>(actor_mgr, kAm_ListHead);
+    void* sentinel = Read<void*>(actor_mgr, gamescene::kAmListHead);
     if (!sentinel) return 0;
     void* node = Read<void*>(sentinel, 0);  // premier nœud
     int guard = 0;
@@ -1109,8 +1099,8 @@ void TargetFrame::DrawHud() {
     // quatre lectures dedans — cf. NameEntry pour la raison, qui n'est pas
     // qu'une question de coût.
     void* name_entry = NameEntry(gm, gid_);
-    ReadNameField(name_entry, kName_Str,   name_,  sizeof(name_));
-    ReadNameField(name_entry, kName_Party, party_, sizeof(party_));
+    ReadNameField(name_entry, gamescene::kNameStr,   name_,  sizeof(name_));
+    ReadNameField(name_entry, gamescene::kNameParty, party_, sizeof(party_));
     ReadNameField(name_entry, kName_Guild, guild_, sizeof(guild_));
     ReadNameField(name_entry, kName_Rank,  rank_,  sizeof(rank_));
     // Toujours rien ? On le redemande, parce que le client ne le fera pas avant

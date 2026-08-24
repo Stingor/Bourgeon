@@ -308,6 +308,10 @@ set(BOURGEON_FILES
 	# Ragnarok
 	"ragnarok/uiwnd.h"
 	"ragnarok/globals.h"
+	"ragnarok/game_scene.h"
+	"ragnarok/audio.h"
+	"ragnarok/file_mgr.h"
+	"ragnarok/navigation.h"
 	"ragnarok/equip_slots.h"
 	"ragnarok/grf_index.cc"
 	"ragnarok/grf_index.h"

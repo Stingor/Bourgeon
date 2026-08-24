@@ -13,6 +13,7 @@
 #include "d3d9/d3d9_hook.h"  // Overlay_SetTextureFilter
 #include "features/moonlight_ui/moonlight_ui.h"
 #include "ragnarok/globals.h"
+#include "ragnarok/navigation.h"
 #include "ui/game_texture.h"
 #include "ragnarok/uiwnd.h"  // FindWindow / CloseWindow / MakeWindow
 #include "ui/ro_imgui.h"
@@ -418,8 +419,6 @@ struct TownIcon {
 // ── Routage de navigation ────────────────────────────────────────────────────
 // std::string de MSVC telle que la fonction de routage la prend PAR VALEUR
 // (layout confirmé en live : buf[16] + taille + capacité = 0x18 octets).
-constexpr uintptr_t kNaviRoute = 0x00b314f0;  // CNavigation::SearchRoute
-constexpr uintptr_t kNaviMgr   = 0x015c3090;
 
 struct RoStr { char buf[16]; uint32_t size; uint32_t cap; };
 static_assert(sizeof(RoStr) == 0x18, "RoStr doit matcher std::string MSVC (0x18)");
@@ -446,8 +445,8 @@ void StartNavigation(const char* map, int x, int y) {
     while (n < 15 && map[n]) { s.buf[n] = map[n]; ++n; }
     s.size = static_cast<uint32_t>(n);
     s.cap = 15;  // SSO : le tampon est DANS la structure
-    reinterpret_cast<NaviRoute_t>(kNaviRoute)(
-        reinterpret_cast<void*>(kNaviMgr), s, 0, 5, 1, x, y, 1002);
+    reinterpret_cast<NaviRoute_t>(navi::kSearchRouteAddr)(
+        reinterpret_cast<void*>(navi::kNavigationAddr), s, 0, 5, 1, x, y, 1002);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 

@@ -46,11 +46,6 @@ namespace {
 constexpr int kOffWidth   = 0x14;
 constexpr int kOffHeight  = 0x18;
 
-// Modèle SESSION de l'inventaire (indépendant de la fenêtre => marche natif caché).
-// RE : FUN_00d5ce30(g_session)=*(g_session+0x16f4)=count ; FUN_00d5acb0 parcourt la
-// std::list @ g_session+0x16f0. g_session = 0x015fa3c0.
-constexpr uintptr_t kInvListHead = 0x015fbab0;  // sentinelle std::list (head)
-constexpr uintptr_t kInvCount    = 0x015fbab4;  // nb d'items
 constexpr uintptr_t kCntEquipped = 0x00d9aa70;  // __fastcall(session) : nb items ÉQUIPÉS distincts (10 slots @+0x17d4)
 constexpr uintptr_t kCntCostume  = 0x00d9a960;  // __fastcall(session) : nb items COSTUME distincts (10 slots @+0x2b34)
 constexpr int kNodeNext = 0x00;  // nœud : next
@@ -67,9 +62,6 @@ constexpr int kInfoIdent  = 0x5c;  // byte : item identifié ?
 constexpr int kInfoDamaged = 0x5d; // byte : équipement CASSÉ (rendu rouge, cf. itemcell)
 constexpr int kInfoRefine = 0x60;  // niveau de refine (int) ; RE character_sheet kOffEquipRefine
 
-// Poids / zeny / compteur.
-constexpr uintptr_t kWeightCur     = 0x015fbaa0;
-constexpr uintptr_t kWeightMax     = 0x015fba9c;
 constexpr uintptr_t kOverweightPct = 0x01602324;
 constexpr uintptr_t kInvExpansion  = 0x01602354;  // extension serveur (capacité = +200)
 constexpr int kInvBase = 200;  // moonlight INVENTORY_BASE_SIZE ; max = expansion + 200
@@ -83,7 +75,6 @@ using GetBaseName_t = size_t(__thiscall*)(void*, char*, size_t*, char);
 
 // Icône d'item : BuildItemIconGrfPath(id_str, out[128], identified) __stdcall (RET 0xc).
 using FmtComma_t = char*(__cdecl*)(int, char*, int);  // FUN_00a948d0 séparateur milliers
-constexpr uintptr_t kFmtComma = 0x00a948d0;
 
 // Fenêtre de description (id 0xc) : MakeWindow + OnMsg(0x18, &ItemSkillInfo).
 constexpr uintptr_t kToggleWndById = 0x00812e60;  // FUN_00812e60(id) __stdcall (RET 0x4, vérifié désasm) : bascule fenêtre (ferme si ouverte via SaveWindowRect, sinon ouvre) = chemin de l'icône de menu
@@ -130,7 +121,6 @@ constexpr uint16_t kOpUnequip  = 0x00AB;  // CZ_REQ_TAKEOFF_EQUIP {op, invIndex}
 // Le cart se cherche par ID au gestionnaire (cf. CartWnd plus bas) ; le storage
 // garde son global dédié, lui bien référencé par le client.
 constexpr int kWinCart             = 0x28;   // UICartWnd (SaveWindowRect(40))
-constexpr uintptr_t kCartVTable    = 0x0103d538;
 
 // ── Sertissage de cartes : ex-popup natif UIItemCompositionWnd (id 0x4A) ─────
 // RE complète : docs/card_insert_re.md.
@@ -192,7 +182,7 @@ struct CompItem {
 int CountCardStock(uint32_t id) {
   int total = 0;
   __try {
-    uint8_t* head = *reinterpret_cast<uint8_t**>(kInvListHead);
+    uint8_t* head = *reinterpret_cast<uint8_t**>(rag::kInventoryListAddr);
     if (!head) return 0;
     uint8_t* node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
     for (int guard = 0; node && node != head && guard < 2000; ++guard) {
@@ -371,7 +361,6 @@ void SendFavoriteToggle(int index, bool currently_fav) {
 // on le teste AUSSI dans notre "Jeter". Deal lock (cmd 0x1fb, byte @0x01600553) :
 // FUN_00cd0f00 (liste de vente NPC) exclut les favoris quand ON.
 constexpr uintptr_t kDropLockGlobal = 0x015fffa0;
-constexpr uintptr_t kDealLockGlobal = 0x01600553;
 inline bool ReadLock(uintptr_t g) {
   __try { return *reinterpret_cast<uint8_t*>(g) != 0; }
   __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
@@ -399,12 +388,12 @@ inline void ToggleLock(uintptr_t g) {
 // DIFFÉRÉE au relâchement du bouton (itemcell::FlushDeferredDesc) : ouverte dès
 // le clic, un appui PROLONGÉ faisait passer la description DERRIÈRE nous.
 void OpenItemDesc(int index, int mx, int my) {
-  itemcell::DeferDescFromIndex(kInvListHead, index, mx, my);
+  itemcell::DeferDescFromIndex(rag::kInventoryListAddr, index, mx, my);
 }
 
 // Le même nœud, mais retrouvé par son INDEX inventaire.
 void* FindInfoByIndex(int index) {
-  return itemcell::FindInfoByIndex(kInvListHead, index);
+  return itemcell::FindInfoByIndex(rag::kInventoryListAddr, index);
 }
 
 // ── Retrouver un équipement PORTÉ par son index d'inventaire ────────────────
@@ -551,7 +540,7 @@ void PostItemLinkToChat(int index) {
     if (type == 0x1ea || type == 0x1ee) {   // input chat (focus direct)
       insert(focused, info);
     } else if (type == 0x1ed) {              // input via fenêtre dédiée (DAT_0131f6b0+0xbc)
-      void* base = *reinterpret_cast<void**>(0x0131f6b0);
+      void* base = *reinterpret_cast<void**>(uiwnd::kChatWndSlot);
       if (base) insert(*reinterpret_cast<void**>(reinterpret_cast<uint8_t*>(base) + 0xbc), info);
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
@@ -623,8 +612,8 @@ struct FooterVals { int wmax = 0, wcur = 0, zeny = 0, expansion = 0, overPct = 0
 FooterVals ReadFooterVals() {
   FooterVals v;
   __try {
-    v.wmax = *reinterpret_cast<int*>(kWeightMax);
-    v.wcur = *reinterpret_cast<int*>(kWeightCur);
+    v.wmax = *reinterpret_cast<int*>(rag::kWeightMaxAddr);
+    v.wcur = *reinterpret_cast<int*>(rag::kWeightCurAddr);
     v.zeny = *reinterpret_cast<int*>(rag::kZenyAddr);
     v.expansion = *reinterpret_cast<int*>(kInvExpansion);
     v.overPct = *reinterpret_cast<int*>(kOverweightPct);
@@ -665,8 +654,6 @@ inline ImTextureID TexId(void* t) { return reinterpret_cast<ImTextureID>(t); }
 // native 32px) + icônes du footer natif icon_weight/icon_num.bmp. Chargés en textures
 // ImGui. Préfixe CP949 pris sur les strings exe (basic_interface\ pour barre/tuile ;
 // inventory\ pour les icônes, qui ont leur propre string).
-constexpr uintptr_t kBtnbarPath     = 0x010357b8;  // "유저인터페이스\basic_interface\btnbar_left.bmp"
-constexpr uintptr_t kIconWeightPath = 0x0103db00;  // "유저인터페이스\inventory\icon_weight.bmp"
 constexpr uintptr_t kIconNumPath    = 0x0103dad4;  // "유저인터페이스\inventory\icon_num.bmp"
 // Le bouton « banque » du footer est de l'art AJOUTÉ (styleshop\btn_bank_*.bmp) :
 // il n'a donc pas de string dans l'exe. On emprunte le préfixe CP949 à une string
@@ -703,10 +690,10 @@ void PathWithFileName(uintptr_t exe_path, const char* file, char* out, size_t ou
 // footer — stockés SANS préfixe dans l'exe, le code natif le prépend) et
 // `styleshop\` (bouton banque, art ajouté).
 void BasicInterfacePath(const char* file, char* out, size_t out_sz) {
-  PathWithFileName(kBtnbarPath, file, out, out_sz);
+  PathWithFileName(ro::uipath::kUiRootSample, file, out, out_sz);
 }
 void InventoryPath(const char* file, char* out, size_t out_sz) {
-  PathWithFileName(kIconWeightPath, file, out, out_sz);
+  PathWithFileName(ro::uipath::kIconWeight, file, out, out_sz);
 }
 void StyleshopPath(const char* file, char* out, size_t out_sz) {
   PathWithFileName(kStyleshopPath, file, out, out_sz);
@@ -727,7 +714,7 @@ void LoadFooterAssets() {
   // natif remplace itemwin_mid par itemwin_mid_lock (\inventory\, RE UIInventoryWnd_DrawContent).
   InventoryPath("itemwin_mid_lock.bmp", path, sizeof(path));
   g_tile_lock = ro::TextureFromGameFile(path);
-  g_ico_weight = ro::TextureFromGameFile(reinterpret_cast<const char*>(kIconWeightPath));
+  g_ico_weight = ro::TextureFromGameFile(reinterpret_cast<const char*>(ro::uipath::kIconWeight));
   g_ico_num    = ro::TextureFromGameFile(reinterpret_cast<const char*>(kIconNumPath));
   // Onglets images (basic_interface\<img>1.bmp actif / <img>2.bmp inactif).
   for (int c = 0; c < kNumCats; ++c) {
@@ -1083,7 +1070,7 @@ void InventoryViewer::Extract() {
   // qu'UN SEUL item fautif (id SSO corrompue / BuildDisplayName forgé) faisait avorter.
   __try {
     wnd  = *reinterpret_cast<void**>(uiwnd::kInventoryWndSlot);
-    head = *reinterpret_cast<uint8_t**>(kInvListHead);
+    head = *reinterpret_cast<uint8_t**>(rag::kInventoryListAddr);
     if (head) node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
   } __except (EXCEPTION_EXECUTE_HANDLER) { return; }
   if (!head) return;
@@ -1914,7 +1901,7 @@ void InventoryViewer::OnRenderUI() {
       // Onglet Favoris + deal-lock actif -> fond « verrouillé » (itemwin_mid_lock), comme
       // le natif (UIInventoryWnd_DrawContent : this+0x10c==3 && g_inv_dealLock). Repli sur
       // le fond normal si le bmp verrouillé n'a pas chargé.
-      const bool tilesLocked = kCats[cur_tab_].fav && ReadLock(kDealLockGlobal);
+      const bool tilesLocked = kCats[cur_tab_].fav && ReadLock(rag::kFavoriteModeFlagAddr);
       const BarTex& bg = (tilesLocked && g_tile_lock.tex) ? g_tile_lock : g_tile;
       DrawTiledBg(dl, bg, gridOrigin, gmn, ImVec2(gmn.x + gsz.x, gmn.y + gsz.y));
     }
@@ -2382,7 +2369,7 @@ void InventoryViewer::OnRenderUI() {
   // tri viendrait la remettre en cause.
   const bool showSort = favTab && !lock_size_;
   const bool dropOn = ReadLock(kDropLockGlobal);
-  const bool dealOn = ReadLock(kDealLockGlobal);
+  const bool dealOn = ReadLock(rag::kFavoriteModeFlagAddr);
   auto bwidth = [](const BarTex& on, const BarTex& off, bool a) -> float {
     const BarTex& t = a ? on : off;
     return (t.tex && t.w > 0) ? static_cast<float>(t.w) : 18.0f;
@@ -2421,7 +2408,7 @@ void InventoryViewer::OnRenderUI() {
   x += DrawFooterIcon(fdl, g_ico_weight, x, cy1) + 3.0f;
   fdl->AddText(ImVec2(x, cy1 - th * 0.5f), over ? colOver : colText, wbuf);
   char zbuf[40];
-  reinterpret_cast<FmtComma_t>(kFmtComma)(fv.zeny, zbuf, sizeof(zbuf));
+  reinterpret_cast<FmtComma_t>(rag::kFormatThousandsAddr)(fv.zeny, zbuf, sizeof(zbuf));
   char zline[56];
   std::snprintf(zline, sizeof(zline), "%sz", zbuf);
   const float zw = ImGui::CalcTextSize(zline).x;
@@ -2461,7 +2448,7 @@ void InventoryViewer::OnRenderUI() {
   if (favTab) {
     if (FooterImgToggle("##inv_deallock", bx, cyc, g_btn_deal[1], g_btn_deal[0], dealOn, "V",
                         i18n::Tr("Verrou vente : les favoris ne peuvent pas être vendus aux NPC"), &bwOut))
-      ToggleLock(kDealLockGlobal);
+      ToggleLock(rag::kFavoriteModeFlagAddr);
     bx += bwOut + bgap;
   }
   if (showSort) {

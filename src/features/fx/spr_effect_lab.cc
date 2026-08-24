@@ -13,6 +13,7 @@
 #include "bourgeon.h"        // Bourgeon::Instance().IsMapLoading() / IsGameActive() (gate anti-crash warp)
 #include "features/fx/ez_effect_capture.h"  // capture EZ PARTAGÉE (hooks, blend par primitive, rendu ré-ancré)
 #include "features/moonlight_ui/moonlight_ui.h"  // helpers UI du toolkit (namespace mui)
+#include "ragnarok/game_scene.h"
 #include "ui/ro_imgui.h"  // ro::Px (échelle de l'interface, largeurs de contrôles)
 #include "utils/i18n.h"
 
@@ -23,7 +24,6 @@ namespace {
 
 // ── Adresses / offsets natifs (client 20250716, base 0x400000) ────────────────
 // Réutilisés à l'identique de la RE existante (cf. basic_info.cc, docs/hat_effect_re.md).
-constexpr int       kOffActorMgr      = 0xcc;        // CMode -> actorMgr
 constexpr int       kOffOwnActor      = 0x2c;        // actorMgr -> acteur joueur
 
 constexpr uintptr_t kToggleEffectId   = 0x00c44940;  // Actor_ToggleEffectId(actor, unifiedId, add) __thiscall
@@ -82,7 +82,7 @@ void* GetOwnActor() {
   __try {
     void* gm = reinterpret_cast<void*(__fastcall*)(int)>(rag::kModeMgrGetActiveAddr)(static_cast<int>(rag::kModeMgrAddr));
     if (gm) {
-      void* mgr = *reinterpret_cast<void**>(reinterpret_cast<char*>(gm) + kOffActorMgr);
+      void* mgr = *reinterpret_cast<void**>(reinterpret_cast<char*>(gm) + gamescene::kGmActorMgr);
       if (mgr) actor = *reinterpret_cast<void**>(reinterpret_cast<char*>(mgr) + kOffOwnActor);
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) { actor = nullptr; }

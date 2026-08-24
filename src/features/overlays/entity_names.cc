@@ -11,6 +11,7 @@
 
 #include "bourgeon.h"
 #include "features/moonlight_ui/moonlight_ui.h"
+#include "ragnarok/game_scene.h"
 #include "ui/ro_imgui.h"
 #include "utils/i18n.h"
 
@@ -24,30 +25,22 @@ namespace {
 // jeu (login/char-select) — donc jamais de pointeur périmé.
 using GetActiveFn = void*(__fastcall*)(int);
 
-// CNameDict_GetEntryOrRequest(dict, gid) __thiscall : renvoie le bloc CNameInfo
-// pour ce GID si connu+valide, sinon met le GID en file de requête serveur et
-// renvoie une entrée statique vide. C'est aussi ce qui déclenche le chargement
-// des noms encore inconnus (comme le survol natif).
+// Signature de `gamescene::kNameDictGetEntryOrRequestAddr` (cf. game_scene.h
+// pour ce qu'elle déclenche : elle DEMANDE les noms inconnus au serveur).
 using GetNameEntryFn = void*(__thiscall*)(void*, unsigned);
-constexpr uintptr_t kCNameDict_GetEntryOrRequest = 0x005a1460;
 
-// Offsets GameMode / actor manager / acteur (cf. docs/entity_nameplate_re.md).
-constexpr int kGm_ActorMgr   = 0xcc;   // *(gm+0xcc)      = actorMgr
-constexpr int kGm_NameDict    = 0x160;  //  gm+0x160        = dictionnaire de noms (objet embarqué)
-constexpr int kAm_ListHead   = 0x10;   // *(actorMgr+0x10) = nœud sentinelle std::list<Actor*>
-constexpr int kAm_OwnPlayer  = 0x2c;   // *(actorMgr+0x2c) = acteur du joueur local
-constexpr int kNode_Actor    = 0x08;   //  node+8          = pointeur acteur (std::list value)
+// Offsets d'un ACTEUR (la navigation gm -> gestionnaire -> acteur est dans
+// ragnarok/game_scene.h ; cf. docs/entity_nameplate_re.md).
 constexpr int kAct_Nameplate = 0xa5;   //  byte : l'acteur participe au nameplate (visible/vivant)
 constexpr int kAct_BaseJob   = 0x25c;  //  int  : classe/job de base
 constexpr int kAct_ScreenX   = 0xac;   //  int  : X écran projeté (pieds)
 constexpr int kAct_ScreenY   = 0xb0;   //  int  : Y écran projeté (pieds)
 constexpr int kAct_Aid       = 0x110;  //  uint : AID (clé du dictionnaire de noms)
 
-// CNameInfo (bloc valeur renvoyé par GetEntryOrRequest) : std::string nom à
-// +0x04 (MSVC : buf/ptr @+0, size @+0x10, cap @+0x14).
-constexpr int kName_Str  = 0x04;
-constexpr int kName_Size = 0x14;  // = str+0x10
-constexpr int kName_Cap  = 0x18;  // = str+0x14
+// Taille et capacité de la std::string du NOM, mesurées depuis le début du
+// CNameInfo — donc la position du champ PLUS l'offset interne de la string.
+constexpr int kName_Size = gamescene::kNameStr + gamescene::kStrSize;
+constexpr int kName_Cap  = gamescene::kNameStr + gamescene::kStrCap;
 
 // Prédicats de type réimplémentés d'après Job_IsPlayerJobId / Job_IsMonsterId
 // (fonctions feuilles) — évite tout appel natif pour la classification.
@@ -86,12 +79,12 @@ void EntityNames::OnRenderUI() {
 void EntityNames::DrawNames() {
   void* gm = reinterpret_cast<GetActiveFn>(rag::kModeMgrGetActiveAddr)(static_cast<int>(rag::kModeMgrAddr));
   if (!gm) return;
-  void* actor_mgr = Read<void*>(gm, kGm_ActorMgr);
+  void* actor_mgr = Read<void*>(gm, gamescene::kGmActorMgr);
   if (!actor_mgr) return;
-  void* sentinel = Read<void*>(actor_mgr, kAm_ListHead);
+  void* sentinel = Read<void*>(actor_mgr, gamescene::kAmListHead);
   if (!sentinel) return;
-  void* own_actor = Read<void*>(actor_mgr, kAm_OwnPlayer);
-  void* dict = reinterpret_cast<uint8_t*>(gm) + kGm_NameDict;
+  void* own_actor = Read<void*>(actor_mgr, gamescene::kAmOwnPlayer);
+  void* dict = reinterpret_cast<uint8_t*>(gm) + gamescene::kGmNameDict;
 
   const ImGuiIO& io = ImGui::GetIO();
   const float disp_w = io.DisplaySize.x;
@@ -101,7 +94,7 @@ void EntityNames::DrawNames() {
   const float font_px = ImGui::GetFontSize() *
                         (font_scale_ < 0.5f ? 0.5f : (font_scale_ > 2.0f ? 2.0f : font_scale_));
 
-  auto get_entry = reinterpret_cast<GetNameEntryFn>(kCNameDict_GetEntryOrRequest);
+  auto get_entry = reinterpret_cast<GetNameEntryFn>(gamescene::kNameDictGetEntryOrRequestAddr);
 
   // 🔴 Le corps est une lambda, et pas le corps d'une boucle, parce qu'il faut
   // l'appliquer à DEUX sources : la std::list<Actor*>, et le joueur local qui
@@ -138,8 +131,8 @@ void EntityNames::DrawNames() {
     const unsigned cap = Read<uint32_t>(entry, kName_Cap);
     const char* data = (cap < 16)
                            ? reinterpret_cast<const char*>(
-                                 reinterpret_cast<uint8_t*>(entry) + kName_Str)
-                           : Read<const char*>(entry, kName_Str);
+                                 reinterpret_cast<uint8_t*>(entry) + gamescene::kNameStr)
+                           : Read<const char*>(entry, gamescene::kNameStr);
     if (!data) return;
 
     char buf[64];
@@ -173,7 +166,7 @@ void EntityNames::DrawNames() {
   for (void* node = Read<void*>(sentinel, 0);
        node && node != sentinel && guard < 4096;
        node = Read<void*>(node, 0), ++guard) {
-    draw_one(Read<void*>(node, kNode_Actor));
+    draw_one(Read<void*>(node, gamescene::kNodeActor));
   }
 
   // 🔴 Le joueur local N'EST PAS dans cette liste — vérifié en live le

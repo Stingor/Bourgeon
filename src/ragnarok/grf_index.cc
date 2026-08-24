@@ -2,6 +2,7 @@
 
 #include <Windows.h>
 
+#include "ragnarok/file_mgr.h"
 #include "utils/log_console.h"
 
 namespace rag {
@@ -11,7 +12,6 @@ namespace {
 // Les décalages et leur provenance sont détaillés dans l'en-tête. Tout est lu,
 // rien n'est écrit : on ne fait que relire ce que le montage des archives a
 // déjà construit.
-constexpr uintptr_t kFileMgr = 0x0159d410;  // g_FileMgr (l'OBJET)
 
 constexpr size_t kMgrListHead   = 0x00;   // tête de liste circulaire
 constexpr size_t kNodeNext      = 0x00;
@@ -96,7 +96,7 @@ int CollectRaw(const char* prefix, size_t prefix_len,
                RawHit* out, int cap, ScanStats* st) {
   int written = 0;
   __try {
-    const uint8_t* const mgr = reinterpret_cast<const uint8_t*>(kFileMgr);
+    const uint8_t* const mgr = reinterpret_cast<const uint8_t*>(filemgr::kFileMgrAddr);
     const uint8_t* const head =
         *reinterpret_cast<const uint8_t* const*>(mgr + kMgrListHead);
     if (!head) return 0;  // aucune archive montée (jamais vu, mais pas une erreur)

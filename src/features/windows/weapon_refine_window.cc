@@ -16,6 +16,7 @@
 #include "imgui.h"
 #include "ragnarok/msgstring.h"  // msgstr:: (libellés natifs du client)
 #include "ragnarok/globals.h"
+#include "ragnarok/player_skills.h"
 #include "ragnarok/uiwnd.h"
 #include "ui/icon_cache.h"
 // (Le module ui/native_modal a été SUPPRIMÉ : la modale « liste vide » venait du
@@ -56,42 +57,30 @@ constexpr int kCmdRefine  = 182;   // { index } -> CZ_REQ_WEAPONREFINE 0x0222
 constexpr int kCmdUseSkill = 0x45;  // { skillId, cibleGID, niveau } -> lancer un skill
 using DispCmd_t = void(__thiscall*)(void*, int, int, int, int, int);
 
-// Notre propre GID = notre AID : WS_WEAPONREFINE se lance sur soi.
-constexpr uintptr_t kOwnAccountId = 0x015fb9a4;
-
 // Le skill lui-même (db/pre-re/skill_db.yml du fork moonlight).
 constexpr int kSkillWeaponRefine = 477;  // WS_WEAPONREFINE, MaxLevel 10
 
-// Modèle SESSION de l'inventaire : la std::list que le client tient à jour, quel
-// que soit l'état de ses fenêtres. Même source que InventoryViewer.
-// Job level du personnage. Le MÊME global que celui dont UIBasicInfoWnd tire son
-// « Job Lv. » (déjà employé par features/overlays/basic_info.cc) : c'est le
-// dernier terme qui manquait pour calculer une chance de refine côté client.
-constexpr uintptr_t kOwnJobLevel = 0x015fb9f8;
-
+// Job level du personnage — le dernier terme qui manquait pour calculer une
+// chance de refine côté client.
 int OwnJobLevel() {
   __try {
-    return *reinterpret_cast<const int*>(kOwnJobLevel);
+    return *reinterpret_cast<const int*>(rag::kJobLevelAddr);
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
 }
 
-// SP courant. Le MÊME global que la barre de SP de UIBasicInfoWnd
-// (features/overlays/basic_info.cc le lit déjà, confirmé par RE de son
-// DrawContent @0x0095e620) — donc la valeur qu'affiche le client, en INT32.
+// SP courant, en INT32 — la valeur qu'affiche le client, celle-là même que la
+// barre de SP de UIBasicInfoWnd lit.
 //
 // Il n'est là que pour BORNER la chaîne automatique, jamais pour être affiché :
 // le client a déjà sa jauge, et « il reste N lancements » serait un chiffre de
 // plus à lire pendant que des armes se jouent. La chaîne tourne jusqu'à ne plus
 // pouvoir, et c'est à ce moment-là qu'elle le dit.
-constexpr uintptr_t kOwnSpCur = 0x015ff910;
-
 int OwnSp() {
   __try {
-    return *reinterpret_cast<const int*>(kOwnSpCur);
+    return rag::OwnSp();
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
 }
 
-constexpr uintptr_t kInvListHead = 0x015fbab0;
 constexpr int kNodeNext  = 0x00;  // nœud std::list : next
 constexpr int kNodeInfo  = 0x08;  // nœud : value = ItemSkillInfo
 constexpr int kNodeAmt   = 0x18;  // nœud : quantité
@@ -177,9 +166,6 @@ constexpr int kMsgFailMaterial   = 914;  // MSI_ITEM_REFINE_FAIL_MATERIAL
 // WS_WEAPONREFINE, qui EST le plafond de refine côté serveur
 // (`item->refine >= sd.menuskill_val` refuse). Même source que le Grimoire de la
 // feuille de personnage — cf. docs/skill_tree_re.md partie II.
-constexpr uintptr_t kSkillBundle     = 0x015fa3cc;
-constexpr uintptr_t kSkillFlatList   = 0x015fa3e0;  // bundle+0x14 : onglet « divers »
-constexpr uintptr_t kSkillGetTabList = 0x00738370;  // __thiscall(bundle, tab) -> std::list*
 using GetTabList_t = void* (__fastcall*)(void*, void*, int);
 constexpr int kSkNodeValue  = 0x08;
 constexpr int kSkOffValid   = 0x04;
@@ -344,7 +330,7 @@ bool ReadWndPos(uint8_t* wnd, int* x, int* y) {
 // Notre AID (= notre GID), lu sous SEH. Même raison de vivre à part.
 uint32_t OwnAid() {
   __try {
-    return *reinterpret_cast<const uint32_t*>(kOwnAccountId);
+    return rag::OwnAccountId();
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
 }
 
@@ -818,7 +804,7 @@ void WeaponRefineWindow::LogServerResult(int result, uint32_t nameid) {
     // L'arme, par son INDEX : l'état est à jour (refine incrémenté en cas de
     // réussite). Détruite par un échec, elle n'y est plus — on retombe alors sur
     // le nom capturé juste avant l'envoi.
-    SafeName(itemcell::FindInfoByIndex(kInvListHead, sent_index_), name,
+    SafeName(itemcell::FindInfoByIndex(rag::kInventoryListAddr, sent_index_), name,
              sizeof(name));
     if (!name[0] && sent_name_[0])
       std::snprintf(name, sizeof(name), "%s", sent_name_);
@@ -1181,7 +1167,7 @@ void WeaponRefineWindow::FlushPending() {
       // résultat, lui, ne portera qu'un itemId — insuffisant pour désigner LA
       // bonne parmi plusieurs exemplaires du même objet.
       sent_index_ = idx;
-      SafeName(itemcell::FindInfoByIndex(kInvListHead, idx), sent_name_,
+      SafeName(itemcell::FindInfoByIndex(rag::kInventoryListAddr, idx), sent_name_,
                sizeof(sent_name_));
       // Le refine d'avant vient de la LISTE SERVEUR, pas du nom : le préfixe
       // décoratif peut manquer (+0) et l'inventaire, lui, aura déjà bougé quand
@@ -1288,7 +1274,7 @@ void WeaponRefineWindow::FlushPending() {
 int WeaponRefineWindow::OreCount(uint32_t nameid) const {
   int total = 0;
   __try {
-    uint8_t* head = *reinterpret_cast<uint8_t**>(kInvListHead);
+    uint8_t* head = *reinterpret_cast<uint8_t**>(rag::kInventoryListAddr);
     if (!head) return 0;
     uint8_t* node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
     int guard = 0;
@@ -1308,10 +1294,10 @@ int WeaponRefineWindow::RefineSkillLevel(int* sp_cost) {
   __try {
     // Les cinq listes du bundle : quatre onglets de job + la liste plate.
     for (int tab = -1; tab < kSkillJobTabs && !found; ++tab) {
-      uint8_t* list_obj = reinterpret_cast<uint8_t*>(kSkillFlatList);
+      uint8_t* list_obj = reinterpret_cast<uint8_t*>(rag::kSkillFlatListAddr);
       if (tab >= 0)
         list_obj = reinterpret_cast<uint8_t*>(reinterpret_cast<GetTabList_t>(
-            kSkillGetTabList)(reinterpret_cast<void*>(kSkillBundle), nullptr, tab));
+            rag::kSkillGetTabListAddr)(reinterpret_cast<void*>(rag::kSkillBundleAddr), nullptr, tab));
       if (!list_obj) continue;
       uint8_t* head = *reinterpret_cast<uint8_t**>(list_obj);
       if (!head) continue;
@@ -1624,7 +1610,7 @@ void WeaponRefineWindow::OnRenderUI() {
       confirm_index_ = -1;
     } else {
       char name[128] = {0};
-      void* info = itemcell::FindInfoByIndex(kInvListHead, target->index);
+      void* info = itemcell::FindInfoByIndex(rag::kInventoryListAddr, target->index);
       if (info) SafeName(info, name, sizeof(name));
       // WRAPPÉ, pas TextUnformatted : un nom décoré (« +9 Double Explosive
       // Superbia String [2] ») élargirait la modale à sa seule mesure, et la
@@ -1764,7 +1750,7 @@ void WeaponRefineWindow::DrawList(float list_h) {
     r.e = &e;
     r.name[0] = 0;
     r.slots = 0;
-    void* info = itemcell::FindInfoByIndex(kInvListHead, e.index);
+    void* info = itemcell::FindInfoByIndex(rag::kInventoryListAddr, e.index);
     if (info) {
       // Nom COMPOSÉ par le name-builder natif : refine, préfixes de cartes,
       // forge. C'est ce que le natif affiche… sauf qu'il ne le compose pas ici,
@@ -2005,7 +1991,7 @@ void WeaponRefineWindow::DrawList(float list_h) {
         // un appui PROLONGÉ faisait ressortir la description DERRIÈRE nous.
         POINT pt;
         if (GetCursorPos(&pt))
-          itemcell::DeferDescFromIndex(kInvListHead, e.index, pt.x, pt.y);
+          itemcell::DeferDescFromIndex(rag::kInventoryListAddr, e.index, pt.x, pt.y);
       }
       if (ImGui::IsItemHovered()) {
         // On MÉMORISE, on ne peint pas : l'aperçu crée son propre popup et doit

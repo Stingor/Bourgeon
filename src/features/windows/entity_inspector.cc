@@ -12,6 +12,7 @@
 #include "bourgeon.h"                            // SendPacket / RegisterRecvOpcode
 #include "features/staff_gate.h"
 #include "features/systems/bourgeon_opcodes.h"   // CZ 0x0F22 / ZC 0x0F23
+#include "ragnarok/game_scene.h"
 #include "ragnarok/globals.h"
 #include "ui/ro_imgui.h"
 #include "ui/ro_widgets.h"
@@ -27,7 +28,6 @@ namespace {
 // d'acteur. Il fait `GameMode_GetActive(g_ModeMgr)` puis
 // `ActorList_FindByGID(gm+0xCC, gid)` — donc il rend nullptr proprement hors
 // jeu, là où lire `kActiveModePtr` à la main rendrait un mode de login.
-constexpr uintptr_t kActorFindByGid = 0x00d806a0;  // __stdcall(gid)
 
 // Dictionnaire de noms `std::map<GID, CNameInfo>` à `GameMode+0x160`
 // (docs/entity_nameplate_re.md §2).
@@ -37,28 +37,22 @@ constexpr uintptr_t kActorFindByGid = 0x00d806a0;  // __stdcall(gid)
 //     sinon, met le GID dans la file de demande au serveur avant de rendre une
 //     entrée vide STATIQUE. C'est le seul appel de ce fichier qui puisse
 //     produire un paquet — d'où le throttle côté appelant.
-constexpr uintptr_t kNameDictContains = 0x005a18e0;  // __thiscall(dict, gid)
-constexpr uintptr_t kNameDictGetEntry = 0x005a1460;  // __thiscall(dict, gid)
 
 // `Job_GetDisplayNameOrResName` : id de classe -> nom lisible (table Lua
 // jobName/PCJobNameTable). `this` est l'ADRESSE du contexte de session, pas un
 // pointeur à déréférencer ; sex = -1 laisse le client trancher lui-même, ce qui
 // est valable EN JEU (et cette fenêtre n'existe qu'en jeu).
-constexpr uintptr_t kJobDisplayName = 0x00d5bb40;  // __thiscall(ctx, classId, sex)
 
 // Position monde -> cellule de carte (+ sous-position, dont on n'a que faire).
 constexpr uintptr_t kWorldToTile = 0x00c6aa80;  // __thiscall(gm, x, z, …)
 
 // CGameMode
-constexpr int kGm_NameDict = 0x160;
 constexpr int kGm_ActorMgr = 0x0cc;
 constexpr int kScene_OwnActor = 0x2c;  // actorMgr -> acteur du joueur
 
 // CNameInfo (docs/entity_nameplate_re.md §2). Chaque chaîne est une
 // `std::string` de 0x18 octets : buffer, puis taille +0x10 et capacité +0x14 DU
 // CHAMP (pas de l'objet).
-constexpr int kName_Str     = 0x04;
-constexpr int kName_Party   = 0x1c;
 constexpr int kName_Guild   = 0x34;
 constexpr int kName_Rank    = 0x4c;
 constexpr int kName_Title   = 0x64;
@@ -148,8 +142,8 @@ void* ActiveGameMode() {
 bool NameDictContains(void* game_mode, uint32_t gid) {
   __try {
     if (!game_mode) return false;
-    void* dict = reinterpret_cast<uint8_t*>(game_mode) + kGm_NameDict;
-    return reinterpret_cast<ContainsFn>(kNameDictContains)(dict, gid);
+    void* dict = reinterpret_cast<uint8_t*>(game_mode) + gamescene::kGmNameDict;
+    return reinterpret_cast<ContainsFn>(gamescene::kNameDictContainsAddr)(dict, gid);
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
@@ -158,8 +152,8 @@ bool NameDictContains(void* game_mode, uint32_t gid) {
 void* NameDictEntry(void* game_mode, uint32_t gid) {
   __try {
     if (!game_mode) return nullptr;
-    void* dict = reinterpret_cast<uint8_t*>(game_mode) + kGm_NameDict;
-    return reinterpret_cast<GetEntryFn>(kNameDictGetEntry)(dict, gid);
+    void* dict = reinterpret_cast<uint8_t*>(game_mode) + gamescene::kGmNameDict;
+    return reinterpret_cast<GetEntryFn>(gamescene::kNameDictGetEntryOrRequestAddr)(dict, gid);
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
 }
 
@@ -186,7 +180,7 @@ int ReadTitleId(const void* entry) {
 
 void* FindActor(uint32_t gid) {
   __try {
-    return reinterpret_cast<FindActorFn>(kActorFindByGid)(gid);
+    return reinterpret_cast<FindActorFn>(gamescene::kFindActorByGidAddr)(gid);
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
 }
 
@@ -224,7 +218,7 @@ bool ActorCell(void* game_mode, void* actor, int* cx, int* cy) {
 bool JobDisplayName(uint32_t job, char* out, size_t out_size) {
   const char* name = nullptr;
   __try {
-    name = reinterpret_cast<JobNameFn>(kJobDisplayName)(
+    name = reinterpret_cast<JobNameFn>(rag::kJobNameOrResNameAddr)(
         rag::Session(), nullptr, job, -1);
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
   if (!name) return false;
@@ -417,8 +411,8 @@ void EntityInspector::Refresh(Snapshot* out) {
   out->resolved = NameEntryValid(entry);
   if (out->resolved) {
     name_resolved_ = true;
-    ReadNameField(entry, kName_Str,   out->name,  sizeof(out->name));
-    ReadNameField(entry, kName_Party, out->party, sizeof(out->party));
+    ReadNameField(entry, gamescene::kNameStr,   out->name,  sizeof(out->name));
+    ReadNameField(entry, gamescene::kNameParty, out->party, sizeof(out->party));
     ReadNameField(entry, kName_Guild, out->guild, sizeof(out->guild));
     ReadNameField(entry, kName_Rank,  out->rank,  sizeof(out->rank));
     ReadNameField(entry, kName_Title, out->title, sizeof(out->title));

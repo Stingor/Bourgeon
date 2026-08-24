@@ -6,6 +6,8 @@
 #include <cstdio>
 #include <cstring>
 
+#include "ragnarok/globals.h"  // rag::kSessionAddr (le `this` de l'appel natif)
+
 namespace ro {
 namespace {
 
@@ -21,8 +23,6 @@ namespace {
 // g_UIWindowContextKey — son adresse, pas un pointeur à déréférencer. sex = -1
 // (le client le résout lui-même ; sans objet pour un monstre, dont la branche
 // sort avant). Rend une chaîne CP949, ou « » si classId est hors table.
-constexpr uintptr_t kJobResName = 0x00d5bb40;
-constexpr uintptr_t kJobNameCtx = 0x015fa3c0;
 
 // ── LE DOSSIER DÉPEND DE LA PLAGE D'ID, ce n'est pas « monstre » partout ─────
 //
@@ -76,8 +76,8 @@ bool JobResName(int class_id, int sex, char* out, size_t out_size) {
   out[0] = '\0';
   const char* name = nullptr;
   __try {
-    name = reinterpret_cast<JobResNameFn>(kJobResName)(
-        reinterpret_cast<void*>(kJobNameCtx), nullptr,
+    name = reinterpret_cast<JobResNameFn>(rag::kJobNameOrResNameAddr)(
+        reinterpret_cast<void*>(rag::kSessionAddr), nullptr,
         static_cast<unsigned>(class_id), sex);
   } __except (EXCEPTION_EXECUTE_HANDLER) { name = nullptr; }
   if (!name) return false;

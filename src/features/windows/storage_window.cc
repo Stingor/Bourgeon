@@ -108,12 +108,6 @@ constexpr ImU32 kStgTabBorder = IM_COL32(0xAD, 0xAD, 0xAD, 255);
 
 // Appelle une méthode virtuelle (offset en octets) de `self`.
 
-// Liste STORAGE du modèle session. ⚠ C'est bien elle qu'on parcourt, et pas la
-// liste d'affichage de la fenêtre (wnd+0xe8) : quand on cache le natif
-// (wnd+0x28=0) sa liste d'affichage n'est plus peuplée, alors que le modèle
-// session l'est toujours — c'est déjà lui que lit Extract.
-constexpr uintptr_t kStorageListHead = 0x015fbad8;
-
 // Ouvre la fenêtre de description native (id 0xc) pour l'item d'index storage
 // `index`, à (mx,my) écran, avec l'info COMPLÈTE du nœud (cartes, refine,
 // enchants).
@@ -125,7 +119,7 @@ constexpr uintptr_t kStorageListHead = 0x015fbad8;
 // DIFFÉRÉE au relâchement du bouton (itemcell::FlushDeferredDesc) : ouverte dès
 // le clic, un appui PROLONGÉ faisait passer la description DERRIÈRE nous.
 void OpenItemDesc(int index, int mx, int my) {
-  itemcell::DeferDescFromIndex(kStorageListHead, index, mx, my);
+  itemcell::DeferDescFromIndex(rag::kStorageListAddr, index, mx, my);
 }
 
 // ── Retrait d'un item vers l'inventaire (interactif) ────────────────────────
@@ -162,7 +156,6 @@ bool MouseOverInventory(float x, float y) {
 }
 
 constexpr int kWinCart          = 0x28;   // UICartWnd
-constexpr uintptr_t kCartVTable = 0x0103d538;
 bool MouseOverCart(float x, float y) {
   auto* cart = Bourgeon::Instance().cart_viewer();
   return cart && cart->PointOverViewer(static_cast<int>(x), static_cast<int>(y));
@@ -175,7 +168,7 @@ bool MouseOverCart(float x, float y) {
 bool CartOpen() {
   __try {
     auto* cart = reinterpret_cast<uint8_t*>(uiwnd::FindWindow(kWinCart));
-    return cart && *reinterpret_cast<uintptr_t*>(cart) == kCartVTable;
+    return cart && *reinterpret_cast<uintptr_t*>(cart) == uiwnd::kCartWndVTable;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
@@ -225,7 +218,6 @@ constexpr int kNumStgCats = 10;
 // Même recette que inventory_viewer : les .bmp d'onglet vivent dans
 // 유저인터페이스\basic_interface\, préfixe repris de la string exe du btnbar (pas de
 // chemin en dur). <img>1.bmp = onglet ACTIF, <img>2.bmp = inactif.
-constexpr uintptr_t kBtnbarPath = 0x010357b8;  // "…\basic_interface\btnbar_left.bmp"
 
 using BarTex = ro::GameTexture;  // (même forme ; le chargeur est partagé)
 BarTex g_tab[kNumStgCats][2];   // onglets VERTICAUX   : tab_<x>{1,2}.bmp
@@ -242,7 +234,7 @@ unsigned g_tab_epoch = 0;
 
 // `<préfixe basic_interface\> + <file>`, préfixe pris sur la string exe du btnbar.
 void BasicInterfacePath(const char* file, char* out, size_t out_sz) {
-  const char* base = reinterpret_cast<const char*>(kBtnbarPath);
+  const char* base = reinterpret_cast<const char*>(ro::uipath::kUiRootSample);
   const char* slash = std::strrchr(base, '\\');
   const size_t n = slash ? static_cast<size_t>(slash - base + 1) : 0;
   if (n && n < out_sz) std::memcpy(out, base, n);
@@ -832,7 +824,7 @@ void StorageWindow::Extract() {
   item_count_ = 0;
   __try {
     // 0x015fbad8 = g_session+0x1718 : sentinelle de la std::list storage complète.
-    uint8_t* head = *reinterpret_cast<uint8_t**>(0x015fbad8);
+    uint8_t* head = *reinterpret_cast<uint8_t**>(rag::kStorageListAddr);
     if (!head) return;
     uint8_t* node = *reinterpret_cast<uint8_t**>(head + kNodeNext);  // 1er nœud
     int guard = 0;

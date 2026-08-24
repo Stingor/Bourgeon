@@ -2,6 +2,7 @@
 #include "ragnarok/render.h"
 #include "ragnarok/globals.h"
 #include "ragnarok/own_actor.h"  // arme / bouclier / chariot déjà résolus par le client
+#include "ragnarok/game_scene.h"
 #include "ui/doll.h"  // aperçu d'article : pantin COMPOSÉ (remplace la capture)
 #include "ui/sprite_view.h"  // chariot : sprite indépendant, posé sur le pantin
 #include "ui/sprite_path.h"  // BodySpriteKey (le style se range par corps)
@@ -74,12 +75,12 @@ struct Src {
 // relative to the INT32 hard cap (kZenyMax) and shows the amount thousands-grouped.
 constexpr long long kZenyMax = 2147483647LL;  // INT32_MAX = client hard zeny cap
 const Src kSrc[BasicInfo::kBarCount] = {
-  {0x015fb9d0, 0x015fb9d8, 0,        true,  false, "###BIBaseExp"},
-  {0x015fb9e8, 0x015fb9e0, 0,        true,  false, "###BIJobExp"},
-  {0x015ff908, 0x015ff90c, 0,        false, false, "###BIHp"},
-  {0x015ff910, 0x015ff914, 0,        false, false, "###BISp"},
-  {rag::kZenyAddr, rag::kZenyAddr, kZenyMax, false, true,  "###BIZeny"},
-  {0x015fbaa0, 0x015fba9c, 0,        false, false, "###BIWeight"},
+  {rag::kOwnBaseExpAddr, rag::kOwnBaseExpNextAddr, 0, true,  false, "###BIBaseExp"},
+  {rag::kOwnJobExpAddr,  rag::kOwnJobExpNextAddr,  0, true,  false, "###BIJobExp"},
+  {rag::kOwnHpAddr,      rag::kOwnMaxHpAddr,       0, false, false, "###BIHp"},
+  {rag::kOwnSpAddr,      rag::kOwnMaxSpAddr,       0, false, false, "###BISp"},
+  {rag::kZenyAddr,       rag::kZenyAddr,    kZenyMax, false, true,  "###BIZeny"},
+  {rag::kWeightCurAddr,  rag::kWeightMaxAddr,      0, false, false, "###BIWeight"},
   // Incantation : AUCUNE globale à lire. Ses valeurs sont l'écoulé et la durée
   // totale du cast en cours, relevés sur l'acteur par CastBar et poussés à
   // DrawBar depuis OnRenderUI. Les deux adresses nulles sont là pour garder la
@@ -119,8 +120,9 @@ inline float ExpFrac(long long cur, long long max) {
 }
 
 // ── Status-portrait value sources (20250716 client) ──────────────────────────
-constexpr uintptr_t kBaseLevel = 0x015fb9f0;  // DAT_015fb9f0 (UIBasicInfoWnd "Base Lv.")
-constexpr uintptr_t kJobLevel  = 0x015fb9f8;  // DAT_015fb9f8 (UIBasicInfoWnd "Job Lv.")
+// Les niveaux de base et de job viennent de `rag::kBaseLevelAddr` /
+// `rag::kJobLevelAddr` : les mêmes globales que celles dont le UIBasicInfoWnd
+// natif tire ses « Base Lv. » et « Job Lv. ».
 
 inline int RDi(uintptr_t a) { return *reinterpret_cast<volatile int*>(a); }
 
@@ -132,9 +134,9 @@ const char* ClassName() {
   using GetJobId_t     = int (__fastcall*)(void* ecx, void* edx);
   using GetClassName_t = const char* (__fastcall*)(void* ecx, void* edx,
                                                    unsigned jobid, int sex);
-  const int jobid = reinterpret_cast<GetJobId_t>(0x00d5b580)(
+  const int jobid = reinterpret_cast<GetJobId_t>(rag::kJobResolveMountedClassAddr)(
       reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
-  const char* n = reinterpret_cast<GetClassName_t>(0x00d5bb40)(
+  const char* n = reinterpret_cast<GetClassName_t>(rag::kJobNameOrResNameAddr)(
       reinterpret_cast<void*>(rag::kSessionAddr), nullptr, static_cast<unsigned>(jobid), -1);
   return n ? n : "";
 }
@@ -155,17 +157,17 @@ constexpr uintptr_t kGarmentView = 0x015fb2a0;  // g_OwnLook_GarmentRobeViewId
 constexpr uintptr_t kHeadLowView = 0x015fb294;  // g_OwnLook_HeadBottomViewId
 constexpr uintptr_t kHeadTopView = 0x015fb298;  // g_OwnLook_HeadTopViewId
 constexpr uintptr_t kHeadMidView = 0x015fb29c;  // g_OwnLook_HeadMidViewId
-// 🔴 La CLASSE qui nomme le sprite de corps — second argument de
-// `Job_ResolveBodyClass`. À ne pas confondre avec le job ajusté par la monture.
-constexpr uintptr_t kOwnJobId    = 0x015fb9c8;
-// AID du joueur — et GID de son acteur, donc la clé de sa palette composée.
-constexpr uintptr_t kOwnAid      = 0x015fb9a4;
+// Deux globales de plus, publiées par `ragnarok/globals.h` :
+//   * `rag::kOwnJobIdAddr` — 🔴 la CLASSE qui nomme le sprite de corps, second
+//     argument de `Job_ResolveBodyClass`. À ne pas confondre avec le job
+//     ajusté par la monture.
+//   * `rag::kOwnAccountIdAddr` — l'AID du joueur, et le GID de son acteur, donc
+//     la clé de sa palette composée.
 
 // CTexture -> handle GPU natif. L'offset dépend du back-end.
 constexpr int kCTexOffDX9 = 0x12c, kCTexOffDX7 = 0x128;
 
 // Chaîne CMode -> gestionnaire d'acteurs -> acteur du joueur.
-constexpr int kOffActorMgr = 0xcc;
 constexpr int kOffOwnActor = 0x2c;
 
 // ── Le chariot, posé à plat ──────────────────────────────────────────────────
@@ -571,7 +573,7 @@ void* GetOwnActorLive() {
     void* gm = reinterpret_cast<void*(__fastcall*)(int)>(rag::kModeMgrGetActiveAddr)(
         static_cast<int>(rag::kModeMgrAddr));
     if (gm) {
-      void* mgr = *reinterpret_cast<void**>(reinterpret_cast<char*>(gm) + kOffActorMgr);
+      void* mgr = *reinterpret_cast<void**>(reinterpret_cast<char*>(gm) + gamescene::kGmActorMgr);
       if (mgr) actor = *reinterpret_cast<void**>(reinterpret_cast<char*>(mgr) + kOffOwnActor);
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) { actor = nullptr; }
@@ -1101,7 +1103,7 @@ void CaptureHatEffectOrdinal(int ordinal) {
 bool FillOwnDollPalette(ro::DollLook* look) {
   static uint8_t rgba[1024];
   static std::string key;
-  const uint32_t gid = *reinterpret_cast<const uint32_t*>(kOwnAid);
+  const uint32_t gid = rag::OwnAccountId();
   if (gid == 0) return false;
 
   // 🔴 Le sprite de corps LU sur l'acteur, pas celui qu'on déduirait de
@@ -1151,7 +1153,7 @@ void BuildOwnDollLook(bool show_costume, ro::DollLook* look,
   using GetJobFn = int(__fastcall*)(void*, void*);
   look->sex = reinterpret_cast<GetSexFn>(kGetSex)(
       reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
-  look->job = reinterpret_cast<GetJobFn>(0x00d5b580)(
+  look->job = reinterpret_cast<GetJobFn>(rag::kJobResolveMountedClassAddr)(
       reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
   look->hair          = *reinterpret_cast<int*>(kHair);
   look->hair_color    = *reinterpret_cast<int*>(kHairCol);
@@ -1163,7 +1165,7 @@ void BuildOwnDollLook(bool show_costume, ro::DollLook* look,
   // ⚠ La classe BRUTE, jamais celle ajustée par la monture : `look->job` porte
   // déjà l'ajustement, et `Job_ResolveBodyClass` refait lui-même le remap
   // (4008 -> 4014) à partir des deux.
-  look->body = *reinterpret_cast<int*>(kOwnJobId);
+  look->body = rag::OwnJobId();
   // Couleurs composées par le joueur, si elles sont posées sur son acteur. Sans
   // ça, ce pantin montrerait les couleurs d'avant pendant que le personnage en
   // scène porte les nouvelles.
@@ -1364,14 +1366,14 @@ void BasicInfo::RenderItemPreviewTooltip(int view_id, int emplacement,
   ro::DollLook look;
   look.sex = reinterpret_cast<GetSexFn>(kGetSex)(
       reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
-  look.job = reinterpret_cast<GetJobFn>(0x00d5b580)(
+  look.job = reinterpret_cast<GetJobFn>(rag::kJobResolveMountedClassAddr)(
       reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
   look.hair          = *reinterpret_cast<int*>(kHair);
   look.hair_color    = *reinterpret_cast<int*>(kHairCol);
   look.clothes_color = *reinterpret_cast<int*>(kClothesCol);
   // 🔴 `body` = la CLASSE (cf. RenderPlayerAvatar) : c'est elle qui nomme le
   // sprite de corps. À 0, tout le monde s'affichait en Novice.
-  look.body = *reinterpret_cast<int*>(kOwnJobId);
+  look.body = rag::OwnJobId();
   // Idem pour l'aperçu d'équipement (description d'objet, échoppe) : il montre
   // TON personnage portant l'objet, donc tes couleurs.
   FillOwnDollPalette(&look);
@@ -2059,7 +2061,7 @@ void PortraitText(int id, char* out, size_t n) {
     }
     case BasicInfo::kPortLevel:
       // base/job merged, simply "%d/%d" as requested.
-      std::snprintf(out, n, "%d/%d", RDi(kBaseLevel), RDi(kJobLevel));
+      std::snprintf(out, n, "%d/%d", RDi(rag::kBaseLevelAddr), RDi(rag::kJobLevelAddr));
       break;
     default:
       out[0] = '\0';
@@ -2769,8 +2771,6 @@ void BIPatchPtr(uintptr_t addr, T val) {
 // — barre masquée au VRAI niveau max — au lieu de forcer bêtement les barres visibles.
 constexpr uintptr_t kJobGetMaxBaseLevel = 0x00d99ca0;  // __stdcall(jobId)
 constexpr uintptr_t kJobGetMaxJobLevel  = 0x00d99d30;  // __stdcall(jobId)
-constexpr uintptr_t kOwnBaseExpNext = 0x015fb9d8;  // g_Own_BaseExpNext (INT64)
-constexpr uintptr_t kOwnJobExpNext  = 0x015fb9e0;  // g_Own_JobExpNext  (INT64)
 constexpr long long kSrvMaxBaseExp  = 99999999LL;   // MAX_LEVEL_BASE_EXP (moonlight const.hpp)
 constexpr long long kSrvMaxJobExp   = 999999999LL;  // MAX_LEVEL_JOB_EXP  (idem)
 constexpr int       kBILevelUnreached = 0x7fffffff;  // plafond qu'aucun niveau n'atteint
@@ -2780,10 +2780,10 @@ JobMaxLevelFn_t g_bi_orig_max_job_lv  = nullptr;
 
 // Le personnage est-il au niveau max du SERVEUR ? (sentinelle d'exp, cf. bloc ci-dessus)
 inline bool BIAtServerMaxBase() {
-  return *reinterpret_cast<const long long*>(kOwnBaseExpNext) == kSrvMaxBaseExp;
+  return *reinterpret_cast<const long long*>(rag::kOwnBaseExpNextAddr) == kSrvMaxBaseExp;
 }
 inline bool BIAtServerMaxJob() {
-  return *reinterpret_cast<const long long*>(kOwnJobExpNext) == kSrvMaxJobExp;
+  return *reinterpret_cast<const long long*>(rag::kOwnJobExpNextAddr) == kSrvMaxJobExp;
 }
 
 // Au vrai max on rend le niveau COURANT : ça rejoue exactement la branche « masquer » du
@@ -2791,12 +2791,12 @@ inline bool BIAtServerMaxJob() {
 // Les trois sites d'appel passent toujours la classe du propre joueur, d'où la lecture des
 // globals de session ; hors jeu (niveau nul) on rend la main au natif, faute de savoir.
 int __stdcall BIMaxBaseLevelHook(int job_id) {
-  const int lv = *reinterpret_cast<const int*>(kBaseLevel);
+  const int lv = *reinterpret_cast<const int*>(rag::kBaseLevelAddr);
   if (lv <= 0 && g_bi_orig_max_base_lv) return g_bi_orig_max_base_lv(job_id);
   return BIAtServerMaxBase() ? lv : kBILevelUnreached;
 }
 int __stdcall BIMaxJobLevelHook(int job_id) {
-  const int lv = *reinterpret_cast<const int*>(kJobLevel);
+  const int lv = *reinterpret_cast<const int*>(rag::kJobLevelAddr);
   if (lv <= 0 && g_bi_orig_max_job_lv) return g_bi_orig_max_job_lv(job_id);
   return BIAtServerMaxJob() ? lv : kBILevelUnreached;
 }

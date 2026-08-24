@@ -40,7 +40,6 @@ constexpr long long kZenyMax    = 2147483647LL;  // INT32_MAX = plafond client E
 // Formateurs à séparateurs de milliers du client (ceux qu'emploie la fenêtre
 // native) : 64 bits pour la banque, 32 bits pour les zeny en poche.
 constexpr uintptr_t kFmtComma64 = 0x00a94870;
-constexpr uintptr_t kFmtComma32 = 0x00a948d0;
 using FmtComma64_t = char*(__cdecl*)(long long, char*, int);
 using FmtComma32_t = char*(__cdecl*)(int, char*, int);
 
@@ -132,12 +131,11 @@ void CloseBank() {
 // ⚠ À n'appeler QUE hors frame ImGui (ici : le fil réseau, exactement où le natif
 // l'appelait). Une commande native lancée au milieu d'une frame peut ouvrir une
 // modale et figer le client sans un mot.
-constexpr uintptr_t kChatAddLine = 0x00a4ad20;  // = UIWindowMgr::SendMsg
 void ChatLineCp949(const char* cp949) {
   if (!cp949 || !*cp949) return;
   using ChatAdd_t = void(__thiscall*)(void*, int, const char*, int, int);
   __try {
-    reinterpret_cast<ChatAdd_t>(kChatAddLine)(uiwnd::Mgr(), 1, cp949, 0xFF, 0);
+    reinterpret_cast<ChatAdd_t>(uiwnd::kMgrSendMsgAddr)(uiwnd::Mgr(), 1, cp949, 0xFF, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -195,7 +193,7 @@ const char* Grouped64(long long value, char* buf, int size) {
 const char* Grouped32(int value, char* buf, int size) {
   buf[0] = '\0';
   __try {
-    reinterpret_cast<FmtComma32_t>(kFmtComma32)(value, buf, size);
+    reinterpret_cast<FmtComma32_t>(rag::kFormatThousandsAddr)(value, buf, size);
   } __except (EXCEPTION_EXECUTE_HANDLER) { buf[0] = '\0'; }
   return buf;
 }

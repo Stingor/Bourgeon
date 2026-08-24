@@ -9,7 +9,7 @@
 #include <unordered_map>
 
 #include "imgui.h"
-#include "ragnarok/globals.h"  // rag::rag::kGameOperatorDeleteAddrAddr
+#include "ragnarok/globals.h"  // rag::kGameOperatorDeleteAddr
 #include "ragnarok/item_db.h"
 #include "ragnarok/uiwnd.h"
 #include "ui/ro_imgui.h"
@@ -18,7 +18,7 @@ namespace itemcell {
 namespace {
 
 // BuildDisplayName alloue son vecteur de décalages avec l'allocateur du client :
-// à rendre au même (rag::rag::kGameOperatorDeleteAddrAddr).
+// à rendre au même (rag::kGameOperatorDeleteAddr).
 
 // std::vector MSVC tel que le jeu le passe (3 pointeurs).
 struct GVec { int* first; int* last; int* end; };

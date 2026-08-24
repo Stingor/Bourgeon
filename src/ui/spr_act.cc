@@ -7,6 +7,7 @@
 #include <cstring>
 #include <utility>
 
+#include "ragnarok/file_mgr.h"
 #include "ui/ro_imgui.h"  // Cp949ToUtf8 : les chemins du GRF sont en CP949
 #include "utils/log_console.h"
 
@@ -26,9 +27,6 @@ namespace {
 // (= VirtualFree MEM_RELEASE) : le tampon ne vient pas du tas C++, `free` ou
 // `delete[]` dessus corromprait le processus. C'est ce que fait le natif dans
 // `ResFileStream_Close` (0x00573060).
-constexpr uintptr_t kFileMgr      = 0x0159d410;  // g_FileMgr (l'OBJET)
-constexpr uintptr_t kLoadToMemory = 0x00a88ab0;  // __thiscall(mgr, path, DWORD*, char)
-constexpr uintptr_t kFreeBuffer   = 0x00a892c0;  // __stdcall(void*)
 // Enveloppe zlib du client : (src, srcLen, dst, dstCap) -> taille produite, ou
 // -1. Sert aux .spr v3.2, dont les images Bgra32 sont compressées. Fonction
 // standard, pas une structure interne : elle ne bougera pas d'un client à
@@ -187,8 +185,8 @@ bool ReadFile(const char* path, std::vector<uint8_t>* out) {
   void* buf = nullptr;
   DWORD size = 0;
   __try {
-    buf = reinterpret_cast<LoadToMemoryFn>(kLoadToMemory)(
-        reinterpret_cast<void*>(kFileMgr), nullptr, path, &size, 0);
+    buf = reinterpret_cast<LoadToMemoryFn>(filemgr::kLoadToMemoryAddr)(
+        reinterpret_cast<void*>(filemgr::kFileMgrAddr), nullptr, path, &size, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) { buf = nullptr; }
   if (!buf) return false;
 
@@ -206,7 +204,7 @@ bool ReadFile(const char* path, std::vector<uint8_t>* out) {
   }
 
   __try {
-    reinterpret_cast<FreeBufferFn>(kFreeBuffer)(buf);
+    reinterpret_cast<FreeBufferFn>(filemgr::kFreeBufferAddr)(buf);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
   if (!ok) out->clear();
   return ok;

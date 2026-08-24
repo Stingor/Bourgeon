@@ -11,6 +11,7 @@
 #include "features/windows/chat_window.h"  // AppendNaviLink (partage <NAVIL>)
 #include "features/windows/monster_info_window.h"  // fiche du monstre visé
 #include "imgui.h"
+#include "ragnarok/navigation.h"
 #include "ragnarok/uiwnd.h"  // détruire les natives qu'on remplace
 #include "ui/game_texture.h"  // miniatures de carte (mêmes bitmaps que le radar)
 #include "ui/mob_sprite.h"  // sprite du monstre par son id de classe
@@ -27,7 +28,6 @@ namespace {
 
 // L'objet moteur. STATIQUE : ce n'est pas un pointeur VERS un objet, c'est
 // l'objet lui-même — d'où l'absence de déréférencement partout ci-dessous.
-constexpr uintptr_t kNavigation = 0x015C3090;
 
 // ── Champs de CNavigation (§3.1) ─────────────────────────────────────────────
 // 🔴 Tout ce que le décompilé appelle `byte_15C42xx` / `dword_15C43xx` est un
@@ -57,19 +57,15 @@ constexpr int kOffSelMember   = 0x12C8;  // index du membre dans le groupe
 // ── Fonctions natives (§3.3) ─────────────────────────────────────────────────
 constexpr uintptr_t kFnSearch        = 0x00B34970;  // CNavigation::Search
 constexpr uintptr_t kFnGetResult     = 0x00B2E700;  // (out40, index)
-constexpr uintptr_t kFnSearchRoute   = 0x00B314F0;  // l'API publique « va là »
 constexpr uintptr_t kFnSelectResult  = 0x00B35F80;  // pose (ou EFFACE) la cible
 constexpr uintptr_t kFnStepCount     = 0x00B39660;
 constexpr uintptr_t kFnGetStep       = 0x00B2EE00;
 constexpr uintptr_t kFnNodeName      = 0x00B26CF0;  // CNaviNode::GetName (interne)
 constexpr uintptr_t kFnShareToChat   = 0x005AB550;  // pose la balise dans le chat
 constexpr uintptr_t kFnSetFocusedWnd = 0x00A4B760;  // __thiscall(mgr, fenetre)
-constexpr uintptr_t kUiWindowMgr     = 0x0131F4E8;
 constexpr uintptr_t kNewChatWndPtr   = 0x0131F6B0;  // g_pNewChatWnd
 constexpr int       kChatInputChild  = 47;          // +0xBC : la barre de saisie
 constexpr uintptr_t kFnMapDisplayName = 0x00B26B00;  // nom AFFICHÉ d'une carte
-constexpr uintptr_t kStdStringAssign   = 0x004F1940;  // __thiscall(this, src, len)
-constexpr uintptr_t kStdStringDtor     = 0x004F08F0;  // __thiscall(this)
 constexpr uintptr_t kStdStringCtorCStr = 0x004E5330;  // __thiscall(this, cstr)
 
 // ── Le CONTENU d'une carte : ses PNJ et ses spawns ──────────────────────────
@@ -255,7 +251,7 @@ constexpr int kGoMapOnly    = 1;  // vise la carte, coordonnées ignorées
 constexpr int kGoNpcNode    = 2;  // vise un nœud NPC du graphe (retrouvé par x/y)
 constexpr int kGoMobId      = 3;  // vise un monstre par son id
 
-inline uint8_t* Nav() { return reinterpret_cast<uint8_t*>(kNavigation); }
+inline uint8_t* Nav() { return reinterpret_cast<uint8_t*>(navi::kNavigationAddr); }
 
 // ── Le résultat brut du moteur : 40 octets (§3.5) ────────────────────────────
 // 🔴 Le 2ᵉ champ n'est PAS un identifiant : c'est un POINTEUR vers l'objet
@@ -506,7 +502,7 @@ bool SafeGetResult(int index, NativeResult* out, char* label, size_t label_size,
     }
     // La chaîne du résultat appartient au client : on la rend avec SON
     // destructeur, les deux CRT n'ayant pas le même tas.
-    reinterpret_cast<StrDtor_t>(kStdStringDtor)(out->name);
+    reinterpret_cast<StrDtor_t>(rag::kStdStringDtorAddr)(out->name);
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
@@ -514,7 +510,7 @@ bool SafeGetResult(int index, NativeResult* out, char* label, size_t label_size,
 bool SafeRunSearch(int filter, const char* term, size_t term_len) {
   __try {
     *reinterpret_cast<int32_t*>(Nav() + kOffFilter) = filter;
-    reinterpret_cast<StrAssign_t>(kStdStringAssign)(Nav() + kOffTerm, term,
+    reinterpret_cast<StrAssign_t>(rag::kStdStringAssignAddr)(Nav() + kOffTerm, term,
                                                     term_len);
     reinterpret_cast<Search_t>(kFnSearch)(Nav());
     return true;
@@ -535,7 +531,7 @@ int SafeGoTo(const char* map, int type, char flags, int x, int y, int mob_id) {
   __try {
     ByValueString packed{};
     reinterpret_cast<StrCtorCStr_t>(kStdStringCtorCStr)(&packed, map);
-    return reinterpret_cast<SearchRoute_t>(kFnSearchRoute)(
+    return reinterpret_cast<SearchRoute_t>(navi::kSearchRouteAddr)(
                Nav(), packed, type, flags, /*hideWindow=*/1, x, y, mob_id)
                ? 1
                : 0;
@@ -560,7 +556,7 @@ bool SafeShareToChat(const char* map, int x, int y) {
     void* input = reinterpret_cast<void**>(chat)[kChatInputChild];
     if (!input) return false;
     reinterpret_cast<SetFocusedWnd_t>(kFnSetFocusedWnd)(
-        reinterpret_cast<void*>(kUiWindowMgr), input);
+        reinterpret_cast<void*>(uiwnd::kUIWindowMgrAddr), input);
 
     ByValueString packed{};
     reinterpret_cast<StrCtorCStr_t>(kStdStringCtorCStr)(&packed, map);
