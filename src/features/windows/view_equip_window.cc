@@ -478,7 +478,7 @@ void ViewEquipWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
     // exactement celui du chat.
     char label[128] = {0};
     itemcell::BuildChatLinkName(piece.link, label, sizeof(label));
-    piece.label = (label[0] != '\0') ? ro::WireToUtf8(label)
+    piece.label = (label[0] != '\0') ? label
                                      : itemcell::NameById(piece.link.id);
     // Un objet NON identifié n'a pas à révéler son nom composé : le serveur
     // n'envoie de toute façon que de l'équipement porté (donc identifié), mais
@@ -625,7 +625,7 @@ bool ViewEquipWindow::MyPiece(int slot, bool costume, itemcell::ChatLink* out,
 
   char buf[128] = {0};
   itemcell::BuildChatLinkName(*out, buf, sizeof(buf));
-  *label = (buf[0] != '\0') ? ro::WireToUtf8(buf) : itemcell::NameById(out->id);
+  *label = (buf[0] != '\0') ? buf : itemcell::NameById(out->id);
   return true;
 }
 

@@ -148,7 +148,9 @@ class NpcShopWindow : public Plugin {
     int32_t  price = 0;         // prix de vente unitaire (overcharge inclus) = final
     int32_t  base_price = 0;    // prix de vente de base (avant Overcharge) — affichage base->final
     int      slots = 0;
-    char     name[64] = {0};
+    // 96 et non 64 : le nom arrive en UTF-8, et la conversion FAIT GROSSIR le
+    // texte (un accent latin passe de 1 à 2 octets, un caractère coréen de 2 à 3).
+    char     name[96] = {0};
     // ── Données d'INSTANCE, pour l'aperçu au survol ──────────────────────────
     // Elles ne servent qu'à ça, et c'est la moitié vendue qui les a : ici l'objet
     // est DÉJÀ le nôtre (il est dans le sac), donc son ItemSkillInfo existe et

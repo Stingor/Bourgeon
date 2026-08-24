@@ -581,7 +581,7 @@ void ResolveDisplayNames(RawRow* rows, int count) {
       // Borne simple : les instances distinctes se comptent en centaines, mais
       // rien ne garantit qu'un serveur exotique n'en génère pas beaucoup plus.
       if (g_display_name_cache.size() > 2048) g_display_name_cache.clear();
-      char buf[64];
+      char buf[96];
       itemcell::BuildDisplayName(reinterpret_cast<uint8_t*>(rows[i].node) + 0x08, buf,
                     sizeof(buf));
       it = g_display_name_cache.emplace(key, buf).first;

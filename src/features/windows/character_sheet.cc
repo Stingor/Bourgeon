@@ -806,7 +806,7 @@ void SendGuildNotice(int guildId, const char* subject, const char* body) {
 const char* JobName(int jobId) { return rag::social::JobName(jobId); }
 
 // Le nom NU d'un item par id passe par itemcell::NameById (cache partagé). Pour
-// un item ÉQUIPÉ dont on tient le slot, préférer DecoratedItemName plus bas :
+// un item ÉQUIPÉ dont on tient le slot, préférer itemcell::BuildDisplayName :
 // elle compose refine et cartes, que le nom nu ne porte pas.
 
 // ═══ Homoncule ══════════════════════════════════════════════════════════════
@@ -1890,42 +1890,19 @@ std::vector<uint8_t> BuildEmblemBmp() {
 // natif (l'id affiché vit à +0x104).
 
 
-// Nom d'affichage COMPLET (refine + [slots] + préfixes/suffixes de cartes/enchant/forge) via le
-// name-builder natif BuildDisplayName, SEH ISOLÉ (repli GetBaseName). `info` = ItemSkillInfo
-// source (slot equip). itemcell::NameById() ne rend que le nom de BASE ; ceci décore comme la description.
-struct GVec { int* first; int* last; int* end; };  // std::vector MSVC (jeu)
-using BuildName_t   = int(__thiscall*)(void*, void*, int*, GVec*, char**, size_t*, char**, char,
-                                       char);
-using GetBaseName_t = size_t(__thiscall*)(void*, char*, size_t*, char);
-using GameFree_t    = void(__cdecl*)(void*);
-void DecoratedItemName(const void* info, char* out, size_t outsz) {
-  if (outsz == 0) return;
-  out[0] = '\0';
-  __try {
-    char nbuf[128];
-    nbuf[0] = '\0';
-    char* bufptr = nbuf;
-    size_t ncap = sizeof(nbuf);
-    int colorOut = 0;
-    char* hlptr = nullptr;
-    GVec off = {nullptr, nullptr, nullptr};
-    // `this` = le GESTIONNAIRE de fenêtres, jamais une fenêtre : il ne sert qu'à la
-    // requête de nom de créateur, qui lit une std::list à +0x18C (cf. item_cell.h).
-    // On passait ici la fenêtre d'inventaire — devenue nulle depuis qu'elle est
-    // détruite, ce qui privait les items forgés de leur nom décoré.
-    reinterpret_cast<BuildName_t>(itemdb::kBuildDisplayNameAddr)(uiwnd::Mgr(), const_cast<void*>(info), &colorOut, &off,
-                                              &bufptr, &ncap, &hlptr, 0, 0);
-    size_t k = 0;
-    while (k + 1 < outsz && nbuf[k]) { out[k] = nbuf[k]; ++k; }
-    out[k] = '\0';
-    if (off.first) reinterpret_cast<GameFree_t>(rag::kGameOperatorDeleteAddr)(off.first);
-    if (out[0] == '\0') {  // repli : nom de base
-      size_t cap = outsz;
-      reinterpret_cast<GetBaseName_t>(itemdb::kBaseNameFallbackAddr)(const_cast<void*>(info), out, &cap, 0);
-      out[outsz - 1] = '\0';
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
-}
+// Le nom d'affichage COMPLET (refine, « [N] », préfixes/suffixes de cartes,
+// forge) était composé ICI par une copie du name-builder natif — mêmes typedefs,
+// même SEH, même repli, à 92 % identique à `itemcell::BuildDisplayName`.
+//
+// 🔴 Et la copie a coûté ce que coûtent les copies : quand la conversion en UTF-8
+// est descendue dans `itemcell::BuildDisplayName`, celle-ci ne l'a pas reçue. Le
+// nom du pantin d'équipement et celui de l'aperçu au survol sortaient donc en
+// code-page client, droit dans ImGui — le défaut de « Bien-aiméPoring Egg », mais
+// dans une fenêtre que le relevé de doublons désignait depuis le début.
+//
+// Supprimée : `itemcell::BuildDisplayName` fait exactement la même chose, en
+// UTF-8, et résout le même contexte natif (le GESTIONNAIRE, jamais une fenêtre —
+// c'est lui qui porte la liste de requêtes de noms à +0x18C).
 
 //  Envois (raw, via Bourgeon::SendPacket)
 void SendUnequip(int invIndex) {
@@ -7379,7 +7356,7 @@ void CharacterSheet::DrawSlot(int slot, bool costume, float x, float y, float sz
     const uintptr_t dsrc = rag::kSessionAddr + (costume ? kCostumeBase : kEquipBase) +
                            static_cast<uintptr_t>(slot) * kSlotStride;
     char dnm[128];
-    DecoratedItemName(reinterpret_cast<const void*>(dsrc), dnm, sizeof(dnm));
+    itemcell::BuildDisplayName(reinterpret_cast<void*>(dsrc), dnm, sizeof(dnm));
     ImGui::TextUnformatted(dnm[0] ? dnm : itemcell::NameById(it.nameid));
     ImGui::EndDragDropSource();
   }
@@ -7618,13 +7595,14 @@ void CharacterSheet::OpenCartWindow() {
 }
 
 // Relève les données d'INSTANCE de l'item survolé. Le nom passe par le name-builder
-// natif (DecoratedItemName), tout le reste se lit à même l'ItemSkillInfo, sous SEH :
+// natif (itemcell::BuildDisplayName), tout le reste se lit à même l'ItemSkillInfo, sous SEH :
 // un slot à moitié initialisé ne doit pas tuer le client pour un simple survol.
 void CharacterSheet::CaptureHoverDesc(const void* info, uint32_t id) {
   hover_desc_ = HoverDesc{};
   if (!info || id == 0) return;
   hover_desc_.id = id;
-  DecoratedItemName(info, hover_desc_.name, sizeof(hover_desc_.name));  // SEH intégré
+  itemcell::BuildDisplayName(const_cast<void*>(info), hover_desc_.name,
+                             sizeof(hover_desc_.name));  // SEH intégré, rend de l'UTF-8
   __try {
     const uint8_t* p = reinterpret_cast<const uint8_t*>(info);
     hover_desc_.refine  = *reinterpret_cast<const int*>(p + kOffEquipRefine);

@@ -932,9 +932,9 @@ void RodexWindow::ResolveAttachDisplay(Attach* attach) {
   itemcell::BuildDisplayName(const_cast<void*>(info), decorated,
                              sizeof(decorated));
   attach->total_slots = itemcell::SlotCount(const_cast<void*>(info));
-  // Le builder rend du texte dans la code-page du CLIENT ; ImGui veut de l'UTF-8.
+  // Les deux sources sont déjà en UTF-8 (le builder convertit, `NameById` aussi).
   std::snprintf(attach->name, sizeof(attach->name), "%s",
-                decorated[0] ? ro::LocalToUtf8(decorated) : base_name);
+                decorated[0] ? decorated : base_name);
 }
 
 // ── Lecture de l'état natif ─────────────────────────────────────────────────

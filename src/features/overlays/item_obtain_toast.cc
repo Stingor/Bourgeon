@@ -19,7 +19,7 @@
 #include "ragnarok/msgstring.h"          // msgstr::Utf8 (libellés natifs)
 #include "ragnarok/uiwnd.h"              // uiwnd::SafeSetVisible
 #include "ui/icon_cache.h"               // ro::ItemIcon
-#include "ui/ro_imgui.h"                 // ro::LocalToUtf8, ro::DrawDescPanelFrame
+#include "ui/ro_imgui.h"                 // ro::DrawDescPanelFrame, ro::DescPanelEdge
 #include "ui/ro_widgets.h"               // mui::
 #include "utils/i18n.h"
 #include "utils/log_console.h"
@@ -146,22 +146,16 @@ void Capture(const void* info) {
   if (t.amount <= 0) t.amount = 1;
 
   // Le nom exactement comme le client le compose : refine, préfixes de cartes,
-  // « <forgeron>'s ». Rendu dans la code-page du client, donc à convertir.
+  // « <forgeron>'s ». Déjà converti en UTF-8 par le name-builder.
   char raw[160] = {0};
   itemcell::BuildDisplayName(const_cast<void*>(info), raw, sizeof(raw));
   // Repli sur le nom de base de la DB du client si la composition n'a rien
   // rendu : une ligne « - 1 obtained. » sans objet ne dit rien à personne, et
   // `NameById` rend au pire « #<id> », qui se diagnostique.
   //
-  // ⚠ Les deux sources n'ont PAS le même encodage : `BuildDisplayName` rend la
-  // code-page du client (à convertir), `NameById` rend déjà de l'UTF-8 (à ne
-  // surtout pas reconvertir — ce serait du mojibake sur le premier accent).
-  const char* utf8;
-  if (raw[0]) {
-    utf8 = ro::LocalToUtf8(raw);
-  } else {
-    utf8 = itemcell::NameById(t.id);
-  }
+  // Les deux sources rendent maintenant de l'UTF-8 — reconvertir l'une d'elles
+  // ferait du mojibake sur le premier accent.
+  const char* utf8 = raw[0] ? raw : itemcell::NameById(t.id);
   std::snprintf(t.name, sizeof(t.name), "%s", utf8 ? utf8 : "");
 
   t.born_ms = timeGetTime();

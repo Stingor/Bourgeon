@@ -105,6 +105,22 @@ void DrawTile(ImDrawList* draw_list, const ImVec2& p0, const ImVec2& p1,
 // raison). ⚠ Repli intégré : si la composition rend une chaîne vide, on retombe
 // sur le nom de base. L'ensemble est sous SEH — un ItemSkillInfo à moitié
 // initialisé ne doit pas tuer le client.
+//
+// 🔴 `out` EST DE L'UTF-8, prêt pour ImGui — ne rien reconvertir par-dessus.
+//
+// C'était l'inverse, et cet en-tête disait « à convertir par l'appelant ». Sur
+// les ONZE sites d'appel, un seul le faisait correctement : six ne convertissaient
+// pas du tout, cinq employaient `ro::WireToUtf8`, qui décrit l'encodage du FIL et
+// non celui du client. Une règle que dix appelants sur onze enfreignent n'est pas
+// une règle, c'est un piège — d'autant qu'elle restait INVISIBLE tant que les
+// noms étaient en ASCII anglais, où les deux encodages coïncident octet pour
+// octet. La traduction de la MsgStringTable a glissé « Bien-aimé » devant un nom
+// d'œuf de familier, et le défaut est sorti d'un coup, partout.
+//
+// ⚠ La conversion FAIT GROSSIR le texte (un accent latin passe de 1 à 2 octets,
+// un caractère coréen de 2 à 3) : prévoir `out` en conséquence — 96 octets est
+// la taille retenue dans le projet pour un nom composé. La troncature se fait
+// sur une FRONTIÈRE de caractère, jamais au milieu d'une séquence.
 void BuildDisplayName(void* info, char* out, size_t out_size);
 
 // Nombre TOTAL d'emplacements de carte de l'item décrit par `info`, 0 si aucun
@@ -170,8 +186,8 @@ bool ParseChatLink(const char* tag, const char* end, ChatLink* out,
 // Nom d'AFFICHAGE d'un lien, composé par le name-builder NATIF depuis un
 // ItemSkillInfo fabriqué à partir de la balise : refine, grade, préfixes de
 // cartes et « <forgeron>'s » compris — exactement ce qu'affiche le chat natif.
-// Vide si la balise ne porte pas d'objet. ⚠ Rendu dans la CODE-PAGE DU CLIENT,
-// comme BuildDisplayName : à convertir (`ro::WireToUtf8`) avant ImGui.
+// Vide si la balise ne porte pas d'objet. Rendu en UTF-8, comme
+// `BuildDisplayName` dont elle se sert (rien à reconvertir par-dessus).
 void BuildChatLinkName(const ChatLink& link, char* out, size_t out_size);
 
 // Ré-encode une balise `<ITEML>` depuis un lien DÉJÀ relu. Il n'existe pas de
@@ -198,7 +214,9 @@ void DeferDescFromChatLink(const ChatLink& link, int mx, int my);
 // À utiliser quand on ne tient QU'un id : boutique NPC, cash shop, pièces
 // jointes de courrier, matériaux de fabrication.
 //
-// Le nom est converti de CP949 vers UTF-8, prêt pour ImGui. Le résultat est
+// Le nom est converti de la code-page DU CLIENT vers l'UTF-8 (`ro::LocalToUtf8`,
+// et non `Cp949ToUtf8` : le client ne parle 949 qu'en servicetype coréen), prêt
+// pour ImGui. Le résultat est
 // mémorisé dans un cache de processus et reste valide jusqu'à la fin de la
 // session : le pointeur peut être gardé d'une frame à l'autre.
 //

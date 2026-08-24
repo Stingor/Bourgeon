@@ -582,8 +582,13 @@ bool Gestures(const Target& target, bool hovered) {
 void HoverPreview(const Target& target) {
   if (target.kind == Target::kItem) {
     // Le nom DÉCORÉ, composé par le name-builder natif depuis la balise (refine,
-    // affixes de cartes, forgeron). Rendu dans la code-page du client, c'est ce
-    // qu'attend le tooltip — comme tous ses autres appelants.
+    // affixes de cartes, forgeron), et rendu en UTF-8 — ce qu'attend le tooltip,
+    // qui dessine en ImGui.
+    //
+    // ⚠ Le commentaire d'ici affirmait le contraire (« rendu dans la code-page
+    // du client, c'est ce qu'attend le tooltip »). Il décrivait un défaut comme
+    // s'il était voulu : un nom accentué sortait en octets bruts. La conversion
+    // est maintenant dans le name-builder, donc plus rien à faire ici.
     char name[192];
     itemcell::BuildChatLinkName(target.item, name, sizeof(name));
     // Les options d'INSTANCE ne sont pas dans la DB du client : elles viennent de

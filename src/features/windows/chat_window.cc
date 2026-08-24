@@ -2634,11 +2634,11 @@ void ChatWindow::ParseUtf8(const std::string& text, Line* out) const {
         // Le name-builder NATIF, sur un ItemSkillInfo fabriqué depuis la balise :
         // c'est le seul moyen d'obtenir mot pour mot ce qu'affiche le client (il
         // va jusqu'à demander au serveur le nom du forgeron qu'il ne connaît pas).
-        // Il rend la code-page du client, d'où la conversion.
+        // Il rend déjà de l'UTF-8 (la conversion est dans le name-builder).
         char composed[192];
         itemcell::BuildChatLinkName(item, composed, sizeof(composed));
         const std::string name = (composed[0] != '\0')
-                                     ? ro::WireToUtf8(composed)
+                                     ? std::string(composed)
                                      : std::string(itemcell::NameById(item.id));
         // Le format du natif, chevrons compris : `<+7 Sword [3]>`. Le nombre
         // d'emplacements est déjà dans le nom composé (BuildChatLinkName).
@@ -6817,11 +6817,9 @@ bool ChatWindow::AppendItemLink(void* info) {
   itemcell::BuildChatLinkName(link, name, sizeof(name));
   if (name[0] == '\0') return false;
   // Format du natif, chevrons compris : `<+7 Sword [3]>` (le compte
-  // d'emplacements est déjà dans le nom composé).
-  // (⚠ `WireToUtf8` rend un `const char*` : concaténer avec des littéraux, c'est
-  //  de l'arithmétique de pointeurs — on passe par la chaîne.)
+  // d'emplacements est déjà dans le nom composé, et le nom est déjà en UTF-8).
   std::string display = "<";
-  display += ro::WireToUtf8(name);
+  display += name;
   display += ">";
   if (display.size() <= 2) return false;  // nom vide : rien à poser
 
@@ -6871,7 +6869,7 @@ bool ChatWindow::AppendItemLinkFromLink(const itemcell::ChatLink& link) {
   itemcell::BuildChatLinkName(link, name, sizeof(name));
   if (name[0] == '\0') return false;
   std::string display = "<";
-  display += ro::WireToUtf8(name);
+  display += name;  // déjà en UTF-8 (cf. BuildDisplayName)
   display += ">";
   if (display.size() <= 2) return false;
 

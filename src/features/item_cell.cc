@@ -164,7 +164,11 @@ void CopyNameAsUtf8(const char* local, char* out, size_t out_size) {
 void BuildDisplayName(void* info, char* out, size_t out_size) {
   if (!out || out_size == 0) return;
   out[0] = '\0';
-  // SEH ISOLÉ, et c'est le point important : un item dont BuildDisplayName plante
+  // Le nom tel que le CLIENT le compose, dans SA code-page. Il ne sortira pas
+  // d'ici sous cette forme — voir la conversion en fin de fonction.
+  char local[128];
+  local[0] = '\0';
+  // SEH ISOLÉ, et c'est le point important : un item dont le name-builder plante
   // ne doit pas avorter TOUTE l'énumération. Leçon de l'inventaire, où un seul
   // item fautif faisait disparaître la moitié de la liste.
   __try {
@@ -177,16 +181,35 @@ void BuildDisplayName(void* info, char* out, size_t out_size) {
     reinterpret_cast<BuildName_t>(itemdb::kBuildDisplayNameAddr)(
         uiwnd::Mgr(), info, &color_out, &offsets, &bufptr, &ncap, &hl_ptr, 0, 0);
     size_t k = 0;
-    while (k + 1 < out_size && nbuf[k]) { out[k] = nbuf[k]; ++k; }
-    out[k] = '\0';
+    while (k + 1 < sizeof(local) && nbuf[k]) { local[k] = nbuf[k]; ++k; }
+    local[k] = '\0';
     if (offsets.first) reinterpret_cast<GameFree_t>(rag::kGameOperatorDeleteAddr)(offsets.first);
-    if (out[0] == '\0') {
-      size_t cap = out_size;
-      reinterpret_cast<GetBaseName_t>(itemdb::kBaseNameFallbackAddr)(info, out,
+    if (local[0] == '\0') {
+      size_t cap = sizeof(local);
+      reinterpret_cast<GetBaseName_t>(itemdb::kBaseNameFallbackAddr)(info, local,
                                                                     &cap, 0);
-      out[out_size - 1] = '\0';
+      local[sizeof(local) - 1] = '\0';
     }
-  } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
+  } __except (EXCEPTION_EXECUTE_HANDLER) { local[0] = '\0'; }
+
+  // 🔴 LA CONVERSION EST ICI, PAS CHEZ L'APPELANT — et c'est le fond du sujet.
+  //
+  // Elle a longtemps été « la responsabilité de l'appelant », documentée en
+  // toutes lettres dans item_cell.h. Résultat mesuré : sur ONZE sites, six ne
+  // convertissaient pas du tout et cinq employaient `WireToUtf8`, qui décrit
+  // l'encodage du FIL et non celui du client. Un seul site le faisait comme il
+  // faut. Une règle que la quasi-totalité des appelants enfreint n'est pas une
+  // règle, c'est un piège — d'autant qu'elle reste INVISIBLE tant que les noms
+  // sont en ASCII, ce qu'ils étaient jusqu'à ce que la traduction de la
+  // MsgStringTable glisse « Bien-aimé » devant un nom d'œuf de familier.
+  //
+  // En la posant ici, aucun appelant ne peut plus l'oublier, ni se tromper de
+  // convertisseur. Le contrat devient : `out` est de l'UTF-8, prêt pour ImGui.
+  //
+  // ⚠ La conversion FAIT GROSSIR le texte (un accent latin passe de 1 à 2
+  // octets) : `CopyNameAsUtf8` tronque donc sur une FRONTIÈRE de caractère,
+  // jamais au milieu d'une séquence.
+  CopyNameAsUtf8(local, out, out_size);
 }
 
 int SlotCount(void* info) {
@@ -816,10 +839,9 @@ int ExtractList(uintptr_t list_head, ItemRow* out, int max) {
         it.opts[k].value = *reinterpret_cast<const int16_t*>(e + 2);
         it.opts[k].param = e[4];
       }
-      // Les deux briques partagées portent leur PROPRE SEH, par item.
-      char local[64];
-      BuildDisplayName(info, local, sizeof(local));
-      CopyNameAsUtf8(local, it.name, sizeof(it.name));
+      // Les deux briques partagées portent leur PROPRE SEH, par item — et
+      // `BuildDisplayName` rend désormais de l'UTF-8, plus rien à convertir ici.
+      BuildDisplayName(info, it.name, sizeof(it.name));
       it.total_slots = SlotCount(info);
       ++count;
     } __except (EXCEPTION_EXECUTE_HANDLER) {}

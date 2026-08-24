@@ -221,7 +221,9 @@ class VendingWindow : public Plugin {
     // Nom d'AFFICHAGE composé par le client (BuildDisplayName) : « +10 Hydra
     // Sword [3] ». Le nom de la DB, lui, ignore refine, cartes et slots — il
     // ne sert que de repli si la composition échoue.
-    char     name[64] = {0};
+    // 96 et non 64 : le nom arrive en UTF-8, et la conversion FAIT GROSSIR le
+    // texte (un accent latin passe de 1 à 2 octets, un caractère coréen de 2 à 3).
+    char     name[96] = {0};
   };
 
  private:
