@@ -19,14 +19,24 @@
 
 namespace {
 
-uint32_t ReadGlobalU32(uintptr_t addr) {
+// Les deux identités du joueur, lues sous SEH. Elles ne font qu'envelopper les
+// accesseurs de `ragnarok/globals.h` : ce fichier tourne sur le fil réseau comme
+// sur celui du rendu, et rien n'y garantit qu'une session existe.
+//
+// ⚠ Garder l'enveloppe plutôt qu'appeler `rag::` directement est un CHOIX :
+// l'accesseur du catalogue est nu, et c'est la forme qu'ont prise tous les
+// autres appelants du projet (target_frame, social, party_friend_window,
+// weapon_refine_window) — le `__try` englobant couvre l'accesseur inliné.
+uint32_t OwnGid() {
   __try {
-    return *reinterpret_cast<const uint32_t*>(addr);
+    return rag::OwnAccountId();
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
 }
-
-uint32_t OwnGid() { return ReadGlobalU32(rag::kOwnAccountIdAddr); }
-uint32_t OwnCharId() { return ReadGlobalU32(rag::kOwnCharIdAddr); }
+uint32_t OwnCharId() {
+  __try {
+    return rag::OwnCharId();
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+}
 
 // Le style d'un joueur : une recette par CORPS, plus celle qui sert de repli.
 struct Remote {

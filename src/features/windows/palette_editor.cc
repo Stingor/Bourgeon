@@ -54,9 +54,6 @@ int OwnJob() {
   return reinterpret_cast<GetJobFn>(rag::kJobResolveMountedClassAddr)(
       reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
 }
-int OwnBody() { return rag::OwnJobId(); }
-uint32_t OwnGid() { return rag::OwnAccountId(); }
-uint32_t OwnCharId() { return rag::OwnCharId(); }
 
 // Apparence courante, telle que le client la tient à jour sur ZC_SPRITE_CHANGE.
 // Mêmes globales que `BuildOwnDollLook` (features/overlays/basic_info.cc).
@@ -217,7 +214,7 @@ BugReport::Context PaletteEditor::BugContext() const {
   js += "],\"actor\":";
   js += resolved_from_actor_ ? "true" : "false";
   js += ",\"inject\":";
-  js += fx::palette_inject::HasRecipe(OwnGid()) ? "true" : "false";
+  js += fx::palette_inject::HasRecipe(rag::OwnAccountId()) ? "true" : "false";
   js += ",\"seed\":";
   js += seeded_ ? "true" : "false";
   // Un brouillon en cours signale que le joueur n'a pas encore validé : le
@@ -366,7 +363,7 @@ bool PaletteEditor::SeedFromShared() {
   uint32_t cle = body_key_;
   if (cle == 0) {
     char spr[352];
-    if (fx::palette_inject::ActorBodySpritePath(OwnGid(), spr, sizeof(spr)) &&
+    if (fx::palette_inject::ActorBodySpritePath(rag::OwnAccountId(), spr, sizeof(spr)) &&
         spr[0] != '\0')
       cle = ro::BodySpriteKey(spr);
   }
@@ -395,9 +392,9 @@ bool PaletteEditor::Reload() {
   pixels_total_ = 0;
   pixels_covered_ = 0;
 
-  const uint32_t gid = OwnGid();
+  const uint32_t gid = rag::OwnAccountId();
   const int sex = OwnSex();
-  const int body = OwnBody();
+  const int body = rag::OwnJobId();
 
   // 🔴 `recipe_.palette_id` DOIT être connu avant d'arriver ici : c'est lui qui
   // choisit le fichier de palette sur lequel la base se construit, donc les
@@ -524,7 +521,7 @@ void PaletteEditor::ResetForNewCharacter() {
 }
 
 void PaletteEditor::TickDraft() {
-  const uint32_t cid = OwnCharId();
+  const uint32_t cid = rag::OwnCharId();
   if (cid == 0) return;
 
   const std::string courant = fx::palette_cache::EncodeShare(recipe_);
@@ -556,13 +553,13 @@ void PaletteEditor::TickDraft() {
 
 void PaletteEditor::Apply() {
   if (base_.size() < 1024 || ramp_count_ == 0) return;
-  const uint32_t gid = OwnGid();
+  const uint32_t gid = rag::OwnAccountId();
   if (gid == 0) return;
   touched_ = true;  // geste explicite : plus de rattrapage d'amorçage
   // Ce qui est validé n'est plus un brouillon : la réserve se vide, et l'écart
   // qui la nourrit retombe à zéro.
   applied_ = recipe_;
-  fx::palette_cache::DraftSave(OwnCharId(), nullptr);
+  fx::palette_cache::DraftSave(rag::OwnCharId(), nullptr);
   draft_tick_ = 0.0;
   // 🔴 On injecte MÊME quand tous les réglages sont à zéro, et c'est délibéré.
   //
@@ -592,7 +589,7 @@ void PaletteEditor::Apply() {
 }
 
 void PaletteEditor::RestoreServerColors() {
-  const uint32_t gid = OwnGid();
+  const uint32_t gid = rag::OwnAccountId();
   if (gid == 0) return;
   // 🔴 Constructeur par défaut, JAMAIS `memset` : les sentinelles valent -1, et
   // un memset demanderait la palette 0 et la couleur de cheveux 0.
@@ -619,7 +616,7 @@ void PaletteEditor::RestoreServerColors() {
   // L'apparence native devient ce qui est posé, et la réserve se vide : après
   // avoir demandé le vide, on ne se voit pas proposer de recharger l'avant.
   applied_ = recipe_;
-  fx::palette_cache::DraftSave(OwnCharId(), nullptr);
+  fx::palette_cache::DraftSave(rag::OwnCharId(), nullptr);
   draft_tick_ = 0.0;
   // 🔴 Purger AUSSI le registre de propagation. Notre propre recette y dort
   // depuis le login (le serveur nous la repousse), et la boucle d'application la
@@ -640,13 +637,13 @@ void PaletteEditor::RestoreServerColors() {
 }
 
 void PaletteEditor::ForgetCurrentBodyStyle() {
-  const uint32_t gid = OwnGid();
+  const uint32_t gid = rag::OwnAccountId();
   if (gid == 0 || body_key_ == 0) return;
   // Le serveur d'abord : c'est lui qui tient la liste des corps habillés, et
   // c'est de lui que les autres joueurs tiendront la nouvelle.
   fx::style_sync::SendClear(body_key_);
   touched_ = true;
-  fx::palette_cache::DraftSave(OwnCharId(), nullptr);
+  fx::palette_cache::DraftSave(rag::OwnCharId(), nullptr);
   draft_tick_ = 0.0;
 
   // 🔴 Poser le repli NOUS-MÊMES. L'écho du serveur arrivera bien, mais la
@@ -754,7 +751,7 @@ void PaletteEditor::DrawPreviewDoll(float size, int highlight) {
   ro::DollLook look;
   look.sex = OwnSex();
   look.job = OwnJob();
-  look.body = OwnBody();
+  look.body = rag::OwnJobId();
   look.hair = *reinterpret_cast<int*>(kHair);
   look.hair_color = *reinterpret_cast<int*>(kHairCol);
   look.clothes_color = *reinterpret_cast<int*>(kClothesCol);
@@ -776,7 +773,7 @@ void PaletteEditor::DrawPreviewDoll(float size, int highlight) {
   // ACTUELLE — c'est-à-dire tout sauf ce qu'il est en train de régler.
   static uint8_t rgba[1024];
   static std::string key;
-  const uint32_t gid = OwnGid();
+  const uint32_t gid = rag::OwnAccountId();
   if (gid != 0 && base_.size() >= 1024 &&
       ro::ApplyRecipe(base_.data(), base_.size(), ramps_, ramp_count_, recipe_,
                       rgba, sizeof(rgba))) {
@@ -1063,7 +1060,7 @@ void PaletteEditor::RebuildStylePreview() {
   // nôtre : c'est elle qui décide de la fusion, donc du découpage des rampes.
   // Réutiliser notre `base_` appliquerait les réglages reçus à côté.
   fx::palette_base::Body b;
-  if (fx::palette_base::BuildForGid(OwnGid(), preview_recipe_.palette_id, &b) !=
+  if (fx::palette_base::BuildForGid(rag::OwnAccountId(), preview_recipe_.palette_id, &b) !=
       fx::palette_base::kOk)
     return;
   preview_base_ = b.base;
@@ -1106,7 +1103,7 @@ void PaletteEditor::DrawStylePreview() {
   {
     char spr[352];
     const bool lu =
-        fx::palette_inject::ActorBodySpritePath(OwnGid(), spr, sizeof(spr));
+        fx::palette_inject::ActorBodySpritePath(rag::OwnAccountId(), spr, sizeof(spr));
     const char* porte = (lu && spr[0] != '\0') ? spr : "";
     if (preview_body_path_ != porte) {
       preview_body_path_ = porte;
@@ -1141,7 +1138,7 @@ void PaletteEditor::DrawStylePreview() {
     ro::DollLook look;
     look.sex = OwnSex();
     look.job = OwnJob();
-    look.body = OwnBody();
+    look.body = rag::OwnJobId();
     look.hair = *reinterpret_cast<int*>(kHair);
     look.hair_color = *reinterpret_cast<int*>(kHairCol);
     look.clothes_color = *reinterpret_cast<int*>(kClothesCol);
@@ -1159,7 +1156,7 @@ void PaletteEditor::DrawStylePreview() {
         ro::ApplyRecipe(preview_base_.data(), preview_base_.size(),
                         preview_ramps_, preview_ramp_count_, preview_recipe_,
                         rgba, sizeof(rgba))) {
-      cle = fx::palette_cache::DollKey(OwnGid(), rgba);
+      cle = fx::palette_cache::DollKey(rag::OwnAccountId(), rgba);
       cle += ":apercu";  // jamais la même clé que le pantin de l'éditeur
       look.body_palette = rgba;
       look.body_palette_key = cle.c_str();
@@ -1246,7 +1243,7 @@ void PaletteEditor::OnRenderUI() {
   // fenêtre sur l'état de l'ancien personnage, et l'amorçage — qui ne se fait
   // qu'une fois — figerait sa recette pour toute la session.
   {
-    const uint32_t cid = OwnCharId();
+    const uint32_t cid = rag::OwnCharId();
     if (cid != 0 && cid != session_cid_) {
       if (session_cid_ != 0) ResetForNewCharacter();
       session_cid_ = cid;
@@ -1294,10 +1291,10 @@ void PaletteEditor::OnRenderUI() {
   // Le test coûte la lecture d'une chaîne sur l'acteur, une fois par frame.
   {
     char spr[352];
-    const bool lu = fx::palette_inject::ActorBodySpritePath(OwnGid(), spr,
+    const bool lu = fx::palette_inject::ActorBodySpritePath(rag::OwnAccountId(), spr,
                                                             sizeof(spr));
     if ((lu && spr[0] != '\0' && body_path_ != spr) ||
-        (!lu && (loaded_body_ != OwnBody() || loaded_sex_ != OwnSex()))) {
+        (!lu && (loaded_body_ != rag::OwnJobId() || loaded_sex_ != OwnSex()))) {
       // 🔴 La recette est CONSERVÉE, pas remise à zéro. Les rampes du nouveau
       // sprite se redécoupent, et les réglages s'y ré-appliquent PAR INDEX —
       // exactement ce que font les autres clients quand ce joueur change de
@@ -1713,8 +1710,8 @@ void PaletteEditor::OnRenderUI() {
         // d'inactivité : ce bouton jette exactement ce qu'il protège. Sans ça,
         // un clic malheureux perdrait une demi-heure de réglages sans retour
         // possible — alors que « Dernier style non validé » est juste à côté.
-        if (OwnCharId() != 0)
-          fx::palette_cache::DraftSave(OwnCharId(), &recipe_);
+        if (rag::OwnCharId() != 0)
+          fx::palette_cache::DraftSave(rag::OwnCharId(), &recipe_);
         draft_tick_ = 0.0;
         recipe_ = applied_;
         touched_ = true;  // geste explicite (cf. SeedFromShared)
@@ -1922,14 +1919,14 @@ void PaletteEditor::OnRenderUI() {
       // trouver sans savoir qu'elle existe : il vient de perdre une session, et
       // un bouton de sauvetage replié dans un menu ne sauve personne. Le reste du
       // temps la section reste comme le joueur l'a laissée.
-      const bool a_brouillon = fx::palette_cache::HasDraft(OwnCharId());
+      const bool a_brouillon = fx::palette_cache::HasDraft(rag::OwnCharId());
       if (a_brouillon) ImGui::SetNextItemOpen(true, ImGuiCond_Once);
       if (ImGui::TreeNode(i18n::Tr("Préréglages"))) {
         // ── Le dernier style non validé ────────────────────────────────────
         if (a_brouillon) {
           if (ro::RoButton(i18n::Tr("Dernier style non validé"))) {
             ro::PaletteRecipe brouillon;
-            if (fx::palette_cache::DraftLoad(OwnCharId(), &brouillon)) {
+            if (fx::palette_cache::DraftLoad(rag::OwnCharId(), &brouillon)) {
               recipe_ = brouillon;
               touched_ = true;  // même raison que pour un préréglage
               // 🔴 Rechargement COMPLET : le brouillon porte sa propre teinte de
