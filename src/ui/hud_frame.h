@@ -37,10 +37,12 @@
 // le clic tombe dans le jeu. C'est la différence entre un HUD qu'on met en place
 // et un HUD dont on se sert.
 //
-// ⚠ DETTE ASSUMÉE : `BasicInfo::DrawBar` et `DrawPortraitElem` portent encore
-// leur propre copie de cette mécanique (elle leur est antérieure). Elles doivent
-// migrer ici — ce module a été écrit d'après elles, geste pour geste, pour que
-// la migration ne change rien à ce que le joueur ressent.
+// ✅ Basic Info — les barres et les étiquettes du portrait — a migré ici le
+// 2026-08-24. Ce module avait été écrit d'après sa mécanique, geste pour geste,
+// précisément pour que la migration ne change rien à ce que le joueur ressent.
+// Les seuls écarts sont des ALIGNEMENTS sur le reste du HUD, et ils sont dits
+// là où ils se produisent : les barres gagnent le bloc CTRL, les textes de
+// cadre se tronquent au lieu de déborder sur le voisin.
 
 namespace ro {
 

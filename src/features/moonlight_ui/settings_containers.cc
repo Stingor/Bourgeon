@@ -520,10 +520,10 @@ void ReadBarLayout(const YAML::Node& ui) {
         std::string("expbar_") + BasicInfo::kBarKeys[i] + "_";
     auto& bar = basic_info->bars_[i];
     bar.show = ui[prefix + "show"].as<bool>(true);
-    bar.x = ui[prefix + "x"].as<int>(bar.x);
-    bar.y = ui[prefix + "y"].as<int>(bar.y);
-    bar.w = ui[prefix + "w"].as<int>(bar.w);
-    bar.h = ui[prefix + "h"].as<int>(bar.h);
+    bar.rect.x = ui[prefix + "x"].as<int>(bar.rect.x);
+    bar.rect.y = ui[prefix + "y"].as<int>(bar.rect.y);
+    bar.rect.w = ui[prefix + "w"].as<int>(bar.rect.w);
+    bar.rect.h = ui[prefix + "h"].as<int>(bar.rect.h);
     ReadArgbKey(ui, prefix + "color", bar.fill);
   }
 }
@@ -536,10 +536,10 @@ void WriteBarLayout(YAML::Emitter& out) {
         std::string("expbar_") + BasicInfo::kBarKeys[i] + "_";
     const auto& bar = basic_info->bars_[i];
     out << YAML::Key << (prefix + "show") << YAML::Value << bar.show
-        << YAML::Key << (prefix + "x")    << YAML::Value << bar.x
-        << YAML::Key << (prefix + "y")    << YAML::Value << bar.y
-        << YAML::Key << (prefix + "w")    << YAML::Value << bar.w
-        << YAML::Key << (prefix + "h")    << YAML::Value << bar.h;
+        << YAML::Key << (prefix + "x")    << YAML::Value << bar.rect.x
+        << YAML::Key << (prefix + "y")    << YAML::Value << bar.rect.y
+        << YAML::Key << (prefix + "w")    << YAML::Value << bar.rect.w
+        << YAML::Key << (prefix + "h")    << YAML::Value << bar.rect.h;
     WriteArgbKey(out, prefix + "color", bar.fill);
   }
 }
@@ -554,10 +554,10 @@ void ReadPortraitLayout(const YAML::Node& ui) {
         std::string("portrait_") + BasicInfo::kPortKeys[i] + "_";
     auto& element = basic_info->ports_[i];
     element.show     = ui[prefix + "show"].as<bool>(element.show);
-    element.x        = ui[prefix + "x"].as<int>(element.x);
-    element.y        = ui[prefix + "y"].as<int>(element.y);
-    element.w        = ui[prefix + "w"].as<int>(element.w);
-    element.h        = ui[prefix + "h"].as<int>(element.h);
+    element.rect.x   = ui[prefix + "x"].as<int>(element.rect.x);
+    element.rect.y   = ui[prefix + "y"].as<int>(element.rect.y);
+    element.rect.w   = ui[prefix + "w"].as<int>(element.rect.w);
+    element.rect.h   = ui[prefix + "h"].as<int>(element.rect.h);
     element.rounding = ui[prefix + "rounding"].as<float>(element.rounding);
     element.text_scale = ui[prefix + "tscale"].as<float>(element.text_scale);
     ReadArgbKey(ui, prefix + "bg", element.bg);
@@ -573,10 +573,10 @@ void WritePortraitLayout(YAML::Emitter& out) {
         std::string("portrait_") + BasicInfo::kPortKeys[i] + "_";
     const auto& element = basic_info->ports_[i];
     out << YAML::Key << (prefix + "show")     << YAML::Value << element.show
-        << YAML::Key << (prefix + "x")        << YAML::Value << element.x
-        << YAML::Key << (prefix + "y")        << YAML::Value << element.y
-        << YAML::Key << (prefix + "w")        << YAML::Value << element.w
-        << YAML::Key << (prefix + "h")        << YAML::Value << element.h
+        << YAML::Key << (prefix + "x")        << YAML::Value << element.rect.x
+        << YAML::Key << (prefix + "y")        << YAML::Value << element.rect.y
+        << YAML::Key << (prefix + "w")        << YAML::Value << element.rect.w
+        << YAML::Key << (prefix + "h")        << YAML::Value << element.rect.h
         << YAML::Key << (prefix + "rounding") << YAML::Value << element.rounding
         << YAML::Key << (prefix + "tscale")   << YAML::Value << element.text_scale;
     WriteArgbKey(out, prefix + "bg", element.bg);

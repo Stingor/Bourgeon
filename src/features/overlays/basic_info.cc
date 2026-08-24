@@ -10,8 +10,6 @@
 #include "features/overlays/basic_info.h"
 #include "ui/ro_imgui.h"
 #include "ui/ro_widgets.h"
-#include "ui/window_clamp.h"  // ClampWindowPosToScreen (barres/portrait déplacés à la main)
-#include "ui/window_zorder.h"  // HUD maintenu sous les vraies fenêtres
 
 #include "ragnarok/uiwnd.h"
 
@@ -54,7 +52,6 @@ extern bool g_imgui_dx7_active;
 // INT64.  HP/SP confirmed by UIBasicInfoWnd::DrawContent, which reads them as
 // (int) — INT32.  `max` may sit below `cur` (job exp); that's fine.
 namespace {
-constexpr float kSnapThreshold = 10.0f;  // px magnetism radius for sticky snap
 
 struct Src {
   uintptr_t   cur, max;
@@ -1776,201 +1773,73 @@ bool BasicInfo::ExportAvatarGif(int anim, int dir, const char* filepath,
   return ok;
 }
 
-float BasicInfo::SnapValue(float v, float ext, int self_id,
-                                 bool y_axis) const {
-  float best = v, best_dist = kSnapThreshold;
-  for (int j = 0; j < kBarCount; ++j) {
-    if (j == self_id || !bars_[j].show) continue;
-    const float opos = y_axis ? static_cast<float>(bars_[j].y)
-                              : static_cast<float>(bars_[j].x);
-    const float oext = y_axis ? static_cast<float>(bars_[j].h)
-                              : static_cast<float>(bars_[j].w);
-    // align-near, align-far, just-after, just-before
-    const float cands[4] = {opos, opos + oext - ext, opos + oext, opos - ext};
-    for (int c = 0; c < 4; ++c) {
-      float d = cands[c] - v;
-      if (d < 0.0f) d = -d;
-      if (d < best_dist) { best_dist = d; best = cands[c]; }
-    }
-  }
-  return best;
-}
-
 bool BasicInfo::DrawBar(BarId id, long long cur, long long max,
                         const char* label_override) {
   Bar& bar = bars_[id];
-  const bool frozen = locked_;
 
-  // Shared alignment grid (owned by MoonlightUi). SnapAxis is a no-op when grid
-  // snapping is off, so we can call it unconditionally when present.
+  // La grille d'alignement appartient à MoonlightUi ; `ui/` ne doit rien savoir
+  // de `features/`, d'où son passage en paramètre plutôt qu'une lecture là-bas.
   const AlignGrid* grid = nullptr;
   if (auto* mui = Bourgeon::Instance().moonlight_ui()) grid = &mui->grid_;
 
-  ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar |
-                           ImGuiWindowFlags_NoScrollbar |
-                           ImGuiWindowFlags_NoCollapse |
-                           ImGuiWindowFlags_NoSavedSettings |
-                           ImGuiWindowFlags_NoBackground |  // we draw our own bg
-                           ImGuiWindowFlags_NoNav |
-                           ImGuiWindowFlags_NoFocusOnAppearing |
-                           ro::kBackgroundWindowFlags;  // décor : jamais devant une vraie fenêtre
-  if (frozen) {
-    flags |= ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
-             ImGuiWindowFlags_NoInputs;  // freeze + click-through
-  }
+  // Les barres s'aimantent entre elles et partent en bloc sous CTRL. `shown`
+  // suit les interrupteurs : une barre éteinte ne sert ni d'aimant ni de
+  // compagnon de bloc.
+  bool shown[kBarCount];
+  for (int j = 0; j < kBarCount; ++j) shown[j] = bars_[j].show;
+  ro::HudFrameSiblings siblings;
+  siblings.first  = &bars_[0].rect;
+  siblings.shown  = shown;
+  siblings.count  = kBarCount;
+  siblings.stride = static_cast<int>(sizeof(Bar));
 
-  // We drive move/resize ourselves (NoMove|NoResize) and pin the window exactly
-  // to the stored geometry every frame, so the drawn bar, the hit-test rect and
-  // the drag handle never desync (no fighting with ImGui's internal move).
-  flags |= ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize;
-  ImGui::SetNextWindowPos(ImVec2(static_cast<float>(bar.x),
-                                 static_cast<float>(bar.y)), ImGuiCond_Always);
-  ImGui::SetNextWindowSize(ImVec2(static_cast<float>(bar.w),
-                                  static_cast<float>(bar.h)), ImGuiCond_Always);
-
-  // Allow very small bars: ImGui's default 32x32 window minimum AND the corner
-  // rounding both impose a height floor, so drop them for these windows.
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowMinSize, ImVec2(8.0f, 8.0f));
+  ro::HudFrameOpts opts;
+  opts.locked   = locked_;
+  opts.rounding = rounding_;
+  opts.bg       = bg_color_;
+  opts.grid     = grid;
+  opts.siblings = siblings;
+  opts.index    = id;
+  opts.sticky   = sticky_;
+  // 5 px et non les 8 par défaut du module : une barre d'info peut être très
+  // fine, et c'était déjà la borne d'ici avant la mise en commun.
+  opts.min_w = opts.min_h = 5.0f;
+  // 🔴 PAS `opts.border` : le module peint son liseré AVANT le contenu, or une
+  // jauge pleine et arrondie le recouvrirait. Il est donc tracé plus bas, après
+  // le remplissage — c'est l'ordre qu'avait cette barre, et il compte.
 
   bool changed = false;
-  ro::MarkBackgroundWindow(kSrc[id].win_id);
-  if (ImGui::Begin(kSrc[id].win_id, nullptr, flags)) {
+  if (ro::BeginHudFrame(kSrc[id].win_id, &bar.rect, opts, &changed)) {
     const ImVec2 p0 = ImGui::GetWindowPos();
     const ImVec2 sz = ImGui::GetWindowSize();
-    int hl_edges = 0;  // edge(s) to highlight this frame (hover/drag feedback)
-
-    // Custom move/resize via one full-window invisible button.  The grab spot
-    // decides the mode: a window edge (within kEdge, or the generous bottom-right
-    // corner grip) = resize that edge/corner, anywhere else = move.  We update the
-    // stored geometry (which pins the window next frame), and snap the moved
-    // position to other bars — graphics + hit-test stay in lockstep.
-    if (!frozen) {
-      const float kGrip = 12.0f;  // generous bottom-right corner grab zone
-      const float kEdge = 5.0f;   // edge grab thickness
-      ImGui::SetCursorPos(ImVec2(0.0f, 0.0f));
-      ImGui::InvisibleButton("##bihandle", sz);
-      const ImVec2 m = ImGui::GetIO().MousePos;
-      const float rx = p0.x + sz.x, by = p0.y + sz.y;  // right / bottom edges
-
-      // Edge hit-test under the cursor, shared by activation and the hover
-      // highlight (no OS resize cursor here — the game draws its own).
-      int hov = 0;
-      if (m.x <= p0.x + kEdge) hov |= kEdgeL;
-      if (m.x >= rx   - kEdge) hov |= kEdgeR;
-      if (m.y <= p0.y + kEdge) hov |= kEdgeT;
-      if (m.y >= by   - kEdge) hov |= kEdgeB;
-      // Keep the original bottom-right corner grip generous.
-      if (m.x >= rx - kGrip && m.y >= by - kGrip) hov |= kEdgeR | kEdgeB;
-
-      if (ImGui::IsItemActivated()) {
-        drag_edges_ = hov;
-        drag_mode_  = hov ? 2 : 1;
-        if (hov) {  // resize: offset from the grabbed edge so it tracks the cursor
-          drag_off_x_ = (hov & kEdgeL) ? m.x - p0.x : (hov & kEdgeR) ? m.x - rx : 0.0f;
-          drag_off_y_ = (hov & kEdgeT) ? m.y - p0.y : (hov & kEdgeB) ? m.y - by : 0.0f;
-        } else {  // move: offset from the top-left
-          drag_off_x_ = m.x - p0.x;
-          drag_off_y_ = m.y - p0.y;
-        }
-      }
-      // Highlight the dragged edges while resizing, else the hovered edge(s).
-      if (ImGui::IsItemActive() && drag_mode_ == 2) hl_edges = drag_edges_;
-      else if (ImGui::IsItemHovered())              hl_edges = hov;
-
-      if (ImGui::IsItemActive()) {
-        const ImVec2 ds = ImGui::GetIO().DisplaySize;
-        if (drag_mode_ == 1) {  // move
-          float nx = m.x - drag_off_x_, ny = m.y - drag_off_y_;
-          if (sticky_) {
-            nx = SnapValue(nx, static_cast<float>(bar.w), id, false);
-            ny = SnapValue(ny, static_cast<float>(bar.h), id, true);
-          }
-          // Snap the top-left corner to the visible grid lines.
-          if (grid) { nx = grid->SnapAxis(nx, ds.x); ny = grid->SnapAxis(ny, ds.y); }
-          // La barre reste entièrement dans l'écran de jeu. APRÈS l'aimantation :
-          // le snap (barres voisines ou grille) peut lui-même repousser dehors, donc
-          // c'est le clamp qui doit avoir le dernier mot. Le clamp global de
-          // ui/window_clamp.h ne peut rien ici : la fenêtre est réépinglée à
-          // (bar.x,bar.y) en ImGuiCond_Always à chaque frame.
-          const ImVec2 in_screen = ro::ClampWindowPosToScreen(
-              ImVec2(nx, ny),
-              ImVec2(static_cast<float>(bar.w), static_cast<float>(bar.h)));
-          nx = in_screen.x;
-          ny = in_screen.y;
-          const int ix = static_cast<int>(nx + 0.5f);
-          const int iy = static_cast<int>(ny + 0.5f);
-          if (ix != bar.x || iy != bar.y) {
-            bar.x = ix; bar.y = iy; changed = true;
-          }
-        } else if (drag_mode_ == 2) {  // resize the grabbed edge(s)/corner
-          // Move only the grabbed edges; the opposite ones stay pinned. Each
-          // dragged edge snaps to the visible grid (lands on a line), then the
-          // x/y/w/h fall out of the four edge positions.
-          float left = p0.x, right = rx, top = p0.y, bottom = by;
-          const float kMin = 5.0f;  // minimum bar width/height (px)
-          if (drag_edges_ & kEdgeL) {
-            left = m.x - drag_off_x_;
-            if (grid) left = grid->SnapAxis(left, ds.x);
-            if (left > right - kMin) left = right - kMin;
-          } else if (drag_edges_ & kEdgeR) {
-            right = m.x - drag_off_x_;
-            if (grid) right = grid->SnapAxis(right, ds.x);
-            if (right < left + kMin) right = left + kMin;
-          }
-          if (drag_edges_ & kEdgeT) {
-            top = m.y - drag_off_y_;
-            if (grid) top = grid->SnapAxis(top, ds.y);
-            if (top > bottom - kMin) top = bottom - kMin;
-          } else if (drag_edges_ & kEdgeB) {
-            bottom = m.y - drag_off_y_;
-            if (grid) bottom = grid->SnapAxis(bottom, ds.y);
-            if (bottom < top + kMin) bottom = top + kMin;
-          }
-          const int ix = static_cast<int>(left   + 0.5f);
-          const int iy = static_cast<int>(top    + 0.5f);
-          const int nw = static_cast<int>(right  - left + 0.5f);
-          const int nh = static_cast<int>(bottom - top  + 0.5f);
-          if (ix != bar.x || iy != bar.y || nw != bar.w || nh != bar.h) {
-            bar.x = ix; bar.y = iy; bar.w = nw; bar.h = nh; changed = true;
-          }
-        }
-      }
-    }
-
     const ImVec2 p1(p0.x + sz.x, p0.y + sz.y);
     ImDrawList* dl = ImGui::GetWindowDrawList();
-    const float rounding = rounding_;  // AddRect* clamps to half-dimension
+    const float rounding = rounding_;  // AddRect* borne à la demi-dimension
 
-    const ImU32 bg = ImGui::ColorConvertFloat4ToU32(
-        ImVec4(bg_color_[0], bg_color_[1], bg_color_[2], bg_color_[3]));
     const ImU32 fill = ImGui::ColorConvertFloat4ToU32(
         ImVec4(bar.fill[0], bar.fill[1], bar.fill[2], bar.fill[3]));
-    const ImU32 border = IM_COL32(0, 0, 0, 160);
-
     const float f = ExpFrac(cur, max);
 
-    dl->AddRectFilled(p0, p1, bg, rounding);
-    // Fill: skip when essentially empty (avoids a rounded sliver at 0%), and
-    // round only the trailing corners so the progress front stays a clean edge.
+    // Le FOND est déjà peint par le cadre (`opts.bg`). Reste le remplissage :
+    // sauté quand il est quasi vide (sinon un croissant arrondi subsiste à 0 %),
+    // et arrondi seulement du côté ARRIÈRE pour que le front de progression
+    // reste une arête franche.
     if (vertical_) {
-      const float fillpx = (p1.y - p0.y) * f;  // fill upward from bottom
+      const float fillpx = (p1.y - p0.y) * f;  // remplit vers le haut
       if (fillpx >= 1.0f) {
         const ImDrawFlags fl = (f >= 0.999f) ? ImDrawFlags_RoundCornersAll
                                              : ImDrawFlags_RoundCornersBottom;
         dl->AddRectFilled(ImVec2(p0.x, p1.y - fillpx), p1, fill, rounding, fl);
       }
     } else {
-      const float fillpx = (p1.x - p0.x) * f;  // fill rightward from left
+      const float fillpx = (p1.x - p0.x) * f;  // remplit vers la droite
       if (fillpx >= 1.0f) {
         const ImDrawFlags fl = (f >= 0.999f) ? ImDrawFlags_RoundCornersAll
                                              : ImDrawFlags_RoundCornersLeft;
         dl->AddRectFilled(p0, ImVec2(p0.x + fillpx, p1.y), fill, rounding, fl);
       }
     }
-    if (border_) dl->AddRect(p0, p1, border, rounding);
+    if (border_) dl->AddRect(p0, p1, IM_COL32(0, 0, 0, 160), rounding);
 
     if (text_mode_ != 0) {
       // Le libellé vient d'une TABLE : Tr prend donc une variable, et le
@@ -1983,7 +1852,7 @@ bool BasicInfo::DrawBar(BarId id, long long cur, long long max,
       char buf[96];
       if (label_override != nullptr)  // barre d'incantation : texte déjà composé
         std::snprintf(buf, sizeof(buf), "%s", label_override);
-      else if (kSrc[id].grouped) {  // zeny: label + thousands-grouped amount
+      else if (kSrc[id].grouped) {  // zeny : libellé + montant en milliers
         char num[24];
         GroupInt(cur, num, sizeof(num));
         std::snprintf(buf, sizeof(buf), "%s %s", label, num);
@@ -1994,33 +1863,12 @@ bool BasicInfo::DrawBar(BarId id, long long cur, long long max,
       else
         std::snprintf(buf, sizeof(buf), "%s %lld / %lld (%.2f%%)", label, cur,
                       max, f * 100.0f);
-      const ImVec2 ts = ImGui::CalcTextSize(buf);
-      const ImVec2 tp((p0.x + p1.x - ts.x) * 0.5f, (p0.y + p1.y - ts.y) * 0.5f);
-      dl->AddText(ImVec2(tp.x + 1.0f, tp.y + 1.0f), IM_COL32(0, 0, 0, 200), buf);
-      dl->AddText(tp, IM_COL32(255, 255, 255, 255), buf);
-    }
-
-    // Faint resize hint in the bottom-right corner (unlocked only).
-    if (!frozen) {
-      const float kGrip = 12.0f;
-      dl->AddTriangleFilled(ImVec2(p1.x, p1.y - kGrip), ImVec2(p1.x, p1.y),
-                            ImVec2(p1.x - kGrip, p1.y),
-                            IM_COL32(255, 255, 255, 70));
-    }
-
-    // Edge-resize feedback: glow the hovered/dragged edge(s) (a corner lights
-    // two). Replaces the OS resize cursor, which the game's own cursor hides.
-    if (hl_edges) {
-      const ImU32 hc = IM_COL32(255, 220, 80, 210);
-      const float t  = 2.0f;
-      if (hl_edges & kEdgeL) dl->AddLine(ImVec2(p0.x, p0.y), ImVec2(p0.x, p1.y), hc, t);
-      if (hl_edges & kEdgeR) dl->AddLine(ImVec2(p1.x, p0.y), ImVec2(p1.x, p1.y), hc, t);
-      if (hl_edges & kEdgeT) dl->AddLine(ImVec2(p0.x, p0.y), ImVec2(p1.x, p0.y), hc, t);
-      if (hl_edges & kEdgeB) dl->AddLine(ImVec2(p0.x, p1.y), ImVec2(p1.x, p1.y), hc, t);
+      ro::HudBarText(dl, p0, p1, buf);
     }
   }
-  ImGui::End();
-  ImGui::PopStyleVar(4);
+  // La poignée et les bords allumés sont peints par `EndHudFrame`, PAR-DESSUS
+  // le contenu — sans quoi la jauge les recouvrirait.
+  ro::EndHudFrame();
   return changed;
 }
 
@@ -2063,169 +1911,54 @@ void PortraitText(int id, char* out, size_t n) {
 // Connected group of SHOWN portrait elements whose frames touch/overlap `seed`
 // (transitive closure, 2px tolerance so edge-adjacent frames count). Returns a
 // PortId bitmask. Used by CTRL block-move to drag a cluster of frames as one.
-int BasicInfo::PortraitTouchGroup(int seed) const {
-  const int T = 2;  // touch tolerance (px)
-  auto touch = [&](const PortraitElem& a, const PortraitElem& b) {
-    return a.x - T < b.x + b.w && b.x - T < a.x + a.w &&
-           a.y - T < b.y + b.h && b.y - T < a.y + a.h;
-  };
-  int mask = 1 << seed;
-  for (bool added = true; added;) {
-    added = false;
-    for (int a = 0; a < kPortCount; ++a) {
-      if (!(mask & (1 << a))) continue;
-      for (int b = 0; b < kPortCount; ++b) {
-        if ((mask & (1 << b)) || !ports_[b].show) continue;
-        if (touch(ports_[a], ports_[b])) { mask |= (1 << b); added = true; }
-      }
-    }
-  }
-  return mask;
-}
-
-// Draws one portrait element as a standalone movable/resizable frame: own bg
-// colour+opacity, own corner rounding, own text colour.  ImGui owns the move
-// (drag anywhere) and resize (bottom-right grip); we pin the window to the
-// stored geometry, snap to the shared alignment grid, and read the result back.
-// Returns true if the geometry changed this frame.
+// Une étiquette du portrait, dans son propre cadre libre : fond et opacité à
+// elle, arrondi à elle, couleur de texte à elle. Le déplacement, le
+// redimensionnement par les bords, l'aimantation sur la grille, le bloc CTRL et
+// le clamp écran sont ceux de `ro::BeginHudFrame` — les mêmes gestes que les
+// barres et que le HUD de cible, parce qu'un HUD qui se manipule autrement
+// qu'un autre HUD du même jeu est un HUD raté.
+// Rend true si la géométrie a changé cette frame.
 bool BasicInfo::DrawPortraitElem(PortId id) {
   PortraitElem& e = ports_[id];
-  const bool frozen = portrait_locked_;
 
   const AlignGrid* grid = nullptr;
   if (auto* mui = Bourgeon::Instance().moonlight_ui()) grid = &mui->grid_;
 
-  ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar |
-                           ImGuiWindowFlags_NoScrollbar |
-                           ImGuiWindowFlags_NoCollapse |
-                           ImGuiWindowFlags_NoSavedSettings |
-                           ImGuiWindowFlags_NoBackground |
-                           ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
-                           ImGuiWindowFlags_NoNav |
-                           ImGuiWindowFlags_NoFocusOnAppearing |
-                           ro::kBackgroundWindowFlags;  // décor : jamais devant une vraie fenêtre
-  if (frozen) flags |= ImGuiWindowFlags_NoInputs;  // click-through when locked
+  // Les étiquettes du portrait partent en bloc sous CTRL quand leurs cadres se
+  // touchent. ⚠ `sticky` ÉTEINT : elles n'ont jamais eu l'aimantation entre
+  // voisines, et le portrait n'a pas d'interrupteur pour la régler — les barres,
+  // elles, ont le leur. La migration ne change rien à ce que le joueur ressent.
+  bool shown[kPortCount];
+  for (int j = 0; j < kPortCount; ++j) shown[j] = ports_[j].show;
+  ro::HudFrameSiblings siblings;
+  siblings.first  = &ports_[0].rect;
+  siblings.shown  = shown;
+  siblings.count  = kPortCount;
+  siblings.stride = static_cast<int>(sizeof(PortraitElem));
 
-  ImGui::SetNextWindowPos(ImVec2(static_cast<float>(e.x), static_cast<float>(e.y)),
-                          ImGuiCond_Always);
-  ImGui::SetNextWindowSize(ImVec2(static_cast<float>(e.w), static_cast<float>(e.h)),
-                           ImGuiCond_Always);
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowMinSize, ImVec2(8.0f, 8.0f));
+  ro::HudFrameOpts opts;
+  opts.locked   = portrait_locked_;
+  opts.border   = portrait_border_;
+  opts.rounding = e.rounding;
+  opts.bg       = e.bg;
+  opts.grid     = grid;
+  opts.siblings = siblings;
+  opts.index    = static_cast<int>(id);
+  opts.sticky   = false;
 
   char id_buf[24];
   std::snprintf(id_buf, sizeof(id_buf), "###Port%d", static_cast<int>(id));
 
   bool changed = false;
-  ro::MarkBackgroundWindow(id_buf);
-  if (ImGui::Begin(id_buf, nullptr, flags)) {
+  if (ro::BeginHudFrame(id_buf, &e.rect, opts, &changed)) {
     const ImVec2 p0 = ImGui::GetWindowPos();
     const ImVec2 sz = ImGui::GetWindowSize();
     const ImVec2 p1(p0.x + sz.x, p0.y + sz.y);
     ImDrawList* dl = ImGui::GetWindowDrawList();
-    int hl_edges = 0;
-
-    // Custom move/edge-resize via one full-window invisible button (mirrors the
-    // EXP-bar interaction): grab an edge/corner to resize, anywhere else to move;
-    // moved/resized edges snap to the alignment grid.
-    if (!frozen) {
-      const float kGrip = 12.0f, kEdge = 5.0f;
-      ImGui::SetCursorPos(ImVec2(0.0f, 0.0f));
-      ImGui::InvisibleButton("##ph", sz);
-      const ImVec2 m = ImGui::GetIO().MousePos;
-      const float rx = p0.x + sz.x, by = p0.y + sz.y;
-      int hov = 0;
-      if (m.x <= p0.x + kEdge) hov |= kEdgeL;
-      if (m.x >= rx   - kEdge) hov |= kEdgeR;
-      if (m.y <= p0.y + kEdge) hov |= kEdgeT;
-      if (m.y >= by   - kEdge) hov |= kEdgeB;
-      if (m.x >= rx - kGrip && m.y >= by - kGrip) hov |= kEdgeR | kEdgeB;
-
-      if (ImGui::IsItemActivated()) {
-        drag_edges_ = hov;
-        drag_mode_  = hov ? 2 : 1;
-        if (hov) {
-          drag_off_x_ = (hov & kEdgeL) ? m.x - p0.x : (hov & kEdgeR) ? m.x - rx : 0.0f;
-          drag_off_y_ = (hov & kEdgeT) ? m.y - p0.y : (hov & kEdgeB) ? m.y - by : 0.0f;
-        } else {
-          drag_off_x_ = m.x - p0.x;
-          drag_off_y_ = m.y - p0.y;
-        }
-        // CTRL + move = drag every frame touching this one as a rigid block.
-        drag_group_mask_ = (!hov && ImGui::GetIO().KeyCtrl)
-            ? PortraitTouchGroup(static_cast<int>(id)) : 0;
-      }
-      if (ImGui::IsItemActive() && drag_mode_ == 2) hl_edges = drag_edges_;
-      else if (ImGui::IsItemHovered())              hl_edges = hov;
-
-      if (ImGui::IsItemActive()) {
-        const ImVec2 ds = ImGui::GetIO().DisplaySize;
-        if (drag_mode_ == 1) {  // move
-          float nx = m.x - drag_off_x_, ny = m.y - drag_off_y_;
-          if (grid) { nx = grid->SnapAxis(nx, ds.x); ny = grid->SnapAxis(ny, ds.y); }
-          // Le cadre saisi reste entièrement dans l'écran de jeu (clamp APRÈS le
-          // snap, cf. la barre EXP plus haut). En bloc-move CTRL, le delta appliqué
-          // aux autres cadres est celui du cadre SAISI, donc borné par ce clamp.
-          const ImVec2 in_screen = ro::ClampWindowPosToScreen(
-              ImVec2(nx, ny),
-              ImVec2(static_cast<float>(e.w), static_cast<float>(e.h)));
-          nx = in_screen.x;
-          ny = in_screen.y;
-          const int ix = static_cast<int>(nx + 0.5f), iy = static_cast<int>(ny + 0.5f);
-          if (ix != e.x || iy != e.y) {
-            const int dx = ix - e.x, dy = iy - e.y;  // per-frame delta
-            e.x = ix; e.y = iy; changed = true;
-            // CTRL block-move: shift the rest of the touching group by the same
-            // delta (snap is applied to the grabbed frame; others follow rigidly).
-            const int self_bit = 1 << static_cast<int>(id);
-            if (drag_group_mask_ & ~self_bit) {
-              for (int j = 0; j < kPortCount; ++j) {
-                if (j == static_cast<int>(id) || !(drag_group_mask_ & (1 << j)))
-                  continue;
-                ports_[j].x += dx; ports_[j].y += dy;
-              }
-            }
-          }
-        } else if (drag_mode_ == 2) {  // resize grabbed edge(s)/corner
-          float left = p0.x, right = rx, top = p0.y, bottom = by;
-          const float kMin = 8.0f;
-          if (drag_edges_ & kEdgeL) {
-            left = m.x - drag_off_x_;
-            if (grid) left = grid->SnapAxis(left, ds.x);
-            if (left > right - kMin) left = right - kMin;
-          } else if (drag_edges_ & kEdgeR) {
-            right = m.x - drag_off_x_;
-            if (grid) right = grid->SnapAxis(right, ds.x);
-            if (right < left + kMin) right = left + kMin;
-          }
-          if (drag_edges_ & kEdgeT) {
-            top = m.y - drag_off_y_;
-            if (grid) top = grid->SnapAxis(top, ds.y);
-            if (top > bottom - kMin) top = bottom - kMin;
-          } else if (drag_edges_ & kEdgeB) {
-            bottom = m.y - drag_off_y_;
-            if (grid) bottom = grid->SnapAxis(bottom, ds.y);
-            if (bottom < top + kMin) bottom = top + kMin;
-          }
-          const int ix = static_cast<int>(left + 0.5f), iy = static_cast<int>(top + 0.5f);
-          const int nw = static_cast<int>(right - left + 0.5f);
-          const int nh = static_cast<int>(bottom - top + 0.5f);
-          if (ix != e.x || iy != e.y || nw != e.w || nh != e.h) {
-            e.x = ix; e.y = iy; e.w = nw; e.h = nh; changed = true;
-          }
-        }
-      }
-    }
-
-    const float rounding = e.rounding;
-    const ImU32 bg = ImGui::ColorConvertFloat4ToU32(
-        ImVec4(e.bg[0], e.bg[1], e.bg[2], e.bg[3]));
     const ImU32 fg = ImGui::ColorConvertFloat4ToU32(
         ImVec4(e.fg[0], e.fg[1], e.fg[2], e.fg[3]));
-    dl->AddRectFilled(p0, p1, bg, rounding);
-    if (portrait_border_) dl->AddRect(p0, p1, IM_COL32(0, 0, 0, 160), rounding);
+    // Le fond et le liseré sont peints par le cadre (`opts.bg` / `opts.border`),
+    // sous ce qui suit.
 
     if (id == kPortHead) {
       // Regenerated head sprite: composite the captured actor layers, fitted to
@@ -2330,36 +2063,16 @@ bool BasicInfo::DrawPortraitElem(PortId id) {
     } else {
       char buf[96];
       PortraitText(id, buf, sizeof(buf));
-      // Taille réglable par étiquette : on redimensionne la police au dessin
-      // (`AddText` avec taille explicite), donc la mesure doit passer par
-      // `CalcTextSizeA` à la MÊME taille, sinon le centrage part de travers.
-      ImFont* font = ImGui::GetFont();
-      const float fpx = ImGui::GetFontSize() * ClampTextScale(e.text_scale);
-      const ImVec2 ts = font->CalcTextSizeA(fpx, FLT_MAX, 0.0f, buf);
-      const ImVec2 tp((p0.x + p1.x - ts.x) * 0.5f, (p0.y + p1.y - ts.y) * 0.5f);
-      // L'ombre suit la taille, sinon elle disparaît sous un gros texte.
-      const float sh = std::max(1.0f, std::floor(fpx * 0.08f));
-      dl->AddText(font, fpx, ImVec2(tp.x + sh, tp.y + sh),
-                  IM_COL32(0, 0, 0, 200), buf);
-      dl->AddText(font, fpx, tp, fg, buf);
-    }
-
-    if (!frozen) {  // faint resize hint in the bottom-right corner
-      const float kGrip = 12.0f;
-      dl->AddTriangleFilled(ImVec2(p1.x, p1.y - kGrip), ImVec2(p1.x, p1.y),
-                            ImVec2(p1.x - kGrip, p1.y), IM_COL32(255, 255, 255, 70));
-    }
-    if (hl_edges) {  // edge-resize feedback (the game hides the OS resize cursor)
-      const ImU32 hc = IM_COL32(255, 220, 80, 210);
-      const float t = 2.0f;
-      if (hl_edges & kEdgeL) dl->AddLine(ImVec2(p0.x, p0.y), ImVec2(p0.x, p1.y), hc, t);
-      if (hl_edges & kEdgeR) dl->AddLine(ImVec2(p1.x, p0.y), ImVec2(p1.x, p1.y), hc, t);
-      if (hl_edges & kEdgeT) dl->AddLine(ImVec2(p0.x, p0.y), ImVec2(p1.x, p0.y), hc, t);
-      if (hl_edges & kEdgeB) dl->AddLine(ImVec2(p0.x, p1.y), ImVec2(p1.x, p1.y), hc, t);
+      // Taille réglable par étiquette. `HudCenteredText` mesure À LA TAILLE DE
+      // DESSIN — mesurer à une taille et peindre à une autre décale le centrage —
+      // et fait suivre l'ombre, qui disparaîtrait sous un gros texte.
+      ro::HudCenteredText(dl, p0, p1, buf, fg,
+                          ImGui::GetFontSize() * ClampTextScale(e.text_scale));
     }
   }
-  ImGui::End();
-  ImGui::PopStyleVar(4);
+  // La poignée et les bords allumés sont peints par `EndHudFrame`, PAR-DESSUS le
+  // contenu : le portrait les recouvrirait sinon.
+  ro::EndHudFrame();
   return changed;
 }
 
@@ -2463,10 +2176,9 @@ bool BasicInfo::DrawSettings() {
     SameLine();
     if (ro::RoButton(label)) {
       for (int j = 0; j < BasicInfo::kBarCount; ++j) {
-        bars_[j].w = width_px;
-        bars_[j].h = height_px;
+        bars_[j].rect.w = width_px;
+        bars_[j].rect.h = height_px;
       }
-      force_apply_ = true;  // re-apply size even while unlocked
       changed = true;
     }
   };
@@ -2597,7 +2309,6 @@ void BasicInfo::OnRenderUI() {
     changed |= DrawBar(static_cast<BarId>(i), cur, max);
   }
 
-  force_apply_ = false;  // one-shot: consumed after all bars drew
 
   if (changed) drag_pending_ = true;
   // Persist exactly once, when the user releases the mouse after moving/resizing.

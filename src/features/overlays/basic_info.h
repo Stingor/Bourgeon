@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "features/plugin.h"
+#include "ui/hud_frame.h"  // ro::HudRect : la geometrie d'un cadre de HUD
 
 // Client-side tweaks for the "Basic Info" character window (UIBasicInfoWnd) and
 // its surrounding HUD.  Renders standalone, freely movable & resizable bars for
@@ -93,10 +94,13 @@ class BasicInfo : public Plugin {
   bool ExportAvatarGif(int anim, int dir, const char* filepath, bool show_costume = true);
 
   // ── Bars (read/written by MoonlightUi) ────────────────────────────────────
+  // 🔴 La géométrie est un `ro::HudRect` et non quatre `int` à nous : c'est ce
+  // que `ro::BeginHudFrame` manipule, et le dire dans le type évite d'avoir à
+  // recopier le cadre dans une structure intermédiaire à chaque frame.
   struct Bar {
-    bool  show;
-    int   x, y, w, h;
-    float fill[4];  // ImGui RGBA picker state
+    bool        show;
+    ro::HudRect rect;
+    float       fill[4];  // ImGui RGBA picker state
   };
 
   // ⚠ `kCast` n'est pas une barre comme les autres : elle ne lit aucune globale
@@ -142,13 +146,13 @@ class BasicInfo : public Plugin {
   // (Bourgeon::Instance().moonlight_ui()->grid_); bars read it for snapping.
 
   Bar bars_[kBarCount] = {
-    /* Base EXP */ {true, 100,  76, 220, 16, {0.36f, 0.78f, 1.00f, 1.00f}},
-    /* Job EXP  */ {true, 100,  94, 220, 16, {1.00f, 0.82f, 0.30f, 1.00f}},
-    /* HP       */ {true, 100,  40, 220, 16, {0.85f, 0.27f, 0.27f, 1.00f}},
-    /* SP       */ {true, 100,  58, 220, 16, {0.30f, 0.62f, 0.95f, 1.00f}},
-    /* Zeny     */ {true, 100, 112, 220, 16, {0.98f, 0.73f, 0.20f, 1.00f}},
-    /* Poids    */ {true, 100, 130, 220, 16, {0.65f, 0.55f, 0.80f, 1.00f}},
-    /* Cast     */ {true, 100, 148, 220, 16, {0.42f, 0.68f, 1.00f, 1.00f}},
+    /* Base EXP */ {true, {100,  76, 220, 16}, {0.36f, 0.78f, 1.00f, 1.00f}},
+    /* Job EXP  */ {true, {100,  94, 220, 16}, {1.00f, 0.82f, 0.30f, 1.00f}},
+    /* HP       */ {true, {100,  40, 220, 16}, {0.85f, 0.27f, 0.27f, 1.00f}},
+    /* SP       */ {true, {100,  58, 220, 16}, {0.30f, 0.62f, 0.95f, 1.00f}},
+    /* Zeny     */ {true, {100, 112, 220, 16}, {0.98f, 0.73f, 0.20f, 1.00f}},
+    /* Poids    */ {true, {100, 130, 220, 16}, {0.65f, 0.55f, 0.80f, 1.00f}},
+    /* Cast     */ {true, {100, 148, 220, 16}, {0.42f, 0.68f, 1.00f, 1.00f}},
   };
 
   // ── Status portrait: independent, movable HUD elements ────────────────────
@@ -160,12 +164,12 @@ class BasicInfo : public Plugin {
   // follow-up — placeholder for now. Eventual goal: hide the native Basic Info
   // window once this replaces it.) Persisted by MoonlightUi under "portrait_".
   struct PortraitElem {
-    bool  show;
-    int   x, y, w, h;
-    float bg[4];      // background colour + opacity
-    float fg[4];      // text colour (ignored for the head element)
-    float rounding;   // background corner rounding (0..16)
-    float text_scale; // taille du texte, ×  la police UI (ignoré pour la tête)
+    bool        show;
+    ro::HudRect rect;
+    float       bg[4];      // background colour + opacity
+    float       fg[4];      // text colour (ignored for the head element)
+    float       rounding;   // background corner rounding (0..16)
+    float       text_scale; // taille du texte, ×  la police UI (ignoré pour la tête)
   };
   enum PortId { kPortHead = 0, kPortName, kPortClass, kPortLevel, kPortCount };
   static constexpr const char* kPortKeys[kPortCount] = {"head", "name", "class",
@@ -196,19 +200,15 @@ class BasicInfo : public Plugin {
   int   hat_diag_active_   = 0;   // nb de hat effects actifs (own_hat_effects_.size())
 
   PortraitElem ports_[kPortCount] = {
-    /* head  */ {true,  60,  60, 100, 100, {0.05f, 0.05f, 0.07f, 0.78f},
+    /* head  */ {true, { 60,  60, 100, 100}, {0.05f, 0.05f, 0.07f, 0.78f},
                  {1.00f, 1.00f, 1.00f, 1.00f}, 4.0f, 1.0f},
-    /* name  */ {true,  60, 164, 110,  20, {0.05f, 0.05f, 0.07f, 0.78f},
+    /* name  */ {true, { 60, 164, 110,  20}, {0.05f, 0.05f, 0.07f, 0.78f},
                  {1.00f, 0.82f, 0.30f, 1.00f}, 4.0f, 1.0f},
-    /* class */ {true,  60, 186, 110,  20, {0.05f, 0.05f, 0.07f, 0.78f},
+    /* class */ {true, { 60, 186, 110,  20}, {0.05f, 0.05f, 0.07f, 0.78f},
                  {1.00f, 1.00f, 1.00f, 1.00f}, 4.0f, 1.0f},
-    /* level */ {true,  60, 208, 110,  20, {0.05f, 0.05f, 0.07f, 0.78f},
+    /* level */ {true, { 60, 208, 110,  20}, {0.05f, 0.05f, 0.07f, 0.78f},
                  {0.36f, 0.78f, 1.00f, 1.00f}, 4.0f, 1.0f},
   };
-
-  // Set by MoonlightUi when a size preset is applied so DrawBar force-applies
-  // the new geometry for one frame even while unlocked.
-  bool force_apply_ = false;
 
   // Set after the user finishes a drag/resize; MoonlightUi drains it (saves the
   // YAML once) so we never write the file every frame.
@@ -226,13 +226,10 @@ class BasicInfo : public Plugin {
   // Petit vecteur (0-3 en pratique) ; dédup manuel à l'insertion.
   std::vector<uint16_t> own_hat_effects_;
 
-  // Custom drag/resize state (only one bar is ever dragged at a time).
-  enum DragEdge { kEdgeL = 1, kEdgeR = 2, kEdgeT = 4, kEdgeB = 8 };
-  int   drag_mode_  = 0;     // 0=none, 1=move, 2=resize
-  int   drag_edges_ = 0;     // DragEdge bitmask of the edge(s) grabbed (resize)
-  float drag_off_x_ = 0.0f;  // mouse-to-anchor offset captured at drag start
-  float drag_off_y_ = 0.0f;
-  int   drag_group_mask_ = 0;  // CTRL-move: PortId bitmask dragged as one block
+  // ⚠ L'état de geste (mode, bords saisis, écarts, bloc CTRL) N'EST PLUS ICI :
+  // il vit dans `ui/hud_frame.cc`, en variables de fichier, parce qu'un seul
+  // cadre est déplacé à la fois — c'est une souris, pas dix. Le garder par
+  // instance autorisait le bug « deux cadres se croient attrapés ».
 
   // Draws bar `id` with the given current/max value. Returns true if its stored
   // geometry changed this frame (user drag/resize).
@@ -248,9 +245,6 @@ class BasicInfo : public Plugin {
   void DrawPortrait();
   // Draws one portrait element `id`; returns true if its geometry changed.
   bool DrawPortraitElem(PortId id);
-  // Connected group of SHOWN portrait elements whose frames touch/overlap `seed`
-  // (transitive). Returns a PortId bitmask. Used for CTRL block-move.
-  int  PortraitTouchGroup(int seed) const;
   bool portrait_drag_pending_ = false;
 
   // "Hide native Basic Info" state: while on, OnTick pins the native
@@ -264,8 +258,4 @@ class BasicInfo : public Plugin {
   // prévenir) ; à la décoche, on la rend visible UNE fois. On ne la force pas à
   // `visible` chaque frame — le client a ses propres raisons de la cacher.
   bool own_gage_hidden_ = false;
-
-  // Nearest magnetic alignment of value `v` (extent `ext`) on one axis to any
-  // other shown bar's edges, within the snap threshold; else returns `v`.
-  float SnapValue(float v, float ext, int self_id, bool y_axis) const;
 };
