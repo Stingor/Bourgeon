@@ -8,6 +8,7 @@
 
 #include "d3d9/d3d9_hook.h"  // D3D9_ExplicitBlendCallback / D3D9_AdditiveBlendCallback
 #include "ragnarok/game_scene.h"
+#include "ragnarok/own_actor.h"  // rag::OwnActor / rag::OwnActorOf
 #include "utils/hooking/hook_manager.h"
 
 // Backend actif (DX9 vs DX7) : choisit l'offset du handle GPU natif dans CTexture.
@@ -17,8 +18,7 @@ namespace ez_capture {
 namespace {
 
 // ── Adresses natives (client 20250716, base 0x400000) ─────────────────────────
-constexpr int       kOffOwnActor       = 0x2c;        // actorMgr -> acteur joueur
-constexpr int       kOffCamera         = 0xd0;        // CMode -> caméra
+     constexpr int       kOffCamera         = 0xd0;        // CMode -> caméra
 constexpr int       kOffViewMtx        = 0x98;        // caméra -> matrice de vue
 constexpr uintptr_t kSceneProject      = 0x005541b0;  // Scene_ProjectWorldToScreen(ctx,_,world,view,&sx,&sy,&invW)
 constexpr uintptr_t kDepthScale        = 0x00553e80;  // Effect_DepthToScreenScale(ctx,_,invW) -> float
@@ -180,17 +180,7 @@ bool IsOurNode(void* ez, int* out_id) {
 // Résout l'acteur joueur. Appelé à chaque frontière de frame : si un dessin d'effet précède le
 // premier insert de la frame, on compare avec la valeur de la frame précédente — sans conséquence,
 // puisqu'on ne fait que COMPARER le pointeur (jamais le déréférencer).
-void RefreshOwnerActor() {
-  void* actor = nullptr;
-  __try {
-    void* gm = rag::ActiveModeIfReady();
-    if (gm) {
-      void* mgr = *reinterpret_cast<void**>(reinterpret_cast<char*>(gm) + gamescene::kGmActorMgr);
-      if (mgr) actor = *reinterpret_cast<void**>(reinterpret_cast<char*>(mgr) + kOffOwnActor);
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) { actor = nullptr; }
-  g_owner_actor = actor;
-}
+void RefreshOwnerActor() { g_owner_actor = rag::OwnActor(); }
 
 bool IsSuppressed(int effect_id) {
   // CEffectMgr (-1) : id non résolu -> non supprimable. En revanche kStrParticleId (-2) EST

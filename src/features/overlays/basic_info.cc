@@ -128,16 +128,6 @@ inline int RDi(uintptr_t a) { return *reinterpret_cast<volatile int*>(a); }
 //   jobid = FUN_00d5b580(session);  name = FUN_00d5bb40(session, jobid, -1)
 // Both are __thiscall (this=session); called via __fastcall with a dummy edx so
 // the real args land on the stack (standard thiscall->fastcall shim).
-const char* ClassName() {
-  using GetJobId_t     = int (__fastcall*)(void* ecx, void* edx);
-  using GetClassName_t = const char* (__fastcall*)(void* ecx, void* edx,
-                                                   unsigned jobid, int sex);
-  const int jobid = reinterpret_cast<GetJobId_t>(rag::kJobResolveMountedClassAddr)(
-      reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
-  const char* n = reinterpret_cast<GetClassName_t>(rag::kJobNameOrResNameAddr)(
-      reinterpret_cast<void*>(rag::kSessionAddr), nullptr, static_cast<unsigned>(jobid), -1);
-  return n ? n : "";
-}
 
 // ── Apparence du joueur : les globales que le client tient à jour ───────────
 //
@@ -1122,11 +1112,9 @@ bool FillOwnDollPalette(ro::DollLook* look) {
 void BuildOwnDollLook(bool show_costume, ro::DollLook* look,
                       rag::OwnActorSprites* eq) {
   using GetSexFn = int(__fastcall*)(void*, void*);
-  using GetJobFn = int(__fastcall*)(void*, void*);
   look->sex = reinterpret_cast<GetSexFn>(rag::kOwnSexAddr)(
       reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
-  look->job = reinterpret_cast<GetJobFn>(rag::kJobResolveMountedClassAddr)(
-      reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
+  look->job = rag::OwnDisplayedJobId();
   look->hair          = *reinterpret_cast<int*>(rag::kOwnHairStyleAddr);
   look->hair_color    = *reinterpret_cast<int*>(rag::kOwnHairColorAddr);
   look->clothes_color = *reinterpret_cast<int*>(rag::kOwnClothesColorAddr);
@@ -1334,12 +1322,10 @@ void BasicInfo::RenderItemPreviewTooltip(int view_id, int emplacement,
   // sans garde ailleurs dans ce fichier (cf. ClassName). La fonction n'est de
   // toute façon atteinte qu'avec une session ouverte.
   using GetSexFn = int(__fastcall*)(void*, void*);
-  using GetJobFn = int(__fastcall*)(void*, void*);
   ro::DollLook look;
   look.sex = reinterpret_cast<GetSexFn>(rag::kOwnSexAddr)(
       reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
-  look.job = reinterpret_cast<GetJobFn>(rag::kJobResolveMountedClassAddr)(
-      reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
+  look.job = rag::OwnDisplayedJobId();
   look.hair          = *reinterpret_cast<int*>(rag::kOwnHairStyleAddr);
   look.hair_color    = *reinterpret_cast<int*>(rag::kOwnHairColorAddr);
   look.clothes_color = *reinterpret_cast<int*>(rag::kOwnClothesColorAddr);
@@ -1878,7 +1864,7 @@ void PortraitText(int id, char* out, size_t n) {
       break;
     }
     case BasicInfo::kPortClass: {
-      const char* cls = ClassName();
+      const char* cls = rag::OwnClassName();
       std::snprintf(out, n, "%s", (cls && cls[0]) ? cls : "");
       break;
     }

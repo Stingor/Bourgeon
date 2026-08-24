@@ -13,6 +13,7 @@
 #include "features/staff_gate.h"
 #include "features/systems/bourgeon_opcodes.h"   // CZ 0x0F22 / ZC 0x0F23
 #include "ragnarok/game_scene.h"
+#include "ragnarok/own_actor.h"  // rag::OwnActor / rag::OwnActorOf
 #include "ragnarok/globals.h"
 #include "ui/ro_imgui.h"
 #include "ui/ro_widgets.h"
@@ -39,16 +40,12 @@ namespace {
 //     entrée vide STATIQUE. C'est le seul appel de ce fichier qui puisse
 //     produire un paquet — d'où le throttle côté appelant.
 
-// `Job_GetDisplayNameOrResName` : id de classe -> nom lisible (table Lua
-// jobName/PCJobNameTable). `this` est l'ADRESSE du contexte de session, pas un
-// pointeur à déréférencer ; sex = -1 laisse le client trancher lui-même, ce qui
-// est valable EN JEU (et cette fenêtre n'existe qu'en jeu).
+// (Le résolveur de nom de classe est `rag::JobName` — cf. globals.h. Ce bloc
+// affirmait auparavant que `sex = -1` était « valable en jeu » : c'était FAUX, et
+// c'était le bug. -1 nomme avec le sexe du joueur LOCAL, ce qui n'a de sens que
+// pour sa propre classe, jamais pour l'entité qu'on inspecte.)
 
 // Position monde -> cellule de carte (+ sous-position, dont on n'a que faire).
-
-// CGameMode
-constexpr int kGm_ActorMgr = 0x0cc;
-constexpr int kScene_OwnActor = 0x2c;  // actorMgr -> acteur du joueur
 
 // CNameInfo (docs/entity_nameplate_re.md §2). Chaque chaîne est une
 // `std::string` de 0x18 octets : buffer, puis taille +0x10 et capacité +0x14 DU
@@ -98,7 +95,6 @@ const ImVec4 kMissingCol(0.55f, 0.33f, 0.08f, 1.0f);
 
 using ContainsFn   = bool     (__thiscall*)(void*, uint32_t);
 using GetEntryFn   = void*    (__thiscall*)(void*, uint32_t);
-using JobNameFn    = const char* (__fastcall*)(void*, void*, unsigned, int);
 using WorldToTileFn = void (__thiscall*)(void*, float, float, int*, int*,
                                          unsigned*, unsigned*);
 
@@ -167,14 +163,6 @@ int ReadTitleId(const void* entry) {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
 }
 
-void* OwnActor(void* game_mode) {
-  __try {
-    if (!game_mode) return nullptr;
-    void* scene = Read<void*>(game_mode, kGm_ActorMgr);
-    if (!scene) return nullptr;
-    return Read<void*>(scene, kScene_OwnActor);
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
-}
 
 bool ActorCell(void* game_mode, void* actor, int* cx, int* cy) {
   __try {
@@ -189,12 +177,13 @@ bool ActorCell(void* game_mode, void* actor, int* cx, int* cy) {
 
 // Nom lisible d'une classe (joueur comme monstre). Chaîne dans la code-page du
 // CLIENT — pas celle du fil : elle vient de ses tables Lua, pas du serveur.
+// 🔴 `rag::JobName` (sexe 99) et NON la variante « mon sexe » : cette fenêtre
+// inspecte une entité QUELCONQUE — un autre joueur, le plus souvent. La version
+// historique passait -1, c'est-à-dire le sexe du joueur LOCAL, et affichait donc
+// un libellé de classe faux dès que la cible n'avait pas notre sexe. Même défaut
+// que la fenêtre de groupe (soldé le 2026-08-24). Cf. globals.h.
 bool JobDisplayName(uint32_t job, char* out, size_t out_size) {
-  const char* name = nullptr;
-  __try {
-    name = reinterpret_cast<JobNameFn>(rag::kJobNameOrResNameAddr)(
-        rag::Session(), nullptr, job, -1);
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+  const char* name = rag::JobName(static_cast<int>(job));
   if (!name) return false;
   bool ok = false;
   __try {
@@ -420,7 +409,7 @@ void EntityInspector::ReadActor(Snapshot* out) {
   void* game_mode = rag::ActiveModeSafe();
   out->guild_id = gamescene::ActorGuildId(actor);
   out->cell_ok  = ActorCell(game_mode, actor, &out->cell_x, &out->cell_y);
-  out->own_cell_ok = ActorCell(game_mode, OwnActor(game_mode), &out->own_cell_x,
+  out->own_cell_ok = ActorCell(game_mode, rag::OwnActorOf(game_mode), &out->own_cell_x,
                                &out->own_cell_y);
 }
 

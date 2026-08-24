@@ -128,19 +128,6 @@ bool ReadHpSEH(uint32_t gid, int* hp, int* max_hp) {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
-const char* JobNameSEH(int job_id) {
-  __try {
-    // Même convention d'appel que celle éprouvée par character_sheet :
-    // __fastcall(session /*ecx*/, nullptr /*edx*/, jobId, sexe). Le sexe -1 =
-    // celui du joueur ; la fenêtre de groupe passe 99, ce qui fait retomber sur
-    // le nom de la classe de BASE (aucune variante de sexe).
-    using GetClassName_t = const char* (__fastcall*)(void*, void*, unsigned, int);
-    const char* n = reinterpret_cast<GetClassName_t>(rag::kJobNameOrResNameAddr)(
-        reinterpret_cast<void*>(rag::kSessionAddr), nullptr,
-        static_cast<unsigned>(job_id), 99);
-    return n ? n : "";
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return ""; }
-}
 
 void ReadList(bool party, std::vector<Entry>& out) {
   out.clear();
@@ -196,12 +183,15 @@ void JobIconPath(int job_id, char* out, size_t cap) {
 }
 
 const char* JobName(int job_id) {
-  // Le résolveur passe par la table Lua des classes : on met en cache, comme le
-  // fait character_sheet pour les membres de guilde.
+  // Le résolveur passe par la table Lua des classes : on met en cache. Ce cache
+  // sert AUSSI le roster de guilde de la feuille de personnage — qui portait sa
+  // copie, cache et repli compris, jusqu'au 2026-08-24.
   static std::unordered_map<int, std::string> cache;
   auto it = cache.find(job_id);
   if (it != cache.end()) return it->second.c_str();
-  const char* n = JobNameSEH(job_id);
+  // 🔴 `rag::JobName` et non `rag::JobNameMySex` : une ligne de groupe ou d'amis
+  // désigne QUELQU'UN D'AUTRE (cf. globals.h).
+  const char* n = rag::JobName(job_id);
   char buf[64];
   if (n && n[0]) {
     std::strncpy(buf, n, sizeof(buf) - 1);

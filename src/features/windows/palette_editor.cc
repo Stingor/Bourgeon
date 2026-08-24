@@ -43,16 +43,12 @@ namespace {
 constexpr double kDraftDelay = 1.5;
 
 using GetSexFn = int(__fastcall*)(void*, void*);
-using GetJobFn = int(__fastcall*)(void*, void*);
 
 int OwnSex() {
   return reinterpret_cast<GetSexFn>(rag::kOwnSexAddr)(
       reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
 }
-int OwnJob() {
-  return reinterpret_cast<GetJobFn>(rag::kJobResolveMountedClassAddr)(
-      reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
-}
+int OwnJob() { return rag::OwnDisplayedJobId(); }
 
 // Apparence courante, telle que le client la tient à jour sur ZC_SPRITE_CHANGE.
 // Mêmes globales que `BuildOwnDollLook` (features/overlays/basic_info.cc).

@@ -76,9 +76,9 @@ bool JobResName(int class_id, int sex, char* out, size_t out_size) {
   out[0] = '\0';
   const char* name = nullptr;
   __try {
-    name = reinterpret_cast<JobResNameFn>(rag::kJobNameOrResNameAddr)(
-        reinterpret_cast<void*>(rag::kSessionAddr), nullptr,
-        static_cast<unsigned>(class_id), sex);
+    // Meme native que `rag::JobName`, employee pour son AUTRE sens : le nom
+    // de FICHIER. D'ou la forme explicite -- le sexe vient de l'appelant.
+    name = rag::JobNameForSex(class_id, sex);
   } __except (EXCEPTION_EXECUTE_HANDLER) { name = nullptr; }
   if (!name) return false;
   bool ok = false;

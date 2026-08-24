@@ -2,6 +2,7 @@
 #include "features/gameplay/keyboard_move.h"
 
 #include "ragnarok/game_scene.h"
+#include "ragnarok/own_actor.h"  // rag::OwnActor / rag::OwnActorOf
 #include "ragnarok/uiwnd.h"
 #include <Windows.h>
 
@@ -20,7 +21,6 @@ constexpr uintptr_t kCellValid    = 0x00c6cf80;  // Cell_IsMoveTargetValid
 constexpr uintptr_t kClampReach   = 0x00c69160;  // Move_ClampToReachableCell
 constexpr uintptr_t kNoPathFlag   = 0x0131f764;  // != 0 -> le natif passe en msg 0x10
 
-constexpr int kOffOwnActor = 0x2c;   // scène -> acteur joueur
 constexpr int kOffCamera   = 0xd0;   // CGameMode -> pCam
 constexpr int kOffViewMat  = 0x98;   // pCam -> matrice de vue (12 floats)
 
@@ -31,21 +31,6 @@ constexpr int kOffActorState = 0x70;   // acteur -> état (6 = pas de pathfindin
 constexpr int kMsgWalkTo    = 0x11;  // Actor_OnMsg : « marche vers (x,y) »
 constexpr int kMsgWalkToRaw = 0x10;  // idem, variante sans validation client
 
-void* GetOwnActor(void* gm) {
-  void* actor = nullptr;
-  __try {
-    if (gm) {
-      void* mgr =
-          *reinterpret_cast<void**>(reinterpret_cast<char*>(gm) + gamescene::kGmActorMgr);
-      if (mgr)
-        actor = *reinterpret_cast<void**>(reinterpret_cast<char*>(mgr) +
-                                          kOffOwnActor);
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-    actor = nullptr;
-  }
-  return actor;
-}
 
 // La garde « une saisie native a le focus » (réplique de UIWindowMgr_OnKeyDown,
 // 0x00a471e0) vit dans hotkey_util : elle vaut pour TOUT raccourci global, et une
@@ -267,7 +252,7 @@ void KeyboardMove::Update() {
   }
 
   void* gm = rag::ActiveModeSafe();
-  void* actor = GetOwnActor(gm);
+  void* actor = rag::OwnActorOf(gm);
   if (!gm || !actor) { Reset(); return; }
 
   const uint32_t now = GetTickCount();

@@ -1,6 +1,7 @@
 #include "ragnarok/lua.h"
 #include "ragnarok/item_db.h"
 #include "ragnarok/globals.h"
+#include "ragnarok/social.h"  // rag::social::JobName (cache + repli)
 #include "features/windows/character_sheet.h"
 #include "ragnarok/game_settings.h"  // IsOn : la bordure d'emblème
 #include "ragnarok/player_skills.h"
@@ -785,40 +786,24 @@ void SendGuildNotice(int guildId, const char* subject, const char* body) {
   Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
 }
 
-// Nom de classe (comme UIBasicInfoWnd), SEH-garde (renvoie POD const char*).
-const char* ClassNameSEH() {
-  __try {
-    using GetJobId_t     = int (__fastcall*)(void*, void*);
-    using GetClassName_t = const char* (__fastcall*)(void*, void*, unsigned, int);
-    const int jobid = reinterpret_cast<GetJobId_t>(rag::kJobResolveMountedClassAddr)(
-        reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
-    const char* n = reinterpret_cast<GetClassName_t>(rag::kJobNameOrResNameAddr)(
-        reinterpret_cast<void*>(rag::kSessionAddr), nullptr, static_cast<unsigned>(jobid), -1);
-    return n ? n : "";
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return ""; }
-}
-
-// Nom de classe d'un job id ARBITRAIRE (membres de guilde) : même résolveur natif
-// que ClassNameSEH, qui prend le job en paramètre. Cache local (le résolveur passe
-// par la table Lua des classes).
-std::unordered_map<int, std::string> g_job_name_cache;
-const char* JobNameSEH(int jobId) {
-  __try {
-    using GetClassName_t = const char* (__fastcall*)(void*, void*, unsigned, int);
-    const char* n = reinterpret_cast<GetClassName_t>(rag::kJobNameOrResNameAddr)(
-        reinterpret_cast<void*>(rag::kSessionAddr), nullptr, static_cast<unsigned>(jobId), -1);
-    return n ? n : "";
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return ""; }
-}
-const char* JobName(int jobId) {
-  auto it = g_job_name_cache.find(jobId);
-  if (it != g_job_name_cache.end()) return it->second.c_str();
-  const char* n = JobNameSEH(jobId);
-  char buf[64];
-  if (n && n[0]) { std::strncpy(buf, n, sizeof(buf) - 1); buf[sizeof(buf) - 1] = '\0'; }
-  else           std::snprintf(buf, sizeof(buf), i18n::Tr("Classe %d"), jobId);
-  return (g_job_name_cache[jobId] = buf).c_str();
-}
+// Nom de classe d'un job id ARBITRAIRE — le ROSTER DE GUILDE : le tri et la
+// colonne « Classe ».
+//
+// 🔴 DEUX défauts soldés d'un coup le 2026-08-24, et le second a permis de
+// trouver le premier :
+//
+//  · ce fichier portait son propre cache et son propre repli « Classe %d », à
+//    l'identique de `rag::social::JobName` — dont le commentaire disait déjà
+//    « comme le fait character_sheet pour les membres de guilde ». La dette
+//    était DÉCLARÉE dans le code sans être soldée. Un roster de guilde et un
+//    roster de groupe posent la même question ; il n'y a plus qu'un cache.
+//
+//  · la version d'ici passait `sex = -1` au résolveur natif, c'est-à-dire le
+//    sexe du joueur LOCAL, et se trompait donc de libellé sur tout membre de
+//    guilde du sexe opposé. Exactement le défaut trouvé dans la fenêtre de
+//    groupe. `rag::social::JobName` passe 99 — le nom de la classe de BASE, sans
+//    variante de sexe. Cf. ragnarok/globals.h.
+const char* JobName(int jobId) { return rag::social::JobName(jobId); }
 
 // Le nom NU d'un item par id passe par itemcell::NameById (cache partagé). Pour
 // un item ÉQUIPÉ dont on tient le slot, préférer DecoratedItemName plus bas :
@@ -2515,14 +2500,14 @@ const JobEntry kJobList[] = {
 constexpr int kJobListCount = static_cast<int>(sizeof(kJobList) / sizeof(kJobList[0]));
 
 // Libellé d'une entrée de la table : le nom que le CLIENT donne à cette classe, ou
-// le repli de la table quand il n'en a pas. Résolu UNE fois — `JobNameSEH` traverse
+// le repli de la table quand il n'en a pas. Résolu UNE fois — `rag::JobName` traverse
 // le Lua, et le menu déroulant en redemanderait 160 par frame tant qu'il est ouvert.
 const char* JobListLabel(int idx) {
   static std::vector<std::string> cache;
   if (cache.empty()) {
     cache.reserve(kJobListCount);
     for (int i = 0; i < kJobListCount; ++i) {
-      const char* n = JobNameSEH(kJobList[i].id);
+      const char* n = rag::JobName(kJobList[i].id);
       cache.emplace_back((n && n[0]) ? n : kJobList[i].fallback);
     }
   }
@@ -2763,13 +2748,7 @@ void ReadSkillTabNamesSEH(int jobId, char out[4][32]) {
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 // Job du personnage (le même getter que ClassNameSEH), clé de la table des libellés.
-int OwnJobIdSEH() {
-  __try {
-    using GetJobId_t = int (__fastcall*)(void*, void*);
-    return reinterpret_cast<GetJobId_t>(rag::kJobResolveMountedClassAddr)(reinterpret_cast<void*>(rag::kSessionAddr),
-                                                    nullptr);
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
-}
+int OwnJobIdSEH() { return rag::OwnDisplayedJobId(); }
 
 // ── Arbre des compétences de guilde (fichier client) ─────────────────────────
 // Le serveur ne l'envoie pas : ZC 0x0162 omet le niveau max, et clif_guild_skillinfo
@@ -7715,7 +7694,7 @@ void CharacterSheet::DrawDoll(float avail_w) {
   };
   const std::string name = Bourgeon::Instance().client().session().GetCharName();
   char lvl[96];
-  std::snprintf(lvl, sizeof(lvl), "%s   Nv %d / %d", ClassNameSEH(),
+  std::snprintf(lvl, sizeof(lvl), "%s   Nv %d / %d", rag::OwnClassName(),
                 ReadInt(rag::kBaseLevelAddr), ReadInt(rag::kJobLevelAddr));
   centered(name.empty() ? "(perso)" : name.c_str());
   centered(lvl);

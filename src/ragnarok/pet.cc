@@ -348,7 +348,10 @@ int EggItidToMobClass(int egg_itid) {
 const char* MobDisplayNameUtf8(int mob_class) {
   const char* raw = nullptr;
   __try {
-    raw = reinterpret_cast<JobNameFn>(rag::kJobNameOrResNameAddr)(rag::Session(), mob_class, -1);
+    // Un MONSTRE n'a pas de variante de sexe : l'argument est inerte ici.
+    // On garde donc `kJobSexSelf` (le -1 historique) plutot que de basculer
+    // sur le nom de base sans preuve que la table reponde pareil.
+    raw = rag::JobNameForSex(mob_class, rag::kJobSexSelf);
   } __except (EXCEPTION_EXECUTE_HANDLER) { raw = nullptr; }
   return (raw && raw[0]) ? ro::LocalToUtf8(raw) : "";
 }

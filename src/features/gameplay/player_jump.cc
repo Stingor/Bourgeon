@@ -2,6 +2,7 @@
 #include "features/gameplay/player_jump.h"
 
 #include "ragnarok/game_scene.h"
+#include "ragnarok/own_actor.h"  // rag::OwnActor / rag::OwnActorOf
 #include "ragnarok/uiwnd.h"
 #include <Windows.h>
 
@@ -16,7 +17,6 @@
 // ── Adresses (client 20250716, no-ASLR : addr Ghidra == live) ────────────────
 namespace {
 constexpr uintptr_t kTerrainHeight = 0x007110c0;  // Terrain_GetHeightAt(world,x,z)->float
-constexpr int kOffOwnActor  = 0x2c;   // actorMgr -> acteur joueur
 constexpr int kOffWorld     = 0x30;   // actorMgr -> objet monde/terrain (.gnd)
 constexpr int kActorPosX      = 0x10;   // ACTEUR -> position monde X (float)
                                         // (rien a voir avec uiwnd::kOffPosX, +0x1c, x ECRAN d'une fenetre)
@@ -64,7 +64,7 @@ void* ResolveActor(const WorldRefs& refs, uint32_t gid) {
   __try {
     if (gid == 0) {
       actor = *reinterpret_cast<void**>(
-          reinterpret_cast<char*>(refs.actor_mgr) + kOffOwnActor);
+          reinterpret_cast<char*>(refs.actor_mgr) + gamescene::kAmOwnPlayer);
     } else {
       actor = reinterpret_cast<FindByGidFn>(gamescene::kActorListFindByGidAddr)(refs.actor_mgr, gid);
     }

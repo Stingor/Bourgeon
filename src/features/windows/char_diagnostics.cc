@@ -67,7 +67,6 @@ constexpr float kAnimTickMs = 24.0f;
 // `Job_GetDisplayNameOrResName` : id de classe -> nom lisible (tables Lua du
 // client). Même appel que l'inspecteur d'entités ; `sex = -1` laisse le client
 // trancher, ce qui vaut en jeu.
-using JobNameFn = const char* (__fastcall*)(void*, void*, unsigned, int);
 
 // 🔴 `CActorSprite_ResolveDisplayJob(actor, -1)` : LA classe dont le client tire
 // le sprite. Elle part de `acteur+0x25c` puis applique les masques d'option —
@@ -266,12 +265,12 @@ int ResolveDisplayJob(void* actor) {
 
 // Nom lisible d'une classe (joueur comme monstre). Chaîne dans la code-page du
 // CLIENT — elle vient de ses tables Lua, pas du serveur.
+// `rag::JobNameMySex` ici, et c'est VOULU : cette fenêtre ne diagnostique que le
+// personnage du joueur (`job_real`, `job_shown`, `job_resolved` sont tous les
+// siens), donc le sexe du client est le bon. Les autres appelants de la famille
+// nomment des TIERS et doivent prendre `rag::JobName` (cf. globals.h).
 bool JobDisplayName(int job, char* out, size_t out_size) {
-  const char* name = nullptr;
-  __try {
-    name = reinterpret_cast<JobNameFn>(rag::kJobNameOrResNameAddr)(
-        rag::Session(), nullptr, static_cast<unsigned>(job), -1);
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+  const char* name = rag::JobNameMySex(job);
   if (!name) return false;
   bool ok = false;
   __try {

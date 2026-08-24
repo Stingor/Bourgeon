@@ -9,6 +9,7 @@
 #include "features/staff_gate.h"
 #include "imgui.h"
 #include "ragnarok/game_scene.h"
+#include "ragnarok/own_actor.h"  // rag::OwnActor / rag::OwnActorOf
 #include "ragnarok/globals.h"
 #include "ragnarok/skill_cooldowns.h"
 #include "ragnarok/uiwnd.h"
@@ -47,7 +48,6 @@ constexpr int kOffTargetingMode  = 0x408;  // 1 sol, 2 cible, 4 soutien
 constexpr int kOffTargetingSkill = 0x40c;
 constexpr int kOffTargetingLevel = 0x414;
 
-constexpr int kOffOwnActor = 0x2c;  // scène -> acteur joueur
 
 // Acteur -> état de mouvement/action. C'est la SEULE donnée « suis-je prêt ? »
 // que le client possède vraiment, et le natif s'en sert exactement ainsi : dans
@@ -123,19 +123,16 @@ __declspec(noinline) void ActorSendMsg(void* actor, int msg,
   }
 }
 
-// Acteur joueur, ou nullptr. Valide d'abord que `cmode` est bien un CGameMode :
-// SendMsg sert aussi aux modes login/char-select, où +0xCC n'a aucun sens.
+// Acteur joueur, ou nullptr. La descente elle-même est `rag::OwnActorOf` ; ce
+// qui reste ici, et qui est la RAISON D'ÊTRE de cette enveloppe, c'est la
+// VALIDATION : `SendMsg` sert aussi aux modes login et char-select, où +0xCC
+// n'a aucun sens. Trois points d'appel s'y fient — deux le disent en commentaire.
 void* GetOwnActor(void* cmode) {
-  void* actor = nullptr;
   __try {
-    if (*reinterpret_cast<uintptr_t*>(cmode) != kGameModeVtable) return nullptr;
-    char* scene = *reinterpret_cast<char**>(reinterpret_cast<char*>(cmode) +
-                                            gamescene::kGmActorMgr);
-    if (scene) actor = *reinterpret_cast<void**>(scene + kOffOwnActor);
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-    actor = nullptr;
-  }
-  return actor;
+    if (!cmode || *reinterpret_cast<uintptr_t*>(cmode) != kGameModeVtable)
+      return nullptr;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
+  return rag::OwnActorOf(cmode);
 }
 
 // ── La cible du HUD comme SOURCE DE VISÉE ───────────────────────────────────

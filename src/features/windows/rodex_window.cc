@@ -367,14 +367,15 @@ int __stdcall Detour_ApplyCheckNameAck(int char_id, int job_class, int base_leve
 // Nom de métier lisible (« Lord Knight »…) depuis l'id de classe. Getter natif —
 // jamais de table en dur : elle est chargée des .lub au boot et suit la langue du
 // client. Le pointeur rendu appartient au client (ne pas libérer, ne pas garder).
-using JobDisplayName_t = const char*(__thiscall*)(void*, unsigned int, int);
 
+// Un courrier vient de QUELQU'UN D'AUTRE : `rag::JobName` (sexe 99). Ce fichier
+// était le seul de la famille à le passer correctement — mais il l'écrivait en
+// littéral nu, sans que rien ne dise pourquoi 99 et pas -1 (cf. globals.h).
 bool JobNameAnsi(int job_class, char* out, size_t cap) {
   out[0] = '\0';
+  const char* name = rag::JobName(job_class);
+  if (!name || !*name) return false;
   __try {
-    const char* name = reinterpret_cast<JobDisplayName_t>(rag::kJobNameOrResNameAddr)(
-        reinterpret_cast<void*>(rag::kSessionAddr), static_cast<unsigned int>(job_class), 99);
-    if (!name || !*name) return false;
     std::strncpy(out, name, cap - 1);
     out[cap - 1] = '\0';
     return true;

@@ -531,6 +531,64 @@ constexpr uintptr_t kJobNameOrResNameAddr = 0x00d5bb40;
 // remap à partir des deux).
 constexpr uintptr_t kJobResolveMountedClassAddr = 0x00d5b580;
 
+// ── L'appel typé, et le PIÈGE de cette famille : le troisième argument ───────
+//
+// HUIT fichiers refaisaient cet appel, sous six noms (`ClassName`,
+// `ClassNameSEH`, `JobName`, `JobNameSEH`, `JobDisplayName`, `JobNameAnsi`) et
+// deux orthographes de convention : `__thiscall(session, job, sex)` d'un côté,
+// `__fastcall(session, nullptr, job, sex)` de l'autre. Les deux marchent — EDX
+// n'est pas lu, donc les arguments tombent aux mêmes emplacements de pile — mais
+// rien ne le disait, et il fallait le vérifier à chaque lecture.
+//
+// 🔴🔴 CE QUI DIVERGEAIT VRAIMENT, C'EST `sex`, ET AUCUN NOM NE LE PORTAIT.
+// `-1` laisse le client trancher AVEC LE SEXE DU JOUEUR LOCAL ; `99` demande le
+// nom de la classe de BASE, sans variante de sexe. Nommer un TIERS avec `-1`
+// donne donc un libellé faux dès que ce tiers n'a pas notre sexe — c'est
+// exactement le défaut trouvé dans la fenêtre de groupe le 2026-08-24, et deux
+// autres appelants le portaient encore. D'où deux fonctions au nom explicite
+// plutôt qu'un paramètre que tout le monde recopie de travers.
+//
+// ⚠ Le résultat pointe dans la table du client : le RECOPIER. Et l'appel
+// traverse une table Lua — qui nomme par entité et par frame doit mettre en
+// cache (`rag::social::JobName` le fait, avec en prime un repli « Classe %d »).
+constexpr int kJobSexBase = 99;  // nom de classe de base, sans variante de sexe
+constexpr int kJobSexSelf = -1;  // « celui du joueur local », décidé par le client
+
+inline const char* JobNameForSex(int job_id, int sex) {
+  __try {
+    using JobNameFn = const char*(__thiscall*)(void*, unsigned, int);
+    const char* n = reinterpret_cast<JobNameFn>(kJobNameOrResNameAddr)(
+        reinterpret_cast<void*>(kSessionAddr), static_cast<unsigned>(job_id),
+        sex);
+    return n ? n : "";
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return ""; }
+}
+
+// Le nom d'une classe QUELCONQUE — celle d'un autre joueur, d'une ligne de
+// groupe, d'un courrier, d'une liste. C'est la forme par défaut.
+inline const char* JobName(int job_id) {
+  return JobNameForSex(job_id, kJobSexBase);
+}
+
+// Le nom tel que le client le dirait POUR NOUS. À n'employer que sur notre
+// propre classe : sur celle d'un tiers, il ment.
+inline const char* JobNameMySex(int job_id) {
+  return JobNameForSex(job_id, kJobSexSelf);
+}
+
+// Notre classe telle qu'AFFICHÉE, monture comprise, et son nom. Deux fichiers
+// enchaînaient ces deux appels natifs à l'identique.
+inline int OwnDisplayedJobId() {
+  __try {
+    using ResolveFn = int(__thiscall*)(void*);
+    return reinterpret_cast<ResolveFn>(kJobResolveMountedClassAddr)(
+        reinterpret_cast<void*>(kSessionAddr));
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+}
+inline const char* OwnClassName() {
+  return JobNameMySex(OwnDisplayedJobId());
+}
+
 // `Social_GetPartyMemberCount` : __thiscall(session) -> int. Zéro quand on n'est
 // dans aucun groupe — c'est le test « suis-je en groupe ? » que le client se pose
 // lui-même. Redéclarée dans quatre fichiers sous deux noms.

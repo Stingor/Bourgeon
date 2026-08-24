@@ -65,8 +65,17 @@ uint32_t OwnAid();
 // Nombre de membres, directement au manager (`Social_GetPartyMemberCount`).
 int PartyMemberCount();
 
-// Nom de classe affichable d'un job id. Passe par le résolveur natif
-// (0x00d5bb40) et met en cache : il traverse la table Lua des classes.
+// Nom de classe affichable d'un job id, MIS EN CACHE (le résolveur traverse la
+// table Lua des classes), avec repli « Classe %d » si la table ne connaît pas
+// l'id.
+//
+// 🔴 Vaut pour N'IMPORTE QUEL ROSTER, pas seulement groupe et amis : la feuille
+// de personnage l'emploie pour sa liste de GUILDE. C'est la seule chose de cet
+// en-tête qui déborde du modèle party/friends, et c'est voulu — l'alternative
+// était un troisième cache identique.
+//
+// 🔴 Nomme un TIERS : passe `rag::kJobSexBase` (99) au résolveur, pas -1. Le
+// pourquoi est dans globals.h ; pour sa PROPRE classe, c'est `rag::OwnClassName`.
 const char* JobName(int job_id);
 
 // Chemin de l'ICÔNE de classe, prête pour `ro::CachedTextureFromGameFile` :

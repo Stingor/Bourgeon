@@ -59,9 +59,23 @@ bool ReadOwnActorSprites(OwnActorSprites* out);
 // actif -> gestionnaire d'acteurs -> l'emplacement DÉDIÉ (notre acteur n'est PAS
 // dans la liste, cf. game_scene.h).
 //
-// Deux fichiers portaient cette descente mot pour mot, sous deux noms
-// (`GetOwnActor` et `GetOwnActorLive`), et chacun redéclarait l'offset 0x2c.
+// 🔴 SIX fichiers portaient cette descente, sous cinq noms — `GetOwnActor`,
+// `GetOwnActorLive`, `RefreshOwnerActor`, `OwnActor`, et le cas `gid == 0` de
+// `ResolveActor` — et chacun redéclarait l'offset `0x2c`. Sept déclarations pour
+// une constante, que RIEN ne pouvait relever : trop petite pour le balayage
+// d'adresses (qui commence à 0x400000), trop courte pour la comparaison de corps
+// de fonction. C'est le niveau d'aveuglement en dessous des expressions.
 void* OwnActor();
+
+// La même descente à partir d'un mode qu'on nous DÉSIGNE, au lieu du mode actif.
+//
+// Trois appelants en ont besoin sous cette forme et pour trois raisons
+// différentes : l'un tient déjà le mode et s'en ressert après (keyboard_move),
+// un autre le reçoit en paramètre de la fenêtre qu'il sert (entity_inspector),
+// le troisième doit d'abord VALIDER que c'en est bien un (quick_cast contrôle la
+// vtable, parce qu'il est appelé depuis un hook où le mode peut être celui du
+// login). Aucun ne peut passer par `OwnActor()`.
+void* OwnActorOf(void* game_mode);
 
 // Le chemin du `.spr` chargé dans un emplacement de N'IMPORTE QUEL acteur —
 // base sans extension, préfixée `data\`, exactement comme les champs ci-dessus.

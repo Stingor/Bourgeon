@@ -375,19 +375,13 @@ T Read(const void* base, int off) {
 // Renvoie nullptr tant que la table n'est pas chargée (le natif renvoie "").
 // ⚠ Ne jamais passer sex = -1 ici : ce mode lit la session in-game, absente au
 // char-select ; on passe le sexe du personnage.
+// Le SEUL appelant de la famille qui connaisse vraiment le sexe de ce qu'il
+// nomme : le char-select le lit dans le CHARACTER_INFO de chaque emplacement. Il
+// prend donc la forme explicite, là où les autres doivent choisir entre « un
+// tiers » et « moi » (cf. globals.h).
 const char* JobName(int job, int sex) {
   if (job < 0) return nullptr;
-  // __fastcall(ecx=this, edx=inutilisé, …) : strictement équivalent au __thiscall
-  // (EDX n'est pas lu) et c'est la convention déjà employée dans basic_info.cc.
-  using GetJobName_t = const char*(__fastcall*)(void*, void*, unsigned, int);
-  const char* n = nullptr;
-  __try {
-    n = reinterpret_cast<GetJobName_t>(rag::kJobNameOrResNameAddr)(
-        rag::Session(), nullptr,
-        static_cast<unsigned>(job), sex);
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-    return nullptr;
-  }
+  const char* n = rag::JobNameForSex(job, sex);
   return (n && *n) ? n : nullptr;
 }
 

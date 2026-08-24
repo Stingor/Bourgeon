@@ -15,7 +15,9 @@ namespace {
 // ── Chaîne jusqu'à l'acteur du joueur ────────────────────────────────────────
 // Validée au débogueur : `GameMode_GetActive` -> CMode, gestionnaire d'acteurs
 // à +0xcc, acteur du joueur à +0x2c (vtable 0x01094810, gid @+0x110 = AID).
-constexpr int kOffOwnActor = 0x2c;
+// Les deux offsets sont `gamescene::kGmActorMgr` et `gamescene::kAmOwnPlayer` —
+// ce fichier en portait sa propre copie du second, ce qui faisait de lui le
+// SEPTIÈME déclarant d'une constante qu'il était censé rassembler.
 
 // Les deux vecteurs d'emplacements. `CActorSprite_SetSlotAct` (0x00d3fd90)
 // écrit dans le premier, `CActorSprite_SetSlotSprite` (0x00d3d7c0) dans le
@@ -175,17 +177,7 @@ bool ReadOwnActorSprites(OwnActorSprites* out) {
   if (!out) return false;
   std::memset(out, 0, sizeof(*out));
 
-  void* actor = nullptr;
-  __try {
-    using GameModeFn = void*(__fastcall*)(int);
-    void* mode = rag::ActiveModeIfReady();
-    if (!mode) return false;
-    void* mgr = *reinterpret_cast<void**>(
-        reinterpret_cast<char*>(mode) + gamescene::kGmActorMgr);
-    if (!mgr) return false;
-    actor = *reinterpret_cast<void**>(
-        reinterpret_cast<char*>(mgr) + kOffOwnActor);
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+  void* actor = OwnActor();
   if (!actor) return false;
 
   ReadSlot(actor, kSlotWeapon, out->weapon_spr, sizeof(out->weapon_spr),
@@ -236,13 +228,12 @@ bool ReadOwnActorSprites(OwnActorSprites* out) {
   return true;
 }
 
-void* OwnActor() {
+void* OwnActorOf(void* game_mode) {
   void* actor = nullptr;
   __try {
-    void* gm = rag::ActiveModeIfReady();
-    if (gm) {
+    if (game_mode) {
       void* mgr = *reinterpret_cast<void**>(
-          reinterpret_cast<char*>(gm) + gamescene::kGmActorMgr);
+          reinterpret_cast<char*>(game_mode) + gamescene::kGmActorMgr);
       if (mgr)
         actor = *reinterpret_cast<void**>(
             reinterpret_cast<char*>(mgr) + gamescene::kAmOwnPlayer);
@@ -250,5 +241,7 @@ void* OwnActor() {
   } __except (EXCEPTION_EXECUTE_HANDLER) { actor = nullptr; }
   return actor;
 }
+
+void* OwnActor() { return OwnActorOf(rag::ActiveModeIfReady()); }
 
 }  // namespace rag
