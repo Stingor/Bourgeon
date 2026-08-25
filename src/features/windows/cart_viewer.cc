@@ -50,7 +50,6 @@ namespace {
 // essai — le hook de création masquait la native pendant que le viewer, aveugle,
 // ne dessinait rien. Le client DÉTRUIT ses fenêtres à la fermeture
 // (SaveWindowRect -> QueueDestroyWindow), donc FindWindow non-nul == ouverte.
-constexpr int kWinCart    = 0x28;
 // Placement et taille par défaut du viewer, à la toute 1re ouverture seulement
 // (avant, ils étaient lus sur la fenêtre native, qui ne naît plus).
 constexpr float kSpawnX = 420.0f, kSpawnY = 160.0f;
@@ -101,7 +100,7 @@ uint8_t* ReadValidWnd(uintptr_t slot, uintptr_t expected_vtable) {
 // interceptée. La vtable est vérifiée car un id ne garantit pas la classe si un
 // portage de client renumérote les fenêtres.
 uint8_t* CartWnd() {
-  return uiwnd::WndOfClass(kWinCart, uiwnd::kCartWndVTable);
+  return uiwnd::WndOfClass(uiwnd::kCartWndId, uiwnd::kCartWndVTable);
 }
 
 // Envoie une commande UI native (transfert) via le dispatcher.
@@ -247,7 +246,6 @@ float TabStripHeightH() {
 // itemwin_mid PAVÉ (répété à sa taille native) dans [mn..mx], aligné sur `origin`
 // (la 1re tuile) pour que le fond et les items partagent la même marge.
 
-
 // Vide les caches de textures quand le device D3D a été reset/recréé (handles morts).
 unsigned g_tex_epoch = 0;
 void MaybeFlushTextures() {
@@ -305,7 +303,7 @@ void CartViewer::OnTick() {
     // Sa présence PROUVE que le joueur avait le cart ouvert : on adopte l'état
     // avant de la détruire, sinon activer le mode moderne le ferait disparaître.
     if (mode_changed && !open_) { open_ = true; show_panel_ = true; need_pos_ = true; }
-    __try { uiwnd::CloseWindow(kWinCart); } __except (EXCEPTION_EXECUTE_HANDLER) {}
+    __try { uiwnd::CloseWindow(uiwnd::kCartWndId); } __except (EXCEPTION_EXECUTE_HANDLER) {}
   }
   if (open_) Extract();
   // Aperçu de description : purgé dès que le viewer ne dessine plus, sinon il

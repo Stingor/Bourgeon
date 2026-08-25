@@ -118,7 +118,6 @@ constexpr uint16_t kOpFavorite = 0x0907;
 // Fenêtres cible d'un transfert (cart / storage), pour le drag-out + menu.
 // Le cart se cherche par ID au gestionnaire (cf. CartWnd plus bas) ; le storage
 // garde son global dédié, lui bien référencé par le client.
-constexpr int kWinCart             = 0x28;   // UICartWnd (SaveWindowRect(40))
 
 // ── Sertissage de cartes : ex-popup natif UIItemCompositionWnd (id 0x4A) ─────
 // RE complète : docs/card_insert_re.md.
@@ -153,7 +152,6 @@ constexpr int kCmdComposition = 0x7c;
 // c'est-à-dire là où le natif l'a posé lui-même en émettant CZ 0x017A. 0 = aucun.
 // (Défini plus bas, il a besoin de rag::ActiveModeSafe().)
 int ReadModeCardIndex();
-
 
 // Fiche POD d'un candidat, extraite sous SEH pour un rendu hors __try.
 // (Le lecteur ReadCompItem vit plus bas : il a besoin de FindInfoByIndex.)
@@ -307,7 +305,6 @@ void SendDrop(int index, int amount) {
 // (Le décodage du glisser NATIF — ReadDraggedItem, CancelNativeDrag et les
 // offsets de sa charge — a disparu avec les fenêtres qui pouvaient en émettre.)
 
-
 // (Pas de déduction « échange en cours » ici : les objets mis en échange sont
 // RÉELLEMENT retirés du modèle de session dès l'acquittement du serveur, comme le
 // faisait le client officiel — le protocole l'exige, cf. trade_window.cc.)
@@ -333,12 +330,6 @@ inline bool ReadLock(uintptr_t g) {
 inline void ToggleLock(uintptr_t g) {
   __try { *reinterpret_cast<uint8_t*>(g) ^= 1; } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
-
-
-
-
-
-
 
 // ── Description (clic-droit) : l'ItemSkillInfo COMPLET du nœud à la fenêtre 0xc ──
 // On retrouve le nœud par son INDEX inventaire dans la liste session, et on passe
@@ -590,7 +581,6 @@ BarTex g_btn_deal[2];  // bt_itemDeal_lock [0=off, 1=on/verrouillé (anti-vente 
 BarTex g_btn_sort[2];  // bt_sort [0=off (_off.bmp), 1=on (.bmp) = vue triée]
 BarTex g_btn_bank[3];  // styleshop\btn_bank_* [0=out, 1=over, 2=down] — 19x24
 bool   g_assets_tried = false;
-
 
 void InventoryPath(const char* file, char* out, size_t out_sz) {
   ro::uipath::WithFileName(ro::uipath::kIconWeight, file, out, out_sz);

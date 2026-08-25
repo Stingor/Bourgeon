@@ -7576,9 +7576,8 @@ void CharacterSheet::DrawCompanionCase(int kind, float x, float y, float sz) {
 // Le case a un gate de contexte UI (IsWindowAllowedInContext) qui passe en jeu normal ;
 // OnCreate ne dépend pas de l'état cart (au pire fenêtre vide), le serveur pousse le contenu.
 void CharacterSheet::OpenCartWindow() {
-  constexpr int kCartWndId = 0x28;  // UIMerchantItemWnd (fenêtre inventaire cart)
   __try {
-    uiwnd::MakeWindow(kCartWndId);
+    uiwnd::MakeWindow(uiwnd::kCartWndId);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 

@@ -25,8 +25,40 @@ namespace uiwnd {
 constexpr uintptr_t kUIWindowMgrAddr = 0x0131f4e8;  // g_UIWindowMgr (l'OBJET, pas un pointeur vers lui)
 constexpr uintptr_t kFindWindowAddr  = 0x00a47b90;  // UIWindowMgr::FindWindow(id) __thiscall
 
-// Identifiants utilisés hors de leur plugin propriétaire.
+// ── Identifiants utilisés HORS de leur plugin propriétaire ──────────────────
+//
+// Le critère est celui-là, et il se mesure : un identifiant déclaré dans DEUX
+// fichiers l'est, par définition, hors de son propriétaire. Les cinquante-deux
+// autres identifiants du projet restent chez le plugin qui possède leur fenêtre,
+// et c'est très bien ainsi — ce n'est pas de la dispersion, c'est de la localité.
+//
+// 🔴 Les quatre ci-dessous étaient redéclarés, dont deux sous DES NOMS
+// DIFFÉRENTS (`kCartWndId` / `kWinCart`, `kChatMacroWndId` / `kMacroWndId`) :
+// invisibles à toute recherche par nom, relevés par VALEUR.
 constexpr int kWorldMapWndId = 0x8c;  // UIWorldViewWnd (plein écran)
+
+// Le chariot. Ouvert par son propre viewer, mais aussi lu par l'inventaire (qui
+// y dépose) et par la feuille de personnage (qui l'ouvre depuis le pantin).
+constexpr int kCartWndId = 0x28;  // vtable 0x0103d538
+
+// « Shortcut List » (Alt+M) — c'est UIEmotionWnd, et ni l'identifiant ni le nom
+// de classe ne disent « macros ». vtable 0x0104B070, objet 0x10C, cache mgr+0x380.
+//
+// 🔴 IDENTIFIANT REMONTÉ, PAS DEVINÉ. Le client fabrique ses fenêtres par une
+// table à deux étages : `0x00A42CA8[id]` donne un numéro de cas, et
+// `0x00A42904[cas]` l'adresse du bloc qui construit la fenêtre. En partant du
+// bloc qui installe la vtable portant `EmotionHotkey_SaveFromEditBoxes` — les
+// champs de saisie des macros — on retombe sur l'id 86. C'est aussi celui
+// qu'ouvre la commande de raccourci 114 dans
+// `UIWindowMgr_DispatchHotkeyBehavior`, ce qui le confirme par un second chemin.
+//
+// ⚠ NE PAS confondre avec `UIMacroRegisterWnd` (id 0x11E), qu'AUCUN raccourci
+// n'ouvre : c'est une autre fenêtre, malgré son nom.
+constexpr int kMacroWndId = 86;
+
+// Les deux écrans que le menu Échap ouvre, et qui ont chacun leur plugin.
+constexpr int kHotkeyWndId       = 156;     // UIHotKeyWnd, vt 0x010383C8, objet 0x120, cache mgr+0x404
+constexpr int kGameSettingsWndId = 0x271e;  // CUIGameSettingsUI, vt 0x01047D7C, objet 0x100
 
 // L'objet manager lui-même. Pour les sites qui lisent un de ses slots dédiés
 // (+0x408 = fenêtre d'options ESC, +0x1dc = BasicInfo, +0x508 = compteur

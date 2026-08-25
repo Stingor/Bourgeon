@@ -27,9 +27,6 @@
 
 namespace {
 
-// CUIGameSettingsUI — vtable 0x01047D7C, objet 0x100, fabrique générique.
-constexpr int kGameSettingsWndId = 0x271E;  // 10014
-
 // Les libellés d'onglet du CLIENT (MsgStringTable).
 //
 // 🔴 Même choix que la table des raccourcis, et pour la même raison : le CONTENU
@@ -485,7 +482,7 @@ void GameSettings::OnTick() {
 
   // 🔴 DÉTRUIRE, pas masquer : le hook de création l'a rendue invisible, mais une
   // native vivante avale un appui sur deux et garde le clavier.
-  if (uiwnd::FindWindow(kGameSettingsWndId)) uiwnd::CloseWindow(kGameSettingsWndId);
+  if (uiwnd::FindWindow(uiwnd::kGameSettingsWndId)) uiwnd::CloseWindow(uiwnd::kGameSettingsWndId);
 }
 
 bool GameSettings::PendingValue(int id, bool actual) const {

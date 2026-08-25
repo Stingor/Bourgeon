@@ -29,22 +29,9 @@ namespace {
 
 constexpr int kEscMenuWndId = 155;  // UIEscOptionWnd, vtable 0x010384A0, objet 0xD8
 // Les deux sous-fenêtres que ce menu est le SEUL à ouvrir (vérifié par recherche
-// d'octets : rien d'autre dans l'image ne les fabrique).
-constexpr int kHotkeyWndId       = 156;     // 0x9C   « Shortcut Settings »
-constexpr int kGameSettingsWndId = 0x271E;  // 10014  « Game Settings »
-
-// La fenêtre des macros — celle d'Alt+M.
-//
-// 🔴 IDENTIFIANT REMONTÉ, PAS DEVINÉ. Le client fabrique ses fenêtres par une
-// table à deux étages : `0x00A42CA8[id]` donne un numéro de cas, et
-// `0x00A42904[cas]` l'adresse du bloc qui construit la fenêtre. En partant du
-// bloc qui installe la vtable portant `EmotionHotkey_SaveFromEditBoxes` — les
-// champs de saisie des macros — on retombe sur l'id **86**. C'est aussi celui
-// qu'ouvre la commande de raccourci 114 dans `UIWindowMgr_DispatchHotkeyBehavior`,
-// ce qui le confirme par un second chemin.
-// ⚠ NE PAS confondre avec `UIMacroRegisterWnd` (id 0x11E), qu'AUCUN raccourci
-// n'ouvre : c'est une autre fenêtre, malgré son nom.
-constexpr int kChatMacroWndId = 86;  // 0x56
+// d'octets : rien d'autre dans l'image ne les fabrique) vivent dans `uiwnd` :
+// `kHotkeyWndId` et `kMacroWndId`, avec la façon dont leurs identifiants ont
+// été remontés.
 
 // Les trois fenêtres que le branchement « Character Select » ferme. On ne les
 // ferme pas nous-mêmes (le natif le fait), elles sont ici pour le REPLI.
@@ -299,17 +286,17 @@ void GameMenu::RunPendingAction() {
 
     case Action::kOpenChatMacros:
       Close();
-      uiwnd::MakeWindow(kChatMacroWndId);
+      uiwnd::MakeWindow(uiwnd::kMacroWndId);
       break;
 
     case Action::kOpenGameSettings:
       Close();
-      uiwnd::MakeWindow(kGameSettingsWndId);
+      uiwnd::MakeWindow(uiwnd::kGameSettingsWndId);
       break;
 
     case Action::kOpenHotkeyNative:
       Close();
-      uiwnd::MakeWindow(kHotkeyWndId);
+      uiwnd::MakeWindow(uiwnd::kHotkeyWndId);
       break;
 
     case Action::kNone:
