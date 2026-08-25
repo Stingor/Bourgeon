@@ -67,34 +67,6 @@ constexpr int kItemFlags     = 67;
 constexpr uint8_t kFlagIdentified = 0x01;
 constexpr uint8_t kFlagDamaged    = 0x02;
 
-// ── Emplacements ─────────────────────────────────────────────────────────────
-// L'index de la grille est `log2` du bit `EQP_*` (docs §6.1). Les COSTUMES
-// portent leurs propres bits et sont remappés sur les mêmes index — c'est ce que
-// fait `EquipLocation_DecodeToSlots` (0x00D55850), et c'est pour ça qu'ils vivent
-// dans un tableau séparé côté natif : sans quoi ils écraseraient l'équipement.
-constexpr uint32_t kEqpHeadLow  = 0x0001;
-constexpr uint32_t kEqpWeapon   = 0x0002;
-constexpr uint32_t kEqpGarment  = 0x0004;
-constexpr uint32_t kEqpAccL     = 0x0008;
-constexpr uint32_t kEqpArmor    = 0x0010;
-constexpr uint32_t kEqpShield   = 0x0020;
-constexpr uint32_t kEqpShoes    = 0x0040;
-constexpr uint32_t kEqpAccR     = 0x0080;
-constexpr uint32_t kEqpHeadTop  = 0x0100;
-constexpr uint32_t kEqpHeadMid  = 0x0200;
-
-constexpr uint32_t kEqpCostumeHeadTop = 0x0400;
-constexpr uint32_t kEqpCostumeHeadMid = 0x0800;
-constexpr uint32_t kEqpCostumeHeadLow = 0x1000;
-constexpr uint32_t kEqpCostumeGarment = 0x2000;
-constexpr uint32_t kEqpAmmo           = 0x8000;
-
-// Les six emplacements d'OMBRE. Ils n'existent pas sur moonlight (aucun objet de
-// `db/import/` n'en porte un), mais ils sont dans le paquet dès que le serveur en
-// distribue — et 🔴 le client les fait tomber sur les index des COSTUMES, où ils
-// écraseraient un vrai costume en silence (docs §6.2). On les range donc à part.
-constexpr uint32_t kEqpShadowMask = 0x3F4000;  // 0x4000 | 0x10000..0x200000
-
 // Index de grille, ou -1. `costume`/`shadow`/`ammo` disent dans quelle SECTION
 // la pièce va — deux pièces peuvent partager un index sans se marcher dessus.
 int SlotFromWearState(uint32_t wear, bool* costume, bool* shadow, bool* ammo,
@@ -104,9 +76,9 @@ int SlotFromWearState(uint32_t wear, bool* costume, bool* shadow, bool* ammo,
   *ammo       = false;
   *two_handed = false;
 
-  if (wear & kEqpAmmo) { *ammo = true; return -1; }
+  if (wear & rag::equip::kEqpAmmo) { *ammo = true; return -1; }
 
-  if (wear & kEqpShadowMask) {
+  if (wear & rag::equip::kEqpShadowMask) {
     *shadow = true;
     if (wear & 0x010000) return 4;  // armure d'ombre
     if (wear & 0x024000) return 1;  // arme d'ombre
@@ -117,29 +89,29 @@ int SlotFromWearState(uint32_t wear, bool* costume, bool* shadow, bool* ammo,
     return -1;
   }
 
-  if (wear & (kEqpCostumeHeadTop | kEqpCostumeHeadMid | kEqpCostumeHeadLow |
-              kEqpCostumeGarment)) {
+  if (wear & (rag::equip::kEqpCostumeHeadTop | rag::equip::kEqpCostumeHeadMid | rag::equip::kEqpCostumeHeadLow |
+              rag::equip::kEqpCostumeGarment)) {
     *costume = true;
-    if (wear & kEqpCostumeHeadTop) return 8;
-    if (wear & kEqpCostumeHeadMid) return 9;
-    if (wear & kEqpCostumeHeadLow) return 0;
+    if (wear & rag::equip::kEqpCostumeHeadTop) return 8;
+    if (wear & rag::equip::kEqpCostumeHeadMid) return 9;
+    if (wear & rag::equip::kEqpCostumeHeadLow) return 0;
     return 2;  // cape de costume
   }
 
   // Une arme à deux mains porte arme ET bouclier : elle s'affiche sur la ligne
   // « arme », et la ligne « bouclier » dit pourquoi elle est vide.
-  *two_handed = (wear & kEqpWeapon) && (wear & kEqpShield);
+  *two_handed = (wear & rag::equip::kEqpWeapon) && (wear & rag::equip::kEqpShield);
 
-  if (wear & kEqpHeadTop)  return 8;
-  if (wear & kEqpHeadMid)  return 9;
-  if (wear & kEqpHeadLow)  return 0;
-  if (wear & kEqpArmor)    return 4;
-  if (wear & kEqpWeapon)   return 1;
-  if (wear & kEqpShield)   return 5;
-  if (wear & kEqpGarment)  return 2;
-  if (wear & kEqpShoes)    return 6;
-  if (wear & kEqpAccL)     return 3;
-  if (wear & kEqpAccR)     return 7;
+  if (wear & rag::equip::kEqpHeadTop)  return 8;
+  if (wear & rag::equip::kEqpHeadMid)  return 9;
+  if (wear & rag::equip::kEqpHeadLow)  return 0;
+  if (wear & rag::equip::kEqpArmor)    return 4;
+  if (wear & rag::equip::kEqpWeapon)   return 1;
+  if (wear & rag::equip::kEqpShield)   return 5;
+  if (wear & rag::equip::kEqpGarment)  return 2;
+  if (wear & rag::equip::kEqpShoes)    return 6;
+  if (wear & rag::equip::kEqpAccL)     return 3;
+  if (wear & rag::equip::kEqpAccR)     return 7;
   return -1;
 }
 

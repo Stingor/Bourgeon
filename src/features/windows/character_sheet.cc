@@ -1,4 +1,5 @@
 #include "ragnarok/lua.h"
+#include "ragnarok/equip_slots.h"  // rag::equip : les pieces PORTEES
 #include "ragnarok/item_db.h"
 #include "ragnarok/globals.h"
 #include "ragnarok/social.h"  // rag::social::JobName (cache + repli)
@@ -57,33 +58,13 @@
 //  Constantes RE (client 20250716, base 0x400000 ; cf. project_character_sheet)
 namespace {
 
-
-//  Tableau equip : session + base + slot*0xf8 (in-place, aucun appel C++)
-constexpr int kEquipBase   = 0x17d0;   // equipement normal
-constexpr int kCostumeBase = 0x2b30;   // costume
-constexpr int kSlotStride  = 0xf8;
-// Offsets d'une entree (ItemSkillInfo).
-constexpr int kOffEquipInvIndex = 0x04;   // index inventaire (a envoyer pour desequiper)
-constexpr int kOffEquipLocation = 0x08;   // masque EQP
-constexpr int kOffEquipPresent  = 0x10;   // ==1 si occupe
-constexpr int kOffEquipResname  = 0x2c;   // std::string (SSO) : itemId en texte
-constexpr int kOffEquipRefine   = 0x60;
-constexpr int kOffEquipView     = 0x70;
-constexpr int kOffEquipType     = 0x00;   // type d'item (equip 4/5/8/9/0xb-0xf)
-constexpr int kOffEquipCards    = 0x1c;   // 4 u32 (nameid des cartes / forge)
-constexpr int kOffEquipGrade    = 0x88;   // i16 : grade d'enchant
-// Données d'INSTANCE que la DB d'items ne connaît pas — il les faut pour l'aperçu de
-// description au survol. MÊMES offsets que la grille d'inventaire (inventory_viewer).
-constexpr int kOffEquipDamaged  = 0x5d;   // octet : équipement CASSÉ (nom ombré rouge)
-constexpr int kOffEquipOptCount = 0x98;   // int : nb de random options (0..5)
-constexpr int kOffEquipOpts     = 0x9c;   // entrées de 5 octets {i16 index, i16 value, u8 param}
-constexpr int kOffEquipWear     = 0x0c;   // etat porte (!=0 => equipe)
+// La disposition d'une pièce PORTÉE — base du tableau, pas de slot, offsets
+// d'une entrée, données d'instance — vit dans `rag::equip` (ragnarok/equip_slots.h).
 constexpr int kNormalSlots = 10;   // slots equip normaux 0..9 (cf. disposition doll)
 // Le tableau costume a la meme forme que celui de l'equip, mais SEULES ces quatre
 // positions y existent : tete haut, tete bas, tete milieu, cape. Les indices ne sont
 // pas contigus — c'est la meme numerotation de slots que l'equipement normal.
 constexpr int kCostumeSlots[4] = {8, 0, 9, 2};
-constexpr int kEqpHandR    = 0x2;  // masque EQP main droite (arme) -> detecte le dual-wield
 constexpr int kMaxPresetsPerChar = 5;  // plafond de presets par personnage
 
 //  Presets d'equipement : CID (clef par perso) + liste inventaire (session)
@@ -93,12 +74,6 @@ constexpr int kMaxPresetsPerChar = 5;  // plafond de presets par personnage
 //  Opcodes (raw, envoyes via Bourgeon::SendPacket comme le shop)
 constexpr uint16_t kOpUnequip = 0x00AB;  // CZ_REQ_TAKEOFF_EQUIP {op, invIndex}
 constexpr uint16_t kOpEquip   = 0x0998;  // CZ_REQ_WEAR_EQUIP_V5 {op, invIndex, position:4}
-constexpr uint32_t kEqpHandL  = 0x20;    // EQP main GAUCHE (bouclier / arme dual-wield)
-// Bits EQP qui rangent un item hors de l'equipement ordinaire. Ils servent a RESOUDRE un
-// item de preset dans la bonne famille : sans eux, un chapeau et son costume homonyme se
-// confondraient, et le preset equiperait l'un pour l'autre.
-constexpr uint32_t kEqpCostumeMask = 0x3C00;  // costume : tete haut 0x400, mil 0x800, bas 0x1000, cape 0x2000
-constexpr uint32_t kEqpAmmo        = 0x8000;  // munition
 
 //  Munition : PAS un slot du tableau equip -> invIndex dans un global dédié (cf. RE 2026-07-12).
 //  On lit l'item par cet invIndex dans la liste inventaire (in-place, donne la quantité).
@@ -183,19 +158,19 @@ struct EquipItem {
 bool ReadEquipSlot(int slot, bool costume, EquipItem* out) {
   __try {
     const uintptr_t base =
-        rag::kSessionAddr + (costume ? kCostumeBase : kEquipBase) + slot * kSlotStride;
+        rag::kSessionAddr + (costume ? rag::equip::kOwnCostumeBase : rag::equip::kOwnEquipBase) + slot * rag::equip::kSlotStride;
     const uint8_t* e = reinterpret_cast<const uint8_t*>(base);
-    const int invIndex = *reinterpret_cast<const int*>(e + kOffEquipInvIndex);
-    const int present  = *reinterpret_cast<const int*>(e + kOffEquipPresent);
+    const int invIndex = *reinterpret_cast<const int*>(e + rag::equip::kOffInvIndex);
+    const int present  = *reinterpret_cast<const int*>(e + rag::equip::kOffPresent);
     if (invIndex == 0 || present != 1) return false;  // slot vide
     out->present  = true;
     out->invIndex = invIndex;
-    out->location = *reinterpret_cast<const uint32_t*>(e + kOffEquipLocation);
-    out->refine   = *reinterpret_cast<const int*>(e + kOffEquipRefine);
+    out->location = *reinterpret_cast<const uint32_t*>(e + rag::equip::kOffLocation);
+    out->refine   = *reinterpret_cast<const int*>(e + rag::equip::kOffRefine);
     // 16 bits SUFFISENT : le champ natif en fait 4, mais tout ce qui consomme un
     // viewID le tronque à 16 — autant le dire ici. Little-endian : mêmes bits.
-    out->viewId   = *reinterpret_cast<const uint16_t*>(e + kOffEquipView);
-    const char* rn = rag::clientstr::Data(e + kOffEquipResname);
+    out->viewId   = *reinterpret_cast<const uint16_t*>(e + rag::equip::kOffView);
+    const char* rn = rag::clientstr::Data(e + rag::equip::kOffResname);
     out->nameid = (rn && rn[0]) ? static_cast<uint32_t>(std::atoi(rn)) : 0;
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
@@ -226,14 +201,14 @@ bool ReadEquippedAmmo(AmmoItem* out) {
     void* node = *reinterpret_cast<void* const*>(sentinel);  // sentinelle->next = 1er noeud
     for (int i = 0; i < count && node && node != sentinel; ++i) {
       const uint8_t* info = reinterpret_cast<const uint8_t*>(node) + 8;
-      if (*reinterpret_cast<const int*>(info + kOffEquipInvIndex) == ammoIdx) {
+      if (*reinterpret_cast<const int*>(info + rag::equip::kOffInvIndex) == ammoIdx) {
         out->present  = true;
         out->info     = info;
         out->invIndex = ammoIdx;
         out->amount   = *reinterpret_cast<const int*>(info + kOffEquipAmount);
-        out->location = *reinterpret_cast<const uint32_t*>(info + kOffEquipLocation);
-        out->viewId   = *reinterpret_cast<const uint16_t*>(info + kOffEquipView);
-        const char* rn = rag::clientstr::Data(info + kOffEquipResname);
+        out->location = *reinterpret_cast<const uint32_t*>(info + rag::equip::kOffLocation);
+        out->viewId   = *reinterpret_cast<const uint16_t*>(info + rag::equip::kOffView);
+        const char* rn = rag::clientstr::Data(info + rag::equip::kOffResname);
         out->nameid = (rn && rn[0]) ? static_cast<uint32_t>(std::atoi(rn)) : 0;
         return out->nameid != 0;
       }
@@ -267,15 +242,15 @@ int ReadInventoryLite(InvItemLite* out, int cap) {
     for (int i = 0; i < count && n < cap && node && node != sentinel; ++i) {
       const uint8_t* info = reinterpret_cast<const uint8_t*>(node) + 8;
       InvItemLite& it = out[n];
-      it.type     = *reinterpret_cast<const int*>(info + kOffEquipType);
-      it.index    = *reinterpret_cast<const int*>(info + kOffEquipInvIndex);
-      it.loc      = *reinterpret_cast<const int*>(info + kOffEquipLocation);
-      it.equipped = *reinterpret_cast<const int*>(info + kOffEquipWear) != 0;
-      it.refine   = *reinterpret_cast<const int*>(info + kOffEquipRefine);
-      it.grade    = *reinterpret_cast<const short*>(info + kOffEquipGrade);
+      it.type     = *reinterpret_cast<const int*>(info + rag::equip::kOffType);
+      it.index    = *reinterpret_cast<const int*>(info + rag::equip::kOffInvIndex);
+      it.loc      = *reinterpret_cast<const int*>(info + rag::equip::kOffLocation);
+      it.equipped = *reinterpret_cast<const int*>(info + rag::equip::kOffWear) != 0;
+      it.refine   = *reinterpret_cast<const int*>(info + rag::equip::kOffRefine);
+      it.grade    = *reinterpret_cast<const short*>(info + rag::equip::kOffGrade);
       for (int c = 0; c < 4; ++c)
-        it.cards[c] = *reinterpret_cast<const uint32_t*>(info + kOffEquipCards + c * 4);
-      const char* rn = rag::clientstr::Data(info + kOffEquipResname);
+        it.cards[c] = *reinterpret_cast<const uint32_t*>(info + rag::equip::kOffCards + c * 4);
+      const char* rn = rag::clientstr::Data(info + rag::equip::kOffResname);
       it.nameid = (rn && rn[0]) ? static_cast<uint32_t>(std::atoi(rn)) : 0;
       ++n;
       node = *reinterpret_cast<void* const*>(node);  // node->next
@@ -296,19 +271,19 @@ bool FindInvLiteByIndex(const InvItemLite* inv, int n, int index, InvItemLite* o
 bool ReadEquipLite(int slot, InvItemLite* out, bool costume = false) {
   __try {
     const uint8_t* e = reinterpret_cast<const uint8_t*>(
-        rag::kSessionAddr + (costume ? kCostumeBase : kEquipBase) + slot * kSlotStride);
-    if (*reinterpret_cast<const int*>(e + kOffEquipInvIndex) == 0 ||
-        *reinterpret_cast<const int*>(e + kOffEquipPresent) != 1)
+        rag::kSessionAddr + (costume ? rag::equip::kOwnCostumeBase : rag::equip::kOwnEquipBase) + slot * rag::equip::kSlotStride);
+    if (*reinterpret_cast<const int*>(e + rag::equip::kOffInvIndex) == 0 ||
+        *reinterpret_cast<const int*>(e + rag::equip::kOffPresent) != 1)
       return false;
-    out->index    = *reinterpret_cast<const int*>(e + kOffEquipInvIndex);
-    out->type     = *reinterpret_cast<const int*>(e + kOffEquipType);
-    out->loc      = *reinterpret_cast<const int*>(e + kOffEquipLocation);
+    out->index    = *reinterpret_cast<const int*>(e + rag::equip::kOffInvIndex);
+    out->type     = *reinterpret_cast<const int*>(e + rag::equip::kOffType);
+    out->loc      = *reinterpret_cast<const int*>(e + rag::equip::kOffLocation);
     out->equipped = true;
-    out->refine   = *reinterpret_cast<const int*>(e + kOffEquipRefine);
-    out->grade    = *reinterpret_cast<const short*>(e + kOffEquipGrade);
+    out->refine   = *reinterpret_cast<const int*>(e + rag::equip::kOffRefine);
+    out->grade    = *reinterpret_cast<const short*>(e + rag::equip::kOffGrade);
     for (int c = 0; c < 4; ++c)
-      out->cards[c] = *reinterpret_cast<const uint32_t*>(e + kOffEquipCards + c * 4);
-    const char* rn = rag::clientstr::Data(e + kOffEquipResname);
+      out->cards[c] = *reinterpret_cast<const uint32_t*>(e + rag::equip::kOffCards + c * 4);
+    const char* rn = rag::clientstr::Data(e + rag::equip::kOffResname);
     out->nameid = (rn && rn[0]) ? static_cast<uint32_t>(std::atoi(rn)) : 0;
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
@@ -320,10 +295,10 @@ bool ReadEquipLite(int slot, InvItemLite* out, bool costume = false) {
 bool KindMatches(PresetKind kind, const InvItemLite& it) {
   const uint32_t loc = static_cast<uint32_t>(it.loc);
   switch (kind) {
-    case PresetKind::kCostume: return (loc & kEqpCostumeMask) != 0;
-    case PresetKind::kAmmo:    return (loc & kEqpAmmo) != 0;
+    case PresetKind::kCostume: return (loc & rag::equip::kEqpCostumeMask) != 0;
+    case PresetKind::kAmmo:    return (loc & rag::equip::kEqpAmmo) != 0;
     case PresetKind::kEquip:
-    default:                   return (loc & (kEqpCostumeMask | kEqpAmmo)) == 0;
+    default:                   return (loc & (rag::equip::kEqpCostumeMask | rag::equip::kEqpAmmo)) == 0;
   }
 }
 //  Resout un item de preset -> index inventaire courant (-1 si absent). Priorite au match
@@ -1903,7 +1878,6 @@ std::vector<uint8_t> BuildEmblemBmp() {
 // l'id BRUT — pas par un ItemSkillInfo. Re-clic sur le même skill = referme, comme le
 // natif (l'id affiché vit à +0x104).
 
-
 // Le nom d'affichage COMPLET (refine, « [N] », préfixes/suffixes de cartes,
 // forge) était composé ICI par une copie du name-builder natif — mêmes typedefs,
 // même SEH, même repli, à 92 % identique à `itemcell::BuildDisplayName`.
@@ -3150,7 +3124,7 @@ void CharacterSheet::SaveCurrentEquipAsPreset(const char* name) {
     pi.grade  = li.grade;
     for (int c = 0; c < 4; ++c) pi.cards[c] = li.cards[c];
     // Slot 5 = bouclier / main gauche : une ARME (loc EQP_HAND_R) qui y siege = dual-wield.
-    pi.left_hand = (s == 5) && (li.loc & kEqpHandR) != 0;
+    pi.left_hand = (s == 5) && (li.loc & rag::equip::kEqpWeapon) != 0;
     p.items.push_back(pi);
   }
   // ── Costumes ───────────────────────────────────────────────────────────────
@@ -3274,7 +3248,7 @@ void CharacterSheet::ApplyPreset(const EquipPreset& p) {
         // pour une arme dual-wield (sinon le serveur pre-renewal la remettrait a droite).
         // Les costumes et la munition portent DEJA leur position dans ce masque (bits
         // EQP_COSTUME_*, 0x8000) : le serveur route dessus, rien de special a faire.
-        const uint32_t pos = pi.left_hand ? kEqpHandL : static_cast<uint32_t>(li.loc);
+        const uint32_t pos = pi.left_hand ? rag::equip::kEqpShield : static_cast<uint32_t>(li.loc);
         toEquip[neq++] = {idx, pos};
       }
     }
@@ -3306,7 +3280,7 @@ void CharacterSheet::ApplyPreset(const EquipPreset& p) {
 
 // « Tout nu » : desequipe tous les slots portes, en paquets bruts envoyes d'un coup (meme
 // chemin que le desequip de masse d'ApplyPreset -> instantane cote serveur). Couvre l'equip
-// normal ET les costumes (tableau session separe kCostumeBase : seuls 3 tetes + cape existent).
+// normal ET les costumes (tableau session separe rag::equip::kOwnCostumeBase : seuls 3 tetes + cape existent).
 int CharacterSheet::UnequipAll(bool with_costumes) {
   int freed = 0;
   auto strip = [&](int slot, bool costume) {
@@ -7367,8 +7341,8 @@ void CharacterSheet::DrawSlot(int slot, bool costume, float x, float y, float sz
       ImGui::Image(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(24, 24));
       ImGui::SameLine();
     }
-    const uintptr_t dsrc = rag::kSessionAddr + (costume ? kCostumeBase : kEquipBase) +
-                           static_cast<uintptr_t>(slot) * kSlotStride;
+    const uintptr_t dsrc = rag::kSessionAddr + (costume ? rag::equip::kOwnCostumeBase : rag::equip::kOwnEquipBase) +
+                           static_cast<uintptr_t>(slot) * rag::equip::kSlotStride;
     char dnm[128];
     itemcell::BuildDisplayName(reinterpret_cast<void*>(dsrc), dnm, sizeof(dnm));
     ImGui::TextUnformatted(dnm[0] ? dnm : itemcell::NameById(it.nameid));
@@ -7395,8 +7369,8 @@ void CharacterSheet::DrawSlot(int slot, bool costume, float x, float y, float sz
     // on RETIENT la case ici, l'aperçu se dessine après la fenêtre (DrawHoverDesc) —
     // c'est un popup, il doit passer AU-DESSUS d'elle. Pas pendant un glisser :
     // l'aperçu masquerait la cible du drop.
-    const uintptr_t hsrc = rag::kSessionAddr + (costume ? kCostumeBase : kEquipBase) +
-                           static_cast<uintptr_t>(slot) * kSlotStride;
+    const uintptr_t hsrc = rag::kSessionAddr + (costume ? rag::equip::kOwnCostumeBase : rag::equip::kOwnEquipBase) +
+                           static_cast<uintptr_t>(slot) * rag::equip::kSlotStride;
     if (!ImGui::IsMouseDown(ImGuiMouseButton_Left) &&
         ImGui::GetDragDropPayload() == nullptr)
       CaptureHoverDesc(reinterpret_cast<const void*>(hsrc), it.nameid);
@@ -7411,8 +7385,8 @@ void CharacterSheet::DrawSlot(int slot, bool costume, float x, float y, float sz
     // clic, un appui PROLONGÉ faisait passer la description DERRIÈRE nous.
     // `src` survit au différé : c'est une adresse FIXE du bloc session.
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
-      const uintptr_t src = rag::kSessionAddr + (costume ? kCostumeBase : kEquipBase) +
-                            static_cast<uintptr_t>(slot) * kSlotStride;
+      const uintptr_t src = rag::kSessionAddr + (costume ? rag::equip::kOwnCostumeBase : rag::equip::kOwnEquipBase) +
+                            static_cast<uintptr_t>(slot) * rag::equip::kSlotStride;
       itemcell::DeferDescById(it.nameid, it.viewId, it.location,
                               static_cast<int>(mp.x), static_cast<int>(mp.y),
                               reinterpret_cast<const void*>(src));
@@ -7619,23 +7593,23 @@ void CharacterSheet::CaptureHoverDesc(const void* info, uint32_t id) {
                              sizeof(hover_desc_.name));  // SEH intégré, rend de l'UTF-8
   __try {
     const uint8_t* p = reinterpret_cast<const uint8_t*>(info);
-    hover_desc_.refine  = *reinterpret_cast<const int*>(p + kOffEquipRefine);
-    hover_desc_.damaged = *(p + kOffEquipDamaged) != 0;
+    hover_desc_.refine  = *reinterpret_cast<const int*>(p + rag::equip::kOffRefine);
+    hover_desc_.damaged = *(p + rag::equip::kOffDamaged) != 0;
     // ⚠ Sur un item FORGÉ/CRÉÉ, +0x1c ne porte pas des cartes mais les données du
     // forgeron (charid scindé, star crumbs, élément) : même critère que l'inventaire
     // et que la fenêtre de description (première entrée <= 500).
-    const uint32_t c0 = *reinterpret_cast<const uint32_t*>(p + kOffEquipCards);
+    const uint32_t c0 = *reinterpret_cast<const uint32_t*>(p + rag::equip::kOffCards);
     hover_desc_.forged = (c0 != 0 && c0 <= 500);
     if (!hover_desc_.forged)
       for (int k = 0; k < 4; ++k)
         hover_desc_.cards[k] =
-            *reinterpret_cast<const uint32_t*>(p + kOffEquipCards + k * 4);
-    int nopt = *reinterpret_cast<const int*>(p + kOffEquipOptCount);
+            *reinterpret_cast<const uint32_t*>(p + rag::equip::kOffCards + k * 4);
+    int nopt = *reinterpret_cast<const int*>(p + rag::equip::kOffOptCount);
     if (nopt < 0) nopt = 0;
     if (nopt > 5) nopt = 5;
     hover_desc_.opt_count = nopt;
     for (int k = 0; k < nopt; ++k) {
-      const uint8_t* e = p + kOffEquipOpts + k * 5;
+      const uint8_t* e = p + rag::equip::kOffOpts + k * 5;
       hover_desc_.opts[k].index = *reinterpret_cast<const int16_t*>(e);
       hover_desc_.opts[k].value = *reinterpret_cast<const int16_t*>(e + 2);
       hover_desc_.opts[k].param = e[4];

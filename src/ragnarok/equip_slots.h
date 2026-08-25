@@ -16,10 +16,15 @@
 // partager. C'est le raisonnement de `ragnarok/uiwnd.h`, appliqué une fois de
 // plus : au prochain portage de client, il y a UN endroit à corriger.
 //
-// ⚠ `character_sheet.cc` garde encore SES copies (elles sont antérieures) : les
-// deux jeux de valeurs sont identiques, vérifiés ligne à ligne le 2026-08-23.
-// La migration de ce fichier-là est une passe à part — il en a une dizaine
-// d'usages, et rien ne presse tant que les valeurs concordent.
+// ✅ DETTE SOLDÉE (2026-08-25). Cet en-tête annonçait que `character_sheet.cc`
+// gardait ses propres copies et que leur migration serait « une passe à part ».
+// Elle est faite : seize constantes retirées, soixante usages redirigés, les
+// valeurs relues une à une contre celles d'ici AVANT toute écriture.
+//
+// ⚠ UNE SEULE N'A PAS MIGRÉ, et c'est un choix : `kOffEquipAmount` porte le même
+// offset que `kOffPresent` (0x10) mais un SENS différent — la quantité d'un item
+// d'INVENTAIRE, qui coïncide avec le drapeau de présence pour une pièce portée.
+// Le renommer effacerait la nuance que son commentaire porte.
 //
 // ⚠ Rien ici n'appelle le natif : ce sont des LECTURES de mémoire, sous SEH. Un
 // tableau à moitié initialisé (entre deux paquets, pendant un changement de map)
@@ -128,6 +133,61 @@ inline bool ReadWorn(int slot, int base, WornPiece* out) {
     return false;
   }
 }
+
+// ── Les masques EQP_* : OÙ une pièce peut aller ──────────────────────────────
+//
+// C'est le champ `kOffLocation` d'une entrée, et le `location` d'un objet
+// d'inventaire. Un masque, pas un index : une arme à deux mains occupe les deux
+// mains, un accessoire peut aller à gauche OU à droite.
+//
+// 🔴 Le jeu COMPLET vivait dans `view_equip_window.cc` et un sous-ensemble de
+// quatre dans `character_sheet.cc` — dont DEUX sous d'autres noms : `kEqpHandR`
+// pour l'arme et `kEqpHandL` pour le bouclier. Même valeur, deux vocabulaires :
+// celui de rAthena (EQP_HAND_R / EQP_HAND_L) et celui de l'écran du client. Les
+// deux sont justes, ce qui est précisément le problème — aucune recherche par
+// nom ne trouvait les deux jeux.
+//
+// Nommage retenu : ce que la pièce EST. L'équivalent rAthena est en regard, pour
+// que le rapprochement avec un script serveur reste immédiat.
+constexpr uint32_t kEqpHeadLow  = 0x0001;  // EQP_HEAD_LOW
+constexpr uint32_t kEqpWeapon   = 0x0002;  // EQP_HAND_R  — main droite
+constexpr uint32_t kEqpGarment  = 0x0004;  // EQP_GARMENT
+constexpr uint32_t kEqpAccL     = 0x0008;  // EQP_ACC_L
+constexpr uint32_t kEqpArmor    = 0x0010;  // EQP_ARMOR
+constexpr uint32_t kEqpShield   = 0x0020;  // EQP_HAND_L  — main gauche
+constexpr uint32_t kEqpShoes    = 0x0040;  // EQP_SHOES
+constexpr uint32_t kEqpAccR     = 0x0080;  // EQP_ACC_R
+constexpr uint32_t kEqpHeadTop  = 0x0100;  // EQP_HEAD_TOP
+constexpr uint32_t kEqpHeadMid  = 0x0200;  // EQP_HEAD_MID
+
+// ⚠ L'INDEX D'UNE CASE DE GRILLE EST `log2` DU BIT. Les COSTUMES portent leurs
+// propres bits et sont remappés sur les MÊMES index — c'est ce que fait
+// `EquipLocation_DecodeToSlots` (0x00D55850), et c'est pour ça qu'ils vivent
+// dans un tableau séparé côté natif : sans quoi ils écraseraient l'équipement.
+constexpr uint32_t kEqpCostumeHeadTop = 0x0400;
+constexpr uint32_t kEqpCostumeHeadMid = 0x0800;
+constexpr uint32_t kEqpCostumeHeadLow = 0x1000;
+constexpr uint32_t kEqpCostumeGarment = 0x2000;
+
+// 🔴 Ce masque RANGE un objet hors de l'équipement ordinaire, et c'est ce qui
+// permet de résoudre une pièce de preset dans la bonne famille : sans lui, un
+// chapeau et son costume homonyme se confondent, et le preset équipe l'un pour
+// l'autre.
+constexpr uint32_t kEqpCostumeMask = 0x3C00;  // les quatre ci-dessus
+
+constexpr uint32_t kEqpAmmo = 0x8000;  // EQP_AMMO — la munition
+
+// Les six emplacements d'OMBRE : 0x4000, puis 0x10000 à 0x200000.
+//
+// Ils n'existent pas sur Moonlight (aucun objet de `db/import/` n'en porte un),
+// mais ils sont dans le paquet dès que le serveur en distribue — et 🔴 LE CLIENT
+// LES FAIT TOMBER SUR LES INDEX DES COSTUMES, où ils écraseraient un vrai
+// costume EN SILENCE. D'où ce masque, qui sert à les ranger à part.
+constexpr uint32_t kEqpShadowMask = 0x3F4000;
+
+// ⚠ Le DUAL-WIELD se lit sur ces masques et non sur un type d'objet : une pièce
+// qui porte `kEqpWeapon` ET `kEqpShield` est une arme à deux mains, deux pièces
+// distinctes portant l'un et l'autre sont un vrai dual-wield.
 
 }  // namespace equip
 }  // namespace rag
