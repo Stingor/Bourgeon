@@ -32,8 +32,16 @@
 // mesuré en jeu : `<ITEML>` lui-même ressort littéralement, en plus de nos
 // `<MOBL>` / `<ITMR>` / `<CRAF>`. Aucun réglage natif ne rattrape ça.
 //
+// ⚠ Mais la résolution native n'est pas ENTIÈREMENT morte, et c'est un piège :
+// le msg 7 appelle un SECOND transformateur, `CTagMgr::Transform` (0x007fbfc0),
+// celui-là SANS condition. Ce qu'il résout (`<MSG>MSI_…`, `<NR>`, `<NAMELESS>`)
+// nous arrive donc tout fait — mais il mange aussi `<NAVIL>`, qu'il aplatit en
+// `<carte x,y>` : nom INTERNE de carte, plus de balise, donc plus de lien pour
+// personne. La même ligne restait pourtant cliquable dans la chatbox, qui ingère
+// en amont (`ChatAction`). D'où le détour 3.
+//
 // ── Comment on s'y prend ────────────────────────────────────────────────────
-// Deux détours de fonction ENTIÈRE, aucun patch en milieu de fonction :
+// Trois détours de fonction ENTIÈRE, aucun patch en milieu de fonction :
 //
 //   1. `UIBalloonText_SetTextWrapped` (0x00830240) — OBSERVATEUR. C'est le seul
 //      point par lequel passent les DEUX créateurs (l'acteur et l'unité de sol),
@@ -41,6 +49,11 @@
 //   2. `UITransBalloonText_Paint` (0x008263a0) — bretelle. Quand la fenêtre
 //      peinte appartient à un acteur, on remplit sa surface de la couleur-clé et
 //      on rend la main.
+//   3. `CTagMgr::Transform` (0x007fbfc0) — OBSERVATEUR lui aussi, filtré sur
+//      l'ADRESSE DE RETOUR du site de la bulle (0x00c4db71), puisque la fonction
+//      sert tout le client. Il capte le texte d'AVANT transformation, et
+//      seulement s'il porte un `<NAVIL>` : partout ailleurs c'est le texte
+//      transformé qu'il faut garder.
 //
 // 🔴 Ce n'est PAS le détour 2 qui fait disparaître la bulle native : la fenêtre
 // est DÉTRUITE, à `OnGameFramePulse`, dès que son texte est adopté — via
@@ -123,6 +136,11 @@ class ChatBalloon : public Plugin {
   // on ne sait pas encore à quel acteur elle appartient, et on ne veut pas
   // parcourir la liste d'acteurs sous le détour.
   static void OnNativeSetText(void* window, const char* wire);
+  // Copie le texte du msg 7 AVANT le transformateur de balises global
+  // (`CTagMgr::Transform`), et SEULEMENT s'il porte un `<NAVIL>` : c'est la
+  // seule balise que ce transformateur aplatit alors que notre parseur, lui,
+  // sait en faire un lien. `native_string` est une std::string MSVC native.
+  static void OnNativeTagTransform(const void* native_string);
   // Vrai si un acteur revendique cette fenêtre à son `+0x264` : le natif doit
   // alors se taire.
   static bool IsActorBalloon(void* window);
@@ -194,9 +212,15 @@ class ChatBalloon : public Plugin {
   struct Pending {
     void*       window;
     std::string wire;
+    // Le MÊME message, tel qu'il était AVANT `CTagMgr::Transform`. Vide sauf
+    // s'il portait un `<NAVIL>` — cf. `OnNativeTagTransform`.
+    std::string raw;
   };
   static std::mutex          s_mutex;
   static std::vector<Pending> s_pending;
+  // Armé par le détour de `CTagMgr::Transform`, consommé par le tout prochain
+  // `OnNativeSetText` : les deux appels se suivent dans le même handler natif.
+  static std::string s_pending_raw;
   // Fenêtres natives dont on sait déjà qu'elles appartiennent à un acteur :
   // évite de reparcourir la liste d'acteurs à chaque repeinte.
   static std::unordered_set<void*> s_claimed;

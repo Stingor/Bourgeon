@@ -34,6 +34,28 @@ namespace {
 constexpr uintptr_t kSetTextWrapped = 0x00830240;
 // UITransBalloonText::Paint __thiscall sans argument, `retn`.
 constexpr uintptr_t kBalloonPaint = 0x008263a0;
+// CTagMgr::Transform(this, &sortie, entrée PAR VALEUR) __thiscall — le
+// transformateur de balises GLOBAL du client (singleton `0x0131ed60`).
+//
+// 🔴 C'est le SECOND transformateur du chemin de la bulle, et le seul qui tourne
+// encore chez nous : le msg 7 n'appelle `ChatText_TransformTagLinks` que sous
+// `if (g_pNewChatWnd)` — mort — mais appelle celui-ci SANS condition
+// (`0x00c4db6c`). Sa table de balises (littéraux à `0x00fd5a00`) porte `<MSG>`,
+// `MSI_`, `<NR>`, `<NAMELESS>`, `<TIP…>` … et `<NAVIL>`, qu'il remplace par sa
+// forme d'AFFICHAGE `<carte x,y>` — nom INTERNE de carte, plus aucune balise.
+// D'où le défaut corrigé ici : un lien de lieu arrivait à notre parseur déjà
+// aplati, donc affiché littéralement au-dessus de la tête alors que la même
+// ligne est un lien dans la chatbox, laquelle ingère AVANT (`ChatAction`).
+constexpr uintptr_t kTagMgrTransform = 0x007fbfc0;
+// L'adresse de RETOUR du site d'appel de la bulle — le seul qui nous concerne.
+// `CTagMgr::Transform` sert tout le client ; sans ce filtre on capterait le
+// texte de n'importe quelle infobulle.
+//
+// ⚠ Variable, et pas `constexpr` : le stub la compare en MÉMOIRE (`cmp eax,
+// symbole` lit le CONTENU, à l'inverse d'un `push` — cf. le piège documenté sur
+// PaintStub). C'est justement ce qu'on veut ici, et ça garde l'adresse écrite en
+// UN seul endroit ; une `constexpr` pourrait n'avoir aucun emplacement à lire.
+uintptr_t g_tagmgr_ret_from_balloon = 0x00c4db71;
 // UIWindow::ClearSurface(couleur) __thiscall — 0xFFFF00FF est la couleur-clé du
 // client : une surface remplie de ce magenta est intégralement transparente.
 constexpr uintptr_t kClearSurface = 0x00a1cb30;
@@ -75,10 +97,15 @@ using rag::Read;
 
 void* g_tramp_settext = nullptr;
 void* g_tramp_paint   = nullptr;
+void* g_tramp_tagxform = nullptr;
 
 // ── Handlers appelés depuis les stubs ────────────────────────────────────────
 void __cdecl BalloonCapture(void* window, const char* text) {
   ChatBalloon::OnNativeSetText(window, text);
+}
+
+void __cdecl TagTransformCapture(const void* in_string) {
+  ChatBalloon::OnNativeTagTransform(in_string);
 }
 
 // Renvoyé dans AL : 1 => le natif doit se taire pour cette fenêtre.
@@ -99,6 +126,32 @@ __declspec(naked) void SetTextStub() {
     add  esp, 8
     popad
     jmp  [g_tramp_settext]
+  }
+}
+
+// OBSERVATEUR, lui aussi : on copie le texte AVANT que le transformateur de
+// balises global ne l'aplatisse, et on relaie tel quel.
+//
+// ⚠ Filtré par l'ADRESSE DE RETOUR, pas par un état : `CTagMgr::Transform` sert
+// tout le client, et seul le site de la bulle nous intéresse. Après `pushad`
+// (0x20 octets), `[esp+0x20]` est l'adresse de retour de l'appelant, `+0x24` la
+// std::string de SORTIE, `+0x28` l'entrée — passée PAR VALEUR, donc 0x18 octets
+// posés à même la pile de l'appelant.
+__declspec(naked) void TagTransformStub() {
+  __asm {
+    pushad
+    mov  eax, [esp + 0x20]   // adresse de retour de l'appelant
+    // Dans l'asm inline MSVC un identifiant C++ désigne un EMPLACEMENT mémoire :
+    // on compare donc bien au CONTENU de la variable (le msg 7 de l'acteur).
+    cmp  eax, [g_tagmgr_ret_from_balloon]
+    jne  passthrough
+    lea  eax, [esp + 0x28]   // &std::string d'ENTRÉE (argument par valeur)
+    push eax
+    call TagTransformCapture
+    add  esp, 4
+  passthrough:
+    popad
+    jmp  [g_tramp_tagxform]
   }
 }
 
@@ -132,6 +185,7 @@ __declspec(naked) void PaintStub() {
 std::mutex                       ChatBalloon::s_mutex;
 std::vector<ChatBalloon::Pending> ChatBalloon::s_pending;
 std::unordered_set<void*>        ChatBalloon::s_claimed;
+std::string                      ChatBalloon::s_pending_raw;
 
 ChatBalloon::ChatBalloon() {
   using namespace hooking;
@@ -141,6 +195,9 @@ ChatBalloon::ChatBalloon() {
   g_tramp_paint = HookManager::Instance().SetHook(
       HookType::kJmpHook, reinterpret_cast<uint8_t*>(kBalloonPaint),
       reinterpret_cast<uint8_t*>(&PaintStub));
+  g_tramp_tagxform = HookManager::Instance().SetHook(
+      HookType::kJmpHook, reinterpret_cast<uint8_t*>(kTagMgrTransform),
+      reinterpret_cast<uint8_t*>(&TagTransformStub));
 }
 
 ChatBalloon::~ChatBalloon() = default;
@@ -156,11 +213,58 @@ void ChatBalloon::OnNativeSetText(void* window, const char* wire) {
   // Rien de coûteux ici : ni parcours d'acteurs, ni conversion, ni parseur. On
   // ne sait même pas encore si cette fenêtre est une bulle ou une infobulle.
   std::lock_guard<std::mutex> lock(s_mutex);
+  // 🔴 CONSOMMATION EN UN COUP, quoi qu'il arrive ensuite : la capture d'avant
+  // transformation n'est valable que pour l'appel qui vient, et la laisser armée
+  // la ferait ressortir sur la prochaine infobulle venue (le détour de
+  // `SetTextWrapped` est partagé avec elles).
+  std::string raw;
+  raw.swap(s_pending_raw);
   if (s_pending.size() >= 64) return;  // garde-fou : on ne bufferise pas l'infini
   Pending p;
   p.window = window;
   p.wire.assign(wire);
+  p.raw.swap(raw);
   s_pending.push_back(std::move(p));
+}
+
+// Le texte du msg 7 AVANT `CTagMgr::Transform`. Cf. le commentaire de
+// `kTagMgrTransform` : le transformateur remplace `<NAVIL>` par une forme
+// d'affichage qui n'est plus une balise pour personne, et notre parseur ne voit
+// alors qu'un `<carte x,y>` en toutes lettres.
+void ChatBalloon::OnNativeTagTransform(const void* native_string) {
+  if (native_string == nullptr) return;
+  ChatBalloon* self = Bourgeon::Instance().chat_balloon();
+  if (self == nullptr || !self->Active()) return;
+  if (Bourgeon::Instance().client().timestamp() != 20250716) return;
+
+  // std::string MSVC : données en place tant que la capacité tient dans l'objet
+  // (+0x10 = taille, +0x14 = capacité), pointeur au-delà.
+  const uint8_t* base = static_cast<const uint8_t*>(native_string);
+  const uint32_t size = *reinterpret_cast<const uint32_t*>(base + 0x10);
+  const uint32_t cap  = *reinterpret_cast<const uint32_t*>(base + 0x14);
+  const char* text = (cap >= 0x10) ? *reinterpret_cast<const char* const*>(base)
+                                   : reinterpret_cast<const char*>(base);
+  if (text == nullptr || size == 0 || size > 4096) return;
+  std::string raw(text, size);
+
+  // 🔴 ON N'ARME QUE POUR `<NAVIL>`, et c'est délibéré :
+  //  · c'est la SEULE balise que le transformateur mange et que notre parseur
+  //    sache rendre — `<ITEML>` et nos balises maison lui sont inconnues et
+  //    traversent intactes (mesuré en jeu) ;
+  //  · tout ce qu'il résout par ailleurs (`<MSG>MSI_…`, `<NR>`, `<NAMELESS>`)
+  //    doit continuer de nous arriver RÉSOLU : le texte d'avant transformation
+  //    ne sert donc que là où il apporte quelque chose ;
+  //  · armer rarement rend le couplage avec `SetTextWrapped` sûr : les deux
+  //    appels se suivent dans le même handler, sur le même fil.
+  // ⚠ Majuscules seulement, comme le parseur : le client accepte aussi
+  // `<navil>`, mais le rendre ici afficherait une balise brute là où le
+  // transformateur, lui, donnait au moins un lieu lisible.
+  // (Le `<` n'est jamais un octet de queue CP949 : la recherche ne peut pas
+  // tomber au milieu d'un caractère double-octet.)
+  if (raw.find("<NAVIL>") == std::string::npos) return;
+
+  std::lock_guard<std::mutex> lock(s_mutex);
+  s_pending_raw.swap(raw);
 }
 
 bool ChatBalloon::IsActorBalloon(void* window) {
@@ -220,6 +324,7 @@ void ChatBalloon::ResetWhenDisabled() {
   std::lock_guard<std::mutex> lock(s_mutex);
   s_pending.clear();
   s_claimed.clear();
+  s_pending_raw.clear();
 }
 
 // Suit la chatbox moderne, sans réglage propre : voir le commentaire du header.
@@ -354,9 +459,15 @@ void ChatBalloon::SyncWithActors() {
       // concaténation des textes, donc une emote du jeu y reste écrite
       // « :nom: » et une icône d'objet disparaît.
       if (chat == nullptr) { p.wire.clear(); continue; }
+      // 🔴 Le texte d'AVANT `CTagMgr::Transform` gagne quand il existe — il n'est
+      // capté que s'il porte un `<NAVIL>`, que le transformateur aplatit en
+      // `<carte x,y>` (nom interne, plus de balise, donc plus de lien). Partout
+      // ailleurs c'est bien le texte TRANSFORMÉ qu'il faut : lui seul a ses
+      // `<MSG>MSI_…` résolus.
       ChatWindow::Line parsed;
-      chat->ParseWireLine(p.wire.c_str(), &parsed);
+      chat->ParseWireLine(p.raw.empty() ? p.wire.c_str() : p.raw.c_str(), &parsed);
       p.wire.clear();  // consommé
+      p.raw.clear();
       if (parsed.runs.empty()) continue;
 
       Balloon& b = balloons_[key];

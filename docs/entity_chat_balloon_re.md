@@ -135,6 +135,19 @@ Conséquences utiles :
   même texte transformé que la fenêtre de chat (`CTagMgr` + le transformateur de
   la chat). Un lien d'objet inséré dans un message apparaît donc aussi au-dessus
   de la tête.
+- 🔴 **DEUX transformateurs, et un seul est conditionnel.**
+  `ChatText_TransformTagLinks` ne tourne que sous `if (g_pNewChatWnd)` — donc
+  jamais chez nous — mais **`CTagMgr::Transform 0x007fbfc0` tourne toujours**
+  (`0x00c4db6c`). Sa table de littéraux (`0x00fd5a00`) porte `<URL>`, `<NAVI>`,
+  `<INFO>`, `<ITEM>`, `<ITEML>`, `<MSG>`/`MSI_`, `<NR>`, `<NAMELESS>`, `<TIP…>`,
+  `<NAVIL>`/`<navil>` — mais mesuré en jeu, **`<ITEML>` en ressort intact** : la
+  résolution des liens d'objet appartient à l'AUTRE transformateur.
+  🔴 **`<NAVIL>`, lui, y passe** : `CTagMgr::Transform` → `sub_7FE070`, qui
+  reformate le lien de lieu en **`<%s %d,%d>` (`0x01027500`)**, ou **`<%s>`
+  (`0x010274f8`)** sans coordonnées — avec le nom **INTERNE** de la carte. Il n'en
+  reste aucune balise : ce qui arrive à la bulle est du texte mort, alors que la
+  même ligne est encore un lien dans la chatbox, qui ingère en amont
+  (`UIWindowMgr_ChatAction`). D'où le troisième détour du §11.
 - **Un texte vide ne fait rien** — il ne masque pas la bulle en cours.
 - La bulle est **créée une seule fois par acteur** et **réutilisée** tant qu'elle
   n'a pas expiré ; une nouvelle réplique ne fait que remplacer le texte et
@@ -511,12 +524,22 @@ du client. C'est pour ça que l'activation suit `chatwnd_imgui` et n'a pas de
 réglage propre : en chatbox native, le client sait de nouveau résoudre ses liens
 et sa bulle est correcte.
 
-**Deux détours de fonction entière**, aucun patch en milieu de fonction :
+**Trois détours de fonction entière**, aucun patch en milieu de fonction :
 
 | Fonction | Rôle |
 |---|---|
 | `UIBalloonText_SetTextWrapped 0x00830240` | **observateur** : seul point commun aux DEUX créateurs (acteur et unité de sol), texte encore brut. On copie, on relaie. |
 | `UITransBalloonText_Paint 0x008263a0` | **silence** de la frame de naissance, le temps que la destruction parte. |
+| `CTagMgr::Transform 0x007fbfc0` | **observateur** du texte d'AVANT transformation, pour le seul `<NAVIL>` (cf. §3). |
+
+🔴 **Le troisième détour se filtre sur l'ADRESSE DE RETOUR** (`0x00c4db71`, le
+site du msg 7) et non sur un état : `CTagMgr::Transform` sert tout le client, y
+compris les infobulles. Et il **n'arme sa capture que si le texte porte un
+`<NAVIL>`** — la seule balise que ce transformateur aplatit et que notre parseur
+sache rendre. Tout le reste doit continuer d'arriver **transformé** (`<MSG>MSI_…`,
+`<NR>`, `<NAMELESS>`), sans quoi on remplacerait un défaut par un autre. La
+capture est **consommée en un coup** par le tout prochain `SetTextWrapped` : les
+deux appels se suivent dans le même handler, sur le même fil.
 
 **La fenêtre native est DÉTRUITE dès que son texte est adopté**, via
 `UIWindowMgr::QueueDestroyWindow 0x00a447d0` — la fonction que le natif
