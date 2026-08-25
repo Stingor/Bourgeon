@@ -66,9 +66,9 @@ constexpr int kInfoIdent = 0x5c;  // byte : item identifié ?
 // Le nom d'affichage complet (raffinement / [slots] / cartes / enchant) passe par
 // itemcell::BuildDisplayName : mêmes appels natifs, mais un SEH par item.
 
-// Fenêtre native du storage. Elle ne naît plus (cf. le .h) ; l'id ne sert
-// qu'au filet de OnTick, qui la détruit si un chemin oublié la faisait naître.
-constexpr int kWinStorage = 0x21;  // UIItemStoreWnd
+// La fenêtre native du storage — `uiwnd::kUIItemStoreWnd` — ne naît plus (cf. le
+// .h) ; son identifiant ne sert qu'au filet de OnTick, qui la détruit si un
+// chemin oublié la faisait naître.
 
 // Placement et taille par défaut du viewer, à la toute 1re ouverture seulement.
 // (700, 85) = la position où la native se créait ; 320x420 = la taille posée
@@ -92,11 +92,6 @@ constexpr ImU32 kStgTabBorder = IM_COL32(0xAD, 0xAD, 0xAD, 255);
 // BuildItemIconGrfPath(id_str, out[128], identified) __stdcall (RET 0xc, 3 args) :
 // atoi(id) -> ResolveItemResNameById -> sprintf "유저인터페이스\item\<res>.bmp"
 // (identified!=0 -> resname [rec+8], sinon [rec+0x1c]). On passe identified=1.
-
-
-
-
-
 
 // ── Ouverture de la description d'item (clic-droit) ─────────────────────────
 // FIDÈLE AU NATIF : le clic-droit du storage passe l'ItemSkillInfo COMPLET du
@@ -199,7 +194,6 @@ BarTex g_stg_tab[2];   // strip VERTICAL    : tab_sto{1,2}.bmp   (23x27)
 BarTex g_stg_tabh[2];  // rangée HORIZONTALE : tabh_sto{1,2}.bmp (27x25)
 bool   g_tabs_tried = false;
 unsigned g_tab_epoch = 0;
-
 
 // Charge (une fois) les onglets images. Les textures sont en D3DPOOL_DEFAULT :
 // mortes après un reset de device -> rechargées quand l'epoch change.
@@ -460,7 +454,6 @@ void SendStorageToCart(int index, int amount) {
   *reinterpret_cast<uint32_t*>(pkt + 4) = static_cast<uint32_t>(amount);
   Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
 }
-
 
 // Étoile pleine (marqueur favori). Le glyphe ★ (U+2605) est HORS des polices
 // chargées (ProggyClean = ASCII, Malgun = range coréen) -> tracé main via
@@ -814,13 +807,13 @@ void StorageWindow::OnTick() {
   // ce serveur n'envoie pas), et la bascule vers l'ImGui peut en trouver une
   // déjà ouverte. La masquer ne suffirait pas — une native cachée garde le
   // clavier et son bouton par défaut répond à Entrée/Espace.
-  if (uiwnd::SafeFindWindow(kWinStorage)) {
+  if (uiwnd::SafeFindWindow(uiwnd::kUIItemStoreWnd)) {
     // Sa présence PROUVE qu'une session est ouverte : on l'adopte avant de la
     // détruire. Le nom et le compteur manqueront jusqu'au prochain paquet — le
     // titre retombe sur « Storage » et le compteur sur 0/0, le temps d'un
     // mouvement d'item.
     if (!open_) { open_ = true; need_pos_ = true; show_panel_ = true; }
-    uiwnd::SafeCloseWindow(kWinStorage);
+    uiwnd::SafeCloseWindow(uiwnd::kUIItemStoreWnd);
   }
 
   // BASCULE en vol : on ne lit PAS le modèle. Entre la demande et l'arrivée du

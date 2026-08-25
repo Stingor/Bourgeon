@@ -167,10 +167,11 @@ constexpr int       kOffGuideFlag = 0x1254;  // lu par la carte du monde
 constexpr uintptr_t kFnClearRoute = 0x00B2F080;  // __thiscall(nav, bool full)
 
 // ── Les quatre fenêtres natives que ce panneau remplace (§2 de la doc) ──────
-// La principale et ses trois satellites. Le natif éclate la tâche sur les
-// quatre, dont deux ne suivent même pas la principale quand on la déplace —
-// elles lisent sa position À LA CRÉATION et ne sont jamais repositionnées.
-constexpr int kNativeWndMain  = 203;  // UINavigationV4Wnd
+// La principale — `uiwnd::kUINavigationV4Wnd`, au foyer parce que la minimap
+// l'ouvre aussi — et les TROIS satellites ci-dessous, qui n'appartiennent qu'à
+// ce panneau. Le natif éclate la tâche sur les quatre, dont deux ne suivent même
+// pas la principale quand on la déplace : elles lisent sa position À LA CRÉATION
+// et ne sont jamais repositionnées.
 constexpr int kNativeWndHelp  = 229;  // UINavigationHelpWnd
 constexpr int kNativeWndIcon  = 306;  // UINavigationroadiconWnd
 constexpr int kNativeWndRoute = 314;  // UINavigationRuideWnd
@@ -919,8 +920,8 @@ void NavigationWindow::OnTick() {
   // ⚠ AVANT la garde `graph_ready_` : sans données de navigation le panneau ne
   // sert à rien, mais la native, elle, naîtrait quand même — et resterait
   // masquée à l'écran, à voler le clavier.
-  for (const int native_id : {kNativeWndMain, kNativeWndRoute, kNativeWndIcon,
-                              kNativeWndHelp}) {
+  for (const int native_id : {uiwnd::kUINavigationV4Wnd, kNativeWndRoute,
+                              kNativeWndIcon, kNativeWndHelp}) {
     if (uiwnd::FindWindow(native_id) != nullptr) uiwnd::CloseWindow(native_id);
   }
 
@@ -1406,7 +1407,7 @@ void NavigationWindow::HandleNativeCreation(void* win, int window_id) {
 
   // Seule la principale porte une intention du joueur ; les satellites ne
   // naissent que sur ordre de celle-ci, et n'ont donc rien à basculer.
-  if (window_id != kNativeWndMain) return;
+  if (window_id != uiwnd::kUINavigationV4Wnd) return;
   // Reconstruction d'interface au changement de carte : personne n'a rien
   // demandé, on ne touche pas à l'état du panneau.
   if (Bourgeon::Instance().IsMapLoading()) return;

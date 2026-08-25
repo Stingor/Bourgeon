@@ -258,8 +258,8 @@ void HotkeySettings::OnTick() {
   // [Reset] — passe par `DriveResetDefaults`, qui la fabrique invisible le temps
   // de deux commandes. Une native trouvée ici vient donc forcément d'ailleurs
   // (menu Échap du client remis par le joueur) : elle n'a rien à faire debout.
-  if (void* native = uiwnd::SafeFindWindow(uiwnd::kHotkeyWndId))
-    uiwnd::SafeCloseWindow(uiwnd::kHotkeyWndId);
+  if (void* native = uiwnd::SafeFindWindow(uiwnd::kUIHotKeyWnd))
+    uiwnd::SafeCloseWindow(uiwnd::kUIHotKeyWnd);
 }
 
 // ── Données ──────────────────────────────────────────────────────────────────
@@ -757,7 +757,7 @@ void HotkeySettings::DriveBattleMode(bool on) {
   // La native ne vit que le temps de cet appel, HORS frame ImGui : aucune frame ne
   // la dessine, et son détournement du clavier n'a pas le temps d'exister.
   routing_ = true;
-  void* win = uiwnd::MakeWindow(uiwnd::kHotkeyWndId);
+  void* win = uiwnd::MakeWindow(uiwnd::kUIHotKeyWnd);
   if (win) {
     __try {
       uiwnd::SetVisible(win, false);
@@ -773,7 +773,8 @@ void HotkeySettings::DriveBattleMode(bool on) {
   }
   routing_ = false;
 
-  if (uiwnd::SafeFindWindow(uiwnd::kHotkeyWndId)) uiwnd::SafeCloseWindow(uiwnd::kHotkeyWndId);
+  if (uiwnd::SafeFindWindow(uiwnd::kUIHotKeyWnd))
+    uiwnd::SafeCloseWindow(uiwnd::kUIHotKeyWnd);
 
   SayBattleMode(on);
 }
@@ -802,7 +803,7 @@ void HotkeySettings::DriveResetDefaults() {
   // OK (184) qui suit, rien n'est écrit et tout est jeté à la fermeture. C'est
   // exactement le piège documenté du bouton Reset natif.
   routing_ = true;
-  void* win = uiwnd::MakeWindow(uiwnd::kHotkeyWndId);
+  void* win = uiwnd::MakeWindow(uiwnd::kUIHotKeyWnd);
   if (win) {
     __try {
       uiwnd::SetVisible(win, false);
@@ -816,7 +817,8 @@ void HotkeySettings::DriveResetDefaults() {
   }
   routing_ = false;
 
-  if (uiwnd::SafeFindWindow(uiwnd::kHotkeyWndId)) uiwnd::SafeCloseWindow(uiwnd::kHotkeyWndId);
+  if (uiwnd::SafeFindWindow(uiwnd::kUIHotKeyWnd))
+    uiwnd::SafeCloseWindow(uiwnd::kUIHotKeyWnd);
   rows_dirty_ = true;
 }
 

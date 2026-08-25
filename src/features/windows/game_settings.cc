@@ -482,7 +482,8 @@ void GameSettings::OnTick() {
 
   // 🔴 DÉTRUIRE, pas masquer : le hook de création l'a rendue invisible, mais une
   // native vivante avale un appui sur deux et garde le clavier.
-  if (uiwnd::FindWindow(uiwnd::kGameSettingsWndId)) uiwnd::CloseWindow(uiwnd::kGameSettingsWndId);
+  if (uiwnd::FindWindow(uiwnd::kCUIGameSettingsUI))
+    uiwnd::CloseWindow(uiwnd::kCUIGameSettingsUI);
 }
 
 bool GameSettings::PendingValue(int id, bool actual) const {

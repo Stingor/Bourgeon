@@ -225,7 +225,7 @@ bool native_login::CharSelectWindowPresent() {
   // chaque changement d'état (UIWindowMgr_DestroyAllWindows 0x00a482f0, appelée en
   // tête de CLoginMode_OnStateEnter). Aucun résidu, donc.
   __try {
-    return uiwnd::FindWindow(uiwnd::kCharSelectWndId) != nullptr;
+    return uiwnd::FindWindow(uiwnd::kUINewSelectCharWnd) != nullptr;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     return false;
   }
@@ -242,8 +242,8 @@ bool native_login::MakeCharWindowPresent() {
   // Le dialogue 0xC8, lui, ne remplace pas le char-select (le contrôle 0x1A0 fait
   // un simple MakeWindow, sans changement d'état) : 0x115 répond encore à côté.
   __try {
-    return uiwnd::FindWindow(uiwnd::kNewMakeCharWndId) != nullptr ||
-           uiwnd::FindWindow(uiwnd::kMakeCharWndId) != nullptr;
+    return uiwnd::FindWindow(uiwnd::kUINewMakeCharWnd) != nullptr ||
+           uiwnd::FindWindow(uiwnd::kUIMakeCharWnd) != nullptr;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     return false;
   }

@@ -111,7 +111,6 @@ constexpr uint32_t  kSwapStockRightName = 0xad;  // 173
 constexpr uintptr_t kMsgSlot   = 0x010322d0;  // UIEquipWnd vtable +0x94 (message handler slot)
 constexpr uintptr_t kMsgOrig   = 0x008bf7d0;  // FUN_008bf7d0 equip msg handler (ret 0x18 = SIX stack args!)
 constexpr int kModeFlag   = 0xb4;  // own=0, other-player view=1
-constexpr int kEquipId    = 0xa;   // OWN UIEquipWnd window id
 
 using EquipMsg_t = int (__fastcall*)(void*, void*, int, int, int, int, int, int);  // ret 0x18
 
@@ -269,7 +268,7 @@ void EquipTweaks::OnTick() {
   static int savedX = INT_MIN, savedY = INT_MIN;  // last persisted position
   static DWORD last_save_ms = 0;                       // GetTickCount of the last save
   static bool init = false;
-  void* win = uiwnd::FindWindow(kEquipId);
+  void* win = uiwnd::FindWindow(uiwnd::kUIEquipWnd);
   if (!win) return;                               // equip window not open
 
   // A position was just loaded from the yaml: force the live window onto it once, then

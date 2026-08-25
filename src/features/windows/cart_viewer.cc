@@ -100,7 +100,7 @@ uint8_t* ReadValidWnd(uintptr_t slot, uintptr_t expected_vtable) {
 // interceptée. La vtable est vérifiée car un id ne garantit pas la classe si un
 // portage de client renumérote les fenêtres.
 uint8_t* CartWnd() {
-  return uiwnd::WndOfClass(uiwnd::kCartWndId, uiwnd::kCartWndVTable);
+  return uiwnd::WndOfClass(uiwnd::kUICartWnd, uiwnd::kCartWndVTable);
 }
 
 // Envoie une commande UI native (transfert) via le dispatcher.
@@ -303,7 +303,10 @@ void CartViewer::OnTick() {
     // Sa présence PROUVE que le joueur avait le cart ouvert : on adopte l'état
     // avant de la détruire, sinon activer le mode moderne le ferait disparaître.
     if (mode_changed && !open_) { open_ = true; show_panel_ = true; need_pos_ = true; }
-    __try { uiwnd::CloseWindow(uiwnd::kCartWndId); } __except (EXCEPTION_EXECUTE_HANDLER) {}
+    __try {
+      uiwnd::CloseWindow(uiwnd::kUICartWnd);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
   }
   if (open_) Extract();
   // Aperçu de description : purgé dès que le viewer ne dessine plus, sinon il

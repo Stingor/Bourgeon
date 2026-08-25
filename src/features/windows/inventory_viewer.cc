@@ -77,7 +77,6 @@ using FmtComma_t = char*(__cdecl*)(int, char*, int);  // FUN_00a948d0 séparateu
 
 // Fenêtre de description (id 0xc) : MakeWindow + OnMsg(0x18, &ItemSkillInfo).
 constexpr uintptr_t kToggleWndById = 0x00812e60;  // FUN_00812e60(id) __stdcall (RET 0x4, vérifié désasm) : bascule fenêtre (ferme si ouverte via SaveWindowRect, sinon ouvre) = chemin de l'icône de menu
-constexpr int kWinInventory = 8;
 // Placement et taille par défaut du viewer, à la toute 1re ouverture seulement
 // (avant, ils étaient lus sur la fenêtre native, qui ne naît plus).
 constexpr float kSpawnX = 700.0f, kSpawnY = 400.0f;
@@ -896,7 +895,10 @@ void InventoryViewer::OnTick() {
       // Sa présence PROUVE que l'inventaire était ouvert : on adopte l'état avant
       // de la détruire, sinon activer le mode moderne le ferait disparaître.
       if (mode_changed && !open_) { open_ = true; show_panel_ = true; need_pos_ = true; }
-      __try { uiwnd::CloseWindow(kWinInventory); } __except (EXCEPTION_EXECUTE_HANDLER) {}
+      __try {
+      uiwnd::CloseWindow(uiwnd::kUIInventoryWnd);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
     }
   }
   if (open_) Extract();

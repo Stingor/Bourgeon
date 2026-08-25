@@ -26,21 +26,10 @@
 namespace hotkeys {
 namespace {
 
-// ── Identifiants de fenêtres natives ─────────────────────────────────────────
-// Ces demandes d'ouverture sont INTERCEPTÉES par nos hooks quand l'interface
-// moderne est active (cf. window_pos_tweaks) : elles atterrissent sur nos
-// panneaux. Interface native = elles ouvrent la fenêtre du client, ce qui reste
-// le comportement correct.
-constexpr int kWndInventory   = 0x08;
-constexpr int kWndEquipment    = 0x0a;   // -> onglet mannequin de la fiche
-constexpr int kWndStatus       = 0x0b;   // -> onglet stats de la fiche
-constexpr int kWndSkills       = 0x25;   // -> onglet grimoire de la fiche
-constexpr int kWndStorage      = 0x21;
-constexpr int kWndCart         = 0x28;
-constexpr int kWndRodex        = 0x107;
-constexpr int kWndAchievements = 0x10e;
-constexpr int kWndQuestJournal = 0x141;
-constexpr int kWndWorldMap     = 0x8c;
+// ⚠ Les demandes d'ouverture de fenêtre native (les `uiwnd::kUI…Wnd` plus bas)
+// sont INTERCEPTÉES par nos hooks quand l'interface moderne est active (cf.
+// window_pos_tweaks) : elles atterrissent sur nos panneaux. Interface native =
+// elles ouvrent la fenêtre du client, ce qui reste le comportement correct.
 
 // ⚠ PRESQUE aucun raccourci par DÉFAUT n'est proposé ({} = aucune touche). Poser
 // des défauts demande de vérifier qu'aucun ne marche déjà sur une touche du
@@ -54,16 +43,16 @@ constexpr int kWndWorldMap     = 0x8c;
 // clé — ici on le préserve, justement pour n'avoir rien à renommer).
 const Action kActions[] = {
     // ── Fenêtres ────────────────────────────────────────────────────────────
-    {"win_inventory",    "Inventaire",              ActionGroup::kWindows, kWndInventory,   {}},
-    {"win_cart",         "Cart",                    ActionGroup::kWindows, kWndCart,        {}},
-    {"win_storage",      "Storage",                 ActionGroup::kWindows, kWndStorage,     {}},
-    {"win_sheet_stats",  "Fiche : caractéristiques", ActionGroup::kWindows, kWndStatus,     {}},
-    {"win_sheet_equip",  "Fiche : équipement",      ActionGroup::kWindows, kWndEquipment,   {}},
-    {"win_sheet_skills", "Fiche : compétences",     ActionGroup::kWindows, kWndSkills,      {}},
-    {"win_rodex",        "Courrier",                ActionGroup::kWindows, kWndRodex,       {}},
-    {"win_achievements", "Succès",                  ActionGroup::kWindows, kWndAchievements,{}},
-    {"win_quests",       "Journal de quêtes",       ActionGroup::kWindows, kWndQuestJournal,{}},
-    {"win_worldmap",     "Carte du monde",          ActionGroup::kWindows, kWndWorldMap,    {}},
+    {"win_inventory",    "Inventaire",              ActionGroup::kWindows, uiwnd::kUIInventoryWnd,    {}},
+    {"win_cart",         "Cart",                    ActionGroup::kWindows, uiwnd::kUICartWnd,         {}},
+    {"win_storage",      "Storage",                 ActionGroup::kWindows, uiwnd::kUIItemStoreWnd,    {}},
+    {"win_sheet_stats",  "Fiche : caractéristiques", ActionGroup::kWindows, uiwnd::kUIStatusWnd,      {}},
+    {"win_sheet_equip",  "Fiche : équipement",      ActionGroup::kWindows, uiwnd::kUIEquipWnd,        {}},
+    {"win_sheet_skills", "Fiche : compétences",     ActionGroup::kWindows, uiwnd::kUINewSkillListWnd, {}},
+    {"win_rodex",        "Courrier",                ActionGroup::kWindows, uiwnd::kUIRodexWnd,        {}},
+    {"win_achievements", "Succès",                  ActionGroup::kWindows, uiwnd::kUIAchievementWnd,  {}},
+    {"win_quests",       "Journal de quêtes",       ActionGroup::kWindows, uiwnd::kQuestJournalWndId, {}},
+    {"win_worldmap",     "Carte du monde",          ActionGroup::kWindows, uiwnd::kUIRoMapWnd,        {}},
     // ── Sans équivalent natif : traitées dans Invoke ────────────────────────
     {"win_bank",         "Banque",                  ActionGroup::kWindows, 0, {}},
     {"win_game_menu",    "Menu du jeu",             ActionGroup::kWindows, 0, {}},

@@ -28,18 +28,13 @@
 #include "utils/i18n.h"
 #include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 
-
 // ── Constantes RE (client 20250716, base 0x400000 ; cf. docs/rodex_re.md) ──
 namespace {
 
-// Fenêtres natives à masquer + fermeture propre (persiste la position, comme le X).
-
-constexpr int kInboxId = 0x107;  // UIRodexWnd     — la LISTE
-constexpr int kReadId  = 0x109;  // UIRodexReadWnd — la LECTURE
-constexpr uintptr_t kInboxVTable = 0x01022170;  // vérifiée live (g_RodexInboxWnd+0)
-constexpr uintptr_t kReadVTable  = 0x01021fbc;
-constexpr int kOffWndPosX = 0x1c;  // position écran (reprise pour placer l'ImGui)
-constexpr int kOffWndPosY = 0x20;
+// La LISTE et la LECTURE (`uiwnd::kUIRodexWnd` / `kUIRodexReadWnd`, avec leurs
+// vtables) sont MASQUÉES, et fermées proprement — la position persiste, comme
+// quand on clique le X. À l'opposé de la fenêtre d'écriture juste dessous, qu'on
+// empêche de NAÎTRE.
 
 // ── Fenêtre d'ÉCRITURE (UIMailWriteWnd 0x108) : elle ne naît PLUS ───────────
 // 🔴 Elle est le seul cas de la campagne qu'il ne fallait SURTOUT pas détruire :
@@ -520,8 +515,8 @@ uint8_t* ComposeWnd() {
 bool WndScreenPos(void* w, int* out_x, int* out_y) {
   __try {
     uint8_t* base = reinterpret_cast<uint8_t*>(w);
-    const int x = *reinterpret_cast<int*>(base + kOffWndPosX);
-    const int y = *reinterpret_cast<int*>(base + kOffWndPosY);
+    const int x = *reinterpret_cast<int*>(base + uiwnd::kOffPosX);
+    const int y = *reinterpret_cast<int*>(base + uiwnd::kOffPosY);
     if (x <= -2000 || y <= -2000) return false;  // pièce de HUD parquée hors écran
     *out_x = x;
     *out_y = y;
@@ -1346,8 +1341,8 @@ void RodexWindow::CloseAll() {
   // des filets, pour le cas où l'une aurait survécu à un tick manqué. Lecture AVANT
   // liste, l'ordre du natif. Ni l'une ni l'autre n'émet de paquet en se fermant
   // (vérifié : aucun envoi hors de leurs OnMsg de boutons).
-  if (FindWnd(kReadId)) CloseWnd(kReadId);
-  if (FindWnd(kInboxId)) CloseWnd(kInboxId);
+  if (FindWnd(uiwnd::kUIRodexReadWnd)) CloseWnd(uiwnd::kUIRodexReadWnd);
+  if (FindWnd(uiwnd::kUIRodexWnd)) CloseWnd(uiwnd::kUIRodexWnd);
   ResetMailboxState();
 }
 
@@ -1392,12 +1387,15 @@ RodexWindow::RodexWindow() {
 // CloseCompose la fermera au bon moment, ce qui émettra l'annulation comme il faut.
 void RodexWindow::HideNativeAtCreation(void* win, int window_id) {
   if (!win || !imgui_enabled_) return;
-  if (window_id != kInboxId && window_id != kReadId && window_id != kWriteId) return;
+  if (window_id != uiwnd::kUIRodexWnd && window_id != uiwnd::kUIRodexReadWnd &&
+      window_id != kWriteId)
+    return;
   const uintptr_t vt = VTableOf(win);
-  if (vt != kInboxVTable && vt != kReadVTable && vt != kWriteVTable)
+  if (vt != uiwnd::kUIRodexWndVTable && vt != uiwnd::kUIRodexReadWndVTable &&
+      vt != kWriteVTable)
     return;  // id réutilisé par une autre classe : on s'abstient
   HideWnd(win);
-  if (window_id != kInboxId) return;
+  if (window_id != uiwnd::kUIRodexWnd) return;
 
   // Reprend la position native : le client restaure la sienne à la création, la
   // fenêtre ImGui apparaît donc là où le joueur avait laissé sa boîte.
@@ -1491,15 +1489,17 @@ void RodexWindow::OnTick() {
   // HideNativeAtCreation qui l'a adopté, et on la détruit ici. Elle n'a rien à faire
   // vivante — le handler de liste (ZC 0x0AC2) ne la cherche qu'en fin de parcours,
   // par un FindWindow qui rend nul sans rien perdre du modèle.
-  void* inbox = FindWnd(kInboxId);
-  if (inbox && VTableOf(inbox) == kInboxVTable) CloseWnd(kInboxId);
+  void* inbox = FindWnd(uiwnd::kUIRodexWnd);
+  if (inbox && VTableOf(inbox) == uiwnd::kUIRodexWndVTable)
+    CloseWnd(uiwnd::kUIRodexWnd);
 
   // Idem pour la lecture, recréée par le serveur à CHAQUE lecture (handler ZC 0x0B63
   // -> MakeWindow 0x109). On la laisse naître — c'est ce handler-là qui remplit le
   // courrier dans la map, on ne peut pas s'en passer — mais on la détruit aussitôt :
   // son contenu est déjà lisible dans le manager, et masquée elle volerait le clavier.
-  void* read = FindWnd(kReadId);
-  if (read && VTableOf(read) == kReadVTable) CloseWnd(kReadId);
+  void* read = FindWnd(uiwnd::kUIRodexReadWnd);
+  if (read && VTableOf(read) == uiwnd::kUIRodexReadWndVTable)
+    CloseWnd(uiwnd::kUIRodexReadWnd);
 
   was_open_ = open_;
   if (!open_) return;

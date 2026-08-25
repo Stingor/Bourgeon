@@ -30,7 +30,7 @@ namespace {
 constexpr int kEscMenuWndId = 155;  // UIEscOptionWnd, vtable 0x010384A0, objet 0xD8
 // Les deux sous-fenêtres que ce menu est le SEUL à ouvrir (vérifié par recherche
 // d'octets : rien d'autre dans l'image ne les fabrique) vivent dans `uiwnd` :
-// `kHotkeyWndId` et `kMacroWndId`, avec la façon dont leurs identifiants ont
+// `kUIHotKeyWnd` et `kUIEmotionWnd`, avec la façon dont leurs identifiants ont
 // été remontés.
 
 // Les trois fenêtres que le branchement « Character Select » ferme. On ne les
@@ -286,17 +286,17 @@ void GameMenu::RunPendingAction() {
 
     case Action::kOpenChatMacros:
       Close();
-      uiwnd::MakeWindow(uiwnd::kMacroWndId);
+      uiwnd::MakeWindow(uiwnd::kUIEmotionWnd);
       break;
 
     case Action::kOpenGameSettings:
       Close();
-      uiwnd::MakeWindow(uiwnd::kGameSettingsWndId);
+      uiwnd::MakeWindow(uiwnd::kCUIGameSettingsUI);
       break;
 
     case Action::kOpenHotkeyNative:
       Close();
-      uiwnd::MakeWindow(uiwnd::kHotkeyWndId);
+      uiwnd::MakeWindow(uiwnd::kUIHotKeyWnd);
       break;
 
     case Action::kNone:

@@ -971,11 +971,9 @@ constexpr int kSkOffNeedVec   = 0x38;  // std::vector<{u32 id, u32 niveau}> = pr
 // SUIT plus son existence, on la détruit.)
 constexpr int       kWndVisibleFlag = 0x28;
 // ── Les trois fenêtres natives que cette feuille REMPLACE ───────────────────
-// Ids relevés en live dans la map du gestionnaire (mgr 0x0131f4e8), vtables
-// recoupées avec status_tweaks.h et inventory_viewer.cc.
-constexpr int       kWinSkillList   = 0x25;  // UINewSkillListWnd  (Grimoire)
-constexpr int       kWinEquip       = 0x0a;  // Equipment, vtable 0x01022f68
-constexpr int       kWinStatus      = 0x0b;  // UIStatusWnd,  vtable 0x010329d4
+// Leurs identifiants et vtables sont au foyer : `uiwnd::kUIEquipWnd`,
+// `kUIStatusWnd`, `kUINewSkillListWnd`. Relevés en live dans la map du
+// gestionnaire (mgr 0x0131f4e8) — c'est ce relevé partagé qui les y a menés.
 
 // ── Guilde : DEUX fenêtres, choisies selon qu'on a une guilde ou non ─────────
 // Les deux chemins d'ouverture le font pareil, et sur le MÊME critère —
@@ -7577,7 +7575,7 @@ void CharacterSheet::DrawCompanionCase(int kind, float x, float y, float sz) {
 // OnCreate ne dépend pas de l'état cart (au pire fenêtre vide), le serveur pousse le contenu.
 void CharacterSheet::OpenCartWindow() {
   __try {
-    uiwnd::MakeWindow(uiwnd::kCartWndId);
+    uiwnd::MakeWindow(uiwnd::kUICartWnd);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -8844,17 +8842,17 @@ void CharacterSheet::HandleReplacedNativeCreation(void* win, int window_id) {
   // referme. C'est nous qui portons cette bascule maintenant, puisque la native
   // est détruite aussitôt — le natif, lui, ne la voit jamais exister.
   switch (window_id) {
-    case kWinSkillList:
+    case uiwnd::kUINewSkillListWnd:
       if (show_ && tab_ == 5) { show_ = false; return; }
       OpenSkillsTab();
       return;
-    case kWinStatus:
+    case uiwnd::kUIStatusWnd:
       // Le volet stats est la marque de cette vue-là : ouverte SANS lui, la
       // demande le déplie au lieu de tout refermer.
       if (show_ && tab_ == 0 && stats_panel_shown_) { show_ = false; return; }
       OpenStatusTab();
       return;
-    case kWinEquip:
+    case uiwnd::kUIEquipWnd:
       if (show_ && tab_ == 0) { show_ = false; return; }
       OpenEquipTab();
       return;
@@ -8895,7 +8893,8 @@ void CharacterSheet::OnTick() {
   // elles renaissent par des chemins qui ne demandent rien au joueur — la
   // reconstruction de l'interface, ou l'activation du mode moderne alors qu'elles
   // sont déjà à l'écran. Les détruire ici couvre les deux cas.
-  for (const int id : {kWinSkillList, kWinStatus, kWinEquip, kWinGuild, kWinGuildNone,
+  for (const int id : {uiwnd::kUINewSkillListWnd, uiwnd::kUIStatusWnd,
+                       uiwnd::kUIEquipWnd, kWinGuild, kWinGuildNone,
                        kWinHomunInfo, kWinHomunSkill})
     if (uiwnd::SafeFindWindow(id)) DestroyNativeWindow(id);
   // Les panneaux d'onglet de la fenêtre de guilde : le conteneur en crée un à

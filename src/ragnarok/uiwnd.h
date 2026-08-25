@@ -25,33 +25,73 @@ namespace uiwnd {
 constexpr uintptr_t kUIWindowMgrAddr = 0x0131f4e8;  // g_UIWindowMgr (l'OBJET, pas un pointeur vers lui)
 constexpr uintptr_t kFindWindowAddr  = 0x00a47b90;  // UIWindowMgr::FindWindow(id) __thiscall
 
-// ── Identifiants utilisés HORS de leur plugin propriétaire ──────────────────
+// ── Identifiants de fenêtres natives ────────────────────────────────────────
 //
-// Le critère est celui-là, et il se mesure : un identifiant déclaré dans DEUX
-// fichiers l'est, par définition, hors de son propriétaire. Les cinquante-deux
-// autres identifiants du projet restent chez le plugin qui possède leur fenêtre,
-// et c'est très bien ainsi — ce n'est pas de la dispersion, c'est de la localité.
+// LE NOM DE LA CONSTANTE EST LE NOM DE CLASSE DU CLIENT. Chercher `UIEquipWnd`
+// dans le binaire et dans nos sources rend alors la MÊME chaîne : le nom cesse
+// d'être une convention de plus, il devient la vérité terrain. Deux exceptions,
+// et elles informent — `kCUIGameSettingsUI` parce que le client lui-même ne suit
+// pas `UI…Wnd` pour cette classe, et `kQuestJournalWndId` parce qu'AUCUN nom de
+// classe n'a été relevé pour lui.
 //
-// 🔴 Les quatre ci-dessous étaient redéclarés, dont deux sous DES NOMS
-// DIFFÉRENTS (`kCartWndId` / `kWinCart`, `kChatMacroWndId` / `kMacroWndId`) :
-// invisibles à toute recherche par nom, relevés par VALEUR.
-// La carte du monde, plein écran. `UIRoMapWnd`, vtable 0x01038140, ctor
-// 0x008d7910, objet 0x228, cas 140 de MakeWindow @0x00a3f15d — le tout relevé
-// dans docs/minimap_re.md §4.
+// 🔴 CETTE SECTION EXISTE PARCE QU'AUCUNE RECHERCHE PAR NOM NE POUVAIT LA
+// CONSTITUER. Les mêmes fenêtres étaient déclarées sous QUATRE conventions —
+// `kWin*` chez le plugin propriétaire, `kWnd*` dans la table des raccourcis,
+// `kXxxId` dans les patches, `kNativeWndMain` dans la navigation — et tantôt en
+// hexadécimal, tantôt en DÉCIMAL (`kWinInventory = 8` contre
+// `kWndInventory = 0x08`). Une même fenêtre portait jusqu'à TROIS noms dans
+// trois fichiers. Il a fallu chercher la VALEUR, normalisée, pour les rapprocher.
 //
-// ⚠ Ce commentaire annonçait « UIWorldViewWnd », un nom qui n'apparaissait NULLE
-// PART ailleurs — ni dans la doc, ni dans un relevé, ni dans une autre source.
-// Le fichier de la minimap, lui, portait le même identifiant sous le bon nom, en
-// DÉCIMAL (140), ce qui mettait les deux hors de portée l'un de l'autre. C'est le
-// relevé par VALEUR qui les a rapprochés, et la doc qui a tranché.
-constexpr int kWorldMapWndId = 0x8c;
+// ⚠ Ce que cette liste EST : les fenêtres que nos plugins désignent. Ce qu'elle
+// n'est PAS : tous les identifiants du client. Certains apparaissent comme
+// LITTÉRAUX dans des tables (celle de `window_pos_tweaks`), hors de portée de
+// toute recherche de `constexpr`.
+//
+// ⚠ La VTABLE accompagne l'identifiant quand elle est connue : `WndOfClass`
+// demande les deux, et les séparer invite à apparier de travers.
+
+constexpr int kUIInventoryWnd    = 0x08;
+constexpr int kUIEquipWnd        = 0x0a;   // vtable 0x01022f68
+constexpr int kUIStatusWnd       = 0x0b;   // vtable 0x010329d4
+constexpr int kUIItemStoreWnd    = 0x21;
+constexpr int kUINewSkillListWnd = 0x25;   // le Grimoire
+constexpr int kUIAchievementWnd  = 0x10e;
+
+// 🔴 Classe INCONNUE — le journal de quêtes est le seul de cette liste dont
+// aucun relevé ne donne le nom. Le nom descriptif marque ce qui reste à mesurer.
+constexpr int kQuestJournalWndId = 0x141;
 
 // Le chariot. Ouvert par son propre viewer, mais aussi lu par l'inventaire (qui
 // y dépose) et par la feuille de personnage (qui l'ouvre depuis le pantin).
-constexpr int kCartWndId = 0x28;  // vtable 0x0103d538
+constexpr int kUICartWnd = 0x28;  // vtable 0x0103d538
 
-// « Shortcut List » (Alt+M) — c'est UIEmotionWnd, et ni l'identifiant ni le nom
-// de classe ne disent « macros ». vtable 0x0104B070, objet 0x10C, cache mgr+0x380.
+// La carte du monde, plein écran. vtable 0x01038140, ctor 0x008d7910, objet
+// 0x228, cas 140 de MakeWindow @0x00a3f15d — relevé dans docs/minimap_re.md §4.
+//
+// ⚠ Cette constante s'appelait `kWorldMapWndId` et son commentaire annonçait
+// « UIWorldViewWnd », un nom qui n'apparaissait NULLE PART ailleurs : ni doc, ni
+// relevé, ni seconde source. Le fichier de la minimap portait le même
+// identifiant sous le bon nom, mais en DÉCIMAL (140) — les deux étaient hors de
+// portée l'un de l'autre.
+constexpr int kUIRoMapWnd = 0x8c;
+
+// 🔴 IDENTIFIANT MESURÉ, APRÈS QU'UNE DÉDUCTION L'AIT MIS À 156 — qui ouvre en
+// réalité les réglages de raccourcis, plus bas. La bonne méthode :
+// `CNavigation_SearchRoute` publie la fenêtre ouverte dans `0x0136E57C` et,
+// quand elle manque, ouvre `0xCB` ; lecture en jeu de ce global pendant que la
+// fenêtre était affichée — `+0x2C` (l'id) = 0xCB, vtable `0x00FD95EC`. Un relevé
+// RTTI antérieur annonçait 0x9C pour « UINaviSearchWnd » : il ne vaut pas une
+// mesure.
+constexpr int kUINavigationV4Wnd = 0xcb;
+
+// RODEX : la LISTE et la LECTURE, avec leurs vtables.
+constexpr int       kUIRodexWnd            = 0x107;
+constexpr uintptr_t kUIRodexWndVTable      = 0x01022170;  // vérifiée live
+constexpr int       kUIRodexReadWnd        = 0x109;
+constexpr uintptr_t kUIRodexReadWndVTable  = 0x01021fbc;
+
+// « Shortcut List » (Alt+M) — ni l'identifiant ni le nom de classe ne disent
+// « macros ». vtable 0x0104B070, objet 0x10C, cache mgr+0x380.
 //
 // 🔴 IDENTIFIANT REMONTÉ, PAS DEVINÉ. Le client fabrique ses fenêtres par une
 // table à deux étages : `0x00A42CA8[id]` donne un numéro de cas, et
@@ -63,23 +103,19 @@ constexpr int kCartWndId = 0x28;  // vtable 0x0103d538
 //
 // ⚠ NE PAS confondre avec `UIMacroRegisterWnd` (id 0x11E), qu'AUCUN raccourci
 // n'ouvre : c'est une autre fenêtre, malgré son nom.
-constexpr int kMacroWndId = 86;
+constexpr int kUIEmotionWnd = 86;
 
 // Les deux écrans que le menu Échap ouvre, et qui ont chacun leur plugin.
-constexpr int kHotkeyWndId       = 156;     // UIHotKeyWnd, vt 0x010383C8, objet 0x120, cache mgr+0x404
-constexpr int kGameSettingsWndId = 0x271e;  // CUIGameSettingsUI, vt 0x01047D7C, objet 0x100
+constexpr int kUIHotKeyWnd       = 156;     // vt 0x010383C8, objet 0x120, cache mgr+0x404
+constexpr int kCUIGameSettingsUI = 0x271e;  // vt 0x01047D7C, objet 0x100
 
 // ── Écran de personnages ─────────────────────────────────────────────────────
-// Le login natif et notre char-select ImGui les lisent tous les deux.
-//
-// ⚠ `kMakeCharWndId` et `kNewMakeCharWndId` sont DEUX fenêtres distinctes dont
-// les noms ne diffèrent que par « New ». Les séparer dans deux fichiers, c'est
-// inviter la confusion ; ils sont ici côte à côte pour qu'elle soit visible.
-// (Le second est un singleton et n'aurait pas eu besoin du foyer — il y est pour
-// cette raison-là, pas pour un doublon.)
-constexpr int kMakeCharWndId    = 0xc8;   // UIMakeCharWnd (200)
-constexpr int kCharSelectWndId  = 0x115;  // UINewSelectCharWnd (277)
-constexpr int kNewMakeCharWndId = 0x116;  // UINewMakeCharWnd (278)
+// ⚠ `kUIMakeCharWnd` et `kUINewMakeCharWnd` sont DEUX fenêtres distinctes dont
+// les noms ne diffèrent que par « New ». Côte à côte, la confusion est visible ;
+// dans deux fichiers, elle est invitée.
+constexpr int kUIMakeCharWnd      = 0xc8;   // 200
+constexpr int kUINewSelectCharWnd = 0x115;  // 277
+constexpr int kUINewMakeCharWnd   = 0x116;  // 278
 
 // L'objet manager lui-même. Pour les sites qui lisent un de ses slots dédiés
 // (+0x408 = fenêtre d'options ESC, +0x1dc = BasicInfo, +0x508 = compteur
@@ -102,7 +138,7 @@ inline void* FindWindow(int window_id) {
 // (« Mirrors MenuIcons::HudReplaced ») plutôt que corrigée, parce qu'une
 // fonction libre non qualifiée aurait rendu leurs appels ambigus. Qualifiée,
 // elle ne pose plus ce problème.
-inline bool IsHudReplaced() { return FindWindow(kWorldMapWndId) != nullptr; }
+inline bool IsHudReplaced() { return FindWindow(kUIRoMapWnd) != nullptr; }
 
 // ── Fabrique et fermeture ────────────────────────────────────────────────────
 // kMakeWindowAddr était redéclarée dans 11 fichiers (dont une en 0x00A39340,

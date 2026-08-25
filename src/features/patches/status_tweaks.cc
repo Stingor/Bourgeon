@@ -57,7 +57,6 @@ constexpr uintptr_t kDrawOrig  = 0x008b66a0;  // original UIStatusWnd::DrawConte
 // Position persistence (the engine never saves window id 0xb — see workflow RE).
 constexpr uintptr_t kMsgSlot   = 0x01032a68;  // UIStatusWnd vtable +0x94 (message handler slot)
 constexpr uintptr_t kMsgOrig   = 0x008cb7c0;  // FUN_008cb7c0 status msg handler (ret 0x18 = SIX stack args!)
-constexpr int kStatusId  = 0xb;    // UIStatusWnd window id
 
 constexpr uint32_t  kNewWidth  = 302;
 constexpr uint32_t  kNewHeight = 132;         // 17 title bar + 115 bitmap
@@ -368,7 +367,7 @@ void StatusTweaks::OnTick() {
   static int savedX = INT_MIN, savedY = INT_MIN;  // last persisted position
   static DWORD last_save_ms = 0;                       // GetTickCount of the last save
   static bool init = false;
-  void* win = uiwnd::FindWindow(kStatusId);
+  void* win = uiwnd::FindWindow(uiwnd::kUIStatusWnd);
   if (!win) return;                               // status window not open
 
   // A position was just loaded from the yaml (fresh launch, or a re-entry into game):

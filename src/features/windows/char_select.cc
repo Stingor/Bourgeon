@@ -84,7 +84,7 @@ constexpr int kCmdQuitGame    = 2;
 // La fenêtre native du char-select existe-t-elle encore ?
 bool NativeCharSelectAlive() {
   __try {
-    return uiwnd::FindWindow(uiwnd::kCharSelectWndId) != nullptr;
+    return uiwnd::FindWindow(uiwnd::kUINewSelectCharWnd) != nullptr;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     return false;
   }
@@ -747,7 +747,7 @@ void CharSelect::EnterGame(int slot) {
     // Fenêtre demandée au MANAGER, pas au cache mgr+0x3d4 : lui pendouille après
     // destruction et sa vtable matche encore (cf. kCharSelWndVtbl plus haut), donc
     // la garde le laissait passer et on pilotait une fenêtre morte.
-    void* wnd = uiwnd::FindWindow(uiwnd::kCharSelectWndId);
+    void* wnd = uiwnd::FindWindow(uiwnd::kUINewSelectCharWnd);
     if (!wnd || *reinterpret_cast<uintptr_t*>(wnd) != kCharSelWndVtbl) {
       LogError("[CharSelect] fenêtre native absente/invalide -> entrée en jeu "
                "impossible (slot {}). Utilise « Mode Classique ».", slot);
@@ -1110,7 +1110,8 @@ void CharSelect::DriveNativeCtrl(int ctrl, int slot) {
   // OnMsg (msg 6 / ctrl). Aucun paquet fabriqué ici : le natif construit tout.
   __try {
     *reinterpret_cast<uint8_t*>(kSelectedSlot) = static_cast<uint8_t>(slot);
-    void* wnd = uiwnd::FindWindow(uiwnd::kCharSelectWndId);  // vivante (cf. EnterGame)
+    // vivante : cf. EnterGame
+    void* wnd = uiwnd::FindWindow(uiwnd::kUINewSelectCharWnd);
     if (!wnd || *reinterpret_cast<uintptr_t*>(wnd) != kCharSelWndVtbl) {
       LogError("[CharSelect] fenêtre native absente/invalide -> ctrl 0x{:x} ignoré "
                "(slot {})", ctrl, slot);

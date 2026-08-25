@@ -67,16 +67,10 @@ constexpr int kRoCursorHand = 2;
 // Le radar natif : `UIMinimapZoomWnd`, id 14. Cf. docs/minimap_re.md §1.
 constexpr int kNativeRadarWndId = 14;
 
-// Les deux écrans natifs qu'on ne remplace pas encore, offerts depuis le menu.
-//
-// 🔴 L'identifiant de la navigation a été MESURÉ, après qu'une déduction l'ait
-// mis à 156 — qui ouvre en fait une fenêtre de réglages de raccourcis. La bonne
-// méthode : `CNavigation_SearchRoute` publie la fenêtre ouverte dans
-// `0x0136E57C` et, quand elle manque, ouvre `0xCB`. Lecture en jeu de ce global
-// pendant que la fenêtre était affichée : `+0x2C` (l'id) = 0xCB, vtable
-// `0x00FD95EC` = `UINavigationV4Wnd`. Un relevé RTTI antérieur annonçait 0x9C
-// pour « UINaviSearchWnd » : il ne vaut pas une mesure.
-constexpr int kNavigationWndId = 203;   // 0xCB, UINavigationV4Wnd
+// Les deux écrans natifs qu'on ne remplace pas encore sont offerts depuis le
+// menu : `uiwnd::kUIRoMapWnd` et `uiwnd::kUINavigationV4Wnd`. Comment
+// l'identifiant de la navigation a été MESURÉ — après une déduction fausse — est
+// écrit avec lui, dans le foyer.
 
 // Plafond de points du TRACÉ d'itinéraire. Ce ne sont pas les cellules du
 // chemin mais ses COINS : `RouteCellPath` décime aux changements de direction,
@@ -1561,9 +1555,9 @@ void Minimap::OnRenderUI() {
         // BASCULENT, comme le fait le bouton `viewon` du radar d'origine —
         // recliquer referme, plutôt que d'empiler des ouvertures.
         if (ImGui::MenuItem(i18n::Tr("Carte du monde")))
-          pending_toggle_wnd_ = uiwnd::kWorldMapWndId;
+          pending_toggle_wnd_ = uiwnd::kUIRoMapWnd;
         if (ImGui::MenuItem(i18n::Tr("Navigation")))
-          pending_toggle_wnd_ = kNavigationWndId;
+          pending_toggle_wnd_ = uiwnd::kUINavigationV4Wnd;
 
         ImGui::Separator();
         // Le sous-menu est contraint en largeur : `DrawSettings` porte des

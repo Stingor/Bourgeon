@@ -204,7 +204,8 @@ void MacroWindow::OnTick() {
   // La native est masquée dès sa naissance ; on la DÉTRUIT ici. Masquée, elle
   // continuerait d'avaler un appui sur deux (le client ferme-si-existe) et
   // garderait le clavier (feedback_hidden_native_window_keyboard).
-  if (uiwnd::FindWindow(uiwnd::kMacroWndId)) uiwnd::CloseWindow(uiwnd::kMacroWndId);
+  if (uiwnd::FindWindow(uiwnd::kUIEmotionWnd))
+    uiwnd::CloseWindow(uiwnd::kUIEmotionWnd);
 
   if (pending_reset_) {
     pending_reset_ = false;
