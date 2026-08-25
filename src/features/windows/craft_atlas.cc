@@ -214,6 +214,7 @@ void CraftAtlas::GoBack() {
 }
 
 void CraftAtlas::OpenOnItem(uint32_t item_id) {
+  if (!open_) open_dirty_ = true;  // bascule fermé → ouvert : à persister
   open_ = true;
   back_.clear();  // on arrive par une porte, pas au milieu d'un parcours
   sel_id_ = item_id;
@@ -222,12 +223,22 @@ void CraftAtlas::OpenOnItem(uint32_t item_id) {
 // ── Rendu ────────────────────────────────────────────────────────────────────
 
 void CraftAtlas::OnTick() {
-  // La position n'est écrite qu'à la FERMETURE, pas à chaque frame de glissement :
-  // MoonlightUi possède le fichier de réglages, on ne fait que demander l'écriture.
+  // DEUX raisons d'écrire, et une seule ne suffisait pas :
+  //  · la POSITION n'est écrite qu'à la FERMETURE, pas à chaque frame de
+  //    glissement — sinon le fichier serait réécrit pendant tout le déplacement ;
+  //  · l'ÉTAT ouvert/fermé, lui, s'écrit à chaque bascule. Le faire dépendre du
+  //    drapeau de position laissait une fermeture SANS écriture dès que la
+  //    fenêtre n'avait pas bougé, et seule l'ouverture finissait dans le fichier.
+  // MoonlightUi possède le fichier de réglages, on ne fait que demander
+  // l'écriture — et une seule, même quand les deux raisons tombent ensemble.
+  bool write = open_dirty_;
+  open_dirty_ = false;
   if (!open_ && pos_dirty_) {
     pos_dirty_ = false;
-    if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
+    write = true;
   }
+  if (!write) return;
+  if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
 }
 
 void CraftAtlas::OnRenderUI() {
@@ -331,7 +342,9 @@ void CraftAtlas::OnRenderUI() {
   if (hover_valid_ && desc_tooltip_)
     itemcell::DrawTooltip(hover_id_, nullptr, 0, nullptr, 0, 0, nullptr);
 
-  if (!open) open_ = false;
+  // La croix de la barre de titre : `open` ne retombe que sur CETTE frame-là,
+  // c'est donc bien une bascule, pas un état relu à chaque passage.
+  if (!open) { open_ = false; open_dirty_ = true; }
 }
 
 void CraftAtlas::DrawToolbar() {

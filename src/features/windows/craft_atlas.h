@@ -76,7 +76,9 @@ class CraftAtlas : public Plugin {
   // l'historique à plat : on arrive par une porte, pas au milieu d'un parcours.
   void OpenOnItem(uint32_t item_id);
 
-  void Toggle() { open_ = !open_; }
+  // ⚠ Les DEUX sens marquent l'état à persister : une bascule est un geste du
+  // joueur sur sa fenêtre, elle doit se retrouver au lancement suivant.
+  void Toggle() { open_ = !open_; open_dirty_ = true; }
 
   // Le libellé d'une compétence. PUBLIC et statique : la description d'objet en a
   // besoin pour son étiquette « Craft », et une quatrième copie de l'adresse du
@@ -196,4 +198,12 @@ class CraftAtlas : public Plugin {
   int  pos_x_ = INT_MIN;  // INT_MIN = « jamais posée » — PAS -1 : une fenêtre à
   int  pos_y_ = INT_MIN;  // cheval sur le bord gauche a un x négatif légitime.
   bool pos_dirty_ = false;
+  // 🔴 L'ÉTAT OUVERT/FERMÉ a son propre drapeau, et il ne se confond pas avec
+  // celui de la position. La position ne s'écrit qu'à la FERMETURE (pas à chaque
+  // frame de glissement) ; l'ouverture et la fermeture, elles, doivent s'écrire à
+  // CHAQUE bascule. Les avoir mêlés laissait la fermeture sans écriture quand la
+  // fenêtre n'avait pas bougé : le `true` d'une ouverture finissait dans le
+  // fichier — emporté par la première écriture venue — sans que le `false` de la
+  // fermeture ne l'y suive jamais, et l'Atlas se rouvrait seul au lancement.
+  bool open_dirty_ = false;
 };
