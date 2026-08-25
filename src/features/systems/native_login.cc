@@ -21,7 +21,6 @@ constexpr uintptr_t kSocketFd       = 0x015C5A24;  // g_RagConnection_SocketFd
 constexpr uintptr_t kAcctClassNormal = 0x01031264;
 constexpr uintptr_t kSetTextAddr    = 0x008303F0;  // CUIEdit_SetText
 constexpr uintptr_t kOnMsgAddr      = 0x008848D0;  // UILoginWnd_OnMsg
-constexpr int       kCharSelectWndId = 0x115;      // UINewSelectCharWnd (277)
 constexpr int       kCharServerWndId = 2;          // « Select Service » (choix du char-server)
 // DEUX écrans natifs de création de personnage, et il faut connaître les deux.
 // 0x116 = UINewMakeCharWnd (« Character Creation », plein écran, ctor 0x0079F890) :
@@ -29,8 +28,6 @@ constexpr int       kCharServerWndId = 2;          // « Select Service » (choi
 //   SANS personnage — la fenêtre 0x115 n'est alors jamais construite.
 // 0xC8  = UIMakeCharWnd (ancien dialogue, ctor 0x0086BC10) : ouvert par le contrôle
 //   0x1A0 du char-select (case 416, 0x0079E03A) et par les variantes 4/5 de l'état 7.
-constexpr int       kNewMakeCharWndId = 0x116;     // UINewMakeCharWnd (278)
-constexpr int       kMakeCharWndId    = 0xC8;      // UIMakeCharWnd (200)
 
 // Offsets UILoginWnd (tous prouvés au désasm — cf. login_connect_re.md).
 constexpr int kOffEditId    = 0xB4;  // édit ID (SendMsg 0x2718 dans le handler natif)
@@ -228,7 +225,7 @@ bool native_login::CharSelectWindowPresent() {
   // chaque changement d'état (UIWindowMgr_DestroyAllWindows 0x00a482f0, appelée en
   // tête de CLoginMode_OnStateEnter). Aucun résidu, donc.
   __try {
-    return uiwnd::FindWindow(kCharSelectWndId) != nullptr;
+    return uiwnd::FindWindow(uiwnd::kCharSelectWndId) != nullptr;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     return false;
   }
@@ -245,8 +242,8 @@ bool native_login::MakeCharWindowPresent() {
   // Le dialogue 0xC8, lui, ne remplace pas le char-select (le contrôle 0x1A0 fait
   // un simple MakeWindow, sans changement d'état) : 0x115 répond encore à côté.
   __try {
-    return uiwnd::FindWindow(kNewMakeCharWndId) != nullptr ||
-           uiwnd::FindWindow(kMakeCharWndId) != nullptr;
+    return uiwnd::FindWindow(uiwnd::kNewMakeCharWndId) != nullptr ||
+           uiwnd::FindWindow(uiwnd::kMakeCharWndId) != nullptr;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     return false;
   }

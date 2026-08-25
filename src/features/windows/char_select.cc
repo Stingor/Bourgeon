@@ -59,7 +59,6 @@ const char kHallBmpPath[] =
     "lobby_hall.bmp";
 
 // ── Fenêtre native de création (ouverte par le contrôle « créer » 0x1A0) ──────
-constexpr int       kMakeCharWndId = 0xC8;        // UIMakeCharWnd (MakeWindow 0xC8)
 
 // ── Quitter l'écran : retour au login / fermeture du jeu ─────────────────────
 // Le « Cancel » natif du char-select (UINewSelectCharWnd_OnMsg 0x0079d610, ctrl 185)
@@ -81,12 +80,11 @@ constexpr int kCmdQuitGame    = 2;
 // = l'écran char-select est VIVANT dans le manager (contrairement au cache
 // mgr+0x3d4, jamais remis à zéro à la destruction). C'est la SEULE sonde fiable de
 // « on est bien à l'écran char-select », et la seule source du `this` qu'on pilote.
-constexpr int       kCharSelWndId = 0x115;  // 277 = UINewSelectCharWnd
 
 // La fenêtre native du char-select existe-t-elle encore ?
 bool NativeCharSelectAlive() {
   __try {
-    return uiwnd::FindWindow(kCharSelWndId) != nullptr;
+    return uiwnd::FindWindow(uiwnd::kCharSelectWndId) != nullptr;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     return false;
   }
@@ -749,7 +747,7 @@ void CharSelect::EnterGame(int slot) {
     // Fenêtre demandée au MANAGER, pas au cache mgr+0x3d4 : lui pendouille après
     // destruction et sa vtable matche encore (cf. kCharSelWndVtbl plus haut), donc
     // la garde le laissait passer et on pilotait une fenêtre morte.
-    void* wnd = uiwnd::FindWindow(kCharSelWndId);
+    void* wnd = uiwnd::FindWindow(uiwnd::kCharSelectWndId);
     if (!wnd || *reinterpret_cast<uintptr_t*>(wnd) != kCharSelWndVtbl) {
       LogError("[CharSelect] fenêtre native absente/invalide -> entrée en jeu "
                "impossible (slot {}). Utilise « Mode Classique ».", slot);
@@ -1112,7 +1110,7 @@ void CharSelect::DriveNativeCtrl(int ctrl, int slot) {
   // OnMsg (msg 6 / ctrl). Aucun paquet fabriqué ici : le natif construit tout.
   __try {
     *reinterpret_cast<uint8_t*>(kSelectedSlot) = static_cast<uint8_t>(slot);
-    void* wnd = uiwnd::FindWindow(kCharSelWndId);  // vivante (cf. EnterGame)
+    void* wnd = uiwnd::FindWindow(uiwnd::kCharSelectWndId);  // vivante (cf. EnterGame)
     if (!wnd || *reinterpret_cast<uintptr_t*>(wnd) != kCharSelWndVtbl) {
       LogError("[CharSelect] fenêtre native absente/invalide -> ctrl 0x{:x} ignoré "
                "(slot {})", ctrl, slot);

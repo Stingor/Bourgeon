@@ -76,7 +76,6 @@ constexpr int kNativeRadarWndId = 14;
 // pendant que la fenêtre était affichée : `+0x2C` (l'id) = 0xCB, vtable
 // `0x00FD95EC` = `UINavigationV4Wnd`. Un relevé RTTI antérieur annonçait 0x9C
 // pour « UINaviSearchWnd » : il ne vaut pas une mesure.
-constexpr int kWorldMapWndId   = 140;   // 0x8C, UIRoMapWnd
 constexpr int kNavigationWndId = 203;   // 0xCB, UINavigationV4Wnd
 
 // Plafond de points du TRACÉ d'itinéraire. Ce ne sont pas les cellules du
@@ -1562,7 +1561,7 @@ void Minimap::OnRenderUI() {
         // BASCULENT, comme le fait le bouton `viewon` du radar d'origine —
         // recliquer referme, plutôt que d'empiler des ouvertures.
         if (ImGui::MenuItem(i18n::Tr("Carte du monde")))
-          pending_toggle_wnd_ = kWorldMapWndId;
+          pending_toggle_wnd_ = uiwnd::kWorldMapWndId;
         if (ImGui::MenuItem(i18n::Tr("Navigation")))
           pending_toggle_wnd_ = kNavigationWndId;
 

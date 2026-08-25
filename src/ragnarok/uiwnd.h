@@ -35,7 +35,16 @@ constexpr uintptr_t kFindWindowAddr  = 0x00a47b90;  // UIWindowMgr::FindWindow(i
 // 🔴 Les quatre ci-dessous étaient redéclarés, dont deux sous DES NOMS
 // DIFFÉRENTS (`kCartWndId` / `kWinCart`, `kChatMacroWndId` / `kMacroWndId`) :
 // invisibles à toute recherche par nom, relevés par VALEUR.
-constexpr int kWorldMapWndId = 0x8c;  // UIWorldViewWnd (plein écran)
+// La carte du monde, plein écran. `UIRoMapWnd`, vtable 0x01038140, ctor
+// 0x008d7910, objet 0x228, cas 140 de MakeWindow @0x00a3f15d — le tout relevé
+// dans docs/minimap_re.md §4.
+//
+// ⚠ Ce commentaire annonçait « UIWorldViewWnd », un nom qui n'apparaissait NULLE
+// PART ailleurs — ni dans la doc, ni dans un relevé, ni dans une autre source.
+// Le fichier de la minimap, lui, portait le même identifiant sous le bon nom, en
+// DÉCIMAL (140), ce qui mettait les deux hors de portée l'un de l'autre. C'est le
+// relevé par VALEUR qui les a rapprochés, et la doc qui a tranché.
+constexpr int kWorldMapWndId = 0x8c;
 
 // Le chariot. Ouvert par son propre viewer, mais aussi lu par l'inventaire (qui
 // y dépose) et par la feuille de personnage (qui l'ouvre depuis le pantin).
@@ -59,6 +68,18 @@ constexpr int kMacroWndId = 86;
 // Les deux écrans que le menu Échap ouvre, et qui ont chacun leur plugin.
 constexpr int kHotkeyWndId       = 156;     // UIHotKeyWnd, vt 0x010383C8, objet 0x120, cache mgr+0x404
 constexpr int kGameSettingsWndId = 0x271e;  // CUIGameSettingsUI, vt 0x01047D7C, objet 0x100
+
+// ── Écran de personnages ─────────────────────────────────────────────────────
+// Le login natif et notre char-select ImGui les lisent tous les deux.
+//
+// ⚠ `kMakeCharWndId` et `kNewMakeCharWndId` sont DEUX fenêtres distinctes dont
+// les noms ne diffèrent que par « New ». Les séparer dans deux fichiers, c'est
+// inviter la confusion ; ils sont ici côte à côte pour qu'elle soit visible.
+// (Le second est un singleton et n'aurait pas eu besoin du foyer — il y est pour
+// cette raison-là, pas pour un doublon.)
+constexpr int kMakeCharWndId    = 0xc8;   // UIMakeCharWnd (200)
+constexpr int kCharSelectWndId  = 0x115;  // UINewSelectCharWnd (277)
+constexpr int kNewMakeCharWndId = 0x116;  // UINewMakeCharWnd (278)
 
 // L'objet manager lui-même. Pour les sites qui lisent un de ses slots dédiés
 // (+0x408 = fenêtre d'options ESC, +0x1dc = BasicInfo, +0x508 = compteur
