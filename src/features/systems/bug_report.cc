@@ -68,6 +68,39 @@ std::string JsonEscape(const std::string& in) {
   return out;
 }
 
+// ── Le corps commun des contextes « une entité + un nom » ───────────────────
+// Objet, compétence et PNJ composaient le même contexte : catégorie, libellé
+// traduit « <Quoi> : <nom> (<id>) », et un json `{clé:id, name:"…"}`.
+//
+// 🔴 Ce qui compte ici n'est pas la longueur économisée, ce sont les DEUX RÈGLES
+// que chaque copie devait se rappeler, et qu'un quatrième contexte aurait pu
+// oublier sans que rien ne le signale :
+//   · un nom vide devient « ? » dans le libellé — sinon « PNJ :  (GID 42) » ;
+//   · le nom part ÉCHAPPÉ dans le json — un guillemet dans un nom d'objet
+//     casserait le rapport côté serveur, silencieusement.
+//
+// `extra` est un fragment json DÉJÀ formaté (« ,"refine":7 ») ou vide : c'est la
+// seule chose qui varie au-delà des trois paramètres, et l'écrire chez
+// l'appelant garde la clé visible là où elle a un sens.
+//
+// ⚠ `label_fmt` vient de `i18n::Tr` : sa séquence de spécificateurs (%s puis %u)
+// est un CONTRAT que le chargeur de traductions vérifie déjà.
+BugReport::Context MakeEntityContext(uint8_t category, const char* label_fmt,
+                                     const char* json_key, uint32_t id,
+                                     const std::string& name,
+                                     const char* extra = nullptr) {
+  BugReport::Context c;
+  c.category = category;
+  char lbl[160];
+  std::snprintf(lbl, sizeof(lbl), label_fmt, name.empty() ? "?" : name.c_str(), id);
+  c.label = lbl;
+  char js[256];
+  std::snprintf(js, sizeof(js), "{\"%s\":%u,\"name\":\"%s\"%s}", json_key, id,
+                JsonEscape(name).c_str(), extra ? extra : "");
+  c.json = js;
+  return c;
+}
+
 }  // namespace
 
 BugReport::BugReport() {
@@ -81,57 +114,25 @@ BugReport::BugReport() {
 BugReport::Context BugReport::ItemContext(uint32_t item_id,
                                                       const std::string& name,
                                                       int refine) {
-  Context c;
-  c.category = kItem;
-  char lbl[160];
-  std::snprintf(lbl, sizeof(lbl), i18n::Tr("Objet : %s (#%u)"),
-                name.empty() ? "?" : name.c_str(), item_id);
-  c.label = lbl;
-  char js[256];
-  if (refine >= 0)
-    std::snprintf(js, sizeof(js), "{\"item_id\":%u,\"name\":\"%s\",\"refine\":%d}",
-                  item_id, JsonEscape(name).c_str(), refine);
-  else
-    std::snprintf(js, sizeof(js), "{\"item_id\":%u,\"name\":\"%s\"}",
-                  item_id, JsonEscape(name).c_str());
-  c.json = js;
-  return c;
+  char extra[32] = {0};
+  if (refine >= 0) std::snprintf(extra, sizeof(extra), ",\"refine\":%d", refine);
+  return MakeEntityContext(kItem, i18n::Tr("Objet : %s (#%u)"), "item_id",
+                           item_id, name, extra);
 }
 
 BugReport::Context BugReport::SkillContext(uint32_t skill_id,
                                                        const std::string& name,
                                                        int level) {
-  Context c;
-  c.category = kSkill;
-  char lbl[160];
-  std::snprintf(lbl, sizeof(lbl), i18n::Tr("Compétence : %s (#%u)"),
-                name.empty() ? "?" : name.c_str(), skill_id);
-  c.label = lbl;
-  char js[256];
-  if (level >= 0)
-    std::snprintf(js, sizeof(js),
-                  "{\"skill_id\":%u,\"name\":\"%s\",\"level\":%d}", skill_id,
-                  JsonEscape(name).c_str(), level);
-  else
-    std::snprintf(js, sizeof(js), "{\"skill_id\":%u,\"name\":\"%s\"}", skill_id,
-                  JsonEscape(name).c_str());
-  c.json = js;
-  return c;
+  char extra[32] = {0};
+  if (level >= 0) std::snprintf(extra, sizeof(extra), ",\"level\":%d", level);
+  return MakeEntityContext(kSkill, i18n::Tr("Compétence : %s (#%u)"), "skill_id",
+                           skill_id, name, extra);
 }
 
 BugReport::Context BugReport::NpcContext(uint32_t gid,
                                                      const std::string& name) {
-  Context c;
-  c.category = kNpc;
-  char lbl[160];
-  std::snprintf(lbl, sizeof(lbl), i18n::Tr("PNJ : %s (GID %u)"),
-                name.empty() ? "?" : name.c_str(), gid);
-  c.label = lbl;
-  char js[256];
-  std::snprintf(js, sizeof(js), "{\"npc_gid\":%u,\"name\":\"%s\"}", gid,
-                JsonEscape(name).c_str());
-  c.json = js;
-  return c;
+  return MakeEntityContext(kNpc, i18n::Tr("PNJ : %s (GID %u)"), "npc_gid", gid,
+                           name);
 }
 
 BugReport::Context BugReport::GenericContext() {

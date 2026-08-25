@@ -192,6 +192,19 @@ class NpcShopWindow : public Plugin {
   // Envoi de l'achat (CZ_PC_PURCHASE_ITEMLIST 0xc8) / vente (CZ 0xc9) du panier.
   void SendBuy();
   void SendSell();
+
+  // ── Les DEUX paquets de liste, chacun écrit UNE fois ───────────────────────
+  // Le format du fil vivait en DOUBLE : une fois dans l'envoi du panier, une
+  // fois dans l'achat/vente immédiat qui le contourne. Quatre fonctions pour
+  // deux formats — donc deux occasions de corriger l'un sans l'autre, sur du
+  // code dont l'erreur ne se voit pas à la compilation mais à l'objet livré.
+  //
+  // ⚠ Les deux gabarits d'item sont VRAIMENT différents et le restent :
+  //   achat  CZ_PC_PURCHASE_ITEMLIST 0xc8 — {quantité:2, itemId:4}, 6 octets ;
+  //   vente  CZ_PC_SELL_ITEMLIST     0xc9 — {index:2, quantité:2}, 4 octets.
+  // Les fondre derrière un drapeau de sens ferait perdre cette lecture-là.
+  void SendBuyList(const CartEntry* items, int count);
+  void SendSellList(const CartEntry* items, int count);
   // Ferme réellement le shop : débloque l'état dialogue client + prévient le serveur.
   void CloseNativeShop();
   // L'une des quatre fenêtres natives est-elle à l'écran ? Sert à reconnaître une

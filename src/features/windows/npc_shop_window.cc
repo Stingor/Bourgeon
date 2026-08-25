@@ -467,69 +467,73 @@ void NpcShopWindow::AddToCart(uint32_t id, int index, int32_t price, int max, in
 }
 
 // CZ_PC_PURCHASE_ITEMLIST 0xc8 : [op:2][len:2][ {amount:2, itemId:4} *count ]
-void NpcShopWindow::SendBuy() {
-  if (cart_.empty()) return;
-  SendDealSelect(0);  // re-arme npc_shopid (efface apres chaque achat cote serveur)
-  const int count = static_cast<int>(cart_.size());
+//
+// Le `SendDealSelect(0)` re-arme npc_shopid, que le serveur efface apres chaque
+// achat. Il est ICI, pas chez les appelants : l'oublier ne donne pas une erreur,
+// il donne un achat qui ne part pas.
+void NpcShopWindow::SendBuyList(const CartEntry* items, int count) {
+  if (items == nullptr || count < 1) return;
+  SendDealSelect(0);
   const int plen = 4 + 6 * count;
   std::vector<uint8_t> pkt(plen);
   uint8_t* p = pkt.data();
   *reinterpret_cast<uint16_t*>(p + 0) = kOpBuyReq;
   *reinterpret_cast<uint16_t*>(p + 2) = static_cast<uint16_t>(plen);
   uint8_t* it = p + 4;
-  for (const auto& e : cart_) {
-    *reinterpret_cast<uint16_t*>(it + 0) = static_cast<uint16_t>(e.amount);
-    *reinterpret_cast<uint32_t*>(it + 2) = e.id;
+  for (int k = 0; k < count; ++k) {
+    *reinterpret_cast<uint16_t*>(it + 0) = static_cast<uint16_t>(items[k].amount);
+    *reinterpret_cast<uint32_t*>(it + 2) = items[k].id;
     it += 6;
   }
   Bourgeon::Instance().SendPacket(pkt.data(), pkt.size());
 }
 
 // CZ_PC_SELL_ITEMLIST 0xc9 : [op:2][len:2][ {index:2, amount:2} *count ]
-void NpcShopWindow::SendSell() {
-  if (cart_.empty()) return;
-  SendDealSelect(1);  // re-arme npc_shopid (efface apres chaque vente cote serveur)
-  const int count = static_cast<int>(cart_.size());
+void NpcShopWindow::SendSellList(const CartEntry* items, int count) {
+  if (items == nullptr || count < 1) return;
+  SendDealSelect(1);
   const int plen = 4 + 4 * count;
   std::vector<uint8_t> pkt(plen);
   uint8_t* p = pkt.data();
   *reinterpret_cast<uint16_t*>(p + 0) = kOpSellReq;
   *reinterpret_cast<uint16_t*>(p + 2) = static_cast<uint16_t>(plen);
   uint8_t* it = p + 4;
-  for (const auto& e : cart_) {
-    *reinterpret_cast<uint16_t*>(it + 0) = static_cast<uint16_t>(e.index);
-    *reinterpret_cast<uint16_t*>(it + 2) = static_cast<uint16_t>(e.amount);
+  for (int k = 0; k < count; ++k) {
+    *reinterpret_cast<uint16_t*>(it + 0) = static_cast<uint16_t>(items[k].index);
+    *reinterpret_cast<uint16_t*>(it + 2) = static_cast<uint16_t>(items[k].amount);
     it += 4;
   }
   Bourgeon::Instance().SendPacket(pkt.data(), pkt.size());
 }
 
-// Achat IMMEDIAT de `qty` unites de `id` (bypass panier) : CZ_PC_PURCHASE_ITEMLIST
-// 0xc8 a 1 item. Le serveur calcule le cout (discount inclus) et valide.
+void NpcShopWindow::SendBuy() {
+  if (cart_.empty()) return;
+  SendBuyList(cart_.data(), static_cast<int>(cart_.size()));
+}
+
+void NpcShopWindow::SendSell() {
+  if (cart_.empty()) return;
+  SendSellList(cart_.data(), static_cast<int>(cart_.size()));
+}
+
+// Achat IMMEDIAT de `qty` unites de `id` (bypass panier) : le MEME paquet, a un
+// seul item. Le serveur calcule le cout (discount inclus) et valide.
 void NpcShopWindow::QuickBuy(uint32_t id, int qty) {
   if (npc_id_ == 0 || qty < 1) return;
-  SendDealSelect(0);  // re-arme npc_shopid (efface apres chaque achat cote serveur)
-  uint8_t pkt[10];
-  const uint16_t plen = 10;  // 4 (en-tete) + 6 (1 item)
-  *reinterpret_cast<uint16_t*>(pkt + 0) = kOpBuyReq;
-  *reinterpret_cast<uint16_t*>(pkt + 2) = plen;
-  *reinterpret_cast<uint16_t*>(pkt + 4) = static_cast<uint16_t>(qty);
-  *reinterpret_cast<uint32_t*>(pkt + 6) = id;
-  Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
+  CartEntry e;
+  e.id = id;
+  e.amount = qty;
+  SendBuyList(&e, 1);
 }
 
 // Vente IMMEDIATE de `qty` unites de l'item a l'index inventaire `index` (bypass
-// panier) : CZ_PC_SELL_ITEMLIST 0xc9 a 1 item. Le serveur calcule le gain (overcharge).
+// panier) : le MEME paquet, a un seul item. Le serveur calcule le gain (overcharge).
 void NpcShopWindow::QuickSell(int index, int qty) {
   if (npc_id_ == 0 || qty < 1) return;
-  SendDealSelect(1);  // re-arme npc_shopid (efface apres chaque vente cote serveur)
-  uint8_t pkt[8];
-  const uint16_t plen = 8;  // 4 (en-tete) + 4 (1 item)
-  *reinterpret_cast<uint16_t*>(pkt + 0) = kOpSellReq;
-  *reinterpret_cast<uint16_t*>(pkt + 2) = plen;
-  *reinterpret_cast<uint16_t*>(pkt + 4) = static_cast<uint16_t>(index);
-  *reinterpret_cast<uint16_t*>(pkt + 6) = static_cast<uint16_t>(qty);
-  Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
+  CartEntry e;
+  e.index = index;
+  e.amount = qty;
+  SendSellList(&e, 1);
 }
 
 // Lit la liste de vente RÉSOLUE depuis le sous-window liste natif, pointé par le
