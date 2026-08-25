@@ -109,13 +109,6 @@ void SayEquipOnlyOne() {
 
 // Icône d'item (image d'inventaire).
 
-// ── Fenêtres natives (SEH-gardé) ──
-// Plus de masquage : ce plugin DÉTRUIT. Il ne cherche les fenêtres que pour
-// reconnaître une boutique native en cours au moment où l'on allume l'interface
-// moderne — sa session, elle, vient des paquets.
-void* FindWnd(int id) { return uiwnd::SafeFindWindow(id); }
-void CloseWnd(int id) { uiwnd::SafeCloseWindow(id); }
-
 // GID du NPC d'une session shop ouverte AVANT nous, lu dans le chooser natif.
 //
 // 🔴 RE 2026-08-01 (UIChooseSellBuyWnd_OnMsg 0x008BE7B0) : son `case 28` — le
@@ -128,7 +121,8 @@ void CloseWnd(int id) { uiwnd::SafeCloseWindow(id); }
 // connaître le GID : on gardait donc du natif vivant pour se débarrasser du natif.
 uint32_t ChooserNpcId() {
   __try {
-    uint8_t* w = reinterpret_cast<uint8_t*>(uiwnd::SafeFindWindow(uiwnd::kUIChooseSellBuyWnd));
+    uint8_t* w = reinterpret_cast<uint8_t*>(
+        uiwnd::SafeFindWindow(uiwnd::kUIChooseSellBuyWnd));
     if (!w) return 0;
     return *reinterpret_cast<uint32_t*>(w + kChooserNpcId);
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
@@ -661,23 +655,26 @@ void NpcShopWindow::CloseNativeShop() {
 }
 
 bool NpcShopWindow::AnyNativeShopWindow() const {
-  return FindWnd(uiwnd::kUIChooseSellBuyWnd) || FindWnd(uiwnd::kUIItemShopWnd) ||
-         FindWnd(uiwnd::kUIItemPurchaseWnd) || FindWnd(uiwnd::kUIItemSellWnd) ||
-         FindWnd(uiwnd::kUIItemParamChangeDisplayWnd);
+  return uiwnd::SafeFindWindow(uiwnd::kUIChooseSellBuyWnd) ||
+         uiwnd::SafeFindWindow(uiwnd::kUIItemShopWnd) ||
+         uiwnd::SafeFindWindow(uiwnd::kUIItemPurchaseWnd) ||
+         uiwnd::SafeFindWindow(uiwnd::kUIItemSellWnd) ||
+         uiwnd::SafeFindWindow(uiwnd::kUIItemParamChangeDisplayWnd);
 }
 
 void NpcShopWindow::PurgeNativeShopWindows() {
-  CloseWnd(uiwnd::kUIChooseSellBuyWnd);
-  CloseWnd(uiwnd::kUIItemShopWnd);
-  CloseWnd(uiwnd::kUIItemPurchaseWnd);  // panneau ACHAT
-  CloseWnd(uiwnd::kUIItemSellWnd);      // panneau VENTE — vivant même quand il n'est pas affiché
+  uiwnd::SafeCloseWindow(uiwnd::kUIChooseSellBuyWnd);
+  uiwnd::SafeCloseWindow(uiwnd::kUIItemShopWnd);
+  uiwnd::SafeCloseWindow(uiwnd::kUIItemPurchaseWnd);  // panneau ACHAT
+  uiwnd::SafeCloseWindow(uiwnd::kUIItemSellWnd);  // panneau VENTE — vivant même
+                                                  // quand il n'est pas affiché
   // 🔴 Le comparateur ATK/DEF est DÉTRUIT, pas seulement masqué. Il ne l'était
   // dans aucune liste de fermeture : on se contentait de le rendre invisible, et
   // une native masquée garde le CLAVIER — la leçon du refine, celle qui a détruit
   // une arme. Son créateur (la fenêtre d'achat native) ne naît plus, donc ce
   // chemin ne devrait plus être emprunté ; c'est justement pour ça qu'il doit être
   // correct sans qu'on ait à y repenser.
-  CloseWnd(uiwnd::kUIItemParamChangeDisplayWnd);
+  uiwnd::SafeCloseWindow(uiwnd::kUIItemParamChangeDisplayWnd);
 }
 
 void NpcShopWindow::HideDetailWindow(void* win) {

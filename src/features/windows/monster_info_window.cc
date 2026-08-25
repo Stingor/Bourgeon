@@ -65,6 +65,12 @@ constexpr int kMsiRaceType     = 0x019B;
 constexpr int kMsiMdef         = 0x019C;
 constexpr int kMsiProperty     = 0x019D;
 
+// Race / élément / taille, par la table de messages du CLIENT — donc TRADUITS
+// dans la langue du joueur, comme le fait la fiche native.
+//
+// ⚠ `navigation_window` porte les mêmes trois fonctions avec des littéraux
+// ANGLAIS en dur. La divergence est assumée (cf. le commentaire là-bas) : ne
+// pas fusionner sans décider d'abord ce que le joueur doit lire.
 const char* RaceName(uint8_t race) {
   return (race < 10) ? msgstr::Utf8(kMsiTribeBase + race) : "?";
 }

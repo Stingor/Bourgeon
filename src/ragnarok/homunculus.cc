@@ -125,7 +125,7 @@ bool ReadStateSEH(State* s) {
 bool LaunchSEH(int pos, int level) {
   bool sent = false;
   __try {
-    void* d = *reinterpret_cast<void**>(rag::kActiveModePtr);
+    void* d = rag::ActiveMode();
     if (!d || pos < 0) return false;
     alignas(8) uint8_t info[0xC0] = {};
     reinterpret_cast<GetAt_t>(kSkillGetAt)(reinterpret_cast<void*>(rag::kSessionAddr), nullptr, info, pos);

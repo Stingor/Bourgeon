@@ -99,7 +99,7 @@ int ReadConnectionDisplaysRaw(char out[kMaxConnections][kNameCap]) {
 // Renvoie le CMode courant s'il s'agit bien de CLoginMode, sinon nullptr.
 void* CurrentLoginMode() {
   __try {
-    void* mode = *reinterpret_cast<void**>(rag::kActiveModePtr);
+    void* mode = rag::ActiveMode();
     if (mode && *reinterpret_cast<uintptr_t*>(mode) == kVtblCLoginMode) return mode;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
   }
@@ -193,7 +193,7 @@ bool native_login::CharListLoaded() {
   // MÊME liste chargée -> l'appelant croirait à tort la liste absente (boucle d'Entrée
   // au char-select). Dès qu'UN slot répond non-null, la liste est là.
   __try {
-    void* d = *reinterpret_cast<void**>(rag::kActiveModePtr);
+    void* d = rag::ActiveMode();
     if (!d) return false;
     for (int slot = 0; slot < 45; ++slot) {
       if (rag::ModeSendMsgPtr(d, 8, slot) != nullptr) return true;

@@ -221,6 +221,29 @@ inline int ModeSendMsg(void* mode, int cmd, int p2 = 0, int p3 = 0, int p4 = 0,
                                                              p4, p5);
 }
 
+// Une commande au mode de zone courant, sous SEH. Rend false si aucun mode
+// n'est actif — écran de login, changement de carte.
+//
+// 🔴 LECTURE BRUTE (`ActiveMode`), PAS `ActiveModeIfReady()`. Les deux ne disent
+// pas la même chose pendant un changement de carte : le getter est GATÉ et rend
+// 0 tant que le manager n'est pas en état 1. Ce pont existait en TROIS copies ;
+// deux portaient ce choix par écrit, la troisième prenait l'autre porte sans le
+// dire. Le choix majoritaire — et le seul argumenté — est celui-ci.
+//
+// ⚠ Le SEH est ici et non chez l'appelant : `rag::ModeSendMsg` déréférence une
+// vtable du client. Une des trois copies s'en passait, en comptant sur un `__try`
+// englobant qu'elle ne pouvait pas garantir.
+inline bool SendToActiveMode(int cmd, int p2 = 0, int p3 = 0, int p4 = 0,
+                             int p5 = 0) {
+  __try {
+    void* mode = ActiveMode();
+    if (mode == nullptr) return false;
+    ModeSendMsg(mode, cmd, p2, p3, p4, p5);
+    return true;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
+
 // La même, sur le mode actif — la forme de LOIN la plus fréquente. Rend 0 sans
 // rien envoyer si aucun mode n'est disponible, ce que tous les appelants
 // vérifiaient déjà à la main.

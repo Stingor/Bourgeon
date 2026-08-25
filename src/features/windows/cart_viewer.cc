@@ -77,11 +77,6 @@ constexpr uintptr_t kCartMaxWeight = 0x015fb2e0;
 // Autres fenêtres, pour router un transfert (cible ouverte ou non) :
 // uiwnd::kInventoryWndSlot / kStorageWndSlot et leurs vtables.
 
-// Lit un pointeur de fenêtre valide depuis un slot (vtable vérifiée). SEH.
-uint8_t* ReadValidWnd(uintptr_t slot, uintptr_t expected_vtable) {
-  return uiwnd::WndAtSlot(slot, expected_vtable);
-}
-
 // La fenêtre cart ouverte, ou nullptr. Ne sert plus qu'au FILET de OnTick, qui la
 // détruit : elle ne naît plus qu'au moment d'une demande du joueur, aussitôt
 // interceptée. La vtable est vérifiée car un id ne garantit pas la classe si un
@@ -213,6 +208,11 @@ void LoadAssets() {
 // Teinte des AddImage = luminosité + opacité du skin RO (les images du jeu sont
 // dessinées en draw-list brut, elles échapperaient sinon à ces réglages).
 
+// 🔴 TOUJOURS `ro::Px` : la dimension transverse suit l'échelle de l'interface.
+// Ce correctif était passé dans `inventory_viewer` et `storage_window` sans
+// arriver ici — un strip resté à 22 px à côté d'une grille agrandie. Les trois
+// corps ne peuvent pas fusionner (chacun lit son `g_tab` et son nombre de
+// catégories) : ils doivent donc être corrigés ENSEMBLE, à la main.
 // Largeur du strip d'onglets VERTICAL / hauteur de la rangée HORIZONTALE : la
 // dimension TRANSVERSE (jamais étirée), l'autre se déduit du ratio de l'image.
 float TabStripWidth() {
@@ -220,14 +220,14 @@ float TabStripWidth() {
   for (int c = 0; c < kNumCats; ++c)
     for (int s = 0; s < 2; ++s)
       if (g_tab[c][s].w > w) w = static_cast<float>(g_tab[c][s].w);
-  return w > 0.0f ? w : 22.0f;
+  return ro::Px(w > 0.0f ? w : 22.0f);  // à l'échelle, cf. inventory_viewer
 }
 float TabStripHeightH() {
   float h = 0.0f;
   for (int c = 0; c < kNumCats; ++c)
     for (int s = 0; s < 2; ++s)
       if (g_tabh[c][s].h > h) h = static_cast<float>(g_tabh[c][s].h);
-  return h > 0.0f ? h : 22.0f;
+  return ro::Px(h > 0.0f ? h : 22.0f);  // à l'échelle, cf. TabStripWidth
 }
 
 // itemwin_mid PAVÉ (répété à sa taille native) dans [mn..mx], aligné sur `origin`

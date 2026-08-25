@@ -20,8 +20,6 @@ namespace {
 
 // (Le dossier du jeu vit dans utils/game_paths.h : paths::GameDir().)
 
-std::string ClientInfoPath() { return paths::InGameDir("data\\clientinfo.xml"); }
-
 // Narrow a wide command-line argument. Credentials are ASCII in practice, so a
 // plain byte-truncation is sufficient here.
 std::string Narrow(const wchar_t* w) {
@@ -140,7 +138,7 @@ void AutoLogin::LoadFromYaml() {
 }
 
 void AutoLogin::ResolveServerFromClientInfo() {
-  const std::vector<std::string> names = ReadConnectionNames(ClientInfoPath());
+  const std::vector<std::string> names = ReadConnectionNames(paths::ClientInfoPath());
   server_count_ = static_cast<int>(names.size());
   server_index_ = 0;
   if (server_.empty()) return;

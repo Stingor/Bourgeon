@@ -738,8 +738,19 @@ bool SafeStepPos(int index, int* out_x, int* out_y) {
 }
 
 // Élément / taille / race, décodés du champ empaqueté d'un monstre (le serveur
-// l'écrit ainsi dans `write_spawn`). Les noms restent en anglais : ce sont les
-// termes du jeu, ceux que le joueur lit partout ailleurs.
+// l'écrit ainsi dans `write_spawn`).
+//
+// 🔴 DIVERGENCE ASSUMÉE avec `monster_info_window`, qui affiche les MÊMES trois
+// attributs via `msgstr::Utf8` — donc TRADUITS (« Eau », « Petite »). Ici ce
+// sont des littéraux anglais. Le commentaire d'origine justifiait ce choix par
+// « les termes du jeu, ceux que le joueur lit partout ailleurs » : c'était vrai
+// avant que la table de messages du client soit traduite. Ça ne l'est plus, et
+// ces trois lignes voisinent ici des libellés qui passent par `i18n::Tr`.
+//
+// Tranché le 2026-08-25 : on garde les deux tables. Fusionner déciderait à la
+// place du joueur si « Water » doit devenir « Eau » partout ou nulle part —
+// c'est un choix d'interface, pas un nettoyage. Ce commentaire existe pour que
+// le prochain relevé de doublons ne le reprenne pas pour un oubli.
 const char* ElementName(int element) {
   static const char* kNames[] = {"Neutral", "Water", "Earth",  "Fire",  "Wind",
                                  "Poison",  "Holy",  "Shadow", "Ghost", "Undead"};

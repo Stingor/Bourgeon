@@ -617,9 +617,6 @@ void SizeCbSquare(ImGuiSizeCallbackData* data) {
   data->DesiredSize.y = side + fit->pad_y + fit->extra_h;
 }
 
-inline ImU32 RgbToImU32(int rgb, int alpha = 255) {
-  return IM_COL32((rgb >> 16) & 0xff, (rgb >> 8) & 0xff, rgb & 0xff, alpha);
-}
 // ── Détour du dessin natif ───────────────────────────────────────────────────
 
 // Trampoline rendu par le HookManager : l'appel volé, RELOGÉ (`DetourCopyInstruction`
@@ -1359,7 +1356,7 @@ void Minimap::OnRenderUI() {
         // ── Le joueur, EN DERNIER : rien ne doit le recouvrir ──────────────
         // Nom distinct de la teinte de la carte juste au-dessus : deux `tint`
         // imbriqués passeraient en avertissement de masquage.
-        const ImU32 marker_col = RgbToImU32(g_cfg.marker_tint);
+        const ImU32 marker_col = ro::RgbToImU32(g_cfg.marker_tint);
 
         if (arrow.tex) {
           const float deg = 180.0f - snap.angle;

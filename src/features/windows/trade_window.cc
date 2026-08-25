@@ -196,13 +196,6 @@ int CardSlotCount(const uint32_t* cards) {
   return n;
 }
 
-// ── Fenêtres natives (SEH-gardé) ──
-void* FindWnd(int id) { return uiwnd::SafeFindWindow(id); }
-// (Plus de masquage : ce plugin DÉTRUIT. Une native masquée garde le clavier.)
-// Détruit une fenêtre native par id (persiste sa position + close), comme le X natif.
-void CloseWnd(int id) { uiwnd::SafeCloseWindow(id); }
-uintptr_t VTableOf(void* w) { return uiwnd::SafeVTableOf(w); }
-
 // Cherche la fenêtre d'échange (vtable CUIExchangeUI) dans la std::map du window-mgr
 // (mgr+8 ; nœud MSVC {L@0, P@4, R@8, color@0xc, isnil@0xd, key@0x10, value@0x14}).
 // Renvoie le pointeur (et son id = clé du nœud dans *out_id) ou nullptr. SEH + borné.
@@ -221,7 +214,7 @@ void* FindTradeWndInMap(int* out_id) {
       uint8_t* n = reinterpret_cast<uint8_t*>(stack[--sp]);
       if (!n || n == head) continue;
       void* val = *reinterpret_cast<void**>(n + 0x14);
-      if (val && VTableOf(val) == uiwnd::kCUIExchangeUIVTable) {
+      if (val && uiwnd::SafeVTableOf(val) == uiwnd::kCUIExchangeUIVTable) {
         if (out_id) *out_id = *reinterpret_cast<int*>(n + 0x10);  // clé = id fenêtre
         return val;
       }
@@ -240,8 +233,8 @@ void* FindTradeWndInMap(int* out_id) {
 // (récupère aussi l'id si jamais il différait). La fenêtre est bien map-based (elle
 // vit dans la std::map du mgr, key 0x271b — confirmé live). Renseigne *out_id.
 void* FindTradeWnd(int* out_id) {
-  void* w = FindWnd(uiwnd::kCUIExchangeUI);
-  if (w && VTableOf(w) == uiwnd::kCUIExchangeUIVTable) {
+  void* w = uiwnd::SafeFindWindow(uiwnd::kCUIExchangeUI);
+  if (w && uiwnd::SafeVTableOf(w) == uiwnd::kCUIExchangeUIVTable) {
     if (out_id) *out_id = uiwnd::kCUIExchangeUI;
     return w;
   }
@@ -449,7 +442,7 @@ void TradeWindow::TradeAck(int type) {
   req_open_ = false;
   // La popup native ne naît plus ; ce nettoyage ne sert qu'au cas d'un interrupteur
   // allumé alors qu'une requête native était déjà à l'écran.
-  CloseWnd(uiwnd::kTradeAcceptPopupWndId);
+  uiwnd::SafeCloseWindow(uiwnd::kTradeAcceptPopupWndId);
 }
 
 // CZ_ADD_EXCHANGE_ITEM {index:2, amount:4}. index 0 = ZENY (montant ABSOLU), sinon
@@ -692,14 +685,14 @@ void TradeWindow::ResolveNames() {
 bool TradeWindow::AnyNativeTradeWindow() const {
   int id = -1;
   if (FindTradeWnd(&id)) return true;
-  void* a = FindWnd(uiwnd::kTradeAcceptPopupWndId);
-  return a && VTableOf(a) == uiwnd::kTradeAcceptPopupWndIdVTable;
+  void* a = uiwnd::SafeFindWindow(uiwnd::kTradeAcceptPopupWndId);
+  return a && uiwnd::SafeVTableOf(a) == uiwnd::kTradeAcceptPopupWndIdVTable;
 }
 
 void TradeWindow::PurgeNativeTradeWindows() {
   int id = -1;
-  if (FindTradeWnd(&id) && id >= 0) CloseWnd(id);
-  CloseWnd(uiwnd::kTradeAcceptPopupWndId);
+  if (FindTradeWnd(&id) && id >= 0) uiwnd::SafeCloseWindow(id);
+  uiwnd::SafeCloseWindow(uiwnd::kTradeAcceptPopupWndId);
 }
 
 void TradeWindow::OnTick() {

@@ -511,7 +511,14 @@ inline void* SafeFindWindow(int window_id) {
 }
 
 // CloseWindow, sans propager. Comme la version nue, elle DÉTRUIT la fenêtre :
-// aucun pointeur vers elle ne survit à l'appel.
+// aucun pointeur vers elle ne survit à l'appel — et elle PERSISTE sa position
+// avant de le faire, exactement comme le bouton X natif.
+//
+// ⚠ La destruction est MISE EN FILE, pas immédiate : entre l'appel et la
+// disparition, une frame native peut encore passer. Qui veut que la fenêtre
+// cesse d'être vue TOUT DE SUITE doit la masquer d'abord (`SafeSetVisible`),
+// puis fermer. Constat de vending_window et trade_window, qui portaient
+// chacun ce savoir dans le commentaire de leur alias local.
 inline void SafeCloseWindow(int window_id) {
   __try {
     CloseWindow(window_id);

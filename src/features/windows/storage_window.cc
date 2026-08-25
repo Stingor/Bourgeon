@@ -129,7 +129,7 @@ constexpr int       kCmdWithdraw = 0x38;         // storage -> body/inventaire
 void WithdrawItem(int index, int amount) {
   if (amount <= 0 || viewers::VendingComposing()) return;
   __try {
-    void* disp = *reinterpret_cast<void**>(rag::kActiveModePtr);
+    void* disp = rag::ActiveMode();
     if (disp)
       rag::ModeSendMsg(disp, kCmdWithdraw, index, amount, 0, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}

@@ -35,13 +35,6 @@ using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 //
 // Base62 alphabet (rAthena utilities.cpp): 0-9=0-9, a-z=10-35, A-Z=36-61
 
-static uint32_t B62Decode(const char* s, size_t len) {
-  uint32_t v = 0;
-  for (size_t i = 0; i < len; i++)
-    v = v * 62u + static_cast<uint32_t>(text::Base62Digit(static_cast<unsigned char>(s[i])));
-  return v;
-}
-
 // Returns a copy of |text| with ^i[itemid] prepended before each <ITEML> tag.
 static std::string InjectItemIcons(const char* text) {
   std::string result;
@@ -52,7 +45,7 @@ static std::string InjectItemIcons(const char* text) {
     const char* data = tag + 13;
     size_t id_len = 0;
     while (text::Base62Digit(static_cast<unsigned char>(data[id_len])) >= 0) id_len++;
-    if (id_len > 0 && B62Decode(data, id_len) > 0) {
+    if (id_len > 0 && text::Base62Decode(data, id_len) > 0) {
       // ^i{<base62 id>} — reuse the tag's own base62 nameid verbatim; the leaf
       // hook decodes it back, so no decode→re-encode round-trip is needed.  Uses
       // {} (not the engine's native ^i[ token) so it can't collide with it.
@@ -395,7 +388,7 @@ static bool NextIconToken(const char* str, unsigned len, unsigned from,
     unsigned e = i + 3;
     while (e < len && str[e] != '}') ++e;
     if (e >= len) continue;  // no closing brace in this run — not a token
-    *id = B62Decode(str + i + 3, e - (i + 3));
+    *id = text::Base62Decode(str + i + 3, e - (i + 3));
     *tok = i;
     *end = e + 1;
     return true;

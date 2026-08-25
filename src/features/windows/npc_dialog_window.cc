@@ -33,6 +33,7 @@
 #include "ui/ro_imgui.h"     // ro::BeginRoDescWindow (skin desc RO)
 #include "ui/ro_widgets.h"   // ro::HelpMarker (section de réglages)
 #include "utils/i18n.h"
+#include "utils/text.h"  // text : comparaisons et décodages ASCII
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -101,16 +102,13 @@ bool ChatOwnsEnter() {
   return chat != nullptr && chat->OwnsEnterKey();
 }
 
-// ── Fenêtres natives (SEH-gardé) ──
-void* FindWnd(int id) { return uiwnd::SafeFindWindow(id); }
-void CloseWnd(int id) { uiwnd::SafeCloseWindow(id); }
 // (Plus de HideWnd/ShowWnd ici : ce plugin ne masque plus aucune native, il les
 // détruit — cf. PurgeNativeDialogWindows.)
 
 // ── Dispatcher CMode + flag dialogue (SEH-gardé) ──
 void DispatchNpcCmd(int cmd) {  // CMode::SendMsg(mode, cmd, 0,0,0,0) via vtbl+0x18
   __try {
-    void* disp = *reinterpret_cast<void**>(rag::kActiveModePtr);
+    void* disp = rag::ActiveMode();
     if (disp) {
       void** vtbl = *reinterpret_cast<void***>(disp);
       reinterpret_cast<Dispatch_t>(vtbl[6])(disp, cmd, 0, 0, 0, 0);
@@ -152,25 +150,11 @@ using ItemInfoSetId_t = void(__thiscall*)(void*, int);
 using DescOnMsg_t     = int(__fastcall*)(void*, void*, int, int, int, int, int, int);
 
 // ── Parsing helpers ──
-inline bool IsHex(char c) {
-  return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
-}
-inline bool IsHex6(const char* p) {
-  for (int i = 0; i < 6; ++i)
-    if (!IsHex(p[i])) return false;
-  return true;
-}
 std::string UpperAscii(const std::string& s) {
   std::string r(s);
   for (char& c : r) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
   return r;
 }
-std::string LowerAscii(const char* s) {
-  std::string r(s ? s : "");
-  for (char& c : r) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-  return r;
-}
-
 // Les scripts NPC arrivent par le fil ; ImGui veut de l'UTF-8 (sinon les accents
 // é/à/œ… cassent).
 //
@@ -251,22 +235,6 @@ constexpr uint32_t kNoticeColor = IM_COL32(90, 90, 107, 255);
 //   <IMG>source</IMG>          image : ressource du client, ou adresse web
 //   <IMG>w:h:source</IMG>      idem, taille imposée (en pixels)
 
-const char* MobRankTag(int rank) {
-  if (rank == 2) return "[MVP]";
-  if (rank == 1) return "[Boss]";
-  return "[Mob]";
-}
-
-// Recherche d'un motif dans [begin, end) : le corps d'un paquet n'est pas garanti
-// nul-terminé à l'endroit où on le lit.
-const char* SearchSub(const char* begin, const char* end, const char* needle) {
-  const size_t n = std::strlen(needle);
-  if (n == 0 || static_cast<size_t>(end - begin) < n) return nullptr;
-  for (const char* p = begin; p + n <= end; ++p)
-    if (std::memcmp(p, needle, n) == 0) return p;
-  return nullptr;
-}
-
 // Le corps d'une balise `<TAG>…</TAG>` ouverte en `p`. Rend false si la balise
 // n'est pas celle-là, ou si sa fermante manque — auquel cas rien n'est consommé
 // et l'appelant laisse le texte tel quel plutôt que d'avaler la fin de la ligne.
@@ -276,7 +244,7 @@ bool TagBody(const char* p, const char* end, const char* open, const char* close
   if (static_cast<size_t>(end - p) < olen || std::memcmp(p, open, olen) != 0)
     return false;
   const char* b = p + olen;
-  const char* c = SearchSub(b, end, close);
+  const char* c = text::SearchSub(b, end, close);
   if (c == nullptr) return false;
   *body = b;
   *body_end = c;
@@ -508,10 +476,10 @@ void NpcDialogWindow::ScanPageDirectives() {
     const char* p = raw.c_str();
     const char* end = p + raw.size();
     while (p < end) {
-      const char* open = SearchSub(p, end, "<MOBP>");
+      const char* open = text::SearchSub(p, end, "<MOBP>");
       if (open == nullptr) break;
       const char* body = open + 6;
-      const char* close = SearchSub(body, end, "</MOBP>");
+      const char* close = text::SearchSub(body, end, "</MOBP>");
       if (close == nullptr) break;
       const std::string id(body, close);
       if (AllDigits(id)) portrait_mob_ = std::atoi(id.c_str());
@@ -687,7 +655,7 @@ void NpcDialogWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
             ParseLine(opt, &mo.runs);  // texte riche (^RRGGBB, ^i[id]…) en UTF-8
             std::string plain;         // même texte, à plat, pour la recherche
             for (const Run& r : mo.runs) plain += r.text;
-            mo.search = LowerAscii(plain.c_str());
+            mo.search = text::ToLowerAscii(plain.c_str());
             menu_opts_.push_back(std::move(mo));
           }
           if (sep == std::string::npos) break;
@@ -770,7 +738,7 @@ const char* NpcDialogWindow::TryOwnTag(const char* p, const char* end, Run* out)
     if (id == 0 || f[2].empty()) return nullptr;
     const std::string name = AnsiToUtf8(f[2]);
     out->target = links::FromMob(id, rank, name.c_str());
-    out->text   = "<" + std::string(MobRankTag(rank)) + " " + name + ">";
+    out->text   = "<" + std::string(links::MobRankTag(rank)) + " " + name + ">";
     return after;
   }
   if (TagBody(p, end, "<ITMR>", "</ITMR>", &b, &be, &after)) {
@@ -864,7 +832,7 @@ void NpcDialogWindow::ParseLine(const std::string& raw, std::vector<Run>* out) {
   const char* end = p + raw.size();
   while (p < end) {
     // Couleur ^RRGGBB (^000000 = couleur par défaut).
-    if (*p == '^' && (end - p) >= 7 && IsHex6(p + 1)) {
+    if (*p == '^' && (end - p) >= 7 && text::IsHex6(p + 1)) {
       flush();
       unsigned v = static_cast<unsigned>(std::strtoul(std::string(p + 1, p + 7).c_str(),
                                                       nullptr, 16));
@@ -1281,7 +1249,7 @@ ro::MobSpriteRes* NpcDialogWindow::MobSprite(int class_id) {
 
 size_t NpcDialogWindow::MenuVisibleCount() const {
   if (menu_filter_[0] == '\0') return menu_opts_.size();
-  const std::string f = LowerAscii(menu_filter_);
+  const std::string f = text::ToLowerAscii(menu_filter_);
   size_t n = 0;
   for (const MenuOption& o : menu_opts_)
     if (o.search.find(f) != std::string::npos) ++n;
@@ -1326,7 +1294,7 @@ void NpcDialogWindow::DrawMenu(float group_h) {
                                  ImGuiInputTextFlags_EnterReturnsTrue))
       enter_from_search = true;  // Entrée dans la recherche = valide le choix focus
   }
-  const std::string f = LowerAscii(menu_filter_);
+  const std::string f = text::ToLowerAscii(menu_filter_);
 
   // Navigation clavier : auto-focus de l'option 1 à l'ouverture, flèches haut/bas
   // (avec wrap) sur le nombre d'items VISIBLES — connu avant de dessiner, donc plus
@@ -1839,7 +1807,7 @@ void NpcDialogWindow::SendMenuChoice(int one_based) {
   // via cmd 0x28 -> « Invalid menu selection ... got 1, valid [1..0] ». Elle ne naît
   // plus ; l'appel reste comme filet pour le menu déjà ouvert au moment où le joueur
   // allume l'interface moderne, et ne coûte qu'un FindWindow à vide.
-  CloseWnd(uiwnd::kNpcMenuWndId);
+  uiwnd::SafeCloseWindow(uiwnd::kNpcMenuWndId);
   // La liste reste AFFICHÉE (grisée) jusqu'à la réponse : la vider ici escamotait le
   // menu et le bouton « Annuler » pendant l'aller-retour. Un second envoi est déjà
   // impossible — menu_answered_gen_ vient d'être posé.
@@ -1899,7 +1867,7 @@ void NpcDialogWindow::CloseDialog() {
   // choix, sur un script qui n'attend plus rien.
   const bool menu_pending =
       (!menu_opts_.empty() && menu_gen_ != menu_answered_gen_) ||
-      FindWnd(uiwnd::kNpcMenuWndId) != nullptr;
+      uiwnd::SafeFindWindow(uiwnd::kNpcMenuWndId) != nullptr;
   // 1. SERVEUR : abandon adapté à l'état (sinon sd->npc_id reste -> perso figé côté
   //    serveur). Menu ouvert -> CZ_CHOOSE_MENU 0xFF (le script reçoit 255 puis
   //    termine) ; sinon CZ_CLOSE_DIALOG.
@@ -1960,17 +1928,19 @@ bool NpcDialogWindow::DialogActiveNative() const {
 }
 
 bool NpcDialogWindow::AnyNativeDialogWindow() const {
-  return FindWnd(uiwnd::kNpcSayWndId) || FindWnd(uiwnd::kNpcMenuWndId) ||
-         FindWnd(uiwnd::kNpcEditNumWndId) || FindWnd(uiwnd::kNpcEditStrWndId) ||
-         FindWnd(uiwnd::kNpcSay2WndId);
+  return uiwnd::SafeFindWindow(uiwnd::kNpcSayWndId) ||
+         uiwnd::SafeFindWindow(uiwnd::kNpcMenuWndId) ||
+         uiwnd::SafeFindWindow(uiwnd::kNpcEditNumWndId) ||
+         uiwnd::SafeFindWindow(uiwnd::kNpcEditStrWndId) ||
+         uiwnd::SafeFindWindow(uiwnd::kNpcSay2WndId);
 }
 
 void NpcDialogWindow::PurgeNativeDialogWindows() {
-  CloseWnd(uiwnd::kNpcSayWndId);
-  CloseWnd(uiwnd::kNpcMenuWndId);
-  CloseWnd(uiwnd::kNpcEditNumWndId);
-  CloseWnd(uiwnd::kNpcEditStrWndId);
-  CloseWnd(uiwnd::kNpcSay2WndId);
+  uiwnd::SafeCloseWindow(uiwnd::kNpcSayWndId);
+  uiwnd::SafeCloseWindow(uiwnd::kNpcMenuWndId);
+  uiwnd::SafeCloseWindow(uiwnd::kNpcEditNumWndId);
+  uiwnd::SafeCloseWindow(uiwnd::kNpcEditStrWndId);
+  uiwnd::SafeCloseWindow(uiwnd::kNpcSay2WndId);
 }
 
 void NpcDialogWindow::OnTick() {
@@ -2039,15 +2009,16 @@ void NpcDialogWindow::OnTick() {
   }
 
   // Signal d'ouverture = FLAG dialogue client (CGameMode+0x24C), posé par les
-  // handlers natifs (SAY/WAIT/MENU) et remis à 0 à la fermeture/au dtor. Plus fiable
-  // que FindWnd (les fenêtres cachées PERSISTENT -> détection collante = réouverture).
-  // Un prompt input sans 'mes' préalable n'arme pas toujours le flag -> on retient
-  // aussi input_mode_ (remis à none à la soumission).
-  // open_ = flag de SESSION, posé par les paquets de dialogue (OnRecvPacket) et remis
-  // à 0 UNIQUEMENT par CloseDialog (clic Fermer) ou un warp. On ne le recalcule PAS
-  // depuis +0x24C : ce flag natif retombe à 0 ~quelques frames après un `close` alors
-  // que le dialogue doit RESTER affiché jusqu'au clic (le natif fait pareil). Un
-  // `close` parasite hors session est déjà filtré au recv.
+  // handlers natifs (SAY/WAIT/MENU) et remis à 0 à la fermeture/au dtor. Plus
+  // fiable que uiwnd::SafeFindWindow (les fenêtres cachées PERSISTENT ->
+  // détection collante = réouverture). Un prompt input sans 'mes' préalable
+  // n'arme pas toujours le flag -> on retient aussi input_mode_ (remis à none à
+  // la soumission). open_ = flag de SESSION, posé par les paquets de dialogue
+  // (OnRecvPacket) et remis à 0 UNIQUEMENT par CloseDialog (clic Fermer) ou un
+  // warp. On ne le recalcule PAS depuis +0x24C : ce flag natif retombe à 0
+  // ~quelques frames après un `close` alors que le dialogue doit RESTER affiché
+  // jusqu'au clic (le natif fait pareil). Un `close` parasite hors session est
+  // déjà filtré au recv.
   if (open_) {
     // 🔴 On DÉTRUIT les résidus au lieu de les masquer. Depuis le remplacement des
     // handlers, ces fenêtres ne naissent plus du tout : il n'en reste que si le

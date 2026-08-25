@@ -666,7 +666,7 @@ bool CharSelect::ReadSlot(int slot, CharView* out) const {
   *out = CharView{};
   out->slot = slot;
   __try {
-    void* c = rag::ModeSendMsgPtr(*reinterpret_cast<void**>(rag::kActiveModePtr),
+    void* c = rag::ModeSendMsgPtr(rag::ActiveMode(),
                                   kCmdGetChar, slot);
     if (!c) return false;  // slot vide, ou liste pas encore arrivée
 
@@ -1138,7 +1138,7 @@ void CharSelect::DriveModeCmd(int cmd) {
   // Envoie une commande au MODE courant — le même point d'entrée que ReadSlot
   // (cmd 8) et que le natif quand il quitte l'écran. Aucun paramètre ne sert ici.
   __try {
-    void* d = *reinterpret_cast<void**>(rag::kActiveModePtr);
+    void* d = rag::ActiveMode();
     if (!d) {
       LogError("[CharSelect] dispatcher de mode absent -> commande {} ignorée", cmd);
       return;

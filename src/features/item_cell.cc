@@ -372,16 +372,6 @@ bool BuildChatLink(void* info, char* out, size_t out_size) {
 // ── Le lien de chat RELU ─────────────────────────────────────────────────────
 namespace {
 
-uint32_t B62Decode(const char* s, size_t len) {
-  uint32_t v = 0;
-  for (size_t i = 0; i < len; ++i) {
-    const int d = text::Base62Digit(s[i]);
-    if (d < 0) break;
-    v = v * 62u + static_cast<uint32_t>(d);
-  }
-  return v;
-}
-
 // L'ItemSkillInfo que le lien décrit, monté sur le tampon de l'appelant.
 // ⚠ À N'APPELER QUE depuis une portée __try : elle exécute du code du jeu.
 void FabricateFromLink(uint8_t* info, const ChatLink& l) {
@@ -443,14 +433,14 @@ bool ParseChatLink(const char* tag, const char* end, ChatLink* out,
 
   const char* p = tag + 7;
   if (stop - p < 6) return false;
-  out->equip = B62Decode(p, 5);
+  out->equip = text::Base62Decode(p, 5);
   p += 5;
   out->equipable = (*p++ == '1');
 
   size_t n = 0;
   while (p + n < stop && text::Base62Digit(p[n]) >= 0) ++n;
   if (n == 0) return false;
-  out->id = B62Decode(p, n);
+  out->id = text::Base62Decode(p, n);
   p += n;
 
   // Champs facultatifs : un séparateur, sa charge en base62. La table est celle
@@ -461,7 +451,7 @@ bool ParseChatLink(const char* tag, const char* end, ChatLink* out,
     const char sep = *p++;
     size_t k = 0;
     while (p + k < stop && text::Base62Digit(p[k]) >= 0) ++k;
-    const uint32_t v = (k > 0) ? B62Decode(p, k) : 0;
+    const uint32_t v = (k > 0) ? text::Base62Decode(p, k) : 0;
     p += k;
     const int slot = out->opt_count;
     switch (sep) {

@@ -229,12 +229,6 @@ struct IconTex { void* tex = nullptr; int w = 0; int h = 0; };
 // Cache : id -> IconTex (tex null = miss connu).
 std::unordered_map<uint32_t, IconTex> g_icon_cache;
 
-// Lit un pointeur de fenêtre valide depuis un slot manager, en vérifiant sa
-// vtable. Renvoie null si slot vide ou vtable inattendue. SEH-gardé.
-uint8_t* ReadValidWnd(uintptr_t slot, uintptr_t expected_vtable) {
-  return uiwnd::WndAtSlot(slot, expected_vtable);
-}
-
 // Résout le .bmp de collection en pixels bruts BGRA (appels natifs, POD only).
 // SEH ne peut pas contenir d'objets C++ (C2712) -> la conversion est faite hors
 // __try par l'appelant.
@@ -1446,7 +1440,7 @@ ItemDescWindow::ItemDescWindow() {
 namespace {
 // Cache le rendu natif d'UNE fenêtre desc lue depuis son slot (vtable validée).
 void HideDescSlot(uintptr_t slot, uintptr_t vtable) {
-  if (uint8_t* wnd = ReadValidWnd(slot, vtable))
+  if (uint8_t* wnd = uiwnd::WndAtSlot(slot, vtable))
     __try { reinterpret_cast<HideNative_t>(uiwnd::kSetVisibleAddr)(wnd, nullptr, 0); }
     __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
@@ -1508,7 +1502,7 @@ namespace {
 void ReadItemLayoutWindow(uintptr_t slot, uintptr_t vtable,
                           ItemDescWindow::DescWindow* out) {
   *out = ItemDescWindow::DescWindow{};
-  if (uint8_t* wnd = ReadValidWnd(slot, vtable)) {
+  if (uint8_t* wnd = uiwnd::WndAtSlot(slot, vtable)) {
     __try {
       const char* idstr;
       if (*reinterpret_cast<uint32_t*>(wnd + kItemIdCap) > 0xf)
@@ -1549,7 +1543,8 @@ void ItemDescWindow::OnTick() {
 
   // ── Fenêtre SKILL (classe 0x2e) : détecte + cache le rendu natif (Option A).
   skill_ = DescWindow{};
-  if (uint8_t* wnd = ReadValidWnd(kSkillWndSlot, uiwnd::kSkillDescWndIdVTable)) {
+  if (uint8_t* wnd =
+          uiwnd::WndAtSlot(kSkillWndSlot, uiwnd::kSkillDescWndIdVTable)) {
     __try {
       const int id = *reinterpret_cast<int*>(wnd + kSkillIdInt);
       if (id > 0) {
@@ -2778,10 +2773,12 @@ static void EmitDescBugButton(uint32_t id, const char* name, bool is_skill) {
 // natif est relu FRAIS + validé ici (indépendant de OnTick). SEH sur les
 // lectures/appels natifs ; le rendu ImGui reste hors __try (objets C++).
 void ItemDescWindow::RenderItemWindow() {
-  uint8_t* iwnd = ReadValidWnd(uiwnd::kItemDescWndSlot, uiwnd::kItemDescWndIdVTable);
+  uint8_t* iwnd =
+      uiwnd::WndAtSlot(uiwnd::kItemDescWndSlot, uiwnd::kItemDescWndIdVTable);
   if (!iwnd) return;
   // Fenêtre de comparaison (équipé) éventuelle (id 0xea).
-  uint8_t* cwnd = ReadValidWnd(kCompareWndSlot, uiwnd::kItemCompareDescWndIdVTable);
+  uint8_t* cwnd =
+      uiwnd::WndAtSlot(kCompareWndSlot, uiwnd::kItemCompareDescWndIdVTable);
 
   // Extraction SEH (POD only), puis résolution icône hors SEH.
   ItemExtract ie{}; ExtractItem(iwnd, &ie);
@@ -3444,7 +3441,7 @@ void ItemDescWindow::RenderItemWindow() {
 // Reproduit la fenêtre de description de SKILL (classe 0x2e) en ImGui : nom+SP
 // (this+0xec) + description via Lua GetSkillDescript (markup rendu comme l'item).
 void ItemDescWindow::RenderSkillWindow() {
-  uint8_t* wnd = ReadValidWnd(kSkillWndSlot, uiwnd::kSkillDescWndIdVTable);
+  uint8_t* wnd = uiwnd::WndAtSlot(kSkillWndSlot, uiwnd::kSkillDescWndIdVTable);
   if (!wnd) return;
 
   // Données mises en cache par id (évite un appel Lua par frame).

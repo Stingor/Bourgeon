@@ -130,9 +130,6 @@ void SortById(QuestEntry* a, int n) {
   }
 }
 
-inline ImU32 RgbToImU32(int rgb, int alpha = 255) {
-  return IM_COL32((rgb >> 16) & 0xff, (rgb >> 8) & 0xff, rgb & 0xff, alpha);
-}
 // Native DrawContent replacement.  When the custom overlay is on we draw
 // nothing (the ImGui window replaces it); otherwise forward to stock.
 void __fastcall DrawContentHook(void* self, void* edx) {
@@ -202,9 +199,9 @@ void QuestTracker::OnRenderUI() {
   // height (and clamps width to ~wrap).  So no explicit SetNextWindowSize.
   ImGui::SetNextWindowBgAlpha(g_cfg.show_bg ? (g_cfg.bg_alpha / 100.0f) : 0.0f);
 
-  const ImU32 titleCol = RgbToImU32(g_cfg.title_rgb);
-  const ImU32 descCol  = RgbToImU32(g_cfg.desc_rgb);
-  const ImU32 huntCol  = RgbToImU32(g_cfg.hunt_rgb);
+  const ImU32 titleCol = ro::RgbToImU32(g_cfg.title_rgb);
+  const ImU32 descCol  = ro::RgbToImU32(g_cfg.desc_rgb);
+  const ImU32 huntCol  = ro::RgbToImU32(g_cfg.hunt_rgb);
 
   // Title bar shows the tracked-quest count; fixed ### id keeps the window
   // stable while the visible label changes. The (X) close button turns the

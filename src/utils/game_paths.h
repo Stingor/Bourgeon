@@ -112,6 +112,11 @@ std::string LangMissingPath(const std::string& code);
 
 // `relative` résolu depuis le dossier du jeu. Le séparateur est déjà fourni par
 // GameDir(), donc passer "data\\clientinfo.xml" et non "\\data\\clientinfo.xml".
+// `data\clientinfo.xml` — la liste des serveurs que le client lit au
+// démarrage. Les deux services d'identification en portaient chacun le
+// littéral, à la ligne près.
+std::string ClientInfoPath();
+
 std::string InGameDir(const std::string& relative);
 
 }  // namespace paths

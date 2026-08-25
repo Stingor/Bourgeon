@@ -184,9 +184,6 @@ int __fastcall OnMsgHook(void* self, void* edx, int a0, int msg,
 
 // ── Helpers de rendu ────────────────────────────────────────────────────────
 
-inline ImU32 RgbToImU32(int rgb, int alpha = 255) {
-  return IM_COL32((rgb >> 16) & 0xff, (rgb >> 8) & 0xff, rgb & 0xff, alpha);
-}
 // ⚠ QUATRE composantes, pas trois. `mui::ColorEdit4WithAlphaBar` appelle
 // `ImGui::ColorEdit4`, qui LIT ET ÉCRIT rgba[3] : lui passer un `float[3]`
 // déborde du tampon dans les deux sens. L'alpha ne sert à rien ici (les couleurs
@@ -243,11 +240,11 @@ void DrawFreeBackground(ImDrawList* dl, float x0, float y0, float x1, float y1) 
   const float r = static_cast<float>(g_cfg.bg_rounding);
   if (g_cfg.bg_enabled) {
     dl->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y1),
-                      RgbToImU32(g_cfg.bg_rgb, PctToA8(g_cfg.bg_alpha)), r);
+                      ro::RgbToImU32(g_cfg.bg_rgb, PctToA8(g_cfg.bg_alpha)), r);
   }
   if (g_cfg.border_enabled && g_cfg.border_thickness > 0) {
     dl->AddRect(ImVec2(x0, y0), ImVec2(x1, y1),
-                RgbToImU32(g_cfg.border_rgb, PctToA8(g_cfg.border_alpha)), r, 0,
+                ro::RgbToImU32(g_cfg.border_rgb, PctToA8(g_cfg.border_alpha)), r, 0,
                 static_cast<float>(g_cfg.border_thickness));
   }
 }
@@ -382,8 +379,8 @@ void ItemObtainToast::OnRenderUI() {
 
   const float gap = static_cast<float>(g_cfg.row_gap < 0 ? 0 : g_cfg.row_gap);
 
-  const ImU32 col_text = RgbToImU32(g_cfg.text_rgb);
-  const ImU32 col_qty  = RgbToImU32(g_cfg.qty_rgb);
+  const ImU32 col_text = ro::RgbToImU32(g_cfg.text_rgb);
+  const ImU32 col_qty  = ro::RgbToImU32(g_cfg.qty_rgb);
   // L'ombre rouge du natif sous le nom d'un équipement CASSÉ (cf. item_cell.h) :
   // le texte ne change pas de couleur, c'est l'ombre décalée qui le fait paraître
   // rouge. On reprend le même geste pour rester cohérent avec les viewers.

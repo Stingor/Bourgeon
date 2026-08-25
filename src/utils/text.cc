@@ -36,6 +36,34 @@ int Base62Digit(char c) {
   return -1;
 }
 
+uint32_t Base62Decode(const char* s, size_t len) {
+  uint32_t v = 0;
+  for (size_t i = 0; i < len; ++i) {
+    const int d = Base62Digit(s[i]);
+    if (d < 0) break;
+    v = v * 62u + static_cast<uint32_t>(d);
+  }
+  return v;
+}
+
+bool IsHex6(const char* s) {
+  for (int i = 0; i < 6; ++i) {
+    const char c = s[i];
+    if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') ||
+          (c >= 'A' && c <= 'F')))
+      return false;
+  }
+  return true;
+}
+
+const char* SearchSub(const char* begin, const char* end, const char* needle) {
+  const size_t n = std::strlen(needle);
+  if (n == 0 || static_cast<size_t>(end - begin) < n) return nullptr;
+  for (const char* p = begin; p + n <= end; ++p)
+    if (std::memcmp(p, needle, n) == 0) return p;
+  return nullptr;
+}
+
 void GroupThousands(long long value, char* out, size_t cap) {
   if (!out || cap == 0) return;
   out[0] = '\0';

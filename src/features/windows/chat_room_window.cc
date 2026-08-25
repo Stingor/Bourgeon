@@ -895,20 +895,6 @@ bool OwnCharName(char* out, size_t out_size) {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 
-// CMode::SendMsg(cmd, p2..p5) sur le mode de zone courant, sous SEH.
-// Rend false si aucun mode n'est actif (login, changement de carte).
-bool ModeSendMsg(int cmd, int p2 = 0, int p3 = 0, int p4 = 0, int p5 = 0) {
-  void* mode = nullptr;
-  __try {
-    mode = rag::ActiveModeIfReady();
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
-  if (!mode) return false;
-  __try {
-    rag::ModeSendMsg(mode, cmd, p2, p3, p4, p5);
-    return true;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
-}
-
 // Nom d'un membre lu dans un paquet : 24 octets, PAS forcément terminés.
 std::string MemberNameUtf8(const uint8_t* raw) {
   char name[25];
@@ -1085,13 +1071,13 @@ void ChatRoomWindow::FlushPending() {
       break;
     }
     case Pending::kExpel:
-      ModeSendMsg(kModeMsgExpel, static_cast<int>(reinterpret_cast<intptr_t>(
+      rag::SendToActiveMode(kModeMsgExpel, static_cast<int>(reinterpret_cast<intptr_t>(
                                      pending_member_.c_str())));
       pending_member_.clear();
       break;
     case Pending::kGiveOwner:
       // p1 = nom, p2 = rôle. 0 = « devient propriétaire ».
-      ModeSendMsg(kModeMsgGiveOwner,
+      rag::SendToActiveMode(kModeMsgGiveOwner,
                   static_cast<int>(reinterpret_cast<intptr_t>(
                       pending_member_.c_str())),
                   0);
@@ -1099,7 +1085,7 @@ void ChatRoomWindow::FlushPending() {
       break;
     case Pending::kEnterRoom:
       // p1 = identifiant du salon, p2 = mot de passe (C-string).
-      ModeSendMsg(kModeMsgEnterRoom, static_cast<int>(pw_chat_id_),
+      rag::SendToActiveMode(kModeMsgEnterRoom, static_cast<int>(pw_chat_id_),
                   static_cast<int>(reinterpret_cast<intptr_t>(
                       pending_text_.c_str())));
       pending_text_.clear();

@@ -47,6 +47,7 @@
 #include "ragnarok/social.h"  // rag::social::kFriendListAddByNameAddr
 #include "ragnarok/stl_node.h"  // rag::treenode : le nœud du conteneur
 #include "features/link_gesture.h"
+#include "utils/text.h"  // text : comparaisons et décodages ASCII
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -750,17 +751,6 @@ void SetPendingSendText(const char* text) {
       reinterpret_cast<void*>(kPendingSendText), text, std::strlen(text));
 }
 
-// CMode::SendMsg(cmd, p2..p5) sur le mode de zone courant. Rend false si aucun
-// mode n'est actif (écran de login, changement de carte).
-bool ModeSendMsg(int cmd, int p2 = 0, int p3 = 0, int p4 = 0, int p5 = 0) {
-  // ⚠ Lecture BRUTE du pointeur, pas rag::ActiveModeIfReady() : les deux ne
-  // disent pas la même chose pendant un changement de carte (cf. globals.h).
-  void* mode = *reinterpret_cast<void**>(rag::kActiveModePtr);
-  if (mode == nullptr) return false;
-  rag::ModeSendMsg(mode, cmd, p2, p3, p4, p5);
-  return true;
-}
-
 // Nombre de membres de mon groupe. ⚠ Appel natif : sous SEH seulement.
 int PartyMemberCount() {
   return reinterpret_cast<PartyCount_t>(rag::kPartyMemberCountAddr)(
@@ -959,7 +949,7 @@ const char* NativeSendChatText(const char* text, const char* whisper_target,
           // §10bis.7-4).
           if (cmd_id == kCmdIdSaveChat && chatroomwnd::RoomOwnsChatInput())
             cmd_id = kCmdIdSaveChatFromRoom;
-          ModeSendMsg(kMsgCommand, cmd_id,
+          rag::SendToActiveMode(kMsgCommand, cmd_id,
                       static_cast<int>(reinterpret_cast<intptr_t>(args)));
         }
         for (NativeString& arg : args)
@@ -969,7 +959,7 @@ const char* NativeSendChatText(const char* text, const char* whisper_target,
       // Chuchotement : même chemin que la box destinataire du chat natif —
       // texte en attente, puis SendMsg(11, nom).
       SetPendingSendText(text);
-      ModeSendMsg(kMsgWhisper,
+      rag::SendToActiveMode(kMsgWhisper,
                   static_cast<int>(reinterpret_cast<intptr_t>(whisper_target)));
     } else {
       // Texte simple. 🔴 C'est ICI que l'ENTRÉE native diffère des macros : elle
@@ -979,7 +969,7 @@ const char* NativeSendChatText(const char* text, const char* whisper_target,
       const char* body = text;
       if (typed && !StripSendPrefix(&body, &toggles)) return nullptr;
       SetPendingSendText(body);
-      ModeSendMsg(ResolveSendCommand(toggles));
+      rag::SendToActiveMode(ResolveSendCommand(toggles));
     }
   } __except (g_last_send_fault = GetExceptionCode(), EXCEPTION_EXECUTE_HANDLER) {
     // 🔴 Le code de l'exception, PAS un message générique. « L'envoi a échoué »
@@ -1140,32 +1130,6 @@ void WriteSendMode(int mode) {
   }
 }
 
-// ── Petits outils de texte ───────────────────────────────────────────────────
-bool IsHex6(const char* s) {
-  for (int i = 0; i < 6; ++i)
-    if (!std::isxdigit(static_cast<unsigned char>(s[i]))) return false;
-  return true;
-}
-
-// Recherche d'une sous-chaîne dans un intervalle NON terminé par un zéro : le
-// texte d'une ligne est parcouru par pointeurs, et `strstr` lirait au-delà.
-const char* SearchSub(const char* begin, const char* end, const char* needle) {
-  const size_t n = std::strlen(needle);
-  if (static_cast<size_t>(end - begin) < n) return nullptr;
-  for (const char* p = begin; p + n <= end; ++p)
-    if (std::memcmp(p, needle, n) == 0) return p;
-  return nullptr;
-}
-
-// Badge de rang d'un monstre. Mêmes valeurs que la table des drops de la fenêtre
-// de description (`boss` : 2 = MVP, 1 = mini-boss), pour qu'un même monstre ne
-// change pas d'étiquette selon l'endroit d'où le lien a été posé.
-const char* MobRankTag(uint8_t rank) {
-  if (rank == 2) return "[MVP]";
-  if (rank == 1) return "[Boss]";
-  return "[Mob]";
-}
-
 // Début d'adresse web reconnu. Volontairement limité à ces trois amorces : tout
 // ce qui ressemble de loin à un domaine (« truc.fr ») transformerait en lien la
 // moitié des phrases, y compris les fins de phrase (« ...voilà.Et »).
@@ -1200,19 +1164,15 @@ const char* UrlEnd(const char* p, const char* end) {
   return stop;
 }
 
-// Recherche insensible à la casse (ASCII) — le filtre de la barre de recherche.
+// Recherche insensible à la casse, pour le filtre de la barre de recherche.
+//
+// 🔴 Passait par `std::tolower` tout en s'annonçant « (ASCII) » : sous une locale
+// non-C, `std::tolower` touche les octets ≥ 0x80, qui sont ici la MOITIÉ d'un
+// caractère UTF-8 — et ce filtre compare des noms de JOUEURS. Le foyer
+// `utils/text` existe précisément pour ça ; cette surcharge ne fait plus que lui
+// présenter la `std::string` que ses appelants tiennent.
 bool ContainsNoCase(const std::string& haystack, const char* needle) {
-  if (needle == nullptr || needle[0] == '\0') return true;
-  const size_t n = std::strlen(needle);
-  if (haystack.size() < n) return false;
-  for (size_t i = 0; i + n <= haystack.size(); ++i) {
-    size_t j = 0;
-    while (j < n && std::tolower(static_cast<unsigned char>(haystack[i + j])) ==
-                        std::tolower(static_cast<unsigned char>(needle[j])))
-      ++j;
-    if (j == n) return true;
-  }
-  return false;
+  return text::ContainsNoCase(haystack.c_str(), needle);
 }
 
 // (Le base62 des liens d'items vit désormais dans `itemcell::ParseChatLink`, avec
@@ -2483,7 +2443,7 @@ void ChatWindow::ParseUtf8(const std::string& text, Line* out) const {
   bool emote_used = false;
   while (p < end) {
     // Couleur ^RRGGBB (^000000 = retour à la couleur de la ligne).
-    if (*p == '^' && (end - p) >= 7 && IsHex6(p + 1)) {
+    if (*p == '^' && (end - p) >= 7 && text::IsHex6(p + 1)) {
       flush();
       const unsigned v = static_cast<unsigned>(
           std::strtoul(std::string(p + 1, p + 7).c_str(), nullptr, 16));
@@ -2663,7 +2623,7 @@ void ChatWindow::ParseUtf8(const std::string& text, Line* out) const {
     // résout dans SA langue (links::FromNavi), comme pour un lien de réglage.
     if (*p == '<' && (end - p) >= 8 && std::strncmp(p, "<NAVIL>", 7) == 0) {
       const char* body  = p + 7;
-      const char* close = SearchSub(body, end, "</NAVIL>");
+      const char* close = text::SearchSub(body, end, "</NAVIL>");
       // Au moins un caractère de nom, plus les quatre de coordonnées.
       if (close != nullptr && close - body >= 5) {
         static const char kBase62[] =
@@ -2721,7 +2681,7 @@ void ChatWindow::ParseUtf8(const std::string& text, Line* out) const {
     // visible se compose ici, à partir de la famille et du terme.
     if (*p == '<' && (end - p) >= 7 && std::strncmp(p, "<NAVS>", 6) == 0) {
       const char* body  = p + 6;
-      const char* close = SearchSub(body, end, "</NAVS>");
+      const char* close = text::SearchSub(body, end, "</NAVS>");
       if (close != nullptr) {
         const char* c1 = static_cast<const char*>(std::memchr(body, ':', close - body));
         if (c1 != nullptr) {
@@ -2783,7 +2743,7 @@ void ChatWindow::ParseUtf8(const std::string& text, Line* out) const {
     // qu'un nom de monstre contient (espaces, apostrophes, ponctuation).
     if (*p == '<' && (end - p) >= 7 && std::strncmp(p, "<MOBL>", 6) == 0) {
       const char* body  = p + 6;
-      const char* close = SearchSub(body, end, "</MOBL>");
+      const char* close = text::SearchSub(body, end, "</MOBL>");
       if (close != nullptr) {
         const char* c1 = static_cast<const char*>(std::memchr(body, ':', close - body));
         const char* c2 = (c1 != nullptr)
@@ -2801,7 +2761,7 @@ void ChatWindow::ParseUtf8(const std::string& text, Line* out) const {
             link.mob_id   = id;
             link.mob_rank = static_cast<uint8_t>((rank < 0 || rank > 2) ? 0 : rank);
             link.mob_name = name;
-            link.text     = "<" + std::string(MobRankTag(link.mob_rank)) + " " + name + ">";
+            link.text     = "<" + std::string(links::MobRankTag(link.mob_rank)) + " " + name + ">";
             out->runs.push_back(link);
           }
           p = close + 7;
@@ -2832,7 +2792,7 @@ void ChatWindow::ParseUtf8(const std::string& text, Line* out) const {
     // au catalogue, pas l'objet de quelqu'un.
     if (*p == '<' && (end - p) >= 7 && std::strncmp(p, "<ITMR>", 6) == 0) {
       const char* body  = p + 6;
-      const char* close = SearchSub(body, end, "</ITMR>");
+      const char* close = text::SearchSub(body, end, "</ITMR>");
       if (close != nullptr) {
         const char* c1 = static_cast<const char*>(std::memchr(body, ':', close - body));
         if (c1 != nullptr) {
@@ -2878,7 +2838,7 @@ void ChatWindow::ParseUtf8(const std::string& text, Line* out) const {
     // balise brute, et il vaut mieux qu'elle reste lisible.
     if (*p == '<' && (end - p) >= 7 && std::strncmp(p, "<CRAF>", 6) == 0) {
       const char* body  = p + 6;
-      const char* close = SearchSub(body, end, "</CRAF>");
+      const char* close = text::SearchSub(body, end, "</CRAF>");
       if (close != nullptr) {
         const char* c1 = static_cast<const char*>(std::memchr(body, ':', close - body));
         if (c1 != nullptr) {
@@ -2921,7 +2881,7 @@ void ChatWindow::ParseUtf8(const std::string& text, Line* out) const {
     // langue du lecteur (même règle que `<CRAF>`).
     if (*p == '<' && (end - p) >= 7 && std::strncmp(p, "<SETL>", 6) == 0) {
       const char* body  = p + 6;
-      const char* close = SearchSub(body, end, "</SETL>");
+      const char* close = text::SearchSub(body, end, "</SETL>");
       if (close != nullptr) {
         const char* c1 = static_cast<const char*>(std::memchr(body, ':', close - body));
         if (c1 != nullptr) {
@@ -2964,7 +2924,7 @@ void ChatWindow::ParseUtf8(const std::string& text, Line* out) const {
     // balise brute. Le pseudo vient en tête pour que le début reste lisible.
     if (*p == '<' && (end - p) >= 7 && std::strncmp(p, "<STYL>", 6) == 0) {
       const char* body  = p + 6;
-      const char* close = SearchSub(body, end, "</STYL>");
+      const char* close = text::SearchSub(body, end, "</STYL>");
       if (close != nullptr) {
         const char* c1 = static_cast<const char*>(std::memchr(body, ':', close - body));
         if (c1 != nullptr) {
@@ -6730,7 +6690,7 @@ void ChatWindow::FlushNameAction() {
       // 0x086d selon la version). Coder l'opcode en dur, c'est parier sur la
       // version ; laisser le client le choisir, c'est avoir raison par
       // construction. C'est exactement ce que fait son menu contextuel (code 5).
-      ModeSendMsg(kMsgPartyInvite,
+      rag::SendToActiveMode(kMsgPartyInvite,
                   static_cast<int>(reinterpret_cast<intptr_t>(name)));
       return;
     case NameAction::kFriendAdd: {
@@ -7163,7 +7123,7 @@ bool ChatWindow::AppendMobLink(uint32_t mob_id, int rank, const char* name_utf8)
   if (!LinkSlotAvailable()) return false;
 
   const std::string display =
-      "<" + std::string(MobRankTag(static_cast<uint8_t>(rank))) + " " + name + ">";
+      "<" + std::string(links::MobRankTag(static_cast<uint8_t>(rank))) + " " + name + ">";
   char wire[256];
   std::snprintf(wire, sizeof(wire), "<MOBL>%u:%d:%s</MOBL>", mob_id, rank,
                 name.c_str());

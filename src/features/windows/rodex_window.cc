@@ -27,6 +27,7 @@
 #include "utils/log_console.h"
 #include "utils/i18n.h"
 #include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
+#include "utils/text.h"  // text : comparaisons et décodages ASCII
 
 // ── Constantes RE (client 20250716, base 0x400000 ; cf. docs/rodex_re.md) ──
 namespace {
@@ -416,31 +417,6 @@ void EnsureAttachIcons() {
   g_ico_both = ro::TextureFromGameFile(path);
 }
 
-// Recherche insensible à la casse, sur des octets UTF-8. Le repli ASCII suffit ici :
-// les noms de personnage n'en sortent pas, et pour un sujet accentué les octets
-// non-ASCII sont comparés tels quels — « é » trouve « é », mais pas « É ».
-// (ImGuiTextFilter aurait été plus court, mais il est sensible à la casse : taper
-// « gettar » ne trouverait pas « Gettar ».)
-bool ContainsNoCase(const char* haystack, const char* needle) {
-  if (!needle || !*needle) return true;
-  if (!haystack || !*haystack) return false;
-  for (const char* start = haystack; *start; ++start) {
-    const char* a = start;
-    const char* b = needle;
-    while (*a && *b) {
-      unsigned char ca = static_cast<unsigned char>(*a);
-      unsigned char cb = static_cast<unsigned char>(*b);
-      if (ca >= 'A' && ca <= 'Z') ca += 32;
-      if (cb >= 'A' && cb <= 'Z') cb += 32;
-      if (ca != cb) break;
-      ++a;
-      ++b;
-    }
-    if (!*b) return true;
-  }
-  return false;
-}
-
 // Nombre de courriers lus par boîte en une passe. Une boîte RODEX en contient
 // rarement plus de quelques dizaines ; la borne existe pour qu'un arbre corrompu
 // ne puisse pas transformer une frame de rendu en boucle infinie.
@@ -478,15 +454,7 @@ struct RawMail {
   RawAttach items[5];
 };
 
-// ── Accès natifs, tous SEH-gardés (les structures peuvent disparaître entre
-// deux frames : changement de carte, déconnexion, fermeture par le serveur).
-void* FindWnd(int id) { return uiwnd::SafeFindWindow(id); }
-uintptr_t VTableOf(void* w) { return uiwnd::SafeVTableOf(w); }
-void SetWndVisible(void* w, int visible) {
-  uiwnd::SafeSetVisible(w, visible != 0);
-}
-void HideWnd(void* w) { SetWndVisible(w, 0); }
-void CloseWnd(int id) { uiwnd::SafeCloseWindow(id); }
+void HideWnd(void* w) { uiwnd::SafeSetVisible(w, false); }
 uint8_t* RodexMgr() {
   __try { return *reinterpret_cast<uint8_t**>(kRodexMgrPtr); }
   __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
@@ -1244,7 +1212,7 @@ void RodexWindow::CloseCompose() {
   if (ComposeWnd()) {
     // Filet : si une native traîne, la fermer émet l'annulation pour nous — ne pas
     // envoyer les deux, le serveur verrait une seconde annulation sans session.
-    CloseWnd(uiwnd::kUIMailWriteWnd);
+    uiwnd::SafeCloseWindow(uiwnd::kUIMailWriteWnd);
   } else {
     uint8_t packet[2] = {0};
     *reinterpret_cast<uint16_t*>(packet) = kCzCancelWrite;
@@ -1330,8 +1298,10 @@ void RodexWindow::CloseAll() {
   // des filets, pour le cas où l'une aurait survécu à un tick manqué. Lecture AVANT
   // liste, l'ordre du natif. Ni l'une ni l'autre n'émet de paquet en se fermant
   // (vérifié : aucun envoi hors de leurs OnMsg de boutons).
-  if (FindWnd(uiwnd::kUIRodexReadWnd)) CloseWnd(uiwnd::kUIRodexReadWnd);
-  if (FindWnd(uiwnd::kUIRodexWnd)) CloseWnd(uiwnd::kUIRodexWnd);
+  if (uiwnd::SafeFindWindow(uiwnd::kUIRodexReadWnd))
+    uiwnd::SafeCloseWindow(uiwnd::kUIRodexReadWnd);
+  if (uiwnd::SafeFindWindow(uiwnd::kUIRodexWnd))
+    uiwnd::SafeCloseWindow(uiwnd::kUIRodexWnd);
   ResetMailboxState();
 }
 
@@ -1379,7 +1349,7 @@ void RodexWindow::HideNativeAtCreation(void* win, int window_id) {
   if (window_id != uiwnd::kUIRodexWnd && window_id != uiwnd::kUIRodexReadWnd &&
       window_id != uiwnd::kUIMailWriteWnd)
     return;
-  const uintptr_t vt = VTableOf(win);
+  const uintptr_t vt = uiwnd::SafeVTableOf(win);
   if (vt != uiwnd::kUIRodexWndVTable && vt != uiwnd::kUIRodexReadWndVTable &&
       vt != uiwnd::kUIMailWriteWndVTable)
     return;  // id réutilisé par une autre classe : on s'abstient
@@ -1478,17 +1448,17 @@ void RodexWindow::OnTick() {
   // HideNativeAtCreation qui l'a adopté, et on la détruit ici. Elle n'a rien à faire
   // vivante — le handler de liste (ZC 0x0AC2) ne la cherche qu'en fin de parcours,
   // par un FindWindow qui rend nul sans rien perdre du modèle.
-  void* inbox = FindWnd(uiwnd::kUIRodexWnd);
-  if (inbox && VTableOf(inbox) == uiwnd::kUIRodexWndVTable)
-    CloseWnd(uiwnd::kUIRodexWnd);
+  void* inbox = uiwnd::SafeFindWindow(uiwnd::kUIRodexWnd);
+  if (inbox && uiwnd::SafeVTableOf(inbox) == uiwnd::kUIRodexWndVTable)
+    uiwnd::SafeCloseWindow(uiwnd::kUIRodexWnd);
 
   // Idem pour la lecture, recréée par le serveur à CHAQUE lecture (handler ZC 0x0B63
   // -> MakeWindow 0x109). On la laisse naître — c'est ce handler-là qui remplit le
   // courrier dans la map, on ne peut pas s'en passer — mais on la détruit aussitôt :
   // son contenu est déjà lisible dans le manager, et masquée elle volerait le clavier.
-  void* read = FindWnd(uiwnd::kUIRodexReadWnd);
-  if (read && VTableOf(read) == uiwnd::kUIRodexReadWndVTable)
-    CloseWnd(uiwnd::kUIRodexReadWnd);
+  void* read = uiwnd::SafeFindWindow(uiwnd::kUIRodexReadWnd);
+  if (read && uiwnd::SafeVTableOf(read) == uiwnd::kUIRodexReadWndVTable)
+    uiwnd::SafeCloseWindow(uiwnd::kUIRodexReadWnd);
 
   was_open_ = open_;
   if (!open_) return;
@@ -1682,8 +1652,8 @@ void RodexWindow::DrawMailList() {
     int shown = 0;
     for (const Mail& mail : mails_) {
       if (tab_ < 3 && mail.box != tab_) continue;
-      if (filtering && !ContainsNoCase(mail.sender.c_str(), filter_) &&
-          !ContainsNoCase(mail.title.c_str(), filter_))
+      if (filtering && !text::ContainsNoCase(mail.sender.c_str(), filter_) &&
+          !text::ContainsNoCase(mail.title.c_str(), filter_))
         continue;
       ++shown;
       ImGui::TableNextRow();

@@ -108,4 +108,6 @@ bool GameDirW(std::wstring& out) {
 
 std::string InGameDir(const std::string& relative) { return GameDir() + relative; }
 
+std::string ClientInfoPath() { return InGameDir("data\\clientinfo.xml"); }
+
 }  // namespace paths

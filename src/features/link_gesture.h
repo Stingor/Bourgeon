@@ -33,6 +33,20 @@
 
 namespace links {
 
+// L'étiquette de rang d'un monstre, telle qu'elle ouvre un lien « <[MVP] Nom> ».
+// Mêmes valeurs que la table des drops de la fenêtre de description (`boss` :
+// 2 = MVP, 1 = mini-boss).
+//
+// 🔴 Son commentaire d'origine disait déjà « pour qu'un même monstre ne change
+// pas d'étiquette selon l'endroit d'où le lien a été posé » — et il existait en
+// DEUX exemplaires, un par poseur de lien. L'intention était écrite, la garantie
+// non.
+inline const char* MobRankTag(int rank) {
+  if (rank == 2) return "[MVP]";
+  if (rank == 1) return "[Boss]";
+  return "[Mob]";
+}
+
 // Ce qu'un lien DÉSIGNE. Copiable et conservable : le menu contextuel s'ouvre à
 // la frame suivante, l'appelant doit donc garder sa cible sous la main.
 struct Target {

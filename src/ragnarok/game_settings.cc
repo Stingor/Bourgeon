@@ -891,7 +891,7 @@ void ShutdownClient() {
     void* connection = reinterpret_cast<ConnGetInstance_t>(kConnGetInstanceAddr)();
     if (connection)
       reinterpret_cast<ConnDisconnect_t>(kConnDisconnectAddr)(connection);
-    void* mode = *reinterpret_cast<void**>(rag::kActiveModePtr);
+    void* mode = rag::ActiveMode();
     if (mode) rag::ModeSendMsg(mode, kCmdShutdown, 0, 0, 0, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }

@@ -96,8 +96,6 @@ std::string RememberPath() { return paths::MoonlightUserPath(); }
 // Mot de passe web mémorisé — chiffré DPAPI (lié au compte Windows courant :
 // illisible par un autre utilisateur/machine, aucune clé à gérer).
 std::string PwPath() { return paths::MoonlightPwPath(); }
-std::string ClientInfoPath() { return paths::InGameDir("data\\clientinfo.xml"); }
-
 bool DpapiEncryptToFile(const std::string& path, const std::string& plain) {
   DATA_BLOB in{static_cast<DWORD>(plain.size()),
                reinterpret_cast<BYTE*>(const_cast<char*>(plain.data()))};
@@ -564,7 +562,7 @@ void MoonlightAuth::ResolveServer() {
   // donc `data\clientinfo.xml` est absent -> 0 connexion -> le service-select
   // n'était jamais franchi (le formulaire Moonlight restait derrière lui).
   std::vector<std::string> names = native_login::ClientInfoConnectionNames();
-  if (names.empty()) names = ReadConnectionNames(ClientInfoPath());
+  if (names.empty()) names = ReadConnectionNames(paths::ClientInfoPath());
   server_count_ = static_cast<int>(names.size());
   server_index_ = 0;  // défaut = 1ʳᵉ connexion (Moonlight-Destiny, base clientinfo)
   server_name_ = ParseServerArg();  // envoyé au site pour cibler la bonne DB

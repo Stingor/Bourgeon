@@ -663,6 +663,15 @@ inline void RgbToF3(int rgb, float* f) {
   f[1] = ((rgb >> 8) & 0xff) / 255.0f;
   f[2] = (rgb & 0xff) / 255.0f;
 }
+// La même couleur, mais prête pour un ImDrawList — l'alpha en plus.
+//
+// 🔴 Recopiée dans les TROIS fichiers qui utilisent déjà le couple ci-dessus,
+// et à l'identique. `ui/color_codec.h` interdit pourtant en toutes lettres de
+// « réinliner un décalage de bits » : la moitié de la famille était au foyer,
+// le dernier membre était resté derrière.
+inline ImU32 RgbToImU32(int rgb, int alpha = 255) {
+  return IM_COL32((rgb >> 16) & 0xff, (rgb >> 8) & 0xff, rgb & 0xff, alpha);
+}
 inline int F3ToRgb(const float* f) {
   const int r = static_cast<int>(f[0] * 255.0f + 0.5f);
   const int g = static_cast<int>(f[1] * 255.0f + 0.5f);

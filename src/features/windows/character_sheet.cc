@@ -1890,7 +1890,7 @@ void SendEquip(int invIndex, uint32_t position) {
 // ZC_CONFIG qui applique le flag + rafraîchit le sprite. SEH (appel natif via vtable).
 void SendConfigToggle(int cmd, int value) {
   __try {
-    void* d = *reinterpret_cast<void**>(rag::kActiveModePtr);
+    void* d = rag::ActiveMode();
     if (d) rag::ModeSendMsg(d, cmd, value, 0, 0, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
@@ -1915,7 +1915,7 @@ void SendConfigToggle(int cmd, int value) {
 // hors de la liste apprise) — c'est le cas de l'onglet Guilde, qui marchait ainsi.
 void SendUseSkill(uint16_t skillId, int level) {
   __try {
-    void* d = *reinterpret_cast<void**>(rag::kActiveModePtr);
+    void* d = rag::ActiveMode();
     if (!d) return;
     bool dispatched = false;
     {

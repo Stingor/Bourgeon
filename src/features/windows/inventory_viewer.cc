@@ -486,11 +486,6 @@ void PostItemLinkToChat(int index) {
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
-// Lit un pointeur de fenêtre valide depuis un slot (vtable vérifiée). SEH.
-uint8_t* ReadValidWnd(uintptr_t slot, uintptr_t expected_vtable) {
-  return uiwnd::WndAtSlot(slot, expected_vtable);
-}
-
 // Échange joueur-joueur ImGui actif (TradeWindow) : cible de « Vers l'échange ».
 bool TradeOpen() {
   auto* tt = Bourgeon::Instance().trade_window();
@@ -878,7 +873,8 @@ void InventoryViewer::OnTick() {
     // repasser par MakeWindow — un appui sur deux serait avalé — et elle
     // garderait le clavier. Couvre aussi la bascule de mode et la
     // reconstruction du HUD au changement de map.
-    if (ReadValidWnd(uiwnd::kInventoryWndSlot, uiwnd::kInventoryWndVTable)) {
+    if (uiwnd::WndAtSlot(uiwnd::kInventoryWndSlot,
+                         uiwnd::kInventoryWndVTable)) {
       // Sa présence PROUVE que l'inventaire était ouvert : on adopte l'état avant
       // de la détruire, sinon activer le mode moderne le ferait disparaître.
       if (mode_changed && !open_) { open_ = true; show_panel_ = true; need_pos_ = true; }

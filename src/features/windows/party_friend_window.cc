@@ -34,16 +34,6 @@ namespace {
 // (Ce petit pont est déjà recopié dans chat_window et game_settings ; il mériterait
 // la factorisation qu'a reçue `uiwnd.h`. Hors périmètre de ce chantier.)
 
-bool ModeSendMsg(int cmd, int p2 = 0, int p3 = 0, int p4 = 0, int p5 = 0) {
-  __try {
-    // ⚠ Lecture BRUTE du pointeur, pas rag::ActiveModeIfReady() (cf. globals.h).
-    void* mode = *reinterpret_cast<void**>(rag::kActiveModePtr);
-    if (mode == nullptr) return false;
-    rag::ModeSendMsg(mode, cmd, p2, p3, p4, p5);
-    return true;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
-}
-
 // Les commandes reprises du hub natif (docs/party_friend_re.md §6).
 constexpr int kCmdMakeLeader   = 0x104;  // -> CZ_PARTY_CHANGE_LEADER 0x07DA (AID)
 constexpr int kCmdRemoveFriend = 0x0b0;  // -> CZ_DELETE_FRIENDS      0x0203 (AID, CID)
@@ -286,10 +276,10 @@ void PartyFriendWindow::FlushPending() {
       break;
     }
     case Action::kMakeLeader:
-      ModeSendMsg(kCmdMakeLeader, static_cast<int>(pending_gid_));
+      rag::SendToActiveMode(kCmdMakeLeader, static_cast<int>(pending_gid_));
       break;
     case Action::kRemoveFriend:
-      ModeSendMsg(kCmdRemoveFriend, static_cast<int>(pending_gid_),
+      rag::SendToActiveMode(kCmdRemoveFriend, static_cast<int>(pending_gid_),
                   static_cast<int>(pending_id2_));
       break;
     case Action::kLeaveParty:
@@ -297,7 +287,7 @@ void PartyFriendWindow::FlushPending() {
       // contente pas d'envoyer 0x0100, il cherche d'abord un membre en ligne sur
       // ma carte et lui TRANSFÈRE le leadership. Envoyer le paquet nu laisserait
       // le groupe sans chef, là où le client officiel passe la main.
-      ModeSendMsg(kCmdLeaveParty);
+      rag::SendToActiveMode(kCmdLeaveParty);
       break;
     case Action::kKick: {
       // CZ_REQ_EXPEL_GROUP_MEMBER 0x0103 : { opcode:2, AID:4, nom:24 } = 30 o.
@@ -336,7 +326,7 @@ void PartyFriendWindow::FlushPending() {
     case Action::kInviteParty:
       // Le client sait inviter PAR NOM ; on lui passe le pointeur, comme le fait
       // déjà le menu contextuel d'entité.
-      ModeSendMsg(kCmdPartyInvite,
+      rag::SendToActiveMode(kCmdPartyInvite,
                   static_cast<int>(reinterpret_cast<intptr_t>(pending_name_.c_str())));
       invite_name_[0] = '\0';
       break;
@@ -353,17 +343,17 @@ void PartyFriendWindow::FlushPending() {
     case Action::kAnswerParty:
       // Exactement ce que fait le bouton 184/185 de la native : la commande 0x3C
       // avec le partyid et 1 (accepter) ou 0 (refuser).
-      ModeSendMsg(kCmdAnswerParty, static_cast<int>(pending_gid_),
+      rag::SendToActiveMode(kCmdAnswerParty, static_cast<int>(pending_gid_),
                   pending_accept_ ? 1 : 0);
       break;
     case Action::kAnswerFriend:
-      ModeSendMsg(kCmdAnswerFriend, static_cast<int>(pending_gid_),
+      rag::SendToActiveMode(kCmdAnswerFriend, static_cast<int>(pending_gid_),
                   static_cast<int>(pending_id2_), pending_accept_ ? 1 : 0);
       break;
     case Action::kPartyOptions:
       // Même appel que la fenêtre native (@0x008c684e) : les trois sélections
       // dans l'ordre exp / ramassage / partage.
-      ModeSendMsg(kCmdPartyOptions, opt_exp_, opt_pickup_, opt_share_);
+      rag::SendToActiveMode(kCmdPartyOptions, opt_exp_, opt_pickup_, opt_share_);
       break;
     case Action::kNone:
       break;
