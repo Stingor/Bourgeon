@@ -34,6 +34,7 @@
 #include "utils/i18n.h"
 #include "ragnarok/user_hotkey.h"  // userhotkey::kGetHotKeyAddr
 #include "ui/ro_widgets.h"
+#include "ragnarok/item_info.h"  // rag::itemlist
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -77,18 +78,15 @@ constexpr uintptr_t kGetSkillInfo  = 0x00d5a980;  // SkillMgr_GetSkillInfo(mgr,o
 // n'a pas bougé — mais les noms disaient le contraire du code, à rebours des
 // huit autres fichiers du projet et de character_sheet.cc:1713 qui documente
 // explicitement « 0x2e ≠ 0xc, qui est celle des objets ».
-// ⚠ CE N'EST PAS L'ItemSkillInfo de `rag::itemlist`, malgré le nom que l'IDB donne
-// aux deux. Celle-ci est la structure que rend `kFillInfoByIdAddr` :
-// `ItemSkillInfo_DefaultCtor` (0x739700) lui pose une vtable `CSkillInfo` en +0 et
-// un `const char*` « Unknown-Skill » en +0x20, et n'initialise RIEN en +0x2c ni
-// +0x44 — c'est `ItemSkillInfo_Assign` qui doit s'en charger. Le tampon est
-// zéro-initialisé ci-dessous, ce qui rend une lecture fautive INOFFENSIVE (une
-// std::string nulle se lit vide) : si ces deux offsets étaient faux, on aurait un
-// nom vide, pas un plantage. Le symptôme se cacherait donc tout seul.
-constexpr int kSkillInfoSize  = 0x100;  // arrondi de pile, la structure fait moins
-constexpr int kSkillInfoFound = 0x04;  // out+0x04 != 0 => skill trouvé
-constexpr int kSkillStr0      = 0x2c;  // std::string resname
-constexpr int kSkillStr1      = 0x44;  // std::string nom
+// Le getter unifié rend un vrai `ItemSkillInfo` : les deux appelants passent son
+// tampon au msg 0x18 de la fenêtre 0xc, qui attend un `&ItemSkillInfo`, et
+// détruisent ses deux `std::string` en +0x2c / +0x44 — précisément là où le ctor
+// 0x006a1b20 les pose. Tampon, chaînes et destruction viennent donc du foyer.
+//
+// ⚠ SAUF +0x04. Ici on le lit comme un drapeau « trouvé », là où le foyer appelle
+// cet offset `kInfoIndex` (« index client »). Deux lectures, aucune mesurée contre
+// l'autre : la constante reste LOCALE, et la question posée.
+constexpr int kSkillInfoFound = 0x04;  // out+0x04 != 0 => trouvé
 
 // ---- tooltip survol (réplique UIShortCutWnd OnMouseMove 0x008f7f50) ----
 // OBJET (rec[0]==1) : nom via la DB item (FUN_006a0d40, table 0x01255130 ; record+0x04 = nom EN,
@@ -426,13 +424,13 @@ void MoveSlotCross(int srcRegion, int srcSlot, int dstRegion, int dstSlot) {
 int GetItemLiveCount(uint32_t nameid) {
   int cnt = 0;
   __try {
-    alignas(8) uint8_t info[kSkillInfoSize] = {};
+    alignas(8) uint8_t info[rag::itemlist::kInfoBuf] = {};
     reinterpret_cast<GetSkillInfo_t>(kGetSkillInfo)(
         reinterpret_cast<void*>(rag::kSessionAddr), nullptr, info, static_cast<int>(nameid), 1);
     if (*reinterpret_cast<int*>(info + kSkillInfoFound) != 0)
       cnt = *reinterpret_cast<int*>(info + 0x10);
-    reinterpret_cast<StrFree_t>(rag::kStdStringDtorAddr)(info + kSkillStr1);
-    reinterpret_cast<StrFree_t>(rag::kStdStringDtorAddr)(info + kSkillStr0);
+    reinterpret_cast<StrFree_t>(rag::kStdStringDtorAddr)(info + rag::itemlist::kInfoStr2);
+    reinterpret_cast<StrFree_t>(rag::kStdStringDtorAddr)(info + rag::itemlist::kInfoIdStr);
   } __except (EXCEPTION_EXECUTE_HANDLER) { cnt = 0; }
   return cnt;
 }
@@ -633,6 +631,12 @@ void FlushIconCache() { g_iconCache.clear(); }  // changement de zone (textures 
 // utilisable (un skill lié à un item disparu repasse à found=0 -> le natif cesse de le dessiner).
 // Nettoyage via FUN_00739cd0 (même signature __fastcall(void*) que StrFree_t) -> pas de fuite malgré
 // l'appel par frame. SEH (POD only). id = id canonique stocké (rec+1), comme OnDraw.
+// ⚠ ICI, ET SEULEMENT ICI, LA STRUCTURE N'EST PAS UN ItemSkillInfo. C'est celle
+// que rend `kFillInfoByIdAddr` : `ItemSkillInfo_DefaultCtor` (0x739700) lui pose
+// une vtable `CSkillInfo` en +0 et un `const char*` « Unknown-Skill » en +0x20 —
+// d'où le destructeur DIFFÉRENT (`kFilledInfoDtorAddr`, 0x00739cd0). L'IDB donne
+// le même nom aux deux structures ; les apparier de travers écrirait un pointeur
+// de vtable par-dessus le premier champ.
 bool SkillKnown(uint32_t id) {
   // Une compétence d'HOMONCULE n'est pas dans le bundle du personnage : le getter
   // natif la dirait toujours inconnue et la case resterait grisée en permanence.
@@ -693,7 +697,7 @@ void OpenSlotDescription(int region, int slot, int mx, int my) {
       if (rec[0] != 0) {  // ── SKILL (rec[0]==1) ──
         itemdb::OpenSkillDesc(id, mx, my);
       } else {            // ── OBJET (rec[0]==0) ──
-        alignas(8) uint8_t info[kSkillInfoSize] = {};
+        alignas(8) uint8_t info[rag::itemlist::kInfoBuf] = {};
         reinterpret_cast<GetSkillInfo_t>(kGetSkillInfo)(
             reinterpret_cast<void*>(rag::kSessionAddr), nullptr, info, id, 1);
         void* wnd = uiwnd::MakeWindow(uiwnd::kItemDescWndId);
@@ -702,8 +706,8 @@ void OpenSlotDescription(int region, int slot, int mx, int my) {
                                      static_cast<int>(reinterpret_cast<uintptr_t>(info)), 0, 0, 0);
           uiwnd::SetPos(wnd, mx, my);
         }
-        reinterpret_cast<StrFree_t>(rag::kStdStringDtorAddr)(info + kSkillStr1);
-        reinterpret_cast<StrFree_t>(rag::kStdStringDtorAddr)(info + kSkillStr0);
+        reinterpret_cast<StrFree_t>(rag::kStdStringDtorAddr)(info + rag::itemlist::kInfoStr2);
+        reinterpret_cast<StrFree_t>(rag::kStdStringDtorAddr)(info + rag::itemlist::kInfoIdStr);
       }
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) {}

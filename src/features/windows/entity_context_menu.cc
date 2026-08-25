@@ -82,7 +82,6 @@ constexpr int       kBtnRepeat         = 4;  // appui trop rapproché du précé
 // §4.3 — les trois champs du CGameMode que le menu écrit et que le dispatch relit.
 constexpr int kGm_MenuCodes  = 0x1cc;  // std::vector<int> : begin/end/cap
 constexpr int kGm_MenuTarget = 0x2e0;  // uint32 : AID de la cible
-constexpr int kGm_ActorMgr   = 0x0cc;
 
 // Mode de ciblage courant. La valeur 1 est le ciblage AU SOL : `RouteHoverAndClick`
 // sort alors immédiatement et c'est `GroundClick_RequestMove` qui lance le sort.
@@ -416,7 +415,7 @@ std::string EntityName(void* game_mode, uint32_t aid) {
 
 void* FindActor(void* game_mode, uint32_t aid) {
   __try {
-    void* actor_mgr = Read<void*>(game_mode, kGm_ActorMgr);
+    void* actor_mgr = Read<void*>(game_mode, gamescene::kGmActorMgr);
     if (!actor_mgr) return nullptr;
     return reinterpret_cast<FindActorFn>(gamescene::kActorListFindByGidAddr)(actor_mgr, aid);
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
@@ -548,7 +547,7 @@ bool RunNativeActorClick(uint32_t aid) {
 bool ReadGroundItem(void* game_mode, uint32_t aid, uint32_t* nameid,
                     bool* identified) {
   __try {
-    const uint8_t* mgr = Read<const uint8_t*>(game_mode, kGm_ActorMgr);
+    const uint8_t* mgr = Read<const uint8_t*>(game_mode, gamescene::kGmActorMgr);
     if (!mgr) return false;
     void* const* sentinel = Read<void* const*>(mgr, kActorMgr_ItemList);
     if (!sentinel) return false;
@@ -576,7 +575,7 @@ bool RunNativePickupItem(uint32_t aid) {
     void* game_mode = ReadGlobalPtr(rag::kActiveModePtr);
     if (!game_mode) return false;
     if (Read<int>(game_mode, kGm_TargetingMode) != 0) return false;
-    const uint8_t* mgr = Read<const uint8_t*>(game_mode, kGm_ActorMgr);
+    const uint8_t* mgr = Read<const uint8_t*>(game_mode, gamescene::kGmActorMgr);
     if (!mgr) return false;
     void* own = Read<void*>(mgr, kActorMgr_OwnActor);
     if (!own) return false;

@@ -1,5 +1,6 @@
 #include "ragnarok/player_skills.h"
 #include "ragnarok/stl_node.h"  // rag::listnode
+#include "ragnarok/skill_info.h"  // rag::skillinfo
 
 #include <Windows.h>
 
@@ -11,11 +12,6 @@ namespace {
 // Adresses et offsets du bundle de compétences (20250716, base 0x400000).
 using GetTabList_t = void* (__fastcall*)(void*, void*, int);
 
-constexpr int kOffValid   = 0x04;
-constexpr int kOffId      = 0x08;
-constexpr int kOffLvLocal = 0x10;
-constexpr int kOffSp      = 0x14;  // coût SP au niveau courant
-constexpr int kOffLearned = 0x30;  // int16, VÉRITÉ SERVEUR
 constexpr int kJobTabs    = 4;
 constexpr int kMaxNodes   = 256;
 
@@ -43,10 +39,10 @@ int LearnedSkillLevel(int skill_id, int* sp_cost) {
       while (node && node != head && guard++ < kMaxNodes) {
         const uint8_t* value = node + rag::listnode::kValue;
         node = *reinterpret_cast<uint8_t**>(node);  // avancer AVANT de lire
-        if (*reinterpret_cast<const int*>(value + kOffValid) == 0) continue;
-        if (*reinterpret_cast<const int*>(value + kOffId) != skill_id) continue;
-        int level = *reinterpret_cast<const int16_t*>(value + kOffLearned);
-        if (level <= 0) level = *reinterpret_cast<const int*>(value + kOffLvLocal);
+        if (*reinterpret_cast<const int*>(value + rag::skillinfo::kValid) == 0) continue;
+        if (*reinterpret_cast<const int*>(value + rag::skillinfo::kId) != skill_id) continue;
+        int level = *reinterpret_cast<const int16_t*>(value + rag::skillinfo::kLearned);
+        if (level <= 0) level = *reinterpret_cast<const int*>(value + rag::skillinfo::kLevel);
         // 🔴 PAS DE `break` ICI, ET C'EST UN CORRECTIF, pas un détail de style.
         //
         // Une liste d'onglet peut contenir DEUX FOIS la même compétence :
@@ -64,7 +60,7 @@ int LearnedSkillLevel(int skill_id, int* sp_cost) {
         // niveau vu, et le coût SP de la fiche qui le porte.
         if (level > found) {
           found = level;
-          sp = *reinterpret_cast<const int*>(value + kOffSp);
+          sp = *reinterpret_cast<const int*>(value + rag::skillinfo::kSp);
         }
       }
     }

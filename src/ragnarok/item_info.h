@@ -61,6 +61,11 @@ constexpr int kNodeInfo = 0x08;
 constexpr int kInfoIndex  = 0x04;  // int : index client (l'argument des commandes)
 constexpr int kInfoAmount = 0x10;  // int : quantité de la pile (`num_`)
 constexpr int kInfoIdStr  = 0x2c;  // std::string : l'itemId EN TEXTE (le jeu fait atoi)
+constexpr int kInfoStr2   = 0x44;  // la SECONDE std::string (usage non relevé)
+//
+// ⚠ IL Y EN A DEUX, ET IL FAUT DÉTRUIRE LES DEUX. Le ctor 0x006a1b20 n'en
+// initialise que celles-là ; un site qui fabrique un `info` et le laisse mourir
+// sans appeler `kInfoDtorAddr` ne fuit que tant qu'elles restent en SSO.
 
 // Les mêmes vus depuis le NŒUD. Huit fichiers écrivaient `0x18` en littéral avec
 // le commentaire « (= info+0x10) » — ici c'est DÉRIVÉ, donc les deux ne peuvent

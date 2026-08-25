@@ -54,6 +54,15 @@ constexpr int kAmOwnPlayer = 0x2c;  // *(mgr+0x2c) = acteur du joueur local
 constexpr int kNameStr   = 0x04;  // le pseudo
 constexpr int kNameParty = 0x1c;  // le nom de son GROUPE
 constexpr int kNameGuild = 0x34;  // le nom de sa GUILDE
+constexpr int kNameRank  = 0x4c;  // son RANG dans la guilde
+//
+// ⚠ IL Y EN A CINQ (la dernière en +0x64), et le foyer s'arrêtait à trois :
+// un plan incomplet invite la copie, `kName_Rank` n'avait nulle part où aller.
+//
+// 🔴 POUR UN MONSTRE, LE SERVEUR EN DÉTOURNE TROIS : `kNameParty` porte
+// « Lv. X | HP: Y% », `kNameGuild` la RACE et `kNameRank` l'ÉLÉMENT. Lire ces
+// champs sur un monstre en croyant lire un groupe et une guilde donne un
+// résultat plausible et faux.
 
 // ── Fonctions natives ────────────────────────────────────────────────────────
 // `CNameDict_GetEntryOrRequest(dict, gid)` __thiscall : rend le CNameInfo si le

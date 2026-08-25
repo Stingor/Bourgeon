@@ -29,9 +29,6 @@ constexpr uintptr_t kPickGroundCellAddr = 0x00c69a40;
 // Quadtree de picking des acteurs, reconstruit à chaque frame par le rendu des
 // sprites. QueryPoint : float* __thiscall(tree, float x, float y) -> quad
 // (10 floats) ou nullptr. C'est la source du survol natif.
-constexpr int kQuadAid = 6;  // dword : AID de l'acteur
-constexpr int kQuadJob = 7;  // dword : job/classe (discrimine joueur/monstre)
-constexpr int kQuadCat = 8;  // dword : catégorie de pick (0 = acteur)
 
 // Fenêtre native sous un point écran. void* __thiscall(g_UIWindowMgr, x, y) :
 // hit-test PUR (itère la liste de fenêtres, vtbl+0xC8), sans effet de bord.
@@ -190,9 +187,9 @@ unsigned PickTargetGid(int mode) {
         static_cast<float>(*reinterpret_cast<int*>(rag::kMouseScreenYAddr)));
     if (!quad) return 0;
     const int* q = reinterpret_cast<const int*>(quad);
-    if (q[kQuadCat] != 0) return 0;  // 1 NPC, 2 unité de skill, 3/4 spéciaux
-    const unsigned aid = static_cast<unsigned>(q[kQuadAid]);
-    const unsigned job = static_cast<unsigned>(q[kQuadJob]);
+    if (q[gamescene::kQuadCat] != 0) return 0;  // 1 NPC, 2 unité de skill, 3/4 spéciaux
+    const unsigned aid = static_cast<unsigned>(q[gamescene::kQuadAid]);
+    const unsigned job = static_cast<unsigned>(q[gamescene::kQuadJob]);
     if (aid == 0 || job == kJobWarpPortal) return 0;
     if (mode == 2) {
       // Offensif : monstre uniquement, et jamais soi-même. C'est ICI que vit

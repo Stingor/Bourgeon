@@ -356,6 +356,7 @@ set(BOURGEON_FILES
 	"ragnarok/social.h"
 	"ragnarok/item_info.h"
 	"ragnarok/stl_node.h"
+	"ragnarok/skill_info.h"
 	"ragnarok/rag_connection.cc"
 	"ragnarok/rag_connection.h"
 	"ragnarok/skill_cooldowns.cc"

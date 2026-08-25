@@ -47,8 +47,6 @@ namespace {
 // CNameInfo (docs/entity_nameplate_re.md §2). Chaque chaîne est une
 // `std::string` de 0x18 octets : buffer, puis taille +0x10 et capacité +0x14 DU
 // CHAMP (pas de l'objet).
-constexpr int kName_Guild   = 0x34;
-constexpr int kName_Rank    = 0x4c;
 constexpr int kName_Title   = 0x64;
 constexpr int kName_Extra   = 0x7c;
 constexpr int kName_TitleId = 0x94;
@@ -344,8 +342,8 @@ void EntityInspector::Refresh(Snapshot* out) {
     name_resolved_ = true;
     ReadNameField(entry, gamescene::kNameStr,   out->name,  sizeof(out->name));
     ReadNameField(entry, gamescene::kNameParty, out->party, sizeof(out->party));
-    ReadNameField(entry, kName_Guild, out->guild, sizeof(out->guild));
-    ReadNameField(entry, kName_Rank,  out->rank,  sizeof(out->rank));
+    ReadNameField(entry, gamescene::kNameGuild, out->guild, sizeof(out->guild));
+    ReadNameField(entry, gamescene::kNameRank,  out->rank,  sizeof(out->rank));
     ReadNameField(entry, kName_Title, out->title, sizeof(out->title));
     ReadNameField(entry, kName_Extra, out->extra, sizeof(out->extra));
     out->title_id = ReadTitleId(entry);

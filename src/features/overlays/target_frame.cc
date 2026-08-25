@@ -101,14 +101,10 @@ constexpr int kGm_Selection = 0x0f4;  // AID de la DERNIÈRE ENTITÉ CLIQUÉE
 // CNameInfo : cinq `std::string` de 0x18 octets à la suite (taille +0x10,
 // capacité +0x14 DU CHAMP). Pour un MONSTRE, le serveur détourne trois d'entre
 // elles — party = « Lv. X | HP: Y% », guilde = race, rang = élément.
-constexpr int kName_Guild = 0x34;
-constexpr int kName_Rank  = 0x4c;
 
 // Balayage des acteurs, pour le cyclage au clavier.
-constexpr int kGm_ActorMgr    = 0x0cc;  // *(gm+0xCC)      = actorMgr
 
 // Le natif refuse le marqueur sur un PORTAIL, et lui seul.
-constexpr unsigned kJobPortal = 45;
 // Catégorie du quad de picking d'un ACTEUR (1 = objet au sol, 2 = unité de
 // compétence, 3 = pet). Notre cible en est toujours un : le HUD ne suit que des
 // entités du monde.
@@ -138,9 +134,6 @@ constexpr unsigned kOptionHiddenMask =
 // la borne existe pour qu'un balayage ne puisse pas dégénérer si la liste du
 // client est corrompue.
 constexpr int kMaxCycleTargets = 128;
-
-constexpr int kGage_Hp    = 0xa0;
-constexpr int kGage_MaxHp = 0xa4;
 
 // Types d'entité tels qu'ils voyagent dans ZC 0x0F2A (e_bourgeon_target_type).
 constexpr uint8_t kTypePc  = 1;
@@ -237,7 +230,7 @@ bool ReadEngaged(void* game_mode) {
 bool ReadMarkerPos(void* actor, int* out_x, int* out_z) {
   __try {
     if (!actor) return false;
-    if (Read<uint32_t>(actor, rag::actor::kJobId) == kJobPortal) return false;
+    if (Read<uint32_t>(actor, rag::actor::kJobId) == rag::kJobPortal) return false;
     // 🔴 Une entité CLOAKÉE n'a droit à rien, et ce n'est pas un détail
     // d'affichage : poser la flèche sur elle donnerait la position d'un joueur
     // caché — un avantage que le client vanilla ne donne pas, donc une triche.
@@ -297,7 +290,7 @@ bool RunActorClick(void* game_mode, uint32_t gid, int click_type) {
 bool OnAgitZone(void* game_mode) {
   __try {
     if (!game_mode) return false;
-    void* scene = Read<void*>(game_mode, kGm_ActorMgr);
+    void* scene = Read<void*>(game_mode, gamescene::kGmActorMgr);
     return scene && Read<int32_t>(scene, kScene_AgitZone) != 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
@@ -377,8 +370,8 @@ bool ReadActorGauge(void* actor, uint32_t* hp, uint32_t* maxhp) {
     for (int i = 0; i < 2; ++i) {
       void* gage = Read<void*>(actor, slots[i]);
       if (!gage) continue;
-      const uint32_t cur = Read<uint32_t>(gage, kGage_Hp);
-      const uint32_t max = Read<uint32_t>(gage, kGage_MaxHp);
+      const uint32_t cur = Read<uint32_t>(gage, rag::actor::kGageHp);
+      const uint32_t max = Read<uint32_t>(gage, rag::actor::kGageHpMax);
       if (max == 0) continue;
       *hp = cur;
       *maxhp = max;
@@ -514,7 +507,7 @@ struct CycleCandidate {
 int CollectScreenTargets(void* gm, CycleCandidate* out, int max) {
   int count = 0;
   __try {
-    void* actor_mgr = Read<void*>(gm, kGm_ActorMgr);
+    void* actor_mgr = Read<void*>(gm, gamescene::kGmActorMgr);
     if (!actor_mgr) return 0;
     void* own = Read<void*>(actor_mgr, gamescene::kAmOwnPlayer);
     if (!own) return 0;
@@ -999,8 +992,8 @@ void TargetFrame::DrawHud() {
     void* name_entry = gamescene::NameDictEntry(gm, gid_);
     ReadNameField(name_entry, gamescene::kNameStr,   name_,  sizeof(name_));
     ReadNameField(name_entry, gamescene::kNameParty, party_, sizeof(party_));
-    ReadNameField(name_entry, kName_Guild, guild_, sizeof(guild_));
-    ReadNameField(name_entry, kName_Rank,  rank_,  sizeof(rank_));
+    ReadNameField(name_entry, gamescene::kNameGuild, guild_, sizeof(guild_));
+    ReadNameField(name_entry, gamescene::kNameRank,  rank_,  sizeof(rank_));
     // Toujours rien ? On le redemande, parce que le client ne le fera pas avant
     // dix secondes. Cf. RequestTargetName.
     if (name_[0] == '\0') RequestTargetName();

@@ -55,6 +55,7 @@
 #include "utils/i18n.h"
 #include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 #include "ragnarok/stl_node.h"  // rag::listnode : le nœud du conteneur
+#include "ragnarok/skill_info.h"  // rag::skillinfo
 
 //  Constantes RE (client 20250716, base 0x400000 ; cf. project_character_sheet)
 namespace {
@@ -951,24 +952,8 @@ using SetUseLevel_t = void  (__fastcall*)(void*, void*, int, int);
 using GetUseLevel_t = int   (__fastcall*)(void*, void*, int);
 using IsLevelUse_t  = char  (__cdecl*)(int);
 
-// Offsets dans CSkillInfo, comptés DEPUIS LA VALEUR du nœud — pas depuis le nœud
-// lui-même (cf. `rag::listnode`).
-constexpr int kSkOffValid     = 0x04;  // 1 = fiche utilisable
-constexpr int kSkOffId        = 0x08;
-constexpr int kSkOffInf       = 0x0c;  // masque skill_get_inf ; 0 = passive
-constexpr int kSkOffLvLocal   = 0x10;  // niveau appris (la vue compacte native le bidouille)
-constexpr int kSkOffSp        = 0x14;  // coût SP au niveau courant
-constexpr int kSkOffUpgrade   = 0x18;  // le serveur dit « il reste du niveau »
-constexpr int kSkOffRange     = 0x1c;
-constexpr int kSkOffPos       = 0x24;  // index de case dans la grille (-1 = non placée)
-constexpr int kSkOffMaxLv     = 0x28;  // niveau MAX (source : Lua)
-constexpr int kSkOffUserUp    = 0x2c;  // UserUpgradable : <= 0 = le joueur ne peut pas la monter
-constexpr int kSkOffLearned   = 0x30;  // int16, VÉRITÉ SERVEUR (jamais modifiée en local)
-constexpr int kSkOffNeedVec   = 0x38;  // std::vector<{u32 id, u32 niveau}> = prérequis
-
-// +0x28 = drapeau de visibilité d'une UIWindow (0 = hors rendu ET hors hit-test).
-// (L'emplacement mgr+0x2C4 qui portait la fenêtre du grimoire ne sert plus : on ne
-// SUIT plus son existence, on la détruit.)
+// ⚠ L'emplacement mgr+0x2C4 qui portait la fenêtre du grimoire ne sert plus : on
+// ne SUIT plus son existence, on la détruit.
 // ── Les trois fenêtres natives que cette feuille REMPLACE ───────────────────
 // Leurs identifiants et vtables sont au foyer : `uiwnd::kUIEquipWnd`,
 // `kUIStatusWnd`, `kUINewSkillListWnd`. Relevés en live dans la map du
@@ -1033,8 +1018,8 @@ int ReadSkillTabSEH(int tab, SkillRaw* out, int cap) {
     while (node && node != head && n < cap && guard++ < kSkillMaxNodes) {
       const uint8_t* v = node + rag::listnode::kValue;
       node = *reinterpret_cast<uint8_t**>(node);  // avancer AVANT de lire la valeur
-      if (*reinterpret_cast<const int*>(v + kSkOffValid) == 0) continue;
-      const int id = *reinterpret_cast<const int*>(v + kSkOffId);
+      if (*reinterpret_cast<const int*>(v + rag::skillinfo::kValid) == 0) continue;
+      const int id = *reinterpret_cast<const int*>(v + rag::skillinfo::kId);
       if (id <= 0) continue;
       // ⚠ UNE LISTE D'ONGLET PEUT CONTENIR DEUX FOIS LA MÊME COMPÉTENCE. L'insertion
       // native (sub_007381D0, appelée par c_AddSkillList) ne cherche JAMAIS l'id avant
@@ -1052,28 +1037,28 @@ int ReadSkillTabSEH(int tab, SkillRaw* out, int cap) {
       for (int k = 0; k < n && dup < 0; ++k)
         if (out[k].id == id) dup = k;
       if (dup >= 0) {
-        const int dpos = *reinterpret_cast<const int*>(v + kSkOffPos);
+        const int dpos = *reinterpret_cast<const int*>(v + rag::skillinfo::kPos);
         if (out[dup].pos < 0 && dpos >= 0) out[dup].pos = dpos;
-        int dlearned = *reinterpret_cast<const int16_t*>(v + kSkOffLearned);
-        if (dlearned <= 0) dlearned = *reinterpret_cast<const int*>(v + kSkOffLvLocal);
+        int dlearned = *reinterpret_cast<const int16_t*>(v + rag::skillinfo::kLearned);
+        if (dlearned <= 0) dlearned = *reinterpret_cast<const int*>(v + rag::skillinfo::kLevel);
         if (dlearned > out[dup].learned) out[dup].learned = dlearned;
         continue;
       }
       SkillRaw& s = out[n];
       s.id         = id;
-      s.inf        = *reinterpret_cast<const int*>(v + kSkOffInf);
-      s.sp         = *reinterpret_cast<const int*>(v + kSkOffSp);
-      s.range      = *reinterpret_cast<const int*>(v + kSkOffRange);
-      s.pos        = *reinterpret_cast<const int*>(v + kSkOffPos);
-      s.maxlv      = *reinterpret_cast<const int*>(v + kSkOffMaxLv);
-      s.user_up    = *reinterpret_cast<const int*>(v + kSkOffUserUp);
-      s.upgradable = *reinterpret_cast<const int*>(v + kSkOffUpgrade);
+      s.inf        = *reinterpret_cast<const int*>(v + rag::skillinfo::kInf);
+      s.sp         = *reinterpret_cast<const int*>(v + rag::skillinfo::kSp);
+      s.range      = *reinterpret_cast<const int*>(v + rag::skillinfo::kRange);
+      s.pos        = *reinterpret_cast<const int*>(v + rag::skillinfo::kPos);
+      s.maxlv      = *reinterpret_cast<const int*>(v + rag::skillinfo::kMaxLevel);
+      s.user_up    = *reinterpret_cast<const int*>(v + rag::skillinfo::kUserUp);
+      s.upgradable = *reinterpret_cast<const int*>(v + rag::skillinfo::kUpgrade);
       // Niveau appris : +0x30 fait foi (le serveur), +0x10 sert de repli.
-      s.learned    = *reinterpret_cast<const int16_t*>(v + kSkOffLearned);
-      if (s.learned <= 0) s.learned = *reinterpret_cast<const int*>(v + kSkOffLvLocal);
+      s.learned    = *reinterpret_cast<const int16_t*>(v + rag::skillinfo::kLearned);
+      if (s.learned <= 0) s.learned = *reinterpret_cast<const int*>(v + rag::skillinfo::kLevel);
       s.need_count = 0;
-      const uint8_t* first = *reinterpret_cast<const uint8_t* const*>(v + kSkOffNeedVec);
-      const uint8_t* last  = *reinterpret_cast<const uint8_t* const*>(v + kSkOffNeedVec + 4);
+      const uint8_t* first = *reinterpret_cast<const uint8_t* const*>(v + rag::skillinfo::kNeedVec);
+      const uint8_t* last  = *reinterpret_cast<const uint8_t* const*>(v + rag::skillinfo::kNeedVec + 4);
       for (const uint8_t* p = first; p && p + 8 <= last && s.need_count < kSkillMaxNeed;
            p += 8) {
         s.need_id[s.need_count] = *reinterpret_cast<const int*>(p);

@@ -10,6 +10,7 @@
 #include "utils/i18n.h"
 #include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 #include "ragnarok/stl_node.h"  // rag::listnode
+#include "ragnarok/actor.h"  // rag::actor
 
 namespace rag::social {
 namespace {
@@ -41,8 +42,6 @@ constexpr int kEnt_Level   = 0x4a;  // u16
 // (le même que target_frame). La `UIPcGage` de +0x488 est celle que le client pose
 // justement pour LES MEMBRES DE PARTY ; PV courants en +0xA0, maximum en +0xA4.
 constexpr int       kAct_PcGage     = 0x488;
-constexpr int       kGage_Hp        = 0x0a0;
-constexpr int       kGage_MaxHp     = 0x0a4;
 
 // Le natif dimensionne 40 jauges et 40 boutons de job : c'est sa borne de lignes.
 constexpr int kMaxRows = 64;
@@ -119,8 +118,8 @@ bool ReadHpSEH(uint32_t gid, int* hp, int* max_hp) {
         reinterpret_cast<const uint8_t*>(actor) + kAct_PcGage);
     if (!gage) return false;
     const uint8_t* g = reinterpret_cast<const uint8_t*>(gage);
-    const int cur = *reinterpret_cast<const int*>(g + kGage_Hp);
-    const int max = *reinterpret_cast<const int*>(g + kGage_MaxHp);
+    const int cur = *reinterpret_cast<const int*>(g + rag::actor::kGageHp);
+    const int max = *reinterpret_cast<const int*>(g + rag::actor::kGageHpMax);
     if (max <= 0) return false;
     *hp = cur;
     *max_hp = max;

@@ -8,6 +8,7 @@
 #include "ragnarok/item_db.h"
 #include "ragnarok/uiwnd.h"
 #include "ragnarok/stl_node.h"  // rag::listnode
+#include "ragnarok/skill_info.h"  // rag::skillinfo
 
 namespace rag {
 namespace homun {
@@ -49,23 +50,11 @@ constexpr uintptr_t kSkillSize = 0x015fa428;
 constexpr uintptr_t kJobNameBeg = 0x015fb348;
 constexpr uintptr_t kJobNameEnd = 0x015fb34c;
 
-// Offsets comptés DEPUIS LA VALEUR du nœud (cf. `rag::listnode`). Ce sont ceux du
-// CSkillInfo, partagé avec le bundle du personnage.
-constexpr int kOffValid   = 0x04;
-constexpr int kOffId      = 0x08;
-constexpr int kOffInf     = 0x0c;
-constexpr int kOffLevel   = 0x10;
-constexpr int kOffSp      = 0x14;
-constexpr int kOffUpgrade = 0x18;
-constexpr int kOffRange   = 0x1c;
-
 // Accesseur natif par index dans la liste de l'homoncule : __thiscall(ctx, &out, i).
 // C'est CELUI qu'utilise la fenêtre native 114 pour bâtir la struct qu'elle passe au
 // dispatcher — on emprunte le même, la struct étant un objet C++ qu'on ne sait pas
 // construire soi-même.
 constexpr uintptr_t kSkillGetAt = 0x00d80810;
-constexpr int kSkillInfoFound = 0x04;               // fiche utilisable
-constexpr int kSkillInfoLevel = 0x10;               // niveau appris
 constexpr int kCmdUseSkillSlot = 0x71;            // « lancer, routé par l'INF »
 
 using GetAt_t   = void* (__fastcall*)(void*, void*, void*, int);
@@ -84,17 +73,17 @@ int ReadSkillsSEH(Skill* out, int cap) {
       const uint8_t* v = node + rag::listnode::kValue;
       node = *reinterpret_cast<uint8_t**>(node);  // avancer AVANT de lire la valeur
       ++pos;
-      if (*reinterpret_cast<const int*>(v + kOffValid) == 0) continue;
-      const int id = *reinterpret_cast<const int*>(v + kOffId);
+      if (*reinterpret_cast<const int*>(v + rag::skillinfo::kValid) == 0) continue;
+      const int id = *reinterpret_cast<const int*>(v + rag::skillinfo::kId);
       if (id <= 0) continue;
       Skill& r = out[n++];
       r.pos        = pos;
       r.id         = id;
-      r.inf        = *reinterpret_cast<const int*>(v + kOffInf);
-      r.level      = *reinterpret_cast<const int*>(v + kOffLevel);
-      r.sp         = *reinterpret_cast<const int*>(v + kOffSp);
-      r.upgradable = *reinterpret_cast<const int*>(v + kOffUpgrade);
-      r.range      = *reinterpret_cast<const int*>(v + kOffRange);
+      r.inf        = *reinterpret_cast<const int*>(v + rag::skillinfo::kInf);
+      r.level      = *reinterpret_cast<const int*>(v + rag::skillinfo::kLevel);
+      r.sp         = *reinterpret_cast<const int*>(v + rag::skillinfo::kSp);
+      r.upgradable = *reinterpret_cast<const int*>(v + rag::skillinfo::kUpgrade);
+      r.range      = *reinterpret_cast<const int*>(v + rag::skillinfo::kRange);
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
   return n;
@@ -141,8 +130,8 @@ bool LaunchSEH(int pos, int level) {
     if (!d || pos < 0) return false;
     alignas(8) uint8_t info[0xC0] = {};
     reinterpret_cast<GetAt_t>(kSkillGetAt)(reinterpret_cast<void*>(rag::kSessionAddr), nullptr, info, pos);
-    if (*reinterpret_cast<const int*>(info + kSkillInfoFound)) {
-      const int owned = *reinterpret_cast<const int*>(info + kSkillInfoLevel);
+    if (*reinterpret_cast<const int*>(info + rag::skillinfo::kValid)) {
+      const int owned = *reinterpret_cast<const int*>(info + rag::skillinfo::kLevel);
       int lv = level < 1 ? 1 : level;
       if (owned > 0 && lv > owned) lv = owned;  // le natif refuse au-dessus de l'appris
       rag::ModeSendMsg(d, kCmdUseSkillSlot,
