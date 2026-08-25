@@ -36,6 +36,7 @@
 
 #include "ragnarok/globals.h"  // rag::kSessionAddr
 #include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
+#include "ragnarok/item_info.h"  // rag::itemlist::kInfoSize
 
 namespace rag {
 namespace equip {
@@ -48,7 +49,7 @@ constexpr int kOwnCostumeBase = 0x2b30;
 constexpr int kOtherEquipBase   = 0x2180;
 constexpr int kOtherCostumeBase = 0x34e0;
 
-constexpr int kSlotStride = 0xf8;  // 248 octets par ItemSkillInfo
+constexpr int kSlotStride = rag::itemlist::kInfoSize;  // une entrée = un ItemSkillInfo
 constexpr int kSlotCount  = 10;
 
 // Champs d'une entrée. L'index d'emplacement est `log2` du bit `EQP_*` :

@@ -109,12 +109,26 @@ constexpr int kInfoCards    = 0x1c;  // 4 × u32 : cartes / enchantements, 0 = v
 constexpr int kInfoIdent    = 0x5c;  // octet : IDENTIFIÉ ?
 constexpr int kInfoDamaged  = 0x5d;  // octet : équipement CASSÉ (rendu rouge)
 constexpr int kInfoRefine   = 0x60;  // int : niveau d'affinage
+constexpr int kInfoView     = 0x70;  // int : viewID (l'apparence, quand elle diffère de l'id)
 constexpr int kInfoFav      = 0x74;  // octet : favori (RE FUN_0095af80, local_98 = info+0x74)
+constexpr int kInfoGrade    = 0x88;  // i16 : grade d'enchantement
 constexpr int kInfoOptCount = 0x98;  // int : nombre d'options aléatoires
 constexpr int kInfoOpts     = 0x9c;  // 5 entrées de 5 octets {index:2, value:2, param:1}
 
 constexpr int kMaxCards = 4;
 constexpr int kMaxOpts  = 5;
+
+// ⚠ CETTE CARTE N'EST PAS COMPLÈTE, et c'est volontaire. `ItemSkillInfo_Reset`
+// touche de +0x00 à +0xB4 ; entre les champs ci-dessus il reste des trous, et de
+// +0xB5 à +0xF7 la structure n'a jamais été regardée. N'ajouter ici que du
+// MESURÉ — un offset déduit du voisinage y serait un piège de plus.
+//
+// 🔴 ET SURTOUT : L'AUTRE STRUCTURE PORTE LES MÊMES OFFSETS AVEC D'AUTRES SENS.
+// Celle que rend `itemdb::kFillInfoByIdAddr` (vtable `CSkillInfo` en +0) a en
+// +0x04 un drapeau « fiche utilisable » là où celle-ci a l'index d'inventaire, et
+// en +0x10 un niveau de compétence là où celle-ci a la quantité. Les constantes
+// de cette autre structure s'appellent `kSkillInfo*` — jamais `kInfo*` — pour que
+// la confusion demande un effort.
 
 // 🔴 `kInfoIdent` PORTAIT DEUX NOMS, ET LE SECOND CACHAIT CE QU'IL FAISAIT.
 // `item_desc_window` et `npc_dialog_window` l'appelaient `kInfoFlag` et le

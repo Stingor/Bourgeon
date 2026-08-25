@@ -353,7 +353,7 @@ void* FindInfoByIndex(int index) {
 // popup natif nous donnait (il ne reflétait plus l'item après un sertissage).
 constexpr uintptr_t kEquipArrayBase   = 0x17d0;  // équipement normal (session+)
 constexpr uintptr_t kCostumeArrayBase = 0x2b30;  // costume
-constexpr uintptr_t kEquipSlotStride  = 0xf8;
+constexpr uintptr_t kEquipSlotStride  = rag::itemlist::kInfoSize;
 constexpr int kEquipSlotCount = 10;   // slots 0..9 (cf. character_sheet.cc)
 constexpr int kOffEquipPresent = 0x10;  // == 1 si le slot est occupé
 

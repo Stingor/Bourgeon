@@ -87,7 +87,7 @@ constexpr uint16_t kCzCancelWrite = 0x0A03;
 // en TEXTE +0x2c). Même source que la fenêtre native, qui les recopie dans sa liste
 // à chaque msg 0x17 ; c'est aussi ce que `sub_D7F480` remet à zéro à chaque lecture.
 constexpr uintptr_t kMailAttachSlot = rag::kSessionAddr + 23624;
-constexpr int kAttachStride = 248;  // 0xF8 : taille d'un ItemSkillInfo
+constexpr int kAttachStride = rag::itemlist::kInfoSize;  // le pas des 5 pièces jointes
 constexpr int kAttachSlots  = 5;    // MAIL_MAX_ITEM côté serveur
 // Ces offsets sont ceux de l'ItemSkillInfo, la structure COMMUNE au reste du client
 // (inventaire, chariot, entrepôt) : un slot de rédaction porte donc, tel quel, tout
@@ -95,8 +95,8 @@ constexpr int kAttachSlots  = 5;    // MAIL_MAX_ITEM côté serveur
 using rag::itemlist::kInfoIndex;
 using rag::itemlist::kInfoAmount;
 using rag::itemlist::kInfoIdStr;
-constexpr int kInfoView   = 0x70;   // int : viewID
-constexpr int kInfoGrade  = 0x88;   // i16 : grade d'enchantement
+using rag::itemlist::kInfoView;
+using rag::itemlist::kInfoGrade;
 
 // Singleton d'état CRodexSystemMgr (POINTEUR vers l'objet de 0x38 octets).
 constexpr uintptr_t kRodexMgrPtr = 0x0131ecdc;

@@ -64,8 +64,8 @@ constexpr int kOffRange   = 0x1c;
 // dispatcher — on emprunte le même, la struct étant un objet C++ qu'on ne sait pas
 // construire soi-même.
 constexpr uintptr_t kSkillGetAt = 0x00d80810;
-constexpr int kInfoOffFound = 0x04;               // fiche utilisable
-constexpr int kInfoOffLevel = 0x10;               // niveau appris
+constexpr int kSkillInfoFound = 0x04;               // fiche utilisable
+constexpr int kSkillInfoLevel = 0x10;               // niveau appris
 constexpr int kCmdUseSkillSlot = 0x71;            // « lancer, routé par l'INF »
 
 using GetAt_t   = void* (__fastcall*)(void*, void*, void*, int);
@@ -141,8 +141,8 @@ bool LaunchSEH(int pos, int level) {
     if (!d || pos < 0) return false;
     alignas(8) uint8_t info[0xC0] = {};
     reinterpret_cast<GetAt_t>(kSkillGetAt)(reinterpret_cast<void*>(rag::kSessionAddr), nullptr, info, pos);
-    if (*reinterpret_cast<const int*>(info + kInfoOffFound)) {
-      const int owned = *reinterpret_cast<const int*>(info + kInfoOffLevel);
+    if (*reinterpret_cast<const int*>(info + kSkillInfoFound)) {
+      const int owned = *reinterpret_cast<const int*>(info + kSkillInfoLevel);
       int lv = level < 1 ? 1 : level;
       if (owned > 0 && lv > owned) lv = owned;  // le natif refuse au-dessus de l'appris
       rag::ModeSendMsg(d, kCmdUseSkillSlot,

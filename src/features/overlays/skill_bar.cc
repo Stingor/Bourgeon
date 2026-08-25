@@ -77,7 +77,15 @@ constexpr uintptr_t kGetSkillInfo  = 0x00d5a980;  // SkillMgr_GetSkillInfo(mgr,o
 // n'a pas bougé — mais les noms disaient le contraire du code, à rebours des
 // huit autres fichiers du projet et de character_sheet.cc:1713 qui documente
 // explicitement « 0x2e ≠ 0xc, qui est celle des objets ».
-constexpr int kSkillInfoSize  = 0x100; // SkillInfo ~0xf8 o (2 std::string @ +0x2c / +0x44)
+// ⚠ CE N'EST PAS L'ItemSkillInfo de `rag::itemlist`, malgré le nom que l'IDB donne
+// aux deux. Celle-ci est la structure que rend `kFillInfoByIdAddr` :
+// `ItemSkillInfo_DefaultCtor` (0x739700) lui pose une vtable `CSkillInfo` en +0 et
+// un `const char*` « Unknown-Skill » en +0x20, et n'initialise RIEN en +0x2c ni
+// +0x44 — c'est `ItemSkillInfo_Assign` qui doit s'en charger. Le tampon est
+// zéro-initialisé ci-dessous, ce qui rend une lecture fautive INOFFENSIVE (une
+// std::string nulle se lit vide) : si ces deux offsets étaient faux, on aurait un
+// nom vide, pas un plantage. Le symptôme se cacherait donc tout seul.
+constexpr int kSkillInfoSize  = 0x100;  // arrondi de pile, la structure fait moins
 constexpr int kSkillInfoFound = 0x04;  // out+0x04 != 0 => skill trouvé
 constexpr int kSkillStr0      = 0x2c;  // std::string resname
 constexpr int kSkillStr1      = 0x44;  // std::string nom
