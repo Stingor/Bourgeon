@@ -897,10 +897,8 @@ void DrawTile(ImDrawList* draw_list, const ImVec2& p0, const ImVec2& p1,
     const ImVec2 ts = ImGui::CalcTextSize(badge);
     const ImVec2 bp(p1.x - ts.x - ro::Px(2.0f), p1.y - ts.y - ro::Px(1.0f));
     const ImU32 white = IM_COL32(255, 255, 255, 255);
-    for (int oy = -1; oy <= 1; ++oy)      // cerne : les 8 voisins en blanc…
-      for (int ox = -1; ox <= 1; ++ox)
-        if (ox || oy) draw_list->AddText(ImVec2(bp.x + ox, bp.y + oy), white, badge);
-    draw_list->AddText(bp, IM_COL32(0, 0, 0, 255), badge);  // …puis le noir dessus
+    // Cerne blanc, texte noir dessus : lisible sur n'importe quelle icône.
+    ro::AddTextHalo(draw_list, bp, IM_COL32(0, 0, 0, 255), badge, white);
   }
 }
 

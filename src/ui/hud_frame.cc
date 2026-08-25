@@ -7,6 +7,7 @@
 
 #include "ui/window_clamp.h"
 #include "ui/window_zorder.h"
+#include "ui/ro_imgui.h"  // ro::AddTextRelief
 
 namespace ro {
 namespace {
@@ -146,9 +147,8 @@ void HudCenteredText(ImDrawList* draw_list, ImVec2 p0, ImVec2 p1,
   const ImVec2 tp((p0.x + p1.x - ts.x) * 0.5f, (p0.y + p1.y - ts.y) * 0.5f);
   // L'ombre suit la taille, sinon elle disparaît sous un gros texte.
   const float shadow = (std::max)(1.0f, std::floor(px * 0.08f));
-  draw_list->AddText(font, px, ImVec2(tp.x + shadow, tp.y + shadow),
-                     IM_COL32(0, 0, 0, 200), text);
-  draw_list->AddText(font, px, tp, color, text);
+  ro::AddTextRelief(draw_list, font, px, tp, color, text, nullptr,
+                    IM_COL32(0, 0, 0, 200), ImVec2(shadow, shadow));
 }
 
 void HudBarText(ImDrawList* draw_list, ImVec2 p0, ImVec2 p1, const char* text) {

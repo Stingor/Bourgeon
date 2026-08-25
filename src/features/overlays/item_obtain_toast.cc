@@ -526,10 +526,11 @@ void ItemObtainToast::OnRenderUI() {
     // y fractionnaire suffit à rendre tous les glyphes flous.
     const float ty = Snap(y + (row_h - fsize) * 0.5f);
     const ImVec2 name_pos(x + text_x, ty);
-    if (t.damaged)
-      dl->AddText(font, fsize, ImVec2(name_pos.x + 1.0f, name_pos.y + 1.0f),
-                  col_dmg, t.name);
-    dl->AddText(font, fsize, name_pos, col_text, t.name);
+    // Objet ENDOMMAGÉ : une ombre le souligne. Sinon décalage nul, donc
+    // aucune passe de relief — le helper s'en charge, plus de `if` ici.
+    ro::AddTextRelief(dl, font, fsize, name_pos, col_text, t.name, nullptr,
+                      col_dmg,
+                      t.damaged ? ImVec2(1.0f, 1.0f) : ImVec2(0.0f, 0.0f));
     dl->AddText(font, fsize, ImVec2(Snap(name_pos.x + name_sz.x), ty), col_qty,
                 suffix);
 

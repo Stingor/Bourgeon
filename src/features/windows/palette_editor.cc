@@ -87,8 +87,8 @@ bool GrillePicker(int premier, int dernier, int cols, float cote, int* valeur,
     std::snprintf(num, sizeof(num), "%d", v);
     const ImVec2 ts = ImGui::CalcTextSize(num);
     const ImVec2 tp(p.x + 2.0f, p.y + cote - ts.y - 1.0f);
-    dl->AddText(ImVec2(tp.x + 1.0f, tp.y + 1.0f), IM_COL32(0, 0, 0, 200), num);
-    dl->AddText(tp, IM_COL32(255, 255, 255, 235), num);
+    ro::AddTextRelief(dl, tp, IM_COL32(255, 255, 255, 235), num,
+                      IM_COL32(0, 0, 0, 200), ImVec2(1.0f, 1.0f));
     ImGui::InvisibleButton("c", ImVec2(cote, cote));
     if (ImGui::IsItemClicked()) {
       *valeur = v;

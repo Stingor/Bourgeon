@@ -674,12 +674,8 @@ void DrawRemainingTime() {
     if (g_cfg.time_bg)
       dl->AddRectFilled(ImVec2(tx - 3, ty - 1), ImVec2(tx + ts.x + 3, ty + ts.y + 1),
                         cBg, 3.0f);
-    // 8-way halo (outline/shadow) for contrast over the game scene.
-    for (int oy = -1; oy <= 1; ++oy)
-      for (int ox = -1; ox <= 1; ++ox)
-        if (ox || oy) dl->AddText(ImVec2(tx + ox, ty + oy), cShadow, buf);
-    dl->AddText(ImVec2(tx, ty), cText, buf);
-    if (bold) dl->AddText(ImVec2(tx + 1.0f, ty), cText, buf);  // faux-bold
+    // Cerne 8 voisins : lisible par-dessus la scène, quel qu'en soit le décor.
+    ro::AddTextHalo(dl, ImVec2(tx, ty), cText, buf, cShadow, bold);
   }
 }
 

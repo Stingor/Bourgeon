@@ -1222,9 +1222,11 @@ void StorageWindow::OnRenderUI() {
           if (kStgCats[c].tag) {
             const ImVec2 ts = ImGui::CalcTextSize(kStgCats[c].tag);
             const ImVec2 tp((p.x + pe.x - ts.x) * 0.5f, (p.y + pe.y - ts.y) * 0.5f);
-            tdl->AddText(ImVec2(tp.x + 1.0f, tp.y + 1.0f), IM_COL32(255, 255, 255, 200),
-                         kStgCats[c].tag);  // liseré clair (lisibilité sur l'art)
-            tdl->AddText(tp, IM_COL32(40, 40, 40, 255), kStgCats[c].tag);
+            // Relief CLAIR sous un texte foncé : le liseré qui décolle le
+            // libellé de l'art de l'onglet.
+            ro::AddTextRelief(tdl, tp, IM_COL32(40, 40, 40, 255),
+                              kStgCats[c].tag, IM_COL32(255, 255, 255, 200),
+                              ImVec2(1.0f, 1.0f));
           }
           if (!sel && ImGui::IsItemHovered())
             tdl->AddRectFilled(p, pe, IM_COL32(255, 255, 255, 45));  // survol
@@ -1320,9 +1322,10 @@ void StorageWindow::OnRenderUI() {
         if (kStgCats[c].tag) {  // sigle des catégories qui partagent un art
           const ImVec2 ts = ImGui::CalcTextSize(kStgCats[c].tag);
           const ImVec2 tp((p.x + pe.x - ts.x) * 0.5f, (p.y + pe.y - ts.y) * 0.5f);
-          tdl->AddText(ImVec2(tp.x + 1.0f, tp.y + 1.0f), IM_COL32(255, 255, 255, 200),
-                       kStgCats[c].tag);
-          tdl->AddText(tp, IM_COL32(40, 40, 40, 255), kStgCats[c].tag);
+          // Même relief clair que la disposition verticale.
+          ro::AddTextRelief(tdl, tp, IM_COL32(40, 40, 40, 255),
+                            kStgCats[c].tag, IM_COL32(255, 255, 255, 200),
+                            ImVec2(1.0f, 1.0f));
         }
         if (!sel && ImGui::IsItemHovered())
           tdl->AddRectFilled(p, pe, IM_COL32(255, 255, 255, 45));  // survol

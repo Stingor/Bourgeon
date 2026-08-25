@@ -2209,8 +2209,8 @@ void CharSelect::OnRenderLoginUI() {
   // Position ancrée (poignée déplaçable en mode édition). Le point = milieu-haut.
   const ImVec2 tp = Anchor("titre", 0.5f, 24.0f / disp.y, seat_edit_);
   const float tx = tp.x - tsz.x * 0.5f;
-  dl->AddText(ImVec2(tx + 1, tp.y + 1), IM_COL32(0, 0, 0, 160), title);
-  dl->AddText(ImVec2(tx, tp.y), IM_COL32(245, 236, 210, 255), title);
+  ro::AddTextRelief(dl, ImVec2(tx, tp.y), IM_COL32(245, 236, 210, 255), title,
+                    IM_COL32(0, 0, 0, 160), ImVec2(1.0f, 1.0f));
 
   // Bandeau « suppression refusée » (poll de del_rev_date resté à 0 -> refus serveur,
   // perso en guilde/groupe). Affiché ~5 s sous le titre. La msgbox native équivalente
@@ -2226,8 +2226,8 @@ void CharSelect::OnRenderLoginUI() {
                       IM_COL32(70, 40, 0, 235), 4.0f);
     dl->AddRect(ImVec2(bx - 12, by - 4), ImVec2(bx + ms.x + 12, by + ms.y + 4),
                 IM_COL32(220, 160, 60, 235), 4.0f, 0, 1.5f);
-    dl->AddText(ImVec2(bx + 1, by + 1), IM_COL32(0, 0, 0, 180), msg);
-    dl->AddText(ImVec2(bx, by), IM_COL32(255, 225, 170, 255), msg);
+    ro::AddTextRelief(dl, ImVec2(bx, by), IM_COL32(255, 225, 170, 255), msg,
+                      IM_COL32(0, 0, 0, 180), ImVec2(1.0f, 1.0f));
   }
   if (del_reject_until_ > GetTickCount()) {
     const char* msg = DeleteRejectMsg(del_reject_reason_);  // guilde/groupe/db/échoppe…
@@ -2238,8 +2238,8 @@ void CharSelect::OnRenderLoginUI() {
                       IM_COL32(70, 0, 0, 235), 4.0f);
     dl->AddRect(ImVec2(bx - 12, by - 4), ImVec2(bx + ms.x + 12, by + ms.y + 4),
                 IM_COL32(210, 70, 70, 235), 4.0f, 0, 1.5f);
-    dl->AddText(ImVec2(bx + 1, by + 1), IM_COL32(0, 0, 0, 180), msg);
-    dl->AddText(ImVec2(bx, by), IM_COL32(255, 185, 185, 255), msg);
+    ro::AddTextRelief(dl, ImVec2(bx, by), IM_COL32(255, 185, 185, 255), msg,
+                      IM_COL32(0, 0, 0, 180), ImVec2(1.0f, 1.0f));
   }
 
   // ── Barre d'action (bas, centrée) ────────────────────────────────────────────
@@ -2593,8 +2593,8 @@ void CharSelect::OnRenderLoginUI() {
           std::snprintf(num, sizeof(num), "%d", hs);
           const ImVec2 ts = ImGui::CalcTextSize(num);
           const ImVec2 tp(cpos.x + 2.0f, cpos.y + cell - ts.y - 1.0f);
-          gdl->AddText(ImVec2(tp.x + 1.0f, tp.y + 1.0f), IM_COL32(0, 0, 0, 200), num);
-          gdl->AddText(tp, IM_COL32(255, 255, 255, 235), num);
+          ro::AddTextRelief(gdl, tp, IM_COL32(255, 255, 255, 235), num,
+                            IM_COL32(0, 0, 0, 200), ImVec2(1.0f, 1.0f));
         }
         ImGui::InvisibleButton("c", ImVec2(cell, cell));
         if (ImGui::IsItemClicked()) create_hair_ = hs;

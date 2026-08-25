@@ -430,9 +430,10 @@ void CastBar::DrawBars() {
     const float ty = balloon ? p0.y + (bh - ts.y) * 0.5f   // centrée sur la barre
                              : p0.y - ts.y - 1.0f;         // posée SUR la barre
     const int a255 = static_cast<int>(255.0f * opacity_);
-    dl->AddText(font, font_px, ImVec2(tx + 1.0f, ty + 1.0f),
-                IM_COL32(0, 0, 0, static_cast<int>(210.0f * opacity_)), label);
-    dl->AddText(font, font_px, ImVec2(tx, ty), IM_COL32(255, 255, 255, a255), label);
+    ro::AddTextRelief(dl, font, font_px, ImVec2(tx, ty),
+                      IM_COL32(255, 255, 255, a255), label, nullptr,
+                      IM_COL32(0, 0, 0, static_cast<int>(210.0f * opacity_)),
+                      ImVec2(1.0f, 1.0f));
   };
 
   int guard = 0;

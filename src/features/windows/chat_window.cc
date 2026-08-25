@@ -4804,10 +4804,10 @@ void ChatWindow::DrawLines(const Channel& channel) {
             // Équipement CASSÉ : l'OMBRE rouge du natif (DrawName 0x008972c0),
             // décalée +1,+1 sous un texte inchangé — le même rendu que dans les
             // viewers, et la raison d'être du champ privé de la balise.
-            if (run.kind == Run::kItem && run.item.broken)
-              dl->AddText(rfont, fsize, ImVec2(pos.x + 1.0f, pos.y + 1.0f),
-                          itemcell::kDamagedShadow, w0, w1);
-            dl->AddText(rfont, fsize, pos, col, w0, w1);
+            const bool casse = run.kind == Run::kItem && run.item.broken;
+            ro::AddTextRelief(dl, rfont, fsize, pos, col, w0, w1,
+                              itemcell::kDamagedShadow,
+                              casse ? ImVec2(1.0f, 1.0f) : ImVec2(0.0f, 0.0f));
             // Pas de soulignement : le lien se reconnaît déjà à sa couleur, à ses
             // crochets et à son icône, et le trait salissait une ligne de chat
             // dense (il n'y en a pas non plus dans le chat natif). Au survol, le

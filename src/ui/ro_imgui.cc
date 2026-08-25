@@ -2251,9 +2251,9 @@ bool BeginRoDescWindow(const char* title, bool* p_open, int imgui_window_flags,
                       y0 + (tb.GetHeight() - ts.y) * 0.5f - Px(1.0f));
     // Ombre optionnelle du titre (ex. rouge 0x5050fa pour un item cassé), décalée
     // +1,+1 sous le texte du titre.
-    if (title_shadow)
-      dl->AddText(ImVec2(tpos.x + Px(1.0f), tpos.y + Px(1.0f)), title_shadow, nbuf);
-    dl->AddText(tpos, ttx, nbuf);
+    AddTextRelief(dl, tpos, ttx, nbuf, title_shadow,
+                  title_shadow ? ImVec2(Px(1.0f), Px(1.0f))
+                               : ImVec2(0.0f, 0.0f));
 
     // Bouton close (seulement si fermable), collé au bord droit du titre.
     bool close_clicked = false;
@@ -3414,6 +3414,58 @@ bool InputTextCp949(const char* label, char* cp949_buf, size_t buf_size,
 bool InputTextCp949WithHint(const char* label, const char* hint, char* cp949_buf,
                             size_t buf_size, int imgui_input_flags) {
   return InputTextCp949Impl(label, hint, cp949_buf, buf_size, imgui_input_flags);
+}
+
+// ── Texte en relief ─────────────────────────────────────────────────────────
+// L'ordre des passes EST le rendu : le relief d'abord (il doit passer dessous),
+// le texte ensuite, le faux gras en dernier pour qu'il épaississe le texte et
+// non le relief.
+
+void AddTextRelief(ImDrawList* dl, ImVec2 pos, ImU32 col, const char* text,
+                   ImU32 relief_col, ImVec2 relief_off, bool bold) {
+  if (dl == nullptr || text == nullptr) return;
+  if (relief_off.x != 0.0f || relief_off.y != 0.0f)
+    dl->AddText(ImVec2(pos.x + relief_off.x, pos.y + relief_off.y), relief_col,
+                text);
+  dl->AddText(pos, col, text);
+  if (bold) dl->AddText(ImVec2(pos.x + 1.0f, pos.y), col, text);
+}
+
+void AddTextRelief(ImDrawList* dl, ImFont* font, float font_px, ImVec2 pos,
+                   ImU32 col, const char* text, const char* text_end,
+                   ImU32 relief_col, ImVec2 relief_off, bool bold) {
+  if (dl == nullptr || text == nullptr) return;
+  if (relief_off.x != 0.0f || relief_off.y != 0.0f)
+    dl->AddText(font, font_px,
+                ImVec2(pos.x + relief_off.x, pos.y + relief_off.y), relief_col,
+                text, text_end);
+  dl->AddText(font, font_px, pos, col, text, text_end);
+  if (bold)
+    dl->AddText(font, font_px, ImVec2(pos.x + 1.0f, pos.y), col, text, text_end);
+}
+
+void AddTextHalo(ImDrawList* dl, ImVec2 pos, ImU32 col, const char* text,
+                 ImU32 halo_col, bool bold) {
+  if (dl == nullptr || text == nullptr) return;
+  for (int oy = -1; oy <= 1; ++oy)
+    for (int ox = -1; ox <= 1; ++ox)
+      if (ox || oy)
+        dl->AddText(ImVec2(pos.x + ox, pos.y + oy), halo_col, text);
+  dl->AddText(pos, col, text);
+  if (bold) dl->AddText(ImVec2(pos.x + 1.0f, pos.y), col, text);
+}
+
+void AddTextHalo(ImDrawList* dl, ImFont* font, float font_px, ImVec2 pos,
+                 ImU32 col, const char* text, ImU32 halo_col, bool bold) {
+  if (dl == nullptr || text == nullptr) return;
+  for (int oy = -1; oy <= 1; ++oy)
+    for (int ox = -1; ox <= 1; ++ox)
+      if (ox || oy)
+        dl->AddText(font, font_px, ImVec2(pos.x + ox, pos.y + oy), halo_col,
+                    text);
+  dl->AddText(font, font_px, pos, col, text);
+  if (bold)
+    dl->AddText(font, font_px, ImVec2(pos.x + 1.0f, pos.y), col, text);
 }
 
 }  // namespace ro

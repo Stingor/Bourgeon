@@ -1136,9 +1136,9 @@ void NpcDialogWindow::DrawRichLines() {
         (f.link || own_link) ? kLinkColor : (f.color ? f.color : def_col);
     const char* t0 = f.text.c_str();
     const char* t1 = t0 + f.text.size();
-    dl->AddText(pos, col, t0, t1);
-    if (f.bold)  // fake-bold : re-dessine décalé de 1px
-      dl->AddText(ImVec2(pos.x + 1.0f, pos.y), col, t0, t1);
+    // Décalage de relief nul : il ne reste que le texte et son faux gras.
+    ro::AddTextRelief(dl, nullptr, 0.0f, pos, col, t0, t1, 0,
+                      ImVec2(0.0f, 0.0f), f.bold);
     if (f.link || own_link) {  // souligne + rend cliquable
       const float x0 = origin.x + f.ux0;
       dl->AddLine(ImVec2(x0, pos.y + fsize), ImVec2(pos.x + f.w, pos.y + fsize),
@@ -1393,8 +1393,8 @@ void NpcDialogWindow::DrawMenu(float group_h) {
       // reste utile — on lit de quoi parle l'option — sans piéger le geste.
       const bool own_link = r.target.valid();
       const ImU32 col = own_link ? kLinkColor : (r.color ? r.color : def_col);
-      dl->AddText(ImVec2(x, ty), col, r.text.c_str());
-      if (r.bold) dl->AddText(ImVec2(x + 1.0f, ty), col, r.text.c_str());
+      ro::AddTextRelief(dl, ImVec2(x, ty), col, r.text.c_str(), 0,
+                        ImVec2(0.0f, 0.0f), r.bold);
       x += font->CalcTextSizeA(fsize, FLT_MAX, 0.0f, r.text.c_str()).x;
     }
   }

@@ -693,6 +693,71 @@ inline int F3ToRgb(const float* f) {
 bool InputTextCp949(const char* label, char* cp949_buf, size_t buf_size,
                     int imgui_input_flags = 0);
 
+// ── Un texte, sa passe de RELIEF, et son faux gras ───────────────────────────
+//
+// Le geste « écrire deux fois le même texte, la première décalée » était posé à
+// la main dans une vingtaine d'endroits, sous trois formes qui ne différaient
+// que par leurs options :
+//
+//   if (ox || oy) dl->AddText({p.x + ox, p.y + oy}, contour, t);
+//   dl->AddText(p, couleur, t);
+//   if (bold) dl->AddText({p.x + 1.0f, p.y}, couleur, t);   // faux gras
+//
+// Ces trois lignes-là étaient recopiées MOT POUR MOT dans `skill_bar` (deux
+// fois) et `status_icon_bar`, et sans le gras dans `item_cell` et la feuille de
+// personnage.
+//
+// ⚠ « RELIEF » et non « ombre » : la passe décalée n'est pas toujours sombre.
+// `storage_window` pose du BLANC sous un texte foncé — c'est un REHAUT, le même
+// geste à l'envers. Le nom ne préjuge donc pas de la teinte.
+//
+// 🔴 `relief_off` NUL = aucune passe de relief. C'est voulu : les appelants
+// portaient tous un `if (ox || oy)` qui disparaît ici. Un décalage qui vient
+// d'un réglage du joueur peut valoir zéro, et c'est un cas NORMAL, pas un oubli.
+//
+// ⚠ Le décalage est en PIXELS D'ÉCRAN, pas à l'échelle de l'interface : les
+// appelants qui veulent qu'il suive `ro::Px` le passent déjà converti (c'est le
+// cas de la barre de titre RO). Convertir ici doublerait la mise à l'échelle de
+// ceux qui le font déjà.
+//
+// `bold` repasse le texte décalé d'un pixel en X, DANS SA PROPRE COULEUR : le
+// faux gras du client, celui qui épaissit sans changer de police.
+void AddTextRelief(ImDrawList* dl, ImVec2 pos, ImU32 col, const char* text,
+                   ImU32 relief_col, ImVec2 relief_off, bool bold = false);
+
+// ── Un texte CERNÉ : ses huit voisins, puis lui ─────────────────────────────
+//
+// Le cerne qui rend un chiffre lisible PAR-DESSUS LA SCÈNE, quelle que soit la
+// couleur du décor dessous — un badge de raffinement, un compteur de
+// compétence, le temps restant d'un statut.
+//
+// Ces huit passes étaient écrites SIX fois, à la boucle près :
+//
+//   for (int oy = -1; oy <= 1; ++oy)
+//     for (int ox = -1; ox <= 1; ++ox)
+//       if (ox || oy) dl->AddText({p.x + ox, p.y + oy}, cerne, t);
+//   dl->AddText(p, couleur, t);
+//
+// ⚠ Rayon d'UN pixel d'écran, jamais mis à l'échelle : c'est un cerne, pas une
+// bordure. À l'échelle, il deviendrait un liseré épais qui mangerait le glyphe.
+//
+// ⛔ NE PAS y ramener les cernes à QUATRE passes (la feuille de personnage en a
+// deux, en croix ; `entity_names` un, en diagonale). Ils sont volontairement
+// plus légers — huit passes les épaissiraient.
+void AddTextHalo(ImDrawList* dl, ImVec2 pos, ImU32 col, const char* text,
+                 ImU32 halo_col, bool bold = false);
+void AddTextHalo(ImDrawList* dl, ImFont* font, float font_px, ImVec2 pos,
+                 ImU32 col, const char* text, ImU32 halo_col,
+                 bool bold = false);
+
+// La même, avec police et corps explicites — la forme qu'exigent les overlays
+// qui dessinent hors du contexte de police courant. `text_end` sert aux
+// appelants qui écrivent une TRANCHE de chaîne (une ligne de chat mesurée par
+// pointeurs, jamais terminée par un zéro à l'endroit voulu).
+void AddTextRelief(ImDrawList* dl, ImFont* font, float font_px, ImVec2 pos,
+                   ImU32 col, const char* text, const char* text_end,
+                   ImU32 relief_col, ImVec2 relief_off, bool bold = false);
+
 // Idem, avec un indice affiché tant que le champ est VIDE. `hint` est de l'UTF-8
 // (du texte à nous, jamais envoyé au client) : il ne passe PAS par le CP949.
 bool InputTextCp949WithHint(const char* label, const char* hint, char* cp949_buf,

@@ -918,8 +918,8 @@ void DrawSkillCooldownOverlay(ImDrawList* dl, uint16_t skillId, const ImVec2& ic
   const ImVec2 sz = ImGui::CalcTextSize(left);
   const ImVec2 at(icon_tl.x + (icon_size - sz.x) * 0.5f,
                   icon_tl.y + (icon_size - sz.y) * 0.5f);
-  dl->AddText(ImVec2(at.x + 1.0f, at.y + 1.0f), IM_COL32(0, 0, 0, 200), left);  // ombre portée
-  dl->AddText(at, IM_COL32(255, 235, 150, 255), left);
+  ro::AddTextRelief(dl, at, IM_COL32(255, 235, 150, 255), left,
+                    IM_COL32(0, 0, 0, 200), ImVec2(1.0f, 1.0f));
 }
 
 // Filtre d'échantillonnage des icônes du grimoire, posé par un callback de draw list
@@ -2529,10 +2529,8 @@ void DrawPresetItemIcon(const EquipPresetItem& pi, float sz) {
     std::snprintf(rf, sizeof(rf), "+%d", pi.refine);
     const ImVec2 ts = ImGui::CalcTextSize(rf);
     const ImVec2 rp(p1.x - ts.x - inset, p1.y - ts.y - ro::Px(1.0f));
-    for (int oy = -1; oy <= 1; ++oy)
-      for (int ox = -1; ox <= 1; ++ox)
-        if (ox || oy) dl->AddText(ImVec2(rp.x + ox, rp.y + oy), IM_COL32(255, 255, 255, 255), rf);
-    dl->AddText(rp, IM_COL32(0, 0, 0, 255), rf);
+    ro::AddTextHalo(dl, rp, IM_COL32(0, 0, 0, 255), rf,
+                    IM_COL32(255, 255, 255, 255));
   }
   if (hov) {
     // La famille sur sa PROPRE ligne, sans espace de bord dans la clé de traduction :
@@ -4714,8 +4712,8 @@ void CharacterSheet::DrawHomunTab() {
     const ImVec2 ts = ImGui::CalcTextSize(text);
     const ImVec2 at((p0.x + p1.x - ts.x) * 0.5f, (p0.y + p1.y - ts.y) * 0.5f - 2.0f);
     ImDrawList* dl = ImGui::GetWindowDrawList();
-    dl->AddText(ImVec2(at.x + 1.0f, at.y + 1.0f), IM_COL32(0, 0, 0, 200), text);
-    dl->AddText(at, IM_COL32(255, 255, 255, 255), text);
+    ro::AddTextRelief(dl, at, IM_COL32(255, 255, 255, 255), text,
+                      IM_COL32(0, 0, 0, 200), ImVec2(1.0f, 1.0f));
   };
   gauge("PV", h.hp, h.max_hp, ImVec4(0.70f, 0.20f, 0.20f, 1.0f));
   gauge("SP", h.sp, h.max_sp, ImVec4(0.20f, 0.35f, 0.70f, 1.0f));
@@ -7261,10 +7259,7 @@ void CharacterSheet::DrawSlot(int slot, bool costume, float x, float y, float sz
       const ImVec2 ts = ImGui::CalcTextSize(rf);
       const ImVec2 rp(p1.x - ts.x - ro::Px(2.0f), p1.y - ts.y - ro::Px(1.0f));
       const ImU32 white = IM_COL32(255, 255, 255, 255);
-      for (int oy = -1; oy <= 1; ++oy)
-        for (int ox = -1; ox <= 1; ++ox)
-          if (ox || oy) dl->AddText(ImVec2(rp.x + ox, rp.y + oy), white, rf);
-      dl->AddText(rp, IM_COL32(0, 0, 0, 255), rf);
+      ro::AddTextHalo(dl, rp, IM_COL32(0, 0, 0, 255), rf, white);
     }
   } else {  // slot vide : abreviation grisee
     // 🔴 Le libellé doit tenir DANS la case, il est donc MESURÉ puis rétréci s'il
@@ -7385,10 +7380,7 @@ void CharacterSheet::DrawAmmoSlot(float x, float y, float sz) {
       const ImVec2 ts = ImGui::CalcTextSize(q);
       const ImVec2 rp(p1.x - ts.x - ro::Px(2.0f), p1.y - ts.y - ro::Px(1.0f));
       const ImU32 white = IM_COL32(255, 255, 255, 255);
-      for (int oy = -1; oy <= 1; ++oy)
-        for (int ox = -1; ox <= 1; ++ox)
-          if (ox || oy) dl->AddText(ImVec2(rp.x + ox, rp.y + oy), white, q);
-      dl->AddText(rp, IM_COL32(0, 0, 0, 255), q);
+      ro::AddTextHalo(dl, rp, IM_COL32(0, 0, 0, 255), q, white);
     }
   } else {
     const char* ab = "Ammo";

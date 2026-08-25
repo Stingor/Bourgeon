@@ -1276,18 +1276,10 @@ void SkillBar::DrawBar(int bar) {
   const bool bold = bold_text_;
   const ImU32 cOutline = ImGui::GetColorU32(ImVec4(col_textout_[0], col_textout_[1], col_textout_[2], col_textout_[3]));
   auto boldAdd = [&](ImVec2 p, ImU32 c, const char* t) {
-    for (int oy = -1; oy <= 1; ++oy)
-      for (int ox = -1; ox <= 1; ++ox)
-        if (ox || oy) dl->AddText(ImVec2(p.x + ox, p.y + oy), cOutline, t);
-    dl->AddText(p, c, t);
-    if (bold) dl->AddText(ImVec2(p.x + 1.0f, p.y), c, t);
+    ro::AddTextHalo(dl, p, c, t, cOutline, bold);
   };
   auto boldAddF = [&](ImFont* f, float s, ImVec2 p, ImU32 c, const char* t) {
-    for (int oy = -1; oy <= 1; ++oy)
-      for (int ox = -1; ox <= 1; ++ox)
-        if (ox || oy) dl->AddText(f, s, ImVec2(p.x + ox, p.y + oy), cOutline, t);
-    dl->AddText(f, s, p, c, t);
-    if (bold) dl->AddText(f, s, ImVec2(p.x + 1.0f, p.y), c, t);
+    ro::AddTextHalo(dl, f, s, p, c, t, cOutline, bold);
   };
 
   // Fond du cadre (derrière tous les boutons).
