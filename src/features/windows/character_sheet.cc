@@ -8587,6 +8587,18 @@ void CharacterSheet::DrawStaffPanel() {
                "personnage, ce n'est pas un simple changement d'apparence."));
 
   // ── Vitesse de marche ───────────────────────────────────────────────────────
+  // La vitesse est un réglage SERVEUR (registre « gmspeed », reposé à la connexion) :
+  // ce curseur ne fait que la MONTRER. On le recale sur chaque valeur NOUVELLE venue
+  // du serveur — celle du login, ou celle d'un `@speed` tapé à la main.
+  //
+  // 🔴 Un front, et non un alignement à chaque frame : après notre propre envoi le
+  // serveur renvoie la valeur qu'on affiche déjà, donc le curseur ne saute jamais en
+  // arrière le temps de l'aller-retour.
+  if (auto* mu = Bourgeon::Instance().moonlight_ui()) {
+    const int server_speed = mu->walk_speed();
+    if (server_speed != speed_seen_)
+      speed_seen_ = staff_speed_ = staff_speed_sent_ = server_speed;
+  }
   // 🔴 Envoyée au RELÂCHEMENT, jamais pendant le drag : chaque @speed est un
   // message de chat ET un status_calc_bl côté serveur, un par frame de drag
   // noierait le chat et ferait travailler le serveur pour rien.

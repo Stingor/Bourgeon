@@ -129,6 +129,12 @@ class MoonlightUi : public Plugin {
 
   // ── Liste autolootid (partagée) : le panneau de description enrichi
   // (ItemDescWindow) réintègre le bouton +/- alootid. ─────────────────────────
+  // Vitesse de marche du personnage, en millisecondes par cellule — PLUS BAS = PLUS
+  // RAPIDE, 150 = la vitesse normale. Réglage SERVEUR (registre « gmspeed », reposé
+  // à chaque connexion comme l'autoloot), reçu au login et à chaque `@speed` : rien
+  // n'en est persisté côté client. Lu par le volet staff de la fiche de personnage.
+  int  walk_speed() const { return walk_speed_; }
+
   bool IsAlootId(uint32_t id) const;   // l'item est-il dans la liste ?
   bool AddAlootId(uint32_t id);        // ajoute + notifie serveur (false si plein/déjà)
   bool RemoveAlootId(uint32_t id);     // retire + notifie serveur (false si absent)
@@ -260,6 +266,9 @@ class MoonlightUi : public Plugin {
   // bonne foi serait donc toujours vrai — d'où le nom, qui dit la valeur.
   static constexpr uint16_t kSettingGroupLevel    = 26;  // lecture seule
   static constexpr uint16_t kSettingFlyWingLast   = 27;  // marque le point d'arrivée d'une Fly Wing
+  // ⚠ Pas une bascule : la valeur EST la vitesse, en ms par cellule (20..1000).
+  // Écriture gatée serveur sur le droit de `@speed` ; le client ne fait que la lire.
+  static constexpr uint16_t kSettingWalkSpeed     = 28;
 
   // Updates both directions of the relay based on current state.
   void UpdateRelay();
@@ -296,6 +305,7 @@ class MoonlightUi : public Plugin {
   int  noks_mode_                 = 0;  // ⚠ énuméré : 0=off 1=self 2=party 3=guild
   bool wings_enabled_             = false;
   bool fly_wing_last_             = false;  // marque sur la carte le point d'arrivée d'une Fly Wing
+  int  walk_speed_                = 150;    // ms par cellule ; 150 = la vitesse normale
   bool aloot_mvp_       = false;
   bool aloot_mvp_rwd_   = false;
   int  sort_mode_inventory_    = 0;  // ⚠ énumérés : e_sort_mode 0-6, pas des booléens

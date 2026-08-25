@@ -2345,6 +2345,12 @@ void MoonlightUi::HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t le
       case kSettingFlyWingLast:
         fly_wing_last_ = (setting_value != 0);
         break;
+      case kSettingWalkSpeed:
+        // Arrive avec le bloc du login (valeur reposée depuis le registre « gmspeed »)
+        // et à chaque `@speed`, d'où qu'elle vienne : seule source de vérité du
+        // curseur de vitesse du volet staff.
+        walk_speed_ = static_cast<int>(setting_value);
+        break;
       case kSettingAlootRare:
         aloot_rare_ = (setting_value != 0);
         // LogInfo("[MoonlightUi] aloot_rare={}", aloot_rare_);

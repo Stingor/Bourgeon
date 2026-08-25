@@ -305,6 +305,9 @@ class CharacterSheet : public Plugin {
   // noierait le chat et ferait un status_calc_bl par image.
   int   staff_speed_ = 150;
   int   staff_speed_sent_ = 150;   // dernière valeur réellement envoyée
+  // Dernière vitesse reçue du serveur (réglage id 28, registre « gmspeed »). -1 =
+  // aucune encore vue, donc le premier bloc de réglages recale le curseur.
+  int   speed_seen_ = -1;
   char  staff_job_filter_[24] = {};  // filtre du menu déroulant des classes
 
   // ── Onglet Grimoire (arbre de compétences, remplace la fenêtre native 0x25) ──
