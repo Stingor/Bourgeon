@@ -396,10 +396,18 @@ void ScreenFx::OnTick() {
   if (!hooks_installed) {
     hooks_installed = true;
     void* setpos = reinterpret_cast<void*>(0x00874af0);
-    PatchVtableSlot(0x010384a0, 0x10, setpos, reinterpret_cast<void*>(&Hooked_EscSetPos), &g_orig_setpos);
-    PatchVtableSlot(0x010384a0, 0x00, reinterpret_cast<void*>(0x008db420), reinterpret_cast<void*>(&Hooked_EscDtor), &g_esc_orig_dtor);
-    PatchVtableSlot(0x01047d7c, 0x10, setpos, reinterpret_cast<void*>(&Hooked_GsSetPos), &g_orig_setpos);
-    PatchVtableSlot(0x01047d7c, 0x00, reinterpret_cast<void*>(0x009eb410), reinterpret_cast<void*>(&Hooked_GsDtor), &g_gs_orig_dtor);
+    // Les deux vtables sont à l'annuaire : les écrire en dur ici les détacherait
+    // de l'identifiant qu'elles accompagnent.
+    PatchVtableSlot(uiwnd::kUIEscOptionWndVTable, 0x10, setpos,
+                    reinterpret_cast<void*>(&Hooked_EscSetPos), &g_orig_setpos);
+    PatchVtableSlot(uiwnd::kUIEscOptionWndVTable, 0x00,
+                    reinterpret_cast<void*>(0x008db420),
+                    reinterpret_cast<void*>(&Hooked_EscDtor), &g_esc_orig_dtor);
+    PatchVtableSlot(uiwnd::kCUIGameSettingsUIVTable, 0x10, setpos,
+                    reinterpret_cast<void*>(&Hooked_GsSetPos), &g_orig_setpos);
+    PatchVtableSlot(uiwnd::kCUIGameSettingsUIVTable, 0x00,
+                    reinterpret_cast<void*>(0x009eb410),
+                    reinterpret_cast<void*>(&Hooked_GsDtor), &g_gs_orig_dtor);
   }
 
   // 🔴 Ces deux globaux ne nous appartiennent PAS : le moteur les écrit lui

@@ -1477,7 +1477,7 @@ void OpenCardDescWindow(uint32_t id) {
     reinterpret_cast<InfoSetId_t>(itemdb::kInfoSetIdAddr)(info, static_cast<int>(id));  // -> +0x2c
     *(info + rag::itemlist::kInfoIdent) = 1;                                  // => desc lues de rec+0x0c
     void* mgr = uiwnd::Mgr();        // objet manager embarqué
-    void* wnd = uiwnd::MakeWindow(0xc);
+    void* wnd = uiwnd::MakeWindow(uiwnd::kItemDescWndId);
     if (wnd) {
       void** vt = *reinterpret_cast<void***>(wnd);
       auto onmsg = reinterpret_cast<DescOnMsg_t>(vt[uiwnd::kVfOnMsg / 4]);
