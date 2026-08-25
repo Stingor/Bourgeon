@@ -1157,36 +1157,37 @@ unsigned TexEpoch() {
 // Les dimensions (b.w/b.h) sont connues d'avance → layout stable même avant que la
 // texture soit chargée. Retente tant que la texture n'est pas prête (device pas
 // prêt) ; si le fichier manque vraiment côté client, la pièce ne se dessine pas.
-void* EnsureTex(const char* rel_path, const skin::Blob& b, SkinTex& out) {
-  // Texture D3DPOOL_DEFAULT : morte après reset/recréation du device -> on lâche
-  // le handle mort pour forcer un rechargement (sinon BlitStretch/AddImage plante).
-  // Même garde pour un changement de skin, cf. TexEpoch().
+// Le corps commun des deux entrées ci-dessous. `fallback` porte les dimensions
+// connues d'avance quand la pièce a un blob embarqué, nullptr sinon — c'est la
+// SEULE chose qui les distinguait.
+//
+// Texture D3DPOOL_DEFAULT : morte après reset/recréation du device -> on lâche le
+// handle mort pour forcer un rechargement (sinon BlitStretch/AddImage plante).
+// Même garde pour un changement de skin, cf. TexEpoch().
+void* EnsureTexFrom(const char* rel_path, const skin::Blob* fallback, SkinTex& out) {
   const unsigned dev_e = TexEpoch();
   if (out.epoch != dev_e) { out.tex = nullptr; out.epoch = dev_e; }
-  out.w = b.w;
-  out.h = b.h;
+  if (fallback) { out.w = fallback->w; out.h = fallback->h; }
   if (out.tex) return out.tex;
   int w = 0, h = 0;
   void* t = LoadClientBmp(rel_path, &w, &h);
-  if (t) {
-    out.tex = t;
-    out.w = w;
-    out.h = h;
-  }
+  if (t) { out.tex = t; out.w = w; out.h = h; }
   return out.tex;
+}
+
+// Charge la pièce depuis les fichiers du client (GRF/data) via le loader natif.
+// Les dimensions du blob sont posées d'ABORD → layout stable même avant que la
+// texture soit chargée. Retente tant qu'elle ne l'est pas (device pas prêt) ; si
+// le fichier manque vraiment côté client, la pièce ne se dessine pas.
+void* EnsureTex(const char* rel_path, const skin::Blob& b, SkinTex& out) {
+  return EnsureTexFrom(rel_path, &b, out);
 }
 
 // Charge une pièce UNIQUEMENT depuis le client (pas de blob de repli embarqué) :
 // pour les ressources natives toujours présentes (txtbox_btn_*). out.tex reste nul
 // si le BMP manque -> le widget dessine un repli à plat.
 void* EnsureTexClient(const char* rel_path, SkinTex& out) {
-  const unsigned dev_e = TexEpoch();
-  if (out.epoch != dev_e) { out.tex = nullptr; out.epoch = dev_e; }  // device ou skin changé -> recharge
-  if (out.tex) return out.tex;
-  int w = 0, h = 0;
-  void* t = LoadClientBmp(rel_path, &w, &h);
-  if (t) { out.tex = t; out.w = w; out.h = h; }
-  return out.tex;
+  return EnsureTexFrom(rel_path, nullptr, out);
 }
 
 // Callback ImDrawList : bascule l'échantillonnage en POINT (pixel-art net).

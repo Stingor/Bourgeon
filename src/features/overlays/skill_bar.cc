@@ -377,17 +377,6 @@ void SendHotkeyChange(int tab, int index, uint8_t type, uint32_t id, int level) 
   Bourgeon::Instance().SendPacket(reinterpret_cast<const uint8_t*>(&p), sizeof(p));
 }
 
-// Vide le slot i de la région (skills -> SetShortCutSlot + persist serveur ; items -> store plugin).
-void ClearSlot(int region, int i) {
-  void* mgr = reinterpret_cast<void*>(rag::kSessionAddr);
-  if (RegionIsItems(region)) {
-    WriteSlotRecord(region, i, /*is_item*/ true, 0, 0);  // vide le store plugin (persist client)
-    return;
-  }
-  const int tab = kRegions[region].tab;
-  reinterpret_cast<SetSlot_t>(kSetShortCut)(mgr, nullptr, 0, 0, 0, i, tab);
-  SendHotkeyChange(tab, i, 0, 0, 0);
-}
 // Écrit un slot (id==0 => efface). Skills via SkillMgr_SetShortCutSlot (+ persist serveur) ; items
 // dans le store plugin (type/level ignorés : un slot d'item ne porte qu'un nameid, type=0).
 void SetSlot(int region, int i, uint8_t type, uint32_t id, int level) {
@@ -401,6 +390,12 @@ void SetSlot(int region, int i, uint8_t type, uint32_t id, int level) {
       mgr, nullptr, static_cast<int>(type), static_cast<int>(id), level, i, tab);
   SendHotkeyChange(tab, i, type, id, level);
 }
+
+// Vide le slot i de la région. C'est `SetSlot` avec un id nul, et sa
+// documentation le disait déjà (« id==0 => efface ») tout en le recopiant : les
+// deux branches — store d'items et compétences — étaient écrites deux fois, avec
+// les mêmes zéros. Vérifié une à une avant de déléguer.
+void ClearSlot(int region, int i) { SetSlot(region, i, 0, 0, 0); }
 // Échange le contenu de deux slots de la MÊME région (ou déplace vers un slot vide) = réarrangement.
 void MoveSlot(int region, int src, int dst) {
   if (src == dst || src < 0 || dst < 0) return;

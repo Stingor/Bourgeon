@@ -138,34 +138,39 @@ inline void Pop(void* L, int count) { SetTop(L, -count - 1); }
 // silencieuse au lieu d'un échec propre. Les trois l'ont désormais.
 //
 // `def` est rendu tel quel si Lua n'est pas prêt ou si l'appel échoue.
-inline double CallGlobalNum(const char* fn, int arg, double def = 0.0) {
-  double r = def;
+// ⚠ Le corps est PARTAGÉ, et cette fusion-ci corrige une copie que j'avais
+// moi-même laissée : les deux entrées ci-dessous, écrites au même moment, ne
+// différaient que par la LECTURE du résultat. Le relevé de doublons les a
+// appariées à 0.964 au tour suivant — un rappel utile que poser un foyer ne
+// dispense pas de le relire.
+//
+// `read` reçoit l'état Lua, le résultat étant au sommet. Sans capture, donc rien
+// à dérouler : le `__try` reste légal (C2712).
+template <typename T, typename Read>
+inline T CallGlobal1Arg(const char* fn, int arg, T def, Read read) {
+  T r = def;
   __try {
     void* L = State();
     if (L) {
       CheckStack(L, 3);
       GetField(L, kGlobalsIndex, fn);
       PushNumber(L, static_cast<double>(arg));
-      if (PCall(L, 1, 1, 0) == 0) r = ToNumber(L, -1);
+      if (PCall(L, 1, 1, 0) == 0) r = read(L);
+      // ⚠ Hors du `if` : le dépilage vaut AUSSI quand l'appel échoue — c'est
+      // alors l'objet d'erreur qu'il faut retirer.
       Pop(L, 1);
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) { r = def; }
   return r;
 }
 
+inline double CallGlobalNum(const char* fn, int arg, double def = 0.0) {
+  return CallGlobal1Arg(fn, arg, def, [](void* L) { return ToNumber(L, -1); });
+}
+
 inline bool CallGlobalBool(const char* fn, int arg, bool def = false) {
-  bool r = def;
-  __try {
-    void* L = State();
-    if (L) {
-      CheckStack(L, 3);
-      GetField(L, kGlobalsIndex, fn);
-      PushNumber(L, static_cast<double>(arg));
-      if (PCall(L, 1, 1, 0) == 0) r = ToBoolean(L, -1) != 0;
-      Pop(L, 1);
-    }
-  } __except (EXCEPTION_EXECUTE_HANDLER) { r = def; }
-  return r;
+  return CallGlobal1Arg(fn, arg, def,
+                        [](void* L) { return ToBoolean(L, -1) != 0; });
 }
 
 // ── `GetHatEfResName(ordinal)` : le nom de ressource d'un effet de couvre-chef ──

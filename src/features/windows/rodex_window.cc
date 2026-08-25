@@ -785,6 +785,23 @@ std::string AnsiToUtf8(const char* in) {
   return std::string(ro::WireToUtf8(in));
 }
 
+// La copie BORNÉE d'une chaîne déjà convertie : troncature au tampon,
+// terminaison, longueur rendue (le '\0' non compris). Les deux sens d'écriture
+// ci-dessous ne différaient QUE par le convertisseur — tout le reste était
+// recopié à la ligne près.
+//
+// ⚠ La troncature n'a pas besoin d'être fine : les deux champs sont validés
+// juste après contre des limites (39 et 499 octets) bien inférieures aux tampons
+// (64 et 1024), donc un texte trop long est REFUSÉ, jamais envoyé coupé.
+int CopyBounded(const char* wire, char* out, size_t out_size) {
+  if (!wire || !*wire) return 0;
+  size_t n = std::strlen(wire);
+  if (n > out_size - 1) n = out_size - 1;
+  std::memcpy(out, wire, n);
+  out[n] = '\0';
+  return static_cast<int>(n);
+}
+
 // Sens inverse pour un IDENTIFIANT qui part sur le fil — ici le nom du
 // destinataire. Renvoie le nombre d'octets écrits, '\0' non compris ; les
 // caractères non représentables deviennent '?'.
@@ -795,14 +812,10 @@ std::string AnsiToUtf8(const char* in) {
 // un Windows français (les deux valent 1252) mais casse chez un joueur dont le
 // système est réglé en coréen pour son client RO.
 int Utf8ToAnsi(const char* utf8, char* out, size_t out_size) {
+  if (out_size == 0) return 0;
   out[0] = '\0';
-  if (!utf8 || !*utf8 || out_size == 0) return 0;
-  const char* wire = ro::Utf8ToWire(utf8);
-  size_t n = std::strlen(wire);
-  if (n > out_size - 1) n = out_size - 1;
-  std::memcpy(out, wire, n);
-  out[n] = '\0';
-  return static_cast<int>(n);
+  if (!utf8 || !*utf8) return 0;
+  return CopyBounded(ro::Utf8ToWire(utf8), out, out_size);
 }
 
 // Le même sens, mais pour une PHRASE — un sujet, un corps de courrier. La
@@ -819,14 +832,10 @@ int Utf8ToAnsi(const char* utf8, char* out, size_t out_size) {
 // validés juste après contre des limites (39 et 499 octets) bien inférieures aux
 // tampons (64 et 1024), donc un texte trop long est REFUSÉ, jamais envoyé coupé.
 int Utf8ToWireField(const char* utf8, char* out, size_t out_size) {
+  if (out_size == 0) return 0;
   out[0] = '\0';
-  if (!utf8 || !*utf8 || out_size == 0) return 0;
-  const char* wire = ro::Utf8ToWireText(utf8);
-  size_t n = std::strlen(wire);
-  if (n > out_size - 1) n = out_size - 1;
-  std::memcpy(out, wire, n);
-  out[n] = '\0';
-  return static_cast<int>(n);
+  if (!utf8 || !*utf8) return 0;
+  return CopyBounded(ro::Utf8ToWireText(utf8), out, out_size);
 }
 
 // Nom d'item par id : itemcell::NameById (DB de descriptions du client, cache

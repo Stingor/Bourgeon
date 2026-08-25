@@ -1297,28 +1297,40 @@ const CardDesc* GetCardDesc(uint32_t id) {
   return &g_card_desc_cache.emplace(id, cd).first->second;
 }
 
+// ── Une image de la fiche carte, chargee et memorisee ────────────────────────
+// Les TROIS lectures d'image — la petite icone d'objet, l'art de collection,
+// l'illustration `cardBmp` — recitaient le meme geste : garde des caches,
+// consultation, resolution de la fiche, chargement conditionnel, memorisation.
+// Seuls le CACHE et le CHAMP DE CHEMIN changeaient.
+//
+// ⚠ Memoriser l'ECHEC compte autant que le succes : la plupart des consommables
+// n'ont pas d'art de collection, et reessayer a chaque frame relancerait le
+// chargement pour rien.
+template <typename PickPath>
+IconTex CachedCardImage(uint32_t id, std::unordered_map<uint32_t, IconTex>& cache,
+                        PickPath pick) {
+  IconCachesGuard();
+  auto it = cache.find(id);
+  if (it != cache.end()) return it->second;
+  const CardDesc* cd = GetCardDesc(id);
+  const char* path = pick(cd);
+  IconTex t = (path && path[0]) ? LoadCollectionIcon(path) : IconTex{};
+  cache[id] = t;
+  return t;
+}
+
 // Petite icône item d'une carte (chargée au 1er accès, cache par id ; tex null OK).
 IconTex GetCardIcon(uint32_t id) {
-  IconCachesGuard();
-  auto it = g_card_icon_cache.find(id);
-  if (it != g_card_icon_cache.end()) return it->second;
-  const CardDesc* cd = GetCardDesc(id);
-  IconTex t = cd->icon_path[0] ? LoadCollectionIcon(cd->icon_path) : IconTex{};
-  g_card_icon_cache[id] = t;
-  return t;
+  return CachedCardImage(id, g_card_icon_cache,
+                         [](const CardDesc* cd) { return cd->icon_path; });
 }
 
 // Art de COLLECTION de l'item (chargé au 1er accès, cache par id). C'est l'image
 // large que montre le cash shop ; la plupart des items d'équipement en ont une,
 // les consommables rarement — d'où la tex vide, mémorisée, quand elle manque.
 IconTex GetCardCollection(uint32_t id) {
-  IconCachesGuard();
-  auto it = g_card_collection_cache.find(id);
-  if (it != g_card_collection_cache.end()) return it->second;
-  const CardDesc* cd = GetCardDesc(id);
-  IconTex t = cd->coll_path[0] ? LoadCollectionIcon(cd->coll_path) : IconTex{};
-  g_card_collection_cache[id] = t;
-  return t;
+  return CachedCardImage(id, g_card_collection_cache,
+                         [](const CardDesc* cd) { return cd->coll_path; });
 }
 
 // Illustration cardBmp d'une carte (chargée au 1er accès, cache par id). AUTO-gatée :
@@ -1326,13 +1338,8 @@ IconTex GetCardCollection(uint32_t id) {
 // donc renvoie une tex vide pour tout ce qui n'est pas dans la DB carte -> l'appelant
 // peut l'appeler inconditionnellement (les non-cartes gardent leur icône collection).
 IconTex GetCardIllust(uint32_t id) {
-  IconCachesGuard();
-  auto it = g_card_illust_cache.find(id);
-  if (it != g_card_illust_cache.end()) return it->second;
-  const CardDesc* cd = GetCardDesc(id);
-  IconTex t = cd->illust_path[0] ? LoadCollectionIcon(cd->illust_path) : IconTex{};
-  g_card_illust_cache[id] = t;
-  return t;
+  return CachedCardImage(id, g_card_illust_cache,
+                         [](const CardDesc* cd) { return cd->illust_path; });
 }
 
 // Contenu PARTAGÉ (nom + illustration + description) d'une carte/enchant, dessiné
