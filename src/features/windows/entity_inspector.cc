@@ -1,4 +1,5 @@
 #include "features/windows/entity_inspector.h"
+#include "ragnarok/actor.h"  // rag::actor : les offsets de CActorSprite
 
 #include <windows.h>
 
@@ -52,14 +53,6 @@ constexpr int kName_Title   = 0x64;
 constexpr int kName_Extra   = 0x7c;
 constexpr int kName_TitleId = 0x94;
 constexpr int kName_Valid   = 0x98;
-// CActor — les seuls champs établis (les autres attendent leur RE ; en montrer
-// un « au jugé » serait exactement le contraire de ce que fait cette fenêtre).
-constexpr int kActor_PosX      = 0x10;   // float, position monde X
-constexpr int kActor_PosY      = 0x14;   // float, HAUTEUR
-constexpr int kActor_PosZ      = 0x18;   // float, position monde Z
-constexpr int kActor_Gid       = 0x110;  // GID/AID porté par l'acteur lui-même
-constexpr int kActor_Type      = 0x314;  // byte ; {1, 6, 12} = hostile/spécial
-constexpr int kActor_HeightOff = 0x3f4;  // float, offset de hauteur (le saut)
 
 // Catégories du quad de picking (docs/entity_context_menu_re.md §3).
 // 🔴 La 3, c'est le PET : seul `CActorSprite_SubmitNameplateQuad` @0x00c58c48
@@ -139,14 +132,13 @@ int ReadTitleId(const void* entry) {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
 }
 
-
 bool ActorCell(void* game_mode, void* actor, int* cx, int* cy) {
   __try {
     if (!game_mode || !actor) return false;
     unsigned sub_x = 0, sub_y = 0;
     reinterpret_cast<WorldToTileFn>(gamescene::kWorldToTileAddr)(
-        game_mode, Read<float>(actor, kActor_PosX),
-        Read<float>(actor, kActor_PosZ), cx, cy, &sub_x, &sub_y);
+        game_mode, Read<float>(actor, rag::actor::kPosX),
+        Read<float>(actor, rag::actor::kPosZ), cx, cy, &sub_x, &sub_y);
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
@@ -369,12 +361,12 @@ void EntityInspector::ReadActor(Snapshot* out) {
   out->actor_addr  = reinterpret_cast<uint32_t>(actor);
   __try {
     out->actor_vt   = *reinterpret_cast<uint32_t*>(actor);
-    out->actor_gid  = Read<uint32_t>(actor, kActor_Gid);
-    out->actor_type = Read<uint8_t>(actor, kActor_Type);
-    out->pos_x      = Read<float>(actor, kActor_PosX);
-    out->pos_y      = Read<float>(actor, kActor_PosY);
-    out->pos_z      = Read<float>(actor, kActor_PosZ);
-    out->height_off = Read<float>(actor, kActor_HeightOff);
+    out->actor_gid  = Read<uint32_t>(actor, rag::actor::kGid);
+    out->actor_type = Read<uint8_t>(actor, rag::actor::kType);
+    out->pos_x      = Read<float>(actor, rag::actor::kPosX);
+    out->pos_y      = Read<float>(actor, rag::actor::kPosY);
+    out->pos_z      = Read<float>(actor, rag::actor::kPosZ);
+    out->height_off = Read<float>(actor, rag::actor::kHeightOff);
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     // Acteur en cours de destruction : on garde ce qui a été lu et on n'ira pas
     // chercher le reste. `actor_found` et l'adresse restent posés — c'est

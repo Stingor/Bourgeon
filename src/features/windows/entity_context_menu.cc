@@ -1,4 +1,5 @@
 #include "features/windows/entity_context_menu.h"
+#include "ragnarok/actor.h"  // rag::actor : les offsets de CActorSprite
 
 #include <windows.h>
 
@@ -171,17 +172,9 @@ constexpr int kPartyWalkGuard     = 64;    // un groupe plafonne à 12 : garde-f
 // `GameMode_ShowEntityContextMenu` fait (`call [edx+0C4h]` @0x00c6f4e2) pour
 // décider de proposer, ou non, l'invitation en guilde.
 
-// Type d'acteur (`acteur+0x314`) : le champ `objecttype` du paquet de spawn,
-// que les handlers recopient tel quel (`mov [ebx+314h], al`). Deux valeurs sont
-// PROUVÉES, et ce sont les seules dont ce fichier a besoin :
-//   · **7 = PET** — `mov byte ptr [edi+314h], 7` @0x00cbab7d, dans le sous-type 0
-//     de `ZC_CHANGESTATE_PET`, le paquet qui déclare « cette entité est ton
-//     pet » ; recoupé live (docs/pet_re.md §2.2) ;
-//   · {1, 6, 12} = hostile / unité spéciale, le test dont le client se sert pour
-//     REFUSER son menu joueur (`EntityName_IsHostileOrSpecialUnit` 0x00d9d220).
-// ⚠ La correspondance des AUTRES valeurs avec `clif_bl_type` est déduite du
-// paquet, pas vérifiée : ne pas s'en servir pour trancher quoi que ce soit ici.
-constexpr int kActor_Type = 0x314;
+// Type d'acteur : `rag::actor::kType`. Les valeurs PROUVÉES (7 = pet ; 1, 6, 12
+// = hostile ou unité spéciale) et la mise en garde sur les autres vivent AVEC le
+// champ, dans le foyer. Ce fichier ne se sert que de ces deux-là.
 
 // §3 — catégories du quad de picking. La catégorie 0 (acteur ordinaire : joueur,
 // monstre, PNJ scripté) n'a pas de constante : c'est le cas par défaut, tranché
@@ -318,7 +311,6 @@ constexpr int kEventPointsStep = 50;
 // monde. Le rouge l'emporte sur l'ocre.
 const ImVec4 kStaffColor (0.62f, 0.28f, 0.10f, 1.0f);
 const ImVec4 kDangerColor(0.75f, 0.13f, 0.13f, 1.0f);
-
 
 void SendNpcAdmin(uint32_t gid, uint8_t action) {
   uint8_t packet[9];
@@ -985,7 +977,7 @@ EntityContextMenu::Kind EntityContextMenu::ClassifyTarget(void* game_mode,
       // une façon de moins de perdre le menu en silence.
       if (category == kPickPet) return Kind::kPet;
       void* actor = FindActor(game_mode, aid);
-      if (actor && Read<uint8_t>(actor, kActor_Type) == 7) return Kind::kPet;
+      if (actor && Read<uint8_t>(actor, rag::actor::kType) == 7) return Kind::kPet;
     }
     if (aid == Read<uint32_t>(session, kSess_HomunAid)) return Kind::kHomunculus;
     if (aid == Read<uint32_t>(session, kSess_MercAid)) return Kind::kMercenary;

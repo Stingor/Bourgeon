@@ -1,4 +1,5 @@
 #include "features/overlays/minimap.h"
+#include "ragnarok/actor.h"  // rag::actor : les offsets de CActorSprite
 
 #include <Windows.h>
 
@@ -47,17 +48,6 @@ constexpr int kWorld_MapInfo  = 0x30;
 constexpr int kMapInfo_Width  = 0x110;  // int, largeur en CELLULES
 constexpr int kMapInfo_Height = 0x114;  // int, hauteur en CELLULES
 constexpr int kMapInfo_Cell   = 0x118;  // int, taille d'une cellule en unités monde
-
-// CActor : position monde. +0x14 est la HAUTEUR, pas une coordonnée de sol.
-constexpr int kActor_PosX = 0x10;  // float
-constexpr int kActor_PosZ = 0x18;  // float
-// Angle en DEGRÉS dont le natif fait pivoter la flèche de la minimap. C'est le
-// champ que lit `GameMode_DrawMiniMapMarker` genre 4 (0x00c685c0) — écrit par
-// `CActorSprite_SetFacingTowardXZ`, relu par la sélection d'animation.
-// 🔴 On lit le MÊME champ que le natif plutôt que de chercher « l'angle de la
-// caméra » : ce qui fait tourner sa flèche fera tourner la nôtre, quelle que
-// soit la nature exacte de cet angle.
-constexpr int kActor_Angle = 0x4c;  // float, degrés
 
 // Le bouton du radar natif dont on emprunte l'art. Ses cinq boutons suivent tous
 // le même gabarit `minimap\i_<nom>_<état>.bmp`, les états valant 1 = normal,
@@ -520,10 +510,10 @@ bool ReadSnapshot(Snapshot* out) {
     out->cells_w = w;
     out->cells_h = h;
     out->cell_x = static_cast<float>(w / 2) +
-                  Read<float>(actor, kActor_PosX) / static_cast<float>(cell);
+                  Read<float>(actor, rag::actor::kPosX) / static_cast<float>(cell);
     out->cell_y = static_cast<float>(h / 2) +
-                  Read<float>(actor, kActor_PosZ) / static_cast<float>(cell);
-    out->angle = Read<float>(actor, kActor_Angle);
+                  Read<float>(actor, rag::actor::kPosZ) / static_cast<float>(cell);
+    out->angle = Read<float>(actor, rag::actor::kFacing);
     out->ok = true;
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }

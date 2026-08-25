@@ -1,4 +1,5 @@
 #include "features/gameplay/quick_cast.h"
+#include "ragnarok/actor.h"  // rag::actor : les offsets de CActorSprite
 
 #include <Windows.h>
 
@@ -48,14 +49,12 @@ constexpr int kOffTargetingMode  = 0x408;  // 1 sol, 2 cible, 4 soutien
 constexpr int kOffTargetingSkill = 0x40c;
 constexpr int kOffTargetingLevel = 0x414;
 
-
 // Acteur -> état de mouvement/action. C'est la SEULE donnée « suis-je prêt ? »
 // que le client possède vraiment, et le natif s'en sert exactement ainsi : dans
 // Actor_ProcessPendingAction_Tick (0x00D43400), les cas 3 (skill sur cible) et 4
 // (skill au sol) n'exécutent la requête en attente que si
 // `état < 2 || état == 4 || état >= 16` — sinon la file patiente. On réplique ce
 // prédicat pour ne pas ré-émettre pendant une incantation ou une animation.
-constexpr int kOffActorState = 0x70;
 inline bool ActorStateAllowsCast(int state) {
   return static_cast<unsigned>(state) < 2u || state == 4 || state >= 16;
 }
@@ -223,7 +222,7 @@ void LeaveTargeting(void* cmode) {
 int ReadActorState(void* actor) {
   __try {
     return *reinterpret_cast<int*>(reinterpret_cast<char*>(actor) +
-                                   kOffActorState);
+                                   rag::actor::kMotionState);
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     return 0;
   }

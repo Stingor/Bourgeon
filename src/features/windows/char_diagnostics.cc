@@ -1,4 +1,5 @@
 #include "features/windows/char_diagnostics.h"
+#include "ragnarok/actor.h"  // rag::actor : les offsets de CActorSprite
 
 #include <Windows.h>  // SEH autour des déréférencements d'objets natifs
 // 🔴 `timeGetTime` (winmm), pas `GetTickCount` : c'est l'horloge que l'acteur
@@ -83,24 +84,6 @@ using ResolveJobFn = int(__fastcall*)(void*, void*, int);
 // Établis au désassemblage le 2026-08-17 ; chaque champ porte la fonction qui le
 // prouve, parce qu'un offset sans témoin est un offset qu'on ne saura pas
 // vérifier au prochain client.
-constexpr int kActor_PosX        = 0x010;  // CActorSprite_UpdateMotionAndPosition
-constexpr int kActor_PosY        = 0x014;
-constexpr int kActor_PosZ        = 0x018;
-constexpr int kActor_ActionBase  = 0x034;  // CActorSprite_StartAction : action × 8
-constexpr int kActor_ActionPlay  = 0x038;  // + la direction ; c'est l'index LU dans le .act
-constexpr int kActor_FrameIndex  = 0x03c;  // CActorSprite_AdvanceAnimState
-constexpr int kActor_Facing      = 0x04c;  // float, degrés (CActorSprite_SetFacingTowardXZ)
-constexpr int kActor_FrameDelay  = 0x058;  // float — CActorSprite_SetFrameDelay (0x00c4a6d0)
-constexpr int kActor_MotionFact  = 0x064;  // float — CActorSprite_SetAttackMotionFactor
-constexpr int kActor_MotionState = 0x070;  // CActorSprite_SetMotion (0x00d41df0)
-constexpr int kActor_AnimStart   = 0x08c;  // timeGetTime du dernier changement d'action
-constexpr int kActor_SprRes      = 0x104;  // ressource .spr du CORPS
-constexpr int kActor_ActRes      = 0x108;  // ressource .act du CORPS — celle que l'anim consomme
-constexpr int kActor_Gid         = 0x110;
-constexpr int kActor_JobShown    = 0x25c;  // le job AFFICHÉ (déguisement compris)
-constexpr int kActor_Sex         = 0x260;
-constexpr int kActor_WeaponView  = 0x440;  // CActorSprite_SetAttackMotionFactor le lit
-constexpr int kActor_ShieldView  = 0x444;
 
 // Chaîne jusqu'à l'acteur du joueur, identique à `rag::ReadOwnActorSprites` :
 // mode actif -> gestionnaire d'acteurs (+0xcc) -> acteur du joueur (+0x2c).
@@ -700,22 +683,22 @@ void CharDiagnostics::ReadActor(Snapshot* out) {
 
   out->actor_found = true;
   out->actor_addr  = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(actor));
-  out->actor_gid   = ReadField<uint32_t>(actor, kActor_Gid);
-  out->job_shown   = ReadField<int>(actor, kActor_JobShown);
-  out->sex         = ReadField<int>(actor, kActor_Sex);
-  out->motion_state  = ReadField<int>(actor, kActor_MotionState);
-  out->action_base   = ReadField<int>(actor, kActor_ActionBase);
-  out->action_played = ReadField<int>(actor, kActor_ActionPlay);
-  out->frame_index   = ReadField<int>(actor, kActor_FrameIndex);
-  out->frame_delay   = ReadField<float>(actor, kActor_FrameDelay);
-  out->motion_factor = ReadField<float>(actor, kActor_MotionFact);
-  out->anim_start    = ReadField<uint32_t>(actor, kActor_AnimStart);
-  out->weapon_view   = ReadField<int>(actor, kActor_WeaponView);
-  out->shield_view   = ReadField<int>(actor, kActor_ShieldView);
-  out->pos_x  = ReadField<float>(actor, kActor_PosX);
-  out->pos_y  = ReadField<float>(actor, kActor_PosY);
-  out->pos_z  = ReadField<float>(actor, kActor_PosZ);
-  out->facing = ReadField<float>(actor, kActor_Facing);
+  out->actor_gid   = ReadField<uint32_t>(actor, rag::actor::kGid);
+  out->job_shown   = ReadField<int>(actor, rag::actor::kJobId);
+  out->sex         = ReadField<int>(actor, rag::actor::kSex);
+  out->motion_state  = ReadField<int>(actor, rag::actor::kMotionState);
+  out->action_base   = ReadField<int>(actor, rag::actor::kActionBase);
+  out->action_played = ReadField<int>(actor, rag::actor::kActionPlay);
+  out->frame_index   = ReadField<int>(actor, rag::actor::kFrameIndex);
+  out->frame_delay   = ReadField<float>(actor, rag::actor::kFrameDelay);
+  out->motion_factor = ReadField<float>(actor, rag::actor::kMotionFactor);
+  out->anim_start    = ReadField<uint32_t>(actor, rag::actor::kAnimStart);
+  out->weapon_view   = ReadField<int>(actor, rag::actor::kWeaponView);
+  out->shield_view   = ReadField<int>(actor, rag::actor::kShieldView);
+  out->pos_x  = ReadField<float>(actor, rag::actor::kPosX);
+  out->pos_y  = ReadField<float>(actor, rag::actor::kPosY);
+  out->pos_z  = ReadField<float>(actor, rag::actor::kPosZ);
+  out->facing = ReadField<float>(actor, rag::actor::kFacing);
 
   const uint32_t now = timeGetTime();
   out->anim_age = (out->anim_start != 0 && now >= out->anim_start)
@@ -732,8 +715,8 @@ void CharDiagnostics::ReadActor(Snapshot* out) {
   // la lisent à +0x108 sur l'acteur, et c'est donc ELLE que l'animation joue —
   // pas celle qu'on déduirait d'un identifiant de classe. Sous déguisement, elle
   // pointe le fichier du monstre.
-  void* act = ReadField<void*>(actor, kActor_ActRes);
-  void* spr = ReadField<void*>(actor, kActor_SprRes);
+  void* act = ReadField<void*>(actor, rag::actor::kActRes);
+  void* spr = ReadField<void*>(actor, rag::actor::kSprRes);
   ResPath(spr, out->spr_path, sizeof(out->spr_path));
   ResPath(act, out->act_path, sizeof(out->act_path));
   if (!act) return;

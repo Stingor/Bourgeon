@@ -1,5 +1,6 @@
 #include "ragnarok/globals.h"
 #include "features/gameplay/player_jump.h"
+#include "ragnarok/actor.h"  // rag::actor : les offsets de CActorSprite
 
 #include "ragnarok/game_scene.h"
 #include "ragnarok/own_actor.h"  // rag::OwnActor / rag::OwnActorOf
@@ -18,12 +19,8 @@
 namespace {
 constexpr uintptr_t kTerrainHeight = 0x007110c0;  // Terrain_GetHeightAt(world,x,z)->float
 constexpr int kOffWorld     = 0x30;   // actorMgr -> objet monde/terrain (.gnd)
-constexpr int kActorPosX      = 0x10;   // ACTEUR -> position monde X (float)
-                                        // (rien a voir avec uiwnd::kOffPosX, +0x1c, x ECRAN d'une fenetre)
-constexpr int kActorPosY      = 0x14;   // acteur -> position monde Y = HAUTEUR (float)
 constexpr int kOffPosZ      = 0x18;   // acteur -> position monde Z (float)
 constexpr int kOffHeightOff = 0x3f4;  // acteur -> offset hauteur (float ; vec3 +0x3f0/f4/f8)
-
 
 using TerrainHeightFn = float(__thiscall*)(void*, float, float);
 using FindByGidFn     = void*(__thiscall*)(void*, uint32_t);
@@ -95,11 +92,11 @@ void ApplyJumpHeight(void* actor, void* world, float offY) {
     char* a = reinterpret_cast<char*>(actor);
     *reinterpret_cast<float*>(a + kOffHeightOff) = offY;
     if (world) {
-      const float x = *reinterpret_cast<float*>(a + kActorPosX);
+      const float x = *reinterpret_cast<float*>(a + rag::actor::kPosX);
       const float z = *reinterpret_cast<float*>(a + kOffPosZ);
       const float ground =
           reinterpret_cast<TerrainHeightFn>(kTerrainHeight)(world, x, z);
-      *reinterpret_cast<float*>(a + kActorPosY) = ground + offY;
+      *reinterpret_cast<float*>(a + rag::actor::kPosY) = ground + offY;
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) {
   }

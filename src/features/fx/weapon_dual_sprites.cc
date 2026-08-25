@@ -1,4 +1,5 @@
 #include "ragnarok/render.h"
+#include "ragnarok/actor.h"  // rag::actor : les offsets de CActorSprite
 #include "features/fx/weapon_dual_sprites.h"
 
 #include <Windows.h>
@@ -21,11 +22,8 @@ namespace {
 constexpr uintptr_t kBuildWeaponLayers = 0x00D403A0;  // CActorSprite_BuildWeaponLayers
 constexpr uintptr_t kActFrameCall      = 0x00D36EE4;  // CALL Act_GetFrame (E8 rel32)
 
-// CActorSprite field offsets.
-constexpr uint32_t kActVec    = 0x4AC;  // std::vector<ActRes*>  {begin,end,cap}
-constexpr uint32_t kSprVec    = 0x4B8;  // std::vector<SprRes*>  {begin,end,cap}
-constexpr uint32_t kWeaponView = 0x440;  // param_1 (main weapon view id)
-constexpr uint32_t kShieldView = 0x444;  // param_2 (off-hand / shield view id)
+// Les offsets de CActorSprite viennent du foyer (`rag::actor`) : vecteurs de
+// couches, vue d'arme et vue de bouclier y sont documentes ensemble.
 constexpr uint32_t kSlot5     = 5 * 4;  // +0x14
 constexpr uint32_t kSlot6     = 6 * 4;  // +0x18
 constexpr uint32_t kMinSpan   = 7 * 4;  // slots 0..6 must exist (end-begin >= 0x1C)
@@ -89,13 +87,13 @@ inline void SetSlot(void* actor, uint32_t field, uint32_t slot_off, uint32_t v) 
 // the caller can fall back to the untouched stock state. No SEH here — the
 // worker wraps the whole thing.
 bool BuildSplit(void* actor, uint32_t main_view, uint32_t off_view) {
-  auto slots_ok = [&] { return VecOk(actor, kActVec) && VecOk(actor, kSprVec); };
+  auto slots_ok = [&] { return VecOk(actor, rag::actor::kActVec) && VecOk(actor, rag::actor::kSprVec); };
 
   // (a) Resolve the off-hand's real pair by building it as the sole main weapon.
   g_stock_build(actor, off_view, 0);
   if (!slots_ok()) return false;
-  uint32_t ret_act = Slot(actor, kActVec, kSlot5);
-  uint32_t ret_spr = Slot(actor, kSprVec, kSlot5);
+  uint32_t ret_act = Slot(actor, rag::actor::kActVec, kSlot5);
+  uint32_t ret_spr = Slot(actor, rag::actor::kSprVec, kSlot5);
   if (!ret_act || !ret_spr) return false;
   Res_AddRef(reinterpret_cast<void*>(ret_act));
   Res_AddRef(reinterpret_cast<void*>(ret_spr));
@@ -121,30 +119,30 @@ bool BuildSplit(void* actor, uint32_t main_view, uint32_t off_view) {
     // hands correctly) is strictly better here, so bail out: the worker restores
     // the stock combined build via our `false` return. Per-item splitting stays
     // active only when the two weapons genuinely differ in sprite.
-    uint32_t main_spr = Slot(actor, kSprVec, kSlot5);
+    uint32_t main_spr = Slot(actor, rag::actor::kSprVec, kSlot5);
     if (main_spr == ret_spr) { release_retained(); return false; }
-    release_slot(kActVec, kSlot6);
-    release_slot(kSprVec, kSlot6);
-    SetSlot(actor, kActVec, kSlot6, ret_act);
-    SetSlot(actor, kSprVec, kSlot6, ret_spr);
+    release_slot(rag::actor::kActVec, kSlot6);
+    release_slot(rag::actor::kSprVec, kSlot6);
+    SetSlot(actor, rag::actor::kActVec, kSlot6, ret_act);
+    SetSlot(actor, rag::actor::kSprVec, kSlot6, ret_spr);
   } else {
     // ── OFF-HAND ONLY ── clear the generic slot 5, keep the real pair in slot 6.
     g_stock_build(actor, 0, off_view);
     if (!slots_ok()) { release_retained(); return false; }
-    release_slot(kActVec, kSlot5);
-    release_slot(kSprVec, kSlot5);
-    release_slot(kActVec, kSlot6);
-    release_slot(kSprVec, kSlot6);
-    SetSlot(actor, kActVec, kSlot5, 0);
-    SetSlot(actor, kSprVec, kSlot5, 0);
-    SetSlot(actor, kActVec, kSlot6, ret_act);
-    SetSlot(actor, kSprVec, kSlot6, ret_spr);
+    release_slot(rag::actor::kActVec, kSlot5);
+    release_slot(rag::actor::kSprVec, kSlot5);
+    release_slot(rag::actor::kActVec, kSlot6);
+    release_slot(rag::actor::kSprVec, kSlot6);
+    SetSlot(actor, rag::actor::kActVec, kSlot5, 0);
+    SetSlot(actor, rag::actor::kSprVec, kSlot5, 0);
+    SetSlot(actor, rag::actor::kActVec, kSlot6, ret_act);
+    SetSlot(actor, rag::actor::kSprVec, kSlot6, ret_spr);
   }
 
   // Restore the view fields the multi-call dance overwrote (main is 0 in the
   // off-hand-only case, which is exactly what stock leaves there).
-  *reinterpret_cast<uint32_t*>(reinterpret_cast<char*>(actor) + kWeaponView) = main_view;
-  *reinterpret_cast<uint32_t*>(reinterpret_cast<char*>(actor) + kShieldView) = off_view;
+  *reinterpret_cast<uint32_t*>(reinterpret_cast<char*>(actor) + rag::actor::kWeaponView) = main_view;
+  *reinterpret_cast<uint32_t*>(reinterpret_cast<char*>(actor) + rag::actor::kShieldView) = off_view;
   return true;
 }
 

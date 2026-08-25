@@ -1,4 +1,5 @@
 #include "features/fx/palette_inject.h"
+#include "ragnarok/actor.h"  // rag::actor : les offsets de CActorSprite
 
 #include <Windows.h>  // SEH autour des déréférencements d'objets natifs
 
@@ -93,17 +94,6 @@ constexpr size_t kPaletteResSize = 0x910;
 // 0x0159D450+0x14, préfixe "palette\" correspondant, et champ +0x0c d'un objet
 // réel). Si un jour le client change, c'est la PREMIÈRE chose à re-mesurer.
 constexpr int kPaletteTypeIndex = 16;
-
-// Offsets sur le CActorSprite (vtable 0x01094810).
-constexpr int kOffActorPalettePath = 0x1C;    // std::string, relative à `palette\`
-constexpr int kOffActorClothesColor = 0x48;   // 🔴 == 0 ⇒ AUCUNE palette externe
-constexpr int kOffActorGid = 0x110;
-// Tête : chemin de palette de CHEVEUX et « couleur de cheveux » qui l'active.
-// 🔴 Issus de la reconnaissance de `CActorSprite_BuildPartQuads` (0x605c30) :
-// « partie 1 (TÊTE) et acteur+1084 > 0 → charge acteur+0x470 ». Même schéma que
-// le corps, garde à zéro comprise.
-constexpr int kOffActorHairPalettePath = 0x470;
-constexpr int kOffActorHairColor = 1084;  // 0x43C
 
 // (La coupe de cheveux vivait ici : `CActorSprite_BuildHead_Slot1` 0x00D3F4F0,
 // qui range la coupe en acteur+1080 puis rebâtit l'emplacement 1. Retirée le
@@ -210,7 +200,6 @@ std::map<uint32_t, NativeLook> g_native_paths;
 // fabrique aucun bloc, elle ne fait que désigner un fichier existant.
 std::map<uint32_t, int> g_hair;
 
-
 // 🔴🔴 LES BLOCS RETIRÉS NE SONT JAMAIS LIBÉRÉS — et c'est la seule façon
 // correcte de faire.
 //
@@ -290,7 +279,7 @@ void BuildBlock(std::vector<uint8_t>* block, const uint8_t* rgba, uint32_t gid) 
 bool ReadActorGid(void* actor, uint32_t* gid) {
   __try {
     *gid = *reinterpret_cast<uint32_t*>(reinterpret_cast<char*>(actor) +
-                                        kOffActorGid);
+                                        rag::actor::kGid);
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
@@ -304,7 +293,7 @@ bool ReadActorPalettePath(void* actor, char* out, size_t out_size) {
     // std::string MSVC : buffer de 16 octets, puis size, puis capacity. Au-delà
     // de 15 caractères le buffer devient un pointeur — le chemin d'un `.pal`
     // dépasse souvent cette limite, donc les deux cas comptent.
-    const char* base = reinterpret_cast<const char*>(actor) + kOffActorPalettePath;
+    const char* base = reinterpret_cast<const char*>(actor) + rag::actor::kBodyPalettePath;
     return rag::clientstr::Copy(base, out, out_size);
   } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; return false; }
 }
@@ -329,15 +318,15 @@ bool ApplyPathToActor(void* actor, const char* relative_path,
   __try {
     char* a = reinterpret_cast<char*>(actor);
     if (unlock_color) {
-      if (*reinterpret_cast<int*>(a + kOffActorClothesColor) == 0) {
-        *reinterpret_cast<int*>(a + kOffActorClothesColor) = 1;
+      if (*reinterpret_cast<int*>(a + rag::actor::kClothesColor) == 0) {
+        *reinterpret_cast<int*>(a + rag::actor::kClothesColor) = 1;
         forced = true;
       }
     } else if (restore_color >= 0) {
-      *reinterpret_cast<int*>(a + kOffActorClothesColor) = restore_color;
+      *reinterpret_cast<int*>(a + rag::actor::kClothesColor) = restore_color;
     }
     reinterpret_cast<StringAssignFn>(rag::kStdStringAssignAddr)(
-        a + kOffActorPalettePath, relative_path, std::strlen(relative_path));
+        a + rag::actor::kBodyPalettePath, relative_path, std::strlen(relative_path));
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
   return forced;
 }
@@ -351,10 +340,10 @@ void ApplyHairToActor(void* actor, const char* relative_path) {
     char* a = reinterpret_cast<char*>(actor);
     // Même garde que pour le corps : à zéro, le natif ne charge AUCUNE palette
     // externe et garde les couleurs du sprite.
-    if (*reinterpret_cast<int*>(a + kOffActorHairColor) == 0)
-      *reinterpret_cast<int*>(a + kOffActorHairColor) = 1;
+    if (*reinterpret_cast<int*>(a + rag::actor::kHairColor) == 0)
+      *reinterpret_cast<int*>(a + rag::actor::kHairColor) = 1;
     reinterpret_cast<StringAssignFn>(rag::kStdStringAssignAddr)(
-        a + kOffActorHairPalettePath, relative_path,
+        a + rag::actor::kHairPalettePath, relative_path,
         std::strlen(relative_path));
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
@@ -395,7 +384,7 @@ void RestoreForcedColor(void* actor, bool forcee, int origine) {
   if (!actor || !forcee || origine < 0) return;
   __try {
     int* p = reinterpret_cast<int*>(reinterpret_cast<char*>(actor) +
-                                    kOffActorClothesColor);
+                                    rag::actor::kClothesColor);
     if (*p == 1) *p = origine;
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
@@ -404,7 +393,7 @@ void RestoreForcedColor(void* actor, bool forcee, int origine) {
 int ReadActorClothesColor(void* actor) {
   __try {
     return *reinterpret_cast<int*>(reinterpret_cast<char*>(actor) +
-                                   kOffActorClothesColor);
+                                   rag::actor::kClothesColor);
   } __except (EXCEPTION_EXECUTE_HANDLER) { return -1; }
 }
 

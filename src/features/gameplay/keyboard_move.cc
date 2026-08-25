@@ -1,5 +1,6 @@
 #include "ragnarok/globals.h"
 #include "features/gameplay/keyboard_move.h"
+#include "ragnarok/actor.h"  // rag::actor : les offsets de CActorSprite
 
 #include "ragnarok/game_scene.h"
 #include "ragnarok/own_actor.h"  // rag::OwnActor / rag::OwnActorOf
@@ -24,13 +25,8 @@ constexpr uintptr_t kNoPathFlag   = 0x0131f764;  // != 0 -> le natif passe en ms
 constexpr int kOffCamera   = 0xd0;   // CGameMode -> pCam
 constexpr int kOffViewMat  = 0x98;   // pCam -> matrice de vue (12 floats)
 
-constexpr int kOffActorX     = 0x10;   // acteur -> position monde X (float)
-constexpr int kOffActorZ     = 0x18;   // acteur -> position monde Z (float)
-constexpr int kOffActorState = 0x70;   // acteur -> état (6 = pas de pathfinding)
-
 constexpr int kMsgWalkTo    = 0x11;  // Actor_OnMsg : « marche vers (x,y) »
 constexpr int kMsgWalkToRaw = 0x10;  // idem, variante sans validation client
-
 
 // La garde « une saisie native a le focus » (réplique de UIWindowMgr_OnKeyDown,
 // 0x00a471e0) vit dans hotkey_util : elle vaut pour TOUT raccourci global, et une
@@ -88,8 +84,8 @@ bool ActorCell(void* gm, void* actor, int* out_x, int* out_y) {
     char* a = reinterpret_cast<char*>(actor);
     unsigned sub_x = 0, sub_y = 0;
     reinterpret_cast<WorldToTile_t>(gamescene::kWorldToTileAddr)(
-        gm, *reinterpret_cast<float*>(a + kOffActorX),
-        *reinterpret_cast<float*>(a + kOffActorZ), out_x, out_y, &sub_x, &sub_y);
+        gm, *reinterpret_cast<float*>(a + rag::actor::kPosX),
+        *reinterpret_cast<float*>(a + rag::actor::kPosZ), out_x, out_y, &sub_x, &sub_y);
     ok = true;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     ok = false;
@@ -161,7 +157,7 @@ void RequestWalk(void* gm, void* actor, int x, int y, bool validate) {
     // qui court-circuite la validation client.
     const bool raw = *reinterpret_cast<int*>(kNoPathFlag) != 0 ||
                      *reinterpret_cast<int*>(reinterpret_cast<char*>(actor) +
-                                             kOffActorState) == 6;
+                                             rag::actor::kMotionState) == 6;
     if (!raw && validate) {
       using CellValid_t = int(__thiscall*)(void*, int, int);
       using Clamp_t     = int(__thiscall*)(void*, int*, int*);

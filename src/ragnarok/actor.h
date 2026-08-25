@@ -38,9 +38,16 @@
 
 namespace rag::actor {
 
+// La vtable de `CActorSprite`, pour qui doit reconnaître la classe d'un objet.
+constexpr uintptr_t kVTable = 0x01094810;
+
 // ── Position dans le MONDE (float) ──────────────────────────────────────────
 // ⚠ Y est la HAUTEUR, Z la profondeur — convention du moteur, pas celle d'une
 // carte vue de dessus. Un déplacement au sol change X et Z.
+//
+// ⚠⚠ RIEN À VOIR avec `uiwnd::kOffPosX` (+0x1c), qui est le x ÉCRAN d'une
+// FENÊTRE. Deux structures, deux sens ; l'avertissement était écrit dans
+// `player_jump.cc` et vaut pour tout le monde.
 constexpr int kPosX = 0x10;
 constexpr int kPosY = 0x14;  // hauteur (le saut la modifie)
 constexpr int kPosZ = 0x18;
@@ -54,7 +61,15 @@ constexpr int kActionBase  = 0x34;  // CActorSprite_StartAction : action × 8
 constexpr int kActionPlay   = 0x38;  // + la direction ; l'index LU dans le .act
 constexpr int kFrameIndex   = 0x3c;  // CActorSprite_AdvanceAnimState
 constexpr int kClothesColor = 0x48;  // 🔴 0 ⇒ aucune palette externe
-constexpr int kFacing       = 0x4c;  // float, degrés (SetFacingTowardXZ)
+
+// Angle en DEGRÉS dont le natif fait pivoter la flèche de la minimap. Écrit par
+// `CActorSprite_SetFacingTowardXZ`, relu par la sélection d'animation, et lu par
+// `GameMode_DrawMiniMapMarker` genre 4 (0x00c685c0).
+//
+// 🔴 On lit le MÊME champ que le natif plutôt que de chercher « l'angle de la
+// caméra » : ce qui fait tourner sa flèche fera tourner la nôtre, quelle que
+// soit la nature exacte de cet angle.
+constexpr int kFacing = 0x4c;
 constexpr int kFrameDelay   = 0x58;  // float — CActorSprite_SetFrameDelay
 constexpr int kHeight       = 0x5c;  // float : facteur de hauteur du sprite
 constexpr int kMotionFactor = 0x64;  // float — SetAttackMotionFactor
@@ -113,7 +128,18 @@ constexpr int kCastStart = 0x284;  // uint : timeGetTime de DÉBUT
 // natif reconnaît « un compagnon à moi » (`0x00C787CC`).
 constexpr int kOwnerAid = 0x2ec;
 
-constexpr int kType      = 0x314;  // octet ; {1, 6, 12} = hostile/spécial
+// Type d'acteur : le champ `objecttype` du paquet de spawn, que les handlers
+// recopient tel quel (`mov [ebx+314h], al`). Deux valeurs sont PROUVÉES :
+//   · 7 = PET — `mov byte ptr [edi+314h], 7` @0x00cbab7d, dans le sous-type 0 de
+//     `ZC_CHANGESTATE_PET`, le paquet qui déclare « cette entité est ton pet » ;
+//     recoupé live (docs/pet_re.md §2.2) ;
+//   · {1, 6, 12} = hostile / unité spéciale, le test dont le client se sert pour
+//     REFUSER son menu joueur (`EntityName_IsHostileOrSpecialUnit` 0x00d9d220).
+//
+// ⚠ La correspondance des AUTRES valeurs avec `clif_bl_type` est DÉDUITE du
+// paquet, pas vérifiée : ne pas s'en servir pour trancher quoi que ce soit.
+constexpr int kType = 0x314;
+
 constexpr int kHeightOff = 0x3f4;  // float : offset de hauteur (le saut)
 
 // ── Apparence (les « look » que le serveur pousse) ──────────────────────────
@@ -128,7 +154,12 @@ constexpr int kShieldView      = 0x444;
 constexpr int kHeadTop         = 0x448;
 constexpr int kHeadMid         = 0x44c;
 constexpr int kHeadLow         = 0x450;
-constexpr int kGarment         = 0x454;
+constexpr int kGarment = 0x454;
+
+// Chemin de palette de CHEVEUX, et la « couleur de cheveux » qui l'ACTIVE.
+// 🔴 Relevés dans `CActorSprite_BuildPartQuads` (0x605c30) : « partie 1 (TÊTE)
+// et acteur+1084 > 0 → charge acteur+0x470 ». Même schéma que le corps, garde à
+// zéro comprise — `kHairColor` nul veut dire « aucune palette externe ».
 constexpr int kHairPalettePath = 0x470;  // std::string du client
 
 // 🔴 `+0x4C8` est le BODY STYLE (LOOK_BODY2), PAS le sexe : le setter vt+176
@@ -136,6 +167,14 @@ constexpr int kHairPalettePath = 0x470;  // std::string du client
 // de ZC_SPRITE_CHANGE. Le sexe, lui, est en `+0x260` (`kSex` plus haut) — c'est
 // lui qui choisit `g_HairSpriteNum_Male` vs `_Female` dans
 // `Job_BuildBodyOrHeadSpritePath_impl`.
+// ── Les COUCHES de sprite, en vecteurs ───────────────────────────────────────
+// Deux `std::vector` MSVC {begin, end, capacity} : une ressource par couche
+// (corps, tête, couvre-chefs, arme, bouclier…). L'index d'une couche est son
+// SLOT — l'arme est en 5, le bouclier en 6, d'où le `end - begin >= 0x1C` que
+// vérifie le patch des sprites duals avant d'y toucher.
+constexpr int kActVec = 0x4ac;  // std::vector<ActRes*>
+constexpr int kSprVec = 0x4b8;  // std::vector<SprRes*>
+
 constexpr int kBodyStyle    = 0x4c8;
 constexpr int kDisplayClass = 0x4cc;  // celle qui nomme le chemin du CORPS
 
