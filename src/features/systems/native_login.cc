@@ -21,7 +21,6 @@ constexpr uintptr_t kSocketFd       = 0x015C5A24;  // g_RagConnection_SocketFd
 constexpr uintptr_t kAcctClassNormal = 0x01031264;
 constexpr uintptr_t kSetTextAddr    = 0x008303F0;  // CUIEdit_SetText
 constexpr uintptr_t kOnMsgAddr      = 0x008848D0;  // UILoginWnd_OnMsg
-constexpr int       kCharServerWndId = 2;          // « Select Service » (choix du char-server)
 // DEUX écrans natifs de création de personnage, et il faut connaître les deux.
 // 0x116 = UINewMakeCharWnd (« Character Creation », plein écran, ctor 0x0079F890) :
 //   celui de l'ÉTAT 8 du mode login (0x00D254BA), donc celui où atterrit un compte
@@ -211,7 +210,7 @@ bool native_login::CharServerWindowPresent() {
   // Net_OnAcceptLogin_ParseAccount (AC_ACCEPT_LOGIN 0x0ac4) pose `mode+0xc = 6`.
   // Sa présence vaut donc « login ACCEPTÉ par le serveur ».
   __try {
-    return uiwnd::FindWindow(kCharServerWndId) != nullptr;
+    return uiwnd::FindWindow(uiwnd::kCharServerWndId) != nullptr;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     return false;
   }

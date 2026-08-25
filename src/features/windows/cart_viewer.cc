@@ -78,9 +78,6 @@ constexpr uintptr_t kCartMaxWeight = 0x015fb2e0;
 
 // ── Helpers vtable / fenêtres ────────────────────────────────────────────────
 
-constexpr int kMsgUiAction = 0x06;   // OnMsg : action de contrôle…
-constexpr int kActionClose = 0xc9;   // …201 = fermeture (RE UICartWnd_OnMsg case 6)
-
 // Dispatcher (CMode) : FUN_00a75340(0x1213338) -> objet mode actif (0 hors jeu).
 // Son vtbl+0x18 = CMode::SendMsg. Commandes de transfert RE'ées sur la fenêtre
 // cart elle-même (UICartWnd_OnRButtonDown branche ALT / OnMsg case 38).
@@ -125,7 +122,7 @@ void CloseCart() {
   uint8_t* wnd = CartWnd();
   if (!wnd) return;
   __try {
-    uiwnd::OnMsg(wnd, kMsgUiAction, kActionClose, 0, 0, 0);
+    uiwnd::OnMsg(wnd, uiwnd::kMsgUiAction, uiwnd::kActionClose, 0, 0, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 

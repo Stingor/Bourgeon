@@ -969,7 +969,6 @@ constexpr int kSkOffNeedVec   = 0x38;  // std::vector<{u32 id, u32 niveau}> = pr
 // +0x28 = drapeau de visibilité d'une UIWindow (0 = hors rendu ET hors hit-test).
 // (L'emplacement mgr+0x2C4 qui portait la fenêtre du grimoire ne sert plus : on ne
 // SUIT plus son existence, on la détruit.)
-constexpr int       kWndVisibleFlag = 0x28;
 // ── Les trois fenêtres natives que cette feuille REMPLACE ───────────────────
 // Leurs identifiants et vtables sont au foyer : `uiwnd::kUIEquipWnd`,
 // `kUIStatusWnd`, `kUINewSkillListWnd`. Relevés en live dans la map du
@@ -982,14 +981,10 @@ constexpr int       kWndVisibleFlag = 0x28;
 //   - icône menu : UIMenuIconWnd_OnMsg cmd 373 @0x00814c6d (`cmovl`)
 // guildId != 0 -> bascule 0x3B ; guildId == 0 -> bascule 0xD4 (fenêtre « pas de
 // guilde » / création). Notre onglet Guilde couvre les deux cas, création comprise.
-constexpr int       kWinGuild       = 0x3b;  // UIGuildWnd (conteneur à onglets)
-constexpr int       kWinGuildNone   = 0xd4;  // demandée quand on n'a pas de guilde
 // Panneaux enfants du conteneur (0x3c TotalInfo, MemberManage, PositionManage,
 // Skill, AllyGuild, InfoPopup, Banished) : id = 0x3c + rang. Le conteneur les crée
 // lui-même, il faut donc les détruire avec lui — chacun est une native de plus, et
 // une native masquée garde le clavier.
-constexpr int       kWinGuildPanelFirst = 0x3c;
-constexpr int       kWinGuildPanelLast  = 0x42;
 constexpr int       kTabGuild       = 4;     // onglet « Guilde » de la feuille
 constexpr int       kTabHomun       = 6;     // onglet « Homoncule » (CONDITIONNEL)
 
@@ -1007,8 +1002,6 @@ constexpr int       kTabHomun       = 6;     // onglet « Homoncule » (CONDITIO
 // ZC_PROPERTY_HOMUN écrit les globals d'abord et ne touche aux fenêtres que sous
 // `if (instance)` (0x00CD1ED0, et `Homun_InvalidateInfoWnd` 0x00D70D30 pareil).
 // Les données restent donc à jour, fenêtres ou pas. Cf. docs/homunculus_re.md.
-constexpr int       kWinHomunInfo   = 0x71;  // 113
-constexpr int       kWinHomunSkill  = 0x72;  // 114
 
 constexpr int kSkillJobTabs  = 4;    // onglets de job ; le 5e (« divers ») = liste plate
 constexpr int kSkillGridCols = 7;    // la grille native fait 7 x 6 = 42 cases
@@ -8831,7 +8824,7 @@ void DestroyNativeWindow(int window_id) {
 void CharacterSheet::HandleReplacedNativeCreation(void* win, int window_id) {
   if (!win || !imgui_enabled_) return;
   __try {
-    *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + kWndVisibleFlag) = 0;
+    *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + uiwnd::kOffVisible) = 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
   // Une création survenue PENDANT un changement de map n'est pas une demande du
   // joueur : c'est l'interface qui se reconstruit et rouvre les fenêtres qui
@@ -8856,15 +8849,15 @@ void CharacterSheet::HandleReplacedNativeCreation(void* win, int window_id) {
       if (show_ && tab_ == 0) { show_ = false; return; }
       OpenEquipTab();
       return;
-    case kWinGuild:
-    case kWinGuildNone:
+    case uiwnd::kUIGuildWnd:
+    case uiwnd::kGuildNoneWndId:
       // Les deux mènent au même onglet : il montre la guilde quand on en a une, et
       // la création quand on n'en a pas — exactement le partage que fait le client.
       if (show_ && tab_ == kTabGuild) { show_ = false; return; }
       OpenGuildTab();
       return;
-    case kWinHomunInfo:
-    case kWinHomunSkill:
+    case uiwnd::kUIHomunInfoWnd:
+    case uiwnd::kHomunSkillWndId:
       // Idem : la fiche d'état (Alt+R) et l'arbre de compétences sont deux natives,
       // un seul onglet chez nous. La 114 n'arrive en pratique jamais ici — son
       // unique créateur était le bouton « btn_skill » de la 113, qui n'existe plus —
@@ -8894,15 +8887,15 @@ void CharacterSheet::OnTick() {
   // reconstruction de l'interface, ou l'activation du mode moderne alors qu'elles
   // sont déjà à l'écran. Les détruire ici couvre les deux cas.
   for (const int id : {uiwnd::kUINewSkillListWnd, uiwnd::kUIStatusWnd,
-                       uiwnd::kUIEquipWnd, kWinGuild, kWinGuildNone,
-                       kWinHomunInfo, kWinHomunSkill})
+                       uiwnd::kUIEquipWnd, uiwnd::kUIGuildWnd, uiwnd::kGuildNoneWndId,
+                       uiwnd::kUIHomunInfoWnd, uiwnd::kHomunSkillWndId})
     if (uiwnd::SafeFindWindow(id)) DestroyNativeWindow(id);
   // Les panneaux d'onglet de la fenêtre de guilde : le conteneur en crée un à
   // l'ouverture (et un autre à chaque clic d'onglet). Ils ne portent aucune donnée
   // qui nous manquerait — roster, relations et bannis vivent dans des globals, et
   // les POSTES, seule donnée que le client ne gardait que dans sa fenêtre, sont
   // parsés par cet onglet depuis les paquets (cf. guild_positions_).
-  for (int id = kWinGuildPanelFirst; id <= kWinGuildPanelLast; ++id)
+  for (int id = uiwnd::kUIGuildPanelFirst; id <= uiwnd::kUIGuildPanelLast; ++id)
     if (uiwnd::SafeFindWindow(id)) DestroyNativeWindow(id);
 }
 

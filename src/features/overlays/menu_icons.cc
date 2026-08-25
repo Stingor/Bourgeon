@@ -59,7 +59,6 @@ void __fastcall GridClear(void* self, void* /*edx*/) {
 // path poked the window-manager's active-window slot (mgr+0x19c) and the icon's
 // +0xac then restored them, which corrupted the game's active-window tracking
 // and crashed when a window was opened/closed repeatedly (spam).
-constexpr int       kMenuIconWndId = 0x133;
 constexpr uintptr_t kCmdHandler    = 0x00814a70;  // UIMenuIconWnd command handler
 using CmdHandlerFn = void  (__thiscall*)(void*, int, int, int, int, int, int);
 
@@ -158,7 +157,7 @@ const IconDef kIconTable[] = {
 
 // ── Le bouton « cash shop » posé près de la minimap ────────────────────────
 // Ce n'est PAS une icône de la grille : c'est une fenêtre native à elle seule,
-// `UInCash_CallWnd` (id 190 / 0xBE, vtable 0x010349e4). Son seul créateur est
+// `uiwnd::kUInCash_CallWnd`, avec sa vtable. Son seul créateur est
 // `GameMode_OnEnterMapSetup` @0x00c6bbad, qui la fabrique à CHAQUE entrée de
 // carte (sauf sur `new_event.rsw`) ; le case 190 de MakeWindow @0x00a3d3f7 la
 // dimensionne 43x43 et la pose en (largeur_écran - 187, 16), c'est-à-dire au
@@ -196,7 +195,6 @@ const IconDef kIconTable[] = {
 // `OnTick`. Elle est le SEUL endroit qui décide qui du natif ou de notre copie
 // se voit — règle : le natif ne se montre que si l'option du client est allumée
 // ET que notre remplacement ne prend pas le relais.
-constexpr int kCashShopBtnWndId  = 190;  // UInCash_CallWnd
 constexpr int kTtShowCashShopBtn = 218;  // TT_SHOW_CASHSHOP_BTN_ON_OFF
 using OptionInfoGetFn = uint8_t(__cdecl*)(unsigned int);
 using OptionInfoSetFn = int(__cdecl*)(unsigned int, char);
@@ -281,7 +279,7 @@ void MenuIcons::BuildIconList() {
     Icon ic;
     ic.name = d.name;
     ic.dir = kGridIconDir;
-    ic.wnd_id = kMenuIconWndId;
+    ic.wnd_id = uiwnd::kMenuIconWndId;
     ic.cmd_id = d.cmd_id;
     ic.msg_id = d.msg_id;
     ic.x = 24 + (shown % 6) * 40;   // default grid
@@ -300,13 +298,13 @@ void MenuIcons::BuildIconList() {
     Icon ic;
     ic.name = kCashShopIconName;
     ic.dir = kCashShopIconDir;
-    ic.wnd_id = kCashShopBtnWndId;
+    ic.wnd_id = uiwnd::kUInCash_CallWnd;
     ic.cmd_id = kCashShopCmdId;
     ic.msg_id = kCashShopMsgId;
     ic.x = static_cast<int>(ImGui::GetIO().DisplaySize.x) -
            kCashShopDefaultRightMargin;
     ic.y = kCashShopDefaultY;
-    if (void* w = uiwnd::SafeFindWindow(kCashShopBtnWndId)) {
+    if (void* w = uiwnd::SafeFindWindow(uiwnd::kUInCash_CallWnd)) {
       ic.x = uiwnd::PosX(w);
       ic.y = uiwnd::PosY(w);
     }
@@ -324,14 +322,14 @@ void MenuIcons::BuildIconList() {
 void MenuIcons::RefreshBadges() {
   constexpr int kMaxFlagged = 32;
   int flagged[kMaxFlagged];
-  const int n = ReadBadgeCmdIds(uiwnd::SafeFindWindow(kMenuIconWndId), flagged,
+  const int n = ReadBadgeCmdIds(uiwnd::SafeFindWindow(uiwnd::kMenuIconWndId), flagged,
                                 kMaxFlagged);
   for (Icon& ic : icons_) {
     // 🔴 Seules les icônes DE LA GRILLE : la liste ne porte que des commandes de
     // la grille, et le bouton du cash shop partage la commande 0xC0 avec
     // « status » — il s'allumerait à sa place, puis chercherait en vain un
     // bitmap `NC_CashShop_new.bmp` qui n'existe pas.
-    if (ic.wnd_id != kMenuIconWndId) { ic.badge = false; continue; }
+    if (ic.wnd_id != uiwnd::kMenuIconWndId) { ic.badge = false; continue; }
     bool on = false;
     for (int i = 0; i < n && !on; ++i) on = (flagged[i] == ic.cmd_id);
     if (!on) ic.new_fail = 0;  // réarme le chargement pour le prochain allumage
@@ -349,11 +347,11 @@ void MenuIcons::SyncCashShopButton() {
   // que de risquer plus aucun bouton du tout.
   bool replaced = false;
   for (Icon& ic : icons_) {
-    if (ic.wnd_id != kCashShopBtnWndId) continue;
+    if (ic.wnd_id != uiwnd::kUInCash_CallWnd) continue;
     ic.hidden = !on;
     replaced = enabled_ && ic.tex != nullptr;
   }
-  uiwnd::SafeSetVisible(uiwnd::SafeFindWindow(kCashShopBtnWndId), on && !replaced);
+  uiwnd::SafeSetVisible(uiwnd::SafeFindWindow(uiwnd::kUInCash_CallWnd), on && !replaced);
 }
 
 float MenuIcons::SnapIcon(float v, float ext, int self, bool y_axis) const {
@@ -382,7 +380,7 @@ void MenuIcons::HideNativeGrid(bool hide) {
       grid_hidden_ = true;
       // Drop the already-built render nodes now so the native grid disappears
       // immediately (otherwise it lingers until the next relayout / map reload).
-      if (void* wnd = uiwnd::FindWindow(kMenuIconWndId))
+      if (void* wnd = uiwnd::FindWindow(uiwnd::kMenuIconWndId))
         GridClear(wnd, nullptr);
       // GridClear empties the node list but the already-composited pixels linger
       // until a relayout — ask the server to clif_refresh so the client
@@ -404,7 +402,7 @@ void MenuIcons::DispatchCommand(int wnd_id, int cmd_id) {
     LogDiag("[MenuIcons] window 0x{:X} not found for cmd 0x{:X}", wnd_id, cmd_id);
     return;
   }
-  if (wnd_id == kMenuIconWndId) {
+  if (wnd_id == uiwnd::kMenuIconWndId) {
     // action 6 = button-click command; the handler reads the cmd id from arg3.
     reinterpret_cast<CmdHandlerFn>(kCmdHandler)(wnd, 0, 6, cmd_id, 0, 0, 0);
     return;
@@ -475,7 +473,7 @@ bool MenuIcons::DrawSettings() {
       // autres) mais PAS ici : sa visibilité a déjà sa case plus bas, celle qui
       // écrit l'option du client. Deux cases pour le même réglage, ce serait
       // une de trop — et son `cmd_id` 0xC0 doublonnerait le PushID de « status ».
-      if (ic.wnd_id != kMenuIconWndId) continue;
+      if (ic.wnd_id != uiwnd::kMenuIconWndId) continue;
       bool shown = !ic.hidden;
       ImGui::PushID(ic.cmd_id);
       if (ro::RoCheckbox(ic.name, &shown)) {

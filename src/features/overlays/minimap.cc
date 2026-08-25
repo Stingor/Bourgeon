@@ -64,9 +64,6 @@ constexpr char kCfgButtonName[] = "viewon";
 // fait déjà pour les siens.
 constexpr int kRoCursorHand = 2;
 
-// Le radar natif : `UIMinimapZoomWnd`, id 14. Cf. docs/minimap_re.md §1.
-constexpr int kNativeRadarWndId = 14;
-
 // Les deux écrans natifs qu'on ne remplace pas encore sont offerts depuis le
 // menu : `uiwnd::kUIRoMapWnd` et `uiwnd::kUINavigationV4Wnd`. Comment
 // l'identifiant de la navigation a été MESURÉ — après une déduction fausse — est
@@ -645,7 +642,7 @@ bool NativeRadarVetoed() {
   // du quad, à lui seul, laissait passer. Sa DESTRUCTION, elle, attend le
   // battement de frame suivant : `CloseWindow` est une commande du client, et
   // on ne l'émet pas au milieu de son rendu.
-  uiwnd::SafeSetVisible(uiwnd::SafeFindWindow(kNativeRadarWndId), false);
+  uiwnd::SafeSetVisible(uiwnd::SafeFindWindow(uiwnd::kUIMinimapZoomWnd), false);
   return true;
 }
 
@@ -726,14 +723,14 @@ void Minimap::OnGameFramePulse() {
   // fenêtre et saute le radar dans la frame même où elle réapparaît. Ici, on ne
   // fait que la détruire pour de bon, sans urgence.
   const bool want_native_gone = g_cfg.enabled && g_cfg.replace_native;
-  void* native = uiwnd::SafeFindWindow(kNativeRadarWndId);
+  void* native = uiwnd::SafeFindWindow(uiwnd::kUIMinimapZoomWnd);
   if (want_native_gone) {
     if (native) {
-      uiwnd::SafeCloseWindow(kNativeRadarWndId);
+      uiwnd::SafeCloseWindow(uiwnd::kUIMinimapZoomWnd);
       native_closed_ = true;
     }
   } else if (native_closed_ && !native) {
-    uiwnd::MakeWindow(kNativeRadarWndId);
+    uiwnd::MakeWindow(uiwnd::kUIMinimapZoomWnd);
     native_closed_ = false;
   }
 }

@@ -30,11 +30,7 @@
 namespace {
 
 // Fenêtres de composition (UIMerchantShopMakeWnd).
-constexpr int kWinVending     = 0x29;  // « Opening a stall »
-constexpr int kWinBuyingStore = 0xAE;  // « Buying Store Window »
 // Grilles « objets disponibles » (UIMerchantMirrorItemWnd), cachées elles aussi.
-constexpr int kWinVendingMirror = 0x2A;  // « Available Items for Vending »
-constexpr int kWinBuyingMirror  = 0xAF;  // « Available items: »
 constexpr int kOffMirrorList    = 0xE8;  // std::list, MÊME layout de nœud
 
 // « My Shop » = UIMerchantItemMyShopWnd (vtable 0x0103D100), la vue VENDEUR de sa
@@ -43,8 +39,6 @@ constexpr int kOffMirrorList    = 0xE8;  // std::list, MÊME layout de nœud
 // ⚠ À ne PAS confondre avec UIMerchantItemShopWnd (id 0x2B) ni avec
 // UIMerchantItemPurchaseWnd (id 0x2C, l'achat CHEZ un vendeur) : trois classes
 // voisines, trois rôles. Identifiée par RTTI sur session vivante.
-constexpr int kWinMyShop       = 0x2D;  // vente
-constexpr int kWinMyShopBuying = 0xB0;  // échoppe d'achat
 constexpr int kOffMyShopList = 0xE8;   // même famille -> même offset de liste
 // ⚠ Le MÊME champ ne dit pas la même chose selon le mode (posé par OnMsg 119) :
 //   vente         -> zeny ENCAISSÉ depuis l'ouverture (part de 0, monte)
@@ -68,8 +62,6 @@ constexpr int kCmdMyShopClose = 201;
 // (aucun CMode::SendMsg derrière) -> on peut la câbler sans confirmation.
 // Sa liste d'affichage suit la convention de la famille (+0xE8) ; elle est remplie
 // ligne par ligne (OnMsg 23 = AJOUT d'une vente, pas une reconstruction).
-constexpr int kWinSellLog       = 0x101;  // vente
-constexpr int kWinSellLogBuying = 0x102;  // échoppe d'achat
 constexpr int kOffSellLogList   = 0xE8;
 
 // Largeur minimale des panneaux en AlwaysAutoResize : sans elle, un contenu plus
@@ -155,8 +147,6 @@ constexpr float kBuyMinH = 240.0f;  // un tableau, les totaux et la rangée de b
 // Ce sont bien les fenêtres de l'ACHETEUR, pas la vue vendeur (celle-là est
 // UIMerchantItemMyShopWnd 0x2D, cf. plus haut) — vérifié par RTTI sur session
 // vivante, la déduction statique inverse était fausse.
-constexpr int kWinVendorShop   = 0x2B;
-constexpr int kWinVendorBasket = 0x2C;
 constexpr int kOffVendorList   = 0xE8;   // offre (0x2B) ET panier (0x2C)
 constexpr int kOffVendorGid    = 0x100;  // 0x2B : GID du vendeur (posé par OnMsg 28)
 // (kOffBasketMode 0x108 retiré avec la fenêtre : le mode se lit sur les ids ouverts.)
@@ -221,9 +211,6 @@ using BasketClear_t = void(__thiscall*)(void*);
 // c'est UIMerchantItemPurchaseWnd_OnMsg qui le prouve : ses cmd 184/185 ferment
 // 177/178/179 quand le mode vaut 1, et 43/44 sinon. Le test sur 0x2C ne pouvait
 // donc jamais se déclencher, et le repli « rendre la main au natif » était mort.
-constexpr int kWinBsWanted   = 0xB1;
-constexpr int kWinBsSellList = 0xB2;
-constexpr int kWinBsMirror   = 0xB3;
 constexpr int kOffBsBuyerAid = 0x100;  // 0xB1 : AID de l'acheteur
 // 0xB1+0x108 : ce que l'acheteur peut ENCORE payer (part de sa limite, descend à
 // chaque achat). C'est exactement le `*(g_BuyingStoreWantedWnd+264)` que teste le
@@ -449,10 +436,20 @@ void* FindWnd(int id) { return uiwnd::SafeFindWindow(id); }
 bool IsLiveShopWnd(void* p) {
   if (!p) return false;
   static const int kAll[] = {
-      kWinVending,   kWinBuyingStore,   kWinVendingMirror, kWinBuyingMirror,
-      kWinMyShop,    kWinMyShopBuying,  kWinSellLog,       kWinSellLogBuying,
-      kWinVendorShop, kWinVendorBasket, kWinBsWanted,      kWinBsSellList,
-      kWinBsMirror};
+      // ⚠ EN COLONNES, et ce n'est pas décoratif : à gauche mon échoppe de
+      // VENTE, à droite son équivalent en échoppe d'ACHAT. Les deux colonnes
+      // partagent leurs CLASSES — d'où la symétrie complète des offsets, et
+      // d'où les « MÊME CLASSE que … » de l'annuaire.
+      //
+      //   composition / échoppe d'achat
+      uiwnd::kUIMerchantShopMakeWnd,    uiwnd::kBuyingStoreWndId,
+      uiwnd::kVendingMirrorWndId,       uiwnd::kBuyingMirrorWndId,
+      uiwnd::kUIMerchantItemMyShopWnd,  uiwnd::kMyShopBuyingWndId,
+      uiwnd::kUIMerchantItemLogWnd,     uiwnd::kSellLogBuyingWndId,
+      //   achat chez un vendeur / vente à un buying store
+      uiwnd::kUIMerchantItemShopWnd,    uiwnd::kBsWantedWndId,
+      uiwnd::kVendorBasketWndId,        uiwnd::kBsSellListWndId,
+      uiwnd::kBsMirrorWndId};
   for (int id : kAll)
     if (FindWnd(id) == p) return true;
   return false;
@@ -898,7 +895,7 @@ void OpenDescFromList(void* wnd, int list_off, int index, uint32_t id, int mx,
     if (!found) found = first_by_id;
     if (!found) return;
     void* mgr = uiwnd::Mgr();
-    void* dwnd = uiwnd::MakeWindow(itemdb::kItemDescWndId);
+    void* dwnd = uiwnd::MakeWindow(uiwnd::kItemDescWndId);
     if (dwnd) {
       uiwnd::OnMsg(dwnd, itemdb::kItemDescMsgSet,
           static_cast<int>(reinterpret_cast<uintptr_t>(found)), 0, 0, 0);
@@ -991,7 +988,8 @@ void VendingWindow::DrawItemCell(const DescInfo& desc, int slots, void* wnd,
 
 bool VendingWindow::IsComposing() const {
   // Sans état exprès : la fenêtre native fait foi, qu'on la remplace ou non.
-  return FindWnd(kWinVending) != nullptr || FindWnd(kWinBuyingStore) != nullptr;
+  return FindWnd(uiwnd::kUIMerchantShopMakeWnd) != nullptr ||
+         FindWnd(uiwnd::kBuyingStoreWndId) != nullptr;
 }
 
 void VendingWindow::OnTick() {
@@ -1012,8 +1010,8 @@ void VendingWindow::OnTick() {
 
   // « Ma boutique » : cycle de vie INDÉPENDANT de la composition (elle s'ouvre
   // quand celle-ci est déjà fermée), donc traitée avant tout retour anticipé.
-  myshop_wnd_ = FindWnd(kWinMyShop);
-  if (!myshop_wnd_) myshop_wnd_ = FindWnd(kWinMyShopBuying);
+  myshop_wnd_ = FindWnd(uiwnd::kUIMerchantItemMyShopWnd);
+  if (!myshop_wnd_) myshop_wnd_ = FindWnd(uiwnd::kMyShopBuyingWndId);
   if (myshop_wnd_) {
     if (!myshop_open_) {  // front montant
       myshop_panel_ = true;
@@ -1034,10 +1032,10 @@ void VendingWindow::OnTick() {
   // On n'affiche donc notre panneau qu'une fois le shop TERMINÉ, comme le natif :
   // le montrer dès la première vente le ferait surgir en pleine activité, et sa
   // croix (cmd 201) DÉTRUIRAIT l'accumulateur — donc tout l'historique.
-  log_wnd_ = FindWnd(kWinSellLog);
+  log_wnd_ = FindWnd(uiwnd::kUIMerchantItemLogWnd);
   log_buying_ = false;
   if (!log_wnd_) {
-    log_wnd_ = FindWnd(kWinSellLogBuying);
+    log_wnd_ = FindWnd(uiwnd::kSellLogBuyingWndId);
     log_buying_ = (log_wnd_ != nullptr);
   }
   if (log_wnd_) {
@@ -1057,15 +1055,21 @@ void VendingWindow::OnTick() {
   // c'est le paquet d'ouverture qui l'ouvre (HandlePacket) et notre fermeture qui le
   // referme. On se contente de les détruire : masquées, elles resteraient vivantes,
   // et le natif les recréerait sans repasser par nous.
-  if (void* w = FindWnd(kWinVendorShop))   { HideWnd(w); CloseWnd(kWinVendorShop); }
-  if (void* w = FindWnd(kWinVendorBasket)) { HideWnd(w); CloseWnd(kWinVendorBasket); }
+  if (void* w = FindWnd(uiwnd::kUIMerchantItemShopWnd)) {
+    HideWnd(w);
+    CloseWnd(uiwnd::kUIMerchantItemShopWnd);
+  }
+  if (void* w = FindWnd(uiwnd::kVendorBasketWndId)) {
+    HideWnd(w);
+    CloseWnd(uiwnd::kVendorBasketWndId);
+  }
 
   // Côté vendeur face à un buying store : TROIS fenêtres (0xB1 recherche, 0xB2
   // vente, 0xB3 stock proposable), ouvertes ensemble par un clic sur l'échoppe
   // d'achat d'un autre joueur.
-  bs_wanted_ = FindWnd(kWinBsWanted);
-  bs_sell_   = FindWnd(kWinBsSellList);
-  bs_mirror_ = FindWnd(kWinBsMirror);
+  bs_wanted_ = FindWnd(uiwnd::kBsWantedWndId);
+  bs_sell_   = FindWnd(uiwnd::kBsSellListWndId);
+  bs_mirror_ = FindWnd(uiwnd::kBsMirrorWndId);
   if (bs_wanted_ && bs_sell_ && bs_mirror_) {
     if (!bs_open_) {  // front montant : nouvelle session de vente
       bs_panel_ = true;
@@ -1090,12 +1094,12 @@ void VendingWindow::OnTick() {
   // La fenêtre de composition existe -> l'échoppe est en cours de montage. Le
   // client DÉTRUIT ses fenêtres à la fermeture, donc un pointeur non nul veut
   // bien dire « ouverte maintenant ».
-  void* vending = FindWnd(kWinVending);
-  void* buying  = vending ? nullptr : FindWnd(kWinBuyingStore);
+  void* vending = FindWnd(uiwnd::kUIMerchantShopMakeWnd);
+  void* buying  = vending ? nullptr : FindWnd(uiwnd::kBuyingStoreWndId);
   wnd_    = vending ? vending : buying;
   buying_ = (vending == nullptr) && (buying != nullptr);
   open_   = (wnd_ != nullptr);
-  mirror_ = open_ ? FindWnd(buying_ ? kWinBuyingMirror : kWinVendingMirror)
+  mirror_ = open_ ? FindWnd(buying_ ? uiwnd::kBuyingMirrorWndId : uiwnd::kVendingMirrorWndId)
                   : nullptr;
 
   if (!open_) {
@@ -1458,8 +1462,8 @@ void VendingWindow::HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t 
 // panier ; elle ne se contentait PAS de fermer, et c'est tout l'enjeu ici.
 void VendingWindow::CloseVendorSession() {
   // Filet : si une native avait survécu à un tick manqué, la détruire d'abord.
-  if (FindWnd(kWinVendorShop))   CloseWnd(kWinVendorShop);
-  if (FindWnd(kWinVendorBasket)) CloseWnd(kWinVendorBasket);
+  if (FindWnd(uiwnd::kUIMerchantItemShopWnd))   CloseWnd(uiwnd::kUIMerchantItemShopWnd);
+  if (FindWnd(uiwnd::kVendorBasketWndId)) CloseWnd(uiwnd::kVendorBasketWndId);
   EndVendorDeal();
   vendor_open_ = false;
   vendor_gid_ = 0;
@@ -1513,7 +1517,7 @@ void VendingWindow::FlushPending() {
   if (pending_submit_) {
     pending_submit_ = false;
     // Re-résolution : la fenêtre a pu être détruite depuis le clic.
-    wnd_ = FindWnd(buying_ ? kWinBuyingStore : kWinVending);
+    wnd_ = FindWnd(buying_ ? uiwnd::kBuyingStoreWndId : uiwnd::kUIMerchantShopMakeWnd);
     if (wnd_) SubmitToNative();
   }
   const int count = pending_count_;
@@ -1598,8 +1602,8 @@ void VendingWindow::OnRenderUI() {
   // Rendue AVANT le retour anticipé sur `open_` : elle vit sa propre vie, une
   // fois l'échoppe lancée et les fenêtres de composition détruites.
   if (myshop_open_) {
-    myshop_wnd_ = FindWnd(kWinMyShop);  // re-résolution par frame (cf. plus bas)
-    if (!myshop_wnd_) myshop_wnd_ = FindWnd(kWinMyShopBuying);
+    myshop_wnd_ = FindWnd(uiwnd::kUIMerchantItemMyShopWnd);  // re-résolution par frame (cf. plus bas)
+    if (!myshop_wnd_) myshop_wnd_ = FindWnd(uiwnd::kMyShopBuyingWndId);
     if (!myshop_wnd_) {
       myshop_open_ = false;
       myshop_.clear();
@@ -1671,7 +1675,8 @@ void VendingWindow::OnRenderUI() {
         // transaction, épuisé ou non, et aux coordonnées monde 0,0,0 plutôt qu'à
         // la position du joueur. La ressusciter n'apportait qu'une promesse non
         // tenue. Cf. project_vending_window_re.
-        const int myshop_id = myshop_buying_ ? kWinMyShopBuying : kWinMyShop;
+        const int myshop_id =
+      myshop_buying_ ? uiwnd::kMyShopBuyingWndId : uiwnd::kUIMerchantItemMyShopWnd;
 
         // ⚠ Le « close » natif ne ferme pas que la fenêtre : il dispatche
         // CMode::SendMsg 81 (vente) / 270 (achat), c'est-à-dire qu'il MET FIN à la
@@ -1701,8 +1706,8 @@ void VendingWindow::OnRenderUI() {
   // `!myshop_open_` : tant que le shop tourne, la fenêtre native n'est qu'un
   // accumulateur invisible (cf. OnTick). On ne la montre qu'à la fin.
   if (log_open_ && !myshop_open_) {
-    log_wnd_ = FindWnd(kWinSellLog);
-    if (!log_wnd_) log_wnd_ = FindWnd(kWinSellLogBuying);  // log_buying_ : OnTick
+    log_wnd_ = FindWnd(uiwnd::kUIMerchantItemLogWnd);
+    if (!log_wnd_) log_wnd_ = FindWnd(uiwnd::kSellLogBuyingWndId);  // log_buying_ : OnTick
     if (!log_wnd_) {
       log_open_ = false;
       log_.clear();
@@ -1787,7 +1792,7 @@ void VendingWindow::OnRenderUI() {
       // Hors du Begin/End : la croix peut être cliquée sur une fenêtre que Begin
       // rendrait false (repliée, clippée) ; SendButton n'a besoin d'aucun état ImGui.
       if (close_log || !keep_log)
-        QueueCommand(log_buying_ ? kWinSellLogBuying : kWinSellLog,
+        QueueCommand(log_buying_ ? uiwnd::kSellLogBuyingWndId : uiwnd::kUIMerchantItemLogWnd,
                      kCmdMyShopClose);
     }
   }
@@ -1970,9 +1975,9 @@ void VendingWindow::OnRenderUI() {
 
   // ── Vente à un buying store (0xB1 recherche + 0xB2 vente + 0xB3 stock) ─────
   if (bs_open_) {
-    bs_wanted_ = FindWnd(kWinBsWanted);   // re-résolution par frame
-    bs_sell_   = FindWnd(kWinBsSellList);
-    bs_mirror_ = FindWnd(kWinBsMirror);
+    bs_wanted_ = FindWnd(uiwnd::kBsWantedWndId);   // re-résolution par frame
+    bs_sell_   = FindWnd(uiwnd::kBsSellListWndId);
+    bs_mirror_ = FindWnd(uiwnd::kBsMirrorWndId);
     if (!bs_wanted_ || !bs_sell_ || !bs_mirror_) {
       bs_open_ = false;
       bs_wanted_rows_.clear();
@@ -2170,7 +2175,7 @@ void VendingWindow::OnRenderUI() {
         // ferme les trois fenêtres. On ne fabrique PAS le paquet nous-mêmes ici
         // (contrairement à l'achat) : l'index qui part dans CZ 0x0819 est celui
         // de l'inventaire, et c'est la liste de session qui le tient.
-        if (ro::RoButton(i18n::Tr("Vendre"))) QueueCommand(kWinBsSellList, kCmdBsSell);
+        if (ro::RoButton(i18n::Tr("Vendre"))) QueueCommand(uiwnd::kBsSellListWndId, kCmdBsSell);
         ImGui::EndDisabled();
         ImGui::SameLine();
         close_bs = ro::RoButton(i18n::Tr("Fermer"));
@@ -2182,7 +2187,7 @@ void VendingWindow::OnRenderUI() {
       ro::EndRoWindow();
       // cmd 185 = annulation native : rects sauvés, SendMsg 40, panier de
       // session vidé — et les objets retenus reviennent. C'est la vraie sortie.
-      if (close_bs || !keep_bs) QueueCommand(kWinBsSellList, kCmdBsCancel);
+      if (close_bs || !keep_bs) QueueCommand(uiwnd::kBsSellListWndId, kCmdBsCancel);
     }
   }
 
@@ -2198,9 +2203,9 @@ void VendingWindow::OnRenderUI() {
   // DÉTRUITE depuis (le joueur valide, le serveur refuse...). On re-résout donc le
   // pointeur à chaque frame — sans ça on lirait de la mémoire libérée, et le SEH
   // ne rattrape rien quand elle a déjà été réallouée.
-  wnd_ = FindWnd(buying_ ? kWinBuyingStore : kWinVending);
+  wnd_ = FindWnd(buying_ ? uiwnd::kBuyingStoreWndId : uiwnd::kUIMerchantShopMakeWnd);
   if (!wnd_) { open_ = false; rows_.clear(); avail_.clear(); return; }
-  mirror_ = FindWnd(buying_ ? kWinBuyingMirror : kWinVendingMirror);
+  mirror_ = FindWnd(buying_ ? uiwnd::kBuyingMirrorWndId : uiwnd::kVendingMirrorWndId);
 
   Refresh();
 
@@ -2242,7 +2247,7 @@ void VendingWindow::OnRenderUI() {
   // client ET prévient le serveur ; fermer sans ça laisserait le montage en
   // suspens, comme le cmd 0x28 du shop NPC).
   if (!show_panel_) {
-    QueueCommand(buying_ ? kWinBuyingStore : kWinVending, kCmdCancel);
+    QueueCommand(buying_ ? uiwnd::kBuyingStoreWndId : uiwnd::kUIMerchantShopMakeWnd, kCmdCancel);
     show_panel_ = true;
     return;
   }
@@ -2673,7 +2678,7 @@ void VendingWindow::OnRenderUI() {
       // toujours la valeur chez lui.
       bool safe = SafeCheckOn();
       if (ro::RoCheckbox(i18n::Tr("Confirmer les prix élevés"), &safe))
-        QueueCommand(kWinVending, kCmdSafeChk);
+        QueueCommand(uiwnd::kUIMerchantShopMakeWnd, kCmdSafeChk);
       ImGui::SameLine();
       ImGui::TextDisabled("(?)");
       if (ImGui::IsItemHovered())
@@ -2758,7 +2763,7 @@ void VendingWindow::OnRenderUI() {
       import_count_ = ReadSnapshot(import_ids_, import_prices_, import_amounts_,
                                    kMaxRows);
       ReadSnapshotName(import_name_, sizeof(import_name_));
-      QueueCommand(buying_ ? kWinBuyingStore : kWinVending, kCmdImport);
+      QueueCommand(buying_ ? uiwnd::kBuyingStoreWndId : uiwnd::kUIMerchantShopMakeWnd, kCmdImport);
       import_frames_ = 30;
       import_used_ = true;
     }
@@ -2769,7 +2774,7 @@ void VendingWindow::OnRenderUI() {
           : import_used_ ? i18n::Tr("Déjà importé pour ce shop.") : i18n::Tr("Aucun shop précédent enregistré pour ce personnage."));
     ImGui::SameLine();
     if (ro::RoButton(i18n::Tr("Annuler")))
-      QueueCommand(buying_ ? kWinBuyingStore : kWinVending, kCmdCancel);
+      QueueCommand(buying_ ? uiwnd::kBuyingStoreWndId : uiwnd::kUIMerchantShopMakeWnd, kCmdCancel);
 
     // Hauteur réelle du pied, pour la réserve de la frame suivante. Un seul
     // frame de décalage à l'ouverture, invisible ; en échange le pied ne peut

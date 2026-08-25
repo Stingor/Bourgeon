@@ -36,14 +36,12 @@ namespace {
 // quand on clique le X. À l'opposé de la fenêtre d'écriture juste dessous, qu'on
 // empêche de NAÎTRE.
 
-// ── Fenêtre d'ÉCRITURE (UIMailWriteWnd 0x108) : elle ne naît PLUS ───────────
+// ── Fenêtre d'ÉCRITURE (`uiwnd::kUIMailWriteWnd`) : elle ne naît PLUS ───────
 // 🔴 Elle est le seul cas de la campagne qu'il ne fallait SURTOUT pas détruire :
 // elle émet CZ_REQ_CANCEL_WRITE_MAIL en se fermant (UIMailWriteWnd_OnMsg
 // @0x007ca3fd), ce dont le plugin se servait justement pour annuler. La détruire au
 // tick aurait annulé la rédaction une frame après son ouverture. On l'empêche donc
 // de NAÎTRE, en prenant la place de son unique créateur (ZC 0x0A12 ci-dessous).
-constexpr int kWriteId = 0x108;
-constexpr uintptr_t kWriteVTable = 0x01021b30;
 
 // ZC_ACK_OPEN_WRITE_MAIL 0x0A12 (27 o) : {op:2, name[24], result:1}. SEUL créateur de
 // la fenêtre d'écriture (Recv_ZC_RodexBeginWriteResult 0x00cfcc80, result lu en
@@ -507,7 +505,7 @@ uint8_t* RodexMgr() {
 uint8_t* ComposeWnd() {
   __try {
     uint8_t* w = *reinterpret_cast<uint8_t**>(uiwnd::kMailWriteWndSlot);
-    if (w && *reinterpret_cast<uintptr_t*>(w) == kWriteVTable) return w;
+    if (w && *reinterpret_cast<uintptr_t*>(w) == uiwnd::kUIMailWriteWndVTable) return w;
     return nullptr;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
 }
@@ -1255,7 +1253,7 @@ void RodexWindow::CloseCompose() {
   if (ComposeWnd()) {
     // Filet : si une native traîne, la fermer émet l'annulation pour nous — ne pas
     // envoyer les deux, le serveur verrait une seconde annulation sans session.
-    CloseWnd(kWriteId);
+    CloseWnd(uiwnd::kUIMailWriteWnd);
   } else {
     uint8_t packet[2] = {0};
     *reinterpret_cast<uint16_t*>(packet) = kCzCancelWrite;
@@ -1388,11 +1386,11 @@ RodexWindow::RodexWindow() {
 void RodexWindow::HideNativeAtCreation(void* win, int window_id) {
   if (!win || !imgui_enabled_) return;
   if (window_id != uiwnd::kUIRodexWnd && window_id != uiwnd::kUIRodexReadWnd &&
-      window_id != kWriteId)
+      window_id != uiwnd::kUIMailWriteWnd)
     return;
   const uintptr_t vt = VTableOf(win);
   if (vt != uiwnd::kUIRodexWndVTable && vt != uiwnd::kUIRodexReadWndVTable &&
-      vt != kWriteVTable)
+      vt != uiwnd::kUIMailWriteWndVTable)
     return;  // id réutilisé par une autre classe : on s'abstient
   HideWnd(win);
   if (window_id != uiwnd::kUIRodexWnd) return;

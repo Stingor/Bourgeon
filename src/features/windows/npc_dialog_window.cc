@@ -49,12 +49,9 @@ namespace {
 constexpr int kSelClose            = 0x28;
 using Dispatch_t = int (__thiscall*)(void*, int, int, int, int, int);
 
-// Fenêtres de dialogue NPC (à cacher quand l'overlay est actif).
-constexpr int kWinSay   = 0x10;
-constexpr int kWinMenu  = 0x11;
-constexpr int kWinEditN = 0x38;
-constexpr int kWinEditS = 0x64;
-constexpr int kWinSay2  = 0xe2;
+// ⚠ Les fenêtres de dialogue NPC du foyer (`uiwnd::kNpcSayWndId` et ses voisines)
+// sont à CACHER, pas à détruire, tant que l'overlay est actif : ce sont elles qui
+// portent l'état de la conversation en cours.
 
 // Opcodes reçus (ZC).
 constexpr uint16_t kZcSay        = 0x00b4;
@@ -1837,7 +1834,7 @@ void NpcDialogWindow::SendMenuChoice(int one_based) {
   // via cmd 0x28 -> « Invalid menu selection ... got 1, valid [1..0] ». Elle ne naît
   // plus ; l'appel reste comme filet pour le menu déjà ouvert au moment où le joueur
   // allume l'interface moderne, et ne coûte qu'un FindWindow à vide.
-  CloseWnd(kWinMenu);
+  CloseWnd(uiwnd::kNpcMenuWndId);
   // La liste reste AFFICHÉE (grisée) jusqu'à la réponse : la vider ici escamotait le
   // menu et le bouton « Annuler » pendant l'aller-retour. Un second envoi est déjà
   // impossible — menu_answered_gen_ vient d'être posé.
@@ -1897,7 +1894,7 @@ void NpcDialogWindow::CloseDialog() {
   // choix, sur un script qui n'attend plus rien.
   const bool menu_pending =
       (!menu_opts_.empty() && menu_gen_ != menu_answered_gen_) ||
-      FindWnd(kWinMenu) != nullptr;
+      FindWnd(uiwnd::kNpcMenuWndId) != nullptr;
   // 1. SERVEUR : abandon adapté à l'état (sinon sd->npc_id reste -> perso figé côté
   //    serveur). Menu ouvert -> CZ_CHOOSE_MENU 0xFF (le script reçoit 255 puis
   //    termine) ; sinon CZ_CLOSE_DIALOG.
@@ -1942,7 +1939,7 @@ void NpcDialogWindow::OpenItemDescById(uint32_t id) {
     reinterpret_cast<ItemInfoSetId_t>(itemdb::kInfoSetIdAddr)(info, static_cast<int>(id));  // id-str @0x2c
     *reinterpret_cast<uint32_t*>(info) = id;  // id entier @0 (chemin fenêtre natif)
     info[kInfoFlag] = 1;  // « standalone » : la desc est lue depuis la DB (rec+0x0c), item non possédé
-    void* dwnd = uiwnd::MakeWindow(itemdb::kItemDescWndId);
+    void* dwnd = uiwnd::MakeWindow(uiwnd::kItemDescWndId);
     if (dwnd) {
       void** vt = *reinterpret_cast<void***>(dwnd);
       reinterpret_cast<DescOnMsg_t>(vt[uiwnd::kVfOnMsg / 4])(
@@ -1957,16 +1954,17 @@ bool NpcDialogWindow::DialogActiveNative() const {
 }
 
 bool NpcDialogWindow::AnyNativeDialogWindow() const {
-  return FindWnd(kWinSay) || FindWnd(kWinMenu) || FindWnd(kWinEditN) ||
-         FindWnd(kWinEditS) || FindWnd(kWinSay2);
+  return FindWnd(uiwnd::kNpcSayWndId) || FindWnd(uiwnd::kNpcMenuWndId) ||
+         FindWnd(uiwnd::kNpcEditNumWndId) || FindWnd(uiwnd::kNpcEditStrWndId) ||
+         FindWnd(uiwnd::kNpcSay2WndId);
 }
 
 void NpcDialogWindow::PurgeNativeDialogWindows() {
-  CloseWnd(kWinSay);
-  CloseWnd(kWinMenu);
-  CloseWnd(kWinEditN);
-  CloseWnd(kWinEditS);
-  CloseWnd(kWinSay2);
+  CloseWnd(uiwnd::kNpcSayWndId);
+  CloseWnd(uiwnd::kNpcMenuWndId);
+  CloseWnd(uiwnd::kNpcEditNumWndId);
+  CloseWnd(uiwnd::kNpcEditStrWndId);
+  CloseWnd(uiwnd::kNpcSay2WndId);
 }
 
 void NpcDialogWindow::OnTick() {

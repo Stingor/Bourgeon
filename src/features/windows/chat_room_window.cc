@@ -24,14 +24,13 @@ using namespace mui;
 namespace {
 
 // ── Constantes de la SALLE (docs/chat_room_re.md §10 bis) ───────────────────
-// Déclarées ICI, dans le premier namespace anonyme, parce que le constructeur
-// et OnTick — tous deux plus haut dans le fichier — s'en servent.
-constexpr int kWinChatRoom       = 28;  // 0x1C — la salle
-constexpr int kWinChatRoomPass   = 29;  // 0x1D — « Veuillez saisir le mot de passe »
+// Déclaré ICI, dans le premier namespace anonyme, parce que le constructeur et
+// OnTick — tous deux plus haut dans le fichier — s'en servent. (Les quatre
+// identifiants de fenêtre, eux, sont au foyer.)
+//
 // Offset où `UIPasswordWnd` range l'identifiant du salon, posé par son `msg 47`
 // (relevé dans son OnMsg, 0x008C6A20).
 constexpr int kOffPasswordWndChatId = 0xBC;
-constexpr int kWinChatRoomChange = 30;  // 0x1E — « Réglages », encore NATIVE
 
 // Les ZC du salon (docs/opcode_map.csv). Tous OBSERVÉS : les handlers natifs
 // gardent leurs devoirs (lignes de chat, globales), on ne lit que les champs.
@@ -94,9 +93,8 @@ constexpr int kMsgChangeRoomSetting = 126;  // MSI_CHANGE_ROOM_SETTING — « R�
 // Le module, pour le pont `chatroomwnd::IngestRoomLine` que ChatWindow appelle.
 ChatRoomWindow* g_chat_room_window = nullptr;
 
-// Fenêtre native UIChatRoomMakeWnd. L'id sert au filet de sécurité d'OnTick ; la
+// ⚠ `uiwnd::kUIChatRoomMakeWnd` ne sert qu'au filet de sécurité d'OnTick : la
 // fenêtre elle-même ne survit jamais plus d'un tick.
-constexpr int kWinChatRoomMake = 27;  // 0x1B
 
 // Plafonds — ils viennent du SERVEUR (src/map/map.hpp : CHATROOM_TITLE_SIZE 36+1,
 // CHATROOM_PASS_SIZE 8+1 ; src/map/chat.hpp : MAX_CHAT_USERS 20). Le client natif
@@ -503,18 +501,18 @@ void ChatRoomWindow::OnTick() {
   // garde le clavier, et son bouton par défaut (commande 184) ENVOIE le paquet de
   // création sur une frappe d'Entrée. Détruite, elle n'existe jamais — ce qui fait
   // aussi du hook `MakeWindow` un point d'interception unique et suffisant.
-  if (uiwnd::SafeFindWindow(kWinChatRoomMake))
-    uiwnd::SafeCloseWindow(kWinChatRoomMake);
+  if (uiwnd::SafeFindWindow(uiwnd::kUIChatRoomMakeWnd))
+    uiwnd::SafeCloseWindow(uiwnd::kUIChatRoomMakeWnd);
   // Idem pour la SALLE : elle déclare elle aussi un bouton par défaut, et le sien
   // ENVOIE le message tapé.
-  if (uiwnd::SafeFindWindow(kWinChatRoom))
-    uiwnd::SafeCloseWindow(kWinChatRoom);
+  if (uiwnd::SafeFindWindow(uiwnd::kChatRoomWndId))
+    uiwnd::SafeCloseWindow(uiwnd::kChatRoomWndId);
 
   // L'invite de mot de passe : on lui VOLE son identifiant de salon avant de la
   // détruire. `FindWindow` frais plutôt qu'un pointeur gardé — le manager a pu la
   // reprendre entre-temps.
   if (pw_native_wait_) {
-    void* w = uiwnd::SafeFindWindow(kWinChatRoomPass);
+    void* w = uiwnd::SafeFindWindow(uiwnd::kChatRoomPasswordWndId);
     if (w) {
       uint32_t id = 0;
       __try {
@@ -530,7 +528,7 @@ void ChatRoomWindow::OnTick() {
         pw_error_[0]    = '\0';
         pw_native_wait_ = false;
       }
-      uiwnd::SafeCloseWindow(kWinChatRoomPass);
+      uiwnd::SafeCloseWindow(uiwnd::kChatRoomPasswordWndId);
     } else {
       // Elle a disparu sans qu'on ait rien pu lire : ne pas rester en attente.
       pw_native_wait_ = false;

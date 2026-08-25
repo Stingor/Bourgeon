@@ -30,14 +30,6 @@
 //  Constantes RE (client 20250716, base 0x400000 ; cf. project_cashshop_re) 
 namespace {
 
-// UICashShopWnd : id 0x13e (318), vtable 0x0101ca18. Trouvée par FindWindow.
-constexpr int       kWinCashShop  = 0x13e;
-constexpr uintptr_t kCashVTable   = 0x0101ca18;
-
-// Offsets UIWindow.
-
-// Description d'item (clic-droit) : MakeWindow(0xc) + OnMsg 0x18 
-
 // Icône d'item : le cash shop affiche l'image de COLLECTION (art de preview,
 // bien plus grande que l'icône d'inventaire). Sa résolution vit dans le cache
 // partagé, ro::ItemCollectionIcon (ui/icon_cache.h), avec le repli sur la petite
@@ -46,12 +38,14 @@ constexpr uintptr_t kCashVTable   = 0x0101ca18;
 // Détruit la fenêtre native du cash shop (id 0x13e). SEH-gardé (POD only).
 void CloseNativeCashShop() {
   __try {
-    uiwnd::CloseWindow(kWinCashShop);
+    uiwnd::CloseWindow(uiwnd::kUICashShopWnd);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
 // Lit le pointeur de fenêtre valide (vtable vérifiée). SEH-gardé.
-void* FindCashWnd() { return uiwnd::WndOfClass(kWinCashShop, kCashVTable); }
+void* FindCashWnd() {
+  return uiwnd::WndOfClass(uiwnd::kUICashShopWnd, uiwnd::kUICashShopWndVTable);
+}
 
 // ── Snap de resize : la fenêtre ne prend QUE des tailles tenant un nombre entier
 // de colonnes/lignes de cartes (pas d'espace vide partiel). Le callback arrondit

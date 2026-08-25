@@ -172,9 +172,6 @@ constexpr uintptr_t kFnClearRoute = 0x00B2F080;  // __thiscall(nav, bool full)
 // ce panneau. Le natif éclate la tâche sur les quatre, dont deux ne suivent même
 // pas la principale quand on la déplace : elles lisent sa position À LA CRÉATION
 // et ne sont jamais repositionnées.
-constexpr int kNativeWndHelp  = 229;  // UINavigationHelpWnd
-constexpr int kNativeWndIcon  = 306;  // UINavigationroadiconWnd
-constexpr int kNativeWndRoute = 314;  // UINavigationRuideWnd
 
 // Slots virtuels d'un CNavi_Object (le NPC ou le monstre d'un résultat), tels
 // que les emploient Navi_FormatResultLabel et Navi_FormatMemberLabel :
@@ -920,8 +917,8 @@ void NavigationWindow::OnTick() {
   // ⚠ AVANT la garde `graph_ready_` : sans données de navigation le panneau ne
   // sert à rien, mais la native, elle, naîtrait quand même — et resterait
   // masquée à l'écran, à voler le clavier.
-  for (const int native_id : {uiwnd::kUINavigationV4Wnd, kNativeWndRoute,
-                              kNativeWndIcon, kNativeWndHelp}) {
+  for (const int native_id : {uiwnd::kUINavigationV4Wnd, uiwnd::kUINavigationRuideWnd,
+                              uiwnd::kUINavigationroadiconWnd, uiwnd::kUINavigationHelpWnd}) {
     if (uiwnd::FindWindow(native_id) != nullptr) uiwnd::CloseWindow(native_id);
   }
 

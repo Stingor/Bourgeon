@@ -36,15 +36,11 @@ namespace {
 
 // UIWindowMgr + factory.
 
-// Fenêtre d'échange — RE LIVE 2026-07-23 : c'est la NOUVELLE classe CUIExchangeUI
-// (famille « CUI », comme CUIGameSettingsUI 0x271e), et PAS l'ancienne UIExchangeWnd
-// (0x01031edc, morte — jamais instanciée). C'est une sous-classe UIWindow composite
-// (ctor FUN_009cd970 -> UIWindow_composite_ctor ; OnMsg FUN_009cecd0 ; rebuild
-// FUN_009ce450). id MAP pinné 0x271b. Cf. docs/trade_window_re.md.
-constexpr uintptr_t kExchangeVTable = 0x010457d8;  // CUIExchangeUI (fenêtre d'échange)
-constexpr int       kExchangeId     = 0x271b;      // id map pinné (recouvré au besoin)
-constexpr uintptr_t kAcceptVTable   = 0x01033754;  // popup requête (best-effort)
-constexpr int       kAcceptId       = 0x20;        // id popup (best-effort)
+// Fenêtre d'échange — RE LIVE 2026-07-23. `uiwnd::kCUIExchangeUI` est la NOUVELLE
+// classe, et PAS l'ancienne `UIExchangeWnd` (vtable 0x01031edc, morte — jamais
+// instanciée). Sous-classe UIWindow composite : ctor FUN_009cd970 ->
+// UIWindow_composite_ctor ; OnMsg FUN_009cecd0 ; rebuild FUN_009ce450.
+// Cf. docs/trade_window_re.md.
 
 // Offsets CUIExchangeUI (RE FUN_009ce450 / FUN_009cecd0).
 constexpr int kOffMyListW     = 0xE4;   // widget liste MES objets
@@ -228,7 +224,7 @@ void* FindTradeWndInMap(int* out_id) {
       uint8_t* n = reinterpret_cast<uint8_t*>(stack[--sp]);
       if (!n || n == head) continue;
       void* val = *reinterpret_cast<void**>(n + 0x14);
-      if (val && VTableOf(val) == kExchangeVTable) {
+      if (val && VTableOf(val) == uiwnd::kCUIExchangeUIVTable) {
         if (out_id) *out_id = *reinterpret_cast<int*>(n + 0x10);  // clé = id fenêtre
         return val;
       }
@@ -247,9 +243,9 @@ void* FindTradeWndInMap(int* out_id) {
 // (récupère aussi l'id si jamais il différait). La fenêtre est bien map-based (elle
 // vit dans la std::map du mgr, key 0x271b — confirmé live). Renseigne *out_id.
 void* FindTradeWnd(int* out_id) {
-  void* w = FindWnd(kExchangeId);
-  if (w && VTableOf(w) == kExchangeVTable) {
-    if (out_id) *out_id = kExchangeId;
+  void* w = FindWnd(uiwnd::kCUIExchangeUI);
+  if (w && VTableOf(w) == uiwnd::kCUIExchangeUIVTable) {
+    if (out_id) *out_id = uiwnd::kCUIExchangeUI;
     return w;
   }
   return FindTradeWndInMap(out_id);
@@ -456,7 +452,7 @@ void TradeWindow::TradeAck(int type) {
   req_open_ = false;
   // La popup native ne naît plus ; ce nettoyage ne sert qu'au cas d'un interrupteur
   // allumé alors qu'une requête native était déjà à l'écran.
-  CloseWnd(kAcceptId);
+  CloseWnd(uiwnd::kTradeAcceptPopupWndId);
 }
 
 // CZ_ADD_EXCHANGE_ITEM {index:2, amount:4}. index 0 = ZENY (montant ABSOLU), sinon
@@ -696,14 +692,14 @@ void TradeWindow::ResolveNames() {
 bool TradeWindow::AnyNativeTradeWindow() const {
   int id = -1;
   if (FindTradeWnd(&id)) return true;
-  void* a = FindWnd(kAcceptId);
-  return a && VTableOf(a) == kAcceptVTable;
+  void* a = FindWnd(uiwnd::kTradeAcceptPopupWndId);
+  return a && VTableOf(a) == uiwnd::kTradeAcceptPopupWndIdVTable;
 }
 
 void TradeWindow::PurgeNativeTradeWindows() {
   int id = -1;
   if (FindTradeWnd(&id) && id >= 0) CloseWnd(id);
-  CloseWnd(kAcceptId);
+  CloseWnd(uiwnd::kTradeAcceptPopupWndId);
 }
 
 void TradeWindow::OnTick() {

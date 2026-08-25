@@ -72,7 +72,7 @@ constexpr int kMaxSlots     = 36;     // 0x24
 // ---- description / tooltip clic-droit (réplique UIShortCutWnd OnRButtonDown 0x008f91a0) ----
 constexpr uintptr_t kGetSkillInfo  = 0x00d5a980;  // SkillMgr_GetSkillInfo(mgr,out,id,gate) ; out+4!=0 => trouvé
 // ⚠ Ces quatre-là étaient INTERVERTIS (corrigé le 2026-07-28) : la branche SKILL
-// ouvrait un « itemdb::kItemDescWndId » et la branche OBJET un « itemdb::kSkillDescWndId ». Le
+// ouvrait un « uiwnd::kItemDescWndId » et la branche OBJET un « uiwnd::kSkillDescWndId ». Le
 // comportement était juste — c'est l'appariement id/message qui compte, et il
 // n'a pas bougé — mais les noms disaient le contraire du code, à rebours des
 // huit autres fichiers du projet et de character_sheet.cc:1713 qui documente
@@ -694,7 +694,7 @@ void OpenSlotDescription(int region, int slot, int mx, int my) {
         alignas(8) uint8_t info[kSkillInfoSize] = {};
         reinterpret_cast<GetSkillInfo_t>(kGetSkillInfo)(
             reinterpret_cast<void*>(rag::kSessionAddr), nullptr, info, id, 1);
-        void* wnd = uiwnd::MakeWindow(itemdb::kItemDescWndId);
+        void* wnd = uiwnd::MakeWindow(uiwnd::kItemDescWndId);
         if (wnd) {
           uiwnd::OnMsg(wnd, itemdb::kItemDescMsgSet,
                                      static_cast<int>(reinterpret_cast<uintptr_t>(info)), 0, 0, 0);

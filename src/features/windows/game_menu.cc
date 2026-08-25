@@ -27,16 +27,14 @@ namespace {
 // COMMANDE du §2.4 — ces derniers sont locaux à `UIEscOptionWnd_OnMsg` et ne
 // valent rien ailleurs.
 
-constexpr int kEscMenuWndId = 155;  // UIEscOptionWnd, vtable 0x010384A0, objet 0xD8
 // Les deux sous-fenêtres que ce menu est le SEUL à ouvrir (vérifié par recherche
 // d'octets : rien d'autre dans l'image ne les fabrique) vivent dans `uiwnd` :
 // `kUIHotKeyWnd` et `kUIEmotionWnd`, avec la façon dont leurs identifiants ont
 // été remontés.
 
-// Les trois fenêtres que le branchement « Character Select » ferme. On ne les
-// ferme pas nous-mêmes (le natif le fait), elles sont ici pour le REPLI.
-constexpr int kWndAlsoClosedA = 164;
-constexpr int kWndAlsoClosedB = 269;
+// ⚠ Trois fenêtres partent avec le branchement « Character Select » — au foyer :
+// `uiwnd::kUINewSelectCharWnd`, `kEscAlsoClosedAWndId`, `kEscAlsoClosedBWndId`.
+// On ne les ferme pas nous-mêmes, le natif le fait ; on les nomme pour le REPLI.
 
 // Ids de commande de `UIEscOptionWnd_OnMsg` (0x008FAE60), msg 6.
 constexpr int kNativeCmdCharSelect = 371;
@@ -129,7 +127,7 @@ void GameMenu::HandleNativeCreation(void* win) {
 void GameMenu::ToggleFromUi() {
   if (!imgui_enabled_) {
     // Interface native : rendre la demande au client, qui ouvrira son propre menu.
-    uiwnd::MakeWindow(kEscMenuWndId);
+    uiwnd::MakeWindow(uiwnd::kUIEscOptionWnd);
     return;
   }
   if (open_) {
@@ -202,7 +200,8 @@ void GameMenu::OnTick() {
 
   // DÉTRUIRE la native, jamais seulement la masquer (cf. l'en-tête). No-op quand
   // il n'y en a pas — le cas normal.
-  if (uiwnd::SafeFindWindow(kEscMenuWndId)) uiwnd::SafeCloseWindow(kEscMenuWndId);
+  if (uiwnd::SafeFindWindow(uiwnd::kUIEscOptionWnd))
+    uiwnd::SafeCloseWindow(uiwnd::kUIEscOptionWnd);
 
   // Le joueur peut mourir — ou être ressuscité — panneau ouvert : la disposition se
   // relit aussi au tick, pas seulement à l'ouverture.
@@ -225,7 +224,7 @@ void GameMenu::DriveNativeCommand(int native_cmd) {
   //
   // Appelé depuis OnTick, JAMAIS depuis une frame ImGui.
   routing_ = true;
-  void* win = uiwnd::MakeWindow(kEscMenuWndId);
+  void* win = uiwnd::MakeWindow(uiwnd::kUIEscOptionWnd);
   if (win) {
     __try {
       uiwnd::OnMsg(win, /*msg=*/6, /*p2=*/native_cmd);
@@ -237,7 +236,8 @@ void GameMenu::DriveNativeCommand(int native_cmd) {
 
   // La plupart des branchements se ferment eux-mêmes (`SaveRectAndCloseWindow(155)`) ;
   // ce nettoyage couvre ceux qui ne le font pas, et le cas où `OnMsg` a levé.
-  if (uiwnd::SafeFindWindow(kEscMenuWndId)) uiwnd::SafeCloseWindow(kEscMenuWndId);
+  if (uiwnd::SafeFindWindow(uiwnd::kUIEscOptionWnd))
+    uiwnd::SafeCloseWindow(uiwnd::kUIEscOptionWnd);
 
   if (!win) {
     // Les deux gardes du case 155 (`mgr+0x4F10C`, `mgr+0x4F1B0`) ont refusé la
@@ -247,9 +247,9 @@ void GameMenu::DriveNativeCommand(int native_cmd) {
             native_cmd);
     if (native_cmd == kNativeCmdCharSelect &&
         rag::ActiveModeSendMsgSafe(kCmdRestart, kRestartTypeCharSelect)) {
-      uiwnd::SafeCloseWindow(kEscMenuWndId);
-      uiwnd::SafeCloseWindow(kWndAlsoClosedA);
-      uiwnd::SafeCloseWindow(kWndAlsoClosedB);
+      uiwnd::SafeCloseWindow(uiwnd::kUIEscOptionWnd);
+      uiwnd::SafeCloseWindow(uiwnd::kEscAlsoClosedAWndId);
+      uiwnd::SafeCloseWindow(uiwnd::kEscAlsoClosedBWndId);
     }
   }
 }

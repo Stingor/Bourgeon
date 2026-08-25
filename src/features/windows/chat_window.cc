@@ -7218,19 +7218,17 @@ void ChatWindow::QueueSend() {
 // native jouée pendant le rendu peut ouvrir une modale bloquante qui relance le
 // rendu — le gel muet classique.
 void ChatWindow::SuppressNativeChat() {
-  constexpr int kNativeChatWndId   = 1;
-  constexpr int kNativeLogOptWndId = 0x84;
   // Rien en dehors du jeu : à l'écran de login ou pendant un chargement de carte,
   // ni détruire ni recréer n'a de sens, et créer une fenêtre pendant un warp est
   // précisément ce qui a valu au projet une famille de crashes.
   const Bourgeon& app = Bourgeon::Instance();
   if (!app.IsGameActive() || app.IsMapLoading()) return;
 
-  const bool native_alive = uiwnd::SafeFindWindow(kNativeChatWndId) != nullptr;
+  const bool native_alive = uiwnd::SafeFindWindow(uiwnd::kChatWndId) != nullptr;
   if (imgui_enabled_) {
-    if (native_alive) uiwnd::CloseWindow(kNativeChatWndId);
-    if (uiwnd::SafeFindWindow(kNativeLogOptWndId) != nullptr)
-      uiwnd::CloseWindow(kNativeLogOptWndId);
+    if (native_alive) uiwnd::CloseWindow(uiwnd::kChatWndId);
+    if (uiwnd::SafeFindWindow(uiwnd::kChatLogOptionWndId) != nullptr)
+      uiwnd::CloseWindow(uiwnd::kChatLogOptionWndId);
     return;
   }
   // 🔴 Bascule INVERSE : éteindre l'interface moderne doit RENDRE la chatbox
@@ -7238,7 +7236,7 @@ void ChatWindow::SuppressNativeChat() {
   // lors du « case 0 » (entrée en jeu) — sans ce rappel, il faudrait se
   // reconnecter pour la revoir. La file `mgr+0x4C4` se draine d'elle-même à la
   // création : les lignes accumulées entre-temps réapparaissent.
-  if (!native_alive) uiwnd::MakeWindow(kNativeChatWndId);
+  if (!native_alive) uiwnd::MakeWindow(uiwnd::kChatWndId);
 }
 
 bool ChatWindow::WantsTypedKeys() const {

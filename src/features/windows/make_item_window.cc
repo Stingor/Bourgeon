@@ -42,19 +42,13 @@ using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 // que ce qui sert, avec le § qui l'explique.
 namespace {
 
-// Les deux fenêtres natives de LISTE qu'on remplace (§4 et §5). On vérifie la
-// VTABLE en plus de l'id : un id ne garantit pas la classe si un portage
-// renumérote les fenêtres.
-constexpr int       kWinMakingArrow  = 94;          // UIMakingArrowListWnd « LIST »
-constexpr uintptr_t kVTableMakingArrow = 0x010345ac;
-constexpr int       kWinMakeTarget   = 79;          // UIMakeTargetListWnd
-constexpr uintptr_t kVTableMakeTarget  = 0x0103ec50;
-// La fenêtre 80 reste NATIVE — on ne fait que la déclencher (§6, et l'en-tête).
-// ⚠ Gardées pour la DOCUMENTATION et pour le masquage de sécurité, plus pour un
-// appel : on n'ouvre plus jamais la 80 (cf. SendConfirm). `kMsgSetProduct` était
-// la seule chose qu'on lui envoyait.
-constexpr int       kWinMakeProcess  = 80;          // UIMakeTargetProcessWnd
-constexpr int       kVTableMakeProcess = 0x0103eed8;  // ⏱ confirmé sur 2 instances
+// Les deux LISTES qu'on remplace (§4 et §5) et le PROCESS qui reste natif (§6)
+// sont au foyer, chacun apparié à sa vtable — on contrôle toujours les deux, un
+// id ne garantissant pas la classe si un portage renumérote les fenêtres.
+//
+// ⚠ On n'OUVRE plus jamais la 80 (cf. SendConfirm) : elle n'est plus gardée que
+// pour la documentation et le masquage de sécurité. `kMsgSetProduct` ci-dessous
+// était la seule chose qu'on lui envoyait.
 constexpr int       kMsgSetProduct   = 40;          // OnMsg(40, itemId) de la 80
 
 // Produits SANS emplacement de matériau optionnel. Ce n'est pas une table de
@@ -156,8 +150,6 @@ bool ProductAcceptsForgeSlots(uint32_t id, int skill_id, bool from_item) {
   return true;
 }
 
-constexpr int kWndVisible = 0x28;  // UIWindow : flag « visible »
-
 // CMode::SendMsg : le dispatcher du mode actif, vtable+0x18. On rejoue les
 // chemins natifs plutôt que de fabriquer les paquets — règle du projet, et ici
 // ça évite en prime de dupliquer trois constructions d'en-tête différentes.
@@ -173,8 +165,6 @@ constexpr int kCmdMakeItem  = 207;  // { id, mk_type }          -> CZ_REQ_MAKING
 // 🔴 L'Annuler est infiniment préférable à une fermeture pour la fenêtre 80 : c'est
 // LUI qui re-crédite les matériaux déjà posés dans ses emplacements, un par un
 // (`Inventory_AddOrStackItem`). La détruire les perdrait.
-constexpr int kMsgUiAction = 6;
-constexpr int kBtnCancelId = 185;
 
 // ── Traitement des métaux : les trois compétences dont on sait calculer la chance ──
 // Ce sont les `req_skill` que porte notre YAML de recettes (donc le `produce_db` du
@@ -741,7 +731,7 @@ void HideIfClass(void* win, uintptr_t expected_vtable) {
   if (!win) return;
   __try {
     if (*reinterpret_cast<uintptr_t*>(win) != expected_vtable) return;
-    *reinterpret_cast<int*>(reinterpret_cast<uintptr_t>(win) + kWndVisible) = 0;
+    *reinterpret_cast<int*>(reinterpret_cast<uintptr_t>(win) + uiwnd::kOffVisible) = 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -799,7 +789,7 @@ void CancelNativeIfClass(int window_id, uintptr_t expected_vtable) {
   void* w = uiwnd::FindWindow(window_id);
   if (!w) return;
   __try {
-    uiwnd::OnMsg(w, kMsgUiAction, kBtnCancelId);
+    uiwnd::OnMsg(w, uiwnd::kMsgUiAction, uiwnd::kActionCancel);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -1713,9 +1703,9 @@ void MakeItemWindow::HideNativeAtCreation(void* win) {
   if (!imgui_enabled_) return;
   // On ne sait pas ici QUEL id nous vaut cet appel : on teste les deux vtables,
   // ce qui est de toute façon la garde qu'il faut (§ « vérifier la classe »).
-  HideIfClass(win, kVTableMakingArrow);
-  HideIfClass(win, kVTableMakeTarget);
-  HideIfClass(win, kVTableMakeProcess);
+  HideIfClass(win, uiwnd::kUIMakingArrowListWndVTable);
+  HideIfClass(win, uiwnd::kUIMakeTargetListWndVTable);
+  HideIfClass(win, uiwnd::kUIMakeTargetProcessWndVTable);
 }
 
 bool MakeItemWindow::WantsEnterKey() const {
@@ -2122,9 +2112,9 @@ void MakeItemWindow::FlushPending() {
   // matériaux déjà posés (`Inventory_AddOrStackItem`), ce qu'aucune fermeture ne
   // fait. La 80 d'abord, pour cette raison.
   if (imgui_enabled_) {
-    CancelNativeIfClass(kWinMakeProcess, kVTableMakeProcess);
-    CancelNativeIfClass(kWinMakeTarget, kVTableMakeTarget);
-    CancelNativeIfClass(kWinMakingArrow, kVTableMakingArrow);
+    CancelNativeIfClass(uiwnd::kUIMakeTargetProcessWnd, uiwnd::kUIMakeTargetProcessWndVTable);
+    CancelNativeIfClass(uiwnd::kUIMakeTargetListWnd, uiwnd::kUIMakeTargetListWndVTable);
+    CancelNativeIfClass(uiwnd::kUIMakingArrowListWnd, uiwnd::kUIMakingArrowListWndVTable);
   }
 
   // La position n'est écrite qu'à la FERMETURE, pas à chaque frame de glissement :

@@ -24,13 +24,6 @@
 
 namespace {
 
-// ── Les natives remplacées ──────────────────────────────────────────────────
-constexpr int kWinPetInfo    = 88;   // UIPetInfoWnd
-constexpr int kWinPetMenu    = 260;  // le menu de commandes qu'elle ouvrait (0x104)
-constexpr int kWinPetEvo     = 261;  // UIPetEvolutionWnd (0x105)
-constexpr int kWinPetEggList = 90;   // UIPetEggListWnd (0x5A) — la liste d'éclosion
-constexpr int kWndVisibleFlag = 0x28;
-
 // `ZC_PETEGG_LIST` 0x01A6, à longueur VARIABLE : `[op:2][len:2][index:2] × n`.
 // C'est l'unique créateur de la fenêtre 90 (case 422 du dispatch, @0x00CA6539) et
 // son handler ne fait rien d'autre que la créer et la remplir : le remplacer ne
@@ -251,14 +244,14 @@ int PetWindow::EggItid(const rag::pet::State& pet) {
 void PetWindow::HandleNativeCreation(void* win, int window_id) {
   if (!win || !imgui_enabled_) return;
   __try {
-    *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + kWndVisibleFlag) = 0;
+    *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + uiwnd::kOffVisible) = 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 
   // 🔴 Le menu de commandes (260) et la fenêtre d'évolution (261) ne basculent
   // RIEN : ce n'étaient que des dépendances de la fiche, dont nos boutons et
   // notre panneau prennent la place. Le masquer suffit — ouvrir la fiche ici
   // rouvrirait une fenêtre que le joueur regarde déjà.
-  if (window_id == kWinPetMenu || window_id == kWinPetEvo) return;
+  if (window_id == uiwnd::kPetMenuWndId || window_id == uiwnd::kUIPetEvolutionWnd) return;
 
   // Une création survenue PENDANT un changement de map n'est pas une demande du
   // joueur : c'est l'interface qui se reconstruit. On masque, mais sans toucher
@@ -324,24 +317,27 @@ void PetWindow::OnTick() {
   // 🔴 DÉTRUIRE, pas masquer : `GameMode_PetIntimacyWarnAndOpenInfo` rouvre la 88
   // de force, et une native seulement masquée garde le clavier. Ce filet couvre
   // aussi la bascule de mode alors qu'une des deux est déjà à l'écran.
-  if (uiwnd::FindWindow(kWinPetInfo)) {
-    __try { uiwnd::CloseWindow(kWinPetInfo); } __except (EXCEPTION_EXECUTE_HANDLER) {}
+  if (uiwnd::FindWindow(uiwnd::kUIPetInfoWnd)) {
+    __try { uiwnd::CloseWindow(uiwnd::kUIPetInfoWnd); } __except (EXCEPTION_EXECUTE_HANDLER) {}
   }
-  if (uiwnd::FindWindow(kWinPetMenu)) {
-    __try { uiwnd::CloseWindow(kWinPetMenu); } __except (EXCEPTION_EXECUTE_HANDLER) {}
+  if (uiwnd::FindWindow(uiwnd::kPetMenuWndId)) {
+    __try { uiwnd::CloseWindow(uiwnd::kPetMenuWndId); } __except (EXCEPTION_EXECUTE_HANDLER) {}
   }
   // La fenêtre d'évolution (261) : notre panneau la remplace. Elle ne devrait
   // même plus naître — son unique créateur était le msg 39/471 de la fiche, qui
   // n'existe plus — mais la bascule de mode en plein milieu la laisserait à
   // l'écran, avec ses deux boutons coréens indéboguables (docs §7.4).
-  if (uiwnd::FindWindow(kWinPetEvo)) {
-    __try { uiwnd::CloseWindow(kWinPetEvo); } __except (EXCEPTION_EXECUTE_HANDLER) {}
+  if (uiwnd::FindWindow(uiwnd::kUIPetEvolutionWnd)) {
+    __try {
+      uiwnd::CloseWindow(uiwnd::kUIPetEvolutionWnd);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
   }
   // La liste d'éclosion (90) : son paquet créateur nous revient, elle ne devrait
   // donc plus naître. Le filet couvre la bascule d'interrupteur alors qu'elle est
   // déjà à l'écran — sinon elle resterait là, avec son clavier.
-  if (uiwnd::FindWindow(kWinPetEggList)) {
-    __try { uiwnd::CloseWindow(kWinPetEggList); } __except (EXCEPTION_EXECUTE_HANDLER) {}
+  if (uiwnd::FindWindow(uiwnd::kUIPetEggListWnd)) {
+    __try { uiwnd::CloseWindow(uiwnd::kUIPetEggListWnd); } __except (EXCEPTION_EXECUTE_HANDLER) {}
   }
   // ── Le pet est parti (retour à l'œuf, intimité tombée à zéro, capture) ────
   // 🔴 AUCUN paquet ne le dit. `pet_return_egg` envoie bien `ZC_CHANGESTATE_PET`

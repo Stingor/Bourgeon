@@ -50,10 +50,6 @@ namespace {
 // à 0 à la fermeture (signal FIABLE). Relire FRAIS chaque tick.
 constexpr uintptr_t kSkillWndSlot = 0x0131f718;  // mgr+0x230 : SKILL desc (classe 0x2e)
 
-// vtables attendues (valider avant de déréférencer les offsets spécifiques).
-constexpr uintptr_t kItemVTable   = 0x01032aac;  // classe 0xc
-constexpr uintptr_t kSkillVTable  = 0x01032e0c;  // classe 0x2e
-
 // Offsets communs (base UIWindow, identiques aux 2 classes).
 constexpr uintptr_t kOffWidth   = 0x14;   // int  largeur
 constexpr uintptr_t kOffHeight  = 0x18;   // int  hauteur
@@ -63,7 +59,6 @@ constexpr uintptr_t kOffHeight  = 0x18;   // int  hauteur
 // partagé 0x008b4200) mais vtable + slot manager distincts. Créée SYNCHRONEMENT
 // dans OnMsg 0x18 de 0xc (relais 0xea) => on la lit/cache dans la foulée.
 constexpr uintptr_t kCompareWndSlot = 0x0131f708;  // mgr+0x220 : COMPARE desc (id 0xea)
-constexpr uintptr_t kCompareVTable  = 0x01032c5c;  // classe 0xea
 
 // Offsets d'id, SPÉCIFIQUES à chaque classe.
 constexpr uintptr_t kItemIdStr  = 0xe4;   // (0xc/0xea) std::string id (SSO)
@@ -176,13 +171,11 @@ constexpr uintptr_t kOwnsItemById   = 0x00c6b1e0;  // Inventory_OwnsItemById
 using BookContains_t = char(__cdecl*)(int);
 using OwnsItem_t     = char(__stdcall*)(int);
 
-// ── Fenêtre LIVRE (UIBookWnd, id 0x6a) ───────────────────────────────────────
+// ── Fenêtre LIVRE (`uiwnd::kUIBookWnd`) ──────────────────────────────────────
 // Celle qu'ouvrent les boutons ci-dessus. Reproduite en ImGui (Option A : native
 // cachée, données relues). Offsets VÉRIFIÉS live (x32, « Potion Creation Guide »,
 // 2026-07-27). Le manager la range dans sa map générique (pas de slot fixe) ->
 // détection par uiwnd::FindWindow(0x6a) + contrôle de vtable.
-constexpr int       kBookWndId  = 0x6a;
-constexpr uintptr_t kBookVTable = 0x0103517c;
 constexpr int kBookTitle     = 0xbc;   // char[] INLINE : nom du livre (= titre natif)
 constexpr int kBookLineTotal = 0x120;  // nb total de lignes déjà wrappées par le client
 constexpr int kBookPageCount = 0x124;  // nb de pages
@@ -1089,7 +1082,7 @@ bool ItemIsReadableBook(uint32_t id) {
 // ── Fenêtre LIVRE : accès natif ──────────────────────────────────────────────
 // La fenêtre livre si elle est ouverte, sinon null. Contrairement aux descs, elle
 // n'a pas de slot manager dédié (FindWindow tombe sur la map générique). SEH.
-uint8_t* FindBookWindow() { return uiwnd::WndOfClass(kBookWndId, kBookVTable); }
+uint8_t* FindBookWindow() { return uiwnd::WndOfClass(uiwnd::kUIBookWnd, uiwnd::kUIBookWndVTable); }
 
 // Cache le rendu natif de la fenêtre livre sans la détruire (elle reste la source
 // des données et le destinataire des commandes de page). SEH.
@@ -1509,13 +1502,13 @@ void ItemDescWindow::HideNativeDescWindows() {
   if (!show_item_panel_) return;
   // Cache la fenêtre item (0xc) ET la fenêtre de comparaison (0xea) — cette
   // dernière est créée dans le même OnMsg 0x18, donc déjà présente ici.
-  HideDescSlot(uiwnd::kItemDescWndSlot, kItemVTable);
-  HideDescSlot(kCompareWndSlot, kCompareVTable);
+  HideDescSlot(uiwnd::kItemDescWndSlot, uiwnd::kItemDescWndIdVTable);
+  HideDescSlot(kCompareWndSlot, uiwnd::kItemCompareDescWndIdVTable);
 }
 
 void ItemDescWindow::HideNativeSkillWindow() {
   if (!kSkillWindowEnabled || !show_skill_panel_) return;
-  HideDescSlot(kSkillWndSlot, kSkillVTable);
+  HideDescSlot(kSkillWndSlot, uiwnd::kSkillDescWndIdVTable);
 }
 
 namespace {
@@ -1555,8 +1548,8 @@ void ItemDescWindow::OnTick() {
   }
 
   // ── Fenêtres ITEM (0xc) + COMPARAISON équipé (0xea) : Option A ─────────────
-  ReadItemLayoutWindow(uiwnd::kItemDescWndSlot, kItemVTable, &item_);
-  ReadItemLayoutWindow(kCompareWndSlot, kCompareVTable, &compare_);
+  ReadItemLayoutWindow(uiwnd::kItemDescWndSlot, uiwnd::kItemDescWndIdVTable, &item_);
+  ReadItemLayoutWindow(kCompareWndSlot, uiwnd::kItemCompareDescWndIdVTable, &compare_);
   // Cache le rendu natif à CHAQUE tick (filet de sécurité ; le hook OnMsg le
   // fait déjà sans flicker à l'ouverture). On garde les objets vivants pour les
   // données et on redessine en ImGui (à EndScene).
@@ -1564,7 +1557,7 @@ void ItemDescWindow::OnTick() {
 
   // ── Fenêtre SKILL (classe 0x2e) : détecte + cache le rendu natif (Option A).
   skill_ = DescWindow{};
-  if (uint8_t* wnd = ReadValidWnd(kSkillWndSlot, kSkillVTable)) {
+  if (uint8_t* wnd = ReadValidWnd(kSkillWndSlot, uiwnd::kSkillDescWndIdVTable)) {
     __try {
       const int id = *reinterpret_cast<int*>(wnd + kSkillIdInt);
       if (id > 0) {
@@ -1580,7 +1573,7 @@ void ItemDescWindow::OnTick() {
   }
   // Repro skill désactivée (kSkillWindowEnabled) : on NE cache PAS le natif.
   if (kSkillWindowEnabled && show_skill_panel_ && skill_.open)
-    HideDescSlot(kSkillWndSlot, kSkillVTable);
+    HideDescSlot(kSkillWndSlot, uiwnd::kSkillDescWndIdVTable);
 
   // ── Fenêtre LIVRE (0x6a), ouverte par les boutons « Lire » / « Lecture auto »
   // ⚠️ En mode LECTURE AUTO le natif cache LUI-MÊME la fenêtre (OnMsg case 93 :
@@ -2793,10 +2786,10 @@ static void EmitDescBugButton(uint32_t id, const char* name, bool is_skill) {
 // natif est relu FRAIS + validé ici (indépendant de OnTick). SEH sur les
 // lectures/appels natifs ; le rendu ImGui reste hors __try (objets C++).
 void ItemDescWindow::RenderItemWindow() {
-  uint8_t* iwnd = ReadValidWnd(uiwnd::kItemDescWndSlot, kItemVTable);
+  uint8_t* iwnd = ReadValidWnd(uiwnd::kItemDescWndSlot, uiwnd::kItemDescWndIdVTable);
   if (!iwnd) return;
   // Fenêtre de comparaison (équipé) éventuelle (id 0xea).
-  uint8_t* cwnd = ReadValidWnd(kCompareWndSlot, kCompareVTable);
+  uint8_t* cwnd = ReadValidWnd(kCompareWndSlot, uiwnd::kItemCompareDescWndIdVTable);
 
   // Extraction SEH (POD only), puis résolution icône hors SEH.
   ItemExtract ie{}; ExtractItem(iwnd, &ie);
@@ -3457,7 +3450,7 @@ void ItemDescWindow::RenderItemWindow() {
 // Reproduit la fenêtre de description de SKILL (classe 0x2e) en ImGui : nom+SP
 // (this+0xec) + description via Lua GetSkillDescript (markup rendu comme l'item).
 void ItemDescWindow::RenderSkillWindow() {
-  uint8_t* wnd = ReadValidWnd(kSkillWndSlot, kSkillVTable);
+  uint8_t* wnd = ReadValidWnd(kSkillWndSlot, uiwnd::kSkillDescWndIdVTable);
   if (!wnd) return;
 
   // Données mises en cache par id (évite un appel Lua par frame).

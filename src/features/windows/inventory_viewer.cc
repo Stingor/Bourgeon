@@ -135,7 +135,6 @@ constexpr uint16_t kOpFavorite = 0x0907;
 // source de vérité — on le relit plutôt que d'en tenir une copie.
 constexpr uint16_t kOpCompList = 0x017B;  // ZC_ITEMCOMPOSITION_LIST (variable)
 constexpr int kOffModeCardIndex = 0x45c;  // CMode+0x45c : index inv. de la carte
-constexpr int kWinCardInsert = 0x4A;      // filet de sécurité : destruction en OnTick
 
 // Où la fenêtre apparaît la première fois (le natif donnait sa propre position ;
 // il n'y a plus de natif à interroger). Ensuite ImGui la garde où on la pose.
@@ -909,7 +908,8 @@ void InventoryViewer::OnTick() {
   // Popup de sertissage : son unique créateur natif ne tourne plus, mais s'il en
   // naissait un (cf. HandleCardInsertCreation) on le DÉTRUIT — masqué, il garderait
   // le clavier et validerait son bouton OK sur Entrée.
-  if (uiwnd::SafeFindWindow(kWinCardInsert)) uiwnd::SafeCloseWindow(kWinCardInsert);
+  if (uiwnd::SafeFindWindow(uiwnd::kCardInsertWndId))
+    uiwnd::SafeCloseWindow(uiwnd::kCardInsertWndId);
 }
 
 // (Plus de OnMouseDown / HandleNativeDrop : ils accueillaient un glisser NATIF

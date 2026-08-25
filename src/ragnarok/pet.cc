@@ -38,10 +38,13 @@ constexpr uintptr_t kAutoFeed    = 0x015fb99c;  // écrit par le handler de ZC 0
 // (0x00CBAB6D, 0x00CBACAA). Ne pas propager (docs §1).
 
 // La rédaction de courrier RODEX, testée telle quelle par le msg 39 / id 467.
-// La fenêtre que le callback de confirmation (msg 6 / id 488) refuse de doubler.
-// Le client la cherche par id, sans jamais nommer la classe : on garde son
-// numéro brut plutôt qu'une étiquette inventée.
-constexpr int kFeedBlockerWndId = 10011;
+// La fenêtre que le callback de confirmation (msg 6 / id 488) refuse de doubler,
+// c'est l'ÉCHANGE : `uiwnd::kCUIExchangeUI`.
+//
+// 🔴 Ce commentaire disait « le client la cherche par id, sans jamais nommer la
+// classe ». C'était faux, et seul l'annuaire pouvait le montrer : `trade_window`
+// avait RE'é 0x271b en live des mois plus tôt. Deux fichiers savaient chacun une
+// moitié ; le tri par VALEUR les a mis à la même ligne.
 
 // ── Le manager d'évolution — `CPetEvolutionMgr` ─────────────────────────────
 // Instance globale, relevée dans `UIPetInfoWnd_OnCreate` @0x00879b00
@@ -364,7 +367,7 @@ bool MailWriteOpen() {
 
 bool FeedBlockerWindowOpen() {
   __try {
-    return uiwnd::FindWindow(kFeedBlockerWndId) != nullptr;
+    return uiwnd::FindWindow(uiwnd::kCUIExchangeUI) != nullptr;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
 

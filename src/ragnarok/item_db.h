@@ -99,9 +99,7 @@ constexpr uintptr_t kSlotCountAddr = 0x006a4c10;
 //
 // Sur la fenêtre 0x2e, +0x104 porte l'id actuellement affiché : le natif s'en
 // sert pour basculer (re-cliquer le même skill referme la fenêtre).
-constexpr int kItemDescWndId   = 0x0c;
 constexpr int kItemDescMsgSet  = 0x18;
-constexpr int kSkillDescWndId  = 0x2e;
 constexpr int kSkillDescMsgSet = 0x3d;
 constexpr int kSkillDescShownId = 0x104;
 
@@ -117,11 +115,11 @@ constexpr int kSkillDescShownId = 0x104;
 inline void OpenSkillDesc(int skill_id, int mx, int my) {
   if (skill_id <= 0) return;
   __try {
-    void* wnd = uiwnd::MakeWindow(kSkillDescWndId);
+    void* wnd = uiwnd::MakeWindow(uiwnd::kSkillDescWndId);
     if (!wnd) return;
     if (*reinterpret_cast<int*>(reinterpret_cast<char*>(wnd) +
                                 kSkillDescShownId) == skill_id) {
-      uiwnd::CloseWindow(kSkillDescWndId);
+      uiwnd::CloseWindow(uiwnd::kSkillDescWndId);
       return;
     }
     uiwnd::OnMsg(wnd, kSkillDescMsgSet, skill_id, 0, 0, 0);

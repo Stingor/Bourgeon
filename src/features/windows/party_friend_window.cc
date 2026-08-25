@@ -27,8 +27,6 @@ namespace {
 // natif, mais il reste à 0 pour un membre qui a REJOINT un groupe — inutilisable
 // pour savoir si l'on est en groupe. Voir DrawPartyTab.)
 
-constexpr int kWinMessengerGroup = 0x45;
-
 // ── Les commandes du client ──────────────────────────────────────────────────
 //
 // `CMode::SendMsg(cmd, p2..p5)` sur le mode de zone courant, vtbl+0x18. Rend
@@ -379,7 +377,7 @@ void PartyFriendWindow::FlushPending() {
 // ── Bascule natif / ImGui ────────────────────────────────────────────────────
 
 void PartyFriendWindow::KillNative(bool adopt_open_state) {
-  if (!uiwnd::FindWindow(kWinMessengerGroup)) return;
+  if (!uiwnd::FindWindow(uiwnd::kMessengerGroupWndId)) return;
   // Sa présence PROUVE que le joueur avait la fenêtre ouverte : on adopte l'état
   // avant de détruire, sinon activer le mode moderne la ferait disparaître.
   if (adopt_open_state && !open_) {
@@ -391,7 +389,7 @@ void PartyFriendWindow::KillNative(bool adopt_open_state) {
   // demande suivante la fermerait sans repasser par MakeWindow — un appui sur
   // deux avalé — et elle garderait le clavier.
   __try {
-    uiwnd::CloseWindow(kWinMessengerGroup);
+    uiwnd::CloseWindow(uiwnd::kMessengerGroupWndId);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 

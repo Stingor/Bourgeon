@@ -604,7 +604,7 @@ void DrawTooltip(uint32_t id, const uint32_t* cards, int card_count,
 void OpenDescFromInfo(const void* info, int mx, int my) {
   if (!info) return;
   __try {
-    void* dwnd = uiwnd::MakeWindow(itemdb::kItemDescWndId);
+    void* dwnd = uiwnd::MakeWindow(uiwnd::kItemDescWndId);
     if (!dwnd) return;
     // OnMsg 0x18 COPIE l'info dans wnd+0xb8 : on ne cède rien, et l'objet du jeu
     // n'est pas modifié. C'est ce qui rend l'appel sûr sur un nœud vivant.
@@ -641,7 +641,7 @@ void OpenDescById(uint32_t id, uint16_t view, uint32_t location, int mx, int my,
     void* cache = *reinterpret_cast<void**>(itemdb::kEnsureCachePtr);
     if (cache)
       reinterpret_cast<EnsureLoaded_t>(itemdb::kEnsureLoadedAddr)(cache, static_cast<int>(id));
-    void* dwnd = uiwnd::MakeWindow(itemdb::kItemDescWndId);
+    void* dwnd = uiwnd::MakeWindow(uiwnd::kItemDescWndId);
     if (dwnd) {
       uiwnd::OnMsg(dwnd, itemdb::kItemDescMsgSet,
                    static_cast<int>(reinterpret_cast<uintptr_t>(info)), 0, 0, 0);
@@ -658,7 +658,7 @@ void OpenDescFromChatLink(const ChatLink& link, int mx, int my) {
   __try {
     uint8_t info[kInfoSize];
     FabricateFromLink(info, link);
-    void* dwnd = uiwnd::MakeWindow(itemdb::kItemDescWndId);
+    void* dwnd = uiwnd::MakeWindow(uiwnd::kItemDescWndId);
     if (dwnd) {
       uiwnd::OnMsg(dwnd, itemdb::kItemDescMsgSet,
                    static_cast<int>(reinterpret_cast<uintptr_t>(info)), 0, 0, 0);

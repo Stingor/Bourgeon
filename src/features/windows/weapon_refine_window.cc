@@ -35,11 +35,9 @@ using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 // que ce qui sert, avec le § qui l'explique.
 namespace {
 
-// Fenêtre native UIWeaponRefineWnd (§3). On la retrouve par le GESTIONNAIRE puis
-// on vérifie la vtable : un id ne garantit pas la classe si un portage
-// renumérote les fenêtres.
-constexpr int       kWinRefine    = 111;         // 0x6F
-constexpr uintptr_t kRefineVTable = 0x0103ee00;
+// La native (§3) se retrouve par le GESTIONNAIRE, puis on contrôle sa VTABLE : un
+// id ne garantit pas la classe si un portage renumérote les fenêtres. Les deux
+// valeurs sont au foyer, appariées.
 
 // Piloter les BOUTONS de la fenêtre native : `OnMsg(6, id)` est un clic réel.
 // C'est le `case 6` de son OnMsg (`0x0096AAB0`) qui les reçoit, et les deux
@@ -48,8 +46,6 @@ constexpr uintptr_t kRefineVTable = 0x0103ee00;
 //   185 = Annuler -> SendMsg(182, -1) = le désarmement, puis fermeture
 // (Ce sont aussi les valeurs de `+0x8C` / `+0x90`, les boutons « par défaut » que
 // le gestionnaire déclenche sur Entrée / Échap.)
-constexpr int kMsgUiAction = 6;
-constexpr int kBtnCancelId = 185;
 
 // CMode::SendMsg : le dispatcher du mode actif, vtable+0x18. La commande 182
 // envoie CZ_REQ_WEAPONREFINE (§4). On rejoue ce chemin natif plutôt que de
@@ -280,7 +276,10 @@ int CountRealCards(const uint32_t card[4], int slots) {
 
 // La fenêtre native de refine, ou nullptr. Le client DÉTRUIT ses fenêtres à
 // la fermeture : non-nul == « ouverte en ce moment ».
-uint8_t* RefineWnd() { return uiwnd::WndOfClass(kWinRefine, kRefineVTable); }
+uint8_t* RefineWnd() {
+  return uiwnd::WndOfClass(uiwnd::kUIWeaponRefineWnd,
+                           uiwnd::kUIWeaponRefineWndVTable);
+}
 
 // Pilote le bouton Annuler de la fenêtre native de refine (id 185).
 //
@@ -291,7 +290,7 @@ void CancelNativeRefine() {
   uint8_t* wnd = RefineWnd();  // vérifie déjà la vtable
   if (!wnd) return;
   __try {
-    uiwnd::OnMsg(wnd, kMsgUiAction, kBtnCancelId);
+    uiwnd::OnMsg(wnd, uiwnd::kMsgUiAction, uiwnd::kActionCancel);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -1134,7 +1133,7 @@ void WeaponRefineWindow::FlushPending() {
       // serveur, tel quel, puis fermeture de la fenêtre (le natif enchaîne les
       // deux dans son OnMsg case 6).
       rag::RawModeSendMsgSafe(kCmdRefine, idx);
-      uiwnd::CloseWindow(kWinRefine);
+      uiwnd::CloseWindow(uiwnd::kUIWeaponRefineWnd);
       awaiting_result_ = true;
       awaiting_since_  = GetTickCount();
       // 🔴 La liste est MORTE, ici et maintenant. `clif_parse_WeaponRefine`
@@ -1199,7 +1198,7 @@ void WeaponRefineWindow::FlushPending() {
       }
       // Filet du basculement d'interrupteur : si une native traîne (elle n'est
       // créée que quand le plugin était coupé au moment du paquet), on la referme.
-      if (RefineWnd()) uiwnd::CloseWindow(kWinRefine);
+      if (RefineWnd()) uiwnd::CloseWindow(uiwnd::kUIWeaponRefineWnd);
       break;
 
     case kActRecast: {

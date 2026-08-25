@@ -25,97 +25,177 @@ namespace uiwnd {
 constexpr uintptr_t kUIWindowMgrAddr = 0x0131f4e8;  // g_UIWindowMgr (l'OBJET, pas un pointeur vers lui)
 constexpr uintptr_t kFindWindowAddr  = 0x00a47b90;  // UIWindowMgr::FindWindow(id) __thiscall
 
-// ── Identifiants de fenêtres natives ────────────────────────────────────────
+// ── L'ANNUAIRE DES FENÊTRES NATIVES ─────────────────────────────────────────
 //
-// LE NOM DE LA CONSTANTE EST LE NOM DE CLASSE DU CLIENT. Chercher `UIEquipWnd`
-// dans le binaire et dans nos sources rend alors la MÊME chaîne : le nom cesse
-// d'être une convention de plus, il devient la vérité terrain. Deux exceptions,
-// et elles informent — `kCUIGameSettingsUI` parce que le client lui-même ne suit
-// pas `UI…Wnd` pour cette classe, et `kQuestJournalWndId` parce qu'AUCUN nom de
-// classe n'a été relevé pour lui.
+// TRIÉ PAR VALEUR. Un annuaire se range par sa CLÉ, et ici la clé est le numéro :
+// on cherche presque toujours DEPUIS un identifiant — un log, un `+0x2c` lu en
+// mémoire, un cas de `MakeWindow` — et presque jamais depuis un rôle. Le tri fait
+// aussi deux choses qu'on n'avait pas : il rend une collision impossible à rater,
+// et il révèle le NUMÉROTAGE DU CLIENT. Les familles 22-25 (boutique NPC), 41-45
+// (échoppe de vente), 174-179 (échoppe d'achat) étaient invisibles tant que ces
+// constantes vivaient chacune dans son fichier.
 //
-// 🔴 CETTE SECTION EXISTE PARCE QU'AUCUNE RECHERCHE PAR NOM NE POUVAIT LA
-// CONSTITUER. Les mêmes fenêtres étaient déclarées sous QUATRE conventions —
-// `kWin*` chez le plugin propriétaire, `kWnd*` dans la table des raccourcis,
-// `kXxxId` dans les patches, `kNativeWndMain` dans la navigation — et tantôt en
-// hexadécimal, tantôt en DÉCIMAL (`kWinInventory = 8` contre
-// `kWndInventory = 0x08`). Une même fenêtre portait jusqu'à TROIS noms dans
-// trois fichiers. Il a fallu chercher la VALEUR, normalisée, pour les rapprocher.
+// 🔴 CETTE LISTE EXISTE PARCE QU'AUCUNE RECHERCHE PAR NOM NE POUVAIT LA
+// CONSTITUER. Les mêmes fenêtres étaient déclarées sous cinq conventions —
+// `kWin*`, `kWnd*`, `kNative*Wnd*`, `kXxxId`, `kUI*` — et tantôt en hexadécimal,
+// tantôt en DÉCIMAL. Une même fenêtre a porté jusqu'à TROIS noms dans trois
+// fichiers. Il a fallu chercher la VALEUR, normalisée, pour les rapprocher.
+//
+// ⚠ LE NOM DE CLASSE NE SUFFIT PAS COMME NOM DE CONSTANTE. `UIMerchantItemPurchaseWnd`
+// (vtable 0x0103D2B0) sert À LA FOIS 44 et 178 ; `UIMerchantMirrorItemWnd` sert 42
+// et 179. La règle « k + nom de classe » vaut donc quand la classe désigne UNE
+// seule fenêtre ; elle cède à un nom de RÔLE quand elle en désigne plusieurs, la
+// classe restant en commentaire. Et quand AUCUNE classe n'a été relevée, le nom
+// reste descriptif et le DIT — inventer un nom là où le client n'en donne pas
+// serait refaire l'erreur de « UIWorldViewWnd », un nom qui n'existait nulle part.
 //
 // ⚠ Ce que cette liste EST : les fenêtres que nos plugins désignent. Ce qu'elle
-// n'est PAS : tous les identifiants du client. Certains apparaissent comme
+// n'est PAS : tous les identifiants du client. Certains n'apparaissent que comme
 // LITTÉRAUX dans des tables (celle de `window_pos_tweaks`), hors de portée de
 // toute recherche de `constexpr`.
 //
 // ⚠ La VTABLE accompagne l'identifiant quand elle est connue : `WndOfClass`
 // demande les deux, et les séparer invite à apparier de travers.
 
-constexpr int kUIInventoryWnd    = 0x08;
-constexpr int kUIEquipWnd        = 0x0a;   // vtable 0x01022f68
-constexpr int kUIStatusWnd       = 0x0b;   // vtable 0x010329d4
-constexpr int kUIItemStoreWnd    = 0x21;
-constexpr int kUINewSkillListWnd = 0x25;   // le Grimoire
-constexpr int kUIAchievementWnd  = 0x10e;
-
-// 🔴 Classe INCONNUE — le journal de quêtes est le seul de cette liste dont
-// aucun relevé ne donne le nom. Le nom descriptif marque ce qui reste à mesurer.
-constexpr int kQuestJournalWndId = 0x141;
-
-// Le chariot. Ouvert par son propre viewer, mais aussi lu par l'inventaire (qui
-// y dépose) et par la feuille de personnage (qui l'ouvre depuis le pantin).
-constexpr int kUICartWnd = 0x28;  // vtable 0x0103d538
-
-// La carte du monde, plein écran. vtable 0x01038140, ctor 0x008d7910, objet
-// 0x228, cas 140 de MakeWindow @0x00a3f15d — relevé dans docs/minimap_re.md §4.
-//
-// ⚠ Cette constante s'appelait `kWorldMapWndId` et son commentaire annonçait
-// « UIWorldViewWnd », un nom qui n'apparaissait NULLE PART ailleurs : ni doc, ni
-// relevé, ni seconde source. Le fichier de la minimap portait le même
-// identifiant sous le bon nom, mais en DÉCIMAL (140) — les deux étaient hors de
-// portée l'un de l'autre.
-constexpr int kUIRoMapWnd = 0x8c;
-
-// 🔴 IDENTIFIANT MESURÉ, APRÈS QU'UNE DÉDUCTION L'AIT MIS À 156 — qui ouvre en
-// réalité les réglages de raccourcis, plus bas. La bonne méthode :
-// `CNavigation_SearchRoute` publie la fenêtre ouverte dans `0x0136E57C` et,
-// quand elle manque, ouvre `0xCB` ; lecture en jeu de ce global pendant que la
-// fenêtre était affichée — `+0x2C` (l'id) = 0xCB, vtable `0x00FD95EC`. Un relevé
-// RTTI antérieur annonçait 0x9C pour « UINaviSearchWnd » : il ne vaut pas une
-// mesure.
-constexpr int kUINavigationV4Wnd = 0xcb;
-
-// RODEX : la LISTE et la LECTURE, avec leurs vtables.
-constexpr int       kUIRodexWnd            = 0x107;
-constexpr uintptr_t kUIRodexWndVTable      = 0x01022170;  // vérifiée live
-constexpr int       kUIRodexReadWnd        = 0x109;
+constexpr int kChatWndId                   = 1;     // 0x1     classe non relevée
+constexpr int kCharServerWndId             = 2;     // 0x2     « Select Service » : choix du char-server
+constexpr int kUIInventoryWnd              = 8;     // 0x8
+constexpr int kUIEquipWnd                  = 10;    // 0xa
+constexpr uintptr_t kUIEquipWndVTable      = 0x01022f68;
+constexpr int kUIStatusWnd                 = 11;    // 0xb
+constexpr uintptr_t kUIStatusWndVTable     = 0x010329d4;
+constexpr int kItemDescWndId               = 12;    // 0xc     description d'OBJET ; msg 0x18, p2 = &ItemSkillInfo
+constexpr uintptr_t kItemDescWndIdVTable   = 0x01032aac;
+constexpr int kUIMinimapZoomWnd            = 14;    // 0xe     le radar ; docs/minimap_re.md §1
+constexpr int kNpcSayWndId                 = 16;    // 0x10    dialogue NPC
+constexpr int kNpcMenuWndId                = 17;    // 0x11    menu de choix NPC
+constexpr int kUIItemShopWnd               = 22;    // 0x16    le CADRE, achat ET vente
+constexpr uintptr_t kUIItemShopWndVTable   = 0x0103cbf0;
+constexpr int kUIItemPurchaseWnd           = 23;    // 0x17    panneau ACHAT
+constexpr uintptr_t kUIItemPurchaseWndVTable = 0x0103cda0;
+constexpr int kUIItemSellWnd               = 24;    // 0x18    panneau VENTE
+constexpr uintptr_t kUIItemSellWndVTable   = 0x0103ce78;
+constexpr int kUIChooseSellBuyWnd          = 25;    // 0x19    « Please select a Deal Type »
+constexpr uintptr_t kUIChooseSellBuyWndVTable = 0x010335a4;
+constexpr int kUIChatRoomMakeWnd           = 27;    // 0x1b    création de salon
+constexpr int kChatRoomWndId               = 28;    // 0x1c    la salle elle-même ; classe non relevée
+constexpr int kChatRoomPasswordWndId       = 29;    // 0x1d    « Veuillez saisir le mot de passe »
+constexpr int kChatRoomChangeWndId         = 30;    // 0x1e    « Réglages » du salon, encore NATIVE
+constexpr int kTradeAcceptPopupWndId       = 32;    // 0x20    popup de requête d'échange (best-effort)
+constexpr uintptr_t kTradeAcceptPopupWndIdVTable = 0x01033754;
+constexpr int kUIItemStoreWnd              = 33;    // 0x21    le storage
+constexpr int kUINewSkillListWnd           = 37;    // 0x25    le Grimoire
+constexpr int kUICartWnd                   = 40;    // 0x28
+constexpr uintptr_t kUICartWndVTable       = 0x0103d538;
+constexpr int kUIMerchantShopMakeWnd       = 41;    // 0x29    « Opening a stall » : composition
+constexpr int kVendingMirrorWndId          = 42;    // 0x2a    UIMerchantMirrorItemWnd — MÊME CLASSE que 179
+constexpr int kUIMerchantItemShopWnd       = 43;    // 0x2b    l'offre du vendeur, côté ACHETEUR
+constexpr uintptr_t kUIMerchantItemShopWndVTable = 0x0103d028;
+constexpr int kVendorBasketWndId           = 44;    // 0x2c    UIMerchantItemPurchaseWnd — MÊME CLASSE que 178
+constexpr uintptr_t kVendorBasketWndIdVTable = 0x0103d2b0;
+constexpr int kUIMerchantItemMyShopWnd     = 45;    // 0x2d    la vue VENDEUR de sa propre échoppe
+constexpr uintptr_t kUIMerchantItemMyShopWndVTable = 0x0103d100;
+constexpr int kSkillDescWndId              = 46;    // 0x2e    description de SKILL ; msg 0x3d, p2 = id BRUT
+constexpr uintptr_t kSkillDescWndIdVTable  = 0x01032e0c;
+constexpr int kUIItemParamChangeDisplayWnd = 50;    // 0x32    comparateur ATK/DEF ; id FIXE (cas 50)
+constexpr uintptr_t kUIItemParamChangeDisplayWndVTable = 0x010323ec;
+constexpr int kNpcEditNumWndId             = 56;    // 0x38    saisie d'un NOMBRE
+constexpr int kUIGuildWnd                  = 59;    // 0x3b    le conteneur à onglets
+constexpr int kUIGuildPanelFirst           = 60;    // 0x3c    0x3c + rang : TotalInfo, MemberManage, …
+constexpr int kUIGuildPanelLast            = 66;    // 0x42    … PositionManage, Skill, AllyGuild, InfoPopup, Banished
+constexpr int kMessengerGroupWndId         = 69;    // 0x45    classe non relevée
+constexpr int kCardInsertWndId             = 74;    // 0x4a    classe non relevée
+constexpr int kUIMakeTargetListWnd         = 79;    // 0x4f
+constexpr uintptr_t kUIMakeTargetListWndVTable = 0x0103ec50;
+constexpr int kUIMakeTargetProcessWnd      = 80;    // 0x50    reste NATIVE : on ne fait que la déclencher
+constexpr uintptr_t kUIMakeTargetProcessWndVTable = 0x0103eed8;
+constexpr int kUIEmotionWnd                = 86;    // 0x56    « Shortcut List » (Alt+M) — ni l'id ni le nom ne disent « macros »
+constexpr uintptr_t kUIEmotionWndVTable    = 0x0104b070;
+constexpr int kUIPetInfoWnd                = 88;    // 0x58
+constexpr int kUIPetEggListWnd             = 90;    // 0x5a    la liste d'éclosion
+constexpr int kUIMakingArrowListWnd        = 94;    // 0x5e    « LIST »
+constexpr uintptr_t kUIMakingArrowListWndVTable = 0x010345ac;
+constexpr int kNpcEditStrWndId             = 100;   // 0x64    saisie d'une CHAÎNE
+constexpr int kUIBookWnd                   = 106;   // 0x6a    le LIVRE ouvert par les boutons de recette
+constexpr uintptr_t kUIBookWndVTable       = 0x0103517c;
+constexpr int kUIWeaponRefineWnd           = 111;   // 0x6f
+constexpr uintptr_t kUIWeaponRefineWndVTable = 0x0103ee00;
+constexpr int kUIHomunInfoWnd              = 113;   // 0x71    fiche d'état (Alt+R) ; cas 113 teste g_Homun_Class != -1
+constexpr int kHomunSkillWndId             = 114;   // 0x72    UISkillListWnd en MODE homoncule : une classe partagée, donc un nom de rôle
+constexpr int kChatLogOptionWndId          = 132;   // 0x84    options du journal de chat
+constexpr int kUIRoMapWnd                  = 140;   // 0x8c    la carte du monde, plein écran
+constexpr uintptr_t kUIRoMapWndVTable      = 0x01038140;
+constexpr int kUIEscOptionWnd              = 155;   // 0x9b    le menu Échap ; objet 0xD8
+constexpr uintptr_t kUIEscOptionWndVTable  = 0x010384a0;
+constexpr int kUIHotKeyWnd                 = 156;   // 0x9c    objet 0x120, cache mgr+0x404
+constexpr uintptr_t kUIHotKeyWndVTable     = 0x010383c8;
+constexpr int kEscAlsoClosedAWndId         = 164;   // 0xa4    fermée PAR le natif au « Character Select » ; pour le REPLI
+constexpr int kBuyingStoreWndId            = 174;   // 0xae    « Buying Store Window »
+constexpr int kBuyingMirrorWndId           = 175;   // 0xaf    « Available items: »
+constexpr int kMyShopBuyingWndId           = 176;   // 0xb0    échoppe d'ACHAT, vue vendeur
+constexpr int kBsWantedWndId               = 177;   // 0xb1    UIMerchantItemShopWnd — MÊME CLASSE que 43
+constexpr uintptr_t kBsWantedWndIdVTable   = 0x0103d028;
+constexpr int kBsSellListWndId             = 178;   // 0xb2    UIMerchantItemPurchaseWnd — MÊME CLASSE que 44
+constexpr uintptr_t kBsSellListWndIdVTable = 0x0103d2b0;
+constexpr int kBsMirrorWndId               = 179;   // 0xb3    UIMerchantMirrorItemWnd — MÊME CLASSE que 42
+constexpr uintptr_t kBsMirrorWndIdVTable   = 0x0103d610;
+constexpr int kUInCash_CallWnd             = 190;   // 0xbe    le BOUTON cash shop de la minimap ; 43x43, coin haut-droit
+constexpr uintptr_t kUInCash_CallWndVTable = 0x010349e4;
+constexpr int kUIMakeCharWnd               = 200;   // 0xc8
+constexpr int kUINavigationV4Wnd           = 203;   // 0xcb    la principale
+constexpr uintptr_t kUINavigationV4WndVTable = 0x00fd95ec;
+constexpr int kGuildNoneWndId              = 212;   // 0xd4    demandée quand on n'a PAS de guilde
+constexpr int kNpcSay2WndId                = 226;   // 0xe2    second dialogue NPC ; classe non relevée
+constexpr int kUINavigationHelpWnd         = 229;   // 0xe5
+constexpr int kItemCompareDescWndId        = 234;   // 0xea    2e instance parallèle à 12 : MÊME layout, vtable et slot distincts
+constexpr uintptr_t kItemCompareDescWndIdVTable = 0x01032c5c;
+constexpr int kUIMerchantItemLogWnd        = 257;   // 0x101   « Item Sell History », côté VENTE
+constexpr uintptr_t kUIMerchantItemLogWndVTable = 0x0103eb50;
+constexpr int kSellLogBuyingWndId          = 258;   // 0x102   le même journal, côté échoppe d'ACHAT
+constexpr int kPetMenuWndId                = 260;   // 0x104   le menu de commandes qu'ouvrait la fiche du familier
+constexpr int kUIPetEvolutionWnd           = 261;   // 0x105
+constexpr int kUIRodexWnd                  = 263;   // 0x107   la LISTE
+constexpr uintptr_t kUIRodexWndVTable      = 0x01022170;
+constexpr int kUIMailWriteWnd              = 264;   // 0x108   la RÉDACTION RODEX — la seule qu'il ne faut PAS détruire
+constexpr uintptr_t kUIMailWriteWndVTable  = 0x01021b30;
+constexpr int kUIRodexReadWnd              = 265;   // 0x109   la LECTURE
 constexpr uintptr_t kUIRodexReadWndVTable  = 0x01021fbc;
+constexpr int kEscAlsoClosedBWndId         = 269;   // 0x10d   fermée PAR le natif au « Character Select » ; pour le REPLI
+constexpr int kUIAchievementWnd            = 270;   // 0x10e
+constexpr int kUIBank_NewWnd               = 275;   // 0x113
+constexpr uintptr_t kUIBank_NewWndVTable   = 0x01030fd4;
+constexpr int kUINewSelectCharWnd          = 277;   // 0x115
+constexpr int kUINewMakeCharWnd            = 278;   // 0x116   ⚠ PAS `kUIMakeCharWnd` (200) : deux fenêtres, un « New » d'écart
+constexpr int kUIMiniPartyWnd              = 301;   // 0x12d   le conteneur du HUD de groupe
+constexpr int kUINavigationroadiconWnd     = 306;   // 0x132   sic : la casse est celle du client
+constexpr int kMenuIconWndId               = 307;   // 0x133   la grille d'icônes ; classe non relevée
+constexpr int kUINavigationRuideWnd        = 314;   // 0x13a   sic
+constexpr int kUICashShopWnd               = 318;   // 0x13e
+constexpr uintptr_t kUICashShopWndVTable   = 0x0101ca18;
+constexpr int kQuestJournalWndId           = 321;   // 0x141   classe INCONNUE — le seul dont aucun relevé ne donne le nom
+constexpr int kCUIExchangeUI               = 10011; // 0x271b  l'ÉCHANGE ; famille « CUI », comme 10014
+constexpr uintptr_t kCUIExchangeUIVTable   = 0x010457d8;
+constexpr int kCUIGameSettingsUI           = 10014; // 0x271e  le client ne suit pas `UI…Wnd` pour cette classe ; objet 0x100
+constexpr uintptr_t kCUIGameSettingsUIVTable = 0x01047d7c;
 
-// « Shortcut List » (Alt+M) — ni l'identifiant ni le nom de classe ne disent
-// « macros ». vtable 0x0104B070, objet 0x10C, cache mgr+0x380.
+// ── Comment la famille 22-25 / 50 a été PROUVÉE ─────────────────────────────
+// 🔴 CARTE REFAITE le 2026-08-01 : les quatre étiquettes précédentes étaient
+// FAUSSES, décalées d'un cran, et l'une d'elles a failli faire supprimer une
+// purge utile. Chaque ligne a DEUX preuves — la classe vient du ctor appelé par
+// le cas correspondant de `UIWindowMgr_MakeWindow`, la présence vient d'une
+// marche de la std::map du gestionnaire sur une boutique OUVERTE, dans les DEUX
+// onglets. C'est le patron à reprendre pour toute entrée qu'on voudra ajouter.
 //
-// 🔴 IDENTIFIANT REMONTÉ, PAS DEVINÉ. Le client fabrique ses fenêtres par une
-// table à deux étages : `0x00A42CA8[id]` donne un numéro de cas, et
-// `0x00A42904[cas]` l'adresse du bloc qui construit la fenêtre. En partant du
-// bloc qui installe la vtable portant `EmotionHotkey_SaveFromEditBoxes` — les
-// champs de saisie des macros — on retombe sur l'id 86. C'est aussi celui
-// qu'ouvre la commande de raccourci 114 dans
-// `UIWindowMgr_DispatchHotkeyBehavior`, ce qui le confirme par un second chemin.
+//   id    classe                       ctor        vtable      vu à l'écran
+//   0x16  UIItemShopWnd                0x00934850  0x0103cbf0  achat ET vente
+//   0x17  UIItemPurchaseWnd            0x00934630  0x0103cda0  achat seulement
+//   0x18  UIItemSellWnd                0x00934730  0x0103ce78  vente seulement
+//   0x19  UIChooseSellBuyWnd           0x0088cd60  0x010335a4  toujours
+//   0x32  UIItemParamChangeDisplayWnd  0x0088dea0  0x010323ec  achat + équipement
 //
-// ⚠ NE PAS confondre avec `UIMacroRegisterWnd` (id 0x11E), qu'AUCUN raccourci
-// n'ouvre : c'est une autre fenêtre, malgré son nom.
-constexpr int kUIEmotionWnd = 86;
-
-// Les deux écrans que le menu Échap ouvre, et qui ont chacun leur plugin.
-constexpr int kUIHotKeyWnd       = 156;     // vt 0x010383C8, objet 0x120, cache mgr+0x404
-constexpr int kCUIGameSettingsUI = 0x271e;  // vt 0x01047D7C, objet 0x100
-
-// ── Écran de personnages ─────────────────────────────────────────────────────
-// ⚠ `kUIMakeCharWnd` et `kUINewMakeCharWnd` sont DEUX fenêtres distinctes dont
-// les noms ne diffèrent que par « New ». Côte à côte, la confusion est visible ;
-// dans deux fichiers, elle est invitée.
-constexpr int kUIMakeCharWnd      = 0xc8;   // 200
-constexpr int kUINewSelectCharWnd = 0x115;  // 277
-constexpr int kUINewMakeCharWnd   = 0x116;  // 278
+// 0x16 est le CADRE ; le client échange le panneau intérieur — 0x17 en achat,
+// 0x18 en vente. D'où la nécessité de purger les DEUX : celui qui n'est pas à
+// l'écran reste vivant.
 
 // L'objet manager lui-même. Pour les sites qui lisent un de ses slots dédiés
 // (+0x408 = fenêtre d'options ESC, +0x1dc = BasicInfo, +0x508 = compteur
@@ -267,6 +347,24 @@ inline Fn Vf(void* self, int byte_offset) {
 // DEUXIÈME. Le premier vaut 0 sur les 18 sites d'appel du projet et son rôle
 // n'est pas établi — il est donc exposé en dernier sous le nom `arg0` plutôt
 // que masqué : le jour où l'un des ~63 OnMsg en demande un autre, il est là.
+// ── Vocabulaire du OnMsg de contrôle ─────────────────────────────────────────
+// Fermer une fenêtre native proprement, c'est rejouer le chemin de SON bouton X
+// plutôt qu'appeler une fonction du gestionnaire dont il faudrait deviner la
+// convention d'appel. Le X passe par `OnMsg(kMsgUiAction, kActionClose)`.
+//
+// 🔴 CES DEUX-LÀ ÉTAIENT DÉCLARÉS DEUX FOIS, dans `bank_window` et
+// `cart_viewer` — et l'un écrivait `201`, l'autre `0xc9`. Un relevé qui compare
+// des TEXTES ne les rapproche jamais ; c'est la valeur normalisée qui les a
+// réunis. Ils ne parlaient pas de fenêtre, donc la passe sur les identifiants
+// de fenêtre ne pouvait pas les voir non plus.
+constexpr int kMsgUiAction = 0x06;  // OnMsg : action d'un contrôle
+constexpr int kActionClose = 201;   // 0xc9 : le bouton de fermeture
+constexpr int kActionCancel = 185;  // 0xb9 : le bouton « Annuler »
+//
+// ⚠ 201 et 185 sont OBSERVÉS sur deux fenêtres chacun, pas prouvés
+// universels. 184 = « OK » les accompagne, mais il n'est cablé nulle part
+// chez nous : on ne le déclare pas tant qu'aucun appelant ne le demande.
+
 // Les paramètres qui transportent un POINTEUR (p2 = &ItemSkillInfo pour la
 // fenêtre 0xc, par exemple) passent par un int : x86, donc même largeur.
 inline int OnMsg(void* wnd, int msg, int p2 = 0, int p3 = 0, int p4 = 0,

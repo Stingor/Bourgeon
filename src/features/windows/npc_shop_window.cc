@@ -33,40 +33,17 @@
 // ── Constantes RE (client 20250716, base 0x400000 ; cf. project_npc_shop_re) ──
 namespace {
 
-// UIWindowMgr + factory.
+// ── Les fenêtres natives de la boutique (cf. project_npc_shop_re) ────────────
+// Les cinq identifiants, leurs vtables et la façon dont la carte a été PROUVÉE
+// sont au foyer, sous « Comment la famille 22-25 / 50 a été PROUVÉE ».
+//
+// Ce qui gouverne le code ICI : `kUIItemShopWnd` est le CADRE, et le client
+// échange le panneau intérieur — `kUIItemPurchaseWnd` en achat,
+// `kUIItemSellWnd` en vente. D'où la purge des DEUX : celui qui n'est pas à
+// l'écran reste vivant.
 
-// Fenêtres shop NPC (cf. project_npc_shop_re).
-// ── Les fenêtres natives de la boutique ──────────────────────────────────────
-//
-// 🔴 CARTE REFAITE le 2026-08-01. Les quatre étiquettes précédentes étaient
-// FAUSSES, décalées d'un cran, et l'une d'elles a failli me faire supprimer une
-// purge utile. Chaque ligne ci-dessous a DEUX preuves : la classe vient du ctor
-// appelé par le case correspondant de UIWindowMgr_MakeWindow, et la présence vient
-// d'une marche de la std::map du window-mgr sur une boutique native ouverte, dans
-// les DEUX onglets.
-//
-//   id    classe                       ctor        vtable      vu à l'écran
-//   0x16  UIItemShopWnd                0x00934850  0x0103cbf0  achat ET vente
-//   0x17  UIItemPurchaseWnd            0x00934630  0x0103cda0  achat seulement
-//   0x18  UIItemSellWnd                0x00934730  0x0103ce78  vente seulement
-//   0x19  UIChooseSellBuyWnd           0x0088cd60  0x010335a4  toujours
-//   0x32  UIItemParamChangeDisplayWnd  0x0088dea0  0x010323ec  achat + équipement
-//
-// Autrement dit 0x16 est le CADRE de la boutique, et le client échange le panneau
-// intérieur — 0x17 en achat, 0x18 en vente. C'est pour ça qu'il faut purger les
-// deux : celui qui n'est pas à l'écran reste vivant.
-constexpr int kWinShopFrame = 0x16;  // cadre, les deux onglets
-constexpr int kWinPurchase  = 0x17;  // panneau ACHAT
-constexpr int kWinSell      = 0x18;  // panneau VENTE
-constexpr int kWinChoose    = 0x19;  // « Please select a Deal Type » (buy/sell/cancel)
 // Champ du chooser où atterrit le npcId (RE : son OnMsg case 0x1C, cf. ChooserNpcId).
 constexpr int kChooserNpcId = 0xb4;
-
-// Comparateur ATK/DEF (« ATK 0 - 0   DEF 0 - 0 »), ouvert par le panneau d'ACHAT à
-// la sélection d'un équipement. Son id est FIXE (case 50) — le commentaire « id
-// variable » qu'il portait était faux lui aussi.
-constexpr int       kWinParamCompare    = 0x32;
-constexpr uintptr_t kParamCompareVTable = 0x010323ec;  // UIItemParamChangeDisplayWnd
 
 // (Plus de kSellListVTable/kSellListGlobal ni d'offsets de nœud d'affichage : la
 // liste de vente ne se lit plus dans la fenêtre native — elle n'existe plus. Elle
@@ -157,7 +134,7 @@ void CloseWnd(int id) { uiwnd::SafeCloseWindow(id); }
 // connaître le GID : on gardait donc du natif vivant pour se débarrasser du natif.
 uint32_t ChooserNpcId() {
   __try {
-    uint8_t* w = reinterpret_cast<uint8_t*>(uiwnd::SafeFindWindow(kWinChoose));
+    uint8_t* w = reinterpret_cast<uint8_t*>(uiwnd::SafeFindWindow(uiwnd::kUIChooseSellBuyWnd));
     if (!w) return 0;
     return *reinterpret_cast<uint32_t*>(w + kChooserNpcId);
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
@@ -693,22 +670,23 @@ void NpcShopWindow::CloseNativeShop() {
 }
 
 bool NpcShopWindow::AnyNativeShopWindow() const {
-  return FindWnd(kWinChoose) || FindWnd(kWinShopFrame) || FindWnd(kWinPurchase) ||
-         FindWnd(kWinSell) || FindWnd(kWinParamCompare);
+  return FindWnd(uiwnd::kUIChooseSellBuyWnd) || FindWnd(uiwnd::kUIItemShopWnd) ||
+         FindWnd(uiwnd::kUIItemPurchaseWnd) || FindWnd(uiwnd::kUIItemSellWnd) ||
+         FindWnd(uiwnd::kUIItemParamChangeDisplayWnd);
 }
 
 void NpcShopWindow::PurgeNativeShopWindows() {
-  CloseWnd(kWinChoose);
-  CloseWnd(kWinShopFrame);
-  CloseWnd(kWinPurchase);  // panneau ACHAT
-  CloseWnd(kWinSell);      // panneau VENTE — vivant même quand il n'est pas affiché
+  CloseWnd(uiwnd::kUIChooseSellBuyWnd);
+  CloseWnd(uiwnd::kUIItemShopWnd);
+  CloseWnd(uiwnd::kUIItemPurchaseWnd);  // panneau ACHAT
+  CloseWnd(uiwnd::kUIItemSellWnd);      // panneau VENTE — vivant même quand il n'est pas affiché
   // 🔴 Le comparateur ATK/DEF est DÉTRUIT, pas seulement masqué. Il ne l'était
   // dans aucune liste de fermeture : on se contentait de le rendre invisible, et
   // une native masquée garde le CLAVIER — la leçon du refine, celle qui a détruit
   // une arme. Son créateur (la fenêtre d'achat native) ne naît plus, donc ce
   // chemin ne devrait plus être emprunté ; c'est justement pour ça qu'il doit être
   // correct sans qu'on ait à y repenser.
-  CloseWnd(kWinParamCompare);
+  CloseWnd(uiwnd::kUIItemParamChangeDisplayWnd);
 }
 
 void NpcShopWindow::HideDetailWindow(void* win) {
@@ -717,7 +695,7 @@ void NpcShopWindow::HideDetailWindow(void* win) {
     // Masquage SEUL, et à dessein : on est à l'intérieur de MakeWindow, dont
     // l'appelant déréférence le retour — détruire ici plante. Ça évite la frame de
     // flash ; la destruction, elle, revient à PurgeNativeShopWindows au tick.
-    if (*reinterpret_cast<uintptr_t*>(win) == kParamCompareVTable)
+    if (*reinterpret_cast<uintptr_t*>(win) == uiwnd::kUIItemParamChangeDisplayWndVTable)
       *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + uiwnd::kOffVisible) = 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }

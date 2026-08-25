@@ -24,10 +24,9 @@ using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 // Tout est détaillé dans docs/bank_zeny_re.md ; on ne recopie ici que ce qui sert.
 namespace {
 
-// Fenêtre native UIBank_NewWnd. On la retrouve par le GESTIONNAIRE puis on vérifie
-// la vtable : un id ne garantit pas la classe si un portage renumérote les fenêtres.
-constexpr int       kWinBank    = 275;         // 0x113
-constexpr uintptr_t kBankVTable = 0x01030fd4;
+// La native se retrouve par le GESTIONNAIRE, puis on contrôle sa VTABLE : un id ne
+// garantit pas la classe si un portage renumérote les fenêtres. Les deux valeurs
+// sont au foyer, appariées — `uiwnd::kUIBank_NewWnd` et sa `…VTable`.
 // (Plus de kOffWidth/kOffHeight : ils ne servaient qu'à poser notre fenêtre à côté
 // de la native, qui ne naît plus.)
 
@@ -93,19 +92,19 @@ constexpr int kMsgSystemError = 2454;  // MSI_BANK_SYSTEM_ERROR
 
 // OnMsg natif : rejouer le chemin du X plutôt que d'appeler nous-mêmes une
 // fonction du gestionnaire (aucune convention d'appel à deviner).
-constexpr int kMsgUiAction = 0x06;  // OnMsg : action de contrôle…
-constexpr int kActionClose = 201;   // …201 = fermeture (RE UIBankWnd_OnMsg case 6)
 
 // La fenêtre banque ouverte, ou nullptr. Le client DÉTRUIT ses fenêtres à la
 // fermeture, donc non-nul == « ouverte en ce moment ».
-uint8_t* BankWnd() { return uiwnd::WndOfClass(kWinBank, kBankVTable); }
+uint8_t* BankWnd() {
+  return uiwnd::WndOfClass(uiwnd::kUIBank_NewWnd, uiwnd::kUIBank_NewWndVTable);
+}
 
 // Ferme la banque comme le X natif : OnMsg(6, 201) -> SaveRectAndCloseWindow(275).
 void CloseBank() {
   uint8_t* wnd = BankWnd();
   if (!wnd) return;
   __try {
-    uiwnd::OnMsg(wnd, kMsgUiAction, kActionClose, 0, 0, 0);
+    uiwnd::OnMsg(wnd, uiwnd::kMsgUiAction, uiwnd::kActionClose, 0, 0, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 

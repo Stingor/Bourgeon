@@ -18,11 +18,9 @@
 
 namespace {
 
-// Le conteneur natif du HUD de groupe : `UIMiniPartyWnd`, window id 0x12D.
-// Il est peuplé par `UIMiniParty_PopulateAllMembers` (0x00a339c0) depuis le
-// handler de la liste de groupe — on ne touche à rien de tout cela, on masque
-// seulement le conteneur.
-constexpr int kWinMiniParty = 0x12d;
+// Du HUD de groupe (`uiwnd::kUIMiniPartyWnd`) on ne masque que le CONTENEUR :
+// `UIMiniParty_PopulateAllMembers` (0x00a339c0) continue de le peupler depuis le
+// handler de la liste de groupe, et on ne touche à rien de tout cela.
 
 // Le couple custom qui porte le SP (cf. l'en-tête) : les MÊMES opcodes que la
 // fenêtre de cible, pris dans le catalogue partagé plutôt que recopiés — inutile
@@ -73,7 +71,7 @@ void PartyFrames::SyncNativeHud() {
   // repose donc l'état à chaque tick tant qu'il est « caché », sans quoi une
   // arrivée de membre ferait réapparaître le HUD d'origine par-dessus le nôtre.
   if (want_hidden == 0 && native_hidden_ == 0) return;
-  SetNativeVisible(kWinMiniParty, !enabled_);
+  SetNativeVisible(uiwnd::kUIMiniPartyWnd, !enabled_);
   native_hidden_ = want_hidden;
 }
 
