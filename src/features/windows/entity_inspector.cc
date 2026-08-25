@@ -20,6 +20,7 @@
 #include "ui/ro_widgets.h"
 #include "utils/i18n.h"
 #include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
+#include "ui/ui_palette.h"  // ro::pal : la palette de l'UI
 
 using namespace mui;
 
@@ -71,9 +72,6 @@ constexpr int kName_Valid   = 0x98;
 constexpr unsigned kNameRetryMs = 500;
 
 // Corps clair du skin RO : `TextDisabled` y est illisible, d'où ces trois-là.
-const ImVec4 kLabelCol(0.35f, 0.35f, 0.42f, 1.0f);
-const ImVec4 kValueCol(0.10f, 0.10f, 0.13f, 1.0f);
-const ImVec4 kMissingCol(0.55f, 0.33f, 0.08f, 1.0f);
 
 using WorldToTileFn = void (__thiscall*)(void*, float, float, int*, int*,
                                          unsigned*, unsigned*);
@@ -171,9 +169,9 @@ const char* PickCategoryLabel(int category) {
 // L'alignement est en unités de POLICE, pas en pixels : les douze familles
 // proposées par le réglage d'interface n'ont pas la même chasse.
 void Row(const char* label, const char* value, bool missing = false) {
-  ImGui::TextColored(kLabelCol, "%s", label);
+  ImGui::TextColored(ro::pal::kLabel, "%s", label);
   ImGui::SameLine(ImGui::GetFontSize() * 9.5f);
-  ImGui::TextColored(missing ? kMissingCol : kValueCol, "%s", value);
+  ImGui::TextColored(missing ? ro::pal::kWarn : ro::pal::kValue, "%s", value);
 }
 
 void RowFmt(const char* label, const char* fmt, ...) {
@@ -403,15 +401,15 @@ void EntityInspector::DrawBody(const Snapshot& snap) {
   // ── La plaque de nom ──────────────────────────────────────────────────────
   SeparatorText(i18n::Tr("Plaque de nom (CNameInfo)"));
   if (!snap.in_dict) {
-    ImGui::TextColored(kMissingCol, "%s",
+    ImGui::TextColored(ro::pal::kWarn, "%s",
                        i18n::Tr("Le client n'a aucune entrée pour ce GID."));
     ImGui::TextColored(
-        kLabelCol, "%s",
+        ro::pal::kLabel, "%s",
         i18n::Tr("(demande envoyée au serveur ; la plaque arrivera, ou pas — "
                  "les unités de compétence et les objets au sol n'en ont "
                  "jamais)"));
   } else if (!snap.resolved) {
-    ImGui::TextColored(kMissingCol, "%s",
+    ImGui::TextColored(ro::pal::kWarn, "%s",
                        i18n::Tr("Entrée présente mais non renseignée "
                                 "(CNameInfo+0x98 = 0) : réponse en attente."));
   } else {
@@ -427,10 +425,10 @@ void EntityInspector::DrawBody(const Snapshot& snap) {
   // ── L'acteur ──────────────────────────────────────────────────────────────
   SeparatorText(i18n::Tr("Acteur"));
   if (!snap.actor_found) {
-    ImGui::TextColored(kMissingCol, "%s",
+    ImGui::TextColored(ro::pal::kWarn, "%s",
                        i18n::Tr("Aucun acteur vivant pour ce GID."));
     ImGui::TextColored(
-        kLabelCol, "%s",
+        ro::pal::kLabel, "%s",
         i18n::Tr("(entité détruite depuis le clic, ou catégorie de pick sans "
                  "acteur)"));
   } else {
@@ -510,14 +508,14 @@ void EntityInspector::DrawServerSection() {
       // bout de cinq secondes plutôt que de laisser tourner « interrogation… ».
       const unsigned waited = GetTickCount() - server_requested_tick_;
       if (waited < 5000) {
-        ImGui::TextColored(kLabelCol, "%s",
+        ImGui::TextColored(ro::pal::kLabel, "%s",
                            i18n::Tr("Interrogation du serveur…"));
         return;
       }
-      ImGui::TextColored(kMissingCol, "%s",
+      ImGui::TextColored(ro::pal::kWarn, "%s",
                          i18n::Tr("Pas de réponse du serveur."));
       ImGui::TextColored(
-          kLabelCol, "%s",
+          ro::pal::kLabel, "%s",
           i18n::Tr("(le map-server ne connaît peut-être pas encore ce paquet : "
                    "il attend un redémarrage)"));
       if (ro::RoButton(i18n::Tr("Redemander"))) RequestServer();
@@ -525,15 +523,15 @@ void EntityInspector::DrawServerSection() {
     }
     case Fetch::kDenied:
       ImGui::TextColored(
-          kMissingCol, "%s",
+          ro::pal::kWarn, "%s",
           i18n::Tr("Le serveur a refusé : ce compte n'est pas staff."));
       return;
     case Fetch::kMissing:
       ImGui::TextColored(
-          kMissingCol, "%s",
+          ro::pal::kWarn, "%s",
           i18n::Tr("Le serveur ne connaît aucune entité sous ce GID."));
       ImGui::TextColored(
-          kLabelCol, "%s",
+          ro::pal::kLabel, "%s",
           i18n::Tr("(elle vient de mourir ou de disparaître, ou bien ce GID "
                    "n'existe que côté client)"));
       if (ro::RoButton(i18n::Tr("Redemander"))) RequestServer();
@@ -553,7 +551,7 @@ void EntityInspector::DrawServerSection() {
     }
   }
   if (server_props_.empty()) {
-    ImGui::TextColored(kLabelCol, "%s",
+    ImGui::TextColored(ro::pal::kLabel, "%s",
                        i18n::Tr("Le serveur n'a rien à dire sur cette entité."));
   }
   if (ro::RoButton(i18n::Tr("Actualiser"))) RequestServer();

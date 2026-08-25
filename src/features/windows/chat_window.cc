@@ -48,6 +48,7 @@
 #include "ragnarok/stl_node.h"  // rag::treenode : le nœud du conteneur
 #include "features/link_gesture.h"
 #include "utils/text.h"  // text : comparaisons et décodages ASCII
+#include "ui/ui_palette.h"  // ro::pal : la palette de l'UI
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -6063,18 +6064,17 @@ void ChatWindow::DrawCloseConfirmPopup() {
 
   // Gris explicite : sur le corps CLAIR d'une fenêtre RO, `TextDisabled` est
   // illisible — c'est une couleur pensée pour un fond sombre.
-  const ImVec4 kGray(0.35f, 0.35f, 0.42f, 1.0f);
   if (whisper) {
-    ImGui::TextColored(kGray,
+    ImGui::TextColored(ro::pal::kLabel,
                        i18n::Tr("Rien n'est perdu : le journal garde les messages, et\n"
                                 "rouvrir la conversation les remontrera."));
   } else {
-    ImGui::TextColored(kGray,
+    ImGui::TextColored(ro::pal::kLabel,
                        i18n::Tr("Ses réglages partent avec lui : les filtres du log, son\n"
                                 "apparence propre, son nom. Un onglet ne se rouvre pas —\n"
                                 "il faudra le recréer et le régler à nouveau."));
     ImGui::Spacing();
-    ImGui::TextColored(kGray,
+    ImGui::TextColored(ro::pal::kLabel,
                        i18n::Tr("Les messages, eux, RESTENT : ils vivent dans un journal\n"
                                 "commun à toutes les fenêtres, et les autres onglets\n"
                                 "continuent de les afficher."));

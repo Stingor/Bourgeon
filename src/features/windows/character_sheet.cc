@@ -57,6 +57,7 @@
 #include "ragnarok/stl_node.h"  // rag::listnode : le nœud du conteneur
 #include "ragnarok/skill_info.h"  // rag::skillinfo
 #include "features/craft_data.h"  // craftdata::kMaxRefine
+#include "ui/ui_palette.h"  // ro::pal : la palette de l'UI
 
 //  Constantes RE (client 20250716, base 0x400000 ; cf. project_character_sheet)
 namespace {
@@ -2071,7 +2072,6 @@ const char* SlotAbbrev(int slot) {
   }
 }
 
-const ImVec4 kBlack(0.0f, 0.0f, 0.0f, 1.0f);  // texte noir (skin RO clair)
 
 // Fonds réglables via le skin RO (ro::SkinConfig, persistés par MoonlightUi) : couleur des
 // cases d'équipement (slot_col) et du panneau doll/avatar (doll_col). Lues à chaque frame ->
@@ -3297,7 +3297,6 @@ void CharacterSheet::DrawPresetsTab() {
   // qui vaut ~6 px de moins que ce dont le bouton RO a besoin (ses deux caps + sa
   // marge). Les libellés espagnols, plus longs, débordaient donc de leur art — ici
   // rien ne contraint la largeur, les boutons n'ont qu'à grandir.
-  const ImVec4 kGray(0.35f, 0.35f, 0.42f, 1.0f);
   const float load_w = ro::ButtonWidth(i18n::Tr("Charger"));
   const float del_w = ro::ButtonWidth(i18n::Tr("Suppr"));
   // Cases d'items d'un preset, à l'échelle de l'interface : elles encadrent des
@@ -3333,7 +3332,7 @@ void CharacterSheet::DrawPresetsTab() {
   ImGui::Spacing();
 
   if (mine.empty()) {
-    ImGui::TextColored(kGray, i18n::Tr("Aucun preset enregistré pour ce personnage."));
+    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Aucun preset enregistré pour ce personnage."));
     ImGui::Spacing();
   }
 
@@ -3344,7 +3343,7 @@ void CharacterSheet::DrawPresetsTab() {
     ImGui::PushID(mi);
     // Ligne titre : nom (gauche) + Charger/Suppr (droite).
     ImGui::AlignTextToFramePadding();
-    ImGui::TextColored(kBlack, "%s", ep.name.c_str());
+    ImGui::TextColored(ro::pal::kBlack, "%s", ep.name.c_str());
     ImGui::SameLine();
     const float avail = ImGui::GetContentRegionAvail().x;
     ImGui::SetCursorPosX(ImGui::GetCursorPosX() +
@@ -3356,7 +3355,7 @@ void CharacterSheet::DrawPresetsTab() {
     if (ro::RoButton(i18n::Tr("Suppr"), del_w)) to_delete = mine[mi];
     // Rangée d'icônes des items (wrap selon la largeur disponible).
     if (ep.items.empty()) {
-      ImGui::TextColored(kGray, i18n::Tr("(vide)"));
+      ImGui::TextColored(ro::pal::kLabel, i18n::Tr("(vide)"));
     } else {
       const float availw = ImGui::GetContentRegionAvail().x;
       const int perRow = std::max(1, static_cast<int>((availw + igap) / (icon + igap)));
@@ -3385,11 +3384,11 @@ void CharacterSheet::DrawPresetsTab() {
 
     // Ligne raccourci clavier : libellé + Définir/Effacer, ou mode capture.
     ImGui::AlignTextToFramePadding();
-    ImGui::TextColored(kGray, i18n::Tr("Raccourci :"));
+    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Raccourci :"));
     ImGui::SameLine();
     if (hk_capturing_ == mine[mi]) {
       hotkeys::PingCapture();  // gèle les raccourcis (saut compris) le temps du choix
-      ImGui::TextColored(kBlack, i18n::Tr("appuie sur une touche…  (Échap : annuler)"));
+      ImGui::TextColored(ro::pal::kBlack, i18n::Tr("appuie sur une touche…  (Échap : annuler)"));
       ImGuiIO& io = ImGui::GetIO();
       if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
         hk_capturing_ = -1;
@@ -3415,7 +3414,7 @@ void CharacterSheet::DrawPresetsTab() {
       char hkl[48];
       hotkeys::Label(ep.hotkey_vk, ep.hotkey_ctrl, ep.hotkey_alt, ep.hotkey_shift, hkl,
                      sizeof(hkl));
-      ImGui::TextColored(kBlack, "%s", hkl);
+      ImGui::TextColored(ro::pal::kBlack, "%s", hkl);
       ImGui::SameLine(0.0f, 6.0f);
       if (ro::RoButton(i18n::Tr("Définir"), ro::ButtonWidth(i18n::Tr("Définir")))) {
         hk_capturing_ = mine[mi];
@@ -3436,7 +3435,7 @@ void CharacterSheet::DrawPresetsTab() {
   }
 
   // Section sauvegarde (bas de l'onglet).
-  ImGui::TextColored(kBlack, i18n::Tr("Enregistrer l'équipement porté (%d/%d)"),
+  ImGui::TextColored(ro::pal::kBlack, i18n::Tr("Enregistrer l'équipement porté (%d/%d)"),
                      static_cast<int>(mine.size()), kMaxPresetsPerChar);
   const float save_w = ro::ButtonWidth(i18n::Tr("Sauver l'actuel"));
   ImGui::SetNextItemWidth(std::max(80.0f, ImGui::GetContentRegionAvail().x - save_w - 8.0f));
@@ -3457,7 +3456,7 @@ void CharacterSheet::DrawPresetsTab() {
     ImGui::SetTooltip(at_cap
                           ? i18n::Tr("Limite de 5 presets atteinte (renomme un existant ou supprime-en un)") : i18n::Tr("Enregistre l'équipement porté actuellement sous ce nom"));
   if (!can_save) ImGui::EndDisabled();
-  if (!preset_status_.empty()) ImGui::TextColored(kGray, "%s", preset_status_.c_str());
+  if (!preset_status_.empty()) ImGui::TextColored(ro::pal::kLabel, "%s", preset_status_.c_str());
 
   // Actions différées (les indices mine[] restent valides : SaveCurrentEquipAsPreset n'ajoute
   // qu'en fin de vecteur ou écrase en place -> aucun décalage des indices déjà capturés).
@@ -3477,16 +3476,16 @@ void CharacterSheet::DrawTitlesTab() {
   OwnedTitles ot{};
   ReadOwnedTitles(&ot);
 
-  const ImVec4 kGray(0.35f, 0.35f, 0.42f, 1.0f);
+  // ⚠ Nuance locale, distincte de ro::pal::kGreen (0.10/0.50/0.15).
   const ImVec4 kGreen(0.15f, 0.55f, 0.20f, 1.0f);
 
   ImGui::AlignTextToFramePadding();
-  ImGui::TextColored(kBlack, i18n::Tr("Titre équipé :"));
+  ImGui::TextColored(ro::pal::kBlack, i18n::Tr("Titre équipé :"));
   ImGui::SameLine();
   if (ot.equipped != 0)
     ImGui::TextColored(kGreen, "%s", TitleName(ot.equipped));
   else
-    ImGui::TextColored(kGray, i18n::Tr("aucun"));
+    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("aucun"));
 
   ImGui::Spacing();
   // Filtre par libellé (pratique quand beaucoup de titres décrochés).
@@ -3508,7 +3507,7 @@ void CharacterSheet::DrawTitlesTab() {
   }
 
   if (ot.count == 0) {
-    ImGui::TextColored(kGray,
+    ImGui::TextColored(ro::pal::kLabel,
                        i18n::Tr("Aucun titre décroché. Complète des succès qui récompensent un titre."));
   }
 
@@ -3664,8 +3663,9 @@ bool CharacterSheet::ReserveSkillPoint(uint16_t id, bool to_max) {
 }
 
 void CharacterSheet::DrawSkillsTab() {
-  const ImVec4 kGray(0.35f, 0.35f, 0.42f, 1.0f);
+  // ⚠ Ambre CLAIR, distinct de ro::pal::kWarn (0.55/0.33/0.08).
   const ImVec4 kAmber(0.85f, 0.65f, 0.20f, 1.0f);
+  // ⚠ Vert CLAIR, distinct de ro::pal::kGreen — ne pas aligner sans le voir.
   const ImVec4 kGreen(0.30f, 0.75f, 0.35f, 1.0f);
 
   // ── Onglets de job : le natif ne montre que ceux qui ont des compétences ──
@@ -3724,7 +3724,7 @@ void CharacterSheet::DrawSkillsTab() {
   const int points_total = SkillPointsSEH();
   const int points_left  = points_total - reserved_points;
 
-  ImGui::TextColored(points_left > 0 ? kGreen : kGray, i18n::Tr("Points : %d"), points_left);
+  ImGui::TextColored(points_left > 0 ? kGreen : ro::pal::kLabel, i18n::Tr("Points : %d"), points_left);
   if (reserved_points > 0) {
     ImGui::SameLine();
     ImGui::TextColored(kAmber, i18n::Tr("(%d réservé%s)"), reserved_points,
@@ -3768,7 +3768,7 @@ void CharacterSheet::DrawSkillsTab() {
   }
   if (!skill_status_.empty()) {
     ImGui::SameLine();
-    ImGui::TextColored(kGray, "%s", skill_status_.c_str());
+    ImGui::TextColored(ro::pal::kLabel, "%s", skill_status_.c_str());
   }
 
   // ── Seconde ligne : rappel des gestes + lissage des icônes ────────────────
@@ -3870,7 +3870,7 @@ void CharacterSheet::DrawSkillsTab() {
   add_group(i18n::Tr("Divers"), nullptr, -1, kNoSource);  // liste plate
 
   if (group_count == 0) {
-    ImGui::TextColored(kGray, i18n::Tr("Aucune compétence."));
+    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Aucune compétence."));
     return;
   }
   if (ro::RoBeginTabBar("cs_skill_tabs")) {
@@ -3940,7 +3940,7 @@ void CharacterSheet::DrawSkillsTab() {
     count += n;
   }
   if (count == 0) {
-    ImGui::TextColored(kGray, i18n::Tr("Aucune compétence dans cet onglet."));
+    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Aucune compétence dans cet onglet."));
     return;
   }
 
@@ -4036,7 +4036,7 @@ void CharacterSheet::DrawSkillsTab() {
     if (s.learned > 0 && IsLevelUseSkillSEH(s.id)) {
       ImGui::Separator();
       const int use = EffectiveUseLevelSEH(s.id, s.learned);
-      ImGui::TextColored(kGray, i18n::Tr("Lancer au niveau %d / %d"), use, s.learned);
+      ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Lancer au niveau %d / %d"), use, s.learned);
       // « - » ASCII, pas le signe moins U+2212 : la police de l'UI ne le porte pas
       // et il sortait en tofu dans le menu.
       if (ImGui::MenuItem(i18n::Tr("  niveau -"), nullptr, false, use > 1))
@@ -4543,7 +4543,7 @@ void CharacterSheet::DrawSkillsTab() {
               effective > 0 ? IM_COL32_WHITE : IM_COL32(110, 110, 110, 160));
         draw_use_level_badge(row_dl, s, p, icon);  // même repère qu'en grille
         const ImU32 name_col =
-            effective == 0 ? ImGui::GetColorU32(kGray) : ImGui::GetColorU32(ImGuiCol_Text);
+            effective == 0 ? ImGui::GetColorU32(ro::pal::kLabel) : ImGui::GetColorU32(ImGuiCol_Text);
         row_dl->AddText(ImVec2(p.x + icon + ImGui::GetStyle().ItemSpacing.x,
                                p.y + (icon - ImGui::GetTextLineHeight()) * 0.5f),
                         name_col, skill_name(s.id));
@@ -4553,16 +4553,16 @@ void CharacterSheet::DrawSkillsTab() {
         ImGui::TableNextColumn();
         if (pending > 0) ImGui::TextColored(kAmber, "%d/%d", effective, s.maxlv);
         else if (effective > 0) ImGui::Text("%d/%d", effective, s.maxlv);
-        else ImGui::TextColored(kGray, "-/%d", s.maxlv);
+        else ImGui::TextColored(ro::pal::kLabel, "-/%d", s.maxlv);
 
         ImGui::TableNextColumn();
-        if (s.inf == 0)          ImGui::TextColored(kGray, i18n::Tr("passif"));
+        if (s.inf == 0)          ImGui::TextColored(ro::pal::kLabel, i18n::Tr("passif"));
         else if (s.learned > 0)  ImGui::Text("%d", s.sp);
-        else                     ImGui::TextColored(kGray, "-");
+        else                     ImGui::TextColored(ro::pal::kLabel, "-");
 
         ImGui::TableNextColumn();
         if (s.learned > 0 && s.range > 0) ImGui::Text("%d", s.range);
-        else                              ImGui::TextColored(kGray, "-");
+        else                              ImGui::TextColored(ro::pal::kLabel, "-");
 
         ImGui::TableNextColumn();
         if (s.user_up > 0 && effective < s.maxlv && points_left > 0) {
@@ -4594,16 +4594,12 @@ void CharacterSheet::DrawSkillsTab() {
 // serveur jette en silence. Les trois sont ici.
 // RE complet : docs/homunculus_re.md.
 void CharacterSheet::DrawHomunTab() {
-  const ImVec4 kGray(0.35f, 0.35f, 0.42f, 1.0f);
-  const ImVec4 kGreen(0.10f, 0.50f, 0.15f, 1.0f);
-  const ImVec4 kRed(0.60f, 0.12f, 0.12f, 1.0f);
-  const ImVec4 kBlack(0.10f, 0.10f, 0.13f, 1.0f);
 
   rag::homun::State h{};
   if (!rag::homun::ReadState(&h)) {
     // Classe == -1 : le client ne sait rien de l'homoncule — c'est exactement le cas
     // où MakeWindow(113) refuse de créer la fenêtre native.
-    ImGui::TextColored(kGray, i18n::Tr("Aucun homoncule."));
+    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Aucun homoncule."));
     ImGui::Spacing();
     ImGui::TextWrapped(i18n::Tr(
         "Un Alchimiste ayant appris Bioéthique peut en invoquer un avec une Embryon. "
@@ -4637,7 +4633,7 @@ void CharacterSheet::DrawHomunTab() {
     }
     ImGui::SameLine();
     if (ro::RoSmallButton(i18n::Tr("Annuler"), 60.0f, 0.0f)) homun_rename_edit_ = false;
-    ImGui::PushStyleColor(ImGuiCol_Text, kGray);
+    ImGui::PushStyleColor(ImGuiCol_Text, ro::pal::kLabel);
     ImGui::TextWrapped("%s", StripRoColors(msgstr::Utf8(kMsiNameTooLong)));
     ImGui::PopStyleColor();
   } else {
@@ -4669,7 +4665,7 @@ void CharacterSheet::DrawHomunTab() {
       mui::Tooltip(i18n::Tr("Cliquer pour renommer."));
     } else {
       ImGui::AlignTextToFramePadding();
-      ImGui::TextColored(kBlack, "%s", shown);
+      ImGui::TextColored(ro::pal::kValue, "%s", shown);
       mui::Tooltip(i18n::Tr("Le serveur n'accepte le renommage qu'UNE fois."));
     }
     // « Abandonner » remonte ici, collé au bord droit : il est IRRÉVERSIBLE, on le
@@ -4686,12 +4682,12 @@ void CharacterSheet::DrawHomunTab() {
 
   // Espèce, niveau et état sur UNE ligne — trois informations courtes qui n'ont pas
   // besoin d'une ligne chacune à 280 px.
-  ImGui::TextColored(kGray, "%s  ·  %s %d", h.job[0] ? h.job : "?", msgstr::Utf8(kMsiLevel),
+  ImGui::TextColored(ro::pal::kLabel, "%s  ·  %s %d", h.job[0] ? h.job : "?", msgstr::Utf8(kMsiLevel),
                      h.level);
   if (resting || !alive) {
     ImGui::SameLine();
-    if (resting) ImGui::TextColored(kGray, i18n::Tr("Au repos."));
-    else         ImGui::TextColored(kRed,  i18n::Tr("Hors de combat (0 PV)."));
+    if (resting) ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Au repos."));
+    else         ImGui::TextColored(ro::pal::kRed,  i18n::Tr("Hors de combat (0 PV)."));
   }
   ImGui::Separator();
 
@@ -4728,7 +4724,7 @@ void CharacterSheet::DrawHomunTab() {
   if (h.exp_next > 0) {
     gauge(msgstr::Utf8(kMsiHomunExp), h.exp, h.exp_next, ImVec4(0.55f, 0.45f, 0.15f, 1.0f));
   } else {
-    ImGui::TextColored(kGreen, "%s : %lld  —  %s", msgstr::Utf8(kMsiHomunExp), h.exp,
+    ImGui::TextColored(ro::pal::kGreen, "%s : %lld  —  %s", msgstr::Utf8(kMsiHomunExp), h.exp,
                        i18n::Tr("niveau maximum"));
   }
   // Satiété : maximum 100 en dur, comme le natif (et comme le serveur).
@@ -4737,13 +4733,13 @@ void CharacterSheet::DrawHomunTab() {
                        : ImVec4(0.35f, 0.60f, 0.25f, 1.0f));
   if (h.hunger <= 10) {
     // Message natif long : replié, sinon il sort de la fenêtre.
-    ImGui::PushStyleColor(ImGuiCol_Text, kRed);
+    ImGui::PushStyleColor(ImGuiCol_Text, ro::pal::kRed);
     ImGui::TextWrapped("%s", StripRoColors(msgstr::Utf8(kMsiHomunHungry)));
     ImGui::PopStyleColor();
   }
 
   // Intimité : le palier suffit, la valeur brute passe en infobulle.
-  ImGui::TextColored(kBlack, "%s :", msgstr::Utf8(kMsiIntimacy));
+  ImGui::TextColored(ro::pal::kValue, "%s :", msgstr::Utf8(kMsiIntimacy));
   ImGui::SameLine();
   ImGui::TextUnformatted(msgstr::Utf8(HomunIntimacyMsgId(h.intimacy)));
   {
@@ -4770,10 +4766,10 @@ void CharacterSheet::DrawHomunTab() {
   if (homun_del_ask_) {
     ImGui::Spacing();
     // ⚠ Ce libellé porte DEUX ^ff0000 : sans StripRoColors ils s'affichent bruts.
-    ImGui::PushStyleColor(ImGuiCol_Text, kRed);
+    ImGui::PushStyleColor(ImGuiCol_Text, ro::pal::kRed);
     ImGui::TextWrapped("%s", StripRoColors(msgstr::Utf8(kMsiDeleteHomun)));
     ImGui::PopStyleColor();
-    ImGui::PushStyleColor(ImGuiCol_Text, kBlack);
+    ImGui::PushStyleColor(ImGuiCol_Text, ro::pal::kValue);
     ImGui::TextWrapped("%s", i18n::Tr("Retape le nom de l'homoncule pour confirmer :"));
     ImGui::PopStyleColor();
     ImGui::SetNextItemWidth(-1.0f);
@@ -4791,7 +4787,7 @@ void CharacterSheet::DrawHomunTab() {
     ImGui::SameLine();
     if (ro::RoSmallButton(i18n::Tr("Annuler"), 70.0f, 0.0f)) homun_del_ask_ = false;
   }
-  if (!homun_status_.empty()) ImGui::TextColored(kGray, "%s", homun_status_.c_str());
+  if (!homun_status_.empty()) ImGui::TextColored(ro::pal::kLabel, "%s", homun_status_.c_str());
 
   ImGui::Spacing();
   ImGui::Separator();
@@ -4871,7 +4867,7 @@ void CharacterSheet::DrawHomunTab() {
       // Libellé collé à sa valeur (colonne au texte), valeur alignée à DROITE de sa
       // moitié : sans ça le libellé étirait sa colonne et laissait un trou au milieu.
       ImGui::TableNextColumn();
-      ImGui::TextColored(kGray, "%s", rows[i].label);
+      ImGui::TextColored(ro::pal::kLabel, "%s", rows[i].label);
       mui::Tooltip(tip);
       ImGui::TableNextColumn();
       char val[16];
@@ -4886,7 +4882,7 @@ void CharacterSheet::DrawHomunTab() {
   {
     char rng[128];
     std::snprintf(rng, sizeof(rng), i18n::Tr("Portée d'attaque : %d"), h.range);
-    ImGui::TextColored(kGray, "%s", rng);
+    ImGui::TextColored(ro::pal::kLabel, "%s", rng);
     mui::Tooltip(i18n::Tr("En cases. 1 = corps à corps ; au-delà, l'homoncule frappe à "
                           "distance sans se déplacer."));
   }
@@ -4923,7 +4919,7 @@ void CharacterSheet::DrawHomunTab() {
   if (!open) return;
 
   if (count == 0) {
-    ImGui::TextColored(kGray, i18n::Tr("Aucune compétence reçue du serveur."));
+    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Aucune compétence reçue du serveur."));
     return;
   }
 
@@ -5051,16 +5047,12 @@ void CharacterSheet::DrawHomunTab() {
 // g_GuildInfo_*, cf. project_guild_window_re) ; les actions partent en paquets bruts,
 // exactement comme le natif, et le serveur revalide chaque droit.
 void CharacterSheet::DrawGuildTab() {
-  const ImVec4 kGray(0.35f, 0.35f, 0.42f, 1.0f);
-  const ImVec4 kGreen(0.10f, 0.50f, 0.15f, 1.0f);
-  const ImVec4 kRed(0.60f, 0.12f, 0.12f, 1.0f);
-  const ImVec4 kBlue(0.15f, 0.25f, 0.60f, 1.0f);
 
   GuildInfo gi{};
   if (!ReadGuild(&gi)) {
     // Sans guilde : même service que le « Guild Companion » natif (Alt+G), à savoir
     // la création directe, sans passer par ses deux fenêtres.
-    ImGui::TextColored(kGray, i18n::Tr("Tu n'appartiens à aucune guilde."));
+    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Tu n'appartiens à aucune guilde."));
     ImGui::Spacing();
     ImGui::TextWrapped(
         i18n::Tr("Rejoins-en une (invitation d'un maître de guilde) ou crée la tienne "
@@ -5068,8 +5060,8 @@ void CharacterSheet::DrawGuildTab() {
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::Spacing();
-    ImGui::TextColored(kBlack, i18n::Tr("Créer une guilde"));
-    ImGui::TextColored(kGray,
+    ImGui::TextColored(ro::pal::kBlack, i18n::Tr("Créer une guilde"));
+    ImGui::TextColored(ro::pal::kLabel,
                        i18n::Tr("Un Emperium dans l'inventaire est nécessaire, et la carte ne "
                        "doit pas interdire les guildes."));
     ImGui::SetNextItemWidth(ro::Px(220.0f));
@@ -5098,7 +5090,7 @@ void CharacterSheet::DrawGuildTab() {
                                                    : ImVec4(0.60f, 0.12f, 0.12f, 1.0f),
                          "%s", result_text);
     } else if (!guild_status_.empty()) {
-      ImGui::TextColored(kGray, "%s", guild_status_.c_str());
+      ImGui::TextColored(ro::pal::kLabel, "%s", guild_status_.c_str());
     }
     return;
   }
@@ -5187,12 +5179,12 @@ void CharacterSheet::DrawGuildTab() {
     ImGui::SetCursorPos(saved_cursor);
   }
   ImGui::Indent(emblem_size + 10.0f);
-  ImGui::TextColored(kBlack, "%s", gi.name);
-  ImGui::TextColored(kGray, i18n::Tr("Niveau %d  ·  Maître : %s"), gi.level,
+  ImGui::TextColored(ro::pal::kBlack, "%s", gi.name);
+  ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Niveau %d  ·  Maître : %s"), gi.level,
                      gi.master_name[0] ? gi.master_name : "?");
   // Membres : le total vient du roster (une entrée par membre), le nombre de
   // connectés du paquet d'infos (connect_member).
-  ImGui::TextColored(kGray, i18n::Tr("Membres : %d / %d  ·  En ligne : %d  ·  Niveau moyen : %d"),
+  ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Membres : %d / %d  ·  En ligne : %d  ·  Niveau moyen : %d"),
                      roster.count, gi.member_max, gi.online, gi.avg_level);
   // Poste occupé + droits qui en découlent : explique la présence (ou l'absence)
   // des actions plus bas, au lieu de laisser le serveur refuser en silence.
@@ -5208,11 +5200,11 @@ void CharacterSheet::DrawGuildTab() {
     } else {
       std::snprintf(rights, sizeof(rights), i18n::Tr("droits inconnus"));
     }
-    ImGui::TextColored(kGray, i18n::Tr("Ton poste : %s  ·  %s"),
+    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Ton poste : %s  ·  %s"),
                        my_position ? my_position : "?", rights);
   }
   ImGui::Unindent(emblem_size + 10.0f);
-  if (gi.land[0]) ImGui::TextColored(kGray, i18n::Tr("Territoire : %s"), gi.land);
+  if (gi.land[0]) ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Territoire : %s"), gi.land);
 
   // Jauge d'EXP de guilde (exp / exp du niveau suivant).
   if (gi.next_exp > 0) {
@@ -5230,7 +5222,7 @@ void CharacterSheet::DrawGuildTab() {
     // Le rappel « titre, puis message » vaut aussi en RÉÉDITION : les indices ne
     // s'affichent que sur un champ vide, donc ils ne diraient rien sur une annonce
     // déjà remplie — exactement le cas où l'on hésite.
-    ImGui::TextColored(kBlack, i18n::Tr("Annonce de la guilde — titre, puis message"));
+    ImGui::TextColored(ro::pal::kBlack, i18n::Tr("Annonce de la guilde — titre, puis message"));
     // Deux champs identiques l'un au-dessus de l'autre : rien ne disait lequel est le
     // titre. L'indice le dit là où on tape, sans voler une ligne de libellé.
     ImGui::SetNextItemWidth(-1.0f);
@@ -5247,7 +5239,7 @@ void CharacterSheet::DrawGuildTab() {
     ImGui::SameLine();
     if (ro::RoButton(i18n::Tr("Annuler"), 90.0f, 0.0f)) guild_notice_edit_ = false;
   } else if (gi.notice_subject[0] || gi.notice_body[0]) {
-    ImGui::TextColored(kBlue, "%s", gi.notice_subject[0] ? gi.notice_subject : "Annonce");
+    ImGui::TextColored(ro::pal::kBlue, "%s", gi.notice_subject[0] ? gi.notice_subject : "Annonce");
     if (gi.notice_body[0]) ImGui::TextWrapped("%s", gi.notice_body);
   }
   if (!guild_notice_edit_ && is_master) {
@@ -5397,7 +5389,7 @@ void CharacterSheet::DrawGuildTab() {
         // Menu contextuel : actions sur CE membre (le serveur revérifie les droits).
         if (ImGui::BeginPopupContextItem("cs_guild_member_ctx")) {
           guild_sel_cid_ = m.cid;
-          ImGui::TextColored(kGray, "%s", m.name);
+          ImGui::TextColored(ro::pal::kLabel, "%s", m.name);
           ImGui::Separator();
           if (ImGui::MenuItem(i18n::Tr("Copier le nom"))) ImGui::SetClipboardText(m.name);
           {
@@ -5528,20 +5520,20 @@ void CharacterSheet::DrawGuildTab() {
         }
 
         ImGui::TableSetColumnIndex(1);
-        ImGui::TextColored(kBlack, "%s", JobName(m.job));
+        ImGui::TextColored(ro::pal::kBlack, "%s", JobName(m.job));
         ImGui::TableSetColumnIndex(2);
-        ImGui::TextColored(kBlack, "%d", m.level);
+        ImGui::TextColored(ro::pal::kBlack, "%d", m.level);
         ImGui::TableSetColumnIndex(3);
         const char* position_label = GuildPositionLabel(m.position_id, m.position);
         if (m.position_id == 0)
-          ImGui::TextColored(kBlue, "%s", position_label ? position_label : i18n::Tr("Maître"));
+          ImGui::TextColored(ro::pal::kBlue, "%s", position_label ? position_label : i18n::Tr("Maître"));
         else
-          ImGui::TextColored(kBlack, "%s", position_label ? position_label : "—");
+          ImGui::TextColored(ro::pal::kBlack, "%s", position_label ? position_label : "—");
         ImGui::TableSetColumnIndex(4);
-        ImGui::TextColored(kBlack, "%d", m.contribution);
+        ImGui::TextColored(ro::pal::kBlack, "%d", m.contribution);
         ImGui::TableSetColumnIndex(5);
         if (m.online) {
-          ImGui::TextColored(kGreen, i18n::Tr("En ligne"));
+          ImGui::TextColored(ro::pal::kGreen, i18n::Tr("En ligne"));
         } else {
           char seen[32] = "—";
           if (m.last_login != 0) {
@@ -5550,7 +5542,7 @@ void CharacterSheet::DrawGuildTab() {
             if (localtime_s(&local_time, &stamp) == 0)
               std::strftime(seen, sizeof(seen), "%d/%m/%y %H:%M", &local_time);
           }
-          ImGui::TextColored(kGray, "%s", seen);
+          ImGui::TextColored(ro::pal::kLabel, "%s", seen);
         }
         ImGui::PopID();
       }
@@ -5577,7 +5569,7 @@ void CharacterSheet::DrawGuildTab() {
     // contextuel n'apparaissent donc que pour le maître (comme le « Delete » du natif).
     const bool can_break = is_master;
     for (int pass = 0; pass < 2; ++pass) {
-      ImGui::TextColored(pass == 0 ? kGreen : kRed, pass == 0 ? i18n::Tr("Alliés") : "Ennemis");
+      ImGui::TextColored(pass == 0 ? ro::pal::kGreen : ro::pal::kRed, pass == 0 ? i18n::Tr("Alliés") : "Ennemis");
       int shown = 0;
       for (int i = 0; i < relations.count; ++i) {
         const GuildRelation& rel = relations.entries[i];
@@ -5600,7 +5592,7 @@ void CharacterSheet::DrawGuildTab() {
         ImGui::Selectable(rel.name, false, 0, ImVec2(row_w, 0.0f));
         if (can_break) {
           if (ImGui::BeginPopupContextItem("cs_guild_rel_ctx")) {
-            ImGui::TextColored(kGray, "%s", rel.name);
+            ImGui::TextColored(ro::pal::kLabel, "%s", rel.name);
             ImGui::Separator();
             if (ImGui::MenuItem(break_label)) {
               ask_break();
@@ -5615,7 +5607,7 @@ void CharacterSheet::DrawGuildTab() {
         ImGui::PopID();
         ++shown;
       }
-      if (shown == 0) ImGui::TextColored(kGray, i18n::Tr("   aucune"));
+      if (shown == 0) ImGui::TextColored(ro::pal::kLabel, i18n::Tr("   aucune"));
       ImGui::Spacing();
     }
     ImGui::EndChild();
@@ -5626,7 +5618,7 @@ void CharacterSheet::DrawGuildTab() {
   // Invitation : soumise au droit « inviter » du poste, comme côté serveur.
   if (can_invite) {
     ImGui::AlignTextToFramePadding();
-    ImGui::TextColored(kBlack, i18n::Tr("Inviter :"));
+    ImGui::TextColored(ro::pal::kBlack, i18n::Tr("Inviter :"));
     ImGui::SameLine();
     ImGui::SetNextItemWidth(ro::Px(130.0f));
     ro::InputTextCp949("##cs_guild_invite", guild_invite_buf_, sizeof(guild_invite_buf_));
@@ -5655,7 +5647,7 @@ void CharacterSheet::DrawGuildTab() {
     if (ImGui::IsItemHovered())
       ImGui::SetTooltip(i18n::Tr("Supprime définitivement la guilde (@breakguild)."));
   }
-  if (!guild_status_.empty()) ImGui::TextColored(kGray, "%s", guild_status_.c_str());
+  if (!guild_status_.empty()) ImGui::TextColored(ro::pal::kLabel, "%s", guild_status_.c_str());
 
   // ── Confirmations ─────────────────────────────────────────────────────────
   // Demande d'expulsion venue du menu contextuel : on ouvre ICI, au niveau de
@@ -5702,7 +5694,7 @@ void CharacterSheet::DrawGuildTab() {
       ImGui::Text(i18n::Tr("Rompre l'alliance avec %s ?"), guild_rel_del_name_);
     else
       ImGui::Text(i18n::Tr("Retirer %s de la liste des ennemis ?"), guild_rel_del_name_);
-    ImGui::TextColored(kGray,
+    ImGui::TextColored(ro::pal::kLabel,
                        i18n::Tr("Refusé par le serveur pendant une guerre de guildes\n"
                        "et sur les cartes verrouillées."));
     ImGui::Spacing();
@@ -5719,9 +5711,9 @@ void CharacterSheet::DrawGuildTab() {
 
   if (ro::BeginRoPopupModal(i18n::Tr("Quitter la guilde###bourgeon_guild_leave"))) {
     ImGui::TextUnformatted(i18n::Tr("Quitter définitivement la guilde ?"));
-    ImGui::TextColored(kGray, i18n::Tr("Il faudra une nouvelle invitation pour y revenir."));
+    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Il faudra une nouvelle invitation pour y revenir."));
     ImGui::Spacing();
-    ImGui::TextColored(kGray, i18n::Tr("Motif (facultatif) :"));
+    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Motif (facultatif) :"));
     ImGui::SetNextItemWidth(ro::Px(240.0f));
     ro::InputTextCp949("##cs_guild_leave_reason", guild_reason_buf_,
                        sizeof(guild_reason_buf_));
@@ -5743,20 +5735,20 @@ void CharacterSheet::DrawGuildTab() {
   // Le serveur ne posera donc aucune question — le garde-fou du nom retapé est le seul
   // qui existe, à l'image de ce que demande la fenêtre native pour dissoudre.
   if (ro::BeginRoPopupModal(i18n::Tr("Dissoudre la guilde###bourgeon_guild_disband"))) {
-    ImGui::TextColored(kRed, i18n::Tr("Dissoudre « %s » ?"), gi.name);
-    ImGui::TextColored(kGray, i18n::Tr("Irréversible : la guilde, ses postes, son storage et ses\n"
+    ImGui::TextColored(ro::pal::kRed, i18n::Tr("Dissoudre « %s » ?"), gi.name);
+    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Irréversible : la guilde, ses postes, son storage et ses\n"
                               "compétences disparaissent."));
     ImGui::Spacing();
     // Conditions RÉELLES de guild_break() : les dire AVANT évite un clic qui échoue,
     // d'autant que deux des trois refus sont peu bavards côté client.
-    ImGui::TextColored(kBlack, i18n::Tr("Le serveur refusera si :"));
+    ImGui::TextColored(ro::pal::kBlack, i18n::Tr("Le serveur refusera si :"));
     ImGui::BulletText(i18n::Tr("tu n'es pas le maître de guilde ;"));
     ImGui::BulletText(i18n::Tr("il reste un autre membre — il faut être SEUL ;"));
     ImGui::BulletText(i18n::Tr("la carte interdit les modifications de guilde\n(mapflag guildlock) ;"));
     ImGui::BulletText(i18n::Tr("une instance de guilde est en cours."));
-    ImGui::TextColored(kGray, i18n::Tr("L'instance fait échouer la dissolution SANS aucun message."));
+    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("L'instance fait échouer la dissolution SANS aucun message."));
     ImGui::Spacing();
-    ImGui::TextColored(kGray, i18n::Tr("Retape le nom de la guilde pour confirmer :"));
+    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Retape le nom de la guilde pour confirmer :"));
     ImGui::SetNextItemWidth(ro::Px(240.0f));
     // Indice STATIQUE, pas gi.name : le nom vient du client en CP949, et l'indice est
     // rendu en UTF-8. La comparaison, elle, se fait bien CP949 contre CP949.
@@ -5780,7 +5772,7 @@ void CharacterSheet::DrawGuildTab() {
   if (ro::BeginRoPopupModal(i18n::Tr("Expulser de la guilde###bourgeon_guild_expel"))) {
     ImGui::Text(i18n::Tr("Expulser %s de la guilde ?"), guild_expel_name_);
     ImGui::Spacing();
-    ImGui::TextColored(kGray, i18n::Tr("Motif (facultatif) :"));
+    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Motif (facultatif) :"));
     ImGui::SetNextItemWidth(ro::Px(240.0f));
     ro::InputTextCp949("##cs_guild_expel_reason", guild_reason_buf_,
                        sizeof(guild_reason_buf_));
@@ -5801,19 +5793,19 @@ void CharacterSheet::DrawGuildTab() {
   // maître, et seul le nouveau peut rendre la direction. Même garde-fou que pour la
   // dissolution — le nom retapé.
   if (ro::BeginRoPopupModal(i18n::Tr("Transférer la direction###bourgeon_guild_gm"))) {
-    ImGui::TextColored(kRed, i18n::Tr("Faire de %s le maître de « %s » ?"),
+    ImGui::TextColored(ro::pal::kRed, i18n::Tr("Faire de %s le maître de « %s » ?"),
                        guild_gm_name_, gi.name);
-    ImGui::TextColored(kGray,
+    ImGui::TextColored(ro::pal::kLabel,
                        i18n::Tr("Tu perds le poste de maître sur-le-champ : postes, emblème,\n"
                        "annonce, invitations et dissolution passent à ce membre.\n"
                        "Lui seul pourra te rendre la direction."));
     ImGui::Spacing();
-    ImGui::TextColored(kBlack, i18n::Tr("Le serveur refusera si :"));
+    ImGui::TextColored(ro::pal::kBlack, i18n::Tr("Le serveur refusera si :"));
     ImGui::BulletText(i18n::Tr("une guerre de guildes est en cours ;"));
     ImGui::BulletText(i18n::Tr("le précédent transfert est trop récent (délai serveur) ;"));
     ImGui::BulletText(i18n::Tr("une instance de guilde est en cours — refus SANS message."));
     ImGui::Spacing();
-    ImGui::TextColored(kGray, i18n::Tr("Retape le nom du membre pour confirmer :"));
+    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Retape le nom du membre pour confirmer :"));
     ImGui::SetNextItemWidth(ro::Px(240.0f));
     // Indice STATIQUE, pas guild_gm_name_ : le nom vient du client en CP949 et l'indice
     // est rendu en UTF-8. La comparaison, elle, reste CP949 contre CP949.
@@ -5841,13 +5833,12 @@ void CharacterSheet::DrawGuildTab() {
 // Sous-onglet « Expulsions » : les exclusions mémorisées par le serveur (ZC 0x0b7c).
 // Purement informatif : rien ne permet de réintégrer quelqu'un depuis le client.
 void CharacterSheet::DrawGuildBansTab() {
-  const ImVec4 kGray(0.35f, 0.35f, 0.42f, 1.0f);
   if (!guild_bans_known_) {
-    ImGui::TextColored(kGray, i18n::Tr("Liste non encore reçue — clic sur « Actualiser »."));
+    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Liste non encore reçue — clic sur « Actualiser »."));
     return;
   }
   if (guild_bans_.empty()) {
-    ImGui::TextColored(kGray, i18n::Tr("Aucune expulsion enregistrée."));
+    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Aucune expulsion enregistrée."));
     return;
   }
 
@@ -5863,7 +5854,7 @@ void CharacterSheet::DrawGuildBansTab() {
     ImGui::TextUnformatted(ban.name[0] ? ban.name : "?");
     ImGui::TableNextColumn();
     if (ban.reason[0]) ImGui::TextUnformatted(ban.reason);
-    else               ImGui::TextColored(kGray, i18n::Tr("(aucun motif)"));
+    else               ImGui::TextColored(ro::pal::kLabel, i18n::Tr("(aucun motif)"));
   }
   ImGui::EndTable();
 }
@@ -5971,10 +5962,9 @@ void CharacterSheet::EnsureGuildSkillTree() {
 // « + » suit `upgradable` (déjà restreint au maître côté serveur) ET les points
 // restants : inutile d'y remettre un test de maître, le serveur a tranché.
 void CharacterSheet::DrawGuildSkillsTab() {
-  const ImVec4 kGray(0.35f, 0.35f, 0.42f, 1.0f);
   EnsureGuildSkillTree();
   if (!guild_skills_known_) {
-    ImGui::TextColored(kGray, i18n::Tr("Compétences non encore reçues — clic sur « Actualiser »."));
+    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Compétences non encore reçues — clic sur « Actualiser »."));
     return;
   }
 
@@ -6011,7 +6001,7 @@ void CharacterSheet::DrawGuildSkillsTab() {
   // Sans l'arbre on ne peut montrer que ce que le serveur envoie ; avec, les
   // verrouillées apparaissent aussi, donc la liste n'est jamais vide.
   if (guild_skill_tree_state_ != 1 && guild_skills_.empty()) {
-    ImGui::TextColored(kGray, i18n::Tr("Aucune compétence disponible (prérequis non remplis)."));
+    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Aucune compétence disponible (prérequis non remplis)."));
     return;
   }
 
@@ -6392,7 +6382,7 @@ void CharacterSheet::DrawGuildSkillsTab() {
     ImGui::Dummy(ImVec2(icon, icon));
     ImGui::SameLine();
     const char* label = skill_label(row.id, live ? live->name : nullptr);
-    if (locked) ImGui::PushStyleColor(ImGuiCol_Text, kGray);
+    if (locked) ImGui::PushStyleColor(ImGuiCol_Text, ro::pal::kLabel);
     // Selectable (widget À ID) plutôt qu'un simple texte : c'est ce qui donne l'ActiveId
     // nécessaire au drag, et la zone cliquable pour le clic droit.
     ImGui::Selectable(label, false, ImGuiSelectableFlags_AllowDoubleClick);
@@ -6432,11 +6422,11 @@ void CharacterSheet::DrawGuildSkillsTab() {
     ImGui::TableNextColumn();
     if (row.max_level > 0) {
       if (level > 0) ImGui::Text("%d/%d", level, row.max_level);
-      else           ImGui::TextColored(kGray, "-/%d", row.max_level);
+      else           ImGui::TextColored(ro::pal::kLabel, "-/%d", row.max_level);
     } else if (level > 0) {
       ImGui::Text("%d", level);
     } else {
-      ImGui::TextColored(kGray, "-");
+      ImGui::TextColored(ro::pal::kLabel, "-");
     }
 
     // ── SP, ou « Passif » ──────────────────────────────────────────────────────
@@ -6444,9 +6434,9 @@ void CharacterSheet::DrawGuildSkillsTab() {
     // jusqu'ici invisible : rien ne distinguait une passive d'une active, il fallait
     // ouvrir la description ou tenter le drag pour le découvrir.
     ImGui::TableNextColumn();
-    if (live && live->inf == 0)    ImGui::TextColored(kGray, i18n::Tr("Passif"));
+    if (live && live->inf == 0)    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Passif"));
     else if (live && live->sp > 0) ImGui::Text("%d", live->sp);
-    else                           ImGui::TextColored(kGray, "-");
+    else                           ImGui::TextColored(ro::pal::kLabel, "-");
 
     // ── Lancer : l'équivalent du bouton « use » de la fenêtre native ───────────
     // Sous cooldown, le bouton porte le décompte plutôt qu'un « > » mort : c'est là que
@@ -6500,7 +6490,6 @@ void CharacterSheet::DrawGuildSkillsTab() {
 // éditée n'est plus resynchronisée sur les paquets reçus (sinon la frappe serait
 // écrasée par le prochain rafraîchissement).
 void CharacterSheet::DrawGuildPositionsTab(bool can_edit) {
-  const ImVec4 kGray(0.35f, 0.35f, 0.42f, 1.0f);
 
   if (!guild_positions_editing_) {
     for (int i = 0; i < kGuildPositionSlots; ++i) guild_positions_edit_[i] = guild_positions_[i];
@@ -6510,16 +6499,16 @@ void CharacterSheet::DrawGuildPositionsTab(bool can_edit) {
   for (int i = 0; i < kGuildPositionSlots; ++i)
     if (guild_positions_[i].has_name || guild_positions_[i].has_info) { any_info = true; break; }
   if (!any_info) {
-    ImGui::TextColored(kGray, i18n::Tr("Postes non encore reçus — clic sur « Actualiser »."));
+    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Postes non encore reçus — clic sur « Actualiser »."));
     return;
   }
 
   if (can_edit)
-    ImGui::TextColored(kGray,
+    ImGui::TextColored(ro::pal::kLabel,
                        i18n::Tr("Nom, droits et part d'exp de chaque poste. Le serveur plafonne "
                        "la part d'exp à %d %%."), kGuildPayRateMax);
   else
-    ImGui::TextColored(kGray, i18n::Tr("Seul le maître de guilde peut modifier les postes."));
+    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Seul le maître de guilde peut modifier les postes."));
 
   const ImGuiTableFlags table_flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter |
                                       ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_ScrollY;
@@ -6545,7 +6534,7 @@ void CharacterSheet::DrawGuildPositionsTab(bool can_edit) {
       ImGui::PushID(id);
       ImGui::TableNextRow();
       ImGui::TableSetColumnIndex(0);
-      ImGui::TextColored(kBlack, "%d", id);
+      ImGui::TextColored(ro::pal::kBlack, "%d", id);
 
       ImGui::TableSetColumnIndex(1);
       if (row_editable) {
@@ -6553,7 +6542,7 @@ void CharacterSheet::DrawGuildPositionsTab(bool can_edit) {
         if (ro::InputTextCp949("##nom", row.name, sizeof(row.name)))
           guild_positions_editing_ = true;
       } else {
-        ImGui::TextColored(kBlack, "%s", row.name[0] ? row.name : "—");
+        ImGui::TextColored(ro::pal::kBlack, "%s", row.name[0] ? row.name : "—");
       }
 
       // Droits : un bit chacun (0x001 inviter, 0x010 expulser, 0x100 Storage).
@@ -6568,7 +6557,7 @@ void CharacterSheet::DrawGuildPositionsTab(bool can_edit) {
             guild_positions_editing_ = true;
           }
         } else {
-          ImGui::TextColored(kBlack, "%s", on ? i18n::Tr("oui") : "-");
+          ImGui::TextColored(ro::pal::kBlack, "%s", on ? i18n::Tr("oui") : "-");
         }
         ImGui::PopID();
       }
@@ -6579,7 +6568,7 @@ void CharacterSheet::DrawGuildPositionsTab(bool can_edit) {
         if (ro::RoSliderInt("##part", &row.pay_rate, 0, kGuildPayRateMax, "%d %%"))
           guild_positions_editing_ = true;
       } else {
-        ImGui::TextColored(kBlack, "%d %%", row.pay_rate);
+        ImGui::TextColored(ro::pal::kBlack, "%d %%", row.pay_rate);
       }
       ImGui::PopID();
     }
@@ -6640,16 +6629,14 @@ void CharacterSheet::DrawGuildPositionsTab(bool can_edit) {
 // une guerre de guildes selon la configuration du serveur.
 void CharacterSheet::DrawGuildEmblemModal(int guildId, bool is_master) {
   if (!ro::BeginRoPopupModal(i18n::Tr("Changer l'emblème###bourgeon_guild_emblem"))) return;
-  const ImVec4 kGray(0.35f, 0.35f, 0.42f, 1.0f);
-  const ImVec4 kRed(0.60f, 0.12f, 0.12f, 1.0f);
   const std::string dir = paths::InGameDir("emblem\\");
 
-  ImGui::TextColored(kGray, i18n::Tr("Format envoyé : %dx%d, magenta pur (255, 0, 255) = transparent."),
+  ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Format envoyé : %dx%d, magenta pur (255, 0, 255) = transparent."),
                      kEmblemSide, kEmblemSide);
   // Le serveur (clif_parse_GuildChangeEmblem) sort SANS RIEN DIRE quand l'expéditeur
   // n'a pas le drapeau gmaster : autant l'annoncer avant de laisser dessiner.
   if (!is_master)
-    ImGui::TextColored(kRed, i18n::Tr("Tu n'es pas maître de guilde : le serveur ignorera l'envoi."));
+    ImGui::TextColored(ro::pal::kRed, i18n::Tr("Tu n'es pas maître de guilde : le serveur ignorera l'envoi."));
   ImGui::Spacing();
   if (!ro::RoBeginTabBar("cs_emblem_tabs")) {
     ro::EndRoPopupModal();
@@ -6668,7 +6655,7 @@ void CharacterSheet::DrawGuildEmblemModal(int guildId, bool is_master) {
     ro::RoEndTabBar();
     ImGui::Separator();
     if (ro::RoButton(i18n::Tr("Fermer"), 90.0f, 0.0f)) ImGui::CloseCurrentPopup();
-    if (!guild_emblem_diag_.empty()) ImGui::TextColored(kGray, "%s", guild_emblem_diag_.c_str());
+    if (!guild_emblem_diag_.empty()) ImGui::TextColored(ro::pal::kLabel, "%s", guild_emblem_diag_.c_str());
     ro::EndRoPopupModal();
     return;
   }
@@ -6677,12 +6664,12 @@ void CharacterSheet::DrawGuildEmblemModal(int guildId, bool is_master) {
   // l'octet 0x5C (l'antislash) se dessine comme le symbole won coréen ₩.
   std::string shown_dir = dir;
   std::replace(shown_dir.begin(), shown_dir.end(), '\\', '/');
-  ImGui::TextColored(kGray, i18n::Tr("Fichiers .bmp de %s"), shown_dir.c_str());
-  ImGui::TextColored(kGray, i18n::Tr("Attendu : 24 bits ou 256 couleurs, non compressé."));
+  ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Fichiers .bmp de %s"), shown_dir.c_str());
+  ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Attendu : 24 bits ou 256 couleurs, non compressé."));
   ImGui::Spacing();
 
   if (g_emblem_files.empty()) {
-    ImGui::TextColored(kRed, i18n::Tr("Aucun .bmp dans ce dossier."));
+    ImGui::TextColored(ro::pal::kRed, i18n::Tr("Aucun .bmp dans ce dossier."));
   } else {
     const float row_h = std::max(ImGui::GetTextLineHeight() + 8.0f, 32.0f);
     // Hauteur EXACTE du contenu (lignes + interlignes + marges + bordure) : la calculer
@@ -6736,14 +6723,14 @@ void CharacterSheet::DrawGuildEmblemModal(int guildId, bool is_master) {
           ? &g_emblem_files[guild_emblem_sel_]
           : nullptr;
   if (chosen && chosen->usable) {
-    ImGui::TextColored(kGray, i18n::Tr("%zu octets, prêt à être envoyé."), chosen->bmp.size());
+    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("%zu octets, prêt à être envoyé."), chosen->bmp.size());
     if (chosen->transparency > kEmblemTransparencyWarn)
-      ImGui::TextColored(kRed, i18n::Tr("Transparence ~%d %% : au-delà de %d %% le serveur refuse."),
+      ImGui::TextColored(ro::pal::kRed, i18n::Tr("Transparence ~%d %% : au-delà de %d %% le serveur refuse."),
                          chosen->transparency, kEmblemTransparencyWarn);
   } else if (!guild_emblem_error_.empty()) {
-    ImGui::TextColored(kRed, "%s", guild_emblem_error_.c_str());
+    ImGui::TextColored(ro::pal::kRed, "%s", guild_emblem_error_.c_str());
   } else {
-    ImGui::TextColored(kGray, i18n::Tr("Choisis un fichier dans la liste."));
+    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Choisis un fichier dans la liste."));
   }
 
   ImGui::Spacing();
@@ -6784,11 +6771,11 @@ void CharacterSheet::DrawGuildEmblemModal(int guildId, bool is_master) {
   if (ro::RoButton(i18n::Tr("Fermer"), 90.0f, 0.0f)) ImGui::CloseCurrentPopup();
   ImGui::SameLine();
   ImGui::SameLine();
-  ImGui::TextColored(kGray,
+  ImGui::TextColored(ro::pal::kLabel,
                      i18n::Tr("L'envoi passe par le service web du serveur, comme la fenêtre native.\n"
                      "L'emblème se met à jour dès que le serveur a publié la nouvelle version."));
   // Compte rendu du dernier envoi (aussi écrit dans bourgeon.log et la console).
-  if (!guild_emblem_diag_.empty()) ImGui::TextColored(kGray, "%s", guild_emblem_diag_.c_str());
+  if (!guild_emblem_diag_.empty()) ImGui::TextColored(ro::pal::kLabel, "%s", guild_emblem_diag_.c_str());
   ro::EndRoPopupModal();
 }
 
@@ -6798,8 +6785,6 @@ void CharacterSheet::DrawGuildEmblemModal(int guildId, bool is_master) {
 // Le statut de maître n'est PAS un paramètre : l'avertissement « tu n'es pas maître »
 // est affiché une fois pour tout le modal, et le serveur reste seul juge de l'envoi.
 void CharacterSheet::DrawGuildEmblemPaintTab(int guildId) {
-  const ImVec4 kGray(0.35f, 0.35f, 0.42f, 1.0f);
-  const ImVec4 kRed(0.60f, 0.12f, 0.12f, 1.0f);
   if (!g_emblem_canvas.started) EmblemCanvasClear();
 
   // Palette de départ : les teintes franches passent mieux sur 24x24 qu'un dégradé.
@@ -6936,7 +6921,7 @@ void CharacterSheet::DrawGuildEmblemPaintTab(int guildId) {
   // ── Outils ────────────────────────────────────────────────────────────────
   ImGui::Spacing();
   ImGui::AlignTextToFramePadding();
-  ImGui::TextColored(kGray, i18n::Tr("Outil :"));
+  ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Outil :"));
   ImGui::SameLine();
   const char* tool_names[6] = {"Crayon", "Gomme", "Remplir", "Ligne", "Rectangle", "Ellipse"};
   const char* tool_hints[6] = {
@@ -6957,7 +6942,7 @@ void CharacterSheet::DrawGuildEmblemPaintTab(int guildId) {
     if (t != 2 && t != 5) ImGui::SameLine();
   }
   ImGui::SameLine();
-  ImGui::TextColored(kGray, i18n::Tr("(clic droit = efface)"));
+  ImGui::TextColored(ro::pal::kLabel, i18n::Tr("(clic droit = efface)"));
 
   ImGui::SetNextItemWidth(ro::Px(140.0f));
   ro::RoSliderInt(i18n::Tr("Épaisseur"), &g_emblem_canvas.brush, 1, 3, "%d px");
@@ -6973,7 +6958,7 @@ void CharacterSheet::DrawGuildEmblemPaintTab(int guildId) {
   ImGui::EndDisabled();
 
   ImGui::AlignTextToFramePadding();
-  ImGui::TextColored(kGray, i18n::Tr("Couleur :"));
+  ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Couleur :"));
   ImGui::SameLine();
   if (ImGui::ColorEdit3("##cs_emblem_color", g_emblem_canvas.color, ImGuiColorEditFlags_NoInputs)) {
     g_emblem_canvas.color_clear = false;  // choisir une teinte, c'est quitter le « vide »
@@ -6984,7 +6969,7 @@ void CharacterSheet::DrawGuildEmblemPaintTab(int guildId) {
   // pouvoir en remplir une zone ou en tracer une forme, ce que la gomme (à main levée)
   // ne permet pas. Elle laisse donc l'outil courant tel quel.
   ImGui::AlignTextToFramePadding();
-  ImGui::TextColored(kGray, i18n::Tr("Transparence :"));
+  ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Transparence :"));
   ImGui::SameLine();
   const ImVec4 magenta(1.0f, 0.0f, 1.0f, 1.0f);
   const float swatch_h = ImGui::GetFrameHeight();
@@ -6999,7 +6984,7 @@ void CharacterSheet::DrawGuildEmblemPaintTab(int guildId) {
     ImGui::SameLine();
     ImGui::TextColored(ImVec4(0.10f, 0.35f, 0.70f, 1.0f), i18n::Tr("couleur active"));
   }
-  ImGui::TextColored(kGray, i18n::Tr("Palette :"));
+  ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Palette :"));
   ImGui::SameLine();
   // Nuancier : une case pose la couleur courante (et sort du « vide » comme de la gomme).
   const float swatch = ImGui::GetFrameHeight() - 2.0f;
@@ -7056,7 +7041,7 @@ void CharacterSheet::DrawGuildEmblemPaintTab(int guildId) {
   // Les icônes d'inventaire du client font 24x24, la taille exacte d'un emblème :
   // elles font d'excellentes bases (potion, carte, arme…) à retoucher ensuite.
   ImGui::AlignTextToFramePadding();
-  ImGui::TextColored(kGray, i18n::Tr("Partir d'une icône d'item :"));
+  ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Partir d'une icône d'item :"));
   ImGui::SameLine();
   ImGui::SetNextItemWidth(ro::Px(90.0f));
   ImGui::InputInt("##cs_emblem_itemid", &guild_emblem_item_id_, 0, 0);
@@ -7088,7 +7073,7 @@ void CharacterSheet::DrawGuildEmblemPaintTab(int guildId) {
     ImGui::SetTooltip(i18n::Tr("Remplace le dessin par l'icône de l'item (annulable)."));
   if (guild_emblem_item_id_ > 0 && !preview_icon.tex) {
     ImGui::SameLine();
-    ImGui::TextColored(kRed, i18n::Tr("aucune icône"));
+    ImGui::TextColored(ro::pal::kRed, i18n::Tr("aucune icône"));
   }
   ImGui::SameLine();
   if (ro::RoToggleButton("Inventaire", guild_emblem_gallery_, 110.0f, 0.0f))
@@ -7129,7 +7114,7 @@ void CharacterSheet::DrawGuildEmblemPaintTab(int guildId) {
                           style.WindowPadding.y * 2.0f + style.ChildBorderSize * 2.0f;
     ImGui::BeginChild("##cs_emblem_gallery", ImVec2(0.0f, child_h), true);
     if (s_gallery_ids.empty()) {
-      ImGui::TextColored(kGray, i18n::Tr("Aucun item dans le sac."));
+      ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Aucun item dans le sac."));
     } else {
       ImDrawList* dl = ImGui::GetWindowDrawList();
       for (size_t i = 0; i < s_gallery_ids.size(); ++i) {
@@ -7179,12 +7164,12 @@ void CharacterSheet::DrawGuildEmblemPaintTab(int guildId) {
   const std::vector<uint8_t>& bmp = s_bmp;
   const bool has_ink = s_has_ink;
 
-  ImGui::TextColored(kGray, i18n::Tr("%zu octets (BMP %dx%d, 24 bits)."), bmp.size(), kEmblemSide,
+  ImGui::TextColored(ro::pal::kLabel, i18n::Tr("%zu octets (BMP %dx%d, 24 bits)."), bmp.size(), kEmblemSide,
                      kEmblemSide);
   // Le serveur refuse un emblème trop vide (inter_config.emblem_transparency_limit) :
   // mieux vaut le dire pendant qu'on dessine qu'après un envoi rejeté.
   if (s_transparency > kEmblemTransparencyWarn)
-    ImGui::TextColored(kRed, i18n::Tr("Transparence ~%d %% : au-delà de %d %% le serveur refuse — "
+    ImGui::TextColored(ro::pal::kRed, i18n::Tr("Transparence ~%d %% : au-delà de %d %% le serveur refuse — "
                              "remplis davantage le fond."),
                        s_transparency, kEmblemTransparencyWarn);
   const bool can_send = has_ink && guildId > 0;
@@ -7217,7 +7202,7 @@ void CharacterSheet::DrawGuildEmblemPaintTab(int guildId) {
   if (!can_send) {
     ImGui::SameLine();
     const char* why = has_ink ? i18n::Tr("guilde inconnue du client") : i18n::Tr("dessin vide");
-    ImGui::TextColored(kRed, i18n::Tr("Envoi impossible : %s."), why);
+    ImGui::TextColored(ro::pal::kRed, i18n::Tr("Envoi impossible : %s."), why);
   }
   ImGui::SameLine();
   ImGui::SetNextItemWidth(ro::Px(150.0f));
@@ -7614,7 +7599,7 @@ void CharacterSheet::DrawDoll(float avail_w) {
     const float tw = ImGui::CalcTextSize(txt).x;
     ImGui::SetCursorPosX(start_x + std::max(0.0f, (avail_w - tw) * 0.5f));
     ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 5.0f);
-    ImGui::TextColored(kBlack, "%s", txt);
+    ImGui::TextColored(ro::pal::kBlack, "%s", txt);
   };
   const std::string name = Bourgeon::Instance().client().session().GetCharName();
   char lvl[96];
@@ -7824,7 +7809,7 @@ void CharacterSheet::DrawDoll(float avail_w) {
   if (!gif_status_.empty()) {
     ImGui::SetCursorPos(ImVec2(ox, pose_bottom));
     ImGui::PushTextWrapPos(ox + block_w);  // wrap dans la largeur du bloc
-    ImGui::TextColored(kBlack, "%s", gif_status_.c_str());
+    ImGui::TextColored(ro::pal::kBlack, "%s", gif_status_.c_str());
     ImGui::PopTextWrapPos();
   }
 
@@ -7940,7 +7925,7 @@ void CharacterSheet::DrawStatsPanel() {
     ImGui::GetWindowDrawList()->AddRectFilled(
         ImVec2(rp.x - 3.0f, rp.y), ImVec2(rp.x + nw + 5.0f, rp.y + step), kRowBg, 4.0f);
     ImGui::AlignTextToFramePadding();
-    ImGui::TextColored(kBlack, "%s", kStatName[i]);             // label
+    ImGui::TextColored(ro::pal::kBlack, "%s", kStatName[i]);             // label
     if (ImGui::IsItemHovered()) { char tb[256]; ImGui::SetTooltip("%s", primaryTip(i, tb, sizeof(tb))); }  // rôle + split équip/carte
     ImGui::SameLine();
     ImGui::SetCursorPosX(val_x);                                // colonne valeurs
@@ -7948,9 +7933,9 @@ void CharacterSheet::DrawStatsPanel() {
     // ne bake que la plage 0x20-0xFF : U+2014 y sort en « ? ». Un joueur qui choisit
     // cette police lisait donc « STR ? 999 » sur chacune de ses six stats.
     if (s.bonus[i] != 0)
-      ImGui::TextColored(kBlack, "- %d (+%d)", s.base[i], s.bonus[i]);
+      ImGui::TextColored(ro::pal::kBlack, "- %d (+%d)", s.base[i], s.bonus[i]);
     else
-      ImGui::TextColored(kBlack, "- %d", s.base[i]);
+      ImGui::TextColored(ro::pal::kBlack, "- %d", s.base[i]);
     if (ImGui::IsItemHovered()) { char tb[256]; ImGui::SetTooltip("%s", primaryTip(i, tb, sizeof(tb))); }
     // Boutons de montée (actifs SSI on peut se payer >=1 point). « Max » ajoute le
     // MAXIMUM possible ; « + » = +1, ou MAJ+clic = jusqu'au prochain palier de 10 (qui
@@ -7991,11 +7976,11 @@ void CharacterSheet::DrawStatsPanel() {
     if (s.raise[i] > 0) {  // coût du prochain point, juste à droite du +
       ImGui::SameLine();
       ImGui::AlignTextToFramePadding();
-      ImGui::TextColored(can ? kBlack : ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "%d", s.raise[i]);
+      ImGui::TextColored(can ? ro::pal::kBlack : ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "%d", s.raise[i]);
     }
   }
   stat_points_dy_ = ImGui::GetCursorPosY() - pane_top;  // repère pour le volet staff
-  ImGui::TextColored(kBlack, i18n::Tr("Points de statut : %d"), s.points);
+  ImGui::TextColored(ro::pal::kBlack, i18n::Tr("Points de statut : %d"), s.points);
   ImGui::Separator();
 
   // Stats derivees : label (gauche) + valeur (colonne val_x alignée). Survol = expl. Le
@@ -8014,18 +7999,18 @@ void CharacterSheet::DrawStatsPanel() {
     ImGui::GetWindowDrawList()->AddRectFilled(
         ImVec2(rp.x - 3.0f, rp.y - 1.0f),
         ImVec2(rp.x + nw + 5.0f, rp.y + ImGui::GetTextLineHeight() + 1.0f), kRowBg, 4.0f);
-    ImGui::TextColored(kBlack, "%s", label);
+    ImGui::TextColored(ro::pal::kBlack, "%s", label);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tip);
     ImGui::SameLine();
     ImGui::SetCursorPosX(val_x);
-    ImGui::TextColored(kBlack, "%s", value);
+    ImGui::TextColored(ro::pal::kBlack, "%s", value);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tip);
     if (sfx[0]) {
       const float after =
           val_x + ImGui::CalcTextSize(value).x + ImGui::GetStyle().ItemSpacing.x;
       if (after + ImGui::CalcTextSize(sfx).x <= right) ImGui::SameLine();
       else                                             ImGui::SetCursorPosX(val_x);
-      ImGui::TextColored(kBlack, "%s", sfx);
+      ImGui::TextColored(ro::pal::kBlack, "%s", sfx);
       if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tip);
       sfx[0] = '\0';  // consommé : la stat suivante repart sans détail
     }
@@ -8113,12 +8098,12 @@ void CharacterSheet::DrawStatsPanel() {
       ImGui::GetWindowDrawList()->AddRectFilled(
           ImVec2(rp.x - 3.0f, rp.y - 1.0f),
           ImVec2(rp.x + nw + 5.0f, rp.y + ImGui::GetTextLineHeight() + 1.0f), kRowBg, 4.0f);
-      ImGui::TextColored(kBlack, "%s", label);
+      ImGui::TextColored(ro::pal::kBlack, "%s", label);
       if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tip);
       ImGui::SameLine();
       const float after = start_x + nw + ImGui::GetStyle().ItemSpacing.x;
       ImGui::SetCursorPosX(after > val_x ? after : val_x);  // aligné, sauf libellé trop long
-      ImGui::TextColored(kBlack, "%s", value);
+      ImGui::TextColored(ro::pal::kBlack, "%s", value);
       if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tip);
     };
     char vb[24];
@@ -8582,7 +8567,7 @@ void CharacterSheet::DrawStaffPanel() {
   // Écrit le libellé puis pose le curseur en début de colonne d'ajustement.
   auto labelledRow = [&](const char* label) {
     ImGui::AlignTextToFramePadding();
-    ImGui::TextColored(kBlack, "%s", label);
+    ImGui::TextColored(ro::pal::kBlack, "%s", label);
     ImGui::SameLine(0.0f, 0.0f);
     ImGui::SetCursorPosX(ImGui::GetCursorPosX() + lvl_lbl -
                          ImGui::CalcTextSize(label).x + st.ItemSpacing.x);

@@ -29,6 +29,7 @@
 #include "ui/ro_widgets.h"        // mui::IsLastItemRightClicked
 #include "utils/i18n.h"
 #include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
+#include "ui/ui_palette.h"  // ro::pal : la palette de l'UI
 
 // ── Constantes RE (client 20250716, base 0x400000 ; cf. project_npc_shop_re) ──
 namespace {
@@ -848,9 +849,8 @@ void NpcShopWindow::OnRenderUI() {
   }
 
   // Bandeau : zeny du joueur + résultat de la dernière transaction.
-  const ImVec4 kBlack(0.0f, 0.0f, 0.0f, 1.0f);  // texte noir (skin RO clair)
   const uint32_t zeny = static_cast<uint32_t>(rag::Zeny());
-  ImGui::TextColored(kBlack, i18n::Tr("Zeny: %uz"), zeny);
+  ImGui::TextColored(ro::pal::kBlack, i18n::Tr("Zeny: %uz"), zeny);
   if (last_result_ == 0) {
     ImGui::SameLine();
     ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.4f, 1.0f), i18n::Tr("  %s OK"),
@@ -1008,7 +1008,7 @@ void NpcShopWindow::OnRenderUI() {
         const bool afford = static_cast<uint32_t>(b.discount) <= zeny;
         // Prix noir si abordable, rouge sombre si trop cher ; "base -> remise" si Discount.
         draw_price(b.price, b.discount,
-                   afford ? kBlack : ImVec4(0.75f, 0.15f, 0.15f, 1.0f));
+                   afford ? ro::pal::kBlack : ImVec4(0.75f, 0.15f, 0.15f, 1.0f));
         ImGui::TableNextColumn();
         // Plafond : la pile du client pour un consommable, UN SEUL exemplaire
         // pour un équipement (cf. BuyStackMax) — il porte la borne du panier et
@@ -1076,7 +1076,7 @@ void NpcShopWindow::OnRenderUI() {
         rclick_desc(s.id, 0, 0);  // clic-droit nom -> desc
         ImGui::TableNextColumn();
         // "base -> majore" si Overcharge, sinon juste le prix (lu du noeud natif).
-        draw_price(s.base_price, s.price, kBlack);
+        draw_price(s.base_price, s.price, ro::pal::kBlack);
         ImGui::TableNextColumn();
         qty_buttons(s.id, s.index, s.price, s.amount, false);
         ImGui::PopID();
@@ -1125,7 +1125,7 @@ void NpcShopWindow::OnRenderUI() {
     // Sous-total (noir) centre verticalement sur la ligne des champs.
     ImGui::SameLine();
     ImGui::AlignTextToFramePadding();
-    ImGui::TextColored(kBlack, "%lldz", static_cast<long long>(e.price) * e.amount);
+    ImGui::TextColored(ro::pal::kBlack, "%lldz", static_cast<long long>(e.price) * e.amount);
     // Bouton supprimer : petit bouton RO carre, aligne a droite.
     ImGui::SameLine();
     const float xr = ImGui::GetContentRegionMax().x - step;

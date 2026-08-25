@@ -21,6 +21,7 @@
 #include "utils/i18n.h"
 #include "utils/log_console.h"  // LogDiag
 #include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
+#include "ui/ui_palette.h"  // ro::pal : la palette de l'UI
 
 namespace {
 
@@ -86,9 +87,6 @@ constexpr float kHatchRowW   = 250.0f;
 
 // Le corps d'une fenêtre RO est CLAIR : le texte par défaut d'ImGui y est
 // illisible, et `TextDisabled` encore plus.
-const ImVec4 kBlack(0.10f, 0.10f, 0.13f, 1.0f);
-const ImVec4 kGray (0.35f, 0.35f, 0.42f, 1.0f);
-const ImVec4 kRed  (0.60f, 0.12f, 0.12f, 1.0f);
 
 // Écrit une ligne dans le chat du jeu, par la voie unique de Bourgeon. C'est ce
 // que fait le natif de ses trois refus — `UIWindowMgr_ChatAction(mgr, 1, …)` —
@@ -499,7 +497,7 @@ void PetWindow::OnRenderUI() {
     ImGui::Separator();
     DrawActions(pet);
     if (status_[0]) {
-      ImGui::PushStyleColor(ImGuiCol_Text, status_error_ ? kRed : kGray);
+      ImGui::PushStyleColor(ImGuiCol_Text, status_error_ ? ro::pal::kRed : ro::pal::kLabel);
       ImGui::TextWrapped("%s", status_);
       ImGui::PopStyleColor();
     }
@@ -526,17 +524,17 @@ void PetWindow::DrawHeader(const rag::pet::State& pet) {
   ImGui::BeginGroup();
   DrawRenameRow(pet);
   const char* species = rag::pet::MobDisplayNameUtf8(pet.cls);
-  ImGui::TextColored(kGray, "%s  ·  %s %d",
+  ImGui::TextColored(ro::pal::kLabel, "%s  ·  %s %d",
                      (species && species[0]) ? species : "?",
                      i18n::Tr("niv."), pet.level);
   // L'accessoire : le natif n'en disait jamais rien, il proposait seulement de
   // le retirer — y compris quand il n'y en avait pas.
   if (pet.accessory != 0) {
     const char* acc = itemcell::NameById(static_cast<uint32_t>(pet.accessory));
-    ImGui::TextColored(kBlack, "%s : %s", i18n::Tr("Accessoire"),
+    ImGui::TextColored(ro::pal::kValue, "%s : %s", i18n::Tr("Accessoire"),
                        (acc && acc[0]) ? acc : "?");
   } else {
-    ImGui::TextColored(kGray, "%s", i18n::Tr("Aucun accessoire."));
+    ImGui::TextColored(ro::pal::kLabel, "%s", i18n::Tr("Aucun accessoire."));
   }
   ImGui::EndGroup();
 }
@@ -594,7 +592,7 @@ void PetWindow::DrawRenameRow(const rag::pet::State& pet) {
     char confirm[224];
     FormatMsgArg(confirm, sizeof(confirm),
                  msgstr::StripColors(msgstr::Utf8(kMsiRenameConfirm)), rename_buf_);
-    ImGui::PushStyleColor(ImGuiCol_Text, kRed);
+    ImGui::PushStyleColor(ImGuiCol_Text, ro::pal::kRed);
     ImGui::TextWrapped("%s", confirm);
     ImGui::PopStyleColor();
     return;
@@ -613,7 +611,7 @@ void PetWindow::DrawRenameRow(const rag::pet::State& pet) {
     mui::Tooltip(i18n::Tr("Cliquer pour renommer — une seule fois, définitivement."));
   } else {
     ImGui::AlignTextToFramePadding();
-    ImGui::TextColored(kBlack, "%s", shown);
+    ImGui::TextColored(ro::pal::kValue, "%s", shown);
     // 🔴 Ce que le natif ne disait pas : il gardait son bouton « rewrite »
     // cliquable une fois le droit consommé, et le serveur jetait en silence.
     mui::Tooltip(i18n::Tr("Ce pet a déjà été renommé : le serveur n'accepte qu'une fois."));
@@ -632,14 +630,14 @@ void PetWindow::DrawGauges(const rag::pet::State& pet) {
   // dit si le pet est en train de descendre.
   if (pet.prev_hunger != pet.hunger) {
     const bool down = pet.hunger < pet.prev_hunger;
-    ImGui::TextColored(down ? kRed : kGray, "%s %d",
+    ImGui::TextColored(down ? ro::pal::kRed : ro::pal::kLabel, "%s %d",
                        down ? i18n::Tr("en baisse, précédemment")
                             : i18n::Tr("en hausse, précédemment"),
                        pet.prev_hunger);
   }
 
   Gauge(i18n::Tr("Intimité"), pet.intimacy, 1000, ImVec4(0.55f, 0.35f, 0.55f, 1.0f));
-  ImGui::TextColored(kBlack, "%s",
+  ImGui::TextColored(ro::pal::kValue, "%s",
                      Btn(rag::pet::IntimacyMsgId(pet.intimacy, pet.cls)));
 }
 
@@ -682,7 +680,7 @@ void PetWindow::DrawActions(const rag::pet::State& pet) {
   if (confirm_feed_) {
     // Corps de fenêtre RO = fond CLAIR : le texte par défaut d'ImGui y est
     // illisible, il faut donc pousser la couleur sombre à chaque bloc.
-    ImGui::PushStyleColor(ImGuiCol_Text, kBlack);
+    ImGui::PushStyleColor(ImGuiCol_Text, ro::pal::kValue);
     ImGui::TextWrapped("%s", msgstr::StripColors(msgstr::Utf8(kMsiFeedConfirm)));
     ImGui::PopStyleColor();
     char ok[48], cancel[48];
@@ -709,7 +707,7 @@ void PetWindow::DrawActions(const rag::pet::State& pet) {
     else { pending_ = Pending::kCommand; pending_arg_ = rag::pet::kCmdToEgg; }
   }
   if (confirm_egg_ask_) {
-    ImGui::TextColored(kBlack, "%s", i18n::Tr("Ranger le pet dans son œuf ?"));
+    ImGui::TextColored(ro::pal::kValue, "%s", i18n::Tr("Ranger le pet dans son œuf ?"));
     char cancel[48];
     std::snprintf(cancel, sizeof(cancel), "%s##pet_egg_cancel", i18n::Tr("Annuler"));
     if (ro::RoSmallButton(i18n::Tr("Ranger"), 80.0f, 0.0f)) {
@@ -740,7 +738,7 @@ void PetWindow::DrawActions(const rag::pet::State& pet) {
   // section reste, et dit lequel des trois.
   ImGui::Spacing();
   if (pet.intimacy <= rag::pet::kEvolutionMinIntimacy) {
-    ImGui::PushStyleColor(ImGuiCol_Text, kGray);
+    ImGui::PushStyleColor(ImGuiCol_Text, ro::pal::kLabel);
     ImGui::TextWrapped("%s", msgstr::StripColors(msgstr::Utf8(kMsiEvolutionLow)));
     ImGui::PopStyleColor();
     return;
@@ -748,14 +746,14 @@ void PetWindow::DrawActions(const rag::pet::State& pet) {
   if (egg == 0) {
     // Le cas ORDINAIRE pet sorti : `g_Own_PetEggInvIndex` vaut -1, le client ne
     // sait pas de quel œuf ce pet est sorti. Le natif se taisait.
-    ImGui::TextColored(kGray, "%s",
+    ImGui::TextColored(ro::pal::kLabel, "%s",
                        i18n::Tr("Évolution : le client ne connaît pas l'œuf de ce pet."));
     return;
   }
   int targets[rag::pet::kMaxEvolutions] = {};
   const int count = rag::pet::EvolutionTargets(egg, targets, rag::pet::kMaxEvolutions);
   if (count == 0) {
-    ImGui::TextColored(kGray, "%s", i18n::Tr("Aucune évolution pour ce pet."));
+    ImGui::TextColored(ro::pal::kLabel, "%s", i18n::Tr("Aucune évolution pour ce pet."));
     return;
   }
   for (int i = 0; i < count; ++i) {
@@ -807,7 +805,7 @@ void PetWindow::DrawEvolutionPanel(const rag::pet::State& pet, int src_egg) {
   // fenêtre RO est CLAIR, et la couleur de texte par défaut d'ImGui y disparaît.
   const ImVec2 a = ImGui::GetCursorScreenPos();
   const float ay = a.y + kBox * 0.5f;
-  const ImU32 arrow = ImGui::GetColorU32(kBlack);
+  const ImU32 arrow = ImGui::GetColorU32(ro::pal::kValue);
   dl->AddLine(ImVec2(a.x + 4.0f, ay), ImVec2(a.x + 26.0f, ay), arrow, 2.0f);
   dl->AddTriangleFilled(ImVec2(a.x + 32.0f, ay), ImVec2(a.x + 22.0f, ay - 6.0f),
                         ImVec2(a.x + 22.0f, ay + 6.0f), arrow);
@@ -827,7 +825,7 @@ void PetWindow::DrawEvolutionPanel(const rag::pet::State& pet, int src_egg) {
                 (src_name && src_name[0]) ? src_name : "?");
   ItemLinkCell(static_cast<uint32_t>(src_egg), src_copy, links::LinkColor(), false);
   ImGui::SameLine();
-  ImGui::TextColored(kBlack, "  →  ");
+  ImGui::TextColored(ro::pal::kValue, "  →  ");
   ImGui::SameLine();
   const char* dst_name = rag::pet::MobDisplayNameUtf8(dst_mob);
   ItemLinkCell(static_cast<uint32_t>(evo_target_),
@@ -839,9 +837,9 @@ void PetWindow::DrawEvolutionPanel(const rag::pet::State& pet, int src_egg) {
   // serveur répondait FAIL_MATERIAL sans préciser lequel manquait.
   bool have_all = true;
   if (nmat == 0) {
-    ImGui::TextColored(kGray, "%s", i18n::Tr("Aucun matériau connu du client."));
+    ImGui::TextColored(ro::pal::kLabel, "%s", i18n::Tr("Aucun matériau connu du client."));
   } else {
-    ImGui::TextColored(kBlack, "%s", i18n::Tr("Matériaux requis :"));
+    ImGui::TextColored(ro::pal::kValue, "%s", i18n::Tr("Matériaux requis :"));
     for (int i = 0; i < nmat; ++i) {
       const uint32_t itid = static_cast<uint32_t>(mats[i].itid);
       const int have = InventoryCount(itid);
@@ -855,7 +853,7 @@ void PetWindow::DrawEvolutionPanel(const rag::pet::State& pet, int src_egg) {
       // qui bloque prime sur signaler que c'est cliquable — le soulignement au
       // survol et le curseur main le disent déjà.
       ImGui::Indent(8.0f);
-      ItemLinkCell(itid, label, ok ? links::LinkColor() : kRed, /*with_icon=*/true);
+      ItemLinkCell(itid, label, ok ? links::LinkColor() : ro::pal::kRed, /*with_icon=*/true);
       ImGui::Unindent(8.0f);
     }
   }
@@ -873,7 +871,7 @@ void PetWindow::DrawEvolutionPanel(const rag::pet::State& pet, int src_egg) {
     refusal = i18n::Tr("Il manque des matériaux.");
 
   if (refusal != nullptr) {
-    ImGui::PushStyleColor(ImGuiCol_Text, kRed);
+    ImGui::PushStyleColor(ImGuiCol_Text, ro::pal::kRed);
     ImGui::TextWrapped("%s", refusal);
     ImGui::PopStyleColor();
   }
@@ -924,7 +922,7 @@ void PetWindow::DrawHatchWindow() {
     if (hatch_count_ == 0) {
       // Le serveur envoie la liste même vide (`clif_sendegg` n'a pas de sortie
       // anticipée) : la native affichait alors un cadre muet.
-      ImGui::TextColored(kGray, "%s",
+      ImGui::TextColored(ro::pal::kLabel, "%s",
                          i18n::Tr("Aucun œuf de familier dans le sac."));
     }
     for (int i = 0; i < hatch_count_; ++i) {
@@ -950,7 +948,7 @@ void PetWindow::DrawHatchWindow() {
       // 🔴 CELLULE, pas lien : le clic gauche a déjà un métier ici — choisir
       // l'œuf. La description passe donc par le survol et par le clic DROIT
       // (cf. [[feedback_right_click_opens_description]]).
-      ImGui::PushStyleColor(ImGuiCol_Text, kBlack);
+      ImGui::PushStyleColor(ImGuiCol_Text, ro::pal::kValue);
       if (ImGui::Selectable(label, hatch_sel_ == idx, 0,
                             ImVec2(kHatchRowW - side, 0.0f)))
         hatch_sel_ = idx;
@@ -968,14 +966,14 @@ void PetWindow::DrawHatchWindow() {
         // Le serveur a listé un index que l'inventaire local ne connaît pas. Le
         // natif refusait déjà en silence dans ce cas (`Session_GetEquipInfoBy…`
         // échoue, aucun `SendMsg(146)` n'est émis) ; ici il est dit.
-        ImGui::TextColored(kRed, "%s", i18n::Tr("Introuvable dans le sac."));
+        ImGui::TextColored(ro::pal::kRed, "%s", i18n::Tr("Introuvable dans le sac."));
         if (hatch_sel_ == idx) missing_selected = true;
       } else if (!egg.has_pet) {
-        ImGui::TextColored(kRed, "%s", i18n::Tr("Œuf vierge : rien à éclore."));
+        ImGui::TextColored(ro::pal::kRed, "%s", i18n::Tr("Œuf vierge : rien à éclore."));
         if (hatch_sel_ == idx) blank_selected = true;
       } else {
         const int msg = rag::pet::IntimacyRankMsgId(egg.intimacy_rank);
-        ImGui::TextColored(kGray, "%s%s", msg ? msgstr::Utf8(msg) : "",
+        ImGui::TextColored(ro::pal::kLabel, "%s%s", msg ? msgstr::Utf8(msg) : "",
                            egg.renamed ? i18n::Tr("  ·  déjà renommé") : "");
       }
       ImGui::Unindent(side + 4.0f);
@@ -1000,7 +998,7 @@ void PetWindow::DrawHatchWindow() {
 
     ImGui::Separator();
     if (refusal != nullptr && refusal[0]) {
-      ImGui::PushStyleColor(ImGuiCol_Text, kGray);
+      ImGui::PushStyleColor(ImGuiCol_Text, ro::pal::kLabel);
       ImGui::TextWrapped("%s", refusal);
       ImGui::PopStyleColor();
     }

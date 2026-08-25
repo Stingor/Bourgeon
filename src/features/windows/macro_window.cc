@@ -16,6 +16,7 @@
 #include "ui/ro_imgui.h"
 #include "utils/i18n.h"
 #include "utils/log_console.h"
+#include "ui/ui_palette.h"  // ro::pal : la palette de l'UI
 
 namespace {
 
@@ -30,7 +31,6 @@ constexpr int kHotkeyTabMacros = 3;
 // 🔴 Texte secondaire : couleur EXPLICITE, jamais `ImGui::TextDisabled`. Le corps
 // d'une fenêtre RO est CLAIR, et le gris de TextDisabled y est illisible
 // (feedback_imgui_ro_light_body_colors).
-const ImVec4 kSecondaryText(0.42f, 0.38f, 0.32f, 1.0f);
 // Le compteur quand la ligne est pleine : la troncature du client est silencieuse,
 // c'est le seul endroit où elle peut se voir.
 const ImVec4 kFullText(0.70f, 0.20f, 0.15f, 1.0f);
@@ -304,7 +304,7 @@ bool MacroWindow::DrawPrefillMenu(int slot) {
   // droit, donc sur une ligne qu'on ne regardait pas forcément.
   char key[64];
   KeyLabel(slot, key, sizeof(key));
-  ImGui::PushStyleColor(ImGuiCol_Text, kSecondaryText);
+  ImGui::PushStyleColor(ImGuiCol_Text, ro::pal::kSecondaryText);
   if (rows_[slot][0]) {
     ImGui::Text("%s  %s", key, ro::LocalToUtf8(rows_[slot]));
   } else {
@@ -548,7 +548,7 @@ void MacroWindow::DrawRow(int slot) {
   ImGui::TableSetColumnIndex(2);
   const size_t len = std::strlen(rows_[slot]);
   const bool full = (len >= emohotkey::kMaxBytes);
-  ImGui::PushStyleColor(ImGuiCol_Text, full ? kFullText : kSecondaryText);
+  ImGui::PushStyleColor(ImGuiCol_Text, full ? kFullText : ro::pal::kSecondaryText);
   ImGui::Text("%zu/%zu", len, emohotkey::kMaxBytes);
   ImGui::PopStyleColor();
 
@@ -605,7 +605,7 @@ void MacroWindow::OnRenderUI() {
 
   // ── Où part une macro ──────────────────────────────────────────────────────
   // Le renseignement que la fenêtre native ne donne nulle part.
-  ImGui::PushStyleColor(ImGuiCol_Text, kSecondaryText);
+  ImGui::PushStyleColor(ImGuiCol_Text, ro::pal::kSecondaryText);
   ImGui::Text("%s", i18n::Tr("Ces macros partent sur :"));
   ImGui::PopStyleColor();
   ImGui::SameLine();

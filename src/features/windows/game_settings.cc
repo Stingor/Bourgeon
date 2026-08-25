@@ -24,6 +24,7 @@
 #include "ui/ro_widgets.h"
 #include "utils/i18n.h"
 #include "utils/text.h"  // text::ToLowerAscii / ContainsNoCase
+#include "ui/ui_palette.h"  // ro::pal : la palette de l'UI
 
 namespace {
 
@@ -108,7 +109,6 @@ constexpr int kTtLoginNotify = 0xa5;  // TT_LOGINOUT_ON_OFF      — connexion/d
 // 🔴 Texte secondaire : couleur EXPLICITE, jamais ImGui::TextDisabled. Le corps
 // d'une fenêtre RO est CLAIR, et le gris de TextDisabled y est illisible
 // (feedback_imgui_ro_light_body_colors).
-const ImVec4 kSecondaryText(0.42f, 0.38f, 0.32f, 1.0f);
 // Le marqueur « ce réglage n'est plus à son défaut ».
 const ImVec4 kChangedText(0.65f, 0.30f, 0.10f, 1.0f);
 
@@ -541,7 +541,7 @@ void GameSettings::OnRenderUI() {
   if (!begun) { ro::EndRoWindow(); return; }
 
   if (!gamesettings::Available()) {
-    ImGui::TextColored(kSecondaryText, "%s",
+    ImGui::TextColored(ro::pal::kSecondaryText, "%s",
                        i18n::Tr("Les réglages du client ne sont pas encore chargés."));
     ro::EndRoWindow();
     return;
@@ -973,7 +973,7 @@ void GameSettings::DrawBasicTab() {
                "d'une fraction de seconde est normal."));
 
   if (skin_count == 0) {
-    ImGui::TextColored(kSecondaryText, "%s",
+    ImGui::TextColored(ro::pal::kSecondaryText, "%s",
                        i18n::Tr("Aucun skin installé — seule l'apparence "
                                 "d'origine est disponible."));
   }
@@ -983,7 +983,7 @@ void GameSettings::DrawBasicTab() {
   // Ce que cet onglet ne reprend toujours pas — dit franchement plutôt que laissé
   // deviner. Les graphismes restent au client : ce sont des resets de device.
   ImGui::Spacing();
-  ImGui::TextColored(kSecondaryText, "%s",
+  ImGui::TextColored(ro::pal::kSecondaryText, "%s",
                      i18n::Tr("Les réglages graphiques (résolution, mode d'écran, "
                               "filtrage) restent dans la fenêtre du client."));
 }
@@ -1131,7 +1131,7 @@ void GameSettings::DrawGraphicsTab() {
   ImGui::Spacing();
   mui::SeparatorText(i18n::Tr("Au prochain démarrage"));
 
-  ImGui::TextColored(kSecondaryText, "%s",
+  ImGui::TextColored(ro::pal::kSecondaryText, "%s",
                      i18n::Tr("Le client ne lit ces quatre réglages qu'à son "
                               "démarrage. Ils sont enregistrés tout de suite et "
                               "prendront effet au prochain lancement."));
@@ -1227,7 +1227,7 @@ void GameSettings::DrawGraphicsTab() {
   // abscisse qui en sortirait ; l'adaptateur n'entre jamais dans cette fonction.
   // Signalé en jeu le 2026-08-15 : « il ouvre toujours sur écran 1 ».
   if (!draft_.fullscreen && adapters_.size() > 1) {
-    ImGui::TextColored(kSecondaryText, "%s",
+    ImGui::TextColored(ro::pal::kSecondaryText, "%s",
                        i18n::Tr("En fenêtré, le jeu s'ouvre toujours sur l'écran "
                                 "principal de Windows."));
   }
@@ -1300,7 +1300,7 @@ void GameSettings::DrawGraphicsTab() {
     // Rien ne bouge à l'écran avant le prochain démarrage : sans cet accusé de
     // réception, le joueur n'a qu'un bouton qui se grise pour toute réponse.
     ImGui::SameLine();
-    ImGui::TextColored(kSecondaryText, "%s",
+    ImGui::TextColored(ro::pal::kSecondaryText, "%s",
                        i18n::Tr("Enregistré. Actif au prochain démarrage du jeu."));
   }
 
@@ -1370,7 +1370,7 @@ void GameSettings::DrawListTab(int tab) {
 
       if (all_mode) {
         ImGui::TableSetColumnIndex(column++);
-        ImGui::TextColored(kSecondaryText, "%s", TabLabel(row.option.tab));
+        ImGui::TextColored(ro::pal::kSecondaryText, "%s", TabLabel(row.option.tab));
       }
 
       ImGui::TableSetColumnIndex(column++);
@@ -1420,7 +1420,7 @@ void GameSettings::DrawListTab(int tab) {
         // COMMANDE SLASH équivalente (parfois deux, séparées par un saut de
         // ligne). D'où sa colonne à lui — c'est une information que le natif
         // n'affiche jamais alors qu'elle est dans ses données.
-        ImGui::TextColored(kSecondaryText, "%s",
+        ImGui::TextColored(ro::pal::kSecondaryText, "%s",
                            msgstr::Flatten(row.option.tooltip));
       }
 
@@ -1430,7 +1430,7 @@ void GameSettings::DrawListTab(int tab) {
   }
 
   if (shown == 0) {
-    ImGui::TextColored(kSecondaryText, "%s",
+    ImGui::TextColored(ro::pal::kSecondaryText, "%s",
                        filter_[0] ? i18n::Tr("Aucun réglage ne correspond.")
                                   : i18n::Tr("Aucun réglage dans cet onglet."));
   }

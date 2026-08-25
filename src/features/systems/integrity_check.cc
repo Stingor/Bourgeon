@@ -16,13 +16,13 @@
 #include "utils/log_console.h"
 #include "utils/i18n.h"
 #include "utils/game_paths.h"
+#include "ui/ui_palette.h"  // ro::pal : la palette de l'UI
 
 namespace {
 
 // Texte SECONDAIRE sur le corps CLAIR d'un cadre RO. `ImGui::TextDisabled` est
 // calibré pour un fond sombre : sur le beige d'une modale RO il s'efface presque
 // entièrement. Ce gris est celui de la palette du projet.
-const ImVec4 kDimOnLight(0.35f, 0.35f, 0.42f, 1.0f);
 
 // Full path of THIS module (the Bourgeon ddraw.dll), found from an address that
 // lives inside it — no need to plumb the HINSTANCE through from DllMain.
@@ -387,10 +387,10 @@ void IntegrityCheck::OnRenderUI() {
       const uint32_t remaining =
           elapsed < kKickDelayMs ? kKickDelayMs - elapsed : 0;
       const int secs = static_cast<int>((remaining + 999) / 1000);
-      ImGui::TextColored(kDimOnLight, i18n::Tr("Closing in %d second%s..."),
+      ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Closing in %d second%s..."),
                          secs, secs == 1 ? "" : "s");
     } else {
-      ImGui::TextColored(kDimOnLight,
+      ImGui::TextColored(ro::pal::kLabel,
                          i18n::Tr("Disconnecting in a few seconds..."));
     }
 

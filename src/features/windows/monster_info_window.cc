@@ -26,6 +26,7 @@
 #include "ui/sprite_view.h"     // cadence du .act + son du sprite (interaction)
 #include "utils/i18n.h"
 #include "utils/text.h"  // text::GroupThousands
+#include "ui/ui_palette.h"  // ro::pal : la palette de l'UI
 
 namespace {
 
@@ -189,11 +190,8 @@ constexpr const char* kPokeFallbackWav = "effect\\EF_hit2.wav";
 //
 // Valeurs alignées sur celles déjà employées par la feuille de personnage, qui
 // vit sur le même fond.
-const ImVec4 kLabel(0.35f, 0.35f, 0.42f, 1.0f);  // libellé (remplace TextDisabled)
 const ImVec4 kTitle(0.45f, 0.24f, 0.02f, 1.0f);  // nom du monstre
-const ImVec4 kGreen(0.10f, 0.50f, 0.15f, 1.0f);
-const ImVec4 kRed(0.60f, 0.12f, 0.12f, 1.0f);
-const ImVec4 kBlue(0.15f, 0.25f, 0.60f, 1.0f);
+// ⚠ Proche de ro::pal::kWarn (0.55/0.33/0.08) sans l'égaler — non aligné.
 const ImVec4 kAmber(0.60f, 0.40f, 0.05f, 1.0f);
 
 // Libellé lisible sur fond clair. `ImGui::TextDisabled` est proscrit dans cette
@@ -201,7 +199,7 @@ const ImVec4 kAmber(0.60f, 0.40f, 0.05f, 1.0f);
 void Label(const char* fmt, ...) {
   va_list args;
   va_start(args, fmt);
-  ImGui::PushStyleColor(ImGuiCol_Text, kLabel);
+  ImGui::PushStyleColor(ImGuiCol_Text, ro::pal::kLabel);
   ImGui::TextV(fmt, args);
   ImGui::PopStyleColor();
   va_end(args);
@@ -213,7 +211,7 @@ void Label(const char* fmt, ...) {
 // `PushTextWrapPos(0)` = enveloppe à la fin de la zone de contenu, donc suit le
 // redimensionnement de la fenêtre.
 void LabelWrapped(const char* text) {
-  ImGui::PushStyleColor(ImGuiCol_Text, kLabel);
+  ImGui::PushStyleColor(ImGuiCol_Text, ro::pal::kLabel);
   ImGui::PushTextWrapPos(0.0f);
   ImGui::TextUnformatted(text);
   ImGui::PopTextWrapPos();
@@ -224,10 +222,10 @@ void LabelWrapped(const char* text) {
 // Le cas « normal » (100 %) prend la couleur de texte COURANTE : sur fond clair,
 // toute teinte pâle disparaîtrait.
 ImVec4 ResistColor(int pct) {
-  if (pct <= 0)  return kGreen;                        // immunise, ou soigne
+  if (pct <= 0)  return ro::pal::kGreen;                        // immunise, ou soigne
   if (pct < 50)  return ImVec4(0.20f, 0.45f, 0.15f, 1.0f);
   if (pct <= 100) return ImGui::GetStyleColorVec4(ImGuiCol_Text);
-  return kRed;                                         // > 100 % = faiblesse
+  return ro::pal::kRed;                                         // > 100 % = faiblesse
 }
 
 // Bits de `status_data.mode` (e_mode, src/map/status.hpp). On ne nomme que ceux
@@ -282,7 +280,7 @@ const char* Grouped(uint32_t v, char* out, size_t cap) {
 // `(?)` grisé du toolkit. La bulle, elle, est celle de tout le monde.
 void Help(const char* desc) {
   ImGui::SameLine();
-  ImGui::TextColored(kLabel, "(?)");
+  ImGui::TextColored(ro::pal::kLabel, "(?)");
   mui::HelpTooltip(desc, 32.0f);
 }
 
@@ -785,7 +783,7 @@ void MonsterInfoWindow::OnRenderUI() {
         mob->state == Fetch::kIdle) {
       Label(i18n::Tr("Interrogation du serveur..."));
     } else if (mob->state == Fetch::kUnknown) {
-      ImGui::TextColored(kRed, i18n::Tr("Monstre inconnu du serveur (classe %u)."),
+      ImGui::TextColored(ro::pal::kRed, i18n::Tr("Monstre inconnu du serveur (classe %u)."),
                          current_id_);
       // On a peut-être quand même le relevé de Sense : mieux que rien.
       if (sense_.valid && sense_.sprite_class == current_id_) {
@@ -994,7 +992,7 @@ void MonsterInfoWindow::DrawHeader(MobInfo& mob) {
     Label("#%u", current_id_);
     if (const char* badge = BossLabel(mob.boss)) {
       ImGui::SameLine();
-      ImGui::TextColored(mob.boss == 2 ? kRed : kAmber, "[%s]", badge);
+      ImGui::TextColored(mob.boss == 2 ? ro::pal::kRed : kAmber, "[%s]", badge);
     }
     // ── Poser le monstre dans la barre de chat ────────────────────────────────
     // 🔴 C'est ICI, et pas dans la chatbox, que le nom du monstre existe : le
@@ -1046,7 +1044,7 @@ void MonsterInfoWindow::DrawHeader(MobInfo& mob) {
       for (const ModeBit& b : kModeBits) {
         if ((mob.mode & b.bit) == 0) continue;
         ImGui::TableNextColumn();
-        ImGui::TextColored(kBlue, "[%s]", i18n::Tr(b.label));
+        ImGui::TextColored(ro::pal::kBlue, "[%s]", i18n::Tr(b.label));
       }
       ImGui::EndTable();
     }
@@ -1075,7 +1073,7 @@ void MonsterInfoWindow::DrawNamesakeNote(MobInfo& mob) {
   if (!mob.aegis.empty()) {
     ImGui::TextUnformatted(i18n::Tr("Celui-ci est"));
     ImGui::SameLine(0.0f, 4.0f);
-    ImGui::TextColored(kBlue, "%s", mob.aegis.c_str());
+    ImGui::TextColored(ro::pal::kBlue, "%s", mob.aegis.c_str());
     ImGui::SameLine(0.0f, 4.0f);
     Label("#%u", current_id_);
   }
@@ -1244,17 +1242,17 @@ void MonsterInfoWindow::DrawExpGain(MobInfo& mob) {
        "est plus petite ; certaines ZONES ont au contraire un multiplicateur "
        "d'EXP qui leur est propre."));
   ImGui::TableNextColumn();
-  ImGui::TextColored(kBlue, "%s", Grouped(mob.est_base_exp, v, sizeof(v)));
+  ImGui::TextColored(ro::pal::kBlue, "%s", Grouped(mob.est_base_exp, v, sizeof(v)));
   ImGui::TableNextColumn();
   if (mob.max_base_lv) {
     Label(i18n::Tr("Niveau maximum"));
     ImGui::TableNextColumn();
-    ImGui::TextColored(kGreen, i18n::Tr("atteint"));
+    ImGui::TextColored(ro::pal::kGreen, i18n::Tr("atteint"));
   } else {
     Label(i18n::Tr("de votre niveau"));
     ImGui::TableNextColumn();
     pct(mob.est_base_exp, mob.next_base_exp, v, sizeof(v));
-    ImGui::TextColored(kGreen, "%s", v);
+    ImGui::TextColored(ro::pal::kGreen, "%s", v);
   }
 
   // ── EXP de job ─────────────────────────────────────────────────────────────
@@ -1262,17 +1260,17 @@ void MonsterInfoWindow::DrawExpGain(MobInfo& mob) {
   ImGui::TableNextColumn();
   Label(i18n::Tr("EXP de job"));
   ImGui::TableNextColumn();
-  ImGui::TextColored(kBlue, "%s", Grouped(mob.est_job_exp, v, sizeof(v)));
+  ImGui::TextColored(ro::pal::kBlue, "%s", Grouped(mob.est_job_exp, v, sizeof(v)));
   ImGui::TableNextColumn();
   if (mob.max_job_lv) {
     Label(i18n::Tr("Job maximum"));
     ImGui::TableNextColumn();
-    ImGui::TextColored(kGreen, i18n::Tr("atteint"));
+    ImGui::TextColored(ro::pal::kGreen, i18n::Tr("atteint"));
   } else {
     Label(i18n::Tr("de votre job"));
     ImGui::TableNextColumn();
     pct(mob.est_job_exp, mob.next_job_exp, v, sizeof(v));
-    ImGui::TextColored(kGreen, "%s", v);
+    ImGui::TextColored(ro::pal::kGreen, "%s", v);
   }
 
   // ── Combien il en faut ─────────────────────────────────────────────────────
@@ -1386,11 +1384,11 @@ void MonsterInfoWindow::DrawStatsTab(MobInfo& mob) {
     Help(i18n::Tr("Sur ce serveur, un monstre ne fait JAMAIS de coup critique : la "
          "mécanique est réservée aux joueurs et aux mercenaires. Ce n'est pas "
          "une donnée manquante, c'est zéro par conception."));
-    ImGui::TableNextColumn(); ImGui::TextColored(kGreen, i18n::Tr("aucun"));
+    ImGui::TableNextColumn(); ImGui::TextColored(ro::pal::kGreen, i18n::Tr("aucun"));
     ImGui::TableNextColumn(); Label(i18n::Tr("Esquive parfaite"));
     Help(i18n::Tr("De même, un monstre n'a pas d'esquive parfaite : elle est réservée "
          "aux joueurs."));
-    ImGui::TableNextColumn(); ImGui::TextColored(kGreen, i18n::Tr("aucune"));
+    ImGui::TableNextColumn(); ImGui::TextColored(ro::pal::kGreen, i18n::Tr("aucune"));
     ImGui::EndTable();
   }
 
@@ -1419,7 +1417,7 @@ void MonsterInfoWindow::DrawStatsTab(MobInfo& mob) {
            "plafonne la part du niveau (600 actuellement), au-delà seule la DEX "
            "compte encore.\n\n"
            "Ne tient compte ni des compétences, ni des cartes conditionnelles."),
-           v, you_hit >= 90 ? kGreen : (you_hit <= 40 ? kRed : kAmber));
+           v, you_hit >= 90 ? ro::pal::kGreen : (you_hit <= 40 ? ro::pal::kRed : kAmber));
 
       // ── Critique ──────────────────────────────────────────────────────────
       // `own.crit` est en POUR CENT ENTIERS (le serveur envoie `cri/10`) ; la
@@ -1440,7 +1438,7 @@ void MonsterInfoWindow::DrawStatsTab(MobInfo& mob) {
            "multiplicateur de dégâts.\n\n"
            "Votre CRIT moins 0,2 point par LUK du monstre. Un critique "
            "remplace le jet de précision (il ne rate jamais) et ignore la DEF."),
-           v, crit_tenths > 0 ? kBlue : kLabel);
+           v, crit_tenths > 0 ? ro::pal::kBlue : ro::pal::kLabel);
 
       // ── Être touché ───────────────────────────────────────────────────────
       // L'esquive parfaite est intégrée DANS ce chiffre plutôt qu'affichée à
@@ -1468,7 +1466,7 @@ void MonsterInfoWindow::DrawStatsTab(MobInfo& mob) {
            "Votre FLEE chute par ailleurs de 10 % par monstre au-delà du "
            "deuxième qui vous prend pour cible : en pack, le chiffre réel est "
            "plus élevé."),
-           v, net <= 20 ? kGreen : (net >= 80 ? kRed : kAmber));
+           v, net <= 20 ? ro::pal::kGreen : (net >= 80 ? ro::pal::kRed : kAmber));
       ImGui::EndTable();
     }
   }
@@ -1547,7 +1545,7 @@ void MonsterInfoWindow::DrawHoverPreview(uint32_t mob_id, bool by_view) {
                        mob.name.empty() ? i18n::Tr("(sans nom)") : mob.name.c_str());
     if (const char* badge = BossLabel(mob.boss)) {
       ImGui::SameLine();
-      ImGui::TextColored(mob.boss == 2 ? kRed : kAmber, "[%s]", badge);
+      ImGui::TextColored(mob.boss == 2 ? ro::pal::kRed : kAmber, "[%s]", badge);
     }
     ImGui::Text(i18n::Tr("Niv. %u   %s   %s niv. %u"), mob.level, SizeName(mob.size),
                 ElementName(mob.element), mob.element_lv);

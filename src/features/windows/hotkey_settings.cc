@@ -26,6 +26,7 @@
 #include "utils/log_console.h"
 #include "ragnarok/globals.h"  // rag::kBattleModeFlagAddr / BattleModeOn
 #include "utils/text.h"  // text::ToLowerAscii / ContainsNoCase
+#include "ui/ui_palette.h"  // ro::pal : la palette de l'UI
 
 namespace {
 
@@ -83,7 +84,6 @@ bool BattleModeEnabled() { return rag::BattleModeOn(); }
 // 🔴 Texte secondaire : couleur EXPLICITE, jamais ImGui::TextDisabled. Le corps
 // d'une fenêtre RO est CLAIR, et le gris de TextDisabled y est illisible
 // (feedback_imgui_ro_light_body_colors).
-const ImVec4 kSecondaryText(0.42f, 0.38f, 0.32f, 1.0f);
 
 const int kTabMsgIds[userhotkey::kCategoryCount] = {
     kMsgTabSkillBar1, kMsgTabSkillBar2, kMsgTabInterface, kMsgTabMacros};
@@ -962,7 +962,7 @@ void HotkeySettings::OnRenderUI() {
       int column = 0;
       if (all_mode) {
         ImGui::TableSetColumnIndex(column++);
-        ImGui::TextColored(kSecondaryText, "%s", TabLabel(entry.tab));
+        ImGui::TextColored(ro::pal::kSecondaryText, "%s", TabLabel(entry.tab));
       }
       // Une ligne de déplacement dont la fonctionnalité est éteinte est GRISÉE :
       // sa touche est réglable, mais elle ne pilote rien tant que le déplacement
@@ -970,7 +970,7 @@ void HotkeySettings::OnRenderUI() {
       // d'avoir à cacher la ligne — ce qui la rendait introuvable.
       const bool inert = (entry.kind == RowKind::kMove) && !KeyboardMoveEnabled();
       ImGui::TableSetColumnIndex(column++);
-      if (inert) ImGui::TextColored(kSecondaryText, "%s", binding.label);
+      if (inert) ImGui::TextColored(ro::pal::kSecondaryText, "%s", binding.label);
       else       ImGui::TextUnformatted(binding.label);
       if (inert && ImGui::IsItemHovered()) {
         ImGui::SetTooltip("%s",
@@ -983,7 +983,7 @@ void HotkeySettings::OnRenderUI() {
       // Non cliquable : c'est un repère, pas un réglage — ce que le client
       // donnerait sur une installation neuve, et donc ce à quoi on revient.
       ImGui::TableSetColumnIndex(column++);
-      ImGui::TextColored(kSecondaryText, "%s",
+      ImGui::TextColored(ro::pal::kSecondaryText, "%s",
                          entry.fallback.assigned ? entry.fallback.key_name : "-");
 
       // ── Touche actuelle ──────────────────────────────────────────────────
@@ -1011,7 +1011,7 @@ void HotkeySettings::OnRenderUI() {
           // une touche, c'est que le joueur l'a retirée.
           std::snprintf(cell, sizeof(cell), "%s", "-");
         }
-        if (!binding.assigned) ImGui::PushStyleColor(ImGuiCol_Text, kSecondaryText);
+        if (!binding.assigned) ImGui::PushStyleColor(ImGuiCol_Text, ro::pal::kSecondaryText);
         if (ImGui::Selectable(cell, false, ImGuiSelectableFlags_AllowDoubleClick))
           BeginCapture(entry);
         if (!binding.assigned) ImGui::PopStyleColor();
@@ -1042,13 +1042,13 @@ void HotkeySettings::OnRenderUI() {
     // l'enregistreur de zone). Sans cette ligne, il disparaîtrait sans un mot.
     ImGui::TextColored(ImVec4(0.85f, 0.62f, 0.15f, 1.0f), "%s", capture_note_);
   } else if (rows_.empty()) {
-    ImGui::TextColored(kSecondaryText, "%s",
+    ImGui::TextColored(ro::pal::kSecondaryText, "%s",
                        i18n::Tr("Aucun raccourci dans cet onglet."));
   } else if (shown == 0) {
-    ImGui::TextColored(kSecondaryText, "%s",
+    ImGui::TextColored(ro::pal::kSecondaryText, "%s",
                        i18n::Tr("Aucun résultat pour cette recherche."));
   } else {
-    ImGui::TextColored(kSecondaryText, i18n::Tr("%d raccourcis"), shown);
+    ImGui::TextColored(ro::pal::kSecondaryText, i18n::Tr("%d raccourcis"), shown);
   }
 
   // ── Battle Mode ────────────────────────────────────────────────────────────

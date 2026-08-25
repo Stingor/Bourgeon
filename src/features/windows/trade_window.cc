@@ -29,6 +29,7 @@
 #include "ui/ro_widgets.h"  // mui::IsLastItemRightClicked
 #include "utils/i18n.h"
 #include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
+#include "ui/ui_palette.h"  // ro::pal : la palette de l'UI
 
 
 // ── Constantes RE (client 20250716, base 0x400000 ; cf. docs/trade_window_re.md) ──
@@ -780,9 +781,10 @@ void TradeWindow::OnRenderUI() {
   }
   if (!begun) { ro::EndRoWindow(); ImGui::PopStyleVar(4); return; }
 
-  const ImVec4 kBlack(0.0f, 0.0f, 0.0f, 1.0f);
   const ImVec4 kGreen(0.20f, 0.65f, 0.20f, 1.0f);
+  // ⚠ Plus vif que ro::pal::kGreen (0.10/0.50) — non aligné.
   const ImVec4 kRed(0.75f, 0.15f, 0.15f, 1.0f);
+// ⚠ Plus vif que ro::pal::kRed (0.60) — nuance propre à l'échange, non alignée.
 
   // Objet survolé / cliqué droit cette frame. L'aperçu se peint APRÈS les deux
   // colonnes (DrawTooltip crée son propre popup, donc hors de toute fenêtre), et la
@@ -816,7 +818,7 @@ void TradeWindow::OnRenderUI() {
       const char* nm = itemcell::Label(
           nb, sizeof(nb),
           it.name[0] ? it.name : itemcell::NameById(it.id), it.slots);
-      ImGui::PushStyleColor(ImGuiCol_Text, kBlack);
+      ImGui::PushStyleColor(ImGuiCol_Text, ro::pal::kBlack);
       itemcell::NameText(nm, it.damaged != 0);
       ImGui::PopStyleColor();
       const bool hovered_name = ImGui::IsItemHovered();
@@ -848,18 +850,18 @@ void TradeWindow::OnRenderUI() {
       }
       ImGui::EndDragDropTarget();
     }
-    ImGui::TextColored(locked ? kGreen : kBlack, locked ? i18n::Tr("  Verrouillé") : i18n::Tr("  En cours"));
+    ImGui::TextColored(locked ? kGreen : ro::pal::kBlack, locked ? i18n::Tr("  Verrouillé") : i18n::Tr("  En cours"));
   };
 
   // ── Ma colonne / colonne partenaire ──
   const float col = (ImGui::GetContentRegionAvail().x - 8.0f) * 0.5f;
   ImGui::BeginGroup();
-  ImGui::TextColored(kBlack, i18n::Tr("Mon offre  (%lldz)"), static_cast<long long>(my_zeny_));
+  ImGui::TextColored(ro::pal::kBlack, i18n::Tr("Mon offre  (%lldz)"), static_cast<long long>(my_zeny_));
   draw_items("trade_mine", my_items_, my_locked_, col, true);
   ImGui::EndGroup();
   ImGui::SameLine();  // (colonne partenaire ci-dessous)
   ImGui::BeginGroup();
-  ImGui::TextColored(kBlack, i18n::Tr("Partenaire  (%lldz)"),
+  ImGui::TextColored(ro::pal::kBlack, i18n::Tr("Partenaire  (%lldz)"),
                      static_cast<long long>(partner_zeny_));
   draw_items("trade_partner", partner_items_, partner_locked_, col, false);
   ImGui::EndGroup();
@@ -896,7 +898,7 @@ void TradeWindow::OnRenderUI() {
   // cmd 0x34) : il n'y a pas de « définir » séparé, et un cmd 0x33 isolé reste en
   // attente (rien ne s'affiche tant qu'on n'a pas verrouillé). On calque ce modèle.
   ImGui::BeginDisabled(my_locked_);
-  ImGui::TextColored(kBlack, i18n::Tr("Zeny à offrir :"));
+  ImGui::TextColored(ro::pal::kBlack, i18n::Tr("Zeny à offrir :"));
   ImGui::SameLine();
   ImGui::SetNextItemWidth(ro::Px(120.0f));
   ImGui::InputInt("##trade_zeny", &zeny_input_, 0, 0);
@@ -940,9 +942,9 @@ void TradeWindow::OnRenderUI() {
 
   // Ligne d'état : dit toujours ce qu'on attend (verrou, validation, autre joueur).
   if (committed_)
-    ImGui::TextColored(kBlack, i18n::Tr("Validé — en attente de l'autre joueur..."));
+    ImGui::TextColored(ro::pal::kBlack, i18n::Tr("Validé — en attente de l'autre joueur..."));
   else if (can_commit)
-    ImGui::TextColored(kBlack, i18n::Tr("Les deux offres sont verrouillées : cliquez « Échanger »."));
+    ImGui::TextColored(ro::pal::kBlack, i18n::Tr("Les deux offres sont verrouillées : cliquez « Échanger »."));
   else if (my_locked_)
     ImGui::TextDisabled(i18n::Tr("En attente du verrouillage de l'autre joueur..."));
   else

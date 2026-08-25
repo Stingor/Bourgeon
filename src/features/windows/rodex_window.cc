@@ -28,6 +28,7 @@
 #include "utils/i18n.h"
 #include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 #include "utils/text.h"  // text : comparaisons et décodages ASCII
+#include "ui/ui_palette.h"  // ro::pal : la palette de l'UI
 
 // ── Constantes RE (client 20250716, base 0x400000 ; cf. docs/rodex_re.md) ──
 namespace {
@@ -1562,7 +1563,6 @@ void RodexWindow::DrawMailbox() {
 }
 
 void RodexWindow::DrawMailList() {
-  const ImVec4 kBlack(0.0f, 0.0f, 0.0f, 1.0f);
   EnsureAttachIcons();
 
   // Actions de BOÎTE en tête : elles ne dépendent pas de l'onglet courant, et les
@@ -1686,7 +1686,7 @@ void RodexWindow::DrawMailList() {
         const float w = (icon->h > 0) ? h * icon->w / icon->h : h;
         ImGui::Image(reinterpret_cast<ImTextureID>(icon->tex), ImVec2(w, h));
       } else if (what) {
-        ImGui::TextColored(kBlack, "%s", mark);
+        ImGui::TextColored(ro::pal::kBlack, "%s", mark);
       } else {
         ImGui::TextDisabled("%s", mark);
       }
@@ -1709,7 +1709,7 @@ void RodexWindow::DrawMailList() {
       // Sujet grisé = déjà lu, comme la liste native. C'est bien l'état SERVEUR qui
       // compte ici (il traverse les sessions), pas la présence locale du contenu.
       if (mail.is_read) ImGui::TextDisabled("%s", mail.title.c_str());
-      else              ImGui::TextColored(kBlack, "%s", mail.title.c_str());
+      else              ImGui::TextColored(ro::pal::kBlack, "%s", mail.title.c_str());
 
       ImGui::TableNextColumn();
       ImGui::TextDisabled("%s", ExpiryLabel(mail.expire).c_str());
@@ -1729,7 +1729,6 @@ void RodexWindow::DrawMailList() {
 // bouton « Retirer » distingue les deux. Le groupe englobe icône, nom et quantité
 // pour que la zone sensible couvre toute la ligne et pas le seul libellé.
 void RodexWindow::DrawAttachRow(const Attach& attach, bool removable) {
-  const ImVec4 kBlack(0.0f, 0.0f, 0.0f, 1.0f);
 
   ImGui::BeginGroup();
   const ro::IconTex icon = ro::ItemIcon(attach.id, attach.identified ? 1 : 0);
@@ -1742,7 +1741,7 @@ void RodexWindow::DrawAttachRow(const Attach& attach, bool removable) {
   // compose pas. L'ombre rouge marque l'équipement cassé, comme partout ailleurs.
   char label[128];
   itemcell::Label(label, sizeof(label), attach.name, attach.total_slots);
-  ImGui::PushStyleColor(ImGuiCol_Text, kBlack);
+  ImGui::PushStyleColor(ImGuiCol_Text, ro::pal::kBlack);
   itemcell::NameText(label, attach.damaged);
   ImGui::PopStyleColor();
   if (attach.amount > 1) {
@@ -1798,7 +1797,6 @@ void RodexWindow::DrawAttachTooltip() {
 }
 
 void RodexWindow::DrawMailDetail() {
-  const ImVec4 kBlack(0.0f, 0.0f, 0.0f, 1.0f);
   const Mail* mail = Selected();
   if (!mail) {
     // Le courrier sélectionné peut disparaître entre deux frames (suppression,
@@ -1809,13 +1807,13 @@ void RodexWindow::DrawMailDetail() {
     return;
   }
 
-  ImGui::TextColored(kBlack, i18n::Tr("De : %s"), mail->sender.c_str());
+  ImGui::TextColored(ro::pal::kBlack, i18n::Tr("De : %s"), mail->sender.c_str());
   const std::string expiry = ExpiryLabel(mail->expire);
   if (!expiry.empty()) {
     ImGui::SameLine();
     ImGui::TextDisabled(i18n::Tr("(expire : %s)"), expiry.c_str());
   }
-  ImGui::TextColored(kBlack, i18n::Tr("Sujet : %s"), mail->title.c_str());
+  ImGui::TextColored(ro::pal::kBlack, i18n::Tr("Sujet : %s"), mail->title.c_str());
 
   ImGui::BeginChild("rodex_body", ImVec2(0, 86), true);
   if (!mail->content_ready)
@@ -1834,7 +1832,7 @@ void RodexWindow::DrawMailDetail() {
     // seul le type nous dit qu'il transporte quelque chose. On annonce donc la pièce
     // jointe sans inventer de valeur — les octets du nœud sont du bruit de pile.
     if (has_zeny && mail->content_ready)
-      ImGui::TextColored(kBlack, i18n::Tr("Zeny joint : %lld z"),
+      ImGui::TextColored(ro::pal::kBlack, i18n::Tr("Zeny joint : %lld z"),
                          static_cast<long long>(mail->zeny));
     else if (has_zeny)
       ImGui::TextDisabled("%s", i18n::Tr("Zeny joint (ouvre le courrier pour voir le montant)"));
@@ -1877,11 +1875,11 @@ void RodexWindow::DrawMailDetail() {
 void RodexWindow::DrawComposeWindow() {
   if (!compose_open_) return;
 
-  const ImVec4 kBlack(0.0f, 0.0f, 0.0f, 1.0f);
   const ImVec4 kRed(0.75f, 0.15f, 0.15f, 1.0f);
 
   if (compose_pos_) {
     const ImGuiIO& io = ImGui::GetIO();
+    // ⚠ Plus vif que ro::pal::kRed (0.60) — nuance propre au courrier, non alignée.
     ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f),
                             ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
     compose_pos_ = false;
@@ -1907,7 +1905,7 @@ void RodexWindow::DrawComposeWindow() {
   }
 
   // ── Destinataire ──
-  ImGui::TextColored(kBlack, i18n::Tr("Destinataire"));
+  ImGui::TextColored(ro::pal::kBlack, i18n::Tr("Destinataire"));
   ImGui::SetNextItemWidth(ro::Px(200.0f));
   ImGui::InputText("##rodex_to", to_, sizeof(to_));
   ImGui::SameLine();
@@ -1928,10 +1926,10 @@ void RodexWindow::DrawComposeWindow() {
       // permet de repérer une coquille (majuscule, espace) sans relire son champ.
       const char* who = checked_name_.empty() ? to_ : checked_name_.c_str();
       if (!checked_job_.empty())
-        ImGui::TextColored(kBlack, i18n::Tr("%s — %s, niveau %d"), who, checked_job_.c_str(),
+        ImGui::TextColored(ro::pal::kBlack, i18n::Tr("%s — %s, niveau %d"), who, checked_job_.c_str(),
                            checked_level_);
       else
-        ImGui::TextColored(kBlack, i18n::Tr("%s — niveau %d"), who, checked_level_);
+        ImGui::TextColored(ro::pal::kBlack, i18n::Tr("%s — niveau %d"), who, checked_level_);
       break;
     }
     default:
@@ -1939,15 +1937,15 @@ void RodexWindow::DrawComposeWindow() {
   }
 
   // ── Sujet / message ──
-  ImGui::TextColored(kBlack, i18n::Tr("Sujet"));
+  ImGui::TextColored(ro::pal::kBlack, i18n::Tr("Sujet"));
   ImGui::SetNextItemWidth(-1.0f);
   ImGui::InputText("##rodex_subject", subject_, sizeof(subject_));
-  ImGui::TextColored(kBlack, i18n::Tr("Message"));
+  ImGui::TextColored(ro::pal::kBlack, i18n::Tr("Message"));
   ImGui::InputTextMultiline("##rodex_body", body_, sizeof(body_),
                             ImVec2(-1.0f, 130.0f));
 
   // ── Zeny joint + frais ──
-  ImGui::TextColored(kBlack, i18n::Tr("Zeny à joindre"));
+  ImGui::TextColored(ro::pal::kBlack, i18n::Tr("Zeny à joindre"));
   ImGui::SetNextItemWidth(ro::Px(160.0f));
   ImGui::InputScalar("##rodex_zeny", ImGuiDataType_S64, &attach_zeny_);
   if (attach_zeny_ < 0) attach_zeny_ = 0;
@@ -1960,7 +1958,7 @@ void RodexWindow::DrawComposeWindow() {
   else          ImGui::TextDisabled(i18n::Tr("(des frais d'envoi s'appliquent)"));
 
   // ── Pièces jointes : cible de dépôt de l'inventaire ImGui ──
-  ImGui::TextColored(kBlack, i18n::Tr("Pièces jointes (%d/%d)"),
+  ImGui::TextColored(ro::pal::kBlack, i18n::Tr("Pièces jointes (%d/%d)"),
                      static_cast<int>(compose_items_.size()), kAttachSlots);
   ImGui::BeginChild("rodex_attach", ImVec2(0, 92), true);
   for (size_t i = 0; i < compose_items_.size(); ++i) {

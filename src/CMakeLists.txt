@@ -310,6 +310,7 @@ set(BOURGEON_FILES
 	"ui/sprite_path.h"
 	"ui/color_codec.cc"
 	"ui/color_codec.h"
+	"ui/ui_palette.h"
 	"ui/skin_panel.cc"
 	"ui/skin_panel.h"
 	"ui/imgui_escape.h"

@@ -13,6 +13,7 @@
 #include "ui/ro_imgui.h"     // ro::RoButton / ro::RoSmallButton (skin RO)
 #include "ui/ro_skin_blobs.hpp"  // dimensions sbtn_* / sys_close (bouton de titre)
 #include "utils/i18n.h"
+#include "ui/ui_palette.h"  // ro::pal : la palette de l'UI
 
 namespace {
 
@@ -315,21 +316,20 @@ void BugReport::RenderModal() {
   // pour un fond sombre et s'y efface presque entièrement. Les trois libellés
   // secondaires de cette modale passent donc par un gris SOMBRE explicite — la
   // palette que la feuille de personnage emploie déjà sur le même fond.
-  const ImVec4 kGray(0.35f, 0.35f, 0.42f, 1.0f);
 
   ImGui::TextWrapped(i18n::Tr("Décris brièvement le problème. Le contexte ci-dessous "
                      "est joint automatiquement à ton rapport."));
   ImGui::Separator();
 
   // Contexte capturé (lecture seule).
-  ImGui::TextColored(kGray, "%s", i18n::Tr("Contexte"));
+  ImGui::TextColored(ro::pal::kLabel, "%s", i18n::Tr("Contexte"));
   ImGui::TextWrapped("%s", ctx_.label.c_str());
   ImGui::Spacing();
 
-  ImGui::TextColored(kGray, "%s", i18n::Tr("Ton message"));
+  ImGui::TextColored(ro::pal::kLabel, "%s", i18n::Tr("Ton message"));
   ImGui::InputTextMultiline("##bug_msg", msg_buf_, sizeof(msg_buf_),
                             ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 5));
-  ImGui::TextColored(kGray, i18n::Tr("%zu / %zu caractères"), std::strlen(msg_buf_),
+  ImGui::TextColored(ro::pal::kLabel, i18n::Tr("%zu / %zu caractères"), std::strlen(msg_buf_),
                      kMaxMsgBytes);
 
   ImGui::Separator();

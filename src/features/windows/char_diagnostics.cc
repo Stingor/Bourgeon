@@ -24,6 +24,7 @@
 #include "ui/ro_imgui.h"
 #include "ui/ro_widgets.h"
 #include "utils/i18n.h"
+#include "ui/ui_palette.h"  // ro::pal : la palette de l'UI
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -348,14 +349,11 @@ const char* BlowTypeName(int type) {
 // fenêtres se lisent souvent côte à côte. L'alignement est en unités de POLICE,
 // pas en pixels — les familles proposées par le réglage d'interface n'ont pas la
 // même chasse.
-const ImVec4 kLabelCol(0.35f, 0.35f, 0.42f, 1.0f);
-const ImVec4 kValueCol(0.10f, 0.10f, 0.13f, 1.0f);
-const ImVec4 kWarnCol(0.55f, 0.33f, 0.08f, 1.0f);
 
 void Row(const char* label, const char* value, bool warn = false) {
-  ImGui::TextColored(kLabelCol, "%s", label);
+  ImGui::TextColored(ro::pal::kLabel, "%s", label);
   ImGui::SameLine(ImGui::GetFontSize() * 11.0f);
-  ImGui::TextColored(warn ? kWarnCol : kValueCol, "%s", value);
+  ImGui::TextColored(warn ? ro::pal::kWarn : ro::pal::kValue, "%s", value);
 }
 
 void RowFmt(const char* label, const char* fmt, ...) {
@@ -789,7 +787,7 @@ void CharDiagnostics::DrawBlow(const char* title, const Blow& blow,
                                bool incoming) {
   SeparatorText(title);
   if (!blow.seen) {
-    ImGui::TextColored(kWarnCol, "%s",
+    ImGui::TextColored(ro::pal::kWarn, "%s",
                        i18n::Tr("Rien depuis l'ouverture de la session."));
     return;
   }
@@ -1102,7 +1100,7 @@ void CharDiagnostics::DrawBody(const Snapshot& s) {
   // ── Acteur ────────────────────────────────────────────────────────────────
   SeparatorText(i18n::Tr("Acteur et animation"));
   if (!s.actor_found) {
-    ImGui::TextColored(kWarnCol, "%s",
+    ImGui::TextColored(ro::pal::kWarn, "%s",
                        i18n::Tr("Aucun acteur : hors jeu, ou carte en cours de "
                                 "chargement."));
     return;
@@ -1157,7 +1155,7 @@ void CharDiagnostics::DrawBody(const Snapshot& s) {
 
     if (disguised || s.job_resolved != s.job_real) {
       ImGui::TextColored(
-          kWarnCol, "%s",
+          ro::pal::kWarn, "%s",
           i18n::Tr("Déguisement actif : le sprite joué n'est pas celui de la "
                    "classe. Les durées d'animation ci-dessous sont celles du "
                    "sprite AFFICHÉ ; l'amotion, lui, reste celui du serveur."));
@@ -1233,7 +1231,7 @@ void CharDiagnostics::DrawBody(const Snapshot& s) {
   // ── Le sprite joué ────────────────────────────────────────────────────────
   SeparatorText(i18n::Tr("Sprite joué (.act du corps)"));
   if (!s.act_found) {
-    ImGui::TextColored(kWarnCol, "%s",
+    ImGui::TextColored(ro::pal::kWarn, "%s",
                        i18n::Tr("Aucune ressource .act sur l'acteur."));
   } else {
     // 🔴 Les chemins du VFS sont en CP949 par CONSTRUCTION (les dossiers du GRF
@@ -1260,7 +1258,7 @@ void CharDiagnostics::DrawBody(const Snapshot& s) {
       const bool same = (std::strcmp(slot0, s.spr_path) == 0);
       Row(i18n::Tr("slot 0 (corps dessiné)"), ro::Cp949ToUtf8(slot0), !same);
       if (!same)
-        ImGui::TextColored(kWarnCol, "%s",
+        ImGui::TextColored(ro::pal::kWarn, "%s",
                            i18n::Tr("Le corps DESSINÉ n'est pas celui sur "
                                     "lequel l'animation compte ses images."));
     }
@@ -1284,7 +1282,7 @@ void CharDiagnostics::DrawBody(const Snapshot& s) {
                            "a que %d : le client rend 1 image, l'animation se "
                            "termine tout de suite."),
                   s.played_index, s.act_action_count);
-      ImGui::TextColored(kWarnCol, "%s", warn);
+      ImGui::TextColored(ro::pal::kWarn, "%s", warn);
     }
 
     // Les cinq sondes, chacune sur ses huit directions.

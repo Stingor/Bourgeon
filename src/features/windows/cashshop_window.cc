@@ -26,6 +26,7 @@
 #include "ui/ro_imgui.h"          // BeginRoWindow (skin RO)
 #include "ui/ro_widgets.h"        // mui::IsLastItemRightClicked
 #include "utils/i18n.h"
+#include "ui/ui_palette.h"  // ro::pal : la palette de l'UI
 
 //  Constantes RE (client 20250716, base 0x400000 ; cf. project_cashshop_re) 
 namespace {
@@ -626,14 +627,13 @@ void CashShopWindow::OnRenderUI() {
   // MSI_CASHSHOP_FREE_POINT, MSI_CASHSHOP_FREE_POINT_TO_USE) : ce sont les noms que
   // MOONLIGHT donne à ses deux monnaies, pas des termes génériques. Les recopier ici
   // aurait figé « Vote » et « Event points » dans le binaire.
-  const ImVec4 kBlack(0.0f, 0.0f, 0.0f, 1.0f);  // texte noir (skin RO clair)
   const char* lbl_cash  = msgstr::Utf8(kMsiCash);
   const char* lbl_free  = msgstr::Utf8(kMsiCashShopFreePoint);
   const char* lbl_usef  = msgstr::Utf8(kMsiCashShopFreePointToUse);
-  ImGui::TextColored(kBlack, "%s: %u",
+  ImGui::TextColored(ro::pal::kBlack, "%s: %u",
                      (lbl_cash && lbl_cash[0]) ? lbl_cash : "Vote", cash_points_);
   ImGui::SameLine();
-  ImGui::TextColored(kBlack, " | %s: %u",
+  ImGui::TextColored(ro::pal::kBlack, " | %s: %u",
                      (lbl_free && lbl_free[0]) ? lbl_free : i18n::Tr("Points d'Event"),
                      kafra_points_);
   ImGui::SameLine();
@@ -919,7 +919,7 @@ void CashShopWindow::OnRenderUI() {
       std::snprintf(pbuf, sizeof(pbuf), i18n::Tr("%d pts"), ci.price);
       const float tw = ImGui::CalcTextSize(pbuf).x;
       ImGui::SetCursorPos(ImVec2(cx + (colw > tw ? (colw - tw) * 0.5f : 0.0f), cy));
-      ImGui::TextColored(kBlack, "%s", pbuf);
+      ImGui::TextColored(ro::pal::kBlack, "%s", pbuf);
       // Grise Panier + Achat 1-Click si le solde ne couvre pas le prix de l'item.
       // Solde REEL selon la coche "Utiliser mes points d'Event d'abord" : cumul
       // Vote+Event si cochee, Vote seul sinon (= ce que l'achat depensera vraiment).
@@ -1014,7 +1014,7 @@ void CashShopWindow::OnRenderUI() {
     // Sous-total (noir, centre verticalement sur la ligne des champs).
     ImGui::SameLine();
     ImGui::AlignTextToFramePadding();
-    ImGui::TextColored(kBlack, i18n::Tr("%lld pts"), static_cast<long long>(e.price) * e.amount);
+    ImGui::TextColored(ro::pal::kBlack, i18n::Tr("%lld pts"), static_cast<long long>(e.price) * e.amount);
     // Bouton supprimer : meme petit bouton RO carre, aligne a droite.
     ImGui::SameLine();
     const float xr = ImGui::GetContentRegionMax().x - step;
