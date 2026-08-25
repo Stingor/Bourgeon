@@ -140,6 +140,21 @@ class NavigationWindow : public Plugin {
   // Statique : l'aperçu d'un lien n'a pas besoin de la fenêtre, seulement du nom.
   static void DrawMapThumbnail(const char* map_name, float side);
 
+  // Le SPRITE d'un PNJ, inscrit dans un carré de `side`, à sa taille réelle.
+  // Rend false — et ne consomme AUCUNE place — quand on ne peut pas le montrer :
+  // carte inconnue du graphe, PNJ absent de ses données, portail de warp, ou
+  // classe rendue par un modèle 3D.
+  //
+  // 🔴 Un PNJ n'a pas d'identité qui voyage : un lien `[PNJ: …]` ne transporte
+  // que son nom AFFICHÉ et sa carte. Sa classe de sprite se retrouve donc
+  // LOCALEMENT, dans le nœud de la carte (`+0x44`, le vecteur des PNJ) — la même
+  // source que le volet de détail, et la seule dont dispose un lecteur qui n'a
+  // jamais eu ce PNJ à l'écran.
+  //
+  // Statique : l'aperçu d'un lien n'a pas besoin de la fenêtre, seulement du nom.
+  static bool DrawNpcSprite(const char* map_name, const char* npc_name_utf8,
+                            float side);
+
   // Nom AFFICHÉ d'une carte (« Prontera »), ou son nom interne si le client ne
   // le connaît pas — jamais une chaîne vide, pour qu'un libellé de lien reste
   // toujours lisible.

@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <map>  // cache (carte, nom de PNJ) -> classe de sprite
 
 #include "bourgeon.h"
 #include "features/windows/chat_window.h"  // AppendNaviLink (partage <NAVIL>)
@@ -830,6 +831,55 @@ std::string ToUtf8(const char* client_text) {
   return utf8 ? std::string(utf8) : std::string(client_text);
 }
 
+// ── La classe de sprite d'un PNJ, par son NOM et sa carte ────────────────────
+//
+// Le pendant, pour un lien de chat, de ce que le volet de détail lit dans sa
+// sélection : là-bas l'objet du graphe est sous la main, ici on n'a qu'un nom
+// AFFICHÉ et un nom de carte — c'est tout ce qu'une balise `[PNJ: …]` porte.
+//
+// 🔴 On ne relance PAS le moteur de recherche : son terme, son filtre et ses
+// résultats sont des champs de l'objet natif UNIQUE, donc chercher pour un
+// survol écraserait la recherche que le joueur a sous les yeux. On parcourt
+// nous-mêmes le vecteur des PNJ du nœud de la carte, en lecture pure.
+//
+// Rend 0 quand rien ne correspond. La casse est ignorée : le terme du lien a pu
+// être saisi à la main dans une balise, alors que le nom du nœud vient du `.lub`.
+int NpcSpriteClassOnMap(const char* map_name, const char* npc_name_utf8) {
+  // Le résultat est mémorisé PAR (carte, nom) : un survol dessine à chaque
+  // frame, et une carte de ville porte plus de cent PNJ dont la lecture passe
+  // par un appel natif chacun. Les données de navigation sont chargées une fois
+  // pour toutes au démarrage du client — ce cache n'a donc rien à invalider.
+  static std::map<std::string, int> cache;
+  std::string key = map_name;
+  key += '\n';
+  key += npc_name_utf8;
+  const auto cached = cache.find(key);
+  if (cached != cache.end()) return cached->second;
+
+  void* node = SafeFindMapNode(map_name);
+  // ⚠ Sans nœud, on ne mémorise RIEN : c'est « on ne sait pas encore », pas
+  // « ce PNJ n'a pas de sprite ».
+  if (node == nullptr) return 0;
+
+  // Même plafond dur que `ShowMapContents` : les données viennent du serveur et
+  // peuvent grossir.
+  static constexpr int kMaxNpcs = 512;
+  void* objects[kMaxNpcs];
+  const int count = SafeNodeObjects(node, kOffNodeNpcsBegin, objects, kMaxNpcs);
+  int found = 0;
+  for (int i = 0; i < count; ++i) {
+    char label[128];
+    ObjectFacts facts;
+    if (!SafeReadObject(objects[i], /*is_mob=*/false, label, sizeof(label), &facts))
+      continue;
+    if (_stricmp(ToUtf8(label).c_str(), npc_name_utf8) != 0) continue;
+    found = facts.sprite_class;
+    break;
+  }
+  cache[key] = found;
+  return found;
+}
+
 }  // namespace
 
 NavigationWindow::NavigationWindow() = default;
@@ -1481,6 +1531,32 @@ void NavigationWindow::DrawMapThumbnail(const char* map_name, float side) {
   MapThumbnail(map_name, side);
 }
 
+bool NavigationWindow::DrawNpcSprite(const char* map_name,
+                                     const char* npc_name_utf8, float side) {
+  if (!map_name || !*map_name || !npc_name_utf8 || !*npc_name_utf8) return false;
+  const int class_id = NpcSpriteClassOnMap(map_name, npc_name_utf8);
+  // 🔴 `kWarpPortalSprite` (99999) n'est pas une classe : c'est la sentinelle des
+  // portails de warp. Le champ d'un PNJ n'est PAS empaqueté, donc la valeur
+  // arrive telle quelle — la masquer en 16 bits donnerait 34463, un sprite pris
+  // au hasard dans le bestiaire.
+  if (class_id <= 0 || class_id == kWarpPortalSprite) return false;
+
+  // Une seule poignée : il n'y a qu'UN aperçu à l'écran à la fois (links::
+  // n'accorde la frame qu'à un lien). Les `.spr` / `.act`, eux, restent dans le
+  // cache global de `ui/sprite_view`, qui gère seul l'epoch de device.
+  static ro::MobSpriteRes sprite;
+  if (!ro::LoadMobSprite(class_id, &sprite) || sprite.is_model) return false;
+
+  const ImVec2 p0 = ImGui::GetCursorScreenPos();
+  const ImVec2 p1(p0.x + side, p0.y + side);
+  // `allow_upscale` reste à false, comme dans le volet de détail : la taille
+  // réelle du sprite est une information de gabarit.
+  ro::DrawMobSprite(ImGui::GetWindowDrawList(), sprite, p0, p1,
+                    static_cast<float>(ImGui::GetTime()));
+  ImGui::Dummy(ImVec2(side, side));
+  return true;
+}
+
 std::string NavigationWindow::MapLabel(const char* map_name) {
   if (!map_name || !*map_name) return std::string();
   char shown[96];
@@ -1532,47 +1608,98 @@ void NavigationWindow::DrawResultsPane() {
     ImGui::TextDisabled("%s",
                         i18n::Tr("Clic droit : menu · Maj+clic : lien dans le chat"));
   }
+  // Filtre d'affichage. « Maps » couvre les DEUX types de carte (0 et 1).
+  const auto group_shown = [this](const Group& group) {
+    return filter_ == kShowAll ||
+           (filter_ == kShowMaps ? group.type <= kTypeMap
+                                 : group.type == filter_);
+  };
+
+  // ── Le SEUL résultat de la recherche se sélectionne tout seul ─────────────
+  // Il n'y a alors rien à choisir, et un volet de détail qui répond « choisissez
+  // un résultat » à une recherche qui n'en a rendu qu'un fait faire un clic pour
+  // rien.
+  //
+  // ⚠ Le compte se fait sur ce qui est VISIBLE, filtre appliqué : c'est ce que
+  // le joueur a sous les yeux qui décide, et une pastille peut réduire à une
+  // ligne un relevé qui en comptait trente.
+  // ⚠ Et seulement à UN : dès qu'il y a un choix, il appartient au joueur —
+  // reposer la sélection à chaque frame lui volerait la sienne.
+  int visible_entries = 0;
+  for (const Group& group : groups_)
+    if (group_shown(group)) visible_entries += static_cast<int>(group.entries.size());
+  const bool single_result = visible_entries == 1;
+
   for (int g = 0; g < static_cast<int>(groups_.size()); ++g) {
     const Group& group = groups_[g];
-    // Filtre d'affichage. « Maps » couvre les DEUX types de carte (0 et 1).
-    const bool shown =
-        filter_ == kShowAll ||
-        (filter_ == kShowMaps ? group.type <= kTypeMap : group.type == filter_);
-    if (!shown) continue;
+    if (!group_shown(group)) continue;
 
     const char* kind = group.type <= kTypeMap  ? "map"
                        : group.type == kTypeNpc ? "NPC"
                                                 : i18n::Tr("monstre");
-    // Le natif affiche `"[%d]%s"` — l'identifiant brut. On montre plutôt la
-    // NATURE et le nombre d'endroits, qui est ce que le joueur cherche.
-    char header[192];
-    std::snprintf(header, sizeof(header), "%s  (%s, %d)###navi_g%d",
-                  group.name.c_str(), kind,
-                  static_cast<int>(group.entries.size()), g);
-    const bool group_has_mvp =
-        std::any_of(group.entries.begin(), group.entries.end(),
-                    [](const Entry& e) { return e.is_mvp; });
-    const bool opened = ImGui::TreeNode(header);
-    // 🔴 La miniature n'a de sens que si le groupe désigne UNE seule carte. Un
-    // monstre est groupé par NOM et peut vivre sur plusieurs cartes : montrer
-    // celle du premier membre serait un mensonge tranquille — « Greatest
-    // General » annoncerait `pay_dun03` alors qu'il est sur trois cartes.
-    const bool one_map =
-        !group.entries.empty() &&
-        std::all_of(group.entries.begin(), group.entries.end(),
-                    [&group](const Entry& e) {
-                      return e.map == group.entries.front().map;
-                    });
-    if (ImGui::IsItemHovered() && one_map)
-      MapThumbnailTooltip(group.entries.front().map.c_str());
-    if (group_has_mvp) {
-      // Repérable sans déplier : c'est tout l'intérêt de croiser la navigation
-      // avec le suivi des MVP (le tracker sait QUAND, la navigation sait OÙ).
-      ImGui::SameLine();
-      MvpBadge();
-    }
-    if (!opened) continue;
 
+    // ── UN groupe d'UNE ligne ne se plie pas ─────────────────────────────────
+    // Un en-tête répond à « lesquels, et de quelle nature ? ». Avec une seule
+    // ligne dessous, la première question ne se pose pas — il ne reste qu'un pli
+    // à ouvrir pour lire ce qu'on avait déjà demandé, souvent DEUX FOIS le même
+    // texte (« Retour à Gonryun (NPC, 1) » puis « Retour à Gonryun »).
+    //
+    // 🔴 La règle est PAR GROUPE, pas sur le total : dans « Tout », une
+    // recherche de ville rend plusieurs groupes dont la moitié n'a qu'une
+    // ligne, et ce sont eux qui font le bruit. La NATURE, elle, reste due —
+    // c'est l'autre moitié de ce que disait l'en-tête, et sans elle une liste
+    // mêlant cartes, PNJ et monstres ne se lit plus.
+    const bool bare = group.entries.size() == 1;
+
+    if (!bare) {
+      // Le natif affiche `"[%d]%s"` — l'identifiant brut. On montre plutôt la
+      // NATURE et le nombre d'endroits, qui est ce que le joueur cherche.
+      char header[192];
+      std::snprintf(header, sizeof(header), "%s  (%s, %d)###navi_g%d",
+                    group.name.c_str(), kind,
+                    static_cast<int>(group.entries.size()), g);
+      const bool group_has_mvp =
+          std::any_of(group.entries.begin(), group.entries.end(),
+                      [](const Entry& e) { return e.is_mvp; });
+      const bool opened = ImGui::TreeNode(header);
+      // 🔴 La miniature n'a de sens que si le groupe désigne UNE seule carte. Un
+      // monstre est groupé par NOM et peut vivre sur plusieurs cartes : montrer
+      // celle du premier membre serait un mensonge tranquille — « Greatest
+      // General » annoncerait `pay_dun03` alors qu'il est sur trois cartes.
+      const bool one_map =
+          !group.entries.empty() &&
+          std::all_of(group.entries.begin(), group.entries.end(),
+                      [&group](const Entry& e) {
+                        return e.map == group.entries.front().map;
+                      });
+      if (ImGui::IsItemHovered() && one_map)
+        MapThumbnailTooltip(group.entries.front().map.c_str());
+      if (group_has_mvp) {
+        // Repérable sans déplier : c'est tout l'intérêt de croiser la navigation
+        // avec le suivi des MVP (le tracker sait QUAND, la navigation sait OÙ).
+        ImGui::SameLine();
+        MvpBadge();
+      }
+      if (!opened) continue;
+    }
+
+    // La ligne unique EST le résultat : on la sélectionne, sinon le volet de
+    // détail — qui porte le sprite, le plan et les boutons — resterait vide
+    // devant un choix qui n'en est pas un.
+    // ⚠ Jamais sur un groupe VIDE : le compte vaut 1, mais un groupe sans entrée
+    // traversé après le bon écraserait la sélection par un couple que
+    // `Selection()` rejette — volet de détail vide, sans rien pour le dire.
+    if (single_result && !group.entries.empty()) {
+      sel_group_ = g;
+      sel_entry_ = 0;
+    }
+
+    // 🔴 L'id du GROUPE, et pas seulement celui de la ligne : c'est le `TreeNode`
+    // qui séparait jusqu'ici les piles d'identifiants d'un groupe à l'autre.
+    // Sans en-tête, trois groupes d'une ligne posaient trois fois `###e0` dans
+    // la MÊME pile — trois items de même id, ce qu'ImGui signale en toutes
+    // lettres et qui casse survol et sélection.
+    ImGui::PushID(g);
     for (size_t e = 0; e < group.entries.size(); ++e) {
       const Entry& entry = group.entries[e];
       ImGui::PushID(static_cast<int>(e));
@@ -1581,25 +1708,34 @@ void NavigationWindow::DrawResultsPane() {
       // qui garde la liste lisible. Le natif ecrit « [12]Yoyo » -- son
       // identifiant brut colle au nom -- et n'offre aucun moyen d'en savoir
       // plus.
+      //
+      // ⚠ Sans en-tête au-dessus (`bare`), la ligne porte à elle seule ce que
+      // l'en-tête disait : la NATURE, en queue de libellé. Et pour une CARTE,
+      // c'est le nom AFFICHÉ qui passe devant — celui que le joueur lit partout
+      // ailleurs ; son nom interne, utile en commande, reste dans le détail.
       char label[224];
+      char tail[64] = "";
+      if (bare) std::snprintf(tail, sizeof(tail), "  ·  %s", kind);
       if (entry.type == kTypeMob) {
         // 🔴 Un monstre n'a PAS de coordonnees : les deux derniers champs de
         // son noeud portent son niveau et ses statistiques. Les afficher comme
         // un « (x, y) » etait le piege.
-        std::snprintf(label, sizeof(label), "%s  ·  %s %d###e%d",
-                      entry.name.c_str(), i18n::Tr("niv."), entry.level,
+        std::snprintf(label, sizeof(label), "%s%s  ·  %s %d###e%d",
+                      entry.name.c_str(), tail, i18n::Tr("niv."), entry.level,
                       static_cast<int>(e));
       } else if (entry.type <= kTypeMap || whole_map) {
-        std::snprintf(label, sizeof(label), "%s###e%d",
-                      entry.map.empty() ? entry.name.c_str()
-                                        : entry.map.c_str(),
+        const char* shown = bare && !entry.name.empty()
+                                ? entry.name.c_str()
+                                : (entry.map.empty() ? entry.name.c_str()
+                                                     : entry.map.c_str());
+        std::snprintf(label, sizeof(label), "%s%s###e%d", shown, tail,
                       static_cast<int>(e));
       } else {
         // 🔴 Le NOM du NPC, pas celui de la carte : le groupe EST deja la
         // carte, la repeter a chaque ligne masquait la seule information que
         // le joueur cherche.
-        std::snprintf(label, sizeof(label), "%s###e%d", entry.name.c_str(),
-                      static_cast<int>(e));
+        std::snprintf(label, sizeof(label), "%s%s###e%d", entry.name.c_str(),
+                      tail, static_cast<int>(e));
       }
 
       const bool is_sel =
@@ -1639,7 +1775,10 @@ void NavigationWindow::DrawResultsPane() {
       }
       ImGui::PopID();
     }
-    ImGui::TreePop();
+    ImGui::PopID();  // l'id du groupe
+    // Pas d'arbre ouvert quand il n'y a pas eu d'en-tête : `TreePop` sans
+    // `TreeNode` déséquilibrerait la pile d'indentation d'ImGui.
+    if (!bare) ImGui::TreePop();
   }
 
   // Le menu, ouvert et dessiné HORS de l'arbre : `ImGui::TreeNode` et `PushID`

@@ -741,8 +741,24 @@ void HoverPreview(const Target& target) {
       DimText("%s", NavigationWindow::MapLabel(target.navi_map.c_str()).c_str());
     ImGui::Separator();
     if (!target.navi_map.empty() && kind != NaviKind::kMap) {
+      // Le PNJ lui-même, à GAUCHE du plan. Un nom de PNJ est un rôle recopié
+      // partout (« Warp Agent », « Kafra Employee ») : ce qui le rend
+      // reconnaissable, c'est sa silhouette — c'est elle qu'on a vue à l'écran,
+      // pas son nom. Sa classe de sprite se retrouve dans les données de
+      // navigation de sa carte (cf. `DrawNpcSprite`), et rien ne s'affiche quand
+      // elles ne le connaissent pas : le plan reprend alors toute la place.
+      const bool has_sprite =
+          kind == NaviKind::kNpc &&
+          NavigationWindow::DrawNpcSprite(target.navi_map.c_str(),
+                                          target.navi_term.c_str(),
+                                          ro::Px(110.0f));
+      if (has_sprite) ImGui::SameLine();
+      // Le plan et son nom interne forment un bloc : sans ça, le `SameLine`
+      // ci-dessus laisserait le nom repasser sous le sprite.
+      ImGui::BeginGroup();
       NavigationWindow::DrawMapThumbnail(target.navi_map.c_str(), ro::Px(160.0f));
       DimText("%s", target.navi_map.c_str());  // le nom interne, utile en commande
+      ImGui::EndGroup();
     }
     // Une CARTE se montre : son plan répond à la question mieux que son nom. Un
     // PNJ ou un monstre, non — c'est justement parce qu'ils n'ont pas de lieu
