@@ -460,10 +460,11 @@ void ScreenFx::OnTick() {
   // the window is already in place and this restore is a harmless no-op. (ESC above
   // is save-only because its centring-through-vtable is proven by disassembly.)
   // Found via FindWindow(0x271e); pos = win+0x1c/0x20; SetPos via vtable slot.
-  void* gw = uiwnd::FindWindow(0x271e);
+  void* gw = uiwnd::FindWindow(uiwnd::kCUIGameSettingsUI);
   if (gw) {
-    int* px = reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(gw) + 0x1c);
-    int* py = reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(gw) + 0x20);
+    auto* b = reinterpret_cast<uint8_t*>(gw);
+    int* px = reinterpret_cast<int*>(b + uiwnd::kOffPosX);
+    int* py = reinterpret_cast<int*>(b + uiwnd::kOffPosY);
     if (!gopt_was_open_ && gopt_x_ != INT_MIN && gopt_x_ >= 0 && gopt_y_ >= 0) {
       // Just opened with a saved position -> ensure it (no-op if the hook placed it).
       reinterpret_cast<SetPosFn>(*reinterpret_cast<uintptr_t*>(
@@ -494,9 +495,10 @@ void ScreenFx::OnTick() {
   // pointer is g_UIWindowMgr+0x408 (null while closed), vtable-guarded against any
   // stale slot value.
   void* ew = *reinterpret_cast<void**>(uiwnd::kUIWindowMgrAddr + 0x408);
-  if (ew && *reinterpret_cast<uintptr_t*>(ew) == 0x010384a0) {
-    const int ex = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(ew) + 0x1c);
-    const int ey = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(ew) + 0x20);
+  if (ew && *reinterpret_cast<uintptr_t*>(ew) == uiwnd::kUIEscOptionWndVTable) {
+    auto* eb = reinterpret_cast<uint8_t*>(ew);
+    const int ex = *reinterpret_cast<int*>(eb + uiwnd::kOffPosX);
+    const int ey = *reinterpret_cast<int*>(eb + uiwnd::kOffPosY);
     if (ex != esc_x_ || ey != esc_y_) {
       esc_x_ = ex; esc_y_ = ey;
       const unsigned long now = GetTickCount();

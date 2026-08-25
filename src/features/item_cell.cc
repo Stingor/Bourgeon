@@ -290,18 +290,19 @@ bool BuildChatLink(void* info, char* out, size_t out_size) {
   bool ok = false;
   __try {
     const uint8_t* p = static_cast<const uint8_t*>(info);
-    const int      type  = *reinterpret_cast<const int*>(p + 0x00);
-    const uint32_t equip = *reinterpret_cast<const uint32_t*>(p + 0x08);
+    const int      type  = *reinterpret_cast<const int*>(p + rag::itemlist::kInfoType);
+    const uint32_t equip = *reinterpret_cast<const uint32_t*>(p + rag::itemlist::kInfoLoc);
     const char*    ids   = rag::clientstr::Data(p + kInfoIdStr);
     const uint32_t id     = ids ? static_cast<uint32_t>(std::atoi(ids)) : 0u;
-    const uint32_t refine = *reinterpret_cast<const uint32_t*>(p + 0x60);
-    const uint32_t look   = *reinterpret_cast<const uint32_t*>(p + 0x70);
-    const uint32_t grade  =
-        static_cast<uint32_t>(*reinterpret_cast<const int16_t*>(p + 0x88));
+    const uint32_t refine = *reinterpret_cast<const uint32_t*>(p + rag::itemlist::kInfoRefine);
+    const uint32_t look   = *reinterpret_cast<const uint32_t*>(p + rag::itemlist::kInfoView);
+    const uint32_t grade  = static_cast<uint32_t>(
+        *reinterpret_cast<const int16_t*>(p + rag::itemlist::kInfoGrade));
     uint32_t cards[4];
     for (int i = 0; i < 4; ++i)
-      cards[i] = *reinterpret_cast<const uint32_t*>(p + 0x1c + i * 4);
-    int nopt = *reinterpret_cast<const int*>(p + 0x98);
+      cards[i] =
+          *reinterpret_cast<const uint32_t*>(p + rag::itemlist::kInfoCards + i * 4);
+    int nopt = *reinterpret_cast<const int*>(p + rag::itemlist::kInfoOptCount);
     if (nopt < 0) nopt = 0;
     if (nopt > 5) nopt = 5;
 
@@ -349,7 +350,7 @@ bool BuildChatLink(void* info, char* out, size_t out_size) {
       // séparateur que le client n'écrit jamais (`!`, rang 0 de sa table) : son
       // décodeur le range dans une case qu'il ne lit pas, et tout le reste de la
       // balise est intact pour qui ne connaît pas ce champ.
-      if (*reinterpret_cast<const uint8_t*>(p + 0x5d) != 0) {
+      if (*reinterpret_cast<const uint8_t*>(p + rag::itemlist::kInfoDamaged) != 0) {
         AppendChar(out, out_size, &len, '!');
         AppendB62(out, out_size, &len, 1, 2);
       }

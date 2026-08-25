@@ -393,16 +393,16 @@ bool ReadCompItemFromInfo(uint8_t* info, CompItem* out) {
     out->forged = (c0 != 0 && c0 <= 500);
     if (!out->forged) {
       for (int k = 0; k < 4; ++k)
-        out->cards[k] = *reinterpret_cast<uint32_t*>(info + 0x1c + k * 4);
+        out->cards[k] =
+            *reinterpret_cast<uint32_t*>(info + rag::itemlist::kInfoCards + k * 4);
     }
-    // Random options d'instance (info+0x98 = nb, info+0x9c = entrées de 5 octets),
-    // pour l'aperçu de description au survol — mêmes offsets que la grille.
-    int nopt = *reinterpret_cast<int*>(info + 0x98);
+    // Random options d'instance, pour l'aperçu de description au survol.
+    int nopt = *reinterpret_cast<int*>(info + rag::itemlist::kInfoOptCount);
     if (nopt < 0) nopt = 0;
     if (nopt > 5) nopt = 5;
     out->opt_count = nopt;
     for (int k = 0; k < nopt; ++k) {
-      const uint8_t* e = info + 0x9c + k * 5;
+      const uint8_t* e = info + rag::itemlist::kInfoOpts + k * 5;
       out->opts[k].index = *reinterpret_cast<const int16_t*>(e);
       out->opts[k].value = *reinterpret_cast<const int16_t*>(e + 2);
       out->opts[k].param = e[4];
@@ -475,7 +475,8 @@ void PostItemLinkToChat(int index) {
   __try {
     void* focused = *reinterpret_cast<void**>(uiwnd::kUIWindowMgrAddr + 0x1a0);
     if (!focused) return;
-    const int type = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(focused) + 0x2c);
+    const int type = *reinterpret_cast<int*>(
+        reinterpret_cast<uint8_t*>(focused) + uiwnd::kOffWndId);
     auto insert = reinterpret_cast<ChatInsertLink_t>(0x008217f0);
     if (type == 0x1ea || type == 0x1ee) {   // input chat (focus direct)
       insert(focused, info);

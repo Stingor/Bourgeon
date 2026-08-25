@@ -616,19 +616,22 @@ void TradeWindow::ResolveMyAdds() {
       // Mêmes données d'instance que celles du partenaire, mais lues dans le nœud
       // — pour que les deux colonnes affichent exactement la même chose. À lire
       // MAINTENANT : le nœud disparaît du sac quelques lignes plus bas.
-      it.type       = static_cast<uint8_t>(*reinterpret_cast<int*>(p + 0x00));
-      it.location   = *reinterpret_cast<uint32_t*>(p + 0x08);
-      it.identified = *(p + 0x5c);
-      it.look       = static_cast<uint16_t>(*reinterpret_cast<uint32_t*>(p + 0x70));
-      it.grade      = *(p + 0x88);
+      it.type       =
+          static_cast<uint8_t>(*reinterpret_cast<int*>(p + rag::itemlist::kInfoType));
+      it.location   = *reinterpret_cast<uint32_t*>(p + rag::itemlist::kInfoLoc);
+      it.identified = *(p + rag::itemlist::kInfoIdent);
+      it.look       = static_cast<uint16_t>(
+          *reinterpret_cast<uint32_t*>(p + rag::itemlist::kInfoView));
+      it.grade      = *(p + rag::itemlist::kInfoGrade);
       for (int c = 0; c < 4; ++c)
-        it.cards[c] = *reinterpret_cast<uint32_t*>(p + 0x1c + c * 4);
-      int nopt = *reinterpret_cast<int*>(p + 0x98);
+        it.cards[c] =
+            *reinterpret_cast<uint32_t*>(p + rag::itemlist::kInfoCards + c * 4);
+      int nopt = *reinterpret_cast<int*>(p + rag::itemlist::kInfoOptCount);
       if (nopt < 0) nopt = 0;
       if (nopt > 5) nopt = 5;
       it.opt_count = nopt;
       for (int k = 0; k < nopt; ++k) {
-        const uint8_t* e = p + 0x9c + k * 5;
+        const uint8_t* e = p + rag::itemlist::kInfoOpts + k * 5;
         it.opts[k].index = *reinterpret_cast<const int16_t*>(e);
         it.opts[k].value = *reinterpret_cast<const int16_t*>(e + 2);
         it.opts[k].param = e[4];

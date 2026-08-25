@@ -643,17 +643,18 @@ void __fastcall InputRowLayoutHook(void* ecx, void* edx) {
     auto* btn1 = *reinterpret_cast<uint8_t**>(w + 0xe4);  // this+0xe0[1] (rightmost)
     auto* btn2 = *reinterpret_cast<uint8_t**>(w + 0xe8);  // this+0xe0[2] (left of btn1)
     int x1 = right;
-    if (btn1 && *reinterpret_cast<int*>(btn1 + 0x1c) >= 0) {  // shown, not parked off-screen
-      x1 = right - *reinterpret_cast<int*>(btn1 + 0x14);  // btn1 right edge at |right|
+    if (btn1 && *reinterpret_cast<int*>(btn1 + uiwnd::kOffPosX) >= 0) {  // affiché
+      x1 = right - *reinterpret_cast<int*>(btn1 + uiwnd::kOffWidth);
       reinterpret_cast<void (__fastcall*)(void*, void*, int, int)>(
           *reinterpret_cast<uintptr_t*>(*reinterpret_cast<uintptr_t*>(btn1) + 0x10))(
-          btn1, nullptr, x1, *reinterpret_cast<int*>(btn1 + 0x20));
+          btn1, nullptr, x1, *reinterpret_cast<int*>(btn1 + uiwnd::kOffPosY));
     }
-    if (btn2 && *reinterpret_cast<int*>(btn2 + 0x1c) >= 0)
+    if (btn2 && *reinterpret_cast<int*>(btn2 + uiwnd::kOffPosX) >= 0)
       reinterpret_cast<void (__fastcall*)(void*, void*, int, int)>(
           *reinterpret_cast<uintptr_t*>(*reinterpret_cast<uintptr_t*>(btn2) + 0x10))(
-          btn2, nullptr, x1 - *reinterpret_cast<int*>(btn2 + 0x14),  // flush left of btn1
-          *reinterpret_cast<int*>(btn2 + 0x20));
+          btn2, nullptr,
+          x1 - *reinterpret_cast<int*>(btn2 + uiwnd::kOffWidth),  // collé à gauche
+          *reinterpret_cast<int*>(btn2 + uiwnd::kOffPosY));
   } __except (EXCEPTION_EXECUTE_HANDLER) {
   }
 }

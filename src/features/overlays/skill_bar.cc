@@ -35,6 +35,7 @@
 #include "ragnarok/user_hotkey.h"  // userhotkey::kGetHotKeyAddr
 #include "ui/ro_widgets.h"
 #include "ragnarok/item_info.h"  // rag::itemlist
+#include "ragnarok/skill_info.h"  // rag::skillinfo
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -573,7 +574,8 @@ bool SkillPath(int id, char* out, int n) {
     //    ne couvre pas un id custom mais que le skill est appris.
     alignas(8) uint8_t info[0xA0] = {};
     reinterpret_cast<GetInvInfo_t>(itemdb::kFillInfoByIdAddr)(info, id);          // __stdcall(out, id)
-    const char* rn = *reinterpret_cast<const char**>(info + 0x20);  // resname (déréférencé)
+    const char* rn =
+        *reinterpret_cast<const char**>(info + rag::skillinfo::kResName);
     if (rn && rn[0] && !LooksUnknown(rn)) {                         // rejette "Unknown-Skill"
       std::snprintf(out, n, "%s\\item\\%s.bmp", ro::uipath::kUiRoot, rn);
       return out[0] != '\0';
@@ -958,8 +960,9 @@ void SkillBar::OnRenderUI() {
       // hidden, which persisted -10000 into its saved position (QUICKSLOTWNDINFO).
       // If we find it off-screen when re-showing, restore it to a sane on-screen
       // spot so it isn't lost. (One-off safety net; harmless once positions are ok.)
-      int* nx = reinterpret_cast<int*>(reinterpret_cast<char*>(w) + 0x1c);
-      int* ny = reinterpret_cast<int*>(reinterpret_cast<char*>(w) + 0x20);
+      auto* b = reinterpret_cast<char*>(w);
+      int* nx = reinterpret_cast<int*>(b + uiwnd::kOffPosX);
+      int* ny = reinterpret_cast<int*>(b + uiwnd::kOffPosY);
       if (*nx < -5000 || *ny < -5000) { *nx = 200; *ny = 100; }
     }
     native_hidden_ = false;

@@ -149,8 +149,10 @@ void MoonlightUi::DrawAlootOverlay() {
     const void* live_wnd = *reinterpret_cast<void* const*>(uiwnd::kItemDescWndSlot);
     if (g_item_desc_wnd_ptr != nullptr && g_item_desc_wnd_ptr == live_wnd) {
       const auto* desc_wnd_bytes = static_cast<const uint8_t*>(g_item_desc_wnd_ptr);
-      const int wnd_x = *reinterpret_cast<const int*>(desc_wnd_bytes + 0x1C);
-      const int wnd_y = *reinterpret_cast<const int*>(desc_wnd_bytes + 0x20);
+      const int wnd_x =
+          *reinterpret_cast<const int*>(desc_wnd_bytes + uiwnd::kOffPosX);
+      const int wnd_y =
+          *reinterpret_cast<const int*>(desc_wnd_bytes + uiwnd::kOffPosY);
       if (wnd_x > 0 && wnd_x < 4096 && wnd_y > 0 && wnd_y < 4096) {
         overlay_x = static_cast<float>(wnd_x);
         overlay_y = static_cast<float>(wnd_y) - 24.0f;

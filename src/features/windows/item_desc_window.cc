@@ -424,8 +424,9 @@ bool ExtractItem(uint8_t* wnd, ItemExtract* e) {
     // d'une arme CASSÉE « rouge » (ombre rouge sous le texte noir), pas la couleur
     // du texte. On lit le même flag et on reproduit l'ombre — 0 sinon.
     e->name_shadow =
-        (*(uint8_t*)(wnd + kItemStruct + 0x5d) != 0) ? IM_COL32(0xFA, 0x50, 0x50, 255)
-                                                     : 0u;
+        (*(uint8_t*)(wnd + kItemStruct + rag::itemlist::kInfoDamaged) != 0)
+            ? IM_COL32(0xFA, 0x50, 0x50, 255)
+            : 0u;
     // Repli : nom de base si BuildDisplayName n'a rien produit.
     if (e->name[0] == '\0') {
       size_t cap = sizeof(e->name);
@@ -542,9 +543,9 @@ bool ExtractItem(uint8_t* wnd, ItemExtract* e) {
       }
     }
 
-    // viewID (info+0x70) + emplacement (info+0x8) : pour l'aperçu 3D au survol.
-    e->view_id     = *reinterpret_cast<int*>(info + 0x70);
-    e->emplacement = *reinterpret_cast<int*>(info + 0x8);
+    // viewID + emplacement : pour l'aperçu 3D au survol.
+    e->view_id     = *reinterpret_cast<int*>(info + rag::itemlist::kInfoView);
+    e->emplacement = *reinterpret_cast<int*>(info + rag::itemlist::kInfoLoc);
 
     // Suffixe " [N]" dans le nom (comme le natif FUN_006a4c40), si l'item a des
     // emplacements. e->name est déjà le nom complet construit par BuildDisplayName.
