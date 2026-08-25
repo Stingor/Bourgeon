@@ -75,10 +75,6 @@ using rag::itemlist::kInfoIndex;
 using rag::itemlist::kInfoIdStr;
 using rag::itemlist::kInfoAmount;
 using rag::itemlist::kWalkGuard;
-// ItemSkillInfo tel que le natif le passe à OnMsg 0x18. 0x100 octets : la
-// structure en fait 0xf8, on arrondit (cf. le memcpy 0x5c..0xf8 du pont `src`).
-constexpr size_t kInfoSize = 0x100;
-
 // La demande d'ouverture en vol (cf. l'en-tête pour le pourquoi du différé).
 // `list_head` != 0 => par index ; sinon `id` != 0 => par id ; les deux nuls =>
 // rien en attente. Écrasée par toute nouvelle demande : une souris, un geste.
@@ -388,7 +384,7 @@ uint32_t B62Decode(const char* s, size_t len) {
 // L'ItemSkillInfo que le lien décrit, monté sur le tampon de l'appelant.
 // ⚠ À N'APPELER QUE depuis une portée __try : elle exécute du code du jeu.
 void FabricateFromLink(uint8_t* info, const ChatLink& l) {
-  std::memset(info, 0, kInfoSize);
+  std::memset(info, 0, rag::itemlist::kInfoBuf);
   reinterpret_cast<InfoCtor_t>(itemdb::kInfoCtorAddr)(info);
   reinterpret_cast<InfoSetId_t>(itemdb::kInfoSetIdAddr)(info, static_cast<int>(l.id));
   // 🔴 LE TYPE @0x00 N'EST PAS DANS LE LIEN — et il faut pourtant l'écrire, sans
@@ -402,8 +398,10 @@ void FabricateFromLink(uint8_t* info, const ChatLink& l) {
   *reinterpret_cast<uint32_t*>(info + 0x08) = l.equip;
   for (int i = 0; i < 4; ++i)
     *reinterpret_cast<uint32_t*>(info + 0x1c + i * 4) = l.cards[i];
-  info[0x5c] = 1;  // identifié : sans ce drapeau le builder rend le nom de base
-  info[0x5d] = l.broken ? 1 : 0;  // cassé (champ privé de la balise)
+  // ⚠ Poser +0x5c, c'est DÉCLARER L'OBJET IDENTIFIÉ — sans quoi le builder
+  // rend le nom de base. Sur un `info` fabriqué ici, c'est voulu.
+  info[rag::itemlist::kInfoIdent] = 1;
+  info[rag::itemlist::kInfoDamaged] = l.broken ? 1 : 0;  // champ privé de la balise
   *reinterpret_cast<uint32_t*>(info + 0x60) = l.refine;
   *reinterpret_cast<uint32_t*>(info + 0x70) = l.view;
   *reinterpret_cast<int16_t*>(info + 0x88)  = static_cast<int16_t>(l.grade);
@@ -488,7 +486,7 @@ void BuildChatLinkName(const ChatLink& link, char* out, size_t out_size) {
   if (!out || out_size == 0) return;
   out[0] = '\0';
   if (link.id == 0) return;
-  uint8_t info[kInfoSize];
+  uint8_t info[rag::itemlist::kInfoBuf];
   bool built = false;
   __try {
     FabricateFromLink(info, link);
@@ -518,7 +516,7 @@ bool BuildChatLinkFromLink(const ChatLink& link, char* out, size_t out_size) {
   if (!out || out_size == 0) return false;
   out[0] = '\0';
   if (link.id == 0) return false;
-  uint8_t info[kInfoSize];
+  uint8_t info[rag::itemlist::kInfoBuf];
   bool built = false;
   __try {
     FabricateFromLink(info, link);
@@ -618,7 +616,7 @@ void OpenDescById(uint32_t id, uint16_t view, uint32_t location, int mx, int my,
                   const void* src) {
   if (id == 0) return;
   __try {
-    uint8_t info[kInfoSize];
+    uint8_t info[rag::itemlist::kInfoBuf];
     std::memset(info, 0, sizeof(info));
     reinterpret_cast<InfoCtor_t>(itemdb::kInfoCtorAddr)(info);
     reinterpret_cast<InfoSetId_t>(itemdb::kInfoSetIdAddr)(info, static_cast<int>(id));
@@ -629,13 +627,18 @@ void OpenDescById(uint32_t id, uint16_t view, uint32_t location, int mx, int my,
       // @0x44 resname) que SetId vient de construire — les recopier ferait
       // partager un tampon heap entre deux ItemSkillInfo.
       const uint8_t* s = reinterpret_cast<const uint8_t*>(src);
-      std::memcpy(info + 0x00, s + 0x00, 0x2c);         // type .. cartes
-      std::memcpy(info + 0x5c, s + 0x5c, 0xf8 - 0x5c);  // identifié/refine/view/grade/options
+      // Deux blocs, de part et d'autre des deux `std::string` (+0x2c et +0x44)
+      // qu'on ne recopie SURTOUT pas octet à octet : elles portent peut-être un
+      // pointeur de tas, et le natif les a déjà construites.
+      std::memcpy(info + 0, s + 0, rag::itemlist::kInfoIdStr);  // type .. cartes
+      std::memcpy(info + rag::itemlist::kInfoIdent,
+                  s + rag::itemlist::kInfoIdent,
+                  rag::itemlist::kInfoSize - rag::itemlist::kInfoIdent);
     } else {
       *reinterpret_cast<uint32_t*>(info + 0x08) = location;  // equip point : gate « aperçu »
       *reinterpret_cast<uint32_t*>(info + 0x70) = view;      // viewID      : gate « aperçu »
     }
-    info[0x5c] = 1;  // identifié : resname/desc lus dans l'enregistrement DB
+    info[rag::itemlist::kInfoIdent] = 1;  // resname/desc lus dans l'enregistrement DB
     // Chargement paresseux du DB : sans ça la description serait vide au premier
     // affichage d'un item jamais consulté.
     void* cache = *reinterpret_cast<void**>(itemdb::kEnsureCachePtr);
@@ -656,7 +659,7 @@ void OpenDescById(uint32_t id, uint16_t view, uint32_t location, int mx, int my,
 void OpenDescFromChatLink(const ChatLink& link, int mx, int my) {
   if (link.id == 0) return;
   __try {
-    uint8_t info[kInfoSize];
+    uint8_t info[rag::itemlist::kInfoBuf];
     FabricateFromLink(info, link);
     void* dwnd = uiwnd::MakeWindow(uiwnd::kItemDescWndId);
     if (dwnd) {
@@ -813,16 +816,6 @@ void* FindInfoByIndex(uintptr_t list_head, int index) {
 // Les champs d'`ItemSkillInfo` que le viewer montre, en plus de ceux que
 // `rag::itemlist` publie (index, quantité, id). Tous relus en jeu.
 namespace {
-constexpr int kInfoType     = 0x00;  // int   : type d'item (onglets)
-constexpr int kInfoLoc      = 0x08;  // u32   : masque d'emplacement d'équipement
-constexpr int kInfoCards    = 0x1c;  // 4 x u32
-constexpr int kInfoIdent    = 0x5c;  // octet : identifié ?
-constexpr int kInfoDamaged  = 0x5d;  // octet : équipement CASSÉ
-constexpr int kInfoRefine   = 0x60;  // int
-constexpr int kInfoFav      = 0x74;  // octet : favori
-constexpr int kInfoOptCount = 0x98;  // int
-constexpr int kInfoOpts     = 0x9c;  // entrées de 5 octets
-constexpr int kMaxOpts      = 5;     // ce que porte `ItemRow::opts`
 }  // namespace
 
 int ExtractList(uintptr_t list_head, ItemRow* out, int max) {
@@ -839,20 +832,20 @@ int ExtractList(uintptr_t list_head, ItemRow* out, int max) {
     it.id         = rag::itemlist::ItemId(info);
     it.amount     = *reinterpret_cast<int*>(info + kInfoAmount);
     it.index      = *reinterpret_cast<int*>(info + kInfoIndex);
-    it.loc        = *reinterpret_cast<uint32_t*>(info + kInfoLoc);
-    it.refine     = *reinterpret_cast<int*>(info + kInfoRefine);
-    it.type       = *reinterpret_cast<int*>(info + kInfoType);
-    it.identified = *reinterpret_cast<uint8_t*>(info + kInfoIdent);
-    it.damaged    = *reinterpret_cast<uint8_t*>(info + kInfoDamaged);
-    it.favorite   = *reinterpret_cast<uint8_t*>(info + kInfoFav);
+    it.loc        = *reinterpret_cast<uint32_t*>(info + rag::itemlist::kInfoLoc);
+    it.refine     = *reinterpret_cast<int*>(info + rag::itemlist::kInfoRefine);
+    it.type       = *reinterpret_cast<int*>(info + rag::itemlist::kInfoType);
+    it.identified = *reinterpret_cast<uint8_t*>(info + rag::itemlist::kInfoIdent);
+    it.damaged    = *reinterpret_cast<uint8_t*>(info + rag::itemlist::kInfoDamaged);
+    it.favorite   = *reinterpret_cast<uint8_t*>(info + rag::itemlist::kInfoFav);
     for (int k = 0; k < 4; ++k)
-      it.cards[k] = *reinterpret_cast<uint32_t*>(info + kInfoCards + k * 4);
-    int nopt = *reinterpret_cast<int*>(info + kInfoOptCount);
+      it.cards[k] = *reinterpret_cast<uint32_t*>(info + rag::itemlist::kInfoCards + k * 4);
+    int nopt = *reinterpret_cast<int*>(info + rag::itemlist::kInfoOptCount);
     if (nopt < 0) nopt = 0;
-    if (nopt > kMaxOpts) nopt = kMaxOpts;
+    if (nopt > rag::itemlist::kMaxOpts) nopt = rag::itemlist::kMaxOpts;
     it.opt_count = nopt;
     for (int k = 0; k < nopt; ++k) {
-      const uint8_t* e = info + kInfoOpts + k * 5;
+      const uint8_t* e = info + rag::itemlist::kInfoOpts + k * 5;
       it.opts[k].index = *reinterpret_cast<const int16_t*>(e);
       it.opts[k].value = *reinterpret_cast<const int16_t*>(e + 2);
       it.opts[k].param = e[4];

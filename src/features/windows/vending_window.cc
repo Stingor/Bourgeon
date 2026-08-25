@@ -23,6 +23,7 @@
 #include "utils/i18n.h"
 #include "utils/text.h"  // text::GroupThousands
 #include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
+#include "ragnarok/item_info.h"  // rag::itemlist : la disposition d'ItemSkillInfo
 
 // ── Constantes RE (client 20250716, base 0x400000) ───────────────────────────
 // Source : docs/vending_window_re.md. Tout ce qui suit a été relu sur objet
@@ -267,7 +268,6 @@ constexpr int kNodeDamaged  = 0x65;  // ISI+0x5D : équipement CASSÉ (rendu rou
 constexpr int kNodeRefine   = 0x68;  // ISI+0x60
 constexpr int kNodeOptCount = 0xA0;  // ISI+0x98
 constexpr int kNodeOpts     = 0xA4;  // ISI+0x9C, entrées de 5 octets
-constexpr int kMaxOpts      = 5;
 
 // Fenêtre de description native (id 0xC) : MakeWindow puis OnMsg 0x18 avec le
 // POINTEUR vers l'ItemSkillInfo — c'est le chemin du clic droit natif, et
@@ -539,9 +539,9 @@ struct RawRow {
   uint32_t cards[4];
   int      refine;
   int      opt_count;
-  int16_t  opt_index[kMaxOpts];
-  int16_t  opt_value[kMaxOpts];
-  uint8_t  opt_param[kMaxOpts];
+  int16_t  opt_index[rag::itemlist::kMaxOpts];
+  int16_t  opt_value[rag::itemlist::kMaxOpts];
+  uint8_t  opt_param[rag::itemlist::kMaxOpts];
   int      ident;      // identifié ? (change le nom affiché)
   uint8_t  damaged;    // ISI+0x5D : équipement cassé (rendu rouge)
   void*    node;       // nœud d'origine, pour composer le nom hors du __try
@@ -608,7 +608,7 @@ int ReadRows(void* wnd, int list_off, RawRow* out, int max) {
       r.refine = *reinterpret_cast<int*>(p + kNodeRefine);
       int nopt = *reinterpret_cast<int*>(p + kNodeOptCount);
       if (nopt < 0) nopt = 0;
-      if (nopt > kMaxOpts) nopt = kMaxOpts;
+      if (nopt > rag::itemlist::kMaxOpts) nopt = rag::itemlist::kMaxOpts;
       r.opt_count = nopt;
       for (int k = 0; k < nopt; ++k) {
         const uint8_t* e = p + kNodeOpts + k * 5;
@@ -847,7 +847,7 @@ void FillDesc(VendingWindow::DescInfo& out, const RawRow& raw) {
   out.refine = raw.refine;
   out.damaged = raw.damaged;
   out.opt_count = raw.opt_count;
-  for (int k = 0; k < raw.opt_count && k < kMaxOpts; ++k) {
+  for (int k = 0; k < raw.opt_count && k < rag::itemlist::kMaxOpts; ++k) {
     out.opts[k].index = raw.opt_index[k];
     out.opts[k].value = raw.opt_value[k];
     out.opts[k].param = raw.opt_param[k];

@@ -214,8 +214,11 @@ constexpr int kMaxInvNodes = 4096; // garde-fou de parcours
 // qui attend un tableau de TROIS structures (§3.4). On les construit vides : le
 // natif en fait `atoi("")` = 0, c'est-à-dire « aucun matériau optionnel », ce que
 // le natif lui-même envoie pour les jobs qui court-circuitent la fenêtre 80.
-constexpr uintptr_t kItemSkillInfoDtor = 0x005a4300;
-constexpr size_t    kItemSkillInfoSize = 0xf8;
+//
+// 🔴 C'est le SEUL site qui en construit un TABLEAU, donc le seul où le pas
+// compte : `rag::itemlist::kInfoSize` (0xf8, le vrai `sizeof`) et surtout PAS
+// `kInfoBuf` (0x100, l'arrondi pour une structure isolée). Le natif indexe ce
+// tableau avec le sien ; un pas trop grand décalerait les deux derniers.
 using InfoCtor_t = void*(__thiscall*)(void*);
 using InfoDtor_t = void (__thiscall*)(void*);
 
@@ -347,20 +350,20 @@ void SendProduceCmd(int item_id, const uint32_t mats[3] = nullptr) {
   __try {
     void* mode = rag::ActiveMode();
     if (!mode) return;
-    alignas(8) unsigned char slots[kItemSkillInfoSize * 3];
+    alignas(8) unsigned char slots[rag::itemlist::kInfoSize * 3];
     auto ctor = reinterpret_cast<InfoCtor_t>(itemdb::kInfoCtorAddr);
-    auto dtor = reinterpret_cast<InfoDtor_t>(kItemSkillInfoDtor);
+    auto dtor = reinterpret_cast<InfoDtor_t>(rag::itemlist::kInfoDtorAddr);
     auto set_id = reinterpret_cast<InfoSetId_t>(itemdb::kInfoSetIdAddr);
-    for (int i = 0; i < 3; ++i) ctor(slots + i * kItemSkillInfoSize);
+    for (int i = 0; i < 3; ++i) ctor(slots + i * rag::itemlist::kInfoSize);
     // Remplissage APRÈS construction : SetId fait un std::string::assign, il lui
     // faut une chaîne déjà initialisée.
     if (mats)
       for (int i = 0; i < 3; ++i)
-        if (mats[i]) set_id(slots + i * kItemSkillInfoSize,
+        if (mats[i]) set_id(slots + i * rag::itemlist::kInfoSize,
                             static_cast<int>(mats[i]));
     rag::ModeSendMsg(mode, kCmdProduce, item_id,
                      static_cast<int>(reinterpret_cast<intptr_t>(slots)));
-    for (int i = 2; i >= 0; --i) dtor(slots + i * kItemSkillInfoSize);
+    for (int i = 2; i >= 0; --i) dtor(slots + i * rag::itemlist::kInfoSize);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 

@@ -82,12 +82,6 @@ constexpr int kSkillInfoFound = 0x04;  // out+0x04 != 0 => skill trouvé
 constexpr int kSkillStr0      = 0x2c;  // std::string resname
 constexpr int kSkillStr1      = 0x44;  // std::string nom
 
-// ItemSkillInfo standalone (ctor+SetId par id, INDÉPENDANT de l'inventaire courant — au contraire
-// de kGetSkillInfo/FUN_00d5a980 qui exige une quantité inventaire > 0). Utilisé pour la description
-// d'un OBJET grisé (épuisé) dans la barre : cf. project_item_skill_desc_window_re, section
-// "Accès STANDALONE". +0x5c = flag skill (laissé à 0 = objet par le ctor / FUN_006a5ff0).
-constexpr int kItemSkillInfoSize = 0x100;  // struct ~0xf4 o
-
 // ---- tooltip survol (réplique UIShortCutWnd OnMouseMove 0x008f7f50) ----
 // OBJET (rec[0]==1) : nom via la DB item (FUN_006a0d40, table 0x01255130 ; record+0x04 = nom EN,
 //   +0x08 = localisé). Les objets y sont chargés au boot (FUN_006a4e20 parse item.txt etc.).
@@ -642,7 +636,7 @@ bool SkillKnown(uint32_t id) {
     alignas(8) uint8_t info[0xC0] = {};
     reinterpret_cast<GetInvInfo_t>(itemdb::kFillInfoByIdAddr)(info, static_cast<int>(id));
     known = (*reinterpret_cast<int*>(info + 0x04) != 0);
-    reinterpret_cast<StrFree_t>(itemdb::kInfoDtorAddr)(info);  // = FUN_00739cd0 (cleanup de la struct)
+    reinterpret_cast<StrFree_t>(itemdb::kFilledInfoDtorAddr)(info);  // = FUN_00739cd0 (cleanup de la struct)
   } __except (EXCEPTION_EXECUTE_HANDLER) { known = false; }
   return known;
 }

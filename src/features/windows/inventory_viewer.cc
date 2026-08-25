@@ -55,14 +55,6 @@ constexpr uintptr_t kCntEquipped = 0x00d9aa70;  // __fastcall(session) : nb item
 constexpr uintptr_t kCntCostume  = 0x00d9a960;  // __fastcall(session) : nb items COSTUME distincts (10 slots @+0x2b34)
 using rag::itemlist::kInfoIndex;
 using rag::itemlist::kInfoIdStr;
-constexpr int kInfoFav  = 0x74;  // favori dans l'ItemSkillInfo (RE FUN_0095af80 : local_98 = info+0x74)
-// Champs DANS l'ItemSkillInfo (= node+0x08) :
-constexpr int kInfoType   = 0x00;  // type d'item (onglets)
-constexpr int kInfoLoc    = 0x08;  // masque d'emplacement d'équip (arg2 du msg 0x13/0x57 ; RE double-clic natif)
-constexpr int kInfoIdent  = 0x5c;  // byte : item identifié ?
-constexpr int kInfoDamaged = 0x5d; // byte : équipement CASSÉ (rendu rouge, cf. itemcell)
-constexpr int kInfoRefine = 0x60;  // niveau de refine (int) ; RE character_sheet kOffEquipRefine
-
 constexpr int kInvBase = 200;  // moonlight INVENTORY_BASE_SIZE ; max = expansion + 200
 
 // Nom de base + nom complet (refine/cartes/enchant), comme le storage.
@@ -396,8 +388,8 @@ bool ReadCompItemFromInfo(uint8_t* info, CompItem* out) {
     out->index = *reinterpret_cast<int*>(info + kInfoIndex);
     const char* ids = rag::clientstr::Data(info + kInfoIdStr);
     out->id = ids ? static_cast<uint32_t>(atoi(ids)) : 0;
-    out->refine = *reinterpret_cast<int*>(info + kInfoRefine);
-    out->identified = *reinterpret_cast<uint8_t*>(info + kInfoIdent);
+    out->refine = *reinterpret_cast<int*>(info + rag::itemlist::kInfoRefine);
+    out->identified = *reinterpret_cast<uint8_t*>(info + rag::itemlist::kInfoIdent);
     // Slots cartes : info+0x1c, 4 entrées. ⚠ Sur un item FORGÉ/CRÉÉ ces mêmes mots
     // portent les données du forgeron (charid scindé, star crumbs, élément) et non
     // des cartes — même critère que item_desc_window.cc:419 (id <= 500).

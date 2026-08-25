@@ -1950,7 +1950,7 @@ void SendUseSkill(uint16_t skillId, int level) {
                                      lv, 0, 0);
         dispatched = true;
       }
-      reinterpret_cast<void(__fastcall*)(void*)>(itemdb::kInfoDtorAddr)(entry);
+      reinterpret_cast<void(__fastcall*)(void*)>(itemdb::kFilledInfoDtorAddr)(entry);
     }
     if (!dispatched) {
       // GID de notre acteur = notre AID : les compétences de guilde se lancent sur soi.

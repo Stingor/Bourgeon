@@ -152,23 +152,9 @@ void Gauge(const char* label, int cur, int max, const ImVec4& col) {
   dl->AddText(at, IM_COL32(255, 255, 255, 255), text);
 }
 
-// L'index d'inventaire de l'ItemInfo, et son ITID. ⚠ L'index est en **+0x04**
-// (le layout d'ItemInfo est en partie faux, cf. ragnarok/item_info.h), et l'ITID
-// est rangé en TEXTE dans la `std::string` de +0x2C — c'est pour ça que le natif
-// fait un `atoi` dessus (`UIPetInfoWnd_OnCreate` @0x00879ad1).
-constexpr int kInfoNameStr = 0x2c;
-constexpr int kInfoCards = 0x1c;
-
-// L'ITID d'un ItemInfo. Voir ci-dessus pour le `atoi` : le client le range en
-// TEXTE. 0 = illisible.
-int InfoItid(void* info) {
-  if (!info) return 0;
-  __try {
-    auto* s = reinterpret_cast<uint8_t*>(info) + kInfoNameStr;
-    const char* text = rag::clientstr::Data(s);
-    return (text && text[0]) ? std::atoi(text) : 0;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
-}
+// ⚠ L'ITID est rangé en TEXTE dans une `std::string` — c'est pour ça que le natif
+// fait un `atoi` dessus (`UIPetInfoWnd_OnCreate` @0x00879ad1). `rag::itemlist::ItemId`
+// fait exactement ça, sous SEH ; ce fichier en avait sa propre copie.
 
 // Les quatre slots d'un ItemInfo. Sur un ŒUF ce ne sont pas des cartes mais la
 // fiche du pet, réécrite par le serveur avant l'envoi (cf. ragnarok/pet.h).
@@ -176,7 +162,7 @@ bool ReadInfoCards(void* info, uint32_t* out4) {
   if (!info || !out4) return false;
   __try {
     auto* p = reinterpret_cast<const uint32_t*>(
-        reinterpret_cast<uint8_t*>(info) + kInfoCards);
+        reinterpret_cast<uint8_t*>(info) + rag::itemlist::kInfoCards);
     for (int i = 0; i < 4; ++i) out4[i] = p[i];
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
@@ -236,7 +222,9 @@ PetWindow::PetWindow() {
 // ── L'œuf porté ─────────────────────────────────────────────────────────────
 int PetWindow::EggItid(const rag::pet::State& pet) {
   if (pet.egg_index < 0) return 0;
-  return InfoItid(itemcell::FindInfoByIndex(rag::kInventoryListAddr, pet.egg_index));
+  return static_cast<int>(
+      rag::itemlist::ItemId(itemcell::FindInfoByIndex(rag::kInventoryListAddr,
+                                                      pet.egg_index)));
 }
 
 // ── Cycle de vie ────────────────────────────────────────────────────────────
@@ -942,7 +930,7 @@ void PetWindow::DrawHatchWindow() {
     for (int i = 0; i < hatch_count_; ++i) {
       const int idx = hatch_index_[i];
       void* info = itemcell::FindInfoByIndex(rag::kInventoryListAddr, idx);
-      const uint32_t itid = static_cast<uint32_t>(InfoItid(info));
+      const uint32_t itid = rag::itemlist::ItemId(info);
       uint32_t cards[4] = {};
       ReadInfoCards(info, cards);
       rag::pet::EggCards egg{};

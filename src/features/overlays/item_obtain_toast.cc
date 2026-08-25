@@ -50,12 +50,9 @@ constexpr int kMsgSetInfo = 34;  // 0x22
 constexpr int kMsiObtain = 696;
 
 // ── Champs d'un ItemSkillInfo ───────────────────────────────────────────────
-// (mêmes offsets et mêmes noms que features/item_cell.cc et inventory_viewer.cc)
-constexpr int kInfoNum     = 0x10;  // int    : quantité
+// La disposition vit dans `rag::itemlist` (ragnarok/item_info.h) ; on n'importe
+// ici que ce que ce fichier lit vraiment.
 using rag::itemlist::kInfoIdStr;
-constexpr int kInfoIdent   = 0x5c;  // octet  : identifié
-constexpr int kInfoDamaged = 0x5d;  // octet  : cassé
-constexpr int kInfoRefine  = 0x60;  // int    : niveau d'affinage
 
 // ── Géométrie, reprise du natif ─────────────────────────────────────────────
 // Le natif : cadre haut de 32, icône 24x24 blittée en (13,5), texte en x=41,
@@ -125,10 +122,10 @@ bool ReadInfo(const void* info, Toast* out) {
     const char* ids = rag::clientstr::Data(p + kInfoIdStr);
     if (!ids) return false;
     out->id         = static_cast<uint32_t>(std::atoi(ids));
-    out->amount     = *reinterpret_cast<const int*>(p + kInfoNum);
-    out->refine     = *reinterpret_cast<const int*>(p + kInfoRefine);
-    out->identified = *(p + kInfoIdent) != 0;
-    out->damaged    = *(p + kInfoDamaged) != 0;
+    out->amount     = *reinterpret_cast<const int*>(p + rag::itemlist::kInfoAmount);
+    out->refine     = *reinterpret_cast<const int*>(p + rag::itemlist::kInfoRefine);
+    out->identified = *(p + rag::itemlist::kInfoIdent) != 0;
+    out->damaged    = *(p + rag::itemlist::kInfoDamaged) != 0;
     return out->id != 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     return false;

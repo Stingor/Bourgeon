@@ -57,12 +57,6 @@ constexpr float kSpawnW = 300.0f, kSpawnH = 300.0f;
 constexpr int kOffWidth   = 0x14;
 constexpr int kOffHeight  = 0x18;
 
-// Champs DANS l'ItemSkillInfo (= node+0x08), identiques à l'inventaire :
-constexpr int kInfoType   = 0x00;
-constexpr int kInfoIdent  = 0x5c;  // byte : item identifié ?
-constexpr int kInfoDamaged = 0x5d; // byte : équipement CASSÉ (rendu rouge, cf. itemcell)
-constexpr int kInfoRefine = 0x60;
-
 // Compteurs du footer NATIF (RE UICartWnd_DrawContent) : nb d'items et poids, avec
 // leur max. Le natif passe le texte en rouge dès que cur >= max — on fait pareil.
 constexpr uintptr_t kCartNumItems  = 0x015fb2d4;

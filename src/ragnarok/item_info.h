@@ -82,6 +82,74 @@ inline uint32_t ItemId(const void* info) {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0u; }
 }
 
+// ── La DISPOSITION d'un ItemSkillInfo ────────────────────────────────────────
+//
+// 🔴 CES CHAMPS ÉTAIENT ÉCRITS DANS SEPT FICHIERS. `kInfoDamaged` et
+// `kInfoRefine` en SEPT exemplaires chacun, `kInfoIdent` en six — et le même
+// offset sous des noms différents (`kInfoNum`/`kInfoAmount`, `kInfoCard0`/
+// `kInfoCards`, `kInfoOptCnt`/`kInfoOptCount`/`kInfoOptNum`), ce qu'aucune
+// recherche par nom ne rapproche jamais.
+//
+// ⚠ L'AVERTISSEMENT DU HAUT TIENT TOUJOURS : on n'écrit ici que du VÉRIFIÉ. Il
+// visait les offsets DÉDUITS de la `struct` plus haut, dont le layout est faux
+// en partie. Ceux-ci ne sont pas déduits — chacun porte sa preuve, et les trois
+// qui n'en avaient pas ont été MESURÉS au désassembleur le 2026-08-25 :
+//
+//   · ctor `0x006a1b20` : il n'initialise que DEUX `std::string`, en +0x2c et
+//     +0x44. C'est pour ça que le champ suivant tombe pile à +0x5c.
+//   · `ItemSkillInfo_Reset` (`0x6a5ff0`) finit par une boucle de 25 octets à
+//     partir de +0x9c — soit CINQ entrées de cinq octets. `kInfoOpts` et
+//     `kMaxOpts` ne sont donc plus des relevés concordants : ce sont des faits.
+//   · dans la pile de `sub_5A75A0`, la locale qui suit la seconde `std::string`
+//     est à +0xB4 d'elle : `0x44 + 0xB4` = **0xF8**, le vrai `sizeof`.
+constexpr int kInfoType     = 0x00;  // int : type d'item (ce qui classe les onglets)
+constexpr int kInfoLoc      = 0x08;  // u32 : masque d'emplacement d'équipement
+                                     //   (l'arg2 des msg 0x13/0x57 ; RE du double-clic natif)
+constexpr int kInfoCards    = 0x1c;  // 4 × u32 : cartes / enchantements, 0 = vide
+constexpr int kInfoIdent    = 0x5c;  // octet : IDENTIFIÉ ?
+constexpr int kInfoDamaged  = 0x5d;  // octet : équipement CASSÉ (rendu rouge)
+constexpr int kInfoRefine   = 0x60;  // int : niveau d'affinage
+constexpr int kInfoFav      = 0x74;  // octet : favori (RE FUN_0095af80, local_98 = info+0x74)
+constexpr int kInfoOptCount = 0x98;  // int : nombre d'options aléatoires
+constexpr int kInfoOpts     = 0x9c;  // 5 entrées de 5 octets {index:2, value:2, param:1}
+
+constexpr int kMaxCards = 4;
+constexpr int kMaxOpts  = 5;
+
+// 🔴 `kInfoIdent` PORTAIT DEUX NOMS, ET LE SECOND CACHAIT CE QU'IL FAISAIT.
+// `item_desc_window` et `npc_dialog_window` l'appelaient `kInfoFlag` et le
+// posaient à 1 « pour que GetDescLines lise rec+0x0c ». C'est le MÊME octet :
+// poser ce drapeau, c'est DÉCLARER L'OBJET IDENTIFIÉ. Sur un `info` fabriqué sur
+// la pile pour interroger la DB, c'est exactement ce qu'on veut — mais il fallait
+// que le nom le dise, sans quoi le geste passe pour un réglage d'affichage.
+// (Cf. la règle du projet : quand l'identification est inconnue, passer 1.)
+
+// La TAILLE. 🔴 Deux valeurs circulaient sous le même nom : 0xf8 chez
+// `make_item_window`, 0x100 ailleurs. Les deux sont justes, mais pas
+// interchangeables :
+//   · `kInfoSize` (0xf8) est le VRAI `sizeof`, mesuré. C'est le seul PAS valide
+//     pour un TABLEAU — `SendProduceCmd` en construit trois d'affilée et le natif
+//     les indexe avec le sien. Un pas de 0x100 y décalerait les deux derniers.
+//   · `kInfoBuf` (0x100) est l'arrondi confortable pour UNE structure sur la
+//     pile. Sur-allouer huit octets ne coûte rien ; c'est ce que font les huit
+//     sites qui fabriquent un `info` isolé.
+constexpr int kInfoSize = 0xf8;
+constexpr int kInfoBuf  = 0x100;
+
+// ⚠ CTOR ET DTOR VONT PAR PAIRES, ET IL Y A DEUX PAIRES QUE L'IDB NOMME PAREIL.
+// Cette structure-ci se construit avec `itemdb::kInfoCtorAddr` (0x006a1b20) et se
+// détruit avec `kInfoDtorAddr` CI-DESSOUS (0x005a4300) — celui qui libère les deux
+// `std::string`. L'AUTRE `ItemSkillInfo_Dtor` (0x00739cd0) appartient à la
+// structure que rend `itemdb::kFillInfoByIdAddr` : elle porte une vtable
+// `CSkillInfo` en +0 et n'a rien à voir. Les intervertir écrirait un pointeur de
+// vtable par-dessus `kInfoType`.
+//
+// ⚠ Huit sites construisent sans détruire, et c'est SANS FUITE — mais par
+// chance, pas par principe : `SetId` n'écrit que dans la chaîne de +0x2c, et un
+// id en décimal tient toujours dans le SSO. Le jour où l'on fait écrire +0x44 par
+// le client, il FAUDRA détruire.
+constexpr uintptr_t kInfoDtorAddr = 0x005a4300;
+
 // Plafond du parcours : garde-fou anti-boucle, la liste s'arrêtant sur sa
 // sentinelle. Une seule valeur pour les trois listes — la plus grosse, celle du
 // storage premium, plafonne à 600 côté serveur.

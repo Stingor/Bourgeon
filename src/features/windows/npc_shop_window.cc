@@ -49,15 +49,9 @@ constexpr int kChooserNpcId = 0xb4;
 // liste de vente ne se lit plus dans la fenêtre native — elle n'existe plus. Elle
 // vient du paquet 0x00c7, croisé avec le modèle session ci-dessous.)
 
-// Champs de l'ItemSkillInfo utilisés ici (mêmes offsets que l'InventoryViewer).
-constexpr int kInfoNum   = 0x10;  // quantité possédée
-constexpr int kInfoCards = 0x1c;  // 4 emplacements de carte (uint32 chacun)
+// Champs de l'ItemSkillInfo utilisés ici — la disposition est au foyer,
+// `rag::itemlist` (ragnarok/item_info.h).
 using rag::itemlist::kInfoIdStr;
-constexpr int kInfoDamaged = 0x5d;  // octet : équipement CASSÉ (cf. itemcell)
-constexpr int kInfoRefine  = 0x60;  // niveau de raffinage (int)
-constexpr int kInfoFav   = 0x74;  // flag « favori » (onglet Favoris de l'inventaire)
-constexpr int kInfoOptNum = 0x98;  // nb d'options aléatoires d'instance
-constexpr int kInfoOpts   = 0x9c;  // entrées de 5 octets {index:2, value:2, param:1}
 
 // ── Verrou de vente des favoris ──────────────────────────────────────────────
 // Bouton « Deal » du pied de l'inventaire (onglet Favoris) : 100 % CLIENT, aucun
@@ -550,26 +544,26 @@ void NpcShopWindow::ResolveSellItems() {
       uint8_t* p = reinterpret_cast<uint8_t*>(info);
       const char* ids = rag::clientstr::Data(p + kInfoIdStr);
       s.id     = ids ? static_cast<uint32_t>(atoi(ids)) : 0;
-      s.amount = *reinterpret_cast<int*>(p + kInfoNum);
-      favorite = *(p + kInfoFav);
+      s.amount = *reinterpret_cast<int*>(p + rag::itemlist::kInfoAmount);
+      favorite = *(p + rag::itemlist::kInfoFav);
       // Données d'instance de l'aperçu au survol (cf. SellItem dans le .h). Lues
       // ICI et pas au rendu : c'est le seul moment où l'on tient l'ItemSkillInfo,
       // et une lecture par frame dans une liste qui peut mourir sous nos pieds
       // (objet vendu, transféré) n'aurait rien apporté qu'un SEH de plus.
-      s.refine  = *reinterpret_cast<int*>(p + kInfoRefine);
-      s.damaged = *(p + kInfoDamaged);
-      const uint32_t card0 = *reinterpret_cast<uint32_t*>(p + kInfoCards);
+      s.refine  = *reinterpret_cast<int*>(p + rag::itemlist::kInfoRefine);
+      s.damaged = *(p + rag::itemlist::kInfoDamaged);
+      const uint32_t card0 = *reinterpret_cast<uint32_t*>(p + rag::itemlist::kInfoCards);
       s.forged = (card0 != 0 && card0 <= 500);  // forgeron, pas des cartes
       if (!s.forged) {
         for (int k = 0; k < 4; ++k)
-          s.cards[k] = *reinterpret_cast<uint32_t*>(p + kInfoCards + k * 4);
+          s.cards[k] = *reinterpret_cast<uint32_t*>(p + rag::itemlist::kInfoCards + k * 4);
       }
-      int nopt = *reinterpret_cast<int*>(p + kInfoOptNum);
+      int nopt = *reinterpret_cast<int*>(p + rag::itemlist::kInfoOptCount);
       if (nopt < 0) nopt = 0;
       if (nopt > 5) nopt = 5;
       s.opt_count = nopt;
       for (int k = 0; k < nopt; ++k) {
-        const uint8_t* e = p + kInfoOpts + k * 5;
+        const uint8_t* e = p + rag::itemlist::kInfoOpts + k * 5;
         s.opts[k].index = *reinterpret_cast<const int16_t*>(e);
         s.opts[k].value = *reinterpret_cast<const int16_t*>(e + 2);
         s.opts[k].param = e[4];

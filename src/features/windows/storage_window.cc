@@ -58,10 +58,9 @@ namespace {
 // Nœud de liste (std::list MSVC) : next@+0, prev@+4, value@+8.
 using rag::itemlist::kNodeInfo;
 
-// Champs DANS l'ItemSkillInfo (= node+kNodeInfo), tels que lus par FUN_008711a0 :
-// l'id est une std::string à +0x2c (le jeu fait atoi dessus pour l'icône), le
-// flag identifié est à +0x5c. (node+0xc N'EST PAS l'id fiable pour la liste vue.)
-constexpr int kInfoIdent = 0x5c;  // byte : item identifié ?
+// ⚠ `node+0xc` N'EST PAS l'id fiable pour la liste vue : l'id est la std::string
+// de `rag::itemlist::kInfoIdStr`, sur laquelle le jeu fait un `atoi` (RE de
+// FUN_008711a0). Le reste de la disposition est au foyer.
 
 // Le nom d'affichage complet (raffinement / [slots] / cartes / enchant) passe par
 // itemcell::BuildDisplayName : mêmes appels natifs, mais un SEH par item.

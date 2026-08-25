@@ -92,20 +92,11 @@ constexpr int kAttachSlots  = 5;    // MAIL_MAX_ITEM côté serveur
 // Ces offsets sont ceux de l'ItemSkillInfo, la structure COMMUNE au reste du client
 // (inventaire, chariot, entrepôt) : un slot de rédaction porte donc, tel quel, tout
 // ce qu'un item d'inventaire porte — cartes et enchants compris.
-constexpr int kInfoType   = 0x00;   // int : type d'item
 using rag::itemlist::kInfoIndex;
 using rag::itemlist::kInfoAmount;
 using rag::itemlist::kInfoIdStr;
-constexpr int kInfoLoc    = 0x08;   // int : masque d'emplacement d'équipement
-constexpr int kInfoCard0  = 0x1c;   // 4 × u32 : cartes / enchantements
-constexpr int kInfoIdent  = 0x5c;   // byte : identifié
-constexpr int kInfoDamaged = 0x5d;  // byte : équipement CASSÉ
-constexpr int kInfoRefine = 0x60;   // int : refine
 constexpr int kInfoView   = 0x70;   // int : viewID
 constexpr int kInfoGrade  = 0x88;   // i16 : grade d'enchantement
-constexpr int kInfoOptCnt = 0x98;   // int : nombre d'options aléatoires
-constexpr int kInfoOpts   = 0x9c;   // entrées de 5 octets
-constexpr size_t kInfoSize = 0x100;  // ItemSkillInfo (0xf8), arrondi
 
 // Singleton d'état CRodexSystemMgr (POINTEUR vers l'objet de 0x38 octets).
 constexpr uintptr_t kRodexMgrPtr = 0x0131ecdc;
@@ -708,17 +699,17 @@ bool ReadAttachSlot(int slot, RawAttachSlot* out) {
     out->item_id   = text ? static_cast<uint32_t>(std::atoi(text)) : 0;
     out->amount    = amount;
     out->inv_index = *reinterpret_cast<const int*>(base + kInfoIndex);
-    out->refine    = *reinterpret_cast<const int*>(base + kInfoRefine);
-    out->identified = *(base + kInfoIdent) != 0;
-    out->damaged    = *(base + kInfoDamaged) != 0;
+    out->refine    = *reinterpret_cast<const int*>(base + rag::itemlist::kInfoRefine);
+    out->identified = *(base + rag::itemlist::kInfoIdent) != 0;
+    out->damaged    = *(base + rag::itemlist::kInfoDamaged) != 0;
     for (int c = 0; c < 4; ++c)
-      out->cards[c] = *reinterpret_cast<const uint32_t*>(base + kInfoCard0 + 4 * c);
-    int nopt = *reinterpret_cast<const int*>(base + kInfoOptCnt);
+      out->cards[c] = *reinterpret_cast<const uint32_t*>(base + rag::itemlist::kInfoCards + 4 * c);
+    int nopt = *reinterpret_cast<const int*>(base + rag::itemlist::kInfoOptCount);
     if (nopt < 0) nopt = 0;
     if (nopt > kItOptMax) nopt = kItOptMax;
     out->opt_count = nopt;
     for (int o = 0; o < nopt; ++o) {
-      const uint8_t* opt = base + kInfoOpts + o * kItOptStride;
+      const uint8_t* opt = base + rag::itemlist::kInfoOpts + o * kItOptStride;
       out->opts[o].index = *reinterpret_cast<const int16_t*>(opt);
       out->opts[o].value = *reinterpret_cast<const int16_t*>(opt + 2);
       out->opts[o].param = opt[4];
@@ -874,26 +865,26 @@ using InfoSetId_t = void(__thiscall*)(void*, int);
 // std::string +0x2c (10 caractères au plus, donc SSO) et le ctor ne construit que
 // des chaînes vides. Le tampon peut mourir au retour, comme celui d'OpenDescById.
 bool RodexWindow::BuildAttachInfo(const Attach& attach, void* out_info) {
-  std::memset(out_info, 0, kInfoSize);
+  std::memset(out_info, 0, rag::itemlist::kInfoBuf);
   if (attach.id == 0) return false;
   __try {
     uint8_t* info = static_cast<uint8_t*>(out_info);
     reinterpret_cast<InfoCtor_t>(itemdb::kInfoCtorAddr)(info);
     reinterpret_cast<InfoSetId_t>(itemdb::kInfoSetIdAddr)(info,
                                                           static_cast<int>(attach.id));
-    *reinterpret_cast<int*>(info + kInfoType)    = attach.type;
-    *reinterpret_cast<uint32_t*>(info + kInfoLoc) = attach.location;
+    *reinterpret_cast<int*>(info + rag::itemlist::kInfoType)    = attach.type;
+    *reinterpret_cast<uint32_t*>(info + rag::itemlist::kInfoLoc) = attach.location;
     *reinterpret_cast<int*>(info + kInfoAmount)  = attach.amount;
     for (int c = 0; c < 4; ++c)
-      *reinterpret_cast<uint32_t*>(info + kInfoCard0 + 4 * c) = attach.cards[c];
-    info[kInfoIdent]   = attach.identified ? 1 : 0;
-    info[kInfoDamaged] = attach.damaged ? 1 : 0;
-    *reinterpret_cast<int*>(info + kInfoRefine) = attach.refine;
+      *reinterpret_cast<uint32_t*>(info + rag::itemlist::kInfoCards + 4 * c) = attach.cards[c];
+    info[rag::itemlist::kInfoIdent]   = attach.identified ? 1 : 0;
+    info[rag::itemlist::kInfoDamaged] = attach.damaged ? 1 : 0;
+    *reinterpret_cast<int*>(info + rag::itemlist::kInfoRefine) = attach.refine;
     *reinterpret_cast<int*>(info + kInfoView)   = attach.view;
     *reinterpret_cast<int16_t*>(info + kInfoGrade) = attach.grade;
-    *reinterpret_cast<int*>(info + kInfoOptCnt) = attach.opt_count;
+    *reinterpret_cast<int*>(info + rag::itemlist::kInfoOptCount) = attach.opt_count;
     for (int o = 0; o < attach.opt_count && o < kItOptMax; ++o) {
-      uint8_t* opt = info + kInfoOpts + o * kItOptStride;
+      uint8_t* opt = info + rag::itemlist::kInfoOpts + o * kItOptStride;
       *reinterpret_cast<int16_t*>(opt)     = attach.opts[o].index;
       *reinterpret_cast<int16_t*>(opt + 2) = attach.opts[o].value;
       opt[4] = attach.opts[o].param;
@@ -913,7 +904,7 @@ void RodexWindow::ResolveAttachDisplay(Attach* attach) {
 
   // Slot de RÉDACTION : l'ItemSkillInfo existe déjà en session, à une adresse fixe.
   // Le reconstruire serait moins fidèle (on perdrait ce que le natif y écrit).
-  uint8_t scratch[kInfoSize];
+  uint8_t scratch[rag::itemlist::kInfoBuf];
   const void* info = nullptr;
   if (attach->mail_slot >= 0) {
     info = AttachSlotAddr(attach->mail_slot);

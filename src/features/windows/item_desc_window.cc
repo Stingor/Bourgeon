@@ -39,6 +39,7 @@
 #include "utils/i18n.h"
 #include "utils/log_console.h"
 #include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
+#include "ragnarok/item_info.h"  // rag::itemlist : la disposition d'ItemSkillInfo
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -83,7 +84,6 @@ constexpr uintptr_t kGetDescLines = 0x006a2a70;  // ItemSkillDB_GetDescLines(inf
 // info+0x5c==1 (rec+0x20, le champ "item", est toujours vide). EnsureLoaded parse
 // rec+0x0c dans le cache (comme OnMsg 0x18) avant lecture — indispensable pour une
 // carte compound jamais ouverte seule.
-constexpr uintptr_t kInfoFlag     = 0x5c;        // info+0x5c : 1 => GetDescLines lit rec+0x0c
 // Icône (item\) + illustration (cardBmp\) d'une carte. resname icône = GetResName
 // (rec+0x08 quand +0x5c=1) ; resname illustration = GetCardResName (DB carte
 // 0x01255128, *record). Préfixes CP949 : cardBmp lu du jeu (null-term) ; item
@@ -97,13 +97,9 @@ constexpr uintptr_t kCardBmpPrefix  = 0x01036648;  // "유저인터페이스\car
 // on garde l'icône collection). Confirmé live 2026-07-08.
 constexpr uintptr_t kCardNilRecord  = 0x01255180;
 
-// Offsets DANS l'ItemSkillInfo (base = wnd+kItemStruct), remplis par
-// BuildFromItemRecord : 4 slots cartes/enchants + random options.
-constexpr uintptr_t kInfoCards    = 0x1c;   // card[0..3] : 4 x uint32 id (0 = vide)
-constexpr uintptr_t kInfoOptCount = 0x98;   // int : nombre de random options
-constexpr uintptr_t kInfoOpts     = 0x9c;   // entrées 5o : [index:2][value:2][param:1]
-constexpr int       kMaxCards     = 4;
-constexpr int       kMaxOpts      = 5;
+// ⚠ Ici l'ItemSkillInfo n'est pas sur la pile : il vit DANS la fenêtre, à
+// `wnd + kItemStruct`, et c'est `BuildFromItemRecord` qui le remplit. Les
+// offsets eux-mêmes sont au foyer, `rag::itemlist`.
 
 // Navigation (routage <NAVI>). ABI capturée en live (bp sur 0x00b314f0) :
 // __thiscall(this=navMgr, std::string map BYVAL 0x18o, int type, int flags,
@@ -299,8 +295,8 @@ struct ItemExtract {
   // 2026-07-08). 0 = aucune ombre.
   uint32_t name_shadow = 0;  // ImU32
   // Instance : cartes/enchants (4 slots, id + nom résolu) + random options.
-  uint32_t cards[kMaxCards] = {0, 0, 0, 0};
-  char     card_names[kMaxCards][64] = {};
+  uint32_t cards[rag::itemlist::kMaxCards] = {0, 0, 0, 0};
+  char     card_names[rag::itemlist::kMaxCards][64] = {};
   int      card_slots = 0;  // nb d'emplacements de carte de l'item (record+0x30)
   // 🔴 ŒUF DE FAMILIER (ITID 9001..9499). Ses `cards[]` ne sont pas des cartes
   // mais la fiche du pet, et son drapeau « endommagé » ne veut pas dire cassé
@@ -310,7 +306,7 @@ struct ItemExtract {
   int      view_id = 0;     // info+0x70 (viewID sprite ; 0 = aucun aperçu)
   int      emplacement = 0; // info+0x8 (bitmask emplacement, pour le slot d'aperçu)
   int      opt_count = 0;
-  RdmOpt   opts[kMaxOpts] = {};
+  RdmOpt   opts[rag::itemlist::kMaxOpts] = {};
 };
 
 // Desc d'une carte/enchant chargée par id (tooltip au survol). Lignes BRUTES
@@ -496,7 +492,7 @@ bool ExtractItem(uint8_t* wnd, ItemExtract* e) {
     // masque emplacements + suffixe [N]. Détection : card[0] PETIT NON NUL (<= 500 ;
     // les vraies cartes/enchants ont un id > 500). card[0]==0 = slots VIDES d'un item
     // normal (ex. Rapier) -> on garde l'affichage des emplacements vides + [N].
-    const uint32_t card0 = *reinterpret_cast<uint32_t*>(info + kInfoCards);
+    const uint32_t card0 = *reinterpret_cast<uint32_t*>(info + rag::itemlist::kInfoCards);
     // L'ITID, lu là où le client le range : en TEXTE, dans la std::string de
     // info+0x2c (d'où l'`atoi`). Il était déjà relu plus bas pour le nombre
     // d'emplacements ; il sert désormais aussi ICI.
@@ -514,9 +510,9 @@ bool ExtractItem(uint8_t* wnd, ItemExtract* e) {
     const bool is_pet_egg = rag::pet::IsEggItem(extracted_id);
     e->pet_egg = is_pet_egg;
     const bool forged = (!is_pet_egg && card0 != 0 && card0 <= 500);
-    for (int i = 0; i < kMaxCards; ++i) {
+    for (int i = 0; i < rag::itemlist::kMaxCards; ++i) {
       const uint32_t cid =
-          forged ? 0u : *reinterpret_cast<uint32_t*>(info + kInfoCards + i * 4);
+          forged ? 0u : *reinterpret_cast<uint32_t*>(info + rag::itemlist::kInfoCards + i * 4);
       e->cards[i] = cid;
       e->card_names[i][0] = '\0';
       if (cid != 0) {
@@ -546,7 +542,7 @@ bool ExtractItem(uint8_t* wnd, ItemExtract* e) {
         if (rec && rec != reinterpret_cast<void*>(itemdb::kNilAddr)) {
           const int sc =
               *reinterpret_cast<int*>(reinterpret_cast<char*>(rec) + 0x30);
-          if (sc > 0 && sc <= kMaxCards) e->card_slots = sc;
+          if (sc > 0 && sc <= rag::itemlist::kMaxCards) e->card_slots = sc;
         }
       }
     }
@@ -563,12 +559,12 @@ bool ExtractItem(uint8_t* wnd, ItemExtract* e) {
     }
 
     // Random options : count à info+0x98, entrées 5o à info+0x9c+i*5.
-    int oc = *reinterpret_cast<int*>(info + kInfoOptCount);
+    int oc = *reinterpret_cast<int*>(info + rag::itemlist::kInfoOptCount);
     if (oc < 0) oc = 0;
-    if (oc > kMaxOpts) oc = kMaxOpts;
+    if (oc > rag::itemlist::kMaxOpts) oc = rag::itemlist::kMaxOpts;
     e->opt_count = oc;
     for (int i = 0; i < oc; ++i) {
-      uint8_t* ob = info + kInfoOpts + i * 5;
+      uint8_t* ob = info + rag::itemlist::kInfoOpts + i * 5;
       e->opts[i].index = *reinterpret_cast<int16_t*>(ob + 0);
       e->opts[i].value = *reinterpret_cast<int16_t*>(ob + 2);
       e->opts[i].param = *(ob + 4);
@@ -1224,9 +1220,9 @@ void LoadCardDesc(uint32_t id, CardDesc* cd) {
       }
       // 2bis) Nombre d'emplacements de carte = record+0x30 (le natif le formate
       // « [%d] » via FUN_006a4c40 ; 0 = non sloté). Même source que le titre de la
-      // fenêtre de description complète (cf. ExtractItem). Guard 1..kMaxCards.
+      // fenêtre de description complète (cf. ExtractItem). Guard 1..rag::itemlist::kMaxCards.
       const int slots = *reinterpret_cast<int*>(reinterpret_cast<char*>(rec) + 0x30);
-      if (slots > 0 && slots <= kMaxCards) cd->card_slots = slots;
+      if (slots > 0 && slots <= rag::itemlist::kMaxCards) cd->card_slots = slots;
     }
 
     // 3) Lignes de desc : info standalone (+0x5c=1) -> GetDescLines -> rec+0x0c.
@@ -1234,7 +1230,7 @@ void LoadCardDesc(uint32_t id, CardDesc* cd) {
     std::memset(info, 0, sizeof(info));
     reinterpret_cast<InfoCtor_t>(itemdb::kInfoCtorAddr)(info);            // init les std::string
     reinterpret_cast<InfoSetId_t>(itemdb::kInfoSetIdAddr)(info, static_cast<int>(id));  // -> info+0x2c
-    *(info + kInfoFlag) = 1;                                  // => lit rec+0x0c
+    *(info + rag::itemlist::kInfoIdent) = 1;                                  // => lit rec+0x0c
     char*** vec = reinterpret_cast<GetDescLines_t>(kGetDescLines)(info);
     if (vec) {
       char** first = vec[0];
@@ -1483,7 +1479,7 @@ void OpenCardDescWindow(uint32_t id) {
     std::memset(info, 0, sizeof(info));
     reinterpret_cast<InfoCtor_t>(itemdb::kInfoCtorAddr)(info);            // init les std::string
     reinterpret_cast<InfoSetId_t>(itemdb::kInfoSetIdAddr)(info, static_cast<int>(id));  // -> +0x2c
-    *(info + kInfoFlag) = 1;                                  // => desc lues de rec+0x0c
+    *(info + rag::itemlist::kInfoIdent) = 1;                                  // => desc lues de rec+0x0c
     void* mgr = uiwnd::Mgr();        // objet manager embarqué
     void* wnd = uiwnd::MakeWindow(0xc);
     if (wnd) {
@@ -3129,9 +3125,9 @@ void ItemDescWindow::RenderItemWindow() {
     // carte en 0, enchants en 2 et 3, slot 1 vide) le compte = 3 sauterait le
     // slot 3. On prend donc le plus haut index occupé.
     int last_slot = -1;
-    for (int i = 0; i < kMaxCards; ++i) if (e.cards[i] != 0) last_slot = i;
+    for (int i = 0; i < rag::itemlist::kMaxCards; ++i) if (e.cards[i] != 0) last_slot = i;
     int slot_rows = (e.card_slots > last_slot + 1) ? e.card_slots : last_slot + 1;
-    if (slot_rows > kMaxCards) slot_rows = kMaxCards;
+    if (slot_rows > rag::itemlist::kMaxCards) slot_rows = rag::itemlist::kMaxCards;
     if (e.opt_count <= 0 && slot_rows <= 0) return tl.y;
 
     const ImVec4 brown(0.30f, 0.24f, 0.10f, 1.0f);
@@ -3169,7 +3165,9 @@ void ItemDescWindow::RenderItemWindow() {
         const ImU32 tcol = ImGui::GetColorU32(ImGuiCol_Text);
         const ImU32 bcol = IM_COL32(0xC2, 0xC2, 0xC2, 255);
         const float bpx = 6.0f, bpy = 2.0f, gap = 3.0f;
-        const int n = (e.opt_count < kMaxOpts) ? e.opt_count : kMaxOpts;
+        const int n = (e.opt_count < rag::itemlist::kMaxOpts)
+                          ? e.opt_count
+                          : rag::itemlist::kMaxOpts;
         float boxw = 40.0f;
         for (int i = 0; i < n; ++i) {
           const char* on = GetOptName(e.opts[i].index, e.opts[i].value);
@@ -3213,7 +3211,7 @@ void ItemDescWindow::RenderItemWindow() {
         // cf. ragnarok/pet.h) au lieu de les montrer bruts.
         if (e.pet_egg) {
           rag::pet::EggCards ec{};
-          rag::pet::DecodeEggCards(e.cards, kMaxCards, &ec);
+          rag::pet::DecodeEggCards(e.cards, rag::itemlist::kMaxCards, &ec);
           ImGui::TextColored(brown, i18n::Tr("Pet"));
           ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4.0f, 1.0f));
           if (!ec.has_pet) {

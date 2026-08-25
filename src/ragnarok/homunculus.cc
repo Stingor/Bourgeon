@@ -151,7 +151,7 @@ bool LaunchSEH(int pos, int level) {
       sent = true;
     }
     // Objet C++ : détruit dans tous les cas, y compris quand rien n'a été envoyé.
-    reinterpret_cast<void(__fastcall*)(void*)>(itemdb::kInfoDtorAddr)(info);
+    reinterpret_cast<void(__fastcall*)(void*)>(itemdb::kFilledInfoDtorAddr)(info);
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
   return sent;
 }

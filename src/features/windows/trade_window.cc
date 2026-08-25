@@ -62,8 +62,6 @@ constexpr uintptr_t kInvDecrease = 0x00d57a30;
 
 using rag::itemlist::kInfoAmount;
 using rag::itemlist::kInfoIdStr;
-constexpr int kInfoDamaged = 0x5d;  // byte : équipement CASSÉ (rendu rouge, cf. itemcell)
-constexpr int kInfoRefine = 0x60;   // int : refine
 
 // Bus de commandes = CMode::SendMsg. Réplique GameMode_GetActive(0x1213338) :
 // mode courant = *(0x1213338+4) [= *(0x121333c)] SEULEMENT si *(0x1213338+0x58)==1
@@ -164,9 +162,8 @@ using itemcell::TypeIsStackable;
 //
 // Champs que le name-builder natif lit pour décorer (cf. item_cell.cc) : type @0,
 // cartes @0x1c-0x28, refine @0x60, grade @0x88 — sans eux le nom sort NU.
-constexpr size_t kInfoSize = 0x100;
 void BuildTradeInfo(const TradeWindow::TradeItem& it, uint8_t* info) {
-  std::memset(info, 0, kInfoSize);
+  std::memset(info, 0, rag::itemlist::kInfoBuf);
   __try {
     using InfoCtor_t  = void*(__fastcall*)(void*);
     using InfoSetId_t = void(__thiscall*)(void*, int);
@@ -614,8 +611,8 @@ void TradeWindow::ResolveMyAdds() {
       uint8_t* p = reinterpret_cast<uint8_t*>(info);
       const char* ids = rag::clientstr::Data(p + kInfoIdStr);
       it.id      = ids ? static_cast<uint32_t>(std::atoi(ids)) : 0;
-      it.refine  = *reinterpret_cast<int*>(p + kInfoRefine);
-      it.damaged = *reinterpret_cast<uint8_t*>(p + kInfoDamaged);
+      it.refine  = *reinterpret_cast<int*>(p + rag::itemlist::kInfoRefine);
+      it.damaged = *reinterpret_cast<uint8_t*>(p + rag::itemlist::kInfoDamaged);
       // Mêmes données d'instance que celles du partenaire, mais lues dans le nœud
       // — pour que les deux colonnes affichent exactement la même chose. À lire
       // MAINTENANT : le nœud disparaît du sac quelques lignes plus bas.
@@ -669,7 +666,7 @@ void TradeWindow::ResolveMyAdds() {
 // distinguent que par leur refine, leurs cartes et leurs options — c'est
 // exactement ce qu'on veut vérifier AVANT de valider un échange.
 void TradeWindow::ResolveNames() {
-  uint8_t info[kInfoSize];
+  uint8_t info[rag::itemlist::kInfoBuf];
   for (size_t k = 0; k < my_items_.size(); ++k) {
     if (my_items_[k].name[0] || my_items_[k].id == 0) continue;
     BuildTradeInfo(my_items_[k], info);
@@ -889,7 +886,8 @@ void TradeWindow::OnRenderUI() {
   // MEMBRE, pas sur la pile. C'est ce qui interdisait d'employer la brique jusqu'ici.
   // Une seule demande en vol (une souris, un geste) : un tampon suffit.
   if (desc_for) {
-    static_assert(sizeof(desc_info_) >= kInfoSize, "tampon de description trop petit");
+    static_assert(sizeof(desc_info_) >= rag::itemlist::kInfoBuf,
+                  "tampon de description trop petit");
     BuildTradeInfo(*desc_for, desc_info_);
     itemcell::DeferDescById(desc_for->id, desc_for->look, desc_for->location,
                             desc_x, desc_y, desc_info_);

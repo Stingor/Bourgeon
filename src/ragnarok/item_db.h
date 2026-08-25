@@ -65,7 +65,7 @@ constexpr uintptr_t kInfoSetIdAddr = 0x006a6570;
 // passer par `lua::kGetSkillIdNameAddr`, pas par ici.
 //
 // ⚠ `out` est construit par la fonction : l'appelant DOIT le détruire avec
-// `kInfoDtorAddr` ci-dessous.
+// `kFilledInfoDtorAddr` ci-dessous.
 constexpr uintptr_t kFillInfoByIdAddr = 0x00d7fa90;
 
 // Le destructeur de la structure. 🔴 IL EST OBLIGATOIRE quand on a fait
@@ -73,7 +73,7 @@ constexpr uintptr_t kFillInfoByIdAddr = 0x00d7fa90;
 // capacité peut déborder le SSO — les abandonner fuit dans le tas DU CLIENT.
 // Trois fichiers l'appelaient, sous les noms kSkillEntryDtor, kSkillInfoDtor et
 // un littéral au milieu d'un `reinterpret_cast`.
-constexpr uintptr_t kInfoDtorAddr  = 0x00739cd0;
+constexpr uintptr_t kFilledInfoDtorAddr = 0x00739cd0;
 
 // ── Noms d'affichage ─────────────────────────────────────────────────────────
 // kBuildDisplayNameAddr compose le nom complet (préfixes de cartes, refine,

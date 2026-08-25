@@ -7,6 +7,7 @@
 // gardait sa propre copie, comme cinq autres plugins.
 #include "ui/icon_cache.h"
 #include "ragnarok/uiwnd.h"
+#include "ragnarok/item_info.h"  // rag::itemlist : la disposition d'ItemSkillInfo
 #include <Windows.h>
 #include <shellapi.h>  // ShellExecuteA (clic <URL> -> navigateur)
 
@@ -139,9 +140,13 @@ void OpenUrl(const std::string& url) {
 
 // ── Ouverture de la fenêtre de description (id 0xc) par id d'item ──
 // Reproduit le clic lien natif FUN_00803e10 : construit un ItemSkillInfo minimal
-// (info[0]=id ; nom laissé vide) et l'envoie à MakeWindow(0xc)->OnMsg(0x18). La
-// fenêtre complète le reste depuis la DB client — donc marche pour un item NON possédé.
-constexpr int kInfoFlag    = 0x5c;  // ItemSkillInfo+0x5c=1 : desc « standalone » lue depuis la DB
+// (ctor + SetId, qui range l'id EN TEXTE dans la std::string de +0x2c) et l'envoie
+// à MakeWindow(0xc)->OnMsg(0x18). La fenêtre complète le reste depuis la DB client
+// — donc marche pour un item NON possédé.
+//
+// ⚠ Poser `kInfoIdent` à 1 n'est pas un réglage d'affichage : c'est DÉCLARER
+// L'OBJET IDENTIFIÉ. `ItemSkillDB_GetDescLines` (0x006a2a70) lit cet octet pour
+// choisir entre `rec+0x0c` (description identifiée) et `rec+0x20`.
 using ItemInfoCtor_t  = void*(__fastcall*)(void*);
 using ItemInfoSetId_t = void(__thiscall*)(void*, int);
 using DescOnMsg_t     = int(__fastcall*)(void*, void*, int, int, int, int, int, int);
@@ -1938,7 +1943,8 @@ void NpcDialogWindow::OpenItemDescById(uint32_t id) {
     reinterpret_cast<ItemInfoCtor_t>(itemdb::kInfoCtorAddr)(info);            // init std::string SSO
     reinterpret_cast<ItemInfoSetId_t>(itemdb::kInfoSetIdAddr)(info, static_cast<int>(id));  // id-str @0x2c
     *reinterpret_cast<uint32_t*>(info) = id;  // id entier @0 (chemin fenêtre natif)
-    info[kInfoFlag] = 1;  // « standalone » : la desc est lue depuis la DB (rec+0x0c), item non possédé
+    // « standalone » : la desc est lue depuis la DB (rec+0x0c), item non possédé
+    info[rag::itemlist::kInfoIdent] = 1;
     void* dwnd = uiwnd::MakeWindow(uiwnd::kItemDescWndId);
     if (dwnd) {
       void** vt = *reinterpret_cast<void***>(dwnd);
