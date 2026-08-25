@@ -64,6 +64,11 @@ float FormWidth() {
 // `moonlight_auth:` ne sert qu'à SURCHARGER (dev/local, ou désactiver).
 constexpr const char* kDefaultBaseUrl = "https://moonlight-destiny.fr";
 
+// L'adresse RETENUE, publiée par LoadConfig pour `SiteBaseUrl` (cf. l'en-tête).
+// Vide tant que la config n'a pas été lue : l'accesseur retombe alors sur
+// l'adresse d'usine ci-dessus.
+std::string g_site_base;
+
 // Délai au-delà duquel « mode login SANS fenêtre de login » vaut service-select,
 // quand le nombre de connexions n'a pas pu être déterminé. Assez long pour couvrir
 // la construction de UILoginWnd (chargement des textures au 1er lancement) : le
@@ -500,6 +505,11 @@ void MoonlightAuth::LoadConfig() {
   if (base_url_.empty()) enabled_ = false;
   // Retire un éventuel '/' final du base_url pour concaténer proprement.
   while (!base_url_.empty() && base_url_.back() == '/') base_url_.pop_back();
+
+  // 🔴 Publiée pour les liens de PAGE (bestiaire, DB d'objets, avatar), qui
+  // vivent hors de ce module. Posée même quand `enabled_` est faux : effacer
+  // `base_url` désactive le login WEB, ça ne veut pas dire « plus de site ».
+  g_site_base = base_url_;
 
   // Identifiant mémorisé (fichier dédié, non le yaml).
   if (remember_) {
@@ -1475,4 +1485,14 @@ void MoonlightAuth::HandleSelectResponse(const HttpResult& r) {
     error_msg_ = i18n::Tr("Réponse du serveur illisible.");
     state_ = State::kError;
   }
+}
+
+// Cf. l'en-tête pour le pourquoi.
+//
+// ⚠ Lit un état de FICHIER et non le plugin, délibérément : ce module ne connaît
+// pas `Bourgeon`, et les trois appelants sont des liens d'interface qui doivent
+// répondre même si le plugin n'a pas encore été construit. `LoadConfig` y publie
+// l'adresse retenue ; avant elle, c'est l'adresse d'usine.
+const char* SiteBaseUrl() {
+  return g_site_base.empty() ? kDefaultBaseUrl : g_site_base.c_str();
 }

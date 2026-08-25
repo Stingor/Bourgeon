@@ -1,4 +1,5 @@
 #include "features/moonlight_ui/internal.h"
+#include "features/systems/moonlight_auth.h"  // SiteBaseUrl
 
 #include <windows.h>
 #include <shellapi.h>  // ShellExecuteA (lien « avatar Discord » vers l'UCP)
@@ -57,8 +58,13 @@ using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 // Page du panneau utilisateur (UCP) du site qui génère l'avatar Discord du
 // personnage au bon format. Mentionnée dans la section « Chat », à côté du
 // réglage du relais Discord.
-constexpr const char* kDiscordAvatarUrl =
-    "https://moonlight-destiny.fr/ucp.php?i=profile&mode=avatar";
+// ⚠ Composee a l'usage et non figee : le domaine suit `SiteBaseUrl()`, donc une
+// instance de dev ouvre SON panneau utilisateur et non la production.
+constexpr const char* kDiscordAvatarPath = "/ucp.php?i=profile&mode=avatar";
+
+std::string DiscordAvatarUrl() {
+  return std::string(SiteBaseUrl()) + kDiscordAvatarPath;
+}
 
 // ── LES DESTINATIONS D'UN LIEN DE RÉGLAGE ────────────────────────────────────
 // Deux étages, deux tables : les EN-TÊTES du panneau (Staff Tools, Graphismes,
@@ -748,11 +754,12 @@ void MoonlightUi::DrawInterfacePanel() {
               i18n::Tr("Ton avatar Discord : le panneau utilisateur du site génère "
               "l'image de ton personnage à la bonne dimension pour Discord, en "
               "un clic."));
+          const std::string avatar_url = DiscordAvatarUrl();
           if (ro::RoButton(i18n::Tr("Générer mon avatar Discord"))) {
-            ShellExecuteA(nullptr, "open", kDiscordAvatarUrl, nullptr, nullptr,
+            ShellExecuteA(nullptr, "open", avatar_url.c_str(), nullptr, nullptr,
                           SW_SHOWNORMAL);
           }
-          SameLine(); HelpMarker(kDiscordAvatarUrl);
+          SameLine(); HelpMarker(avatar_url.c_str());
 
           // 🔴 Les réglages du chat NATIF ne s'affichent que tant que ce chat
           // EXISTE. La chatbox ImGui le détruit : largeur, horodatage, icônes et

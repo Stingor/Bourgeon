@@ -53,6 +53,9 @@ class MoonlightAuth : public Plugin {
 
   bool enabled() const { return enabled_; }
 
+  // L'adresse du SITE, sans '/' final. Vide si la config l'a effacée.
+  const std::string& base_url() const { return base_url_; }
+
   // Vrai si CETTE session de login a suivi la voie Moonlight (web login + choix
   // de compte), par opposition au repli « Login classique » (champs natifs). Sert
   // à réserver le char-select ImGui au parcours Moonlight : login natif => UI
@@ -284,3 +287,25 @@ class MoonlightAuth : public Plugin {
   std::atomic<bool> busy_{false};   // requête en cours
   std::atomic<bool> ready_{false};  // résultat disponible à récupérer
 };
+
+// ── L'adresse du SITE, pour composer un lien de page ─────────────────────────
+//
+// 🔴 LE DOMAINE ÉTAIT ÉCRIT EN DUR DANS TROIS AUTRES FICHIERS — la page
+// bestiaire, la DB d'objets, l'aide « avatar Discord » — alors que
+// `moonlight_auth:` accepte un `base_url` justement pour pointer une instance de
+// DEV ou LOCALE. Sur une telle instance, le login partait au serveur configuré
+// pendant que ces trois liens continuaient d'ouvrir la production. Invisible
+// pour un joueur (le défaut d'usine EST la production), mais faux dès qu'on
+// développe contre autre chose.
+//
+// ⚠ JAMAIS VIDE. Effacer `base_url` est la façon documentée de DÉSACTIVER le
+// login web ; ça ne veut pas dire « plus de site ». On retombe alors sur
+// l'adresse d'usine, sans quoi les trois liens deviendraient des URL tronquées.
+//
+// ⚠ NE COUVRE PAS deux autres porteurs du domaine, et c'est délibéré :
+//   · la liste blanche d'hôtes de l'aperçu d'images est une décision de
+//     SÉCURITÉ — l'élargir depuis un fichier de config est un autre sujet ;
+//   · le préfixe des images relayées est fabriqué côté SERVEUR par
+//     `groq_service.py` : il ne suit pas notre config, et le commentaire du chat
+//     le dit déjà.
+const char* SiteBaseUrl();

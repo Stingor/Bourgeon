@@ -38,6 +38,11 @@ namespace mui {
 // Affiche un petit « (?) » qui montre `desc` en infobulle au survol.
 void HelpMarker(const char* desc);
 
+// La BULLE seule, pour qui dessine son PROPRE marqueur (couleur, position). Se
+// pose juste après l'item à survoler, comme `HelpMarker` le fait pour le sien.
+// `wrap_chars` = largeur d'enroulement, en largeurs de police.
+void HelpTooltip(const char* desc, float wrap_chars = 35.0f);
+
 // ── Molette : verrou anti-défilement ─────────────────────────────────────────
 // Une zone qui prend la molette au survol — slider de réglage, aperçu qui tourne,
 // case de compétence — VOLE le défilement de la page qui la contient. Le joueur

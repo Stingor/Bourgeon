@@ -1,4 +1,5 @@
 #include "features/link_gesture.h"
+#include "features/systems/moonlight_auth.h"  // SiteBaseUrl
 
 #include <Windows.h>
 #include <shellapi.h>  // ShellExecuteA (site, bestiaire, adresses du chat)
@@ -55,10 +56,9 @@ void DimText(const char* fmt, ...) {
 // copie de l'URL à corriger.
 void OpenMobDbPage(uint32_t mob_id) {
   if (mob_id == 0) return;
-  char url[192];
-  std::snprintf(url, sizeof(url),
-                "https://moonlight-destiny.fr/index.php?page=bestiary&mobid=%u",
-                mob_id);
+  char url[256];
+  std::snprintf(url, sizeof(url), "%s/index.php?page=bestiary&mobid=%u",
+                SiteBaseUrl(), mob_id);
   ShellExecuteA(nullptr, "open", url, nullptr, nullptr, SW_SHOWNORMAL);
 }
 

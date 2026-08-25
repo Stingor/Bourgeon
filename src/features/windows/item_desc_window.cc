@@ -1,4 +1,5 @@
 #include "ragnarok/lua.h"
+#include "features/systems/moonlight_auth.h"  // SiteBaseUrl
 #include "ragnarok/item_db.h"
 #include "ragnarok/navigation.h"
 #include "ui/game_texture.h"
@@ -2243,9 +2244,8 @@ namespace itemdesc {
 void OpenItemDbPage(uint32_t item_id) {
   if (item_id == 0) return;
   char url[256];
-  std::snprintf(url, sizeof(url),
-                "https://moonlight-destiny.fr/index.php?page=itemdb&itemid=%u",
-                item_id);
+  std::snprintf(url, sizeof(url), "%s/index.php?page=itemdb&itemid=%u",
+                SiteBaseUrl(), item_id);
   ShellExecuteA(nullptr, "open", url, nullptr, nullptr, SW_SHOWNORMAL);
 }
 

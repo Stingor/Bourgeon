@@ -271,15 +271,13 @@ const char* Grouped(uint32_t v, char* out, size_t cap) {
 // Petit « (?) » cliquable, façon mui::HelpMarker mais avec NOTRE couleur : le
 // corps de la fiche est clair, et `TextDisabled` y est illisible
 // (cf. [[feedback_imgui_ro_light_body_colors]]).
+// Le marqueur de CETTE fenêtre : sur la même ligne que le libellé qu'il
+// commente, et dans la couleur de ses libellés — c'est ce qui le distingue du
+// `(?)` grisé du toolkit. La bulle, elle, est celle de tout le monde.
 void Help(const char* desc) {
   ImGui::SameLine();
   ImGui::TextColored(kLabel, "(?)");
-  if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort) && ImGui::BeginTooltip()) {
-    ImGui::PushTextWrapPos(ImGui::GetFontSize() * 32.0f);
-    ImGui::TextUnformatted(desc);
-    ImGui::PopTextWrapPos();
-    ImGui::EndTooltip();
-  }
+  mui::HelpTooltip(desc, 32.0f);
 }
 
 // Statistiques du PERSONNAGE, telles que le natif les tient pour sa fenêtre de

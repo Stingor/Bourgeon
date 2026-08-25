@@ -6,16 +6,30 @@
 
 namespace mui {
 
-// Helper to display a little (?) mark which shows a tooltip when hovered.
-// In your own code you may want to display an actual icon if you are using a merged icon fonts (see docs/FONTS.md)
+// La BULLE d'un marqueur d'aide : survol temporisé, enroulement borné, texte.
+//
+// Le MARQUEUR lui-même — sa forme, sa couleur, sa position sur la ligne — reste
+// à l'appelant : c'est là que les variantes divergent légitimement (la fiche de
+// monstre pose le sien dans la couleur de ses libellés, sur la même ligne).
+//
+// 🔴 CE QUI COMPTE ICI EST L'APPARIEMENT `Push`/`Pop` de la largeur
+// d'enroulement. Écrit deux fois, il offrait deux occasions de le dépareiller —
+// et un enroulement laissé poussé ne casse pas la bulle fautive : il déteint sur
+// tout le texte que la frame dessine ENSUITE, donc loin de sa cause. Même raison
+// que `DimNotice` dans l'Atlas.
+void HelpTooltip(const char* desc, float wrap_chars) {
+  if (!ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) return;
+  if (!ImGui::BeginTooltip()) return;
+  ImGui::PushTextWrapPos(ImGui::GetFontSize() * wrap_chars);
+  ImGui::TextUnformatted(desc);
+  ImGui::PopTextWrapPos();
+  ImGui::EndTooltip();
+}
+
+// Le petit « (?) » grisé et sa bulle — la forme employée partout (270 sites).
 void HelpMarker(const char* desc) {
   ImGui::TextDisabled("(?)");
-  if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort) && ImGui::BeginTooltip()) {
-    ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
-    TextUnformatted(desc);
-    ImGui::PopTextWrapPos();
-    ImGui::EndTooltip();
-  }
+  HelpTooltip(desc);
 }
 
 // Pastille + nuancier en popup, calqué sur `ChatTweaks::DrawBackgroundGroup` —
