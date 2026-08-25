@@ -579,7 +579,50 @@ bool Gestures(const Target& target, bool hovered) {
   }
 }
 
+namespace {
+
+// ── 🔴🔴 UN SEUL APERÇU PAR FRAME ────────────────────────────────────────────
+//
+// Symptôme : la souris posée ENTRE deux liens, et les deux aperçus apparaissent
+// EMPILÉS dans un seul panneau. Deux causes qui se rejoignent, vérifiées dans le
+// source d'ImGui plutôt que supposées :
+//
+// 1. `IsItemHovered()` sur un item NON INTERACTIF ne fait qu'un test de
+//    RECTANGLE. Un `BeginGroup`/`EndGroup` autour d'un texte n'a pas d'ID, donc
+//    `IsItemHovered` ne consulte jamais `g.HoveredId` : il ne compare que le
+//    rectangle et la fenêtre survolée. ImGui le dit lui-même dans son commentaire
+//    (imgui.cpp) : « IsItemHovered() will leak between id==0 items ». Deux liens
+//    dont les rectangles se touchent — deux lignes de chat consécutives — se
+//    déclarent donc survolés tous les deux dans la même frame.
+//
+// 2. `BeginTooltip` deux fois dans une frame écrit dans la MÊME FENÊTRE. Le nom
+//    est `##Tooltip_%02d` avec `g.TooltipOverrideCount`, qui ne monte qu'avec le
+//    drapeau `OverridePrevious` — que le chemin ordinaire ne pose pas. Le second
+//    `Begin` rouvre donc le premier tooltip et lui ajoute son contenu. C'est ce
+//    qui produit le panneau à deux fiches, au lieu de deux panneaux.
+//
+// Le premier lien qui réclame la frame la garde. Le recouvrement se limite à la
+// ligne de frontière entre deux rectangles adjacents : l'un ou l'autre est
+// défendable, ce qui compte est qu'il n'y en ait qu'UN et que le choix soit
+// déterministe.
+//
+// ⚠ Le garde est ICI et non chez les appelants : `HoverPreview` est publique et
+// SIX sites l'appellent dans cinq fichiers (chat, dialogue PNJ, familier, vue
+// d'équipement, et le widget de lien lui-même). Le poser chez l'un d'eux ne
+// protégerait pas des autres — ni de la combinaison de deux sources différentes.
+int g_preview_frame = -1;
+
+bool ClaimPreviewFrame() {
+  const int frame = ImGui::GetFrameCount();
+  if (g_preview_frame == frame) return false;
+  g_preview_frame = frame;
+  return true;
+}
+
+}  // namespace
+
 void HoverPreview(const Target& target) {
+  if (!ClaimPreviewFrame()) return;
   if (target.kind == Target::kItem) {
     // Le nom DÉCORÉ, composé par le name-builder natif depuis la balise (refine,
     // affixes de cartes, forgeron), et rendu en UTF-8 — ce qu'attend le tooltip,
