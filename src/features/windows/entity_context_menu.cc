@@ -31,6 +31,7 @@
 #include "ragnarok/pet.h"  // rag::pet::kOwnPetAidAddr
 #include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 #include "ragnarok/job_ids.h"  // rag::IsPlayerJob / IsMonsterJob
+#include "ragnarok/stl_node.h"  // rag::treenode : le nœud du conteneur
 
 using namespace mui;
 
@@ -117,11 +118,6 @@ constexpr uintptr_t kFriendListContains   = 0x00a388f0;  // __thiscall(mgr, name
 //   (taille +0x20, capacité +0x24) — offsets lus dans `sub_5EE3A0`.
 constexpr uintptr_t kChatBlockListPtr = 0x01251824;
 constexpr int kSet_Head     = 0x18;
-constexpr int kNode_Left    = 0x00;
-constexpr int kNode_Parent  = 0x04;
-constexpr int kNode_Right   = 0x08;
-constexpr int kNode_IsNil   = 0x0d;
-constexpr int kNode_Val     = 0x10;
 constexpr int kTreeWalkGuard = 512;
 // Le prédicat d'adoption du client (`sub_D99860`) : niveau >= 70, non monté, en
 // couple, cible éligible… C'est LUI qui décide de l'entrée « Adopter » dans le
@@ -441,21 +437,21 @@ bool ChatBlockListContains(const char* wire_name) {
     if (!head) return false;
     const uint8_t* stack[64];
     int top = 0;
-    const uint8_t* node = Read<const uint8_t*>(head, kNode_Parent);  // la racine
+    const uint8_t* node = Read<const uint8_t*>(head, rag::treenode::kParent);  // la racine
     for (int guard = 0; guard < kTreeWalkGuard; ++guard) {
-      const bool real = node && Read<uint8_t>(node, kNode_IsNil) == 0;
+      const bool real = node && Read<uint8_t>(node, rag::treenode::kIsNil) == 0;
       if (real) {
         if (top >= 64) return false;  // arbre incohérent : on renonce
         stack[top++] = node;
-        node = Read<const uint8_t*>(node, kNode_Left);
+        node = Read<const uint8_t*>(node, rag::treenode::kLeft);
         continue;
       }
       if (top == 0) return false;  // parcours terminé, rien trouvé
       node = stack[--top];
-      const unsigned size = rag::clientstr::Size(node + kNode_Val);
-      const char* name    = rag::clientstr::Data(node + kNode_Val);
+      const unsigned size = rag::clientstr::Size(node + rag::treenode::kValue);
+      const char* name    = rag::clientstr::Data(node + rag::treenode::kValue);
       if (name && size != 0 && _stricmp(name, wire_name) == 0) return true;
-      node = Read<const uint8_t*>(node, kNode_Right);
+      node = Read<const uint8_t*>(node, rag::treenode::kRight);
     }
     return false;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }

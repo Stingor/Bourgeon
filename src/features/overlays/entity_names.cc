@@ -17,6 +17,7 @@
 #include "utils/i18n.h"
 #include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 #include "ragnarok/job_ids.h"  // rag::IsPlayerJob / IsMonsterJob
+#include "ragnarok/stl_node.h"  // rag::listnode
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -149,7 +150,7 @@ void EntityNames::DrawNames() {
   for (void* node = Read<void*>(sentinel, 0);
        node && node != sentinel && guard < 4096;
        node = Read<void*>(node, 0), ++guard) {
-    draw_one(Read<void*>(node, gamescene::kNodeActor));
+    draw_one(Read<void*>(node, rag::listnode::kValue));
   }
 
   // 🔴 Le joueur local N'EST PAS dans cette liste — vérifié en live le

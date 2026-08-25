@@ -9,6 +9,7 @@
 #include "ui/game_texture.h"  // ro::uipath::kUiRoot (racine CP949 des bitmaps d'interface)
 #include "utils/i18n.h"
 #include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
+#include "ragnarok/stl_node.h"  // rag::listnode
 
 namespace rag::social {
 namespace {
@@ -25,7 +26,6 @@ constexpr int kSes_FriendListPtr = 0x17c4;
 constexpr int kSes_FriendCount   = 0x17c8;
 
 // ── L'entrée sociale (0x50 octets) ──────────────────────────────────────────
-constexpr int kNode_Data   = 0x08;  // la donnée commence après {next, prev}
 constexpr int kEnt_Gid     = 0x04;
 constexpr int kEnt_Id2     = 0x08;
 constexpr int kEnt_Name    = 0x0c;  // std::string
@@ -88,7 +88,7 @@ int CollectNodesSEH(int list_ptr_offset, int count_offset, const void** nodes,
 bool ReadNodeSEH(const void* node, RawRow& out) {
   uintptr_t data = 0;
   __try {
-    data = reinterpret_cast<uintptr_t>(node) + kNode_Data;
+    data = reinterpret_cast<uintptr_t>(node) + rag::listnode::kValue;
     out.gid     = *reinterpret_cast<const uint32_t*>(data + kEnt_Gid);
     out.id2     = *reinterpret_cast<const uint32_t*>(data + kEnt_Id2);
     out.color   = *reinterpret_cast<const uint32_t*>(data + kEnt_Color);

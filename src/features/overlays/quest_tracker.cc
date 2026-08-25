@@ -13,6 +13,7 @@
 #include "utils/log_console.h"
 #include "utils/i18n.h"
 #include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
+#include "ragnarok/stl_node.h"  // rag::treenode : le nœud du conteneur
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -26,12 +27,6 @@ namespace {
 // ---- engine addresses ------------------------------------------------------
 constexpr uintptr_t kDrawContent = 0x009137a0;  // QuestTracker_DrawContent (hooked)
 constexpr uintptr_t kQuestMgrPtr = 0x01254d90;  // void** -> quest manager
-
-// std::_Tree node offsets (MSVC, 32-bit).
-constexpr int kNodeLeft   = 0x00;
-constexpr int kNodeParent = 0x04;
-constexpr int kNodeRight  = 0x08;
-constexpr int kNodeIsNil  = 0x0d;
 
 // Quest record (== std::_Tree node) field offsets.  The Quest struct proper
 // begins at node+0x18: the native DrawContent reads id/active/title/tracked
@@ -85,12 +80,12 @@ int CollectQuests(QuestEntry* out, int cap) {
 
     uint8_t* stack[64];
     int sp = 0;
-    uint8_t* root = *reinterpret_cast<uint8_t**>(head + kNodeParent);
+    uint8_t* root = *reinterpret_cast<uint8_t**>(head + rag::treenode::kParent);
     if (root && root != head) stack[sp++] = root;
 
     while (sp > 0 && n < cap) {
       uint8_t* node = stack[--sp];
-      if (!node || B(node, kNodeIsNil) != 0) continue;
+      if (!node || B(node, rag::treenode::kIsNil) != 0) continue;
 
       if (B(node, kRecActive) == 1 && B(node, kRecTracked) == 1) {
         QuestEntry& q = out[n];
@@ -112,11 +107,11 @@ int CollectQuests(QuestEntry* out, int cap) {
         ++n;
       }
 
-      uint8_t* l = *reinterpret_cast<uint8_t**>(node + kNodeLeft);
-      uint8_t* r = *reinterpret_cast<uint8_t**>(node + kNodeRight);
+      uint8_t* l = *reinterpret_cast<uint8_t**>(node + rag::treenode::kLeft);
+      uint8_t* r = *reinterpret_cast<uint8_t**>(node + rag::treenode::kRight);
       if (sp < 62) {
-        if (l && B(l, kNodeIsNil) == 0) stack[sp++] = l;
-        if (r && B(r, kNodeIsNil) == 0) stack[sp++] = r;
+        if (l && B(l, rag::treenode::kIsNil) == 0) stack[sp++] = l;
+        if (r && B(r, rag::treenode::kIsNil) == 0) stack[sp++] = r;
       }
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) {

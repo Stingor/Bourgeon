@@ -26,6 +26,7 @@
 #include "utils/i18n.h"
 #include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 #include "ragnarok/job_ids.h"  // rag::IsPlayerJob / IsMonsterJob
+#include "ragnarok/stl_node.h"  // rag::listnode : le nœud du conteneur
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -105,7 +106,6 @@ constexpr int kName_Rank  = 0x4c;
 
 // Balayage des acteurs, pour le cyclage au clavier.
 constexpr int kGm_ActorMgr    = 0x0cc;  // *(gm+0xCC)      = actorMgr
-constexpr int kNode_Actor     = 0x08;   //  node+8          = pointeur acteur
 
 // Le natif refuse le marqueur sur un PORTAIL, et lui seul.
 constexpr unsigned kJobPortal = 45;
@@ -530,7 +530,7 @@ int CollectScreenTargets(void* gm, CycleCandidate* out, int max) {
     void* node = Read<void*>(sentinel, 0);  // premier nœud
     int guard = 0;
     while (node && node != sentinel && count < max && ++guard < 4096) {
-      void* actor = Read<void*>(node, kNode_Actor);
+      void* actor = Read<void*>(node, rag::listnode::kValue);
       node = Read<void*>(node, 0);
       if (!actor) continue;
 

@@ -45,6 +45,7 @@
 #include "utils/log_console.h"
 #include "utils/i18n.h"
 #include "ragnarok/social.h"  // rag::social::kFriendListAddByNameAddr
+#include "ragnarok/stl_node.h"  // rag::treenode : le nœud du conteneur
 #include "features/link_gesture.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
@@ -66,8 +67,6 @@ namespace {
 // +0x2C table de filtre BYTE[25] (un octet par TYPE de message).
 constexpr uintptr_t kChannelRegistryAddr  = 0x015faadc;
 constexpr uintptr_t kDetachedRegistryAddr = 0x015faae4;
-constexpr size_t    kNodeIsNilOff  = 0x0D;
-constexpr size_t    kNodeKeyOff    = 0x10;
 constexpr size_t    kNodeNameOff   = 0x14;
 constexpr size_t    kNodeFilterOff = 0x2C;
 constexpr size_t    kSsoCapacity   = 15;
@@ -1067,9 +1066,9 @@ int ReadRegistry(uintptr_t registry_addr, RawChannel* out, int out_max) {
     while (depth > 0 && count < out_max) {
       const uint8_t* node = stack[--depth];
       if (node == nullptr || node == head) continue;
-      if (node[kNodeIsNilOff] != 0) continue;  // sentinelle, pas une valeur
+      if (node[rag::treenode::kIsNil] != 0) continue;  // sentinelle, pas une valeur
       out[count].node  = reinterpret_cast<uintptr_t>(node);
-      out[count].index = *reinterpret_cast<const int*>(node + kNodeKeyOff);
+      out[count].index = *reinterpret_cast<const int*>(node + rag::treenode::kValue);
       ReadStdString(node + kNodeNameOff, out[count].name, sizeof(out[count].name));
       for (int i = 0; i < kTypeCount; ++i)
         out[count].filter[i] = node[kNodeFilterOff + i];

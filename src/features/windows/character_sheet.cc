@@ -54,6 +54,7 @@
 #include "utils/log_console.h"   // LogDiag : échecs de chargement de l'arbre de guilde
 #include "utils/i18n.h"
 #include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
+#include "ragnarok/stl_node.h"  // rag::listnode : le nœud du conteneur
 
 //  Constantes RE (client 20250716, base 0x400000 ; cf. project_character_sheet)
 namespace {
@@ -950,9 +951,8 @@ using SetUseLevel_t = void  (__fastcall*)(void*, void*, int, int);
 using GetUseLevel_t = int   (__fastcall*)(void*, void*, int);
 using IsLevelUse_t  = char  (__cdecl*)(int);
 
-// Offsets dans CSkillInfo. ⚠ Les nœuds sont des std::list MSVC {next, prev, valeur} :
-// la VALEUR commence au nœud + 8.
-constexpr int kSkNodeValue    = 0x08;
+// Offsets dans CSkillInfo, comptés DEPUIS LA VALEUR du nœud — pas depuis le nœud
+// lui-même (cf. `rag::listnode`).
 constexpr int kSkOffValid     = 0x04;  // 1 = fiche utilisable
 constexpr int kSkOffId        = 0x08;
 constexpr int kSkOffInf       = 0x0c;  // masque skill_get_inf ; 0 = passive
@@ -1031,7 +1031,7 @@ int ReadSkillTabSEH(int tab, SkillRaw* out, int cap) {
     uint8_t* node = *reinterpret_cast<uint8_t**>(head);
     int guard = 0;
     while (node && node != head && n < cap && guard++ < kSkillMaxNodes) {
-      const uint8_t* v = node + kSkNodeValue;
+      const uint8_t* v = node + rag::listnode::kValue;
       node = *reinterpret_cast<uint8_t**>(node);  // avancer AVANT de lire la valeur
       if (*reinterpret_cast<const int*>(v + kSkOffValid) == 0) continue;
       const int id = *reinterpret_cast<const int*>(v + kSkOffId);

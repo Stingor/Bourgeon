@@ -19,6 +19,7 @@
 #include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 #include "ragnarok/game_scene.h"
 #include "ragnarok/uiwnd.h"
+#include "ragnarok/stl_node.h"  // rag::listnode : le nœud du conteneur
 #include "ui/game_emotes.h"   // ro::emote : les emotes du JEU (emotion.act)
 #include "ui/icon_cache.h"    // ro::ItemIcon : le cache d'icones partage avec le chat
 #include "ui/ro_imgui.h"
@@ -75,10 +76,6 @@ constexpr uintptr_t kQueueDestroyWindow = 0x00a447d0;
 
 // GameMode_GetActive(mgr) __fastcall : le CGameMode actif, 0 hors jeu.
 using QueueDestroyFn = void(__thiscall*)(void*, void*);
-
-// Le nœud du gestionnaire d'acteurs (cf. docs/entity_nameplate_re.md). Les
-// offsets de l'ACTEUR sont dans `rag::actor`.
-constexpr int kNode_Actor   = 0x08;   //  node+8          = pointeur acteur
 
 // UITransBalloonText : couleur par défaut du texte, posée par ZC_NPC_CHAT (et le
 // rose 0xFF8080 codé en dur de la Talkie Box).
@@ -298,7 +295,7 @@ bool ChatBalloon::IsActorBalloon(void* window) {
   for (void* node = Read<void*>(sentinel, 0);
        !found && node && node != sentinel && guard < 4096;
        node = Read<void*>(node, 0), ++guard) {
-    found = owns(Read<void*>(node, kNode_Actor));
+    found = owns(Read<void*>(node, rag::listnode::kValue));
   }
   if (!found) return false;
   std::lock_guard<std::mutex> lock(s_mutex);
@@ -510,7 +507,7 @@ void ChatBalloon::SyncWithActors() {
   for (void* node = Read<void*>(sentinel, 0);
        node && node != sentinel && guard < 4096;
        node = Read<void*>(node, 0), ++guard) {
-    visit(Read<void*>(node, kNode_Actor));
+    visit(Read<void*>(node, rag::listnode::kValue));
   }
   // ⚠ Le joueur local n'apparaît PAS dans cette liste — c'est pour ça que sa
   // bulle restait native alors que celles des autres étaient bien reprises. Il
@@ -762,7 +759,7 @@ void ChatBalloon::DrawBalloons() {
   for (void* node = Read<void*>(sentinel, 0);
        node && node != sentinel && guard < 4096;
        node = Read<void*>(node, 0), ++guard) {
-    draw_one(Read<void*>(node, kNode_Actor));
+    draw_one(Read<void*>(node, rag::listnode::kValue));
   }
   // Le joueur local, qui n'est PAS dans la liste (vérifié en live : sentinelle
   // pointant sur elle-même, acteur propre à `actorMgr+0x2C`). Sans cette ligne,

@@ -4,6 +4,7 @@
 
 #include "ragnarok/file_mgr.h"
 #include "utils/log_console.h"
+#include "ragnarok/stl_node.h"  // rag::listnode
 
 namespace rag {
 namespace {
@@ -14,7 +15,6 @@ namespace {
 // déjà construit.
 
 constexpr size_t kMgrListHead   = 0x00;   // tête de liste circulaire
-constexpr size_t kNodeNext      = 0x00;
 constexpr size_t kNodeGrf       = 0x0C;   // l'objet CGrf porté par le nœud
 constexpr size_t kGrfEntryBegin = 0x24;
 constexpr size_t kGrfEntryEnd   = 0x28;
@@ -101,11 +101,11 @@ int CollectRaw(const char* prefix, size_t prefix_len,
         *reinterpret_cast<const uint8_t* const*>(mgr + kMgrListHead);
     if (!head) return 0;  // aucune archive montée (jamais vu, mais pas une erreur)
 
-    const uint8_t* node = *reinterpret_cast<const uint8_t* const*>(head + kNodeNext);
+    const uint8_t* node = *reinterpret_cast<const uint8_t* const*>(head + rag::listnode::kNext);
     for (int a = 0; node && node != head && a < kMaxArchives; ++a) {
       const uint8_t* const grf =
           *reinterpret_cast<const uint8_t* const*>(node + kNodeGrf);
-      node = *reinterpret_cast<const uint8_t* const*>(node + kNodeNext);
+      node = *reinterpret_cast<const uint8_t* const*>(node + rag::listnode::kNext);
       if (!grf) continue;
 
       const uint8_t* const begin =

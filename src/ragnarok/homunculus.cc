@@ -7,6 +7,7 @@
 #include "ragnarok/globals.h"
 #include "ragnarok/item_db.h"
 #include "ragnarok/uiwnd.h"
+#include "ragnarok/stl_node.h"  // rag::listnode
 
 namespace rag {
 namespace homun {
@@ -48,9 +49,8 @@ constexpr uintptr_t kSkillSize = 0x015fa428;
 constexpr uintptr_t kJobNameBeg = 0x015fb348;
 constexpr uintptr_t kJobNameEnd = 0x015fb34c;
 
-// Nœud de std::list MSVC : {next, prev, valeur} — la valeur commence à nœud+8. Les
-// offsets internes sont ceux de l'ItemSkillInfo, partagé avec le bundle du personnage.
-constexpr int kNodeValue  = 0x08;
+// Offsets comptés DEPUIS LA VALEUR du nœud (cf. `rag::listnode`). Ce sont ceux du
+// CSkillInfo, partagé avec le bundle du personnage.
 constexpr int kOffValid   = 0x04;
 constexpr int kOffId      = 0x08;
 constexpr int kOffInf     = 0x0c;
@@ -81,7 +81,7 @@ int ReadSkillsSEH(Skill* out, int cap) {
     uint8_t* node = *reinterpret_cast<uint8_t**>(head);
     int guard = 0, pos = -1;
     while (node && node != head && n < cap && guard++ < kMaxSkills * 2) {
-      const uint8_t* v = node + kNodeValue;
+      const uint8_t* v = node + rag::listnode::kValue;
       node = *reinterpret_cast<uint8_t**>(node);  // avancer AVANT de lire la valeur
       ++pos;
       if (*reinterpret_cast<const int*>(v + kOffValid) == 0) continue;

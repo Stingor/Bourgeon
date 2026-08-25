@@ -24,6 +24,7 @@
 #include "utils/text.h"  // text::GroupThousands
 #include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 #include "ragnarok/item_info.h"  // rag::itemlist : la disposition d'ItemSkillInfo
+#include "ragnarok/stl_node.h"  // rag::listnode
 
 // ── Constantes RE (client 20250716, base 0x400000) ───────────────────────────
 // Source : docs/vending_window_re.md. Tout ce qui suit a été relu sur objet
@@ -260,14 +261,17 @@ constexpr uint16_t kCzVendingListReq = 0x0130;
 // ── Description d'objet ──────────────────────────────────────────────────────
 // Le nœud porte un ItemSkillInfo à +0x08 ; cartes, refine et options
 // d'INSTANCE n'existent que là (pas dans la DB client), il faut donc les lire au
-// nœud pour un aperçu fidèle. Offsets identiques à ceux des autres viewers, ici
-// exprimés en NŒUD (= ItemSkillInfo + 0x08).
-constexpr int kNodeCards    = 0x24;  // ISI+0x1C : 4 cartes
-constexpr int kNodeIdent    = 0x64;  // ISI+0x5C : identifié ? (change le nom)
-constexpr int kNodeDamaged  = 0x65;  // ISI+0x5D : équipement CASSÉ (rendu rouge, cf. itemcell)
-constexpr int kNodeRefine   = 0x68;  // ISI+0x60
-constexpr int kNodeOptCount = 0xA0;  // ISI+0x98
-constexpr int kNodeOpts     = 0xA4;  // ISI+0x9C, entrées de 5 octets
+// nœud pour un aperçu fidèle. Ce sont les offsets du foyer, DÉCALÉS du nœud :
+// chaque ligne portait déjà sa formule en commentaire (« ISI+0x1C »…), mais
+// additionnée de tête et figée en littéral. Dérivées, elles ne peuvent plus
+// diverger du jour où un champ de l'ItemSkillInfo bouge.
+constexpr int kNodeAt = rag::listnode::kValue;
+constexpr int kNodeCards    = kNodeAt + rag::itemlist::kInfoCards;
+constexpr int kNodeIdent    = kNodeAt + rag::itemlist::kInfoIdent;
+constexpr int kNodeDamaged  = kNodeAt + rag::itemlist::kInfoDamaged;
+constexpr int kNodeRefine   = kNodeAt + rag::itemlist::kInfoRefine;
+constexpr int kNodeOptCount = kNodeAt + rag::itemlist::kInfoOptCount;
+constexpr int kNodeOpts     = kNodeAt + rag::itemlist::kInfoOpts;
 
 // Fenêtre de description native (id 0xC) : MakeWindow puis OnMsg 0x18 avec le
 // POINTEUR vers l'ItemSkillInfo — c'est le chemin du clic droit natif, et
@@ -324,12 +328,22 @@ constexpr int kOffMode      = 0x130;  // 0 = vente, 1 = échoppe d'achat
 constexpr int kOffList      = 0x148;  // std::list des objets posés (sentinelle)
 constexpr int kOffCount     = 0x14C;  // nombre d'objets posés
 
-// Nœud de la liste : payload ItemSkillInfo à nœud+8.
-constexpr int kNodeIndex = 0x0C;  // index source (cart en vente)
-constexpr int kNodeQty   = 0x18;  // quantité posée
+// Nœud de la liste : la valeur est un ItemSkillInfo, donc `listnode::kValue`.
+constexpr int kNodeIndex = kNodeAt + rag::itemlist::kInfoIndex;
+constexpr int kNodeQty   = kNodeAt + rag::itemlist::kInfoAmount;
+constexpr int kNodeName  = kNodeAt + rag::itemlist::kInfoIdStr;  // l'itemId EN TEXTE
+
+// Ces deux-là n'ont pas d'équivalent nommé au foyer : rien n'est relevé en
+// ISI+0x14 ni ISI+0x18.
 constexpr int kNodePrice = 0x1C;  // prix unitaire (0 tant que l'échoppe n'est pas ouverte)
-constexpr int kNodeName  = 0x34;  // std::string = l'itemId EN TEXTE ("714")
-constexpr int kNodeSlots = 0x90;  // short : nombre de cartes
+
+// 🔴 CONTRADICTION LAISSÉE VISIBLE, PAS TRANCHÉE. 0x90 vaut exactement
+// `kNodeAt + 0x88`, et le foyer appelle +0x88 `kInfoGrade` — « grade
+// d'enchantement », i16 — quand ici on lit « nombre de cartes », short aussi.
+// Même offset, même largeur, deux sens. Aucun des deux n'a été mesuré contre
+// l'autre : la valeur reste donc écrite EN DUR, et la question posée. La dériver
+// choisirait un camp sans preuve.
+constexpr int kNodeSlots = 0x90;  // short : nombre de cartes (cf. ci-dessus)
 
 // ── API de session (g_session) ───────────────────────────────────────────────
 // TOUTES __thiscall avec ecx = &g_session. Conventions relevées sur des sites

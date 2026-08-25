@@ -1,4 +1,5 @@
 #include "ragnarok/player_skills.h"
+#include "ragnarok/stl_node.h"  // rag::listnode
 
 #include <Windows.h>
 
@@ -10,7 +11,6 @@ namespace {
 // Adresses et offsets du bundle de compétences (20250716, base 0x400000).
 using GetTabList_t = void* (__fastcall*)(void*, void*, int);
 
-constexpr int kNodeValue  = 0x08;
 constexpr int kOffValid   = 0x04;
 constexpr int kOffId      = 0x08;
 constexpr int kOffLvLocal = 0x10;
@@ -41,7 +41,7 @@ int LearnedSkillLevel(int skill_id, int* sp_cost) {
       uint8_t* node = *reinterpret_cast<uint8_t**>(head);
       int guard = 0;
       while (node && node != head && guard++ < kMaxNodes) {
-        const uint8_t* value = node + kNodeValue;
+        const uint8_t* value = node + rag::listnode::kValue;
         node = *reinterpret_cast<uint8_t**>(node);  // avancer AVANT de lire
         if (*reinterpret_cast<const int*>(value + kOffValid) == 0) continue;
         if (*reinterpret_cast<const int*>(value + kOffId) != skill_id) continue;

@@ -10,6 +10,7 @@
 #include "ragnarok/uiwnd.h"
 #include "ui/ro_imgui.h"
 #include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
+#include "ragnarok/stl_node.h"  // rag::treenode
 
 namespace rag {
 namespace pet {
@@ -58,15 +59,10 @@ constexpr int kMgr_RecipeMap     = 0x08;  // std::map ; +0 = _Myhead, +4 = _Mysi
 constexpr int kMgr_AutoFeedBegin = 0x18;
 constexpr int kMgr_AutoFeedEnd   = 0x1c;
 
-// Nœud d'arbre MSVC (`std::_Tree_node`, 32 bits) : {_Left, _Parent, _Right,
-// _Color:1, _Isnil:1, [pad], _Myval}. La valeur d'une map est une `pair`, donc
-// la clé est en tête et le vecteur juste après.
-constexpr int kNode_Left  = 0x00;
-constexpr int kNode_Right = 0x08;
-constexpr int kNode_IsNil = 0x0d;
-constexpr int kNode_Key   = 0x10;
-constexpr int kNode_VecBegin = 0x14;
-constexpr int kNode_VecEnd   = 0x18;
+// La valeur d'une map est une `pair` : la clé est en tête, et le vecteur suit —
+// d'où les deux décalages ci-dessous plutôt que deux valeurs absolues.
+constexpr int kNode_VecBegin = rag::treenode::kValue + 0x4;
+constexpr int kNode_VecEnd   = rag::treenode::kValue + 0x8;
 // Une recette occupe 16 octets et son PREMIER dword est l'ITID de l'œuf CIBLE —
 // c'est le seul champ que le menu natif en tire (`*i` de la boucle @0x0088678e,
 // avec un `v6 += 4` sur un `_DWORD*`, donc un pas de 16 octets).
@@ -149,11 +145,11 @@ void* FindRecipeNode(int egg_itid) {
   // `_Myhead->_Parent` est la RACINE ; l'en-tête lui-même est toujours _Isnil.
   auto* node = *reinterpret_cast<uint8_t**>(head + 0x04);
   for (int guard = 0; node && guard < kTreeWalkGuard; ++guard) {
-    if (*reinterpret_cast<uint8_t*>(node + kNode_IsNil)) return nullptr;
-    const int key = *reinterpret_cast<int*>(node + kNode_Key);
+    if (*reinterpret_cast<uint8_t*>(node + rag::treenode::kIsNil)) return nullptr;
+    const int key = *reinterpret_cast<int*>(node + rag::treenode::kValue);
     if (egg_itid == key) return node;
     node = *reinterpret_cast<uint8_t**>(node +
-                                        (egg_itid < key ? kNode_Left : kNode_Right));
+                                        (egg_itid < key ? rag::treenode::kLeft : rag::treenode::kRight));
   }
   return nullptr;
 }

@@ -24,6 +24,7 @@
 #include "ui/ro_widgets.h"
 #include "utils/i18n.h"
 #include "ragnarok/job_ids.h"  // rag::IsPlayerJob / IsMonsterJob
+#include "ragnarok/stl_node.h"  // rag::listnode : le nœud du conteneur
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -35,10 +36,6 @@ namespace {
 
 // char* GetSkillName(int id) — wrapper Lua, renvoie « Unknown-Skill » si l'id
 // est inconnu. Même source que l'arbre de compétences et l'infobulle native.
-
-// Le nœud du gestionnaire d'acteurs. Les offsets de l'ACTEUR lui-même vivent
-// dans `rag::actor` ; ici il ne reste que le pas de la liste.
-constexpr int kNode_Actor   = 0x08;   //  node+8          = pointeur acteur
 
 // Modes du nom de sort, cf. CastBar::name_mode_.
 constexpr int kName_Never  = 0;
@@ -247,7 +244,7 @@ void CastBar::SyncWithActors() {
   for (void* node = sentinel ? Read<void*>(sentinel, 0) : nullptr;
        node && node != sentinel && guard < 4096;
        node = Read<void*>(node, 0), ++guard) {
-    void* actor = Read<void*>(node, kNode_Actor);
+    void* actor = Read<void*>(node, rag::listnode::kValue);
     if (actor) apply_visibility(actor, false);
   }
   // 🔴 Le joueur local n'est PAS dans la std::list : il vit à part, à
@@ -291,7 +288,7 @@ void CastBar::RestoreNatives() {
     for (void* node = sentinel ? Read<void*>(sentinel, 0) : nullptr;
          node && node != sentinel && guard < 4096;
          node = Read<void*>(node, 0), ++guard) {
-      void* actor = Read<void*>(node, kNode_Actor);
+      void* actor = Read<void*>(node, rag::listnode::kValue);
       if (!actor) continue;
       void* gage = Read<void*>(actor, rag::actor::kCastGage);
       if (gage) uiwnd::SetVisible(gage, true);
@@ -442,7 +439,7 @@ void CastBar::DrawBars() {
   for (void* node = sentinel ? Read<void*>(sentinel, 0) : nullptr;
        node && node != sentinel && guard < 4096;
        node = Read<void*>(node, 0), ++guard) {
-    draw_one(Read<void*>(node, kNode_Actor));
+    draw_one(Read<void*>(node, rag::listnode::kValue));
   }
   draw_one(own_actor);  // hors liste, cf. SyncWithActors
 }

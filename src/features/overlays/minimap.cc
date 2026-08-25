@@ -23,6 +23,7 @@
 #include "utils/i18n.h"
 #include "utils/log_console.h"
 #include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
+#include "ragnarok/stl_node.h"  // rag::treenode : le nœud du conteneur
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -221,17 +222,14 @@ constexpr int kGm_BossX    = 0x5c4;  // int, cellule
 constexpr int kGm_BossY    = 0x5c8;  // int, cellule
 constexpr int kGm_BossKnown = 0x5cc; // byte : 0 = aucun boss connu
 
-// Nœud de `std::_Tree` (MSVC, 32 bits) : la valeur commence à +0x10, et c'est la
-// CLÉ qui s'y trouve d'abord — les champs utiles sont derrière elle.
-constexpr int kNodeLeft   = 0x00;
-constexpr int kNodeParent = 0x04;
-constexpr int kNodeRight  = 0x08;
-constexpr int kNodeIsNil  = 0x0d;
-constexpr int kNodeValue  = 0x10;  // la clé (GID), puis :
-constexpr int kPos_X      = 0x14;  // groupe/guilde : int ; quête : s16
-constexpr int kPos_Y      = 0x18;  // groupe/guilde : int
-constexpr int kPos_Color  = 0x1c;  // groupe/guilde : D3DCOLOR (ARGB)
-constexpr int kQuest_Y    = 0x16;  // quête : s16
+// La valeur du nœud est une `pair` dont la CLÉ vient en tête (le GID) : les
+// champs utiles sont donc derrière elle, et s'écrivent en DÉCALAGE de la valeur
+// plutôt qu'en absolu — le lien reste visible.
+constexpr int kVal = rag::treenode::kValue;
+constexpr int kPos_X      = kVal + 0x4;  // groupe/guilde : int ; quête : s16
+constexpr int kPos_Y      = kVal + 0x8;  // groupe/guilde : int
+constexpr int kPos_Color  = kVal + 0xc;  // groupe/guilde : D3DCOLOR (ARGB)
+constexpr int kQuest_Y    = kVal + 0x6;  // quête : s16
 constexpr int kQuest_Type = 0x18;  // quête : s16
 constexpr int kQuest_Sub  = 0x1a;  // quête : s16, le %d de quest_%d.bmp
 // Viewpoint : x et y sont aux mêmes offsets que groupe/guilde, la couleur est
@@ -278,12 +276,12 @@ int CollectTree(void* gm, int map_off, TreeKind kind, Marker* out, int cap) {
     if (!head) return 0;
     uint8_t* stack[64];
     int sp = 0;
-    uint8_t* root = Read<uint8_t*>(head, kNodeParent);
+    uint8_t* root = Read<uint8_t*>(head, rag::treenode::kParent);
     if (root && root != head) stack[sp++] = root;
 
     while (sp > 0 && n < cap) {
       uint8_t* node = stack[--sp];
-      if (!node || Read<uint8_t>(node, kNodeIsNil) != 0) continue;
+      if (!node || Read<uint8_t>(node, rag::treenode::kIsNil) != 0) continue;
 
       Marker& m = out[n];
       bool keep = true;
@@ -312,11 +310,11 @@ int CollectTree(void* gm, int map_off, TreeKind kind, Marker* out, int cap) {
       }
       if (keep) ++n;
 
-      uint8_t* l = Read<uint8_t*>(node, kNodeLeft);
-      uint8_t* r = Read<uint8_t*>(node, kNodeRight);
+      uint8_t* l = Read<uint8_t*>(node, rag::treenode::kLeft);
+      uint8_t* r = Read<uint8_t*>(node, rag::treenode::kRight);
       if (sp < 62) {
-        if (l && Read<uint8_t>(l, kNodeIsNil) == 0) stack[sp++] = l;
-        if (r && Read<uint8_t>(r, kNodeIsNil) == 0) stack[sp++] = r;
+        if (l && Read<uint8_t>(l, rag::treenode::kIsNil) == 0) stack[sp++] = l;
+        if (r && Read<uint8_t>(r, rag::treenode::kIsNil) == 0) stack[sp++] = r;
       }
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) { return n; }
@@ -397,12 +395,12 @@ int CollectTownIcons(const char* map_name, TownIcon* out, int cap) {
 
     uint8_t* stack[64];
     int sp = 0;
-    uint8_t* root = Read<uint8_t*>(head, kNodeParent);
+    uint8_t* root = Read<uint8_t*>(head, rag::treenode::kParent);
     if (root && root != head) stack[sp++] = root;
 
     while (sp > 0 && n < cap) {
       uint8_t* node = stack[--sp];
-      if (!node || Read<uint8_t>(node, kNodeIsNil) != 0) continue;
+      if (!node || Read<uint8_t>(node, rag::treenode::kIsNil) != 0) continue;
 
       char key[64];
       if (ReadClientString(node + kTownNode_Key, key, sizeof(key)) &&
@@ -431,11 +429,11 @@ int CollectTownIcons(const char* map_name, TownIcon* out, int cap) {
         break;  // une seule entrée par carte
       }
 
-      uint8_t* l = Read<uint8_t*>(node, kNodeLeft);
-      uint8_t* r = Read<uint8_t*>(node, kNodeRight);
+      uint8_t* l = Read<uint8_t*>(node, rag::treenode::kLeft);
+      uint8_t* r = Read<uint8_t*>(node, rag::treenode::kRight);
       if (sp < 62) {
-        if (l && Read<uint8_t>(l, kNodeIsNil) == 0) stack[sp++] = l;
-        if (r && Read<uint8_t>(r, kNodeIsNil) == 0) stack[sp++] = r;
+        if (l && Read<uint8_t>(l, rag::treenode::kIsNil) == 0) stack[sp++] = l;
+        if (r && Read<uint8_t>(r, rag::treenode::kIsNil) == 0) stack[sp++] = r;
       }
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) { return n; }

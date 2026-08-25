@@ -1,6 +1,7 @@
 #include "ragnarok/globals.h"
 #include "ragnarok/item_info.h"  // rag::itemlist : le layout du noeud
 #include "ragnarok/uiwnd.h"  // uiwnd::kInventoryWndSlot (identifie NOTRE tab control)
+#include "ragnarok/stl_node.h"  // rag::listnode : le nœud du conteneur
 #include "ui/game_texture.h"
 #include "features/patches/inventory_tweaks.h"
 
@@ -182,7 +183,6 @@ constexpr int kEtcSub  = 0x108;  // inv+0x108 = Etc sub-filter (==4 => "show all
 constexpr int kListHead  = 0xe8;  // inv+0xe8 -> head sentinel node (node+0 next, +4 prev)
 constexpr int kListCount = 0xec;  // inv+0xec element count
 using rag::itemlist::kNodeNext;
-constexpr int kNodePrev  = 0x04;  // list node: prev
 constexpr int kNodeType  = 0x08;  // list node: item TYPE (record+0x00)
 
 // Per-tab image base names in the btnbar folder, in VISUAL slot order (top->bottom

@@ -28,6 +28,7 @@
 
 #include <cstdint>
 #include <excpt.h>  // __try/__except (les deux accesseurs gardés, plus bas)
+#include "ragnarok/stl_node.h"  // rag::listnode
 
 namespace gamescene {
 
@@ -43,7 +44,6 @@ constexpr int kGmNameDict = 0x160;  //  gm+0x160  = dictionnaire, objet EMBARQU�
 // traiter.
 constexpr int kAmListHead  = 0x10;  // *(mgr+0x10) = sentinelle std::list<Actor*>
 constexpr int kAmOwnPlayer = 0x2c;  // *(mgr+0x2c) = acteur du joueur local
-constexpr int kNodeActor   = 0x08;  //  node+8     = valeur du nœud (Actor*)
 
 // ── CNameInfo : ce que rend le dictionnaire ──────────────────────────────────
 // Trois std::string MSVC côte à côte. Les offsets ci-dessous sont relatifs au
