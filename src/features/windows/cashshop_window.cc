@@ -223,8 +223,6 @@ constexpr uint16_t kOpClose    = 0x084a;  // CZ cashshop close (2 octets)
 // `open_` retombait tout seul. La native ne naissant plus, plus personne ne nous
 // dit que la session est morte — un warp en pleine boutique (téléporteur, @load,
 // carte de warp) laisserait le viewer à l'écran, à acheter dans le vide.
-constexpr uint16_t kOpMapChange  = 0x0091;  // ZC_NPCACK_MAPMOVE
-constexpr uint16_t kOpServerMove = 0x0092;  // ZC_NPCACK_SERVERMOVE
 
 CashShopWindow::CashShopWindow() {
   // ── ZC_SE_CASHSHOP_OPEN : on prend sa place ────────────────────────────────
@@ -244,8 +242,7 @@ CashShopWindow::CashShopWindow() {
   Bourgeon::Instance().RegisterReplaceOpcode(
       kOpOpen, [this] { return imgui_enabled_; });
   // Warp / changement de serveur : la session d'achat est morte côté serveur.
-  Bourgeon::Instance().RegisterObserveOpcode(kOpMapChange, 4);
-  Bourgeon::Instance().RegisterObserveOpcode(kOpServerMove, 4);
+  Bourgeon::Instance().ObserveWarpPackets();
   // ZC_ACK_SCHEDULER_CASHITEM (var) : [len:2][count:2][tabNum:2] = 6 octets pour
   // atteindre l'en-tête ; les items sont lus directement dans le buffer live.
   Bourgeon::Instance().RegisterObserveOpcode(kOpItemList, 6);
@@ -266,7 +263,7 @@ void CashShopWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data,
 // dans le désordre mélangerait deux onglets.
 void CashShopWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
                                   uint16_t len) {
-  if (opcode == kOpMapChange || opcode == kOpServerMove) {
+  if (Bourgeon::IsWarpPacket(opcode)) {
     if (!open_) return;
     // Warp : le BLOCAGE, lui, est déjà levé — `unit_remove_map_` remet
     // `sd->npc_shopid` à zéro en quittant la carte (unit.cpp). Le personnage n'est
@@ -281,7 +278,7 @@ void CashShopWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
     //
     // Pas sur un changement de SERVEUR (0x0092) : la socket est en train d'être
     // défaite, et la session repart de zéro de l'autre côté.
-    if (opcode == kOpMapChange) {
+    if (opcode == Bourgeon::kOpMapChange) {
       uint16_t op = kOpClose;
       Bourgeon::Instance().SendPacket(reinterpret_cast<uint8_t*>(&op), sizeof(op));
     }

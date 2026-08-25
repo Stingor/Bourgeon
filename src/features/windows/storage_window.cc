@@ -582,8 +582,6 @@ constexpr uint16_t kOpStoreCount = 0x00f2;
 // items du précédent storage resteraient et se mélangeraient au suivant.
 constexpr uint16_t kOpStoreClose = 0x00f8;
 // Changement de map : le serveur ferme le storage sans le dire (cf. CloseLocal).
-constexpr uint16_t kOpMapChange  = 0x0091;  // ZC_NPCACK_MAPMOVE
-constexpr uint16_t kOpServerMove = 0x0092;  // ZC_NPCACK_SERVERMOVE
 
 StorageWindow::StorageWindow() {
   // 🔴 SEUL défaut de ItemViewerBase que cette fenêtre remplace. L'inventaire et
@@ -615,8 +613,7 @@ StorageWindow::StorageWindow() {
   Bourgeon::Instance().RegisterReplaceOpcode(kOpStoreCount,
                                              [this] { return imgui_enabled_; });
   Bourgeon::Instance().RegisterObserveOpcode(kOpStoreClose, 2);
-  Bourgeon::Instance().RegisterObserveOpcode(kOpMapChange, 4);
-  Bourgeon::Instance().RegisterObserveOpcode(kOpServerMove, 4);
+  Bourgeon::Instance().ObserveWarpPackets();
 }
 
 // Prix de vente NPC du storage (ZC_BOURGEON_STORAGE_PRICES). data = payload après
@@ -719,7 +716,7 @@ void StorageWindow::HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t 
     return;
   }
   // Changement de map : fermeture SILENCIEUSE côté serveur (cf. CloseLocal).
-  if (opcode == kOpMapChange || opcode == kOpServerMove) {
+  if (Bourgeon::IsWarpPacket(opcode)) {
     if (open_) CloseLocal();
     return;
   }

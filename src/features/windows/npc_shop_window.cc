@@ -157,8 +157,6 @@ constexpr uint16_t kOpSellList = 0x00c7;  // ZC_PC_SELL_ITEMLIST (var)
 constexpr uint16_t kOpBuyRes   = 0x00ca;  // ZC_PC_PURCHASE_RESULT {result:1}
 constexpr uint16_t kOpSellRes  = 0x00cb;  // ZC_PC_SELL_RESULT {result:1}
 constexpr uint16_t kOpNpcName  = 0x0adf;  // ZC_ACK_REQNAMEALL_NPC {gid:4,groupId:4,name[24],title[24]}
-constexpr uint16_t kOpMapChange  = 0x0091; // ZC_NPCACK_MAPMOVE (changement de map : @load, warp)
-constexpr uint16_t kOpServerMove = 0x0092; // ZC_NPCACK_SERVERMOVE (changement de serveur)
 // Envois (CZ).
 constexpr uint16_t kOpDealAck  = 0x00c5;  // CZ_ACK_SELECT_DEALTYPE {GID:4,type:1}
 constexpr uint16_t kOpBuyReq   = 0x00c8;  // CZ_PC_PURCHASE_ITEMLIST {amount:2,itemId:4}*
@@ -219,8 +217,7 @@ NpcShopWindow::NpcShopWindow() {
   // Changement de map / serveur (@load, warp) : le warp invalide la session shop
   // cote serveur (npc_shopid=0) -> on ferme le viewer pour ne pas laisser une
   // fenetre orpheline. On ne lit pas le payload, juste la reception.
-  Bourgeon::Instance().RegisterObserveOpcode(kOpMapChange, 4);
-  Bourgeon::Instance().RegisterObserveOpcode(kOpServerMove, 4);
+  Bourgeon::Instance().ObserveWarpPackets();
 }
 
 // Fil RÉSEAU : on COPIE, rien de plus (cf. features/net_inbox.h). La liste d'achat
@@ -238,7 +235,7 @@ void NpcShopWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data,
 // Fil PRINCIPAL : le décodage, rejoué à chaque frame, dans l'ordre d'arrivée.
 void NpcShopWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
                                  uint16_t len) {
-  if (opcode == kOpMapChange || opcode == kOpServerMove) {
+  if (Bourgeon::IsWarpPacket(opcode)) {
     // Warp / changement de map -> la session shop est morte cote serveur. On ferme
     // le viewer au prochain OnTick (thread principal ; jamais depuis le thread recv).
     map_changed_ = true;

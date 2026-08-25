@@ -317,8 +317,7 @@ uint16_t RagConnection::PacketBufReaderHook(uint8_t* packet_buf) {
   // ZC_NPCACK_SERVERMOVE (0x0092, cross-server) begins a map transition. Hold the
   // loading gate until the client reports ready (CZ_NOTIFY_ACTORINIT 0x007d, see
   // SendPacketHook) so Bourgeon UI/input stand down while the HUD is rebuilt.
-  if (opcode == 0x0091 || opcode == 0x0092)
-    Bourgeon::Instance().SetMapLoading(true);
+  if (Bourgeon::IsWarpPacket(opcode)) Bourgeon::Instance().SetMapLoading(true);
   // Call the original (just returns opcode = *(uint16_t*)param_1).
   const uint16_t result = PacketBufReaderRef(this, packet_buf);
 

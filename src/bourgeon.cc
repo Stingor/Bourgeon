@@ -492,6 +492,13 @@ void Bourgeon::AddLogLine(std::string log_line) {
   log_lines_.emplace_back(std::move(log_line));
 }
 
+void Bourgeon::ObserveWarpPackets() {
+  // 4 octets suffisent : les trois appelants ne lisent pas le contenu, seule la
+  // RÉCEPTION les intéresse.
+  RegisterObserveOpcode(kOpMapChange, 4);
+  RegisterObserveOpcode(kOpServerMove, 4);
+}
+
 void Bourgeon::SetMapLoading(bool loading) {
   if (loading) {
     map_loading_since_ms_.store(GetTickCount());

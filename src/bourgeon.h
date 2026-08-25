@@ -237,6 +237,26 @@ class Bourgeon {
   // client already handles (e.g. mapname from 0x0091 ZC_NPCACK_MAPMOVE).
   void RegisterObserveOpcode(uint16_t opcode, uint16_t forward_len);
 
+  // ── « Le joueur change de carte » ──────────────────────────────────────
+  // Les deux paquets qui l'annoncent. 🔴 Ce test était écrit QUATRE fois : ici
+  // (le hook de lecture, qui arme `SetMapLoading`) et dans les trois fenêtres
+  // que le serveur ferme en silence quand on quitte la carte — cash shop,
+  // boutique NPC, entrepôt. La copie canonique, celle de `rag_connection`,
+  // l'écrivait en LITTÉRAUX NUS : aucun relevé de `constexpr` ne la voyait.
+  //
+  // ⚠ NE PAS CONFONDRE AVEC `MapLoadEpoch()`. Ces paquets arrivent AVANT le
+  // chargement — c'est ce qui laisse à une boutique le temps d'émettre sa
+  // fermeture pendant qu'on est encore connecté ; l'époque, elle, s'incrémente
+  // pendant. Les deux signaux disent « la carte change » à des instants
+  // différents, et les échanger changerait le comportement.
+  static constexpr uint16_t kOpMapChange  = 0x0091;  // ZC_NPCACK_MAPMOVE
+  static constexpr uint16_t kOpServerMove = 0x0092;  // ZC_NPCACK_SERVERMOVE
+  static bool IsWarpPacket(uint16_t opcode) {
+    return opcode == kOpMapChange || opcode == kOpServerMove;
+  }
+  // Observe les deux, avec la longueur que les trois appelants demandaient déjà.
+  void ObserveWarpPackets();
+
   // RegisterReplaceOpcode: prend la place du handler NATIF d'un paquet standard,
   // de façon révocable — `claim` est interrogé à chaque paquet et un « non » rend
   // la main au handler d'origine, à l'octet près. Détails et garde-fous dans
