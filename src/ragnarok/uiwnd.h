@@ -356,4 +356,28 @@ inline uint8_t* WndAtSlot(uintptr_t slot_addr, uintptr_t expected_vtable) {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
 }
 
+// La même chose, mais par IDENTIFIANT de fenêtre — la moitié qui manquait.
+//
+// 🔴 LA VTABLE N'EST PAS UNE PRÉCAUTION DÉCORATIVE. Un identifiant ne garantit
+// pas la classe : un portage de client peut renuméroter ses fenêtres, et la
+// même valeur désignerait alors autre chose. C'est exactement le genre d'erreur
+// qui ne se voit pas — on lirait des champs à des décalages qui ont un sens dans
+// une autre structure.
+//
+// Le client DÉTRUIT ses fenêtres à la fermeture : un retour non nul signifie donc
+// « ouverte en ce moment », pas « déjà ouverte une fois ».
+//
+// Ce corps était recopié dans QUATRE fichiers — banque, chariot, raffinage,
+// livre — à l'identique, chacun avec son propre `__try`. Un cinquième
+// (`cashshop`) en portait une variante. Il vit ici, à côté de sa jumelle par
+// slot, pour que les deux chemins se lisent au même endroit.
+inline uint8_t* WndOfClass(int window_id, uintptr_t expected_vtable) {
+  __try {
+    auto* wnd = reinterpret_cast<uint8_t*>(FindWindow(window_id));
+    if (!wnd) return nullptr;
+    if (*reinterpret_cast<uintptr_t*>(wnd) != expected_vtable) return nullptr;
+    return wnd;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
+}
+
 }  // namespace uiwnd

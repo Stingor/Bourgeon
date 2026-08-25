@@ -98,14 +98,7 @@ constexpr int kActionClose = 201;   // …201 = fermeture (RE UIBankWnd_OnMsg ca
 
 // La fenêtre banque ouverte, ou nullptr. Le client DÉTRUIT ses fenêtres à la
 // fermeture, donc non-nul == « ouverte en ce moment ».
-uint8_t* BankWnd() {
-  __try {
-    auto* w = reinterpret_cast<uint8_t*>(uiwnd::FindWindow(kWinBank));
-    if (!w) return nullptr;
-    if (*reinterpret_cast<uintptr_t*>(w) != kBankVTable) return nullptr;
-    return w;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
-}
+uint8_t* BankWnd() { return uiwnd::WndOfClass(kWinBank, kBankVTable); }
 
 // Ferme la banque comme le X natif : OnMsg(6, 201) -> SaveRectAndCloseWindow(275).
 void CloseBank() {

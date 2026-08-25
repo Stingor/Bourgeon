@@ -1088,14 +1088,7 @@ bool ItemIsReadableBook(uint32_t id) {
 // ── Fenêtre LIVRE : accès natif ──────────────────────────────────────────────
 // La fenêtre livre si elle est ouverte, sinon null. Contrairement aux descs, elle
 // n'a pas de slot manager dédié (FindWindow tombe sur la map générique). SEH.
-uint8_t* FindBookWindow() {
-  __try {
-    auto* wnd = static_cast<uint8_t*>(uiwnd::FindWindow(kBookWndId));
-    if (wnd == nullptr) return nullptr;
-    if (*reinterpret_cast<uintptr_t*>(wnd) != kBookVTable) return nullptr;
-    return wnd;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
-}
+uint8_t* FindBookWindow() { return uiwnd::WndOfClass(kBookWndId, kBookVTable); }
 
 // Cache le rendu natif de la fenêtre livre sans la détruire (elle reste la source
 // des données et le destinataire des commandes de page). SEH.

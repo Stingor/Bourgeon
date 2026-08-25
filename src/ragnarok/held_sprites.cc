@@ -90,12 +90,23 @@ bool ActExists(const char* base) {
   return ro::spract::ReadFile(path, &bytes);
 }
 
-// Appelle un constructeur à 6 arguments sous SEH (aucun objet C++ dans le __try).
-bool BuildPath6(uintptr_t fn, int job, int sex, int cls, int view, char* dst,
-                size_t dst_size) {
+// ── L'enveloppe commune des trois constructeurs ──────────────────────────────
+// Les trois natifs ne different que par leur ARITE ; tout le reste — la
+// `NativeStr` de sortie, le depouillement, le SEH, le repli sur chaine vide —
+// etait recopie a l'identique.
+//
+// 🔴 L'appel LUI-MEME reste chez chacun, en toutes lettres. Le fondre derriere
+// un paquet d'arguments variadique cacherait la signature du natif, qui est
+// justement ce qu'on veut pouvoir relire — c'est le meme arbitrage que pour les
+// paquets de fil.
+//
+// ⚠ `NativeStr` est du POD : sans quoi la declarer dans le `__try` serait
+// refuse (C2712, « __try dans une fonction qui exige un deroulement d'objet »).
+template <typename Call>
+bool BuildPathWith(char* dst, size_t dst_size, Call call) {
   __try {
     NativeStr s;
-    reinterpret_cast<PathFn6_t>(fn)(&s, job, sex, cls, view, /*style=*/0);
+    call(&s);
     TakeAndStrip(&s, dst, dst_size);
     return dst[0] != '\0';
   } __except (EXCEPTION_EXECUTE_HANDLER) {
@@ -104,34 +115,30 @@ bool BuildPath6(uintptr_t fn, int job, int sex, int cls, int view, char* dst,
   }
 }
 
+// Le constructeur à 6 arguments.
+bool BuildPath6(uintptr_t fn, int job, int sex, int cls, int view, char* dst,
+                size_t dst_size) {
+  return BuildPathWith(dst, dst_size, [=](NativeStr* s) {
+    reinterpret_cast<PathFn6_t>(fn)(s, job, sex, cls, view, /*style=*/0);
+  });
+}
+
 // Idem à 5 arguments (les constructeurs de bouclier).
 bool BuildPath5(uintptr_t fn, int job, int sex, int view, char* dst,
                 size_t dst_size) {
-  __try {
-    NativeStr s;
-    reinterpret_cast<PathFn5_t>(fn)(&s, job, sex, view, /*style=*/0);
-    TakeAndStrip(&s, dst, dst_size);
-    return dst[0] != '\0';
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-    dst[0] = '\0';
-    return false;
-  }
+  return BuildPathWith(dst, dst_size, [=](NativeStr* s) {
+    reinterpret_cast<PathFn5_t>(fn)(s, job, sex, view, /*style=*/0);
+  });
 }
 
 // Constructeur du bouclier GÉNÉRIQUE : un argument de plus (le drapeau, que le
 // natif laisse à 0 pour un bouclier ordinaire).
 bool BuildPath7(uintptr_t fn, int job, int sex, int bucket, int view, char* dst,
                 size_t dst_size) {
-  __try {
-    NativeStr s;
-    reinterpret_cast<PathFn7_t>(fn)(&s, job, sex, bucket, view, /*flag=*/0,
+  return BuildPathWith(dst, dst_size, [=](NativeStr* s) {
+    reinterpret_cast<PathFn7_t>(fn)(s, job, sex, bucket, view, /*flag=*/0,
                                     /*style=*/0);
-    TakeAndStrip(&s, dst, dst_size);
-    return dst[0] != '\0';
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-    dst[0] = '\0';
-    return false;
-  }
+  });
 }
 
 }  // namespace

@@ -280,14 +280,7 @@ int CountRealCards(const uint32_t card[4], int slots) {
 
 // La fenêtre native de refine, ou nullptr. Le client DÉTRUIT ses fenêtres à
 // la fermeture : non-nul == « ouverte en ce moment ».
-uint8_t* RefineWnd() {
-  __try {
-    auto* w = reinterpret_cast<uint8_t*>(uiwnd::FindWindow(kWinRefine));
-    if (!w) return nullptr;
-    if (*reinterpret_cast<uintptr_t*>(w) != kRefineVTable) return nullptr;
-    return w;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
-}
+uint8_t* RefineWnd() { return uiwnd::WndOfClass(kWinRefine, kRefineVTable); }
 
 // Pilote le bouton Annuler de la fenêtre native de refine (id 185).
 //

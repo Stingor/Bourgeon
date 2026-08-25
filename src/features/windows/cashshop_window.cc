@@ -51,14 +51,7 @@ void CloseNativeCashShop() {
 }
 
 // Lit le pointeur de fenêtre valide (vtable vérifiée). SEH-gardé.
-void* FindCashWnd() {
-  __try {
-    void* w = uiwnd::FindWindow(kWinCashShop);
-    if (!w) return nullptr;
-    if (*reinterpret_cast<uintptr_t*>(w) != kCashVTable) return nullptr;
-    return w;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
-}
+void* FindCashWnd() { return uiwnd::WndOfClass(kWinCashShop, kCashVTable); }
 
 // ── Snap de resize : la fenêtre ne prend QUE des tailles tenant un nombre entier
 // de colonnes/lignes de cartes (pas d'espace vide partiel). Le callback arrondit

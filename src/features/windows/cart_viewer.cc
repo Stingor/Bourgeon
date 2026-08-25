@@ -101,12 +101,7 @@ uint8_t* ReadValidWnd(uintptr_t slot, uintptr_t expected_vtable) {
 // interceptée. La vtable est vérifiée car un id ne garantit pas la classe si un
 // portage de client renumérote les fenêtres.
 uint8_t* CartWnd() {
-  __try {
-    auto* w = reinterpret_cast<uint8_t*>(uiwnd::FindWindow(kWinCart));
-    if (!w) return nullptr;
-    if (*reinterpret_cast<uintptr_t*>(w) != uiwnd::kCartWndVTable) return nullptr;
-    return w;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
+  return uiwnd::WndOfClass(kWinCart, uiwnd::kCartWndVTable);
 }
 
 // Envoie une commande UI native (transfert) via le dispatcher.
