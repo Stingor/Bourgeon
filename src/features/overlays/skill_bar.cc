@@ -1,3 +1,4 @@
+#include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 #include "ragnarok/item_db.h"
 #include "ragnarok/globals.h"
 #include "ragnarok/lua.h"
@@ -453,20 +454,9 @@ int GetItemLiveCount(uint32_t nameid) {
 //   détruites (rag::kStdStringDtorAddr, sinon fuite si nom > 15 car.). SEH : on touche Lua + globals.
 using GetHotKey_t = void* (__stdcall*)(void* out, int category, int slot);
 
-// Copie une std::string MSVC vers dst (base = objet string ; +0x10 = size, +0x14 = cap ;
-// data inline si cap<0x10, sinon pointeur). dst NUL-terminé, tronqué à n.
-void CopyMsvcString(const uint8_t* base, char* dst, int n) {
-  if (n < 1) return;
-  dst[0] = '\0';
-  const uint32_t size = *reinterpret_cast<const uint32_t*>(base + 0x10);
-  const uint32_t cap  = *reinterpret_cast<const uint32_t*>(base + 0x14);
-  const char* s = (cap >= 0x10) ? *reinterpret_cast<const char* const*>(base)
-                                : reinterpret_cast<const char*>(base);
-  if (!s || size == 0) return;
-  const int len = size < static_cast<uint32_t>(n - 1) ? static_cast<int>(size) : n - 1;
-  std::memcpy(dst, s, len);
-  dst[len] = '\0';
-}
+// La copie d'une std::string du CLIENT vit dans `rag::clientstr`. Cette
+// fonction-ci en portait une transcription de plus — et sans le `__try` que le
+// foyer, lui, pose autour de la lecture.
 
 // Étiquette de touche d'un slot, lue depuis UserKeys.lua (touche réelle, layout-aware). out>=2.
 // category = catégorie GetHotKey (0=Onglet1, 3=Onglet2) ; <0 (items) => pas d'étiquette.
@@ -477,7 +467,7 @@ void GetSlotKeyLabel(int category, int slot, char* out, int n) {
     alignas(4) uint8_t buf[0x40];
     std::memset(buf, 0, sizeof(buf));
     reinterpret_cast<GetHotKey_t>(userhotkey::kGetHotKeyAddr)(buf, category, slot);
-    CopyMsvcString(buf + 0x08, out, n);                  // out+0x08 = nom de la touche
+    rag::clientstr::CopyTruncating(buf + 0x08, out, n);  // out+0x08 = nom de la touche
     reinterpret_cast<StrFree_t>(rag::kStdStringDtorAddr)(buf + 0x08);   // détruit les 2 std::string du wrapper
     reinterpret_cast<StrFree_t>(rag::kStdStringDtorAddr)(buf + 0x20);
   } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }

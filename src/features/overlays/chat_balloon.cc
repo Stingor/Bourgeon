@@ -15,6 +15,7 @@
 #include "features/moonlight_ui/moonlight_ui.h"
 #include "features/systems/image_preview.h"  // imgprev : emotes Discord deja en cache
 #include "features/windows/chat_window.h"
+#include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 #include "ragnarok/game_scene.h"
 #include "ragnarok/uiwnd.h"
 #include "ui/game_emotes.h"   // ro::emote : les emotes du JEU (emotion.act)
@@ -237,13 +238,14 @@ void ChatBalloon::OnNativeTagTransform(const void* native_string) {
   if (self == nullptr || !self->Active()) return;
   if (Bourgeon::Instance().client().timestamp() != 20250716) return;
 
-  // std::string MSVC : données en place tant que la capacité tient dans l'objet
-  // (+0x10 = taille, +0x14 = capacité), pointeur au-delà.
-  const uint8_t* base = static_cast<const uint8_t*>(native_string);
-  const uint32_t size = *reinterpret_cast<const uint32_t*>(base + 0x10);
-  const uint32_t cap  = *reinterpret_cast<const uint32_t*>(base + 0x14);
-  const char* text = (cap >= 0x10) ? *reinterpret_cast<const char* const*>(base)
-                                   : reinterpret_cast<const char*>(base);
+  // ⚠ `rag::clientstr` et NON un décodage écrit ici. La `std::string` de MSVC —
+  // texte en place tant que la capacité tient dans l'objet, pointeur au-delà —
+  // avait été recopiée ONZE fois sous six noms avant d'être rassemblée dans
+  // `ragnarok/client_string.h`, dont deux copies en ternaire au milieu d'une
+  // fonction plus grande, exactement la forme qu'aucun relevé de doublons ne
+  // voit (cf. project_address_directory, 3ᵉ niveau d'aveuglement).
+  const uint32_t size = rag::clientstr::Size(native_string);
+  const char* text = rag::clientstr::Data(native_string);
   if (text == nullptr || size == 0 || size > 4096) return;
   std::string raw(text, size);
 

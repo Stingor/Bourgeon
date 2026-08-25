@@ -1,3 +1,4 @@
+#include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 #include "ragnarok/globals.h"
 #include "features/systems/native_login.h"
 
@@ -65,15 +66,9 @@ using XmlGetText_t = void*(__fastcall*)(void*);
 constexpr int kMaxConnections = 8;  // borne du natif (boucle `while (v4 < 8)`)
 constexpr int kNameCap = 64;
 
-// Contenu d'un std::string MSVC renvoyé par XmlNode_GetText : +0x10 = taille,
-// +0x14 = capacité ; capacité >= 16 => le champ 0 est un pointeur vers le buffer
-// alloué, sinon la chaîne est stockée en place (SSO).
-const char* StdStringData(void* s) {
-  if (!s) return nullptr;
-  const uint32_t* fields = static_cast<const uint32_t*>(s);
-  return (fields[5] >= 0x10) ? reinterpret_cast<const char*>(fields[0])
-                             : static_cast<const char*>(s);
-}
+// Le contenu d'un std::string du client (ici celui que rend XmlNode_GetText)
+// se lit avec `rag::clientstr::Data` — le foyer que ce décodage-ci recopiait
+// pour la douzième fois, sous un nom de plus (`StdStringData`).
 
 // Remplit `out` avec les <display> des <connection> ; renvoie leur nombre.
 // POD uniquement : le SEH interdit les objets à destructeur dans cette fonction.
@@ -90,7 +85,7 @@ int ReadConnectionDisplaysRaw(char out[kMaxConnections][kNameCap]) {
       out[count][0] = '\0';
       void* display = find_child(connection, "display");
       if (display) {
-        const char* name = StdStringData(get_text(display));
+        const char* name = rag::clientstr::Data(get_text(display));
         if (name) {
           std::strncpy(out[count], name, kNameCap - 1);
           out[count][kNameCap - 1] = '\0';
