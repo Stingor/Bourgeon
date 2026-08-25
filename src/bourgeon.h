@@ -257,6 +257,17 @@ class Bourgeon {
   // Observe les deux, avec la longueur que les trois appelants demandaient déjà.
   void ObserveWarpPackets();
 
+  // ── « La compétence a échoué » ─────────────────────────────────────────
+  // ZC_ACK_TOUSESKILL, que les deux fenêtres de fabrication observent pour
+  // savoir qu'une demande a été refusée. Même patron que ci-dessus : elles
+  // écrivaient les deux mêmes lignes, avec la même longueur.
+  static constexpr uint16_t kOpSkillFail = 0x0110;
+  void ObserveSkillFail();
+
+  // CZ_CONFIG, ÉMIS (pas observé) — la feuille de personnage et le familier
+  // s'en servent tous deux pour pousser un réglage au serveur.
+  static constexpr uint16_t kOpConfig = 0x02d8;
+
   // RegisterReplaceOpcode: prend la place du handler NATIF d'un paquet standard,
   // de façon révocable — `claim` est interrogé à chaque paquet et un « non » rend
   // la main au handler d'origine, à l'octet près. Détails et garde-fous dans

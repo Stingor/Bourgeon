@@ -73,8 +73,6 @@ constexpr uintptr_t kCartMaxWeight = 0x015fb2e0;
 // Dispatcher (CMode) : FUN_00a75340(0x1213338) -> objet mode actif (0 hors jeu).
 // Son vtbl+0x18 = CMode::SendMsg. Commandes de transfert RE'ées sur la fenêtre
 // cart elle-même (UICartWnd_OnRButtonDown branche ALT / OnMsg case 38).
-constexpr int kCmdCartToBody    = 0x4d;  // cart -> inventaire
-constexpr int kCmdCartToStorage = 0x4f;  // cart -> storage (storage ouvert)
 
 // Autres fenêtres, pour router un transfert (cible ouverte ou non) :
 // uiwnd::kInventoryWndSlot / kStorageWndSlot et leurs vtables.
@@ -372,8 +370,8 @@ void CartViewer::OnRenderUI() {
   // ── Action en attente (transfert d'une pile) -> prompt quantité ──
   auto do_move = [this](int amount) {
     switch (pend_action_) {
-      case kPendToBody:    SendCmd(kCmdCartToBody, pend_index_, amount); break;
-      case kPendToStorage: SendCmd(kCmdCartToStorage, pend_index_, amount); break;
+      case kPendToBody:    SendCmd(rag::kCmdCartToBody, pend_index_, amount); break;
+      case kPendToStorage: SendCmd(rag::kCmdCartToStorage, pend_index_, amount); break;
       default: break;
     }
   };
@@ -584,7 +582,7 @@ void CartViewer::OnRenderUI() {
         // vers le storage — exactement l'arbitrage du natif (ALT + clic droit
         // envoie au storage dès qu'il est ouvert, sinon à l'inventaire).
         if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
-          SendCmd(viewers::StorageOpen() ? kCmdCartToStorage : kCmdCartToBody, it.index,
+          SendCmd(viewers::StorageOpen() ? rag::kCmdCartToStorage : rag::kCmdCartToBody, it.index,
                   it.amount);
       }
 
@@ -600,8 +598,8 @@ void CartViewer::OnRenderUI() {
         if (mods.KeyCtrl) {
           POINT pt; if (GetCursorPos(&pt)) OpenItemDesc(it.index, pt.x, pt.y);
         } else if (mods.KeyAlt) {
-          if (viewers::StorageOpen())        SendCmd(kCmdCartToStorage, it.index, it.amount);
-          else if (viewers::InventoryOpen()) SendCmd(kCmdCartToBody, it.index, it.amount);
+          if (viewers::StorageOpen())        SendCmd(rag::kCmdCartToStorage, it.index, it.amount);
+          else if (viewers::InventoryOpen()) SendCmd(rag::kCmdCartToBody, it.index, it.amount);
         } else {
           ImGui::OpenPopup("ctx");
         }
@@ -664,7 +662,7 @@ void CartViewer::OnRenderUI() {
         // Retrait vers l'inventaire : une PILE ouvre le prompt de quantité.
         if (it.amount <= 1) {
           if (ImGui::MenuItem(i18n::Tr("Vers l'inventaire"), nullptr, false, !to_body_off))
-            SendCmd(kCmdCartToBody, it.index, 1);
+            SendCmd(rag::kCmdCartToBody, it.index, 1);
         } else if (ImGui::MenuItem(i18n::Tr("Vers l'inventaire..."), nullptr, false, !to_body_off)) {
           pend_id_ = it.index; pend_index_ = it.index; pend_max_ = it.amount;
           pend_action_ = kPendToBody; pend_open_prompt_ = true;
@@ -679,7 +677,7 @@ void CartViewer::OnRenderUI() {
         if (storage_open) {
           if (it.amount <= 1) {
             if (ImGui::MenuItem(i18n::Tr("Vers le storage"), nullptr, false, !vending_lock))
-              SendCmd(kCmdCartToStorage, it.index, 1);
+              SendCmd(rag::kCmdCartToStorage, it.index, 1);
           } else if (ImGui::MenuItem(i18n::Tr("Vers le storage..."), nullptr, false, !vending_lock)) {
             pend_id_ = it.index; pend_index_ = it.index; pend_max_ = it.amount;
             pend_action_ = kPendToStorage; pend_open_prompt_ = true;

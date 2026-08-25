@@ -140,10 +140,6 @@ constexpr uint8_t kTypeMob = 2;
 constexpr uint8_t kTypeNpc = 3;
 
 // Bits de `known` (e_bourgeon_target_known).
-constexpr uint8_t kKnownHp    = 1;
-constexpr uint8_t kKnownSp    = 2;
-constexpr uint8_t kKnownLevel = 4;
-constexpr uint8_t kKnownKind  = 8;
 
 // Cadence des requêtes serveur. 400 ms : une barre de PV qui se met à jour deux
 // fois et demie par seconde se lit comme continue, et ça reste deux ordres de
@@ -1022,7 +1018,7 @@ void TargetFrame::DrawElements(void* game_mode, void* actor) {
   if (actor && is_mob_) plate = ParseMobPlate(party_);
 
   int level = 0;
-  if (srv_valid_ && (srv_known_ & kKnownLevel)) level = srv_level_;
+  if (srv_valid_ && (srv_known_ & bopcodes::kKnownLevel)) level = srv_level_;
   else if (plate.has_level) level = plate.level;
 
   const bool is_npc = srv_valid_ && srv_type_ == kTypeNpc;
@@ -1221,7 +1217,7 @@ void TargetFrame::DrawElements(void* game_mode, void* actor) {
           double cur = 0.0, max = 0.0;
 
           if (is_hp) {
-            if (srv_valid_ && (srv_known_ & kKnownHp)) {
+            if (srv_valid_ && (srv_known_ & bopcodes::kKnownHp)) {
               known = true; cur = srv_hp_; max = srv_maxhp_;
             } else if (actor) {
               uint32_t gauge_hp = 0, gauge_max = 0;
@@ -1233,7 +1229,7 @@ void TargetFrame::DrawElements(void* game_mode, void* actor) {
                 known = true; cur = plate.hp_pct; max = 100.0;
               }
             }
-          } else if (srv_valid_ && (srv_known_ & kKnownSp)) {
+          } else if (srv_valid_ && (srv_known_ & bopcodes::kKnownSp)) {
             known = true; cur = srv_sp_; max = srv_maxsp_;
           }
 
@@ -1308,7 +1304,7 @@ void TargetFrame::DrawElements(void* game_mode, void* actor) {
           char kind[192];
           kind[0] = '\0';
           const bool from_server =
-              srv_valid_ && (srv_known_ & kKnownKind) && srv_type_ != kTypeNpc;
+              srv_valid_ && (srv_known_ & bopcodes::kKnownKind) && srv_type_ != kTypeNpc;
           if (from_server) {
             const char* race = NameFromTable(
                 kRaceNames, sizeof(kRaceNames) / sizeof(*kRaceNames), srv_race_);

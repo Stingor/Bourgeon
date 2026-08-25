@@ -141,8 +141,7 @@ void PartyFrames::HandlePacket(uint16_t opcode, const uint8_t* data,
   // `known` dit ce qui est RENSEIGNÉ : bit 2 = SP. Un adversaire (hors groupe)
   // reçoit son type et rien d'autre — d'où ce masque, qui distingue « 0 SP » de
   // « SP inconnu ».
-  constexpr uint8_t kKnownSp = 2;
-  if ((data[5] & kKnownSp) == 0) {
+  if ((data[5] & bopcodes::kKnownSp) == 0) {
     vitals_.erase(gid);
     return;
   }

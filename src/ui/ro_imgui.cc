@@ -43,6 +43,9 @@ constexpr char kKoreanFontPath[] = "C:\\Windows\\Fonts\\malgun.ttf";
 // Rotating thread-local scratch so several converted strings can coexist within
 // one frame (e.g. two TextCp949 calls in a row) without clobbering each other.
 std::string& NextScratch() {
+  // ⚠ `utils/i18n.cc` a un anneau du même nom et de la même taille, mais le sien
+  // est `static` quand celui-ci est `thread_local` : les fondre changerait le
+  // comportement, pas seulement le rangement.
   constexpr int kSlots = 8;
   thread_local std::string bufs[kSlots];
   thread_local int idx = 0;

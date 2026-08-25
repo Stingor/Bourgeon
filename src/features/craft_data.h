@@ -18,6 +18,9 @@
 // quelques dizaines de kilo-octets et rien ne le relit en cours de partie.
 namespace craftdata {
 
+// Le plafond d'affinage du serveur. 🔴 `character_sheet` le recopiait.
+constexpr int kMaxRefine = 10;
+
 // Vrai si le fichier a été lu avec succès. Utile pour ne pas afficher une donnée
 // absente comme si elle valait zéro.
 bool Available();

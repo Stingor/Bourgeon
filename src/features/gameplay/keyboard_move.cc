@@ -22,7 +22,6 @@ constexpr uintptr_t kCellValid    = 0x00c6cf80;  // Cell_IsMoveTargetValid
 constexpr uintptr_t kClampReach   = 0x00c69160;  // Move_ClampToReachableCell
 constexpr uintptr_t kNoPathFlag   = 0x0131f764;  // != 0 -> le natif passe en msg 0x10
 
-constexpr int kOffCamera   = 0xd0;   // CGameMode -> pCam
 constexpr int kOffViewMat  = 0x98;   // pCam -> matrice de vue (12 floats)
 
 constexpr int kMsgWalkTo    = 0x11;  // Actor_OnMsg : « marche vers (x,y) »
@@ -106,7 +105,7 @@ bool ScreenDirToCellDelta(void* gm, bool camera_relative, int screen_x,
   if (camera_relative) {
     __try {
       void* cam =
-          *reinterpret_cast<void**>(reinterpret_cast<char*>(gm) + kOffCamera);
+          *reinterpret_cast<void**>(reinterpret_cast<char*>(gm) + gamescene::kGmCamera);
       if (cam && *reinterpret_cast<uintptr_t*>(cam) == ro::camera::kCameraVTable) {
         const float* m = reinterpret_cast<const float*>(
             reinterpret_cast<char*>(cam) + kOffViewMat);

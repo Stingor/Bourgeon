@@ -118,7 +118,6 @@ constexpr int kModeMsgSelectEgg  = 146;
 
 // `CZ_CONFIG` 0x02D8, 10 octets : [op:2][type:4][value:4]. `type = 2` est
 // `CONFIG_PET_AUTOFEED` de `e_config_type` côté serveur (docs §8.2).
-constexpr uint16_t kOpConfig        = 0x02d8;
 constexpr uint32_t kConfigPetAutoFeed = 2;
 
 // `CZ_PET_EVOLUTION` 0x09FB, à longueur variable : [op:2][len:2][eggId:4][items].
@@ -412,7 +411,7 @@ bool SendSelectEgg(int inv_index) {
 
 void SendAutoFeed(bool on) {
   uint8_t pkt[10];
-  *reinterpret_cast<uint16_t*>(pkt + 0) = kOpConfig;
+  *reinterpret_cast<uint16_t*>(pkt + 0) = Bourgeon::kOpConfig;
   *reinterpret_cast<uint32_t*>(pkt + 2) = kConfigPetAutoFeed;
   *reinterpret_cast<uint32_t*>(pkt + 6) = on ? 1u : 0u;
   Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));

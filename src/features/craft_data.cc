@@ -14,7 +14,6 @@ namespace craftdata {
 namespace {
 
 constexpr int kMaxWeaponLevel = 4;
-constexpr int kMaxRefine      = 10;
 // Amplitude maximale d'une plage compressée. Purement défensif : une clé mal
 // formée (« 1101-999999 ») ferait sinon boucler des centaines de milliers de fois
 // et gonfler la table pour rien. Les vraies familles d'armes font quelques

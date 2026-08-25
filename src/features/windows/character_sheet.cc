@@ -56,6 +56,7 @@
 #include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 #include "ragnarok/stl_node.h"  // rag::listnode : le nœud du conteneur
 #include "ragnarok/skill_info.h"  // rag::skillinfo
+#include "features/craft_data.h"  // craftdata::kMaxRefine
 
 //  Constantes RE (client 20250716, base 0x400000 ; cf. project_character_sheet)
 namespace {
@@ -90,10 +91,8 @@ enum { kCompOff = 0, kCompOn = 1, kCompDeco = 2 };
 // RE live 2026-07-11 : cmd 0xFD = « Show Equip » (config 0), cmd 0x148 = « View Costumes » (config 5).
 constexpr int       kCmdShowEquip    = 0xFD;   // config 0 : montrer l'équip aux autres
 constexpr int       kCmdViewCostume  = 0x148;  // config 5 : voir les costumes
-constexpr int       kCmdUseSkill     = 0x45;   // lancer une compétence sur une CIBLE DONNÉE (GID)
 // cmd 0x71 = « lancer la compétence du slot » : c'est LUI qui lit l'INF et décide entre
 // envoi immédiat (self) et passage en mode ciblage (cible / sol / support / piège).
-constexpr int       kCmdUseSkillSlot = 0x71;
 // Struct d'info compétence remplie par le natif : __stdcall(out, skillId). Champs utiles
 // +0x04 trouvée, +0x08 id, +0x0C INF, +0x10 niveau appris. À DÉTRUIRE (2 std::string).
 constexpr int       kSkillEntryFound = 0x04;
@@ -802,7 +801,6 @@ constexpr uint16_t kOpHomunMenu   = 0x022d;
 constexpr uint8_t  kHomunCmdFeed  = 1;
 constexpr uint8_t  kHomunCmdDelete = 2;
 constexpr uint16_t kOpHomunRename = 0x0231;  // {op, name[24]}
-constexpr uint16_t kOpConfig      = 0x02d8;  // CZ_CONFIG {op, type.L, value.L}
 constexpr uint32_t kConfigHomunAutoFeed = 3;
 
 // Ids MsgStringTable — on affiche le libellé EXACT du client, jamais une paraphrase.
@@ -860,7 +858,7 @@ void SendHomunRename(const char* name) {
 // n'écrit RIEN localement, on attend l'accusé — sinon la case mentirait sur un refus.
 void SendHomunAutoFeed(bool on) {
   uint8_t pkt[10];
-  *reinterpret_cast<uint16_t*>(pkt + 0) = kOpConfig;
+  *reinterpret_cast<uint16_t*>(pkt + 0) = Bourgeon::kOpConfig;
   *reinterpret_cast<uint32_t*>(pkt + 2) = kConfigHomunAutoFeed;
   *reinterpret_cast<uint32_t*>(pkt + 6) = on ? 1u : 0u;
   Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
@@ -1930,7 +1928,7 @@ void SendUseSkill(uint16_t skillId, int level) {
       int lv = level < 1 ? 1 : level;
       if (owned > 0 && lv > owned) lv = owned;
       if (found) {
-        rag::ModeSendMsg(d, kCmdUseSkillSlot,
+        rag::ModeSendMsg(d, rag::kCmdUseSkillSlot,
                                      static_cast<int>(reinterpret_cast<uintptr_t>(entry)),
                                      lv, 0, 0);
         dispatched = true;
@@ -1941,7 +1939,7 @@ void SendUseSkill(uint16_t skillId, int level) {
       // GID de notre acteur = notre AID : les compétences de guilde se lancent sur soi.
       const uint32_t self = rag::OwnAccountId();
       if (self)
-        rag::ModeSendMsg(d, kCmdUseSkill, skillId, static_cast<int>(self),
+        rag::ModeSendMsg(d, rag::kCmdUseSkill, skillId, static_cast<int>(self),
                                      level, 0);
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
@@ -2200,7 +2198,6 @@ constexpr int kSpeedUiMax   = 500;
 // (moonlight, src/map/status.hpp), et ce serveur est PRE-RENEWAL — `RENEWAL` est
 // commenté dans src/config/renewal.hpp. Le serveur clampe de toute façon ; borner ici
 // évite juste de proposer une course dont la moitié ne fait rien.
-constexpr int kMaxRefine = 10;
 
 // Plafonds de SAISIE des rangées d'ajustement. Ce ne sont pas des règles de jeu — le
 // serveur clampe déjà tout (`pc_maxparameter`, `pc_maxbaselv`, `MAX_ZENY`) — mais des
@@ -8639,7 +8636,7 @@ void CharacterSheet::DrawStaffPanel() {
     // donc la rangée à la main plutôt que de tordre le lambda pour un seul appelant.
     ImGui::PushID("refine");
     if (staff_refine_step_ < 1)          staff_refine_step_ = 1;
-    if (staff_refine_step_ > kMaxRefine) staff_refine_step_ = kMaxRefine;
+    if (staff_refine_step_ > craftdata::kMaxRefine) staff_refine_step_ = craftdata::kMaxRefine;
     const uint32_t mask = kRefinePos[staff_refine_pos_].mask;
     char line[48];
     if (ro::RoButton("-", btn, btn)) {

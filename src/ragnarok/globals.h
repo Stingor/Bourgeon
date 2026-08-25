@@ -204,6 +204,14 @@ constexpr int kVfModeSendMsg = 0x18;  // vtable +0x18, soit l'index 6
 //
 // Les paramètres qui transportent un POINTEUR passent par un int — x86, donc
 // même largeur (c'est le cas du titre de salon dans chat_room_window).
+// ── Les COMMANDES de ce dispatcher ───────────────────────────────────────────
+// 🔴 Le dispatcher avait son foyer depuis longtemps ; son VOCABULAIRE, non.
+// `kCmdUseSkill` vivait dans TROIS fichiers, les deux autres dans deux chacun.
+constexpr int kCmdUseSkill      = 0x45;  // { skillId, cibleGID, niveau }
+constexpr int kCmdUseSkillSlot  = 0x71;  // lancer, routé par l'INF de la compétence
+constexpr int kCmdCartToBody    = 0x4d;  // chariot -> inventaire
+constexpr int kCmdCartToStorage = 0x4f;  // chariot -> entrepôt (entrepôt ouvert)
+
 inline int ModeSendMsg(void* mode, int cmd, int p2 = 0, int p3 = 0, int p4 = 0,
                        int p5 = 0) {
   if (!mode) return 0;

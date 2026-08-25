@@ -208,7 +208,6 @@ constexpr PotionBonus kPotionBonuses[] = {
 using rag::itemlist::kNodeNext;
 using rag::itemlist::kNodeInfo;
 using rag::itemlist::kNodeAmount;
-constexpr int kMaxInvNodes = 4096; // garde-fou de parcours
 
 // ItemSkillInfo : ctor/dtor natifs. Nécessaires UNIQUEMENT pour la commande 130,
 // qui attend un tableau de TROIS structures (§3.4). On les construit vides : le
@@ -235,12 +234,10 @@ constexpr uint16_t kOpMakableList  = 0x018d;  // ZC_MAKABLEITEMLIST   (VARIABLE)
 constexpr uint16_t kOpMakeResult   = 0x018f;  // ZC_ACK_REQMAKINGITEM (fixe, 8)
 constexpr uint16_t kOpArrowList    = 0x01ad;  // ZC_MAKINGARROW_LIST  (VARIABLE) -> fen. 94
 constexpr uint16_t kOpMakingList   = 0x025a;  // ZC_MAKINGITEM_LIST   (VARIABLE) -> fen. 94
-constexpr uint16_t kOpSkillFail    = 0x0110;  // ZC_ACK_TOUSESKILL
 
 // Octets transmis à OnRecvPacket pour les paquets FIXES : la longueur du paquet
 // MOINS son opcode, que RegisterObserveOpcode a déjà consommé.
 constexpr uint16_t kMakeResultLen = 6;   // 8 - 2 : u16 result + u32 itemId
-constexpr uint16_t kSkillFailLen  = 12;
 
 // Tailles d'entrée des trois listes (§3.1 à §3.3).
 constexpr int kEntryMakable = 16;  // { u32 itemId ; u32 material[3] } — les 3 sont à ZÉRO
@@ -253,7 +250,7 @@ constexpr int kMaxEntries   = 512; // garde-fou
 constexpr unsigned kMinSendIntervalMs = 300;
 // Fenêtre pendant laquelle un ZC_ACK_TOUSESKILL est considéré comme la réponse à
 // NOTRE demande. C'est une borne temporelle faute de mieux : l'id de compétence
-// n'est dans aucun des paquets de liste (cf. le parseur de kOpSkillFail).
+// n'est dans aucun des paquets de liste (cf. le parseur de Bourgeon::kOpSkillFail).
 constexpr unsigned kSkillFailWindowMs = 3000;
 // Laisse passer le délai de cast avant de relancer la compétence.
 //
@@ -297,8 +294,6 @@ constexpr int kMaxStaleShown = 8;
 // jour d'inventaire ; ré-utiliser trop tôt ferait résoudre l'identifiant sur un
 // inventaire encore périmé.
 constexpr unsigned kAutoReuseDelayMs = 300;
-
-constexpr int       kCmdUseSkill  = 0x45;  // { skillId, cibleGID, niveau }
 
 // ── Palette ──────────────────────────────────────────────────────────────────
 // Le corps d'une fenêtre RO est CLAIR : tout ce qui est coloré ici est SATURÉ et
@@ -430,7 +425,7 @@ int DetectIndexOffset(unsigned wanted, int hits_out[kIndexCandidateCount]) {
     if (!head) return -1;
     uint8_t* node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
     int guard = 0;
-    while (node && node != head && guard++ < kMaxInvNodes) {
+    while (node && node != head && guard++ < rag::itemlist::kWalkGuard) {
       const int amount = *reinterpret_cast<const int*>(node + kNodeAmount);
       if (amount > 0) {
         for (int i = 0; i < kIndexCandidateCount; ++i)
@@ -467,7 +462,7 @@ bool FindInvNode(uint32_t want_id, unsigned want_index, uint32_t* out_id,
     if (!head) return false;
     uint8_t* node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
     int guard = 0;
-    while (node && node != head && guard++ < kMaxInvNodes) {
+    while (node && node != head && guard++ < rag::itemlist::kWalkGuard) {
       const uint8_t* info = node + kNodeInfo;
       const unsigned idx  = *reinterpret_cast<const unsigned*>(node + node_index_off);
       const int amount    = *reinterpret_cast<const int*>(node + kNodeAmount);
@@ -634,7 +629,7 @@ int SnapshotInventory(uint32_t* ids, int* amounts, int max) {
     if (!head) return 0;
     uint8_t* node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
     int guard = 0;
-    while (node && node != head && guard++ < kMaxInvNodes && n < max) {
+    while (node && node != head && guard++ < rag::itemlist::kWalkGuard && n < max) {
       const uint8_t* info = node + kNodeInfo;
       const int amount = *reinterpret_cast<const int*>(node + kNodeAmount);
       node = *reinterpret_cast<uint8_t**>(node + kNodeNext);
@@ -862,7 +857,7 @@ MakeItemWindow::MakeItemWindow() {
   // Le natif y affiche un message de chat qu'on veut garder (et que notre fenêtre
   // ne duplique pas), et ils n'ouvrent aucune fenêtre.
   Bourgeon::Instance().RegisterObserveOpcode(kOpMakeResult, kMakeResultLen);
-  Bourgeon::Instance().RegisterObserveOpcode(kOpSkillFail, kSkillFailLen);
+  Bourgeon::Instance().ObserveSkillFail();
   // Maîtrise culinaire (ZC 0x0F1C) : la SEULE donnée du calcul de cuisine que le
   // client ne peut pas déduire. Opcode custom > 0x0C35, donc hors table du client
   // et livré par le reader-hook. Poussé au login vérifié et à chaque changement.
@@ -1344,7 +1339,7 @@ void MakeItemWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
     return;
   }
 
-  if (opcode == kOpSkillFail) {
+  if (opcode == Bourgeon::kOpSkillFail) {
     // Plusieurs sorties serveur répondent par ZC_ACK_TOUSESKILL au lieu de
     // 0x018F. Sans l'observer, une demande refusée laisserait la fenêtre « en
     // attente du serveur… » pour une réponse déjà arrivée.
@@ -1680,7 +1675,7 @@ void MakeItemWindow::OnTick() {
   // ── Chien de garde de la relance ───────────────────────────────────────────
   // La relance est partie et AUCUNE liste n'est revenue. Contrairement au refine, on
   // ne peut pas s'appuyer sur le ZC 0x0110 pour le savoir : son paquet ne porte pas
-  // l'identifiant de compétence exploitable ici (cf. le parseur de kOpSkillFail), et
+  // l'identifiant de compétence exploitable ici (cf. le parseur de Bourgeon::kOpSkillFail), et
   // un refus sans rapport passerait pour le nôtre. Le temps, lui, ne se trompe pas.
   if (relaunch_sent_at_ &&
       static_cast<int>(GetTickCount() - relaunch_sent_at_) >
@@ -1878,7 +1873,7 @@ void MakeItemWindow::SendRecast() {
   // reference_cmode_sendmsg_use_skill — Arrow Vulcan partait sur soi-même).
   // Le NIVEAU est celui du lancement observé, pas 1 : c'est lui que le serveur
   // range dans `menuskill_val` et qui décide de ce que la liste contiendra.
-  rag::RawModeSendMsgSafe(kCmdUseSkill, skill_id_, static_cast<int>(aid), skill_lv_);
+  rag::RawModeSendMsgSafe(rag::kCmdUseSkill, skill_id_, static_cast<int>(aid), skill_lv_);
   // 🔴 On remet l'horloge à l'heure NOUS-MÊMES, exactement comme SendReuseItem le
   // fait côté objet. Notre envoi ne repasse PAS par l'observation : le hook de
   // CMode::SendMsg ne note qu'au niveau le plus externe (`g_send_msg_depth == 1`)

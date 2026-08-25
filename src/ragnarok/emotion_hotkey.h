@@ -25,6 +25,9 @@ namespace emohotkey {
 // Dix, et c'est une contrainte du client : le vecteur est dimensionné par son
 // chargeur, les comportements de raccourci 200..209 indexent dedans, et
 // `EmotionHotkey_IsDirty` compare exactement dix paires.
+// ⚠ Dix emplacements de MACRO. Rien à voir avec les dix de `rag::equip`, qui
+// sont ceux de l'ÉQUIPEMENT : même nom, même valeur, aucun rapport. Ne pas les
+// fusionner sur la foi d'un relevé par valeur.
 constexpr int kSlotCount = 10;
 
 // Longueur maximale d'une macro, en octets de la code-page du client.

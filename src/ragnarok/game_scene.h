@@ -34,6 +34,7 @@ namespace gamescene {
 
 // ── CGameMode ────────────────────────────────────────────────────────────────
 constexpr int kGmActorMgr = 0xcc;   // *(gm+0xcc) = gestionnaire d'acteurs
+constexpr int kGmCamera   = 0xd0;   // *(gm+0xd0) = la caméra — le voisin immédiat
 constexpr int kGmNameDict = 0x160;  //  gm+0x160  = dictionnaire, objet EMBARQUÉ
                                     //             (pas un pointeur à déréférencer)
 

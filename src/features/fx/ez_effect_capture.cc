@@ -18,7 +18,6 @@ namespace ez_capture {
 namespace {
 
 // ── Adresses natives (client 20250716, base 0x400000) ─────────────────────────
-     constexpr int       kOffCamera         = 0xd0;        // CMode -> caméra
 constexpr int       kOffViewMtx        = 0x98;        // caméra -> matrice de vue
 constexpr uintptr_t kSceneProject      = 0x005541b0;  // Scene_ProjectWorldToScreen(ctx,_,world,view,&sx,&sy,&invW)
 constexpr uintptr_t kDepthScale        = 0x00553e80;  // Effect_DepthToScreenScale(ctx,_,invW) -> float
@@ -524,7 +523,7 @@ bool ProjectAnchor(const DrawOpts& o, float* ax, float* ay, float* screen_scale)
   bool ok = false;
   __try {
     void* gm = rag::ActiveModeIfReady();
-    void* cam = gm ? *reinterpret_cast<void**>(reinterpret_cast<char*>(gm) + kOffCamera) : nullptr;
+    void* cam = gm ? *reinterpret_cast<void**>(reinterpret_cast<char*>(gm) + gamescene::kGmCamera) : nullptr;
     float* view =
         cam ? reinterpret_cast<float*>(reinterpret_cast<char*>(cam) + kOffViewMtx) : nullptr;
     if (view) {

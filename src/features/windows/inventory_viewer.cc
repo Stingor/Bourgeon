@@ -83,7 +83,6 @@ constexpr int kCmdAmmo      = 0x57;
 constexpr int kCmdEquipAlt  = 0x12e;  // Ctrl+double-clic : équipe en MAIN GAUCHE (dual-wield).
 constexpr uintptr_t kLeftHandEquipOpt = 0x01602278;  // DAT_01602278 : option client "équip main gauche" active ?
 constexpr int kCmdToCart    = 0x4c;
-constexpr int kCmdCartToBody = 0x4d;  // cart -> inventaire (retrait) ; RE UIInventoryWnd_OnMsg case 0x26 (contexte cart).
 constexpr int kCmdToStorage = 0x37;  // storage KAFRA.
                                      // 0x33 = guilde (fenêtre 0x271b), 0x4c = cart.
                                      // RE UIInventoryWnd_OnRButtonDown : le natif choisit selon
@@ -203,7 +202,7 @@ void SendCmd(int cmd, int index, int arg2) {
   // Garde-fou pour les seuls TRANSFERTS (les raccourcis double-clic / Alt+clic
   // droit ne passent pas par un widget désactivé). Volontairement limité à ces
   // trois commandes : utiliser ou équiper reste permis pendant une composition.
-  if ((cmd == kCmdToCart || cmd == kCmdCartToBody || cmd == kCmdToStorage) &&
+  if ((cmd == kCmdToCart || cmd == rag::kCmdCartToBody || cmd == kCmdToStorage) &&
       viewers::VendingComposing())
     return;
   __try {

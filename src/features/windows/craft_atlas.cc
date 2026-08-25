@@ -30,7 +30,6 @@ namespace {
 using rag::itemlist::kNodeNext;
 using rag::itemlist::kNodeInfo;
 using rag::itemlist::kNodeAmount;
-constexpr int       kMaxInvNodes  = 4096;  // garde-fou de parcours
 
 // Résolveur de nom de compétence LOCALISÉ (wrapper Lua natif, cf. skill_bar et
 // character_sheet) : char* GetSkillName(int id), « Unknown-Skill » si inconnu.
@@ -135,7 +134,7 @@ void CraftAtlas::RebuildOwned() {
     if (!head) return;
     uint8_t* node = *reinterpret_cast<uint8_t**>(head + kNodeNext);
     int guard = 0;
-    while (node && node != head && guard++ < kMaxInvNodes) {
+    while (node && node != head && guard++ < rag::itemlist::kWalkGuard) {
       const uint8_t* info = node + kNodeInfo;
       const int amount = *reinterpret_cast<const int*>(node + kNodeAmount);
       const uint32_t id = rag::itemlist::ItemId(info);

@@ -46,6 +46,15 @@ constexpr uint16_t kUiCaps      = 0x0F24;  // CZ_BOURGEON_UI_CAPS (ce que l'inte
 constexpr uint16_t kNpcAdmin    = 0x0F25;  // CZ_BOURGEON_NPC_ADMIN (recharger/décharger/déplacer un NPC — ADMIN)
 constexpr uint16_t kStyle       = 0x0F26;  // CZ_BOURGEON_STYLE (style choisi : couleurs de corps, palette de cheveux, coiffure)
 constexpr uint16_t kReqTargetInfo = 0x0F29;  // CZ_BOURGEON_TARGET_INFO (état de l'entité ciblée ; réémis tant que la fenêtre de cible est ouverte)
+// Les bits du champ `known` de sa RÉPONSE : ils disent ce qui est RENSEIGNÉ.
+// Un adversaire hors groupe ne reçoit que son type — d'où ce masque, seul moyen
+// de distinguer « 0 SP » de « SP inconnu ». 🔴 `target_frame` les portait tous
+// les quatre et `party_frames` en recopiait un : c'est le paquet qui les définit,
+// pas ses lecteurs.
+constexpr uint8_t kKnownHp    = 1;
+constexpr uint8_t kKnownSp    = 2;
+constexpr uint8_t kKnownLevel = 4;
+constexpr uint8_t kKnownKind  = 8;
 constexpr uint16_t kPlayerAdmin = 0x0F2B;  // CZ_BOURGEON_PLAYER_ADMIN (outillage staff sur un joueur : venir, mute, jail, ban, points d'event)
 
 // --- ZC : serveur -> client (livrés par le reader-hook) ---------------------

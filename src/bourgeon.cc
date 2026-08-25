@@ -499,6 +499,12 @@ void Bourgeon::ObserveWarpPackets() {
   RegisterObserveOpcode(kOpServerMove, 4);
 }
 
+void Bourgeon::ObserveSkillFail() {
+  // 12 octets : l'en-tête du paquet MOINS son opcode, que RegisterObserveOpcode
+  // a déjà consommé.
+  RegisterObserveOpcode(kOpSkillFail, 12);
+}
+
 void Bourgeon::SetMapLoading(bool loading) {
   if (loading) {
     map_loading_since_ms_.store(GetTickCount());

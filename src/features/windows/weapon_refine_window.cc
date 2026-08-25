@@ -52,7 +52,6 @@ namespace {
 // fabriquer le paquet — c'est la règle du projet, et ici elle évite en prime de
 // dupliquer la construction d'en-tête.
 constexpr int kCmdRefine  = 182;   // { index } -> CZ_REQ_WEAPONREFINE 0x0222
-constexpr int kCmdUseSkill = 0x45;  // { skillId, cibleGID, niveau } -> lancer un skill
 
 // Le skill lui-même (db/pre-re/skill_db.yml du fork moonlight).
 constexpr int kSkillWeaponRefine = 477;  // WS_WEAPONREFINE, MaxLevel 10
@@ -77,8 +76,6 @@ int OwnSp() {
     return rag::OwnSp();
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
 }
-
-constexpr int kMaxInvNodes = 4096;  // garde-fou de parcours
 
 // Minerais de refine, par niveau d'arme (serveur : skill_weaponrefine, §7).
 // Ce n'est PAS une table de gameplay inventée ici : c'est la copie exacte du
@@ -177,8 +174,6 @@ constexpr uint16_t kOpRefineAck  = 0x0223;  // ZC_ACK_WEAPONREFINE (fixe, 10)
 // serveur… » jusqu'au délai de garde, pour une réponse déjà arrivée.
 //   +0 u16 skillId | +2 i32 btype | +6 u32 itemId | +10 u8 flag | +11 u8 cause
 // (offsets APRÈS l'opcode ; total 14 sur le fil, donc 12 transmis).
-constexpr uint16_t kOpSkillFail  = 0x0110;
-constexpr uint16_t kSkillFailLen = 12;
 // Octets transmis à OnRecvPacket pour 0x0223 : la longueur du paquet MOINS son
 // opcode, que RegisterObserveOpcode a déjà consommé. Le paquet fait 10 en tout
 // (u16 op + u32 result + u32 itemId) : il en reste 8.
@@ -385,7 +380,7 @@ WeaponRefineWindow::WeaponRefineWindow() {
   Bourgeon::Instance().RegisterReplaceOpcode(kOpRefineList,
                                              [this] { return imgui_enabled_; });
   Bourgeon::Instance().RegisterObserveOpcode(kOpRefineAck, kRefineAckLen);
-  Bourgeon::Instance().RegisterObserveOpcode(kOpSkillFail, kSkillFailLen);
+  Bourgeon::Instance().ObserveSkillFail();
 }
 
 // ── Capture ──────────────────────────────────────────────────────────────────
@@ -539,7 +534,7 @@ void WeaponRefineWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
   // Refus générique : le serveur a répondu, mais par ZC_ACK_TOUSESKILL. On ne
   // réagit que si on attendait VRAIMENT un résultat de refine et que c'est bien
   // notre compétence — 0x0110 sert à tous les skills du jeu.
-  if (opcode == kOpSkillFail) {
+  if (opcode == Bourgeon::kOpSkillFail) {
     if (len < 2) return;
     uint16_t skill_id = 0;
     __try {
@@ -1204,7 +1199,7 @@ void WeaponRefineWindow::FlushPending() {
       const int level = std::max(1, RefineSkillLevel());
       const uint32_t self = rag::OwnAccountIdSafe();
       if (self) {
-        rag::RawModeSendMsgSafe(kCmdUseSkill, kSkillWeaponRefine, static_cast<int>(self),
+        rag::RawModeSendMsgSafe(rag::kCmdUseSkill, kSkillWeaponRefine, static_cast<int>(self),
                     level);
         // Relance EN VOL. Le serveur peut la jeter (délai de cast) sans qu'aucune
         // liste ne revienne : c'est ce marqueur qui permet de s'en apercevoir, via

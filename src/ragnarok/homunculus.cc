@@ -55,7 +55,6 @@ constexpr uintptr_t kJobNameEnd = 0x015fb34c;
 // dispatcher — on emprunte le même, la struct étant un objet C++ qu'on ne sait pas
 // construire soi-même.
 constexpr uintptr_t kSkillGetAt = 0x00d80810;
-constexpr int kCmdUseSkillSlot = 0x71;            // « lancer, routé par l'INF »
 
 using GetAt_t   = void* (__fastcall*)(void*, void*, void*, int);
 
@@ -134,7 +133,7 @@ bool LaunchSEH(int pos, int level) {
       const int owned = *reinterpret_cast<const int*>(info + rag::skillinfo::kLevel);
       int lv = level < 1 ? 1 : level;
       if (owned > 0 && lv > owned) lv = owned;  // le natif refuse au-dessus de l'appris
-      rag::ModeSendMsg(d, kCmdUseSkillSlot,
+      rag::ModeSendMsg(d, rag::kCmdUseSkillSlot,
                                           static_cast<int>(reinterpret_cast<uintptr_t>(info)),
                                           lv, 0, 0);
       sent = true;
