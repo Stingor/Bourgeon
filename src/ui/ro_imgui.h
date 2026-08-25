@@ -578,6 +578,19 @@ void RegisterEscapeMinimizeWindow(bool* p_request_collapse);
 // Le toolkit DEMANDE un type de curseur RO (valeur de *(CursorMgr+0x50)) pour la
 // frame courante ; le hook curseur (ragnarok_client) l'applique quand la souris
 // est sur une fenêtre ImGui. 0 = flèche. Appelé par les widgets au survol.
+// Les types de curseur que le toolkit sait demander. 🔴 CINQ fichiers
+// redeclaraient cette valeur, parce que l'API demandait un `int` sans nommer
+// ce qu'elle accepte — le défaut classique d'une signature trop large.
+//
+// ⚠ ET IL FAUT PASSER PAR `SetHoverCursor`. `ImGui::SetMouseCursor` est un NO-OP
+// dans ce client : `io.ConfigFlags` porte `NoMouseCursorChange`. Quatre fichiers
+// répétaient cette phrase à côté de leur copie de la constante.
+//
+// 🔴 VÉRIFIÉE EN JEU (cf. project_ro_cursor) — et c'est une leçon sur les copies :
+// `ro_imgui.cc` portait encore « à confirmer », `weapon_refine_window` disait
+// « vérifié ». Sur cinq copies, la plus ancienne n'est pas la plus juste.
+constexpr int kCursorHand = 2;
+
 void SetHoverCursor(int ro_cursor_type);
 // Lu+remis à 0 par le hook curseur, une fois par frame (évite un état figé).
 int TakeHoverCursor();

@@ -409,19 +409,15 @@ constexpr uintptr_t kShopAmountBySrc  = 0x00D5BF40;
 constexpr int    kRecSize    = 0x100;
 constexpr int    kRecSrcIdx  = 0x04;  // index source (cart / inventaire)
 constexpr int    kRecQty     = 0x10;  // quantité — modifiable AVANT de poser
-constexpr int    kRecString1 = 0x2C;
-constexpr int    kRecString2 = 0x44;
 using StrDtor_t = void(__fastcall*)(void*);
 
-// Commandes du msg 6 (clic bouton) — cf. §5 de la doc.
-constexpr int kMsgButton   = 6;
-constexpr int kMsgRebuild  = 23;  // reconstruit la liste d'affichage depuis la session
 // Charges de glisser INTERNES à cette fenêtre (ImGui, pas le drag natif — celui-ci
 // transporte un ItemSkillInfo complet dans le mode de jeu et n'est pas reproductible).
 // Elles ne portent qu'un INDEX de ligne, relu juste avant la mutation.
 constexpr const char* kDndAvail = "VEND_AVAIL";  // stock -> échoppe
 constexpr const char* kDndRow   = "VEND_ROW";    // échoppe -> stock
 
+// Commandes du msg 6 (clic bouton) — cf. §5 de la doc.
 constexpr int kCmdOk       = 184;  // valide et ouvre l'échoppe
 constexpr int kCmdCancel   = 185;
 constexpr int kCmdSafeChk  = 213;  // bascule « safe check for over 10 mil zeny »
@@ -664,7 +660,7 @@ void SetEditText(void* wnd, int edit_off, const char* text) {
 
 void SendButton(void* wnd, int cmd) {
   __try {
-    uiwnd::OnMsg(wnd, kMsgButton, cmd, 0, 0, 0);
+    uiwnd::OnMsg(wnd, uiwnd::kMsgUiAction, cmd, 0, 0, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -674,7 +670,7 @@ void SendButton(void* wnd, int cmd) {
 // veut pas, nos prix sont à nous).
 void SendRebuild(void* wnd) {
   __try {
-    uiwnd::OnMsg(wnd, kMsgRebuild, 0, 0, 0, 0);
+    uiwnd::OnMsg(wnd, uiwnd::kMsgRebuild, 0, 0, 0, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -691,8 +687,8 @@ void* SessionBase() { return reinterpret_cast<void*>(rag::kSessionAddr); }
 
 void RecDtor(uint8_t* rec) {
   __try {
-    reinterpret_cast<StrDtor_t>(rag::kStdStringDtorAddr)(rec + kRecString2);
-    reinterpret_cast<StrDtor_t>(rag::kStdStringDtorAddr)(rec + kRecString1);
+    reinterpret_cast<StrDtor_t>(rag::kStdStringDtorAddr)(rec + rag::itemlist::kInfoStr2);
+    reinterpret_cast<StrDtor_t>(rag::kStdStringDtorAddr)(rec + rag::itemlist::kInfoIdStr);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 

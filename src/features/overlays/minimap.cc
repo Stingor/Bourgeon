@@ -59,11 +59,9 @@ constexpr int kMapInfo_Cell   = 0x118;  // int, taille d'une cellule en unités 
 // la seule chose qui dit au joueur ce que ce bouton fait CHEZ NOUS.
 constexpr char kCfgButtonName[] = "viewon";
 
-// Curseur RO « main » : la valeur que le hook curseur pose dans *(CursorMgr+0x50)
-// pour la frame en cours. Le natif la montre sur tout ce qui se clique — nos
-// boutons dessinés à la main doivent la demander eux-mêmes, `ro::RoButton` le
+// ⚠ Le natif montre la main sur tout ce qui se clique — nos boutons dessinés à la
+// main doivent la demander eux-mêmes ; `ro::RoButton` le
 // fait déjà pour les siens.
-constexpr int kRoCursorHand = 2;
 
 // Les deux écrans natifs qu'on ne remplace pas encore sont offerts depuis le
 // menu : `uiwnd::kUIRoMapWnd` et `uiwnd::kUINavigationV4Wnd`. Comment
@@ -1054,7 +1052,7 @@ void Minimap::OnRenderUI() {
               ImGui::PushID(i);
               ImGui::InvisibleButton("##mm_npc", ImVec2(th * 2.0f, th * 2.0f));
               if (ImGui::IsItemHovered()) {
-                ro::SetHoverCursor(kRoCursorHand);
+                ro::SetHoverCursor(ro::kCursorHand);
                 if (town[i].name[0])
                   ImGui::SetTooltip("%s", ro::LocalToUtf8(town[i].name));
               }
@@ -1125,7 +1123,7 @@ void Minimap::OnRenderUI() {
               ImGui::PushID(static_cast<int>(i));
               ImGui::InvisibleButton("##mm_memo_pt", ImVec2(mh * 2.0f, mh * 2.0f));
               if (ImGui::IsItemHovered()) {
-                ro::SetHoverCursor(kRoCursorHand);
+                ro::SetHoverCursor(ro::kCursorHand);
                 ImGui::SetTooltip("%s\n%d, %d",
                                   memo.name.empty() ? i18n::Tr("(sans nom)")
                                                     : memo.name.c_str(),
@@ -1441,7 +1439,7 @@ void Minimap::OnRenderUI() {
         const bool b_down = ImGui::IsItemActive();
         if (ImGui::IsItemClicked()) ImGui::OpenPopup("##mm_cfg_popup");
         if (b_hover) {
-          ro::SetHoverCursor(kRoCursorHand);
+          ro::SetHoverCursor(ro::kCursorHand);
           ImGui::SetTooltip("%s", i18n::Tr("Réglages de la minimap"));
         }
         ImGui::SetCursorScreenPos(saved);

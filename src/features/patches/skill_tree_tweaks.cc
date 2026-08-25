@@ -7,6 +7,7 @@
 #include "ragnarok/globals.h"
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
+#include "ragnarok/uiwnd.h"  // uiwnd : le protocole UIWindow
 
 // ── Skill grimoire ("modern" grid view) FPS fix ──────────────────────────────
 // Full RE: docs/skill_tree_re.md. Measured live: UINewSkillListWnd::DrawContent
@@ -33,8 +34,6 @@ constexpr uintptr_t kDrawContent = 0x00977e80;  // UINewSkillListWnd::DrawConten
 using DrawContent_t = void(__fastcall*)(void*, void*);  // __thiscall(this)
 
 // Watched instance fields (offsets from docs/skill_tree_re.md §3.2).
-constexpr int kOffWidth   = 0x14;
-constexpr int kOffHeight  = 0x18;
 constexpr int kOffHovered = 0x250;
 constexpr int kOffTab     = 0x254;
 constexpr int kOffScroll  = 0x258;   // 600: scroll row (this+600 in FUN_00975730)
@@ -54,7 +53,7 @@ inline int RdI(void* base, int off) {
 
 void __fastcall DrawContentHook(void* self, void* edx) {
   const uint8_t dirty = *(static_cast<uint8_t*>(self) + kOffDirty);
-  const Snap cur{RdI(self, kOffWidth),  RdI(self, kOffHeight), RdI(self, kOffHovered),
+  const Snap cur{RdI(self, uiwnd::kOffWidth),  RdI(self, uiwnd::kOffHeight), RdI(self, kOffHovered),
                  RdI(self, kOffTab),    RdI(self, kOffScroll), RdI(self, kOffPoints),
                  *reinterpret_cast<int*>(rag::kOwnSkillPointsAddr)};
 

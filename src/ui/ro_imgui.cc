@@ -1035,9 +1035,6 @@ namespace {
 int g_skin_colors = 0;  // combien de PushStyleColor à dépiler dans EndRoWindow
 int g_skin_vars = 0;
 
-// Type de curseur RO "main" (index d'action du sprite curseur). À CONFIRMER en jeu
-// (si ce n'est pas une main, tester d'autres index : 1..6).
-constexpr int kRoCursorHand = 2;
 int g_hover_cursor = 0;  // curseur RO demandé cette frame par un widget survolé
 
 RoSkinConfig g_cfg;  // leviers de customisation (persistés par l'appelant)
@@ -1352,7 +1349,7 @@ void DrawRoScrollbar(ImGuiWindow* w) {
 
   // Curseur main sur toute la scrollbar (comme le natif).
   if (ImGui::IsMouseHoveringRect(bb.Min, bb.Max, false))
-    SetHoverCursor(kRoCursorHand);
+    SetHoverCursor(kCursorHand);
 }
 
 }  // namespace
@@ -1665,7 +1662,7 @@ bool BeginRoWindow(const char* title, bool* p_open, int imgui_window_flags) {
           ImVec2(base_tl.x - Px(2.0f), base_tl.y - Px(2.0f)),
           ImVec2(base_br.x + Px(2.0f), base_br.y + Px(2.0f)), false);
       if (bullet_hovered) {
-        SetHoverCursor(kRoCursorHand);
+        SetHoverCursor(kCursorHand);
         g_bullet_clicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
       }
     }
@@ -1731,7 +1728,7 @@ bool BeginRoWindow(const char* title, bool* p_open, int imgui_window_flags) {
       dl->PopClipRect();
       // Curseur main au survol du grip (via le curseur RO natif).
       if (ImGui::IsMouseHoveringRect(tl, br, false))
-        SetHoverCursor(kRoCursorHand);
+        SetHoverCursor(kCursorHand);
     }
   }
   return open;
@@ -1976,7 +1973,7 @@ static void ChatEdgeResize(ImGuiWindow* w) {
     // Le bouton actif prend l'ActiveId : sans lui, le glissement DÉPLACERAIT la
     // fenêtre, qui n'a pas de barre de titre et se traîne donc par son corps.
     const bool active = ImGui::IsItemActive();
-    if (active || ImGui::IsItemHovered()) SetHoverCursor(kRoCursorHand);
+    if (active || ImGui::IsItemHovered()) SetHoverCursor(kCursorHand);
     if (!active) continue;
     changed = true;
     const ImVec2 edge(io.MousePos.x - g_drag_grab.x, io.MousePos.y - g_drag_grab.y);
@@ -2274,7 +2271,7 @@ bool BeginRoDescWindow(const char* title, bool* p_open, int imgui_window_flags,
       const ImVec2 rtl(rbr.x - rw, rbr.y - rh);
       BlitStretch(dl, g_resize, rtl, rbr);
       if (ImGui::IsMouseHoveringRect(rtl, rbr, false))
-        SetHoverCursor(kRoCursorHand);
+        SetHoverCursor(kCursorHand);
     }
     dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
     dl->PopClipRect();
@@ -2582,7 +2579,7 @@ bool DrawSkinnedButton(const char* label, float w, float h, const ButtonSkin& s)
   const bool clicked = ImGui::InvisibleButton("##rb", ImVec2(w, h + s.art_drop_y));
   const bool hovered = ImGui::IsItemHovered();
   const bool held = ImGui::IsItemActive() || g_force_button_active;
-  if (hovered) SetHoverCursor(kRoCursorHand);
+  if (hovered) SetHoverCursor(kCursorHand);
   const ImVec2 p0(ImGui::GetItemRectMin().x,
                   ImGui::GetItemRectMin().y + s.art_drop_y);
   const ImVec2 p1 = ImGui::GetItemRectMax();
@@ -2711,7 +2708,7 @@ bool RoCheckbox(const char* label, bool* v) {
   const ImVec2 ts = ImGui::CalcTextSize(label, nullptr, true);
   const float h = sz > ts.y ? sz : ts.y;
   const bool pressed = ImGui::InvisibleButton("##cb", ImVec2(sz + gapx + ts.x, h));
-  if (ImGui::IsItemHovered()) SetHoverCursor(kRoCursorHand);
+  if (ImGui::IsItemHovered()) SetHoverCursor(kCursorHand);
   if (pressed) *v = !*v;
 
   ImDrawList* dl = ImGui::GetWindowDrawList();
@@ -2756,7 +2753,7 @@ bool RadioImage(const char* label, bool selected) {
   const ImVec2 ts = ImGui::CalcTextSize(label, nullptr, true);
   const float h = sz > ts.y ? sz : ts.y;
   const bool pressed = ImGui::InvisibleButton("##rb", ImVec2(sz + gapx + ts.x, h));
-  if (ImGui::IsItemHovered()) SetHoverCursor(kRoCursorHand);
+  if (ImGui::IsItemHovered()) SetHoverCursor(kCursorHand);
 
   ImDrawList* dl = ImGui::GetWindowDrawList();
   const ImVec2 bmin(ImFloor(start.x),
@@ -2872,7 +2869,7 @@ static bool RoSliderScalar(const char* label, ImGuiDataType dt, void* p_data,
                      has_arrows ? bar.Max.x - arrow : bar.Max.x, bar.Max.y);
 
   const bool hovered = ImGui::ItemHoverable(frame_bb, id, g.LastItemData.ItemFlags);
-  if (hovered) SetHoverCursor(kRoCursorHand);
+  if (hovered) SetHoverCursor(kCursorHand);
   const bool over_left =
       has_arrows && hovered &&
       ImGui::IsMouseHoveringRect(bar.Min, ImVec2(track.Min.x, bar.Max.y), false);
@@ -3014,7 +3011,7 @@ bool RoBeginCombo(const char* label, const char* preview_value) {
   const bool clicked = ImGui::InvisibleButton("##rcb", ImVec2(w, h));
   const bool hovered = ImGui::IsItemHovered();
   const bool held = ImGui::IsItemActive();
-  if (hovered) SetHoverCursor(kRoCursorHand);
+  if (hovered) SetHoverCursor(kCursorHand);
   const ImVec2 p1(p0.x + w, p0.y + h);
   const ImVec2 arrowMin(p1.x - arrow_w, p0.y);
   ImDrawList* dl = ImGui::GetWindowDrawList();
@@ -3277,7 +3274,7 @@ void DrawRoTabBarArt(ImGuiTabBar* tb) {
     // Survol de la frame précédente — celle dont on peint le layout.
     const bool hov = (g.HoveredIdPreviousFrame == tab.ID);
     DrawRoTab(dl, ImVec2(x0, y0), ImVec2(x1, y1), sel, hov);
-    if (hov) SetHoverCursor(kRoCursorHand);
+    if (hov) SetHoverCursor(kCursorHand);
     if (x1 > last_x) last_x = x1;
   }
   // La rangée se prolonge jusqu'au bord du panneau, comme dans le client : les

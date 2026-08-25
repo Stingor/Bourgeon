@@ -567,7 +567,6 @@ int WindowPos_PersistOnMsg(void* self, void* edx, int arg0, int msg, int p2,
                            bool (*applies)(void*)) {
   constexpr int kMsgCmd     = 6;     // message de commande
   constexpr int kSubClose    = 0xc9;  // sous-commande « fermer » du msg 6
-  constexpr int kMsgRestore  = 0x22;  // restauration de disposition
   if (orig == nullptr) return 0;
   // ⚠ Le filtre est ré-évalué APRÈS l'appel natif, et ce n'est pas un oubli : les
   // deux détours d'origine le faisaient ainsi. Le mémoriser une fois serait
@@ -583,7 +582,7 @@ int WindowPos_PersistOnMsg(void* self, void* edx, int arg0, int msg, int p2,
       return r;
     }
     const int r = orig(self, edx, arg0, msg, p2, p3, p4, p5);
-    if (msg == kMsgRestore && (applies == nullptr || applies(self)) &&
+    if (msg == uiwnd::kMsgRestore && (applies == nullptr || applies(self)) &&
         *saved_x != INT_MIN && *saved_x >= 0 && *saved_y >= 0) {
       uiwnd::SetPos(self, *saved_x, *saved_y);
     }

@@ -218,10 +218,6 @@ constexpr int   kVisibleRows = 4;
 // lignes d'arme : c'est une note de bas de page, pas la liste elle-même — et
 // trois icônes pleine taille y feraient un bandeau.
 constexpr float kOreIcon = 16.0f;
-// Curseur « main » du client (index vérifié en jeu, cf. project_ro_cursor) :
-// ImGui::SetMouseCursor est un no-op ici, io.ConfigFlags portant
-// NoMouseCursorChange — il FAUT passer par ro::SetHoverCursor.
-constexpr int kRoCursorHand = 2;
 
 // Centre verticalement le texte d'une cellule sur la hauteur de ligne, imposée
 // par l'icône. ImGui aligne en HAUT par défaut : sans ça les colonnes courtes
@@ -2012,7 +2008,7 @@ void WeaponRefineWindow::DrawOreLinks() {
       ImGui::GetWindowDrawList()->AddLine(
           ImVec2(text_min.x, text_max.y), ImVec2(text_max.x, text_max.y),
           ImGui::ColorConvertFloat4ToU32(col));
-      ro::SetHoverCursor(kRoCursorHand);
+      ro::SetHoverCursor(ro::kCursorHand);
       if (desc_tooltip_) {
         // Même mécanique que les lignes d'arme : on MÉMORISE, on peint après
         // EndRoWindow (itemcell::DrawTooltip crée son propre popup).

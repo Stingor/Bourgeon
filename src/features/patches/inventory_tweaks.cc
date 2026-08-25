@@ -174,7 +174,6 @@ constexpr uintptr_t kFavDropSlotImm = 0x009386d0;  // imm8 of CMP EAX,3 in FUN_0
 constexpr uint8_t   kFavSlot        = 4;           // Fav's VISUAL slot (kSlotCategory[4]==kFavCat)
 constexpr int kMsgSelectTab = 0x16;  // tab clicked: param_3 = visual slot index
 constexpr int kMsgRefresh   = 0x17;  // rebuild inv+0xe8 for the current category
-constexpr int kMsgRestore   = 0x22;  // layout restore (sets category + selected tab)
 constexpr int kEtcCat  = 2;   // Etc category (admits cards) — populated then filtered
 constexpr int kFavCat  = 3;   // Fav category (pinned to literal 3 in native ==3 gates)
 constexpr int kCardCat = 4;   // our new client-side Cards category
@@ -630,7 +629,7 @@ int __fastcall MsgHook(void* self, void* edx, int arg0, int msg, int p2, int p3,
       DoRefresh(self, edx);
       return 0;
     }
-    if (msg == kMsgRestore) {
+    if (msg == uiwnd::kMsgRestore) {
       // Size the tab strip to its image height BEFORE the native restore. That
       // restore clamps the window height up to (tabStripHeight + bottom reserve);
       // pre-render the tabs sit at their taller NATIVE height, so a saved SHORT

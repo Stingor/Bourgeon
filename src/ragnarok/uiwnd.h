@@ -360,6 +360,13 @@ inline Fn Vf(void* self, int byte_offset) {
 constexpr int kMsgUiAction = 0x06;  // OnMsg : action d'un contrôle
 constexpr int kActionClose = 201;   // 0xc9 : le bouton de fermeture
 constexpr int kActionCancel = 185;  // 0xb9 : le bouton « Annuler »
+constexpr int kMsgRebuild = 0x17;   // 23 : reconstruit l'affichage depuis les globals
+constexpr int kMsgRestore = 0x22;   // 34 : restaure une disposition sauvegardée
+//
+// 🔴 `kMsgUiAction` a longtemps porté DEUX noms : `item_desc_window` et
+// `vending_window` l'appelaient `kMsgButton` (« commande bouton »). Même
+// message, même valeur. Et `kMsgRebuild` s'écrivait `0x17` chez l'un, `23`
+// chez l'autre — aucune recherche textuelle ne rapproche les deux.
 //
 // ⚠ 201 et 185 sont OBSERVÉS sur deux fenêtres chacun, pas prouvés
 // universels. 184 = « OK » les accompagne, mais il n'est cablé nulle part
@@ -385,6 +392,8 @@ inline void SetPos(void* wnd, int x, int y) {
 // différente : c'est précisément pour ça qu'ils sont qualifiés `uiwnd::` ici.
 constexpr int kOffVisible = 0x28;  // int : 0 = hors rendu ET hors hit-test
 constexpr int kOffWndId   = 0x2c;  // int : identifiant de fenêtre (celui de MakeWindow)
+constexpr int kOffWidth   = 0x14;  // int : largeur
+constexpr int kOffHeight  = 0x18;  // int : hauteur
 constexpr int kOffPosX    = 0x1c;  // int : x écran
 constexpr int kOffPosY    = 0x20;  // int : y écran
 

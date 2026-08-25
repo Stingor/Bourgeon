@@ -67,7 +67,6 @@ constexpr int kVfSetVisible = 0x38;   // FUN_009030c0(this, vis) -> this+0x28
 constexpr int kSlotArr      = 0xc4;   // this+0xc4 = 36 pointeurs de record
 constexpr int kVisFlag      = 0x28;   // flag visibilité (0=caché) écrit par vtable+0x38
 constexpr int kMsgUseSlot   = 0x29;   // OnMsg : active le slot (p3=col, p4=row)
-constexpr int kMsgRebuild   = 0x17;   // OnMsg : reconstruit this+0xc4 depuis les globals
 constexpr int kMaxSlots     = 36;     // 0x24
 
 // ---- description / tooltip clic-droit (réplique UIShortCutWnd OnRButtonDown 0x008f91a0) ----
@@ -121,7 +120,7 @@ void EnsureCreated() {
   uiwnd::MakeWindow(kShortCutId);
 }
 void RebuildSlotPtrs(void* w) {  // OnMsg 0x17 : reconstruit this+0xc4 depuis les globals
-  uiwnd::OnMsg(w, kMsgRebuild, 0, 0, 0, 0);
+  uiwnd::OnMsg(w, uiwnd::kMsgRebuild, 0, 0, 0, 0);
 }
 void HideNative(void* w) {  // this+0x28 = 0 + délink draw-list ; ne détruit PAS l'objet
   uiwnd::Vf<SetVisible_t>(w, kVfSetVisible)(w, nullptr, 0);
@@ -317,12 +316,12 @@ void ActivateSlotRaw(int region, int slot) {
     if (lock >= 1) reinterpret_cast<SetOption_t>(kSetOption)(mgr, 5, 0, 0);
     if (tab != cur) {  // bascule sur l'onglet de la barre + reconstruit this+0xc4
       reinterpret_cast<SetOption_t>(kSetOption)(mgr, 10, tab, 0);
-      uiwnd::OnMsg(w, kMsgRebuild, 0, 0, 0, 0);
+      uiwnd::OnMsg(w, uiwnd::kMsgRebuild, 0, 0, 0, 0);
     }
     uiwnd::OnMsg(w, kMsgUseSlot, slot % 9, slot / 9, 0, 0);
     if (tab != cur) {  // restaure l'onglet d'origine
       reinterpret_cast<SetOption_t>(kSetOption)(mgr, 10, cur, 0);
-      uiwnd::OnMsg(w, kMsgRebuild, 0, 0, 0, 0);
+      uiwnd::OnMsg(w, uiwnd::kMsgRebuild, 0, 0, 0, 0);
     }
     if (lock >= 1) reinterpret_cast<SetOption_t>(kSetOption)(mgr, 5, lock, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}

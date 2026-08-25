@@ -308,10 +308,6 @@ constexpr ImU32 kColBad  = IM_COL32(166,  38,  38, 255);
 constexpr ImU32 kColWarn = IM_COL32(166, 102,   0, 255);
 constexpr ImU32 kColDim  = IM_COL32(110, 110, 110, 255);
 
-// Curseur « main » RO. `ImGui::SetMouseCursor` est un no-op dans ce client
-// (io.ConfigFlags porte NoMouseCursorChange) : il FAUT passer par
-// ro::SetHoverCursor, qui demande une valeur de *(CursorMgr+0x50).
-constexpr int kRoCursorHand = 2;
 
 // Côté de l'icône dans la liste. Le natif dessine le bmp 1:1 (~24 px) ; on garde
 // la même échelle pour que l'œil retrouve les mêmes objets.
@@ -2728,7 +2724,7 @@ void MakeItemWindow::DrawList() {
         itemcell::DeferDescById(e->id, 0, 0, static_cast<int>(m.x),
                                 static_cast<int>(m.y));
       }
-      if (IsLastItemHovered()) ro::SetHoverCursor(kRoCursorHand);
+      if (IsLastItemHovered()) ro::SetHoverCursor(ro::kCursorHand);
       if (selected) sel_visible_ = true;
       const bool hovered = IsLastItemHovered();
 
@@ -3388,7 +3384,7 @@ void MakeItemWindow::DrawRecipe() {
       ImGui::GetWindowDrawList()->AddLine(
           ImVec2(text_min.x, text_max.y), ImVec2(text_max.x, text_max.y),
           ImGui::ColorConvertFloat4ToU32(col));
-      ro::SetHoverCursor(kRoCursorHand);
+      ro::SetHoverCursor(ro::kCursorHand);
       // Même mécanique que les lignes de produit : on MÉMORISE, le popup est
       // peint après EndRoWindow. C'est ce qui manquait ici — les liens avaient
       // le souligné et le curseur, mais aucun aperçu.

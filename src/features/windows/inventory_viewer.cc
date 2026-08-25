@@ -47,10 +47,6 @@ using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 // Voir project_inventory_viewer_wip + project_inventory_window + workflow slim RE.
 namespace {
 
-// Fenêtre inventaire native (id 8) : uiwnd::kInventoryWndSlot / kInventoryWndVTable.
-constexpr int kOffWidth   = 0x14;
-constexpr int kOffHeight  = 0x18;
-
 constexpr uintptr_t kCntEquipped = 0x00d9aa70;  // __fastcall(session) : nb items ÉQUIPÉS distincts (10 slots @+0x17d4)
 constexpr uintptr_t kCntCostume  = 0x00d9a960;  // __fastcall(session) : nb items COSTUME distincts (10 slots @+0x2b34)
 using rag::itemlist::kInfoIndex;

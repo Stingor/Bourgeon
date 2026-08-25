@@ -36,8 +36,6 @@ constexpr int       kMaxInvNodes  = 4096;  // garde-fou de parcours
 // character_sheet) : char* GetSkillName(int id), « Unknown-Skill » si inconnu.
 // C'est la seule source qui couvre TOUTES les compétences, custom comprises.
 
-constexpr int kRoCursorHand = 2;  // *(CursorMgr+0x50) : la main du client
-
 // Palette du projet, celle de la fabrication et du refine — sur le corps CLAIR
 // du skin RO (feedback_imgui_ro_light_body_colors) : `TextDisabled` y est
 // illisible, et un vert/rouge vif y bave.
@@ -410,7 +408,7 @@ bool CraftAtlas::DrawItemRow(uint32_t item_id, const char* suffix, bool selected
   // à l'intérieur ne brouille le test.
   const bool hovered = ImGui::IsItemHovered();
   if (hovered) {
-    ro::SetHoverCursor(kRoCursorHand);
+    ro::SetHoverCursor(ro::kCursorHand);
     if (desc_tooltip_) { hover_valid_ = true; hover_id_ = item_id; }
   }
   if (selected) {

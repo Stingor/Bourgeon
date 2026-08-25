@@ -54,8 +54,6 @@ namespace {
 // (avant, ils étaient lus sur la fenêtre native, qui ne naît plus).
 constexpr float kSpawnX = 420.0f, kSpawnY = 160.0f;
 constexpr float kSpawnW = 300.0f, kSpawnH = 300.0f;
-constexpr int kOffWidth   = 0x14;
-constexpr int kOffHeight  = 0x18;
 
 // Compteurs du footer NATIF (RE UICartWnd_DrawContent) : nb d'items et poids, avec
 // leur max. Le natif passe le texte en rouge dès que cur >= max — on fait pareil.

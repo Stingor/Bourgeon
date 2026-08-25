@@ -51,10 +51,6 @@ namespace {
 // à 0 à la fermeture (signal FIABLE). Relire FRAIS chaque tick.
 constexpr uintptr_t kSkillWndSlot = 0x0131f718;  // mgr+0x230 : SKILL desc (classe 0x2e)
 
-// Offsets communs (base UIWindow, identiques aux 2 classes).
-constexpr uintptr_t kOffWidth   = 0x14;   // int  largeur
-constexpr uintptr_t kOffHeight  = 0x18;   // int  hauteur
-
 // Fenêtre de COMPARAISON d'équipement (id 0xea) : 2e instance parallèle à 0xc.
 // MÊME layout que l'item (id string @+0xe4, struct +0xb8, icône +0x1c4, DrawContent
 // partagé 0x008b4200) mais vtable + slot manager distincts. Créée SYNCHRONEMENT
@@ -144,7 +140,6 @@ using BuildName_t = int(__thiscall*)(void*, void*, int*, GVec*, char**, size_t*,
                                      char**, char, char);
 // OnMsg des fenêtres desc (vtable+0x94) : __thiscall(this, p1, msg, p3, p4, p5, p6).
 using DescOnMsg_t    = int   (__thiscall*)(void*, int, int, int, int, int, int);
-constexpr int kMsgButton      = 6;      // message "commande bouton"
 constexpr int kCmdProbability = 0x157;  // « View Probability Info » -> wnd 0x271c
 // Éligibilité du bouton Probabilité : l'item a-t-il un enregistrement dans la DB
 // de probabilité (DAT_01255108, chargée depuis packageitem.lub/simplecashshop..).
@@ -1163,7 +1158,7 @@ void CallDescButton(uint8_t* wnd, int cmd) {
   __try {
     void** vt = *reinterpret_cast<void***>(wnd);
     auto onmsg = reinterpret_cast<DescOnMsg_t>(vt[uiwnd::kVfOnMsg / 4]);
-    onmsg(wnd, 0, kMsgButton, cmd, 0, 0, 0);
+    onmsg(wnd, 0, uiwnd::kMsgUiAction, cmd, 0, 0, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
 }
 
@@ -1526,8 +1521,8 @@ void ReadItemLayoutWindow(uintptr_t slot, uintptr_t vtable,
         out->id       = static_cast<uint32_t>(id);
         out->x        = *reinterpret_cast<int*>(wnd + uiwnd::kOffPosX);
         out->y        = *reinterpret_cast<int*>(wnd + uiwnd::kOffPosY);
-        out->w        = *reinterpret_cast<int*>(wnd + kOffWidth);
-        out->h        = *reinterpret_cast<int*>(wnd + kOffHeight);
+        out->w        = *reinterpret_cast<int*>(wnd + uiwnd::kOffWidth);
+        out->h        = *reinterpret_cast<int*>(wnd + uiwnd::kOffHeight);
       }
     } __except (EXCEPTION_EXECUTE_HANDLER) { *out = ItemDescWindow::DescWindow{}; }
   }
@@ -1562,8 +1557,8 @@ void ItemDescWindow::OnTick() {
         skill_.id       = static_cast<uint32_t>(id);
         skill_.x        = *reinterpret_cast<int*>(wnd + uiwnd::kOffPosX);
         skill_.y        = *reinterpret_cast<int*>(wnd + uiwnd::kOffPosY);
-        skill_.w        = *reinterpret_cast<int*>(wnd + kOffWidth);
-        skill_.h        = *reinterpret_cast<int*>(wnd + kOffHeight);
+        skill_.w        = *reinterpret_cast<int*>(wnd + uiwnd::kOffWidth);
+        skill_.h        = *reinterpret_cast<int*>(wnd + uiwnd::kOffHeight);
       }
     } __except (EXCEPTION_EXECUTE_HANDLER) { skill_ = DescWindow{}; }
   }
