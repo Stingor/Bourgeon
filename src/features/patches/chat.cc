@@ -148,6 +148,31 @@ constexpr uintptr_t kChatWrapCaller = 0x008fd12a;   // return addr of the chat c
 using CharWrapFn = void (__cdecl*)(char*, int*, int);
 CharWrapFn g_charwrap_orig = nullptr;
 
+// ── L'horodatage collé devant une ligne, UNE fois ────────────────────────────
+// TROIS des quatre détours du chat composaient exactement cette chaîne :
+// l'habillage de la ligne principale, l'historique brut, et les fenêtres
+// détachées. Même réserve de 11 octets — la largeur de « [HH:MM:SS] » plus son
+// espace — recopiée trois fois, donc trois endroits à corriger le jour où le
+// format change.
+//
+// 🔴 Le relevé de doublons n'en appariait que DEUX : les deux autres sont noyées
+// dans des fonctions plus grandes, sous le seuil de similarité. La copie qu'un
+// relevé ne montre pas est celle qu'on ne corrige jamais.
+//
+// ⚠ Le QUATRIÈME (AppendLineHook) garde sa composition, et ce n'est pas un
+// oubli : il colle le tampon devant un texte qui vient de passer par l'injection
+// d'icônes d'objet, et ne peut donc pas concaténer la source brute. C'est une
+// différence réelle, pas une copie de plus.
+std::string WithTimestamp(const char* text) {
+  char stamp[16];
+  FormatTimestamp(stamp, sizeof(stamp));
+  std::string out;
+  out.reserve(sizeof("[HH:MM:SS] ") + std::strlen(text));
+  out.append(stamp);
+  out.append(text);
+  return out;
+}
+
 void __cdecl CharWrapHook(char* text, int* outlist, int maxchars) {
   const bool chat_call =
       _ReturnAddress() == reinterpret_cast<void*>(kChatWrapCaller);
@@ -158,12 +183,7 @@ void __cdecl CharWrapHook(char* text, int* outlist, int maxchars) {
   // the already-stamped raw history) — so stamping here makes the [HH:MM:SS] show
   // immediately, while the AddLine hook keeps it in raw history for later rebuilds.
   if (g_chat_timestamps && chat_call && text && text[0]) {
-    char stamp[16];
-    FormatTimestamp(stamp, sizeof(stamp));
-    std::string stamped;
-    stamped.reserve(11 + std::strlen(text));
-    stamped.append(stamp);
-    stamped.append(text);
+    const std::string stamped = WithTimestamp(text);
     g_charwrap_orig(const_cast<char*>(stamped.c_str()), outlist, maxchars);
     return;
   }
@@ -225,12 +245,7 @@ AddLineFn g_addline_orig = nullptr;
 void __fastcall AddLineHook(void* ecx, void* edx, char* text, uint32_t color,
                             char* sender) {
   if (g_chat_timestamps && text && text[0]) {
-    char stamp[16];
-    FormatTimestamp(stamp, sizeof(stamp));
-    std::string stamped;
-    stamped.reserve(11 + std::strlen(text));
-    stamped.append(stamp);
-    stamped.append(text);
+    const std::string stamped = WithTimestamp(text);
     g_addline_orig(ecx, edx, const_cast<char*>(stamped.c_str()), color, sender);
     return;
   }
@@ -258,12 +273,7 @@ void __fastcall WrapAndDispatchHook(void* ecx, void* edx, char* text, uint32_t p
                                     void* p3) {
   if (g_chat_timestamps && text && text[0] && !HasTimestamp(text) &&
       _ReturnAddress() == reinterpret_cast<void*>(kDetachedWrapCaller)) {
-    char stamp[16];
-    FormatTimestamp(stamp, sizeof(stamp));
-    std::string stamped;
-    stamped.reserve(11 + std::strlen(text));
-    stamped.append(stamp);
-    stamped.append(text);
+    const std::string stamped = WithTimestamp(text);
     g_wrap_dispatch_orig(ecx, edx, const_cast<char*>(stamped.c_str()), p2, p3);
     return;
   }

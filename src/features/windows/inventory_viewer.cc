@@ -942,16 +942,27 @@ bool InventoryViewer::EquipDraggedItem(bool left_hand) {
 // lâcher un item de l'inventaire sur « Mon offre » dans la fenêtre d'échange ImGui).
 // Même politique de quantité que le menu contextuel : une PILE ouvre le prompt de
 // quantité, un item seul part directement. No-op si aucun glisser ou aucun échange.
+// Arme le prompt de quantité sur l'item ACTUELLEMENT GLISSÉ. `action` dit ce
+// qu'on en fera une fois le nombre choisi.
+//
+// ⚠ Les quatre champs partent ensemble ou pas du tout : un prompt ouvert sur un
+// `pend_index_` périmé agirait sur le mauvais objet. Ils étaient écrits à
+// l'identique dans les deux destinations (échange, courrier) — deux occasions
+// d'en oublier un le jour où une troisième s'ajoute.
+void InventoryViewer::ArmDragQuantityPrompt(int action) {
+  pend_id_ = drag_index_;
+  pend_index_ = drag_index_;
+  pend_max_ = drag_amount_;
+  pend_action_ = action;
+  pend_open_prompt_ = true;
+}
+
 bool InventoryViewer::TradeDraggedItem() {
   if (!drag_active_) return false;
   auto* tt = Bourgeon::Instance().trade_window();
   if (!tt || !tt->active()) return false;
-  if (drag_amount_ > 1) {  // pile -> demander combien (chemin « Vers l'échange... »)
-    pend_id_ = drag_index_; pend_index_ = drag_index_; pend_max_ = drag_amount_;
-    pend_action_ = kPendToTrade; pend_open_prompt_ = true;
-  } else {
-    tt->AddItemToTrade(drag_index_, 1);
-  }
+  if (drag_amount_ > 1) ArmDragQuantityPrompt(kPendToTrade);  // pile -> combien ?
+  else                  tt->AddItemToTrade(drag_index_, 1);
   return true;
 }
 
@@ -961,12 +972,8 @@ bool InventoryViewer::MailDraggedItem() {
   if (!drag_active_) return false;
   auto* rodex = Bourgeon::Instance().rodex_window();
   if (!rodex || !rodex->composing()) return false;
-  if (drag_amount_ > 1) {  // pile -> prompt de quantité (« Joindre au courrier... »)
-    pend_id_ = drag_index_; pend_index_ = drag_index_; pend_max_ = drag_amount_;
-    pend_action_ = kPendToMail; pend_open_prompt_ = true;
-  } else {
-    rodex->AttachItem(drag_index_, 1);
-  }
+  if (drag_amount_ > 1) ArmDragQuantityPrompt(kPendToMail);  // pile -> combien ?
+  else                  rodex->AttachItem(drag_index_, 1);
   return true;
 }
 

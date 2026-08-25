@@ -683,18 +683,30 @@ void SendGuildLeaveOrExpel(uint16_t opcode, int guildId, uint32_t aid, uint32_t 
     std::strncpy(reinterpret_cast<char*>(pkt + 14), reason, 39);
   Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
 }
-// Change le poste d'UN membre. position 0 est INTERDIT ici : côté serveur il
-// déclenche guild_gm_change (transfert de la direction de la guilde), qui n'a rien
-// à faire dans un menu contextuel.
-void SendGuildChangePosition(uint32_t aid, uint32_t cid, int positionId) {
-  if (positionId <= 0) return;
+// CZ_REQ_CHANGE_MEMBERPOS : en-tête 4 + UNE entrée de 12 {aid, cid, position}.
+//
+// 🔴 UN SEUL PAQUET POUR DEUX GESTES, et le commentaire de `SendGuildChangeMaster`
+// le disait déjà — « même paquet que ci-dessus, avec position 0 » — tout en le
+// recopiant octet pour octet. Ce qui empêchait la réutilisation n'était pas le
+// format mais le GARDE : `SendGuildChangePosition` refuse `position <= 0`, donc
+// elle ne pouvait pas servir au transfert de direction, qui vaut justement 0.
+// Le format vit ici, sans garde ; les deux gestes gardent le leur, qui est
+// précisément ce qui les distingue.
+void SendGuildMemberPos(uint32_t aid, uint32_t cid, uint32_t positionId) {
   uint8_t pkt[16];
   *reinterpret_cast<uint16_t*>(pkt + 0)  = kOpGuildChangePos;
   *reinterpret_cast<uint16_t*>(pkt + 2)  = 16;  // longueur totale (en-tête 4 + 1 entrée de 12)
   *reinterpret_cast<uint32_t*>(pkt + 4)  = aid;
   *reinterpret_cast<uint32_t*>(pkt + 8)  = cid;
-  *reinterpret_cast<uint32_t*>(pkt + 12) = static_cast<uint32_t>(positionId);
+  *reinterpret_cast<uint32_t*>(pkt + 12) = positionId;
   Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
+}
+// Change le poste d'UN membre. position 0 est INTERDIT ici : côté serveur il
+// déclenche guild_gm_change (transfert de la direction de la guilde), qui n'a rien
+// à faire dans un menu contextuel.
+void SendGuildChangePosition(uint32_t aid, uint32_t cid, int positionId) {
+  if (positionId <= 0) return;
+  SendGuildMemberPos(aid, cid, static_cast<uint32_t>(positionId));
 }
 // Transfère la DIRECTION de la guilde. Même paquet que ci-dessus, avec position 0 :
 // c'est ce zéro que le serveur traduit en guild_gm_change (clif_parse_GuildChangeMemberPosition).
@@ -705,13 +717,7 @@ void SendGuildChangePosition(uint32_t aid, uint32_t cid, int positionId) {
 // cours ; les deux premiers reviennent en clif_msg, le dernier est MUET.
 void SendGuildChangeMaster(uint32_t aid, uint32_t cid) {
   if (cid == 0) return;
-  uint8_t pkt[16];
-  *reinterpret_cast<uint16_t*>(pkt + 0)  = kOpGuildChangePos;
-  *reinterpret_cast<uint16_t*>(pkt + 2)  = 16;  // longueur totale (en-tête 4 + 1 entrée de 12)
-  *reinterpret_cast<uint32_t*>(pkt + 4)  = aid;
-  *reinterpret_cast<uint32_t*>(pkt + 8)  = cid;
-  *reinterpret_cast<uint32_t*>(pkt + 12) = 0;   // position 0 = transfert de la direction
-  Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
+  SendGuildMemberPos(aid, cid, 0);  // 0 = transfert de la direction
 }
 // Crée une guilde. Le serveur ignore le char id transmis (il utilise la session) mais
 // le natif le remplit : on fait pareil. Il exige un Emperium en inventaire
@@ -1652,21 +1658,37 @@ void BrushExtent(int* lo, int* hi) {
   *hi = size / 2;
 }
 
-void EmblemCanvasPaint(int cx, int cy, uint32_t color) {
-  ++g_emblem_canvas.revision;
+// ── L'empreinte du PINCEAU, une fois ─────────────────────────────────────────
+// Le carré N×N du crayon, ses bornes de canevas et son miroir vertical étaient
+// écrits DEUX fois : une pour peindre (`EmblemCanvasPaint`), une pour marquer un
+// masque de forme (`MaskSet`, plus bas). Même géométrie, seule l'action à chaque
+// cellule change — exactement le motif de `BresenhamLine` juste en dessous.
+//
+// ⚠ Le miroir appelle `plot` une SECONDE fois, sur la colonne symétrique. Une
+// action non idempotente le verrait donc passer deux fois sur la colonne
+// centrale d'un canevas de largeur impaire — sans conséquence pour les deux
+// usages actuels (écrire une couleur, poser un booléen).
+template <typename Plot>
+void BrushCells(int cx, int cy, Plot plot) {
   int lo = 0, hi = 0;
   BrushExtent(&lo, &hi);
   for (int dy = lo; dy <= hi; ++dy) {
     for (int dx = lo; dx <= hi; ++dx) {
       const int x = cx + dx, y = cy + dy;
       if (x < 0 || x >= kEmblemSide || y < 0 || y >= kEmblemSide) continue;
-      g_emblem_canvas.pixel[y * kEmblemSide + x] = color;
-      if (g_emblem_canvas.mirror) {
-        const int mx = kEmblemSide - 1 - x;
-        g_emblem_canvas.pixel[y * kEmblemSide + mx] = color;
-      }
+      plot(x, y);
+      if (g_emblem_canvas.mirror) plot(kEmblemSide - 1 - x, y);
     }
   }
+}
+
+void EmblemCanvasPaint(int cx, int cy, uint32_t color) {
+  // ⚠ La révision monte UNE fois par geste, pas par cellule : c'est elle qui dit
+  // à l'aperçu que le canevas a changé.
+  ++g_emblem_canvas.revision;
+  BrushCells(cx, cy, [color](int x, int y) {
+    g_emblem_canvas.pixel[y * kEmblemSide + x] = color;
+  });
 }
 
 // ── Bresenham, UNE fois ──────────────────────────────────────────────────────
@@ -1724,17 +1746,10 @@ void EmblemCanvasFill(int sx, int sy, uint32_t color) {
 // Une forme est d'abord calculée en MASQUE de cellules : le même masque sert à
 // l'aperçu pendant le tirage et à la peinture au relâchement, donc ce qu'on voit
 // est exactement ce qu'on obtient.
+// Même carré N×N que le crayon, et le même miroir : c'est ce qui garantit que
+// l'aperçu d'une forme et sa peinture couvrent EXACTEMENT les mêmes cellules.
 void MaskSet(bool* mask, int cx, int cy) {
-  int lo = 0, hi = 0;
-  BrushExtent(&lo, &hi);  // même carré N×N que le crayon
-  for (int dy = lo; dy <= hi; ++dy) {
-    for (int dx = lo; dx <= hi; ++dx) {
-      const int x = cx + dx, y = cy + dy;
-      if (x < 0 || x >= kEmblemSide || y < 0 || y >= kEmblemSide) continue;
-      mask[y * kEmblemSide + x] = true;
-      if (g_emblem_canvas.mirror) mask[y * kEmblemSide + (kEmblemSide - 1 - x)] = true;
-    }
-  }
+  BrushCells(cx, cy, [mask](int x, int y) { mask[y * kEmblemSide + x] = true; });
 }
 void MaskLine(bool* mask, int x0, int y0, int x1, int y1) {
   BresenhamLine(x0, y0, x1, y1, [mask](int x, int y) { MaskSet(mask, x, y); });

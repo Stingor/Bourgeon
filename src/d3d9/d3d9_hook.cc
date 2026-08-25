@@ -1043,6 +1043,26 @@ static void PatchDeviceVtable(void** vtbl, bool is_ex) {
                   g_orig_reset_ex ? nullptr : reinterpret_cast<void**>(&g_orig_reset_ex));
 }
 
+// ── Un device VIENT d'etre (re)cree ──────────────────────────────────────────
+// Le precedent est MORT : tout ce qui lui appartenait doit etre lache AVANT
+// qu'on habille le nouveau. Ce bloc etait ecrit DEUX fois, une par fabrique
+// (CreateDevice / CreateDeviceEx). Les deux chemins menent au meme etat ; en
+// corriger un seul laisserait l'autre tenir des handles d'un device detruit --
+// un defaut qui ne se manifeste qu'au prochain ALT-TAB en plein ecran, loin de
+// sa cause.
+static void AdoptNewDevice(void* dev, bool is_ex, const char* origine) {
+    if (g_dx9_initialized.load()) {
+        ++g_device_epoch;             // invalide les caches de textures des plugins
+        PostFx_OnDeviceRecreated();   // RT + shaders appartenaient au device mort
+        ImGui_ImplDX9_InvalidateDeviceObjects();
+        g_dx9_initialized.store(false);
+    }
+    void** vtbl = *reinterpret_cast<void***>(dev);
+    LogDebug("D3D9 {}: device={:x} vtable={:x}", origine,
+             reinterpret_cast<uintptr_t>(dev), reinterpret_cast<uintptr_t>(vtbl));
+    PatchDeviceVtable(vtbl, is_ex);
+}
+
 // ── factory CreateDevice hook ─────────────────────────────────────────────────
 static HRESULT __fastcall Hooked_D3D9_CreateDevice(IDirect3D9* self, void* /*edx*/,
                                                     UINT adapter, D3DDEVTYPE devtype,
@@ -1056,19 +1076,7 @@ static HRESULT __fastcall Hooked_D3D9_CreateDevice(IDirect3D9* self, void* /*edx
     }
     HRESULT hr = g_orig_factory_create_device(self, nullptr, adapter, devtype,
                                                hwnd, flags, pp, ppDev);
-    if (SUCCEEDED(hr) && ppDev && *ppDev) {
-        if (g_dx9_initialized.load()) {
-            // LogInfo("D3D9: device recreated via CreateDevice — resetting ImGui");
-            ++g_device_epoch;  // invalidate plugin texture caches (old device dies)
-            PostFx_OnDeviceRecreated();  // RT + shaders belong to the dead device
-            ImGui_ImplDX9_InvalidateDeviceObjects();
-            g_dx9_initialized.store(false);
-        }
-        void** vtbl = *reinterpret_cast<void***>(*ppDev);
-        LogDebug("D3D9 CreateDevice: device={:x} vtable={:x}",
-                reinterpret_cast<uintptr_t>(*ppDev), reinterpret_cast<uintptr_t>(vtbl));
-        PatchDeviceVtable(vtbl, false);
-    }
+    if (SUCCEEDED(hr) && ppDev && *ppDev) AdoptNewDevice(*ppDev, false, "CreateDevice");
     LogDebug("D3D9 Hooked_CreateDevice: hr={:x}", static_cast<unsigned>(hr));
     return hr;
 }
@@ -1086,19 +1094,7 @@ static HRESULT __fastcall Hooked_D3D9Ex_CreateDeviceEx(D3DDISPLAYMODEEX* pFullEc
     LogDebug("D3D9 Hooked_CreateDeviceEx factory={:x}", reinterpret_cast<uintptr_t>(self));
     HRESULT hr = g_orig_factory_create_device_ex(pFullEcx, nullptr, self, adapter, devtype,
                                                   hwnd, flags, pp, pFullscreen, ppDev);
-    if (SUCCEEDED(hr) && ppDev && *ppDev) {
-        if (g_dx9_initialized.load()) {
-            // LogInfo("D3D9: device recreated via CreateDeviceEx — resetting ImGui");
-            ++g_device_epoch;  // invalidate plugin texture caches (old device dies)
-            PostFx_OnDeviceRecreated();  // RT + shaders belong to the dead device
-            ImGui_ImplDX9_InvalidateDeviceObjects();
-            g_dx9_initialized.store(false);
-        }
-        void** vtbl = *reinterpret_cast<void***>(*ppDev);
-        LogDebug("D3D9 CreateDeviceEx: device={:x} vtable={:x}",
-                reinterpret_cast<uintptr_t>(*ppDev), reinterpret_cast<uintptr_t>(vtbl));
-        PatchDeviceVtable(vtbl, true);
-    }
+    if (SUCCEEDED(hr) && ppDev && *ppDev) AdoptNewDevice(*ppDev, true, "CreateDeviceEx");
     LogDebug("D3D9 Hooked_CreateDeviceEx: hr={:x}", static_cast<unsigned>(hr));
     return hr;
 }

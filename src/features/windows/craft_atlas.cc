@@ -81,6 +81,22 @@ const char* ItemName(uint32_t id) {
 
 // ── Index ────────────────────────────────────────────────────────────────────
 
+// ── Le texte GRIS d'un état vide, une fois ───────────────────────────────────
+// Sept endroits de ce fichier poussaient la couleur d'inactif, écrivaient un
+// message enveloppé, puis la dépilaient. Le relevé de doublons n'en appariait
+// que DEUX — les cinq autres vivent dans des fonctions de formes différentes,
+// sous le seuil de similarité.
+//
+// 🔴 L'enjeu n'est pas la longueur économisée : c'est l'APPARIEMENT. Un
+// `PushStyleColor` dont le `Pop` manque ne casse pas la ligne fautive, il
+// déteint sur tout ce que la frame dessine ENSUITE — un défaut qui se manifeste
+// loin de sa cause. Ici les deux vont ensemble par construction.
+void DimNotice(const char* message) {
+  ImGui::PushStyleColor(ImGuiCol_Text, kColDim);
+  TextWrapped(message);
+  ImGui::PopStyleColor();
+}
+
 void CraftAtlas::EnsureIndex() {
   if (index_ready_) return;
   index_ready_ = true;  // posé D'ABORD : une DB d'items muette ne doit pas faire
@@ -501,9 +517,7 @@ void CraftAtlas::DrawSkillTree() {
   ImGui::PopStyleVar();  // IndentSpacing
 
   if (shown == 0) {
-    ImGui::PushStyleColor(ImGuiCol_Text, kColDim);
-    TextWrapped(i18n::Tr("Aucun métier ne correspond."));
-    ImGui::PopStyleColor();
+    DimNotice(i18n::Tr("Aucun métier ne correspond."));
   }
 }
 
@@ -520,9 +534,7 @@ void CraftAtlas::DrawProductList() {
     ++shown;
   }
   if (shown == 0) {
-    ImGui::PushStyleColor(ImGuiCol_Text, kColDim);
-    TextWrapped(i18n::Tr("Aucun produit ne correspond."));
-    ImGui::PopStyleColor();
+    DimNotice(i18n::Tr("Aucun produit ne correspond."));
   }
 }
 
@@ -546,9 +558,7 @@ void CraftAtlas::DrawMaterialList() {
     ++shown;
   }
   if (shown == 0) {
-    ImGui::PushStyleColor(ImGuiCol_Text, kColDim);
-    TextWrapped(i18n::Tr("Aucun matériau ne correspond."));
-    ImGui::PopStyleColor();
+    DimNotice(i18n::Tr("Aucun matériau ne correspond."));
   }
 }
 
@@ -564,21 +574,17 @@ void CraftAtlas::DrawArrowList() {
     ++shown;
   }
   if (shown == 0) {
-    ImGui::PushStyleColor(ImGuiCol_Text, kColDim);
-    TextWrapped(i18n::Tr("Aucune source de flèches ne correspond."));
-    ImGui::PopStyleColor();
+    DimNotice(i18n::Tr("Aucune source de flèches ne correspond."));
   }
 }
 
 void CraftAtlas::DrawSheet() {
   if (sel_id_ == 0) {
-    ImGui::PushStyleColor(ImGuiCol_Text, kColDim);
-    TextWrapped(i18n::Tr(
+    DimNotice(i18n::Tr(
         "Choisissez un objet à gauche.\n\n"
         "Clic gauche : suivre l'objet dans l'Atlas.\n"
         "Clic droit : ouvrir sa description.\n"
         "Maj + clic : poser son lien dans le chat."));
-    ImGui::PopStyleColor();
     return;
   }
 
@@ -802,12 +808,10 @@ void CraftAtlas::DrawSheet() {
     // Cas réel : on arrive ici par le clic sur un objet qui n'est ni fabricable
     // ni matériau (le produit d'une transformation de flèches, par exemple, quand
     // rien d'autre ne le concerne). Dire QUOI manque vaut mieux qu'une page vide.
-    ImGui::PushStyleColor(ImGuiCol_Text, kColDim);
-    TextWrapped(i18n::Tr(
+    DimNotice(i18n::Tr(
         "Cet objet n'a pas de recette, n'entre dans aucune et ne se transforme "
         "pas en flèches. Le fichier de recettes ne couvre que la fabrication : "
         "quêtes, échanges et butin de monstres n'y sont pas."));
-    ImGui::PopStyleColor();
   }
 }
 
@@ -843,11 +847,9 @@ bool CraftAtlas::DrawSettings() {
         "3e, dont les recettes sont bien jouables."));
 
   ImGui::Spacing();
-  ImGui::PushStyleColor(ImGuiCol_Text, kColDim);
-  TextWrapped(i18n::Tr(
+  DimNotice(i18n::Tr(
       "Dans les listes : clic gauche pour suivre un objet, clic droit pour sa "
       "description, Maj + clic pour poser son lien dans le chat."));
-  ImGui::PopStyleColor();
 
   if (craftdata::Available()) {
     char line[192];

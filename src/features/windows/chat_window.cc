@@ -6808,6 +6808,34 @@ bool ChatWindow::LinkSlotAvailable() {
   return static_cast<int>(item_links_.size()) < kMaxItemLinks;
 }
 
+namespace {
+
+// ── Le nom qui part DANS une balise ──────────────────────────────────────────
+// Trois poseurs de lien transportent un nom au milieu de leur balise : la
+// référence d'objet (`<ITMR>`), la recette (`<CRAF>`) et le monstre (`<MOBL>`).
+// C'est ce qui garde la ligne lisible chez un joueur SANS Bourgeon, qui verra la
+// balise brute — mais un nom porteur d'un chevron la couperait en deux à la
+// relecture. Les trois portaient ce test, chacun avec sa propre formulation de
+// la raison ; un quatrième type de balise aurait pu l'oublier.
+//
+// ⚠ Le reste — espaces, apostrophes, ponctuation, deux-points — est LIBRE : le
+// nom est toujours le DERNIER champ de la balise, ce dont un nom de créature ne
+// se prive pas.
+bool NameFitsInTag(const std::string& name) {
+  return !name.empty() && name.find('<') == std::string::npos &&
+         name.find('>') == std::string::npos;
+}
+
+// Le nom d'un objet pour une balise : celui qu'on nous donne, sinon celui de la
+// DB du client. (Le poseur de lien de MONSTRE n'a pas de repli : sans nom, il
+// n'a rien à poster.)
+std::string TagItemName(uint32_t item_id, const char* name_utf8) {
+  return (name_utf8 && name_utf8[0]) ? std::string(name_utf8)
+                                     : std::string(itemcell::NameById(item_id));
+}
+
+}  // namespace
+
 bool ChatWindow::PostPendingLink(PendingLink pending) {
   std::string insert = pending.display;
   insert += ' ';
@@ -6902,12 +6930,8 @@ bool ChatWindow::AppendItemLinkFromLink(const itemcell::ChatLink& link) {
 // balise qui se relira de travers.
 bool ChatWindow::AppendItemRefLink(uint32_t item_id, const char* name_utf8) {
   if (!imgui_enabled_ || !input_bar_ || item_id == 0) return false;
-  const std::string name = (name_utf8 && name_utf8[0]) ? name_utf8
-                                                       : itemcell::NameById(item_id);
-  if (name.empty()) return false;
-  if (name.find('<') != std::string::npos || name.find('>') != std::string::npos)
-    return false;
-
+  const std::string name = TagItemName(item_id, name_utf8);
+  if (!NameFitsInTag(name)) return false;
   if (!LinkSlotAvailable()) return false;
 
   const std::string display = "<" + name + ">";
@@ -6932,13 +6956,8 @@ bool ChatWindow::AppendRecipeLink(uint32_t item_id, const char* name_utf8) {
   if (!imgui_enabled_ || !input_bar_ || item_id == 0) return false;
   if (craftdata::RecipeOf(item_id) == nullptr) return false;
 
-  const std::string name = (name_utf8 && name_utf8[0]) ? name_utf8
-                                                       : itemcell::NameById(item_id);
-  if (name.empty()) return false;
-  // Un nom porteur de chevrons couperait la balise en deux à la relecture.
-  if (name.find('<') != std::string::npos || name.find('>') != std::string::npos)
-    return false;
-
+  const std::string name = TagItemName(item_id, name_utf8);
+  if (!NameFitsInTag(name)) return false;
   if (!LinkSlotAvailable()) return false;
 
   const std::string display = links::RecipeLinkLabel(name);
@@ -7144,9 +7163,7 @@ bool ChatWindow::AppendMobLink(uint32_t mob_id, int rank, const char* name_utf8)
   // le reste (espaces, apostrophes, ponctuation) est libre puisque le nom est le
   // DERNIER champ.
   const std::string name(name_utf8);
-  if (name.find('<') != std::string::npos || name.find('>') != std::string::npos)
-    return false;
-
+  if (!NameFitsInTag(name)) return false;
   if (!LinkSlotAvailable()) return false;
 
   const std::string display =

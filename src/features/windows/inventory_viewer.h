@@ -198,6 +198,11 @@ class InventoryViewer : public ItemViewerBase {
   // viewers : ce n'est correct que tant que le premier énumérateur vaut 0.
   static_assert(kPendUse == 0, "pend_action_ = 0 doit valoir kPendUse");
 
+  // Arme le prompt de quantité sur l'item GLISSÉ, pour l'action donnée. Les
+  // quatre champs partent ensemble ou pas du tout — un prompt ouvert sur un
+  // `pend_index_` périmé agirait sur le mauvais objet.
+  void ArmDragQuantityPrompt(int action);
+
   // Ce que l'inventaire glisse EN PLUS des quatre champs communs : le drop sur
   // le doll et sur la barre d'action a besoin du type, du nameid et du masque
   // d'emplacement, que les deux autres viewers n'ont pas à connaître.
