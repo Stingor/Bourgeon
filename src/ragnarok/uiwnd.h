@@ -201,6 +201,23 @@ constexpr int kOffWndId   = 0x2c;  // int : identifiant de fenêtre (celui de Ma
 constexpr int kOffPosX    = 0x1c;  // int : x écran
 constexpr int kOffPosY    = 0x20;  // int : y écran
 
+// La position ÉCRAN courante d'une fenêtre, en un appel.
+//
+// 🔴 Ces deux offsets étaient RE-DÉCLARÉS sous `kWinX`/`kWinY` dans TROIS
+// fichiers, alors qu'ils existent ici depuis longtemps — et le fichier qui
+// s'appelle `window_pos_tweaks` écrivait en plus `+ 0x1c` / `+ 0x20` en dur, à
+// trois cent soixante lignes de sa propre constante. C'est la forme que le
+// relevé de doublons ne voit pas : une expression, pas une fonction.
+//
+// ⚠ Aucun SEH ici, comme les autres accesseurs de cet en-tête : les appelants
+// lisent depuis leur propre `__try` (détour de handler de messages), et en
+// ajouter un second interdirait à l'appelant d'y tenir des objets (C2712).
+inline void LivePos(const void* wnd, int* x, int* y) {
+  const uint8_t* b = static_cast<const uint8_t*>(wnd);
+  if (x) *x = *reinterpret_cast<const int*>(b + kOffPosX);
+  if (y) *y = *reinterpret_cast<const int*>(b + kOffPosY);
+}
+
 // ── Inventaire des fenêtres VIVANTES ─────────────────────────────────────────
 // `FindWindow(id)` ne répond qu'à qui connaît DÉJÀ l'identifiant cherché. Elle ne
 // sait donc pas répondre à « quelle fenêtre native est à l'écran en ce moment ? »

@@ -45,12 +45,9 @@
 namespace {
 
 // UIWindow base field layout (universal for every window class).
-constexpr int kWinX     = 0x1c;  // live x
-constexpr int kWinY     = 0x20;  // live y
 
 // MakeWindow is __thiscall(mgr, int windowID) returning the window (id = [ebp+8]).
 using MakeWindow_t = void* (__fastcall*)(void*, void*, int);
-using SetPos_t     = void  (__fastcall*)(void*, void*, int, int);  // SetPos(this,,x,y)
 
 // A saved coordinate is valid if it isn't the "unset" sentinel and isn't absurdly
 // off-screen. NEGATIVE coords are legal (a window dragged partly off the left/top
@@ -102,8 +99,7 @@ inline void* FindWin(int id) {
 }
 
 inline void SetWinPos(void* win, int x, int y) {
-  reinterpret_cast<SetPos_t>(*reinterpret_cast<uintptr_t*>(
-      *reinterpret_cast<uintptr_t*>(win) + uiwnd::kVfSetPos))(win, nullptr, x, y);
+  uiwnd::SetPos(win, x, y);  // le foyer fait deja la resolution de vtable
 }
 
 MakeWindow_t g_orig_makewindow = nullptr;  // trampoline to the real MakeWindow
@@ -404,9 +400,9 @@ void* __fastcall MakeWindowHook(void* mgr, void* edx, int windowID) {
 // legitimate window-to-window snapping intact.
 int SnapDecideSkip(void* window) {
   auto* b = static_cast<char*>(window);
-  const int vis = *reinterpret_cast<int*>(b + 0x28);  // UIWnd_SetVisible flag
-  const int x   = *reinterpret_cast<int*>(b + 0x1c);  // live screen x
-  const int y   = *reinterpret_cast<int*>(b + 0x20);  // live screen y
+  const int vis = *reinterpret_cast<int*>(b + uiwnd::kOffVisible);
+  int x = 0, y = 0;
+  uiwnd::LivePos(window, &x, &y);
   if (vis == 0) return 1;                 // hidden window (the ghost)
   if (x <= -2000 || y <= -2000) return 1; // pinned off-screen (e.g. -10000)
   return 0;                               // real on-screen window -> snap allowed
@@ -509,8 +505,8 @@ void WindowPosTweaks::OnTick() {
       continue;
     }
 
-    const int liveX = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + kWinX);
-    const int liveY = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + kWinY);
+    int liveX = 0, liveY = 0;
+    uiwnd::LivePos(win, &liveX, &liveY);
 
     if (!w.was_open) {  // just opened — the hook already positioned it; baseline
       w.tracked_x = liveX;
@@ -549,4 +545,50 @@ void WindowPosTweaks_SetSavedPos(int i, int x, int y) {
   // Just load the saved position. The MakeWindow hook applies it on the next open.
   g_windows[i].pos_x = x;
   g_windows[i].pos_y = y;
+}
+
+// ── Le corps commun des deux détours de handler ──────────────────────────────
+// Cf. l'en-tête pour le pourquoi (et pour la migration qui reste à trancher).
+//
+// Deux moments, et un seul suffit rarement :
+//   · la CROIX (msg 6, sous-commande 0xc9) : on relève la position VIVANTE avant
+//     de laisser le natif fermer, puis on demande l'écriture. C'est le seul
+//     instant où elle est encore lisible ;
+//   · la RESTAURATION DE DISPOSITION (msg 0x22) : on réimpose la position
+//     enregistrée APRÈS le natif. On écrase, donc son validateur et sa valeur
+//     par défaut n'ont plus d'importance.
+//
+// ⚠ Le handler d'équipement se ré-envoie msg 6/0xca à lui-même depuis le cas
+// 0x22 ; les deux gardes ci-dessous (0xc9 et 0x22) l'ignorent, la réentrance est
+// donc inoffensive.
+int WindowPos_PersistOnMsg(void* self, void* edx, int arg0, int msg, int p2,
+                           int p3, int p4, int p5, WindowPosMsgFn orig,
+                           int* saved_x, int* saved_y,
+                           bool (*applies)(void*)) {
+  constexpr int kMsgCmd     = 6;     // message de commande
+  constexpr int kSubClose    = 0xc9;  // sous-commande « fermer » du msg 6
+  constexpr int kMsgRestore  = 0x22;  // restauration de disposition
+  if (orig == nullptr) return 0;
+  // ⚠ Le filtre est ré-évalué APRÈS l'appel natif, et ce n'est pas un oubli : les
+  // deux détours d'origine le faisaient ainsi. Le mémoriser une fois serait
+  // presque toujours équivalent — le drapeau de mode est posé à la création de la
+  // fenêtre — mais « presque toujours » n'est pas la garantie qu'on veut dans un
+  // détour de handler.
+  __try {
+    if (msg == kMsgCmd && p2 == kSubClose &&
+        (applies == nullptr || applies(self))) {
+      uiwnd::LivePos(self, saved_x, saved_y);
+      const int r = orig(self, edx, arg0, msg, p2, p3, p4, p5);
+      if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
+      return r;
+    }
+    const int r = orig(self, edx, arg0, msg, p2, p3, p4, p5);
+    if (msg == kMsgRestore && (applies == nullptr || applies(self)) &&
+        *saved_x != INT_MIN && *saved_x >= 0 && *saved_y >= 0) {
+      uiwnd::SetPos(self, *saved_x, *saved_y);
+    }
+    return r;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    return 0;
+  }
 }

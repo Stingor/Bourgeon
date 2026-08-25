@@ -43,3 +43,32 @@ const char* WindowPosTweaks_Key(int i);   // yaml key prefix, e.g. "achievement"
 int         WindowPosTweaks_X(int i);     // saved x (INT_MIN = unset)
 int         WindowPosTweaks_Y(int i);     // saved y (INT_MIN = unset)
 void        WindowPosTweaks_SetSavedPos(int i, int x, int y);  // called on load
+
+// ── Persistance par DÉTOUR DU HANDLER : le corps commun des deux « one-off » ──
+//
+// Status (0xb) et Equip (0xa) ont été traités AVANT le moteur table-driven
+// ci-dessus, chacun par un détour de son handler de messages (vtable +0x94).
+// Leur corps était le MÊME à 96 % : capturer la position vivante quand la croix
+// ferme la fenêtre, laisser le natif faire, demander l'écriture ; puis, APRÈS la
+// restauration de disposition du natif, réimposer la position enregistrée.
+//
+// 🔜 LA MIGRATION N'EST PAS FAITE, ET C'EST DÉLIBÉRÉ. Le moteur ci-dessus les
+// remplacerait par une ligne de table chacun, sans détour de handler — mais il
+// changerait les CLÉS du yaml (les joueurs perdraient leur position
+// enregistrée), et la fenêtre d'équipement porte un garde sur son drapeau de
+// mode (+0xb4 : la sienne vs celle d'un autre joueur) que le moteur, qui ne
+// connaît que l'identifiant de fenêtre, n'a pas. En attendant cette décision, le
+// corps commun vit ici : un seul endroit à corriger au lieu de deux.
+//
+// `orig` = le trampoline du plugin ; `saved_x`/`saved_y` = ses deux entiers
+// persistés (INT_MIN = jamais enregistré) ; `applies` = filtre optionnel, pour
+// la fenêtre qui n'agit que sur l'un de ses modes. Renvoie ce que le natif rend.
+//
+// ⚠ SIX arguments pile / `retn 0x18` : un détour à cinq arguments corrompt la
+// pile. La signature ci-dessous est celle des deux handlers, vérifiée sur les
+// deux.
+using WindowPosMsgFn = int(__fastcall*)(void*, void*, int, int, int, int, int, int);
+int WindowPos_PersistOnMsg(void* self, void* edx, int arg0, int msg, int p2,
+                           int p3, int p4, int p5, WindowPosMsgFn orig,
+                           int* saved_x, int* saved_y,
+                           bool (*applies)(void*) = nullptr);

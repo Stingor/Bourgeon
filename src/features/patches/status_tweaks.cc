@@ -1,3 +1,4 @@
+#include "features/patches/window_pos_tweaks.h"  // WindowPos_PersistOnMsg
 #include "ui/game_texture.h"
 #include "features/patches/status_tweaks.h"
 
@@ -55,11 +56,6 @@ constexpr uintptr_t kDrawOrig  = 0x008b66a0;  // original UIStatusWnd::DrawConte
 // Position persistence (the engine never saves window id 0xb — see workflow RE).
 constexpr uintptr_t kMsgSlot   = 0x01032a68;  // UIStatusWnd vtable +0x94 (message handler slot)
 constexpr uintptr_t kMsgOrig   = 0x008cb7c0;  // FUN_008cb7c0 status msg handler (ret 0x18 = SIX stack args!)
-constexpr int kWinX      = 0x1c;   // window live x
-constexpr int kWinY      = 0x20;   // window live y
-constexpr int kMsgCmd    = 6;      // command message
-constexpr int kSubClose  = 0xc9;   // msg 6 sub-command = close
-constexpr int kMsgRestore = 0x22;  // layout-restore message
 constexpr int kStatusId  = 0xb;    // UIStatusWnd window id
 
 constexpr uint32_t  kNewWidth  = 302;
@@ -87,7 +83,6 @@ using DrawTextR_t = void (__fastcall*)(void*, void*, int, int, const char*, unsi
                                        int, int, unsigned, unsigned char);
 using Blit_t   = void (__fastcall*)(void*, void*, int, int, void*, int);
 using StatusMsg_t = int (__fastcall*)(void*, void*, int, int, int, int, int, int);  // FUN_008cb7c0 — SIX stack args (ret 0x18)
-using SetPos_t    = void (__fastcall*)(void*, void*, int, int);                       // UIWindow SetPos(this,x,y)
 
 const auto g_status_msg_orig = reinterpret_cast<StatusMsg_t>(kMsgOrig);
 int g_posX = INT_MIN, g_posY = INT_MIN;  // saved STATUS window position (INT_MIN = unset)
@@ -232,8 +227,12 @@ void DrawNormal(void* wnd, int blitY) {
     if (!btn) continue;
     const int cost = RD(rag::kStatRaiseCostAddr + i * 4);
     const bool show = (cost != 0) && (points >= cost);
-    *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(btn) + 0x1c) = show ? 88 : -100;
-    *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(btn) + 0x20) =
+    // ⚠ ÉCRITURE directe des champs, pas `uiwnd::SetPos` : le natif fait de
+    // même ici, et passer par la vtable déclencherait sa logique de
+    // repositionnement. Les offsets, eux, sont ceux du foyer.
+    *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(btn) + uiwnd::kOffPosX) =
+        show ? 88 : -100;
+    *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(btn) + uiwnd::kOffPosY) =
         show ? (blitY + kRowCenter[i] - 5) : -100;
   }
 }
@@ -274,26 +273,8 @@ void __fastcall DrawContentHook(void* wnd, void* /*edx*/) {
 // premier, dont le rôle n'est pas établi (0 partout).
 int __fastcall StatusMsgHook(void* self, void* edx, int arg0, int msg, int p2,
                              int p3, int p4, int p5) {
-  __try {
-    if (msg == kMsgCmd && p2 == kSubClose) {  // X close -> persist immediately
-      g_posX = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(self) + kWinX);
-      g_posY = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(self) + kWinY);
-      const int r = g_status_msg_orig(self, edx, arg0, msg, p2, p3, p4, p5);
-      if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
-      return r;
-    }
-    const int r = g_status_msg_orig(self, edx, arg0, msg, p2, p3, p4, p5);
-    // After the native layout-restore, override with the saved position (we override,
-    // so the native validator/default are irrelevant). OnTick (live FindWindow read,
-    // throttled 200ms) + this close-save cover drag-end and every close path.
-    if (msg == kMsgRestore && g_posX != INT_MIN && g_posX >= 0 && g_posY >= 0) {
-      reinterpret_cast<SetPos_t>(*reinterpret_cast<uintptr_t*>(
-          *reinterpret_cast<uintptr_t*>(self) + uiwnd::kVfSetPos))(self, nullptr, g_posX, g_posY);
-    }
-    return r;
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-    return 0;
-  }
+  return WindowPos_PersistOnMsg(self, edx, arg0, msg, p2, p3, p4, p5,
+                                g_status_msg_orig, &g_posX, &g_posY);
 }
 
 }  // namespace
@@ -394,16 +375,15 @@ void StatusTweaks::OnTick() {
   // clobbered by the live read below and the native position saved back over it. This is
   // what makes the position survive a full client restart.
   if (g_restorePending) {
-    reinterpret_cast<SetPos_t>(*reinterpret_cast<uintptr_t*>(
-        *reinterpret_cast<uintptr_t*>(win) + uiwnd::kVfSetPos))(win, nullptr, g_posX, g_posY);
+    uiwnd::SetPos(win, g_posX, g_posY);
     savedX = g_posX; savedY = g_posY;
     g_restorePending = false;
     init = true;
     return;
   }
 
-  const int liveX = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + kWinX);
-  const int liveY = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + kWinY);
+  int liveX = 0, liveY = 0;
+  uiwnd::LivePos(win, &liveX, &liveY);
   if (!init) {  // no saved pos to restore: baseline off the current spot
     savedX = liveX; savedY = liveY; g_posX = liveX; g_posY = liveY; init = true; return;
   }

@@ -1,3 +1,4 @@
+#include "features/patches/window_pos_tweaks.h"  // WindowPos_PersistOnMsg
 #include "features/patches/equip_tweaks.h"
 
 #include "ragnarok/uiwnd.h"
@@ -110,15 +111,9 @@ constexpr uint32_t  kSwapStockRightName = 0xad;  // 173
 constexpr uintptr_t kMsgSlot   = 0x010322d0;  // UIEquipWnd vtable +0x94 (message handler slot)
 constexpr uintptr_t kMsgOrig   = 0x008bf7d0;  // FUN_008bf7d0 equip msg handler (ret 0x18 = SIX stack args!)
 constexpr int kModeFlag   = 0xb4;  // own=0, other-player view=1
-constexpr int kWinX       = 0x1c;  // window live x
-constexpr int kWinY       = 0x20;  // window live y
-constexpr int kMsgCmd     = 6;     // command message
-constexpr int kSubClose   = 0xc9;  // msg 6 sub-command = close
-constexpr int kMsgRestore = 0x22;  // layout-restore message
 constexpr int kEquipId    = 0xa;   // OWN UIEquipWnd window id
 
 using EquipMsg_t = int (__fastcall*)(void*, void*, int, int, int, int, int, int);  // ret 0x18
-using SetPos_t     = void (__fastcall*)(void*, void*, int, int);                    // UIWindow SetPos(this,x,y)
 
 const auto g_equip_msg_orig = reinterpret_cast<EquipMsg_t>(kMsgOrig);
 int g_posX = INT_MIN, g_posY = INT_MIN;  // saved OWN equip window position (INT_MIN = unset)
@@ -139,27 +134,8 @@ inline bool IsOwnEquip(void* self) {
 // premier, dont le rôle n'est pas établi (0 partout).
 int __fastcall EquipMsgHook(void* self, void* edx, int arg0, int msg, int p2,
                             int p3, int p4, int p5) {
-  __try {
-    if (msg == kMsgCmd && p2 == kSubClose && IsOwnEquip(self)) {  // X close -> persist
-      g_posX = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(self) + kWinX);
-      g_posY = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(self) + kWinY);
-      const int r = g_equip_msg_orig(self, edx, arg0, msg, p2, p3, p4, p5);
-      if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
-      return r;
-    }
-    const int r = g_equip_msg_orig(self, edx, arg0, msg, p2, p3, p4, p5);
-    // After the native layout-restore, override with the saved position (we
-    // override, so the native validator/default are irrelevant). OnTick (live
-    // FindWindow read, throttled) + this close-save cover drag-end and closes.
-    if (msg == kMsgRestore && IsOwnEquip(self) &&
-        g_posX != INT_MIN && g_posX >= 0 && g_posY >= 0) {
-      reinterpret_cast<SetPos_t>(*reinterpret_cast<uintptr_t*>(
-          *reinterpret_cast<uintptr_t*>(self) + uiwnd::kVfSetPos))(self, nullptr, g_posX, g_posY);
-    }
-    return r;
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-    return 0;
-  }
+  return WindowPos_PersistOnMsg(self, edx, arg0, msg, p2, p3, p4, p5,
+                                g_equip_msg_orig, &g_posX, &g_posY, &IsOwnEquip);
 }
 
 }  // namespace
@@ -300,16 +276,15 @@ void EquipTweaks::OnTick() {
   // switch to tracking (see status_tweaks.cc for the full rationale). This is what makes
   // the position survive a full client restart, when the window re-opens at its native spot.
   if (g_restorePending) {
-    reinterpret_cast<SetPos_t>(*reinterpret_cast<uintptr_t*>(
-        *reinterpret_cast<uintptr_t*>(win) + uiwnd::kVfSetPos))(win, nullptr, g_posX, g_posY);
+    uiwnd::SetPos(win, g_posX, g_posY);
     savedX = g_posX; savedY = g_posY;
     g_restorePending = false;
     init = true;
     return;
   }
 
-  const int liveX = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + kWinX);
-  const int liveY = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(win) + kWinY);
+  int liveX = 0, liveY = 0;
+  uiwnd::LivePos(win, &liveX, &liveY);
   if (!init) {  // no saved pos to restore: baseline off the current spot
     savedX = liveX; savedY = liveY; g_posX = liveX; g_posY = liveY; init = true; return;
   }
