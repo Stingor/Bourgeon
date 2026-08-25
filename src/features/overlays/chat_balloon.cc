@@ -1,5 +1,6 @@
 #include "ragnarok/globals.h"
 #include "features/overlays/chat_balloon.h"
+#include "ragnarok/actor.h"  // rag::actor : les offsets de CActorSprite
 
 #include <windows.h>
 
@@ -75,13 +76,9 @@ constexpr uintptr_t kQueueDestroyWindow = 0x00a447d0;
 // GameMode_GetActive(mgr) __fastcall : le CGameMode actif, 0 hors jeu.
 using QueueDestroyFn = void(__thiscall*)(void*, void*);
 
-// Offsets (cf. docs/entity_nameplate_re.md et entity_chat_balloon_re.md).
+// Le nœud du gestionnaire d'acteurs (cf. docs/entity_nameplate_re.md). Les
+// offsets de l'ACTEUR sont dans `rag::actor`.
 constexpr int kNode_Actor   = 0x08;   //  node+8          = pointeur acteur
-constexpr int kAct_ScreenX  = 0xac;   //  int  : X écran projeté (pieds)
-constexpr int kAct_ScreenY  = 0xb0;   //  int  : Y écran projeté (pieds)
-constexpr int kAct_Aid      = 0x110;  //  uint : AID
-constexpr int kAct_Balloon  = 0x264;  //  UITransBalloonText* : LA bulle
-constexpr int kAct_Height   = 0x5c;   //  float : facteur de hauteur du sprite
 
 // UITransBalloonText : couleur par défaut du texte, posée par ZC_NPC_CHAT (et le
 // rose 0xFF8080 codé en dur de la Talkie Box).
@@ -294,7 +291,7 @@ bool ChatBalloon::IsActorBalloon(void* window) {
   if (!sentinel) return false;
 
   auto owns = [&](void* actor) {
-    return actor != nullptr && Read<void*>(actor, kAct_Balloon) == window;
+    return actor != nullptr && Read<void*>(actor, rag::actor::kBalloon) == window;
   };
   bool found = owns(Read<void*>(actor_mgr, gamescene::kAmOwnPlayer));  // hors liste !
   int guard = 0;
@@ -337,7 +334,7 @@ bool ChatBalloon::Active() const {
 
 bool ChatBalloon::HasBalloonFor(void* actor) const {
   if (actor == nullptr || balloons_.empty() || !Active()) return false;
-  const uint32_t aid = Read<uint32_t>(actor, kAct_Aid);
+  const uint32_t aid = Read<uint32_t>(actor, rag::actor::kGid);
   return balloons_.count(KeyForActor(actor, aid)) != 0;
 }
 
@@ -398,8 +395,8 @@ void ChatBalloon::DestroyAdopted(const std::vector<Doomed>& doomed) {
       // Ne toucher à rien si l'acteur porte désormais une AUTRE fenêtre : le
       // natif en a recréé une entre-temps (nouvelle réplique), et elle sera
       // adoptée à son tour.
-      if (Read<void*>(d.actor, kAct_Balloon) != d.window) continue;
-      *reinterpret_cast<void**>(reinterpret_cast<uint8_t*>(d.actor) + kAct_Balloon) = nullptr;
+      if (Read<void*>(d.actor, rag::actor::kBalloon) != d.window) continue;
+      *reinterpret_cast<void**>(reinterpret_cast<uint8_t*>(d.actor) + rag::actor::kBalloon) = nullptr;
       queue_destroy(mgr, d.window);
     } __except (EXCEPTION_EXECUTE_HANDLER) {
       // Acteur déjà libéré : le natif a détruit la fenêtre avec lui
@@ -437,7 +434,7 @@ void ChatBalloon::SyncWithActors() {
   std::unordered_set<uint32_t> alive;
   auto visit = [&](void* actor) {
     if (actor == nullptr) return;
-    const uint32_t aid = Read<uint32_t>(actor, kAct_Aid);
+    const uint32_t aid = Read<uint32_t>(actor, rag::actor::kGid);
     const uint32_t key = KeyForActor(actor, aid);
     // 🔴 `alive` se remplit pour TOUT acteur présent, pas seulement pour ceux
     // qui portent une fenêtre : depuis qu'on détruit la native dès adoption,
@@ -445,7 +442,7 @@ void ChatBalloon::SyncWithActors() {
     // fenêtre effaçait notre propre bulle la frame suivante.
     alive.insert(key);
 
-    void* window = Read<void*>(actor, kAct_Balloon);
+    void* window = Read<void*>(actor, rag::actor::kBalloon);
     if (window == nullptr) return;
     claimed.insert(window);
 
@@ -692,13 +689,13 @@ void ChatBalloon::DrawBalloons() {
 
   auto draw_one = [&](void* actor) {
     if (actor == nullptr) return;
-    const uint32_t aid = Read<uint32_t>(actor, kAct_Aid);
+    const uint32_t aid = Read<uint32_t>(actor, rag::actor::kGid);
     auto it = balloons_.find(KeyForActor(actor, aid));
     if (it == balloons_.end()) return;
     Balloon& b = it->second;
 
-    const int sx = Read<int32_t>(actor, kAct_ScreenX);
-    const int sy = Read<int32_t>(actor, kAct_ScreenY);
+    const int sx = Read<int32_t>(actor, rag::actor::kScreenX);
+    const int sy = Read<int32_t>(actor, rag::actor::kScreenY);
     if (sx <= 0 || sy <= 0 || sx >= static_cast<int>(disp_w) ||
         sy >= static_cast<int>(disp_h))
       return;  // hors champ : pas de bulle collée au bord, contrairement au natif
@@ -714,7 +711,7 @@ void ChatBalloon::DrawBalloons() {
     // faux après un changement de résolution en cours de session).
     const float y_scale = 81.0f * disp_h / 480.0f;
     float px = static_cast<float>(sx) - bw * 0.5f;
-    float py = static_cast<float>(sy) - y_scale * Read<float>(actor, kAct_Height) -
+    float py = static_cast<float>(sy) - y_scale * Read<float>(actor, rag::actor::kHeight) -
                bh - static_cast<float>(y_offset_);
 
     // Remontée tant que ça chevauche une bulle déjà posée.

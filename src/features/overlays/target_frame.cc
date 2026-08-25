@@ -1,4 +1,5 @@
 #include "features/overlays/target_frame.h"
+#include "ragnarok/actor.h"  // rag::actor : les offsets de CActorSprite
 
 #include <windows.h>
 
@@ -93,9 +94,7 @@ constexpr int kGm_SkillTargetMode = 0x408;
 // de désigner quelqu'un » — le seul disponible quand il re-clique la MÊME
 // entité, cas où `+0xF4` ne bouge pas d'un octet.
 constexpr int kGm_Engaged = 0x28;
-// AID du MAÎTRE d'un pet / homoncule / mercenaire. C'est par lui que le natif
-// reconnaît « un compagnon à moi » (`0x00C787CC`).
-constexpr int kAct_OwnerAid = 0x2ec;
+
 constexpr int kGm_Selection = 0x0f4;  // AID de la DERNIÈRE ENTITÉ CLIQUÉE
 
 // CNameInfo : cinq `std::string` de 0x18 octets à la suite (taille +0x10,
@@ -103,44 +102,11 @@ constexpr int kGm_Selection = 0x0f4;  // AID de la DERNIÈRE ENTITÉ CLIQUÉE
 // elles — party = « Lv. X | HP: Y% », guilde = race, rang = élément.
 constexpr int kName_Guild = 0x34;
 constexpr int kName_Rank  = 0x4c;
-// ── Apparence d'un acteur (CActorSprite / CPlayer) ──────────────────────────
-// Relevée dans `CActorSprite_SetSexAndRebuildLook` (0x00d36280), qui passe TOUS
-// ces champs à vt+76 dans l'ordre, et recoupée avec les constructeurs de couches
-// (BuildHead_Slot1 0x00d3f4f0, BuildHeadgear*_Slot2/3/4, SetClothesColor,
-// SetHairColor). C'est ce qui permet de composer le portrait d'une entité TIERCE.
-//
-// 🔴 `+0x4C8` est le BODY STYLE (LOOK_BODY2), PAS le sexe : le setter vt+176
-// s'appelait `SetSexAndRebuildEquip` par mislabel, et il est appelé au case 0x0D
-// de ZC_SPRITE_CHANGE. Le sexe, lui, est en `+0x260` — c'est lui qui choisit
-// `g_HairSpriteNum_Male` vs `_Female` dans `Job_BuildBodyOrHeadSpritePath_impl`.
-constexpr int kAct_ClothesColor = 0x048;
-constexpr int kAct_BaseJob      = 0x25c;  // classe brute
-constexpr int kAct_Sex          = 0x260;  // 0 = femme
-constexpr int kAct_HairStyle    = 0x438;
-constexpr int kAct_HairColor    = 0x43c;
-constexpr int kAct_HeadTop      = 0x448;
-constexpr int kAct_HeadMid      = 0x44c;
-constexpr int kAct_HeadLow      = 0x450;
-constexpr int kAct_Garment      = 0x454;
-constexpr int kAct_BodyStyle    = 0x4c8;
-constexpr int kAct_DisplayClass = 0x4cc;  // celle qui nomme le chemin du corps
 
-// Les deux jauges d'un acteur — repli quand le serveur ne répond pas (vieux
-// serveur, ou joueur adverse dont les PV sont tus) :
-//   · +0x300 : `UIMonsterGage`, alimentée par ZC_HP_INFO (0x0977), donc les PV
-//     d'un monstre QU'ON A FRAPPÉ ;
-//   · +0x488 : `UIPcGage`, posée par le msg 34 de l'acteur (membres de party).
-// Dans les deux, PV courants en +0xA0 et maximum en +0xA4. 🔴 Les champs de SP
-// (+0xA8/+0xAC) existent aussi mais le client ne les remplit JAMAIS : c'est
-// exactement le trou que ZC 0x0F2A vient combler.
 // Balayage des acteurs, pour le cyclage au clavier.
 constexpr int kGm_ActorMgr    = 0x0cc;  // *(gm+0xCC)      = actorMgr
 constexpr int kNode_Actor     = 0x08;   //  node+8          = pointeur acteur
-constexpr int kAct_PosX       = 0x10;   //  float, position monde X
-constexpr int kAct_PosZ       = 0x18;   //  float, position monde Z
-constexpr int kAct_ScreenX    = 0xac;   //  int, X écran projeté (pieds)
-constexpr int kAct_ScreenY    = 0xb0;   //  int, Y écran projeté
-constexpr int kAct_Nameplate  = 0xa5;   //  byte, l'acteur participe au nameplate
+
 // Le natif refuse le marqueur sur un PORTAIL, et lui seul.
 constexpr unsigned kJobPortal = 45;
 // Catégorie du quad de picking d'un ACTEUR (1 = objet au sol, 2 = unité de
@@ -167,19 +133,14 @@ constexpr unsigned kOptionInvisible = 0x40;  // @hide du staff
 // `Option_IsCloak` `& 4`).
 constexpr unsigned kOptionHiddenMask =
     kOptionHide | kOptionCloak | kOptionInvisible;
-constexpr int kAct_State      = 0x70;   //  int, 3 = MORT
-constexpr int kAct_Aid        = 0x110;  //  uint, AID/GID
 
 // Combien de cibles au plus dans un cycle. Un écran n'en montre jamais autant ;
 // la borne existe pour qu'un balayage ne puisse pas dégénérer si la liste du
 // client est corrompue.
 constexpr int kMaxCycleTargets = 128;
 
-constexpr int kAct_MonsterGage = 0x300;
-constexpr int kAct_HeadGage    = 0x488;
 constexpr int kGage_Hp    = 0xa0;
 constexpr int kGage_MaxHp = 0xa4;
-
 
 // Types d'entité tels qu'ils voyagent dans ZC 0x0F2A (e_bourgeon_target_type).
 constexpr uint8_t kTypePc  = 1;
@@ -276,7 +237,7 @@ bool ReadEngaged(void* game_mode) {
 bool ReadMarkerPos(void* actor, int* out_x, int* out_z) {
   __try {
     if (!actor) return false;
-    if (Read<uint32_t>(actor, kAct_BaseJob) == kJobPortal) return false;
+    if (Read<uint32_t>(actor, rag::actor::kJobId) == kJobPortal) return false;
     // 🔴 Une entité CLOAKÉE n'a droit à rien, et ce n'est pas un détail
     // d'affichage : poser la flèche sur elle donnerait la position d'un joueur
     // caché — un avantage que le client vanilla ne donne pas, donc une triche.
@@ -288,8 +249,8 @@ bool ReadMarkerPos(void* actor, int* out_x, int* out_z) {
     // c'était bâti sur une lecture fausse du natif. `CActorSprite_InitDefaults`
     // (`0x00C45F47`) pose `+0x314 = 4` PAR DÉFAUT — « non nul » n'y désigne donc
     // pas une unité spéciale, et le test ne filtrait rien.
-    *out_x = static_cast<int>(Read<float>(actor, kAct_PosX));
-    *out_z = static_cast<int>(Read<float>(actor, kAct_PosZ));
+    *out_x = static_cast<int>(Read<float>(actor, rag::actor::kPosX));
+    *out_z = static_cast<int>(Read<float>(actor, rag::actor::kPosZ));
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
@@ -301,7 +262,7 @@ bool ClickEngagesAnAttack(void* game_mode, void* actor) {
     if (!game_mode || !actor) return false;
     if (Read<int32_t>(game_mode, kGm_SkillTargetMode) != 0) return false;
     const uint32_t own = rag::OwnAccountIdSafe();
-    if (own != 0 && Read<uint32_t>(actor, kAct_OwnerAid) == own) return false;
+    if (own != 0 && Read<uint32_t>(actor, rag::actor::kOwnerAid) == own) return false;
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 }
@@ -371,9 +332,9 @@ uint32_t ValidSkillTarget(uint32_t gid, int mode) {
     const uint32_t own = rag::OwnAccountIdSafe();
     if (own != 0 && gid == own) return 0u;
     if (mode == 2) {  // offensif
-      if (!rag::IsMonsterJob(static_cast<unsigned>(Read<uint32_t>(actor, kAct_BaseJob))))
+      if (!rag::IsMonsterJob(static_cast<unsigned>(Read<uint32_t>(actor, rag::actor::kJobId))))
         return 0u;    // un joueur reste au clic manuel (PVP/GVG)
-      if (Read<int32_t>(actor, kAct_State) == 3) return 0u;  // cadavre
+      if (Read<int32_t>(actor, rag::actor::kMotionState) == 3) return 0u;  // cadavre
     }
     return gid;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0u; }
@@ -412,7 +373,7 @@ bool ReadNameField(void* entry, int field, char* out, size_t out_size) {
 bool ReadActorGauge(void* actor, uint32_t* hp, uint32_t* maxhp) {
   __try {
     if (!actor) return false;
-    const int slots[2] = {kAct_MonsterGage, kAct_HeadGage};
+    const int slots[2] = {rag::actor::kMonsterGage, rag::actor::kHeadGage};
     for (int i = 0; i < 2; ++i) {
       void* gage = Read<void*>(actor, slots[i]);
       if (!gage) continue;
@@ -557,9 +518,9 @@ int CollectScreenTargets(void* gm, CycleCandidate* out, int max) {
     if (!actor_mgr) return 0;
     void* own = Read<void*>(actor_mgr, gamescene::kAmOwnPlayer);
     if (!own) return 0;
-    const uint32_t own_gid = Read<uint32_t>(own, kAct_Aid);
-    const float own_x = Read<float>(own, kAct_PosX);
-    const float own_z = Read<float>(own, kAct_PosZ);
+    const uint32_t own_gid = Read<uint32_t>(own, rag::actor::kGid);
+    const float own_x = Read<float>(own, rag::actor::kPosX);
+    const float own_z = Read<float>(own, rag::actor::kPosZ);
 
     const ImGuiIO& io = ImGui::GetIO();
     const float screen_w = io.DisplaySize.x;
@@ -573,26 +534,26 @@ int CollectScreenTargets(void* gm, CycleCandidate* out, int max) {
       node = Read<void*>(node, 0);
       if (!actor) continue;
 
-      const unsigned job = Read<uint32_t>(actor, kAct_BaseJob);
+      const unsigned job = Read<uint32_t>(actor, rag::actor::kJobId);
       if (!rag::IsMonsterJob(job)) continue;
       // Vivant, et visible : un cadavre ou un monstre masqué ne se cible pas au
       // clavier (le sort sur cadavre a son propre chemin, cf. NoteSkillTarget).
-      if (Read<int32_t>(actor, kAct_State) == 3) continue;
-      if (Read<uint8_t>(actor, kAct_Nameplate) == 0) continue;
+      if (Read<int32_t>(actor, rag::actor::kMotionState) == 3) continue;
+      if (Read<uint8_t>(actor, rag::actor::kNameplate) == 0) continue;
 
       // À L'ÉCRAN, et rien d'autre. La position écran projetée de l'acteur est
       // déjà calculée par le client à chaque frame : elle coûte deux lectures et
       // dit exactement ce que le joueur voit.
-      const int sx = Read<int32_t>(actor, kAct_ScreenX);
-      const int sy = Read<int32_t>(actor, kAct_ScreenY);
+      const int sx = Read<int32_t>(actor, rag::actor::kScreenX);
+      const int sy = Read<int32_t>(actor, rag::actor::kScreenY);
       if (sx <= 0 || sy <= 0 || sx >= static_cast<int>(screen_w) ||
           sy >= static_cast<int>(screen_h))
         continue;
 
-      const float dx = Read<float>(actor, kAct_PosX) - own_x;
-      const float dz = Read<float>(actor, kAct_PosZ) - own_z;
+      const float dx = Read<float>(actor, rag::actor::kPosX) - own_x;
+      const float dz = Read<float>(actor, rag::actor::kPosZ) - own_z;
 
-      out[count].gid = Read<uint32_t>(actor, kAct_Aid);
+      out[count].gid = Read<uint32_t>(actor, rag::actor::kGid);
       out[count].dist2 = dx * dx + dz * dz;
       if (out[count].gid != 0 && out[count].gid != own_gid) ++count;
     }
@@ -1044,7 +1005,7 @@ void TargetFrame::DrawHud() {
     // dix secondes. Cf. RequestTargetName.
     if (name_[0] == '\0') RequestTargetName();
 
-    const unsigned job = static_cast<unsigned>(ReadActorInt(actor, kAct_BaseJob));
+    const unsigned job = static_cast<unsigned>(ReadActorInt(actor, rag::actor::kJobId));
     is_mob_ = rag::IsMonsterJob(job);
     is_player_ = !is_mob_ && rag::IsPlayerJob(job);
     // Dès que le serveur a parlé, c'est lui qui classe : il connaît le type réel,
@@ -1164,16 +1125,16 @@ void TargetFrame::DrawElements(void* game_mode, void* actor) {
                                   : -1.0f;
           if (is_player_) {
             ro::DollLook look;
-            look.sex           = ReadActorInt(actor, kAct_Sex) != 0 ? 1 : 0;
-            look.job           = ReadActorInt(actor, kAct_BaseJob);
-            look.body          = ReadActorInt(actor, kAct_DisplayClass);
-            look.hair          = ReadActorInt(actor, kAct_HairStyle);
-            look.hair_color    = ReadActorInt(actor, kAct_HairColor);
-            look.clothes_color = ReadActorInt(actor, kAct_ClothesColor);
-            look.head_top      = ReadActorInt(actor, kAct_HeadTop);
-            look.head_mid      = ReadActorInt(actor, kAct_HeadMid);
-            look.head_low      = ReadActorInt(actor, kAct_HeadLow);
-            look.garment       = ReadActorInt(actor, kAct_Garment);
+            look.sex           = ReadActorInt(actor, rag::actor::kSex) != 0 ? 1 : 0;
+            look.job           = ReadActorInt(actor, rag::actor::kJobId);
+            look.body          = ReadActorInt(actor, rag::actor::kDisplayClass);
+            look.hair          = ReadActorInt(actor, rag::actor::kHairStyle);
+            look.hair_color    = ReadActorInt(actor, rag::actor::kHairColor);
+            look.clothes_color = ReadActorInt(actor, rag::actor::kClothesColor);
+            look.head_top      = ReadActorInt(actor, rag::actor::kHeadTop);
+            look.head_mid      = ReadActorInt(actor, rag::actor::kHeadMid);
+            look.head_low      = ReadActorInt(actor, rag::actor::kHeadLow);
+            look.garment       = ReadActorInt(actor, rag::actor::kGarment);
             // 🔴 Le chemin de corps RÉEL plutôt que la déduction : sur une 3e ou
             // 4e classe, rejouer `Job_ResolveBodyClass` diverge et affiche une
             // tenue de base. L'acteur, lui, porte le chemin que le client a
@@ -1186,7 +1147,7 @@ void TargetFrame::DrawElements(void* game_mode, void* actor) {
                          portrait_dir_, portrait_anim_, clock);
           } else {
             ro::MobSpriteRes res;
-            const int cls = ReadActorInt(actor, kAct_BaseJob);
+            const int cls = ReadActorInt(actor, rag::actor::kJobId);
             if (ro::LoadMobSprite(cls, &res)) {
               ro::DrawMobSprite(dl, res, q0, q1, clock < 0.0f ? 0.0f : clock,
                                 static_cast<unsigned>(portrait_anim_), 130.0f,
@@ -1443,7 +1404,7 @@ void TargetFrame::OnGameFramePulse() {
     if (actor) {
       if (auto* ctx = bourgeon.entity_context_menu())
         ctx->OpenForEntity(gm, menu,
-                           static_cast<uint32_t>(ReadActorInt(actor, kAct_BaseJob)),
+                           static_cast<uint32_t>(ReadActorInt(actor, rag::actor::kJobId)),
                            kPickCategoryActor);
     }
   }

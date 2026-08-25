@@ -1,5 +1,6 @@
 #include "ragnarok/globals.h"
 #include "features/overlays/entity_names.h"
+#include "ragnarok/actor.h"  // rag::actor : les offsets de CActorSprite
 
 #include <windows.h>
 
@@ -29,14 +30,6 @@ namespace {
 // Signature de `gamescene::kNameDictGetEntryOrRequestAddr` (cf. game_scene.h
 // pour ce qu'elle déclenche : elle DEMANDE les noms inconnus au serveur).
 using GetNameEntryFn = void*(__thiscall*)(void*, unsigned);
-
-// Offsets d'un ACTEUR (la navigation gm -> gestionnaire -> acteur est dans
-// ragnarok/game_scene.h ; cf. docs/entity_nameplate_re.md).
-constexpr int kAct_Nameplate = 0xa5;   //  byte : l'acteur participe au nameplate (visible/vivant)
-constexpr int kAct_BaseJob   = 0x25c;  //  int  : classe/job de base
-constexpr int kAct_ScreenX   = 0xac;   //  int  : X écran projeté (pieds)
-constexpr int kAct_ScreenY   = 0xb0;   //  int  : Y écran projeté (pieds)
-constexpr int kAct_Aid       = 0x110;  //  uint : AID (clé du dictionnaire de noms)
 
 // Taille et capacité de la std::string du NOM, mesurées depuis le début du
 // CNameInfo — donc la position du champ PLUS l'offset interne de la string.
@@ -93,11 +86,11 @@ void EntityNames::DrawNames() {
     if (!actor) return;
 
     // Éligible au nameplate (l'acteur est visible/vivant, comme pour le picking).
-    if (Read<uint8_t>(actor, kAct_Nameplate) == 0) return;
+    if (Read<uint8_t>(actor, rag::actor::kNameplate) == 0) return;
 
     if (actor == own_actor && !show_self_) return;
 
-    const unsigned job = Read<uint32_t>(actor, kAct_BaseJob);
+    const unsigned job = Read<uint32_t>(actor, rag::actor::kJobId);
     const bool is_mob = rag::IsMonsterJob(job);
     const bool is_ply = !is_mob && rag::IsPlayerJob(job);
     const bool is_npc = !is_mob && !is_ply;
@@ -106,14 +99,14 @@ void EntityNames::DrawNames() {
     if (is_npc && !show_npcs_) return;
 
     // Position écran (pieds) déjà projetée par le moteur cette frame.
-    const int sx = Read<int32_t>(actor, kAct_ScreenX);
-    const int sy = Read<int32_t>(actor, kAct_ScreenY);
+    const int sx = Read<int32_t>(actor, rag::actor::kScreenX);
+    const int sy = Read<int32_t>(actor, rag::actor::kScreenY);
     if (sx <= 0 || sy <= 0 || sx >= static_cast<int>(disp_w) ||
         sy >= static_cast<int>(disp_h))
       return;
 
     // Nom depuis le dictionnaire natif (et demande au serveur si inconnu).
-    const unsigned aid = Read<uint32_t>(actor, kAct_Aid);
+    const unsigned aid = Read<uint32_t>(actor, rag::actor::kGid);
     void* entry = get_entry(dict, aid);
     if (!entry) return;
     const unsigned size = Read<uint32_t>(entry, kName_Size);

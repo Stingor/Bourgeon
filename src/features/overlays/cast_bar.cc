@@ -1,5 +1,6 @@
 #include "ragnarok/globals.h"
 #include "features/overlays/cast_bar.h"
+#include "ragnarok/actor.h"  // rag::actor : les offsets de CActorSprite
 
 #include <windows.h>
 #include <mmsystem.h>  // timeGetTime (winmm) — la MÊME horloge que le natif
@@ -35,21 +36,9 @@ namespace {
 // char* GetSkillName(int id) — wrapper Lua, renvoie « Unknown-Skill » si l'id
 // est inconnu. Même source que l'arbre de compétences et l'infobulle native.
 
-// Offsets GameMode / gestionnaire d'acteurs / acteur.
+// Le nœud du gestionnaire d'acteurs. Les offsets de l'ACTEUR lui-même vivent
+// dans `rag::actor` ; ici il ne reste que le pas de la liste.
 constexpr int kNode_Actor   = 0x08;   //  node+8          = pointeur acteur
-constexpr int kAct_ScreenX  = 0xac;   //  int   : X écran projeté (pieds)
-constexpr int kAct_ScreenY  = 0xb0;   //  int   : Y écran projeté (pieds)
-constexpr int kAct_Aid      = 0x110;  //  uint  : AID / GID
-constexpr int kAct_BaseJob  = 0x25c;  //  int   : classe/job de base
-constexpr int kAct_Height   = 0x5c;   //  float : facteur de hauteur du sprite
-// 🔴 Le trio de l'incantation, relevé par RE de Actor_OnMsg_AppearanceEffects
-// (cas msg 82, 0x00c4d955) et de CActorSprite_UpdateOverheadWidgets (0x00c46680).
-constexpr int kAct_CastGage  = 0x270;  //  UIRechargeGage* : la barre native
-constexpr int kAct_CastEnd   = 0x280;  //  uint : timeGetTime de FIN
-constexpr int kAct_CastStart = 0x284;  //  uint : timeGetTime de DÉBUT
-// La bulle de chat, pour savoir si le sort est DÉJÀ annoncé au-dessus de la tête.
-// ⚠ Nulle dès que ChatBalloon a pris la main : il détruit la fenêtre native.
-constexpr int kAct_Balloon   = 0x264;  //  UITransBalloonText*
 
 // Modes du nom de sort, cf. CastBar::name_mode_.
 constexpr int kName_Never  = 0;
@@ -188,7 +177,7 @@ bool CastBar::EntityHasBalloon(void* actor) const {
   const ChatBalloon* cb = Bourgeon::Instance().chat_balloon();
   if (cb != nullptr && cb->Active()) return cb->HasBalloonFor(actor);
   // Chatbox native : la fenêtre est encore accrochée à l'acteur.
-  return Read<void*>(actor, kAct_Balloon) != nullptr;
+  return Read<void*>(actor, rag::actor::kBalloon) != nullptr;
 }
 
 // ── Frame ────────────────────────────────────────────────────────────────────
@@ -247,7 +236,7 @@ void CastBar::SyncWithActors() {
   // client immédiatement, et une remise à `visible` sur une fenêtre déjà visible
   // ne coûte qu'un stockage — là où une comptabilité oublierait toujours un cas.
   auto apply_visibility = [&](void* actor, bool is_own) {
-    void* gage = Read<void*>(actor, kAct_CastGage);
+    void* gage = Read<void*>(actor, rag::actor::kCastGage);
     if (gage == nullptr) return;
     const bool hide = enabled_ || (is_own && hide_own_);
     uiwnd::SetVisible(gage, !hide);
@@ -269,10 +258,10 @@ void CastBar::SyncWithActors() {
   // ── Instantané de NOTRE incantation ────────────────────────────────────────
   own_cast_ = OwnCast();
   if (!own_actor) return;
-  void* own_gage = Read<void*>(own_actor, kAct_CastGage);
+  void* own_gage = Read<void*>(own_actor, rag::actor::kCastGage);
   if (own_gage == nullptr) return;
-  const uint32_t start = Read<uint32_t>(own_actor, kAct_CastStart);
-  const uint32_t end   = Read<uint32_t>(own_actor, kAct_CastEnd);
+  const uint32_t start = Read<uint32_t>(own_actor, rag::actor::kCastStart);
+  const uint32_t end   = Read<uint32_t>(own_actor, rag::actor::kCastEnd);
   const uint32_t total = end - start;
   if (total == 0 || total > kMaxCastMs) return;
   if (static_cast<int32_t>(end - now) < 0) return;  // expirée, le natif va la retirer
@@ -284,7 +273,7 @@ void CastBar::SyncWithActors() {
   own_cast_.elapsed_ms   = static_cast<int>(elapsed);
   own_cast_.remaining_ms = static_cast<int>(total - elapsed);
   own_cast_.frac         = static_cast<float>(elapsed) / static_cast<float>(total);
-  const char* nm = SkillNameForGid(Read<uint32_t>(own_actor, kAct_Aid), start);
+  const char* nm = SkillNameForGid(Read<uint32_t>(own_actor, rag::actor::kGid), start);
   if (nm) std::snprintf(own_cast_.name, sizeof(own_cast_.name), "%s", nm);
 }
 
@@ -304,12 +293,12 @@ void CastBar::RestoreNatives() {
          node = Read<void*>(node, 0), ++guard) {
       void* actor = Read<void*>(node, kNode_Actor);
       if (!actor) continue;
-      void* gage = Read<void*>(actor, kAct_CastGage);
+      void* gage = Read<void*>(actor, rag::actor::kCastGage);
       if (gage) uiwnd::SetVisible(gage, true);
     }
     void* own_actor = Read<void*>(actor_mgr, gamescene::kAmOwnPlayer);
     if (own_actor) {
-      void* gage = Read<void*>(own_actor, kAct_CastGage);
+      void* gage = Read<void*>(own_actor, rag::actor::kCastGage);
       if (gage) uiwnd::SetVisible(gage, true);
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) {
@@ -357,17 +346,17 @@ void CastBar::DrawBars() {
 
   auto draw_one = [&](void* actor) {
     if (actor == nullptr) return;
-    void* gage = Read<void*>(actor, kAct_CastGage);
+    void* gage = Read<void*>(actor, rag::actor::kCastGage);
     if (gage == nullptr) return;  // pas d'incantation en cours
 
-    const uint32_t start = Read<uint32_t>(actor, kAct_CastStart);
-    const uint32_t end   = Read<uint32_t>(actor, kAct_CastEnd);
+    const uint32_t start = Read<uint32_t>(actor, rag::actor::kCastStart);
+    const uint32_t end   = Read<uint32_t>(actor, rag::actor::kCastEnd);
     const uint32_t total = end - start;
     if (total == 0 || total > kMaxCastMs) return;
     if (static_cast<int32_t>(end - now) < 0) return;
 
     const bool is_own = (actor == own_actor);
-    const unsigned job = Read<uint32_t>(actor, kAct_BaseJob);
+    const unsigned job = Read<uint32_t>(actor, rag::actor::kJobId);
     const bool is_mob = !is_own && rag::IsMonsterJob(job);
     const bool is_ply = !is_own && !is_mob && rag::IsPlayerJob(job);
     if (is_own) {
@@ -378,8 +367,8 @@ void CastBar::DrawBars() {
       if (!is_mob && !is_ply && !show_npcs_) return;
     }
 
-    const int sx = Read<int32_t>(actor, kAct_ScreenX);
-    const int sy = Read<int32_t>(actor, kAct_ScreenY);
+    const int sx = Read<int32_t>(actor, rag::actor::kScreenX);
+    const int sy = Read<int32_t>(actor, rag::actor::kScreenY);
     if (sx <= 0 || sy <= 0 || sx >= static_cast<int>(disp_w) ||
         sy >= static_cast<int>(disp_h))
       return;  // hors champ : pas de barre collée au bord
@@ -392,7 +381,7 @@ void CastBar::DrawBars() {
     // barre poussant vers le bas depuis là. La bulle de chat, elle, se place
     // au-dessus de ce même point — les deux ne se marchent pas dessus.
     const ImVec2 p0(static_cast<float>(sx) - bw * 0.5f,
-                    static_cast<float>(sy) - y_scale * Read<float>(actor, kAct_Height) +
+                    static_cast<float>(sy) - y_scale * Read<float>(actor, rag::actor::kHeight) +
                         static_cast<float>(y_offset_));
     const ImVec2 p1(p0.x + bw, p0.y + bh);
 
@@ -426,7 +415,7 @@ void CastBar::DrawBars() {
     char label[96];
     label[0] = '\0';
     const char* nm =
-        want_name ? SkillNameForGid(Read<uint32_t>(actor, kAct_Aid), start) : nullptr;
+        want_name ? SkillNameForGid(Read<uint32_t>(actor, rag::actor::kGid), start) : nullptr;
     char secs[24];
     secs[0] = '\0';
     if (show_time_)
