@@ -1,4 +1,5 @@
 #include "features/patches/window_pos_tweaks.h"  // WindowPos_PersistOnMsg
+#include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 #include "ui/game_texture.h"
 #include "features/patches/status_tweaks.h"
 
@@ -97,8 +98,10 @@ bool g_restorePending = false;           // a freshly-loaded position waiting to
 // Le nom de guilde est une std::string MSVC posée à `rag::kGuildObjAddr` : la
 // longueur est à +0x10 et la capacité à +0x14, et c'est la CAPACITÉ qui dit où
 // vivent les octets (SSO en place sous 0x10, tas au-delà).
+// ⚠ Plus de decalage de capacite ici : `rag::clientstr` porte la regle SSO.
+// Celui de la TAILLE reste, parce qu'il sert d'un test metier — « taille 0 » veut
+// dire « pas de guilde », ce qui n'est pas une question de disposition.
 constexpr uintptr_t kGuildLen = rag::kGuildObjAddr + 0x10;  // _Mysize (0 == no guild)
-constexpr uintptr_t kGuildCap = rag::kGuildObjAddr + 0x14;  // _Myres  (>=0x10 => heap ptr)
 
 const int kRowCenter[7] = {12, 28, 44, 60, 76, 92, 106}; // bitmap-Y of each label row, shared left/right
 
@@ -208,9 +211,8 @@ void DrawNormal(void* wnd, int blitY) {
 
   // ---- right row 7: guild name (if any) ---------------------------------
   if (RD(kGuildLen) != 0) {
-    const unsigned cap = *reinterpret_cast<unsigned*>(kGuildCap);
-    const char* gname = (cap < 0x10) ? reinterpret_cast<const char*>(rag::kGuildObjAddr)
-                                     : *reinterpret_cast<const char**>(rag::kGuildObjAddr);
+    const char* gname =
+        rag::clientstr::Data(reinterpret_cast<const void*>(rag::kGuildObjAddr));
     DTextL(wnd, 163, y6 - 1, gname, 12, 0);  // left-aligned right after the Guild label
   }
 

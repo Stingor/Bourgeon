@@ -1,4 +1,5 @@
 #include "ragnarok/emotion_hotkey.h"
+#include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 
 #include <Windows.h>
 
@@ -25,9 +26,6 @@ constexpr uintptr_t kMacrosLast  = 0x015fb39c;  // _Mylast
 
 // std::string MSVC : buffer SSO de 16 octets, puis taille, puis capacité.
 constexpr size_t kStringStride = 0x18;
-constexpr size_t kStringSizeOff = 0x10;
-constexpr size_t kStringCapOff  = 0x14;
-constexpr size_t kSsoCapacity   = 15;
 
 // std::string::assign — __thiscall(this, src, len). L'annuaire (`ragnarok/globals.h`)
 // ne porte que le destructeur ; l'assign est redéclaré ici comme il l'est dans
@@ -84,11 +82,8 @@ bool ReadLocal(int slot, char* out_local, size_t out_size) {
   if (!s) return false;
 
   __try {
-    const uint32_t size = *reinterpret_cast<const uint32_t*>(s + kStringSizeOff);
-    const uint32_t cap  = *reinterpret_cast<const uint32_t*>(s + kStringCapOff);
-    const char* data = (cap > kSsoCapacity)
-                           ? *reinterpret_cast<const char* const*>(s)
-                           : reinterpret_cast<const char*>(s);
+    const uint32_t size = rag::clientstr::Size(s);
+    const char* data = rag::clientstr::Data(s);
     if (!data) return false;
     // Une taille aberrante veut dire qu'on ne lit pas un std::string : on rend
     // vide plutôt que de recopier n'importe quoi.

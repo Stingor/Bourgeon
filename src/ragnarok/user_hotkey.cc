@@ -1,4 +1,5 @@
 #include "ragnarok/user_hotkey.h"
+#include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 
 #include <Windows.h>
 
@@ -60,24 +61,9 @@ using RowToCmd_t   = int(__stdcall*)(int, int);
 using GetHotKey_t  = void*(__stdcall*)(void*, int, int);
 using StrDtor_t    = void(__fastcall*)(void*);
 
-// Copie une std::string MSVC (base = l'objet) vers `dst`, terminée NUL, tronquée.
-// Layout : +0x00 données ou pointeur, +0x10 taille, +0x14 capacité ; les données
-// sont EN PLACE tant que la capacité est < 0x10, sinon `+0x00` est un pointeur.
-void CopyMsvcString(const void* str_obj, char* dst, int cap) {
-  dst[0] = '\0';
-  if (!str_obj || cap <= 1) return;
-  const auto* base = static_cast<const uint8_t*>(str_obj);
-  const unsigned size     = *reinterpret_cast<const unsigned*>(base + 0x10);
-  const unsigned capacity = *reinterpret_cast<const unsigned*>(base + 0x14);
-  const char* src = (capacity >= 0x10)
-                        ? *reinterpret_cast<const char* const*>(base)
-                        : reinterpret_cast<const char*>(base);
-  if (!src || size == 0) return;
-  int n = static_cast<int>(size);
-  if (n > cap - 1) n = cap - 1;
-  std::memcpy(dst, src, static_cast<size_t>(n));
-  dst[n] = '\0';
-}
+// La copie d'une std::string du client vit dans `rag::clientstr::CopyTruncating`
+// — même contrat (terminée NUL, tronquée au tampon), plus le `__try` que cette
+// transcription-ci n'avait pas.
 
 }  // namespace
 
@@ -125,8 +111,10 @@ bool ReadBinding(int category, int row, Binding* out) {
 
     kc1 = *reinterpret_cast<int*>(buf + kOffKeyCode1);
     kc2 = *reinterpret_cast<int*>(buf + kOffKeyCode2);
-    CopyMsvcString(buf + kOffKeyName, key_name_local, sizeof(key_name_local));
-    CopyMsvcString(buf + kOffLabel, label_local, sizeof(label_local));
+    rag::clientstr::CopyTruncating(buf + kOffKeyName, key_name_local,
+                                   sizeof(key_name_local));
+    rag::clientstr::CopyTruncating(buf + kOffLabel, label_local,
+                                   sizeof(label_local));
 
     // ⚠ Les DEUX std::string sont allouées par le pont : ne pas les détruire fuit
     // dès qu'un libellé dépasse 15 caractères (hors SSO).

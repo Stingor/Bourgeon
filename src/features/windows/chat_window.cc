@@ -1,4 +1,5 @@
 #include "features/windows/chat_window.h"
+#include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 #include "features/windows/chat_room_window.h"  // chatroomwnd::IngestRoomLine (action 5)
 
 #include <Windows.h>
@@ -69,8 +70,6 @@ constexpr size_t    kNodeIsNilOff  = 0x0D;
 constexpr size_t    kNodeKeyOff    = 0x10;
 constexpr size_t    kNodeNameOff   = 0x14;
 constexpr size_t    kNodeFilterOff = 0x2C;
-constexpr size_t    kStringSizeOff = 0x10;  // std::string : taille après le buffer SSO
-constexpr size_t    kStringCapOff  = 0x14;
 constexpr size_t    kSsoCapacity   = 15;
 
 // ── Envoi (copie fidèle de ChatMacro_SendEmotionHotkeySlot 0x00a47400) ───────
@@ -1005,13 +1004,11 @@ struct RawChannel {
   uint8_t   filter[kTypeCount];
 };
 
-// Lit une std::string MSVC (SSO 15 caractères, sinon pointeur) dans `out`.
+// Lit une std::string du CLIENT dans `out`. La disposition et la règle SSO
+// viennent du foyer ; ce qui reste ici est la recopie bornée propre à ce fichier.
 void ReadStdString(const uint8_t* str, char* out, size_t out_size) {
-  const uint32_t capacity = *reinterpret_cast<const uint32_t*>(str + kStringCapOff);
-  const uint32_t size     = *reinterpret_cast<const uint32_t*>(str + kStringSizeOff);
-  const char* data = (capacity > kSsoCapacity)
-                         ? *reinterpret_cast<const char* const*>(str)
-                         : reinterpret_cast<const char*>(str);
+  const uint32_t size = rag::clientstr::Size(str);
+  const char* data = rag::clientstr::Data(str);
   size_t n = 0;
   if (data != nullptr) {
     for (; n + 1 < out_size && n < size; ++n) out[n] = data[n];

@@ -508,8 +508,7 @@ int ReadSnapshot(uint32_t* ids, int* prices, int* amounts, int max) {
         prices[i]  = *reinterpret_cast<const int*>(el + kSnapPrice);
         // Même convention que les nœuds de liste : l'itemId est une std::string.
         const char* sb = reinterpret_cast<const char*>(el + kSnapId);
-        const uint32_t capa = *reinterpret_cast<const uint32_t*>(sb + 0x14);
-        const char* s = (capa > 15) ? *reinterpret_cast<const char* const*>(sb) : sb;
+        const char* s = rag::clientstr::Data(sb);
         ids[i] = s ? static_cast<uint32_t>(atoi(s)) : 0;
         ++n;
       }
@@ -523,9 +522,8 @@ void ReadSnapshotName(char* out, size_t cap) {
   out[0] = '\0';
   __try {
     const char* base = reinterpret_cast<const char*>(kSnapName);
-    const uint32_t size = *reinterpret_cast<const uint32_t*>(base + 0x10);
-    const uint32_t capa = *reinterpret_cast<const uint32_t*>(base + 0x14);
-    const char* s = (capa > 15) ? *reinterpret_cast<const char* const*>(base) : base;
+    const uint32_t size = rag::clientstr::Size(base);
+    const char* s = rag::clientstr::Data(base);
     if (s && size > 0 && size < cap) {
       std::memcpy(out, s, size);
       out[size] = '\0';

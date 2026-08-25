@@ -1,4 +1,5 @@
 #include "ragnarok/held_sprites.h"
+#include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 
 #include <Windows.h>
 
@@ -68,7 +69,9 @@ using DtorFn_t  = void(__fastcall*)(NativeStr*);
 // court-circuite. On pose donc `data\sprite\` nous-mêmes, exactement comme le
 // fait `BodyBasePath` dans le composeur.
 void TakeAndStrip(NativeStr* s, char* dst, size_t dst_size) {
-  const char* src = (s->capacity >= 16) ? *reinterpret_cast<char**>(s) : s->buf;
+  // ⚠ La struct reste — les signatures des natifs la nomment — mais la RÈGLE
+  // SSO vient du foyer : sa disposition est celle d'une `std::string` MSVC.
+  const char* src = rag::clientstr::Data(s);
   dst[0] = '\0';
   if (src && *src) {
     std::snprintf(dst, dst_size, "data\\sprite\\%s", src);

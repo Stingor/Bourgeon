@@ -1,4 +1,5 @@
 #include "features/patches/damage_name_fix.h"
+#include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 
 #include <Windows.h>
 
@@ -74,8 +75,10 @@ using OperatorDeleteFn = void(__cdecl*)(void*);
 CopyNameFn      g_copy_natif    = reinterpret_cast<CopyNameFn>(kCopyEntityName);
 ProcessDamageFn g_process_natif = reinterpret_cast<ProcessDamageFn>(kProcessDamageAction);
 
+// ⚠ La struct RESTE — son union et son `static_assert` documentent la
+// disposition mieux qu'un décalage nu — mais la RÈGLE SSO vient du foyer.
 const char* Texte(const ChaineMsvc* chaine) {
-  return chaine->capacite >= 16 ? chaine->tas : chaine->sso;
+  return rag::clientstr::Data(chaine);
 }
 
 void Memoriser(uint32_t gid, const ChaineMsvc* chaine) {

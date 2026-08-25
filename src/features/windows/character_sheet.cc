@@ -67,7 +67,6 @@ constexpr int kOffEquipInvIndex = 0x04;   // index inventaire (a envoyer pour de
 constexpr int kOffEquipLocation = 0x08;   // masque EQP
 constexpr int kOffEquipPresent  = 0x10;   // ==1 si occupe
 constexpr int kOffEquipResname  = 0x2c;   // std::string (SSO) : itemId en texte
-constexpr int kOffEquipResCap   = 0x40;   // capacite SSO (>15 => heap)
 constexpr int kOffEquipRefine   = 0x60;
 constexpr int kOffEquipView     = 0x70;
 constexpr int kOffEquipType     = 0x00;   // type d'item (equip 4/5/8/9/0xb-0xf)
@@ -276,9 +275,7 @@ int ReadInventoryLite(InvItemLite* out, int cap) {
       it.grade    = *reinterpret_cast<const short*>(info + kOffEquipGrade);
       for (int c = 0; c < 4; ++c)
         it.cards[c] = *reinterpret_cast<const uint32_t*>(info + kOffEquipCards + c * 4);
-      const uint32_t capS = *reinterpret_cast<const uint32_t*>(info + kOffEquipResCap);
-      const char* rn = (capS > 15) ? *reinterpret_cast<const char* const*>(info + kOffEquipResname)
-                                   : reinterpret_cast<const char*>(info + kOffEquipResname);
+      const char* rn = rag::clientstr::Data(info + kOffEquipResname);
       it.nameid = (rn && rn[0]) ? static_cast<uint32_t>(std::atoi(rn)) : 0;
       ++n;
       node = *reinterpret_cast<void* const*>(node);  // node->next

@@ -1,4 +1,5 @@
 #include "ragnarok/item_db.h"
+#include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 #include "features/moonlight_ui/internal.h"
 
 #include <Windows.h>
@@ -51,15 +52,11 @@ static int __fastcall ItemDescWndHook(void* ecx, void* /*edx*/,
       return g_item_desc_wnd_orig(ecx, nullptr, wparam, msg_id, item_data,
                                   arg4, arg5, arg6);
 
-    // std::string MSVC à l'offset 0x2C : les 16 premiers octets sont soit le
-    // texte lui-même (small-string optimization), soit un pointeur vers le tas ;
-    // c'est la capacité, en [+5] mots, qui tranche.
+    // std::string MSVC à l'offset 0x2C (soit `item_data + 11` mots). La règle
+    // SSO vient du foyer : elle était écrite ici indexée en MOTS (`[5]` = +0x14),
+    // une forme qu'aucune recherche par décalage ne pouvait trouver.
     const int* nameid_msvc_string = item_data + 11;
-    const char* nameid_text;
-    if (static_cast<uint32_t>(nameid_msvc_string[5]) > 15u)
-      nameid_text = *reinterpret_cast<const char* const*>(nameid_msvc_string);
-    else
-      nameid_text = reinterpret_cast<const char*>(nameid_msvc_string);
+    const char* nameid_text = rag::clientstr::Data(nameid_msvc_string);
     if (nameid_text) {
       const long id = std::atol(nameid_text);
       if (id > 0) {
