@@ -108,7 +108,6 @@ constexpr int kGm_Selection = 0x0f4;  // AID de la DERNIÈRE ENTITÉ CLIQUÉE
 // Catégorie du quad de picking d'un ACTEUR (1 = objet au sol, 2 = unité de
 // compétence, 3 = pet). Notre cible en est toujours un : le HUD ne suit que des
 // entités du monde.
-constexpr int kPickCategoryActor = 0;
 
 // Type de curseur « attaque » (l'épée) dans `cursors.act`. C'est celui que le
 // natif pose lui-même sur une entité attaquable : `CursorMgr_SetType(this, 5)`
@@ -1398,7 +1397,7 @@ void TargetFrame::OnGameFramePulse() {
       if (auto* ctx = bourgeon.entity_context_menu())
         ctx->OpenForEntity(gm, menu,
                            static_cast<uint32_t>(ReadActorInt(actor, rag::actor::kJobId)),
-                           kPickCategoryActor);
+                           gamescene::kPickActor);
     }
   }
 

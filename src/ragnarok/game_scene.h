@@ -166,7 +166,29 @@ constexpr uintptr_t kPickQuadTreeAddr       = 0x012135f0;
 constexpr uintptr_t kQuadTreeQueryPointAddr = 0x00a797b0;
 constexpr int kQuadAid = 6;  // dword : AID de l'acteur
 constexpr int kQuadJob = 7;  // dword : job/classe
-constexpr int kQuadCat = 8;  // dword : catégorie de pick (0 acteur, 1 sol, 3 pet)
+constexpr int kQuadCat = 8;  // dword : catégorie de pick — cf. la table ci-dessous
+
+// ── Les catégories de pick ───────────────────────────────────────────────────
+// 🔴 LA 1 EST L'OBJET AU SOL, PAS UN NPC. RE live du 2026-08-19 : le quad d'un
+// `CItem` porte `+0x18` = l'AID du flooritem (alloué sous 2 000 000), `+0x1c` = la
+// CONSTANTE `0x7D03` — jamais un job réel — et `+0x20` = 1. Les NPC scriptés, eux,
+// sortent en catégorie 0 avec les autres acteurs et se classent ensuite au job.
+//
+// ⚠ CETTE TABLE A DÉJÀ COÛTÉ UN DÉFAUT, DEUX FOIS. La confusion « 1 = NPC »
+// donnait aux objets au sol le menu contextuel d'un NPC — « Interagir » et
+// outillage admin compris. Corrigé dans le menu contextuel… et pas dans
+// l'inspecteur d'entités, qui a continué d'étiqueter « NPC de carte » un objet au
+// sol jusqu'au 2026-08-25. Les deux tables vivaient chacune chez soi, sous des
+// noms différents (`kPickGroundItem` contre `kPickNpc`) pour la MÊME valeur :
+// aucune recherche par nom ne pouvait les rapprocher.
+//
+// 🔴 La 3 est le PET, et seul `CActorSprite_SubmitNameplateQuad` @0x00c58c48
+// l'écrit, sous `acteur+0x314 == 7` (`CLIF_BL_PET`).
+constexpr int kPickActor      = 0;  // joueur, monstre, NPC scripté
+constexpr int kPickGroundItem = 1;  // un CItem posé au sol
+constexpr int kPickSkillUnit  = 2;
+constexpr int kPickPet        = 3;
+constexpr int kPickSpecial    = 4;  // homoncule / mercenaire / élémentaire
 
 // Taille minimale d'une cellule du quadtree de picking, en unités de monde.
 // C'est un réglage du client, pas une constante de code : le diagnostic de

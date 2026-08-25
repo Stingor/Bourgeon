@@ -52,15 +52,10 @@ constexpr int kName_Extra   = 0x7c;
 constexpr int kName_TitleId = 0x94;
 constexpr int kName_Valid   = 0x98;
 
-// Catégories du quad de picking (docs/entity_context_menu_re.md §3).
-// 🔴 La 3, c'est le PET : seul `CActorSprite_SubmitNameplateQuad` @0x00c58c48
-// l'écrit, sous `acteur+0x314 == 7` (`CLIF_BL_PET`). Aucun quad ne vaut « objet
-// au sol » — un objet au sol porte `objecttype == 2` et sort en catégorie 0.
-constexpr int kPickActor      = 0;
-constexpr int kPickNpc        = 1;
-constexpr int kPickSkillUnit  = 2;
-constexpr int kPickPet        = 3;
-constexpr int kPickSpecial    = 4;
+// Les catégories du quad de picking sont au foyer (`gamescene`), avec la RE qui
+// les prouve. 🔴 CE FICHIER PORTAIT LA CARTE FAUSSE : il appelait la 1 « NPC »
+// et l'étiquetait ainsi, alors que c'est l'OBJET AU SOL — le correctif de 2026-08
+// n'avait atteint que le menu contextuel.
 
 // Intervalle minimal entre deux passages par le chemin QUI DEMANDE.
 //
@@ -163,11 +158,11 @@ bool JobDisplayName(uint32_t job, char* out, size_t out_size) {
 
 const char* PickCategoryLabel(int category) {
   switch (category) {
-    case kPickActor:      return i18n::Tr("acteur (joueur, monstre, PNJ scripté)");
-    case kPickNpc:        return i18n::Tr("NPC de carte");
-    case kPickSkillUnit:  return i18n::Tr("unité de compétence");
-    case kPickPet:        return i18n::Tr("pet");
-    case kPickSpecial:    return i18n::Tr("homoncule / mercenaire / élémentaire");
+    case gamescene::kPickActor:      return i18n::Tr("acteur (joueur, monstre, PNJ scripté)");
+    case gamescene::kPickGroundItem: return i18n::Tr("objet au sol");
+    case gamescene::kPickSkillUnit:  return i18n::Tr("unité de compétence");
+    case gamescene::kPickPet:        return i18n::Tr("pet");
+    case gamescene::kPickSpecial:    return i18n::Tr("homoncule / mercenaire / élémentaire");
     default:              return i18n::Tr("inconnue");
   }
 }

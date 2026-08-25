@@ -481,13 +481,17 @@ const float* HoveredQuad(float* out_mx, float* out_my) {
 }
 
 // Une couleur par catégorie de pick : ce qui compte est de distinguer d'un coup
-// d'œil un acteur d'un NPC ou d'une unité de compétence posée au sol.
+// d'œil un acteur d'un objet au sol ou d'une unité de compétence posée.
+//
+// 🔴 Ce `switch` écrivait ses catégories EN LITTÉRAUX, avec l'étiquette FAUSSE
+// (« NPC de carte » pour la 1). C'était le troisième porteur de la même carte
+// périmée, et le seul qu'aucune recherche de constante ne pouvait trouver.
 uint32_t PickCatColor(int cat) {
   switch (cat) {
-    case 0:  return IM_COL32(90, 210, 120, 200);   // acteur
-    case 1:  return IM_COL32(110, 170, 255, 200);  // NPC de carte
-    case 2:  return IM_COL32(255, 170, 70, 200);   // unité de compétence
-    default: return IM_COL32(180, 180, 180, 170);
+    case gamescene::kPickActor:      return IM_COL32(90, 210, 120, 200);
+    case gamescene::kPickGroundItem: return IM_COL32(110, 170, 255, 200);
+    case gamescene::kPickSkillUnit:  return IM_COL32(255, 170, 70, 200);
+    default:                         return IM_COL32(180, 180, 180, 170);
   }
 }
 

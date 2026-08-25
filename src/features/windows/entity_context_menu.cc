@@ -191,10 +191,6 @@ constexpr int kPartyWalkGuard     = 64;    // un groupe plafonne à 12 : garde-f
 //   +0x20 (cat) = 1
 // C'est cette confusion qui donnait aux objets au sol le menu d'un NPC,
 // « Interagir » et outillage admin compris.
-constexpr int kPickGroundItem = 1;
-constexpr int kPickSkillUnit  = 2;
-constexpr int kPickPet        = 3;
-constexpr int kPickSpecial    = 4;  // homoncule / mercenaire / élémentaire
 
 // ── L'objet au sol : la classe CItem (RE live 2026-08-19) ────────────────────
 // Les CItem vivent dans leur PROPRE liste du gestionnaire d'acteurs — pas celle
@@ -952,12 +948,12 @@ EntityContextMenu::Kind EntityContextMenu::ClassifyTarget(void* game_mode,
   // Le pick tranche en premier : il sait des choses que le job ignore (un NPC
   // scripté sous forme de joueur porte un job de joueur — le cas qui a servi de
   // référence pendant la RE).
-  if (category == kPickSkillUnit) return Kind::kSkillUnit;
+  if (category == gamescene::kPickSkillUnit) return Kind::kSkillUnit;
   // 🔴 Seul CItem émet la catégorie 1 (cf. le bloc des catégories) : c'est un
   // objet au sol, PAS un NPC — l'ancienne lecture donnait aux drops le menu
   // d'un NPC, « Interagir » et outillage admin compris. Les vrais NPC arrivent
   // en catégorie 0 et se classent plus bas, au job ou au prédicat natif.
-  if (category == kPickGroundItem) return Kind::kGroundItem;
+  if (category == gamescene::kPickGroundItem) return Kind::kGroundItem;
 
   // Ses propres compagnons, avant tout test de job : ce sont les seuls cas où le
   // natif ouvrait autre chose qu'un menu de joueur.
@@ -970,7 +966,7 @@ EntityContextMenu::Kind EntityContextMenu::ClassifyTarget(void* game_mode,
       // sous ce même octet. On la lit donc d'abord, et on ne va chercher
       // l'acteur qu'en second recours — un pointeur de moins à obtenir, c'est
       // une façon de moins de perdre le menu en silence.
-      if (category == kPickPet) return Kind::kPet;
+      if (category == gamescene::kPickPet) return Kind::kPet;
       void* actor = FindActor(game_mode, aid);
       if (actor && Read<uint8_t>(actor, rag::actor::kType) == 7) return Kind::kPet;
     }
@@ -983,7 +979,7 @@ EntityContextMenu::Kind EntityContextMenu::ClassifyTarget(void* game_mode,
   // plus bas — avec un « Attaquer » que le serveur refusera, et une fiche de
   // monstre sur une créature apprivoisée. Le natif ne lui ouvrait rien du tout ;
   // on n'en garde que l'identité, c'est-à-dire le menu de diagnostic du staff.
-  if (category == kPickPet) return Kind::kOther;
+  if (category == gamescene::kPickPet) return Kind::kOther;
 
   if (aid == rag::OwnAccountId()) return Kind::kSelf;
 
@@ -995,7 +991,7 @@ EntityContextMenu::Kind EntityContextMenu::ClassifyTarget(void* game_mode,
   // en aucun cas voir réécrites.
   if (IsFixedIdNpc(aid)) return Kind::kNpc;
 
-  if (category == kPickSpecial || rag::IsSpecialUnitJob(job)) return Kind::kOther;
+  if (category == gamescene::kPickSpecial || rag::IsSpecialUnitJob(job)) return Kind::kOther;
   if (rag::IsMonsterJob(job)) return Kind::kMonster;
   // 🔴 APRÈS le monstre, AVANT le joueur. Un PNJ scripté porte souvent une
   // classe de JOUEUR (kafra, marchand d'événement, PNJ de quête) : c'est ce
