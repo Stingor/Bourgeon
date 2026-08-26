@@ -1553,21 +1553,46 @@ void SetWindowCollapseAllowed(bool allowed) { g_collapse_allowed = allowed; }
 // il corrigeait la valeur de la frame précédente, que le glisser réécrivait
 // aussitôt depuis la position de la souris.
 //
-// 🔴 L'APPELANT EST PRIORITAIRE. S'il a posé sa propre contrainte, on ne la
-// remplace pas : la sienne est plus précise que la nôtre — une grille d'objets
-// s'aligne sur ses cellules, une liste sur sa rangée, et plusieurs portent un
-// `SizeCallback` d'aimantation qu'écraser casserait.
+// 🔴 ON RABAT LE PLAFOND DE L'APPELANT, ON NE LUI CÈDE PAS LA MAIN. Première
+// version : on renonçait dès qu'une contrainte existait, « parce que la sienne
+// est plus précise ». C'était se coucher devant les fautives — l'atlas,
+// l'entrepôt, l'échoppe et le cash shop bornent tous à `FLT_MAX`, une contrainte
+// qui ne contraint rien. Les fenêtres qui marchaient (amis, logs, RODEX,
+// boutique NPC, réglages) étaient justement celles qui n'en posaient aucune.
+//
+// Son MINIMUM est préservé : il sait mieux que nous ce que sa grille exige.
+// Seul son plafond est rabattu.
+//
+// ⚠ Un `SizeCallback` — l'aimantation sur la grille des viewers d'objets —
+// s'exécute APRÈS ce clamp, dans `CalcWindowSizeAfterConstraint` : il peut
+// encore arrondir de quelques pixels au-delà. C'est la marge d'une cellule, pas
+// un débordement, et lui retirer ce droit casserait l'alignement.
 void ConstrainNextWindowToScreen() {
   ImGuiContext* ctx = ImGui::GetCurrentContext();
   if (ctx == nullptr) return;
-  if (ctx->NextWindowData.HasFlags & ImGuiNextWindowDataFlags_HasSizeConstraint)
-    return;
   const ImVec2 screen = ImGui::GetIO().DisplaySize;
   // Écran de taille nulle = fenêtre du jeu minimisée : contraindre à 0 collerait
   // toutes les fenêtres à rien, et la valeur partirait dans imgui.ini.
   if (screen.x <= 0.0f || screen.y <= 0.0f) return;
-  ImGui::SetNextWindowSizeConstraints(
-      ImVec2(0.0f, 0.0f), ImVec2(screen.x * 0.90f, screen.y * 0.90f));
+  const float max_w = screen.x * 0.90f;
+  const float max_h = screen.y * 0.90f;
+
+  if (ctx->NextWindowData.HasFlags & ImGuiNextWindowDataFlags_HasSizeConstraint) {
+    ImRect& cr = ctx->NextWindowData.SizeConstraintRect;
+    // ⚠ Une borne NÉGATIVE signifie « n'y touche pas » pour ImGui : il garde
+    // alors `SizeFull` tel quel sur cet axe, donc l'axe reste LIBRE. On la
+    // remplace par la nôtre au lieu de la comparer.
+    if (cr.Min.x < 0.0f) cr.Min.x = 0.0f;
+    if (cr.Min.y < 0.0f) cr.Min.y = 0.0f;
+    cr.Max.x = (cr.Max.x < 0.0f) ? max_w : ImMin(cr.Max.x, max_w);
+    cr.Max.y = (cr.Max.y < 0.0f) ? max_h : ImMin(cr.Max.y, max_h);
+    // Un minimum passé au-dessus du maximum donnerait un ImClamp inversé : sur
+    // un petit écran, le plancher d'une grille peut dépasser nos 90 %.
+    cr.Min.x = ImMin(cr.Min.x, cr.Max.x);
+    cr.Min.y = ImMin(cr.Min.y, cr.Max.y);
+    return;
+  }
+  ImGui::SetNextWindowSizeConstraints(ImVec2(0.0f, 0.0f), ImVec2(max_w, max_h));
 }
 
 bool BeginRoWindow(const char* title, bool* p_open, int imgui_window_flags) {
