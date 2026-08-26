@@ -973,6 +973,7 @@ void NavigationWindow::PumpIntents() {
     // Sinon le bandeau « aucun chemin » d'une tentative précédente reviendrait
     // hanter l'écran dès que l'itinéraire redevient vide.
     no_route_ = false;
+    already_here_ = false;
     RefreshRoute();
   }
 
@@ -1060,6 +1061,30 @@ void NavigationWindow::PumpIntents() {
     // reliées à pied, la seule liaison est le Warp Agent, déclaré en type 204 —
     // que le pathfinder REFUSE tant que « services Kafra » est éteint.
     no_route_ = !SafeTrailActive() && !following_ && SafeStepCount() == 0;
+
+    // 🔴 « AUCUN CHEMIN » EST FAUX QUAND ON EST DÉJÀ ARRIVÉ. Viser la carte où
+    // l'on se trouve ne donne ni trace ni étape — le pathfinder n'a rien à
+    // franchir et rien à tracer — et les trois témoins ci-dessus disent alors
+    // « échec » d'une seule voix. Le joueur, lui, lisait en rouge qu'aucune
+    // liaison ne mène à l'endroit où il se tient.
+    //
+    // ⚠ À NE PAS CONFONDRE avec le cas voisin réglé juste au-dessus : viser un
+    // POINT de la carte courante (un PNJ) produit bien un chemin en cellules et
+    // une trace, simplement aucune ÉTAPE. Celui-là est déjà rattrapé par l'état
+    // du moteur ; ici il n'y a littéralement rien à tracer, et aucune lecture du
+    // moteur ne pourra donc distinguer « arrivé » de « injoignable ». Seule la
+    // DESTINATION DEMANDÉE le dit.
+    //
+    // On lit `last_go_` et non `go_` : ce dernier vient d'être vidé.
+    already_here_ = false;
+    if (no_route_ && !last_go_.map.empty()) {
+      char here[64];
+      if (rag::CurrentMapName(here, sizeof(here)) &&
+          _stricmp(here, last_go_.map.c_str()) == 0) {
+        already_here_ = true;
+        no_route_ = false;
+      }
+    }
   }
 
 }
@@ -1932,7 +1957,11 @@ void NavigationWindow::DrawDetailPane() {
 
 void NavigationWindow::DrawRoute() {
   // ── Itinéraire ─────────────────────────────────────────────────────────────
-  if (route_.empty() && no_route_) {
+  if (already_here_) {
+    // Ni rouge ni alarmant : la demande a abouti, elle n'avait simplement nulle
+    // part où mener.
+    ImGui::TextDisabled("%s", i18n::Tr("Vous êtes déjà sur cette carte."));
+  } else if (route_.empty() && no_route_) {
     // On distingue « rien demandé » de « demandé mais sans trajet » : le second
     // cas est un vrai renseignement, que le natif laisse deviner — il se contente
     // d'un message système noyé dans le chat, sans jamais nommer la cause.

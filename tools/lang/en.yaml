@@ -3048,6 +3048,7 @@
 "Exemplaires": "Spawns"
 "Ouvrir la fiche du monstre": "Open the monster sheet"
 "Aucune liaison connue ne mène jusque-là.": "No known connection leads there."
+"Vous êtes déjà sur cette carte.": "You are already on this map."
 
 # Liens de lieu <NAVIL> (chat, onglet Spawns de la fiche de monstre)
 "Clic : lancer le guidage": "Click: start guidance"

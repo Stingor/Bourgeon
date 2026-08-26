@@ -404,6 +404,9 @@ class NavigationWindow : public Plugin {
   // que la destination n'existe pas.
   GoIntent last_go_;
   bool     no_route_ = false;
+  // Destination demandée = la carte où l'on se trouve déjà. Distinct de
+  // `no_route_` : ce n'est pas un échec, et ça ne se dit pas en rouge.
+  bool     already_here_ = false;
   // « Partager » : même intention différée que le reste, puisqu'elle appelle le
   // natif — lequel déplie la barre de chat et écrit dedans.
   GoIntent share_;
