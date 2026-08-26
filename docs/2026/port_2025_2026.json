@@ -1,0 +1,2068 @@
+{
+ "0x004e52a0": {
+  "to": "0x004bb4f0",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "std_string_copy_ctor",
+  "names": [
+   "kStdStringCopyCtor"
+  ],
+  "comment": "__thiscall(dst, src), retn 4",
+  "sites": [
+   "features\\windows\\chat_window.cc:460"
+  ]
+ },
+ "0x004f1940": {
+  "to": "0x004e0ea0",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "std_string_assign",
+  "names": [
+   "kStdStringAssign",
+   "kStdStringAssignAddr"
+  ],
+  "comment": "__thiscall(this, src, len)",
+  "sites": [
+   "features\\fx\\palette_inject.cc:72",
+   "features\\windows\\chat_window.cc:95",
+   "features\\windows\\navigation_window.cc:71",
+   "ragnarok\\emotion_hotkey.cc:39"
+  ]
+ },
+ "0x0051b570": {
+  "to": "0x005f1f10",
+  "via": "texte",
+  "detail": "1/1 chaines",
+  "name25": "sub_51B570",
+  "names": [
+   "kCheckStackAddr"
+  ],
+  "comment": "lua_checkstack(L, extra)",
+  "sites": [
+   "ragnarok\\lua.h:53"
+  ]
+ },
+ "0x0053f140": {
+  "to": "0x00615470",
+  "via": "rtti",
+  "detail": "CDCBitmap +0x10",
+  "name25": "UIRenderNode_BlitImage",
+  "names": [
+   "kEngNodeBlit"
+  ],
+  "comment": "__thiscall(node, x, y, w, h, ARGB*, colorkey)",
+  "sites": [
+   "features\\patches\\chat.cc:366"
+  ]
+ },
+ "0x00550b10": {
+  "to": "0x006266b0",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "RenderQueue_InsertPrimitive",
+  "names": [
+   "kRenderQueueInsert"
+  ],
+  "comment": "RenderQueue_InsertPrimitive \u2014 hook\u00e9 (capture)",
+  "sites": [
+   "features\\fx\\ez_effect_capture.cc:27"
+  ]
+ },
+ "0x00553e80": {
+  "to": "0x0062a260",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "Effect_DepthToScreenScale",
+  "names": [
+   "kDepthScale"
+  ],
+  "comment": "Effect_DepthToScreenScale(ctx,_,invW) -> float",
+  "sites": [
+   "features\\fx\\ez_effect_capture.cc:24"
+  ]
+ },
+ "0x005541b0": {
+  "to": "0x0062a500",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "Scene_ProjectWorldToScreen",
+  "names": [
+   "kSceneProject"
+  ],
+  "comment": "Scene_ProjectWorldToScreen(ctx,_,world,view,&sx,&sy,&invW)",
+  "sites": [
+   "features\\fx\\ez_effect_capture.cc:23"
+  ]
+ },
+ "0x0055c830": {
+  "to": "0x006326a0",
+  "via": "rtti",
+  "detail": "CRendererDX9 +0x38",
+  "name25": "RendererDX9_DrawPrimRecord",
+  "names": [
+   "kDX9DrawPrimRec"
+  ],
+  "comment": "vtbl +0x38 : draw mono-texture",
+  "sites": [
+   "features\\fx\\ground_paint.cc:74"
+  ]
+ },
+ "0x0055c8c0": {
+  "to": "0x00632750",
+  "via": "rtti",
+  "detail": "CRendererDX9 +0x34",
+  "name25": "RendererDX9_DrawPrimRecordDualTex",
+  "names": [
+   "kDX9DrawPrimDual"
+  ],
+  "comment": "vtbl +0x34 : draw BI-texture (aniso)",
+  "sites": [
+   "features\\fx\\ground_paint.cc:75"
+  ]
+ },
+ "0x005663d0": {
+  "to": "0x0063c4b0",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "SpriteAtlas_BuildTexture",
+  "names": [
+   "kAtlasBuildAddr"
+  ],
+  "comment": "",
+  "sites": [
+   "ragnarok\\render.h:54"
+  ]
+ },
+ "0x00566b70": {
+  "to": "0x0063cc00",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "SpriteAtlas_GetCachedTexture",
+  "names": [
+   "kAtlasGetCachedAddr"
+  ],
+  "comment": "",
+  "sites": [
+   "ragnarok\\render.h:53"
+  ]
+ },
+ "0x00568760": {
+  "to": "0x0063e950",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "SpriteRes_GetOrLoadByName",
+  "names": [
+   "kSpriteRef"
+  ],
+  "comment": "__thiscall(cache,path,0,0,1,0) -> ref (5 args!)",
+  "sites": [
+   "features\\overlays\\status_icon_bar.cc:48"
+  ]
+ },
+ "0x0059e950": {
+  "to": "0x006665c0",
+  "via": "texte",
+  "detail": "3/6 chaines",
+  "name25": "UserSettings_SaveJson",
+  "names": [
+   "kSaveJsonAddr"
+  ],
+  "comment": "",
+  "sites": [
+   "ragnarok\\emotion_hotkey.cc:43"
+  ]
+ },
+ "0x005a4300": {
+  "to": "0x00c09b30",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "sub_5A4300",
+  "names": [
+   "kItemSkillInfoDtor"
+  ],
+  "comment": "",
+  "sites": [
+   "features\\windows\\make_item_window.cc:231"
+  ]
+ },
+ "0x005c5950": {
+  "to": "0x00cca703",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "SkillMgr_SetOption",
+  "names": [
+   "kSetOption"
+  ],
+  "comment": "SkillMgr_SetOption(mgr,key,val,0) ; key5=UI-lock (\u22651 bloque OnMsg 0x29)",
+  "sites": [
+   "features\\overlays\\skill_bar.cc:58"
+  ]
+ },
+ "0x0065ae30": {
+  "to": "0x006d6c80",
+  "via": "rtti",
+  "detail": "CEquipmentAttachable@EquipmentProperties +0x04",
+  "name25": "sub_65AD30",
+  "names": [
+   "(litt\u00e9ral)"
+  ],
+  "comment": "",
+  "sites": [
+   "ragnarok\\configuration.h:20"
+  ]
+ },
+ "0x006a1b20": {
+  "to": "0x0070cf80",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "ItemSkillInfo_ctor",
+  "names": [
+   "kInfoCtorAddr",
+   "kItemSkillInfoCtor"
+  ],
+  "comment": "",
+  "sites": [
+   "features\\windows\\make_item_window.cc:230",
+   "ragnarok\\item_db.h:40"
+  ]
+ },
+ "0x006a2dd0": {
+  "to": "0x0070e100",
+  "via": "texte",
+  "detail": "2/7 chaines",
+  "name25": "ItemSkillInfo_ComposeDisplayName",
+  "names": [
+   "(litt\u00e9ral)"
+  ],
+  "comment": "",
+  "sites": [
+   "ragnarok\\configuration.h:34"
+  ]
+ },
+ "0x006f4800": {
+  "to": "0x00764220",
+  "via": "texte",
+  "detail": "1/1 chaines",
+  "name25": "sub_6F47D0",
+  "names": [
+   "(litt\u00e9ral)"
+  ],
+  "comment": "",
+  "sites": [
+   "ragnarok\\configuration.h:41"
+  ]
+ },
+ "0x0070f4b0": {
+  "to": "0x0077ebf0",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "Act_GetFrame",
+  "names": [
+   "kActionGetFrameAddr"
+  ],
+  "comment": "",
+  "sites": [
+   "ragnarok\\render.h:58"
+  ]
+ },
+ "0x007110c0": {
+  "to": "0x00780790",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "Terrain_GetHeightAt",
+  "names": [
+   "kTerrainHeight"
+  ],
+  "comment": "Terrain_GetHeightAt(world,x,z)->float",
+  "sites": [
+   "features\\gameplay\\player_jump.cc:17"
+  ]
+ },
+ "0x007289da": {
+  "to": "0x007974fa",
+  "via": "rtti",
+  "detail": "CSprRes +0x14",
+  "name25": "CSprRes_Load",
+  "names": [
+   "(litt\u00e9ral)"
+  ],
+  "comment": "",
+  "sites": [
+   "features\\systems\\discord_relay.cc:12"
+  ]
+ },
+ "0x0073adb0": {
+  "to": "0x007a7af0",
+  "via": "texte",
+  "detail": "1/1 chaines",
+  "name25": "sub_73ADB0",
+  "names": [
+   "kIsLevelUseSkill"
+  ],
+  "comment": "__cdecl(id) : l'effet d\u00e9pend-il du niveau ?",
+  "sites": [
+   "features\\windows\\character_sheet.cc:1032"
+  ]
+ },
+ "0x0075f850": {
+  "to": "0x007aa6d0",
+  "via": "rtti",
+  "detail": "CSkillAction_SKE_NOON_BLAST +0x2C",
+  "name25": "sub_75F780",
+  "names": [
+   "(litt\u00e9ral)"
+  ],
+  "comment": "",
+  "sites": [
+   "ragnarok\\configuration.h:62"
+  ]
+ },
+ "0x0079d5e0": {
+  "to": "0x007e50d0",
+  "via": "rtti",
+  "detail": "UINewSelectCharWnd +0x4C",
+  "name25": "sub_79D590",
+  "names": [
+   "kSelCharRenderPatch"
+  ],
+  "comment": "mov ecx,[esi+0x120]",
+  "sites": [
+   "ragnarok\\ragnarok_client.cc:238"
+  ]
+ },
+ "0x0079d610": {
+  "to": "0x007e5120",
+  "via": "rtti",
+  "detail": "UINewSelectCharWnd +0x94",
+  "name25": "UINewSelectCharWnd_OnMsg",
+  "names": [
+   "kCharSelOnMsg"
+  ],
+  "comment": "vtbl+0x94, RET 0x18",
+  "sites": [
+   "features\\windows\\char_select.cc:122"
+  ]
+ },
+ "0x007a6df0": {
+  "to": "0x007efdd0",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "sub_7A6DF0",
+  "names": [
+   "kColorChip"
+  ],
+  "comment": "FUN_007a6df0(x,y,&r,&g,&b) -> colorchip.bmp pixel",
+  "sites": [
+   "features\\patches\\inventory_tweaks.cc:141"
+  ]
+ },
+ "0x007f9688": {
+  "to": "0x00838168",
+  "via": "rtti",
+  "detail": "UISwapEquipmentWnd +0x50",
+  "name25": "EquipSwapPreview_OnRender",
+  "names": [
+   "kSwapTitleImm"
+  ],
+  "comment": "push 0x8c imm32  (title x, centred)",
+  "sites": [
+   "features\\patches\\equip_tweaks.cc:93"
+  ]
+ },
+ "0x00815630": {
+  "to": "0x008538f0",
+  "via": "rtti",
+  "detail": "UIClanWnd +0x00",
+  "name25": "sub_8155F0",
+  "names": [
+   "(litt\u00e9ral)"
+  ],
+  "comment": "",
+  "sites": [
+   "ragnarok\\configuration.h:18"
+  ]
+ },
+ "0x008263a0": {
+  "to": "0x008645d0",
+  "via": "rtti",
+  "detail": "UITransBalloonText +0x50",
+  "name25": "UITransBalloonText_Paint",
+  "names": [
+   "kBalloonPaint"
+  ],
+  "comment": "",
+  "sites": [
+   "features\\overlays\\chat_balloon.cc:34"
+  ]
+ },
+ "0x008303f0": {
+  "to": "0x004da1f0",
+  "via": "rtti",
+  "detail": "UIBitmapEditCtrl +0xD4",
+  "name25": "CUIEdit_SetText",
+  "names": [
+   "kSetTextAddr"
+  ],
+  "comment": "CUIEdit_SetText",
+  "sites": [
+   "features\\systems\\native_login.cc:21"
+  ]
+ },
+ "0x0083d840": {
+  "to": "0x00880180",
+  "via": "rtti",
+  "detail": "UIChatHisBox +0xE4",
+  "name25": "UISubChatWnd_AppendDrawnLine",
+  "names": [
+   "(litt\u00e9ral)"
+  ],
+  "comment": "",
+  "sites": [
+   "features\\patches\\chat.cc:833",
+   "features\\patches\\chat.cc:836"
+  ]
+ },
+ "0x00857910": {
+  "to": "0x008954a0",
+  "via": "rtti",
+  "detail": "UITabControl +0x50",
+  "name25": "sub_857910",
+  "names": [
+   "kTabDrawOrig"
+  ],
+  "comment": "FUN_00857910 tab DrawContent",
+  "sites": [
+   "features\\patches\\inventory_tweaks.cc:157"
+  ]
+ },
+ "0x00864690": {
+  "to": "0x008a2f50",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "sub_864690",
+  "names": [
+   "kAddTab"
+  ],
+  "comment": "tab control AddTab(this, label, tooltip)",
+  "sites": [
+   "features\\patches\\inventory_tweaks.cc:168"
+  ]
+ },
+ "0x00874af0": {
+  "to": "0x008b42a0",
+  "via": "rtti",
+  "detail": "UINavigationroadiconWnd +0x10",
+  "name25": "UIWindow_SetPos",
+  "names": [
+   "(litt\u00e9ral)"
+  ],
+  "comment": "",
+  "sites": [
+   "features\\fx\\screen_fx.cc:397"
+  ]
+ },
+ "0x00880e7f": {
+  "to": "0x008c06af",
+  "via": "rtti",
+  "detail": "UINavigationroadiconWnd +0x6C",
+  "name25": "sub_880E00",
+  "names": [
+   "kSnapJnz"
+  ],
+  "comment": "JNZ 0x00880e9f  (bytes 75 1e)",
+  "sites": [
+   "features\\patches\\window_pos_tweaks.cc:378"
+  ]
+ },
+ "0x008848d0": {
+  "to": "0x008c3940",
+  "via": "texte",
+  "detail": "2/7 chaines",
+  "name25": "UILoginWnd_OnMsg",
+  "names": [
+   "kOnMsgAddr"
+  ],
+  "comment": "UILoginWnd_OnMsg",
+  "sites": [
+   "features\\systems\\native_login.cc:22"
+  ]
+ },
+ "0x00897df1": {
+  "to": "0x008d5cd1",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "UIEquipWnd_DrawSlotGrid",
+  "names": [
+   "kRightIconImm"
+  ],
+  "comment": "mov [ebp-0x534],0xfb  (right icon x=251)",
+  "sites": [
+   "features\\patches\\equip_tweaks.cc:63"
+  ]
+ },
+ "0x00897e05": {
+  "to": "0x008d5ce5",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "UIEquipWnd_DrawSlotGrid",
+  "names": [
+   "kRightNameImm"
+  ],
+  "comment": "mov [ebp-0x544],0xa7  (right name x=167)",
+  "sites": [
+   "features\\patches\\equip_tweaks.cc:64"
+  ]
+ },
+ "0x00897ffb": {
+  "to": "0x008d5edb",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "UIEquipWnd_DrawSlotGrid",
+  "names": [
+   "(litt\u00e9ral)"
+  ],
+  "comment": "push 0x46 imm8 \u2014 slots 0-7 (2 columns)",
+  "sites": [
+   "features\\patches\\equip_tweaks.cc:65"
+  ]
+ },
+ "0x00898040": {
+  "to": "0x008d5f20",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "UIEquipWnd_DrawSlotGrid",
+  "names": [
+   "(litt\u00e9ral)"
+  ],
+  "comment": "push 0x46 imm8 \u2014 slots 8-9 (top headgear row)",
+  "sites": [
+   "features\\patches\\equip_tweaks.cc:66"
+  ]
+ },
+ "0x00898bc0": {
+  "to": "0x008d6a40",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "UIWindow_DrawTitleBar",
+  "names": [
+   "kDrawTitleBar"
+  ],
+  "comment": "__thiscall(this, char hasClose, char* title, int width)",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:67"
+  ]
+ },
+ "0x00898cc5": {
+  "to": "0x008d6b45",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "UIWindow_DrawTitleBar",
+  "names": [
+   "kTitleColorImm"
+  ],
+  "comment": "imm of PUSH 0xffffff in DrawTitleBar (title text, ALL windows)",
+  "sites": [
+   "features\\patches\\inventory_tweaks.cc:229"
+  ]
+ },
+ "0x00898cd2": {
+  "to": "0x008d6b52",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "UIWindow_DrawTitleBar",
+  "names": [
+   "kTitleWhiteY"
+  ],
+  "comment": "lea eax,[edi-0xd] disp8 (white y-off)",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:79"
+  ]
+ },
+ "0x00898cd5": {
+  "to": "0x008d6b55",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "UIWindow_DrawTitleBar",
+  "names": [
+   "kTitleWhiteX"
+  ],
+  "comment": "push 0x13  (white title x)",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:78"
+  ]
+ },
+ "0x00898cea": {
+  "to": "0x008d6b6a",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "UIWindow_DrawTitleBar",
+  "names": [
+   "kTitleBlackY"
+  ],
+  "comment": "lea eax,[edi-0xe] disp8 (black y-off)",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:81"
+  ]
+ },
+ "0x00898cef": {
+  "to": "0x008d6b6f",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "UIWindow_DrawTitleBar",
+  "names": [
+   "kTitleBlackX"
+  ],
+  "comment": "push 0x12  (black edge x)",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:80"
+  ]
+ },
+ "0x008b3427": {
+  "to": "0x008f5e47",
+  "via": "rtti",
+  "detail": "UIEquipWnd +0x50",
+  "name25": "UIEquipWnd_DrawContent",
+  "names": [
+   "kHighlightImm"
+  ],
+  "comment": "mov [ebp-0x128],0xf8 imm32",
+  "sites": [
+   "features\\patches\\equip_tweaks.cc:82"
+  ]
+ },
+ "0x008b66a0": {
+  "to": "0x008f8d30",
+  "via": "texte",
+  "detail": "2/14 chaines",
+  "name25": "UIStatusWnd_DrawContent",
+  "names": [
+   "kDrawOrig"
+  ],
+  "comment": "original UIStatusWnd::DrawContent",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:52",
+   "features\\patches\\status_tweaks.cc:344"
+  ]
+ },
+ "0x008bf7d0": {
+  "to": "0x00903810",
+  "via": "rtti",
+  "detail": "UIEquipWnd +0x94",
+  "name25": "sub_8BF7D0",
+  "names": [
+   "kMsgOrig"
+  ],
+  "comment": "FUN_008bf7d0 equip msg handler (ret 0x18 = SIX stack args!)",
+  "sites": [
+   "features\\patches\\equip_tweaks.cc:110"
+  ]
+ },
+ "0x008c049c": {
+  "to": "0x009044dc",
+  "via": "rtti",
+  "detail": "UIEquipWnd +0x94",
+  "name25": "sub_8BF7D0",
+  "names": [
+   "kSwapWidthImm"
+  ],
+  "comment": "push 0x118 imm32 (swap panel SetSize width)",
+  "sites": [
+   "features\\patches\\equip_tweaks.cc:92"
+  ]
+ },
+ "0x008c18b0": {
+  "to": "0x00905e20",
+  "via": "rtti",
+  "detail": "UIItemCollectionWnd +0x94",
+  "name25": "UIItemSkillDescWnd_OnMsg",
+  "names": [
+   "kItemDescWndAddr"
+  ],
+  "comment": "",
+  "sites": [
+   "features\\moonlight_ui\\moonlight_ui.h:337"
+  ]
+ },
+ "0x008c5860": {
+  "to": "0x00909fa0",
+  "via": "rtti",
+  "detail": "UINotifyItemObtainWnd +0x94",
+  "name25": "UINotifyItemObtainWnd_OnMsg",
+  "names": [
+   "kMsgOrig"
+  ],
+  "comment": "UINotifyItemObtainWnd_OnMsg",
+  "sites": [
+   "features\\overlays\\item_obtain_toast.cc:38"
+  ]
+ },
+ "0x008cb7c0": {
+  "to": "0x0090d2e0",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "sub_8CB7C0",
+  "names": [
+   "kMsgOrig"
+  ],
+  "comment": "FUN_008cb7c0 status msg handler (ret 0x18 = SIX stack args!)",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:55"
+  ]
+ },
+ "0x008f3498": {
+  "to": "0x00931d98",
+  "via": "rtti",
+  "detail": "UINewChatWnd +0x50",
+  "name25": "UINewChatWnd_Paint",
+  "names": [
+   "kDialogBgBlitRet"
+  ],
+  "comment": "return addr of the dialog_bg blit",
+  "sites": [
+   "features\\patches\\chat.cc:192"
+  ]
+ },
+ "0x008f5800": {
+  "to": "0x00933970",
+  "via": "rtti",
+  "detail": "UIShortCutWnd +0x50",
+  "name25": "UIShortCutWnd_OnDraw",
+  "names": [
+   "kOnDraw"
+  ],
+  "comment": "UIShortCutWnd::OnDraw (vtable+0x50) \u2014 contenu slots",
+  "sites": [
+   "features\\overlays\\skill_bar.cc:149"
+  ]
+ },
+ "0x008fc220": {
+  "to": "0x00939ee0",
+  "via": "rtti",
+  "detail": "UINewChatWnd +0x94",
+  "name25": "UINewChatWnd_WndProc",
+  "names": [
+   "kChatWndProc"
+  ],
+  "comment": "__thiscall WndProc (vtable+0x94)",
+  "sites": [
+   "features\\patches\\chat.cc:531",
+   "features\\patches\\chat.cc:891"
+  ]
+ },
+ "0x008fd12a": {
+  "to": "0x0093adea",
+  "via": "rtti",
+  "detail": "UINewChatWnd +0x94",
+  "name25": "UINewChatWnd_WndProc",
+  "names": [
+   "kChatWrapCaller"
+  ],
+  "comment": "return addr of the chat call site",
+  "sites": [
+   "features\\patches\\chat.cc:158"
+  ]
+ },
+ "0x00901310": {
+  "to": "0x0093f110",
+  "via": "rtti",
+  "detail": "UIShortCutWnd +0x94",
+  "name25": "UIShortCutWnd_OnMsg",
+  "names": [
+   "kShortCutOnMsg"
+  ],
+  "comment": "UIShortCutWnd::OnMsg (vtable+0x94)",
+  "sites": [
+   "features\\overlays\\skill_bar.cc:211"
+  ]
+ },
+ "0x009030c0": {
+  "to": "0x00940da0",
+  "via": "rtti",
+  "detail": "UIShortCutWnd +0x38",
+  "name25": "UIWnd_SetVisible",
+  "names": [
+   "kHideNative",
+   "kSetVisibleFn"
+  ],
+  "comment": "UIWnd_SetVisible (vtable+0x38, __thiscall)",
+  "sites": [
+   "features\\overlays\\skill_bar.cc:158",
+   "features\\windows\\item_desc_window.cc:78"
+  ]
+ },
+ "0x009137a0": {
+  "to": "0x0094e810",
+  "via": "rtti",
+  "detail": "UIQuestDisplay +0x50",
+  "name25": "QuestTracker_DrawContent",
+  "names": [
+   "kDrawContent"
+  ],
+  "comment": "QuestTracker_DrawContent (hooked)",
+  "sites": [
+   "features\\overlays\\quest_tracker.cc:26"
+  ]
+ },
+ "0x0091e1f0": {
+  "to": "0x00958d20",
+  "via": "rtti",
+  "detail": "UICreateGuildWnd +0x3C",
+  "name25": "sub_91DF00",
+  "names": [
+   "(litt\u00e9ral)"
+  ],
+  "comment": "",
+  "sites": [
+   "ragnarok\\configuration.h:39"
+  ]
+ },
+ "0x009386d0": {
+  "to": "0x00973c40",
+  "via": "rtti",
+  "detail": "UIItemWnd +0x28",
+  "name25": "sub_938650",
+  "names": [
+   "kFavDropSlotImm"
+  ],
+  "comment": "imm8 of CMP EAX,3 in FUN_00938650 case 1",
+  "sites": [
+   "features\\patches\\inventory_tweaks.cc:183"
+  ]
+ },
+ "0x0093da20": {
+  "to": "0x009793b0",
+  "via": "rtti",
+  "detail": "UIItemStoreFindWnd +0x3C",
+  "name25": "sub_93D8A0",
+  "names": [
+   "(litt\u00e9ral)"
+  ],
+  "comment": "",
+  "sites": [
+   "ragnarok\\configuration.h:10"
+  ]
+ },
+ "0x0093f1f9": {
+  "to": "0x0097aca9",
+  "via": "rtti",
+  "detail": "UIItemWnd +0x3C",
+  "name25": "UIInventoryWnd_CreateControls",
+  "names": [
+   "(litt\u00e9ral)"
+  ],
+  "comment": "FUN_0093f100 SUB EAX,0x26   : scrollbar height",
+  "sites": [
+   "features\\patches\\inventory_tweaks.cc:121"
+  ]
+ },
+ "0x0093f278": {
+  "to": "0x0097ad28",
+  "via": "rtti",
+  "detail": "UIItemWnd +0x3C",
+  "name25": "UIInventoryWnd_CreateControls",
+  "names": [
+   "(litt\u00e9ral)"
+  ],
+  "comment": "FUN_0093f100 LEA [EBX-0x26] : item row count",
+  "sites": [
+   "features\\patches\\inventory_tweaks.cc:130"
+  ]
+ },
+ "0x00946da0": {
+  "to": "0x009827a0",
+  "via": "rtti",
+  "detail": "UIItemWnd +0x50",
+  "name25": "UIInventoryWnd_DrawContent",
+  "names": [
+   "kDrawOrig"
+  ],
+  "comment": "original inventory DrawContent",
+  "sites": [
+   "features\\patches\\inventory_tweaks.cc:36",
+   "features\\patches\\inventory_tweaks.cc:706"
+  ]
+ },
+ "0x00947053": {
+  "to": "0x00982a53",
+  "via": "rtti",
+  "detail": "UIItemWnd +0x50",
+  "name25": "UIInventoryWnd_DrawContent",
+  "names": [
+   "(litt\u00e9ral)"
+  ],
+  "comment": "FUN_00946da0 SUB EAX,0x26   : grey separator LINE length (stop at grid bottom, not into th",
+  "sites": [
+   "features\\patches\\inventory_tweaks.cc:127"
+  ]
+ },
+ "0x0094708b": {
+  "to": "0x00982a8b",
+  "via": "rtti",
+  "detail": "UIItemWnd +0x50",
+  "name25": "UIInventoryWnd_DrawContent",
+  "names": [
+   "(litt\u00e9ral)"
+  ],
+  "comment": "FUN_00946da0 SUB EAX,0x26   : slot-cell grid row count",
+  "sites": [
+   "features\\patches\\inventory_tweaks.cc:126"
+  ]
+ },
+ "0x0094afb0": {
+  "to": "0x009867f0",
+  "via": "rtti",
+  "detail": "UIItemWnd +0x64",
+  "name25": "UIInventoryWnd_OnLButtonDown",
+  "names": [
+   "(litt\u00e9ral)"
+  ],
+  "comment": "",
+  "sites": [
+   "ragnarok\\configuration.h:11"
+  ]
+ },
+ "0x0094ee20": {
+  "to": "0x0098a5c0",
+  "via": "rtti",
+  "detail": "UIItemShopWnd +0x80",
+  "name25": "sub_94EDF0",
+  "names": [
+   "(litt\u00e9ral)"
+  ],
+  "comment": "",
+  "sites": [
+   "ragnarok\\configuration.h:66"
+  ]
+ },
+ "0x009500f0": {
+  "to": "0x0098b880",
+  "via": "rtti",
+  "detail": "UIBartermarketWnd +0x8C",
+  "name25": "sub_9500C0",
+  "names": [
+   "(litt\u00e9ral)"
+  ],
+  "comment": "",
+  "sites": [
+   "ragnarok\\configuration.h:67"
+  ]
+ },
+ "0x00955530": {
+  "to": "0x00991260",
+  "via": "rtti",
+  "detail": "UIItemWnd +0x94",
+  "name25": "UIInventoryWnd_OnMsg",
+  "names": [
+   "kMsgOrig"
+  ],
+  "comment": "FUN_00955530 inventory message handler",
+  "sites": [
+   "features\\patches\\inventory_tweaks.cc:167"
+  ]
+ },
+ "0x00955980": {
+  "to": "0x009916b0",
+  "via": "rtti",
+  "detail": "UIItemWnd +0x94",
+  "name25": "UIInventoryWnd_OnMsg",
+  "names": [
+   "kMaxWidthImm"
+  ],
+  "comment": "MOV EDI,0x140 imm (resize max W)",
+  "sites": [
+   "features\\patches\\inventory_tweaks.cc:37"
+  ]
+ },
+ "0x0095598b": {
+  "to": "0x009916bb",
+  "via": "rtti",
+  "detail": "UIItemWnd +0x94",
+  "name25": "UIInventoryWnd_OnMsg",
+  "names": [
+   "kMaxHeightImm"
+  ],
+  "comment": "MOV EDX,0x0f0 imm (resize max H)",
+  "sites": [
+   "features\\patches\\inventory_tweaks.cc:38"
+  ]
+ },
+ "0x009559b9": {
+  "to": "0x009916e9",
+  "via": "rtti",
+  "detail": "UIItemWnd +0x94",
+  "name25": "UIInventoryWnd_OnMsg",
+  "names": [
+   "(litt\u00e9ral)"
+  ],
+  "comment": "case 0xe     LEA [ECX+0x26] : tabH + reserve (snap)",
+  "sites": [
+   "features\\patches\\inventory_tweaks.cc:122"
+  ]
+ },
+ "0x009559c3": {
+  "to": "0x009916f3",
+  "via": "rtti",
+  "detail": "UIItemWnd +0x94",
+  "name25": "UIInventoryWnd_OnMsg",
+  "names": [
+   "(litt\u00e9ral)"
+  ],
+  "comment": "case 0xe     SUB EAX,0x26   : available grid height (snap)",
+  "sites": [
+   "features\\patches\\inventory_tweaks.cc:123"
+  ]
+ },
+ "0x009559d7": {
+  "to": "0x00991707",
+  "via": "rtti",
+  "detail": "UIItemWnd +0x94",
+  "name25": "UIInventoryWnd_OnMsg",
+  "names": [
+   "(litt\u00e9ral)"
+  ],
+  "comment": "case 0xe     LEA [EAX+0x26] : FINAL window height (SetSize)",
+  "sites": [
+   "features\\patches\\inventory_tweaks.cc:124"
+  ]
+ },
+ "0x00955a69": {
+  "to": "0x00991799",
+  "via": "rtti",
+  "detail": "UIItemWnd +0x94",
+  "name25": "UIInventoryWnd_OnMsg",
+  "names": [
+   "(litt\u00e9ral)"
+  ],
+  "comment": "case 0xe     SUB EAX,0x26   : scrollbar height (resize)",
+  "sites": [
+   "features\\patches\\inventory_tweaks.cc:125"
+  ]
+ },
+ "0x00977e80": {
+  "to": "0x009b41c0",
+  "via": "rtti",
+  "detail": "UINewSkillListWnd +0x50",
+  "name25": "sub_977E80",
+  "names": [
+   "kDrawContent"
+  ],
+  "comment": "UINewSkillListWnd::DrawContent",
+  "sites": [
+   "features\\patches\\skill_tree_tweaks.cc:31"
+  ]
+ },
+ "0x009b9b9b": {
+  "to": "0x009d879b",
+  "via": "rtti",
+  "detail": "CUISlot3@EnchantUI +0x3C",
+  "name25": "sub_9B9780",
+  "names": [
+   "(litt\u00e9ral)"
+  ],
+  "comment": "COLORREF gris, comme les en-t\u00eates du client",
+  "sites": [
+   "features\\windows\\chat_window.cc:5709"
+  ]
+ },
+ "0x00a1cb30": {
+  "to": "0x009ea790",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "UIWindow_ClearSurface",
+  "names": [
+   "kClearSurface"
+  ],
+  "comment": "",
+  "sites": [
+   "features\\overlays\\chat_balloon.cc:37"
+  ]
+ },
+ "0x00a1d260": {
+  "to": "0x009eade0",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "UIWindow_BlitImageToNode",
+  "names": [
+   "kBlit",
+   "kBlitImageToNode"
+  ],
+  "comment": "__thiscall(this,x,y,tex,flag)",
+  "sites": [
+   "features\\patches\\chat.cc:191",
+   "features\\patches\\chat.cc:913",
+   "features\\patches\\inventory_tweaks.cc:48",
+   "features\\patches\\status_tweaks.cc:70"
+  ]
+ },
+ "0x00a1d460": {
+  "to": "0x009eb030",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "UIWindow_FillRectClamped",
+  "names": [
+   "kFill"
+  ],
+  "comment": "__thiscall(this,x,y,w,h,color) filled rect",
+  "sites": [
+   "features\\patches\\inventory_tweaks.cc:49"
+  ]
+ },
+ "0x00a21c90": {
+  "to": "0x009f0750",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "UIText_MeasureWidth",
+  "names": [
+   "kMeasureW"
+  ],
+  "comment": "__thiscall(this,str,len,face,size,_,_) -> width",
+  "sites": [
+   "features\\patches\\chat.cc:877",
+   "features\\patches\\chat.cc:880",
+   "features\\patches\\inventory_tweaks.cc:47"
+  ]
+ },
+ "0x00a25a70": {
+  "to": "0x009f46d0",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "UIWindow_DrawText",
+  "names": [
+   "kDrawText"
+  ],
+  "comment": "__thiscall(this,x,y,str,len,face,size,color,bold,ital)",
+  "sites": [
+   "features\\patches\\inventory_tweaks.cc:46",
+   "features\\patches\\status_tweaks.cc:68"
+  ]
+ },
+ "0x00a27b50": {
+  "to": "0x009f6d70",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "UIWindow_DrawTextRightAligned",
+  "names": [
+   "kDrawTextR"
+  ],
+  "comment": "__thiscall(this,x,y,str,len,face,size,color,bold) RIGHT@x",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:69"
+  ]
+ },
+ "0x00a2cc20": {
+  "to": "0x009fb970",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "UIWindowMgr_OnWhisperReceived",
+  "names": [
+   "kWhisperPivotAddr"
+  ],
+  "comment": "",
+  "sites": [
+   "features\\windows\\chat_window.cc:569"
+  ]
+ },
+ "0x00a2e770": {
+  "to": "0x009fd250",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "UIWindowMgr_SaveRectAndCloseWindow",
+  "names": [
+   "kCloseWindowAddr"
+  ],
+  "comment": "UIWindowMgr::Close(id)",
+  "sites": [
+   "ragnarok\\uiwnd.h:58"
+  ]
+ },
+ "0x00a33005": {
+  "to": "0x00a01875",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "sub_A32EB0",
+  "names": [
+   "kSnapLoopHook"
+  ],
+  "comment": "MOV ECX,[EBP-0x88] (8B 8D 78 FF FF FF)",
+  "sites": [
+   "features\\patches\\window_pos_tweaks.cc:399"
+  ]
+ },
+ "0x00a47b90": {
+  "to": "0x00a15af0",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "UIWindowMgr_FindWindow",
+  "names": [
+   "kFindWindowAddr"
+  ],
+  "comment": "UIWindowMgr::FindWindow(id) __thiscall",
+  "sites": [
+   "ragnarok\\uiwnd.h:26"
+  ]
+ },
+ "0x00a4ad20": {
+  "to": "0x00a18a20",
+  "via": "texte",
+  "detail": "4/10 chaines",
+  "name25": "UIWindowMgr_ChatAction",
+  "names": [
+   "kChatActionAddr",
+   "kChatAddLine"
+  ],
+  "comment": "= UIWindowMgr::SendMsg",
+  "sites": [
+   "features\\windows\\bank_window.cc:135",
+   "features\\windows\\chat_window.cc:55",
+   "ragnarok\\configuration.h:85"
+  ]
+ },
+ "0x00a69eb0": {
+  "to": "0x00a329a0",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "ActorList_FindByGID",
+  "names": [
+   "kActorListFindByGid",
+   "kFindByGID"
+  ],
+  "comment": "ActorList_FindByGID(actorMgr,gid)->acteur",
+  "sites": [
+   "features\\gameplay\\player_jump.cc:18",
+   "features\\windows\\entity_context_menu.cc:99"
+  ]
+ },
+ "0x00a79610": {
+  "to": "0x00a3ff40",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "NameplateQueue_Insert",
+  "names": [
+   "kInsert"
+  ],
+  "comment": "NameplateQueue_Insert",
+  "sites": [
+   "features\\patches\\pick_quad_tweaks.cc:21"
+  ]
+ },
+ "0x00a8d4a0": {
+  "to": "0x00a89910",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "UITextureMgr_Load",
+  "names": [
+   "kLoad"
+  ],
+  "comment": "__fastcall(mgr, _, key) -> tex",
+  "sites": [
+   "ui\\game_texture.h:35"
+  ]
+ },
+ "0x00a8e800": {
+  "to": "0x00a8ab30",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "UITexture_AddRef",
+  "names": [
+   "kResAddRef",
+   "kTexAddRef"
+  ],
+  "comment": "resource AddRef (ECX = res)",
+  "sites": [
+   "features\\fx\\weapon_dual_sprites.cc:21",
+   "features\\overlays\\basic_info.cc:935"
+  ]
+ },
+ "0x00a8f910": {
+  "to": "0x00a8bae0",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "UITexture_Release",
+  "names": [
+   "kResRelease"
+  ],
+  "comment": "resource Release (ECX = res)",
+  "sites": [
+   "features\\fx\\weapon_dual_sprites.cc:22"
+  ]
+ },
+ "0x00a90350": {
+  "to": "0x00a8c520",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "UITextureMgr_Get",
+  "names": [
+   "kGet"
+  ],
+  "comment": "__cdecl() -> mgr",
+  "sites": [
+   "ui\\game_texture.h:33"
+  ]
+ },
+ "0x00a948d0": {
+  "to": "0x00a91460",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "Cstr_FormatInt32Grouped",
+  "names": [
+   "kFmtComma",
+   "kFmtComma32"
+  ],
+  "comment": "__cdecl(value,buf,size) -> thousands-separated",
+  "sites": [
+   "features\\patches\\inventory_tweaks.cc:53",
+   "features\\windows\\bank_window.cc:43",
+   "features\\windows\\inventory_viewer.cc:86"
+  ]
+ },
+ "0x00a9bc90": {
+  "to": "0x00a99160",
+  "via": "texte",
+  "detail": "2/6 chaines",
+  "name25": "Lua_ExecuteScriptFile",
+  "names": [
+   "kExecFileAddr"
+  ],
+  "comment": "",
+  "sites": [
+   "ragnarok\\lua.h:61"
+  ]
+ },
+ "0x00a9ed30": {
+  "to": "0x00a9b470",
+  "via": "texte",
+  "detail": "3/4 chaines",
+  "name25": "MsgStringTable_GetById",
+  "names": [
+   "kGetAddr"
+  ],
+  "comment": "",
+  "sites": [
+   "ragnarok\\msgstring.h:25"
+  ]
+ },
+ "0x00a9f030": {
+  "to": "0x00a9b700",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "UITexture_MakeKeyFromPath",
+  "names": [
+   "kMakeKey"
+  ],
+  "comment": "__cdecl(path) -> key",
+  "sites": [
+   "ui\\game_texture.h:34"
+  ]
+ },
+ "0x00b1fac0": {
+  "to": "0x00afe6c0",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "CReassemblyPacketMgr_GetInstance",
+  "names": [
+   "kReplayClock"
+  ],
+  "comment": "CReassemblyPacketMgr_GetInstance",
+  "sites": [
+   "ragnarok\\skill_cooldowns.cc:24"
+  ]
+ },
+ "0x00b5ed20": {
+  "to": "0x00b3d970",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "EzEffect_DrawSub_MirroredBillboardParty",
+  "names": [
+   "kRenderType0"
+  ],
+  "comment": "",
+  "sites": [
+   "features\\overlays\\status_icon_bar.cc:83"
+  ]
+ },
+ "0x00b666d0": {
+  "to": "0x00b44a60",
+  "via": "rtti",
+  "detail": "CEffectPrim +0x0C",
+  "name25": "EzEffect_Draw",
+  "names": [
+   "kEzEffectDraw"
+  ],
+  "comment": "EzEffect_Draw(n\u0153ud EZ) \u2014 hook\u00e9 (appartenance)",
+  "sites": [
+   "features\\fx\\ez_effect_capture.cc:26"
+  ]
+ },
+ "0x00bb4170": {
+  "to": "0x00b7f8f0",
+  "via": "texte",
+  "detail": "13/14 chaines",
+  "name25": "Effect_LoadStrByEffectId",
+  "names": [
+   "kEffLoadStr"
+  ],
+  "comment": "Effect_LoadStrByEffectId(node,src,id,x,y,z)",
+  "sites": [
+   "features\\overlays\\basic_info.cc:797"
+  ]
+ },
+ "0x00bc2de1": {
+  "to": "0x00b8e631",
+  "via": "rtti",
+  "detail": "CRollingCutterRagEffect +0x3C",
+  "name25": "sub_BB9260",
+  "names": [
+   "kEffectJumpDefault"
+  ],
+  "comment": "",
+  "sites": [
+   "features\\fx\\ez_effect_capture.cc:89"
+  ]
+ },
+ "0x00c13fc0": {
+  "to": "0x00bdeca0",
+  "via": "rtti",
+  "detail": "CConnection +0x04",
+  "name25": "NetConnection_Connect",
+  "names": [
+   "(litt\u00e9ral)"
+  ],
+  "comment": "",
+  "sites": [
+   "ragnarok\\configuration.h:87"
+  ]
+ },
+ "0x00c3c3ff": {
+  "to": "0x00c098cf",
+  "via": "rtti",
+  "detail": "NLuaThread +0x00",
+  "name25": "sub_C3C3E0",
+  "names": [
+   "(litt\u00e9ral)"
+  ],
+  "comment": "mob bleu clair / joueur+npc blanc",
+  "sites": [
+   "features\\overlays\\entity_names.cc:150"
+  ]
+ },
+ "0x00c4d0a7": {
+  "to": "0x00c1a357",
+  "via": "rtti",
+  "detail": "CGameActor +0x08",
+  "name25": "Actor_OnMsg_AppearanceEffects",
+  "names": [
+   "kProcessDamageCall"
+  ],
+  "comment": "son appelant, UNIQUE",
+  "sites": [
+   "features\\patches\\damage_name_fix.cc:15"
+  ]
+ },
+ "0x00c55bf0": {
+  "to": "0x00c24500",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "CActorSprite_SetBodyActFromPath",
+  "names": [
+   "kSetBodyAct"
+  ],
+  "comment": "CActorSprite_SetBodyActFromPath",
+  "sites": [
+   "features\\fx\\wand_bolt.cc:107"
+  ]
+ },
+ "0x00c58d13": {
+  "to": "0x00c27603",
+  "via": "rtti",
+  "detail": "CGameActor +0x14",
+  "name25": "CActorSprite_SubmitNameplateQuad",
+  "names": [
+   "kCallSite"
+  ],
+  "comment": "E8 rel32",
+  "sites": [
+   "features\\patches\\pick_quad_tweaks.cc:20"
+  ]
+ },
+ "0x00c58e90": {
+  "to": "0x00c27740",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "CActorSprite_SetBodySprFromPath",
+  "names": [
+   "kSetBodySpr"
+  ],
+  "comment": "CActorSprite_SetBodySprFromPath",
+  "sites": [
+   "features\\fx\\wand_bolt.cc:106"
+  ]
+ },
+ "0x00c5dfc0": {
+  "to": "0x00c2c470",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "CActorSprite_ProcessDamageAction",
+  "names": [
+   "kProcessDamageAction"
+  ],
+  "comment": "CActorSprite_ProcessDamageAction",
+  "sites": [
+   "features\\patches\\damage_name_fix.cc:14"
+  ]
+ },
+ "0x00c5e372": {
+  "to": "0x00c2c822",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "CActorSprite_ProcessDamageAction",
+  "names": [
+   "kDamageDueTimeCall"
+  ],
+  "comment": "",
+  "sites": [
+   "features\\fx\\wand_bolt.cc:160"
+  ]
+ },
+ "0x00c6d9d0": {
+  "to": "0x00a3c3d0",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "Arrow_SpawnProjectileToTarget",
+  "names": [
+   "kArrowSpawn"
+  ],
+  "comment": "Arrow_SpawnProjectileToTarget",
+  "sites": [
+   "features\\fx\\wand_bolt.cc:14"
+  ]
+ },
+ "0x00c6e990": {
+  "to": "0x004c8110",
+  "via": "texte",
+  "detail": "3/5 chaines",
+  "name25": "GameMode_ShowEntityContextMenu",
+  "names": [
+   "kShowEntityContextMenu"
+  ],
+  "comment": "",
+  "sites": [
+   "features\\windows\\entity_context_menu.cc:37"
+  ]
+ },
+ "0x00c74a80": {
+  "to": "0x004cef40",
+  "via": "rtti",
+  "detail": "CGameMode +0x10",
+  "name25": "GameMode_InGame_ProcessFrame",
+  "names": [
+   "(litt\u00e9ral)"
+  ],
+  "comment": "",
+  "sites": [
+   "ragnarok\\configuration.h:112"
+  ]
+ },
+ "0x00c74fc2": {
+  "to": "0x004cf482",
+  "via": "rtti",
+  "detail": "CGameMode +0x10",
+  "name25": "GameMode_InGame_ProcessFrame",
+  "names": [
+   "kDrawMiniMapCall"
+  ],
+  "comment": "call GameMode_DrawMiniMap",
+  "sites": [
+   "features\\overlays\\minimap.cc:122"
+  ]
+ },
+ "0x00c74fc7": {
+  "to": "0x004cf487",
+  "via": "rtti",
+  "detail": "CGameMode +0x10",
+  "name25": "GameMode_InGame_ProcessFrame",
+  "names": [
+   "kDrawMiniMapAfter"
+  ],
+  "comment": "l'instruction suivante",
+  "sites": [
+   "features\\overlays\\minimap.cc:123"
+  ]
+ },
+ "0x00c74fd6": {
+  "to": "0x004cf496",
+  "via": "rtti",
+  "detail": "CGameMode +0x10",
+  "name25": "GameMode_InGame_ProcessFrame",
+  "names": [
+   "kRenderWindowsCall"
+  ],
+  "comment": "call UIWindowMgr_RenderWindows",
+  "sites": [
+   "features\\gameplay\\afk_screen.cc:45"
+  ]
+ },
+ "0x00c74fdb": {
+  "to": "0x004cf49b",
+  "via": "rtti",
+  "detail": "CGameMode +0x10",
+  "name25": "GameMode_InGame_ProcessFrame",
+  "names": [
+   "kRenderWindowsAfter"
+  ],
+  "comment": "l'instruction suivante",
+  "sites": [
+   "features\\gameplay\\afk_screen.cc:46"
+  ]
+ },
+ "0x00c7a7eb": {
+  "to": "0x004d519b",
+  "via": "texte",
+  "detail": "10/14 chaines",
+  "name25": "Chat_HandleChatMessage",
+  "names": [
+   "kPartyPrefixByte"
+  ],
+  "comment": "",
+  "sites": [
+   "features\\windows\\chat_window.cc:785"
+  ]
+ },
+ "0x00c7a822": {
+  "to": "0x004d51d2",
+  "via": "texte",
+  "detail": "10/14 chaines",
+  "name25": "Chat_HandleChatMessage",
+  "names": [
+   "kGuildPrefixByte"
+  ],
+  "comment": "",
+  "sites": [
+   "features\\windows\\chat_window.cc:786"
+  ]
+ },
+ "0x00c7a89a": {
+  "to": "0x004d524a",
+  "via": "texte",
+  "detail": "10/14 chaines",
+  "name25": "Chat_HandleChatMessage",
+  "names": [
+   "kAllyPrefixByte"
+  ],
+  "comment": "",
+  "sites": [
+   "features\\windows\\chat_window.cc:787"
+  ]
+ },
+ "0x00c93cb0": {
+  "to": "0x004efd00",
+  "via": "texte",
+  "detail": "6/9 chaines",
+  "name25": "StatusIcon_BuildTooltip",
+  "names": [
+   "kHitTestFn"
+  ],
+  "comment": "",
+  "sites": [
+   "features\\overlays\\status_icon_bar.cc:114"
+  ]
+ },
+ "0x00d3dc90": {
+  "to": "0x00c506f0",
+  "via": "rtti",
+  "detail": "CBlurPC +0x80",
+  "name25": "CActorSprite_RebuildBodyPalettePath",
+  "names": [
+   "kRebuildBodyPalettePath"
+  ],
+  "comment": "",
+  "sites": [
+   "features\\fx\\palette_inject.cc:43"
+  ]
+ },
+ "0x00d3ded0": {
+  "to": "0x00c50950",
+  "via": "rtti",
+  "detail": "CBlurPC +0x7C",
+  "name25": "CActorSprite_RebuildHeadPalette",
+  "names": [
+   "kRebuildHeadPalette"
+  ],
+  "comment": "",
+  "sites": [
+   "features\\fx\\palette_inject.cc:61"
+  ]
+ },
+ "0x00d403a0": {
+  "to": "0x00c52e40",
+  "via": "rtti",
+  "detail": "CBlurPC +0x60",
+  "name25": "CActorSprite_BuildWeaponLayers",
+  "names": [
+   "kBuildWeaponLayers"
+  ],
+  "comment": "CActorSprite_BuildWeaponLayers",
+  "sites": [
+   "features\\fx\\weapon_dual_sprites.cc:19"
+  ]
+ },
+ "0x00d41c5f": {
+  "to": "0x00c5460f",
+  "via": "rtti",
+  "detail": "CGrannyPc +0x3C",
+  "name25": "sub_D41790",
+  "names": [
+   "(litt\u00e9ral)"
+  ],
+  "comment": "",
+  "sites": [
+   "features\\fx\\wand_bolt.cc:38"
+  ]
+ },
+ "0x00d4245d": {
+  "to": "0x00c54ded",
+  "via": "rtti",
+  "detail": "CBlurPC +0x3C",
+  "name25": "CActorSprite_SetMotion",
+  "names": [
+   "(litt\u00e9ral)"
+  ],
+  "comment": "",
+  "sites": [
+   "features\\fx\\wand_bolt.cc:36"
+  ]
+ },
+ "0x00d425ce": {
+  "to": "0x00c54f5e",
+  "via": "rtti",
+  "detail": "CBlurPC +0x3C",
+  "name25": "CActorSprite_SetMotion",
+  "names": [
+   "(litt\u00e9ral)"
+  ],
+  "comment": "",
+  "sites": [
+   "features\\fx\\wand_bolt.cc:37"
+  ]
+ },
+ "0x00d57780": {
+  "to": "0x00c6a730",
+  "via": "texte",
+  "detail": "9/14 chaines",
+  "name25": "CSession_ctor",
+  "names": [
+   "(litt\u00e9ral)"
+  ],
+  "comment": "",
+  "sites": [
+   "ragnarok\\configuration.h:80"
+  ]
+ },
+ "0x00d5a980": {
+  "to": "0x00a3c3d0",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "ItemSkillMgr_GetInfoByResId_UNIFIED",
+  "names": [
+   "kGetSkillInfo"
+  ],
+  "comment": "SkillMgr_GetSkillInfo(mgr,out,id,gate) ; out+4!=0 => trouv\u00e9",
+  "sites": [
+   "features\\overlays\\skill_bar.cc:69"
+  ]
+ },
+ "0x00d5b580": {
+  "to": "0x00c6e5f0",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "Job_ResolveMountedClassFromOption",
+  "names": [
+   "kGetJob"
+  ],
+  "comment": "",
+  "sites": [
+   "features\\overlays\\basic_info.cc:135",
+   "features\\overlays\\basic_info.cc:1154",
+   "features\\overlays\\basic_info.cc:1367",
+   "features\\windows\\character_sheet.cc:838"
+  ]
+ },
+ "0x00d5e3c0": {
+  "to": "0x007d8810",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "sub_D5E3C0",
+  "names": [
+   "kSkillGetUseLevel"
+  ],
+  "comment": "__thiscall(SESSION, id) \u2014 m\u00eame tableau",
+  "sites": [
+   "features\\windows\\character_sheet.cc:1031"
+  ]
+ },
+ "0x00d5e590": {
+  "to": "0x00c71310",
+  "via": "texte",
+  "detail": "4/14 chaines",
+  "name25": "ChatCmd_LookupSlashCommandTable",
+  "names": [
+   "kLookupSlashCmd"
+  ],
+  "comment": "__thiscall(ctx, texte, &id, args[3])",
+  "sites": [
+   "features\\windows\\chat_window.cc:125",
+   "ragnarok\\configuration.h:81"
+  ]
+ },
+ "0x00d71ec0": {
+  "to": "0x00c85740",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "Job_IsNpcOrPortalId",
+  "names": [
+   "kFnIsNpcOrPortalId"
+  ],
+  "comment": "",
+  "sites": [
+   "ui\\mob_sprite.cc:59"
+  ]
+ },
+ "0x00d78970": {
+  "to": "0x00c8bab0",
+  "via": "texte",
+  "detail": "9/14 chaines",
+  "name25": "OptionInfo_SaveToFile",
+  "names": [
+   "kOptionSaveAddr"
+  ],
+  "comment": "",
+  "sites": [
+   "ragnarok\\game_settings.cc:208"
+  ]
+ },
+ "0x00d7fa90": {
+  "to": "0x007a6b50",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "ItemMgr_GetInvItemById",
+  "names": [
+   "kGetInvItemAddr",
+   "kSkillEntryFill"
+  ],
+  "comment": "__stdcall(out, id)",
+  "sites": [
+   "features\\overlays\\skill_bar.cc:257",
+   "features\\overlays\\skill_bar.cc:600",
+   "features\\overlays\\skill_bar.cc:671",
+   "features\\windows\\character_sheet.cc:138"
+  ]
+ },
+ "0x00d7fd30": {
+  "to": "0x00c92da0",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "Actor_GetJobSpriteScale",
+  "names": [
+   "(litt\u00e9ral)"
+  ],
+  "comment": "",
+  "sites": [
+   "features\\windows\\char_select.cc:994"
+  ]
+ },
+ "0x00d80950": {
+  "to": "0x00c93b30",
+  "via": "texte",
+  "detail": "2/3 chaines",
+  "name25": "UserHotkey_Lua_GetHotKey",
+  "names": [
+   "kGetHotKey",
+   "kGetHotKeyAddr"
+  ],
+  "comment": "",
+  "sites": [
+   "features\\overlays\\skill_bar.cc:455",
+   "ragnarok\\user_hotkey.cc:30"
+  ]
+ },
+ "0x00d87380": {
+  "to": "0x00c9a4d0",
+  "via": "texte",
+  "detail": "13/14 chaines",
+  "name25": "sub_D87380",
+  "names": [
+   "kGetEFSTImg"
+  ],
+  "comment": "__thiscall(session,id,layer) -> const char*",
+  "sites": [
+   "features\\overlays\\status_icon_bar.cc:47"
+  ]
+ },
+ "0x00d89ed0": {
+  "to": "0x00c9d040",
+  "via": "texte",
+  "detail": "1/1 chaines",
+  "name25": "Title_GetStringById",
+  "names": [
+   "kTitleGetStr"
+  ],
+  "comment": "",
+  "sites": [
+   "features\\windows\\character_sheet.cc:2142"
+  ]
+ },
+ "0x00d8a1d0": {
+  "to": "0x004e09d0",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "Weapon_ItemIdToWeaponClass",
+  "names": [
+   "kItemIdToClass",
+   "kItemIdToWeaponClass"
+  ],
+  "comment": "Weapon_ItemIdToWeaponClass (__stdcall, retn 4)",
+  "sites": [
+   "features\\fx\\wand_bolt.cc:40",
+   "features\\fx\\weapon_dual_sprites.cc:23"
+  ]
+ },
+ "0x00d9cf80": {
+  "to": "0x00c10380",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "Job_NeedsLuaItemPosOffset",
+  "names": [
+   "kJobIsDoram"
+  ],
+  "comment": "",
+  "sites": [
+   "ui\\sprite_path.cc:35"
+  ]
+ },
+ "0x00dabb10": {
+  "to": "0x00cbbe70",
+  "via": "rtti",
+  "detail": "CArrowEffect +0x04",
+  "name25": "CArrowEffect_Update",
+  "names": [
+   "kArrowEffectUpdate"
+  ],
+  "comment": "",
+  "sites": [
+   "features\\fx\\wand_bolt.cc:53"
+  ]
+ },
+ "0x00db01b0": {
+  "to": "0x00cc0320",
+  "via": "rtti",
+  "detail": "CArrowEffect +0x08",
+  "name25": "CArrowEffect_OnMsg",
+  "names": [
+   "kArrowEffectOnMsg"
+  ],
+  "comment": "",
+  "sites": [
+   "features\\fx\\wand_bolt.cc:54"
+  ]
+ },
+ "0x00dbbc4f": {
+  "to": "0x00cca6d3",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "operator_new",
+  "names": [
+   "kGameOperatorNewAddr"
+  ],
+  "comment": "__cdecl(size) -> void*, jamais nul",
+  "sites": [
+   "ragnarok\\globals.h:197"
+  ]
+ },
+ "0x00dbbc7f": {
+  "to": "0x00cca703",
+  "via": "propagation",
+  "detail": "fonction appariee par appels",
+  "name25": "operator_delete",
+  "names": [
+   "kClientOperatorDelete",
+   "kGameOperatorDeleteAddr"
+  ],
+  "comment": "__cdecl(ptr)",
+  "sites": [
+   "features\\patches\\damage_name_fix.cc:19",
+   "ragnarok\\globals.h:198"
+  ]
+ },
+ "0x00fc19c4": {
+  "to": "0x00e7b72c",
+  "via": "globale",
+  "detail": "operande memoire appariee",
+  "name25": "",
+  "names": [],
+  "comment": "",
+  "sites": []
+ },
+ "0x0104ee7c": {
+  "to": "0x00f37e40",
+  "via": "globale",
+  "detail": "operande memoire appariee",
+  "name25": "",
+  "names": [],
+  "comment": "",
+  "sites": []
+ },
+ "0x0104ee84": {
+  "to": "0x00f37e48",
+  "via": "globale",
+  "detail": "operande memoire appariee",
+  "name25": "",
+  "names": [],
+  "comment": "",
+  "sites": []
+ },
+ "0x0122b924": {
+  "to": "0x010fe840",
+  "via": "globale",
+  "detail": "operande memoire appariee",
+  "name25": "",
+  "names": [],
+  "comment": "",
+  "sites": []
+ },
+ "0x01254d90": {
+  "to": "0x01127368",
+  "via": "globale",
+  "detail": "operande memoire appariee",
+  "name25": "",
+  "names": [
+   "kQuestMgrPtr"
+  ],
+  "comment": "void** -> quest manager",
+  "sites": [
+   "features\\overlays\\quest_tracker.cc:27"
+  ]
+ },
+ "0x0131ed60": {
+  "to": "0x011f123c",
+  "via": "globale",
+  "detail": "operande memoire appariee",
+  "name25": "",
+  "names": [],
+  "comment": "",
+  "sites": []
+ },
+ "0x0131f6b0": {
+  "to": "0x011f1aa4",
+  "via": "globale",
+  "detail": "operande memoire appariee",
+  "name25": "",
+  "names": [
+   "kNewChatWndPtr"
+  ],
+  "comment": "g_pNewChatWnd",
+  "sites": [
+   "features\\windows\\chat_window.cc:59",
+   "features\\windows\\inventory_viewer.cc:554",
+   "features\\windows\\navigation_window.cc:68"
+  ]
+ }
+}
