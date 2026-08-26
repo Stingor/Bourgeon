@@ -231,13 +231,6 @@ bool Bourgeon::Initialize() {
   // d'abord le joueur à qui la traduction s'adresse.
   i18n::LoadLanguageSetting();
 
-  // Et dans la foulée, la table de messages du CLIENT — ses 4360 textes, dont
-  // les 4300 que Bourgeon n'affiche pas lui-même mais que le joueur lit tout le
-  // temps. Le détour est posé ici, une fois, avant que le client ait la moindre
-  // occasion de demander un message : `msgoverride::Reload` est ensuite rejoué à
-  // chaque changement de langue. Cf. ragnarok/msgstring_override.h.
-  msgoverride::Reload();
-
   // La police de l'interface voyage avec elle, et pour la même raison : l'écran
   // de login la propose juste à côté du choix de la langue, et
   // `bourgeon_settings.yaml` n'aurait rendu son verdict qu'une fois cet écran
@@ -257,6 +250,26 @@ bool Bourgeon::Initialize() {
     LogError("Bourgeon failed to initialize");
     return false;
   }
+
+  // La table de messages du CLIENT — ses 4360 textes, dont les 4300 que Bourgeon
+  // n'affiche pas lui-même mais que le joueur lit tout le temps. Le détour est
+  // posé une fois ; `msgoverride::Reload` est ensuite rejoué à chaque changement
+  // de langue. Cf. ragnarok/msgstring_override.h.
+  //
+  // 🔴 APRÈS `client_.Initialize()`, et ce n'est pas un détail. Le détour écrit
+  // 5 octets à `msgstr::kGetAddr` (0x00A9ED30), adresse qui n'a de sens que sur
+  // le client 20250716. `client_.Initialize()` est le SEUL endroit qui vérifie
+  // la date du client et refuse un exécutable inconnu ; poser le détour avant,
+  // c'était écrire dans du code au hasard puis seulement ensuite constater qu'on
+  // ne supportait pas ce client. Mesuré sur le 20260707 (2026-08-26) :
+  // 0x00A9ED30 y tombe au milieu d'une instruction — pile sur le `rel32` d'un
+  // `call` du constructeur de la table de longueurs de paquets. Résultat, un
+  // saut vers 0x92B4191D et un crash AVANT `WinMain`, sans qu'aucun message
+  // « client non supporté » n'ait pu être écrit.
+  //
+  // Rien n'est perdu à attendre : entre les deux points c'est Bourgeon qui
+  // travaille, le client ne tourne pas et ne peut donc demander aucun message.
+  msgoverride::Reload();
 
   PatchSilenceEmotePurchaseMsg();  // supprime le spam "purchased emotion" au login
   // (le filtre de messages système du chat est posé par ChatWindow — cf. ci-dessus)
