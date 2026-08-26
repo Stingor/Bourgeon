@@ -335,7 +335,11 @@ bool RagnarokClient::Initialize() {
   const YAML::Node configuration = LoadConfiguration();
   const auto client_configuration = configuration[timestamp_as_str];
   if (!client_configuration.IsDefined()) {
-    LogError("This client isn't supported");
+    // Le refus doit nommer la version attendue : sans elle, « pas supporté »
+    // envoie chercher un bug là où il n'y a qu'un exécutable de la mauvaise
+    // date.
+    LogError("Unsupported client {} -- Bourgeon targets 20250716",
+             timestamp_as_str);
     return false;
   }
 

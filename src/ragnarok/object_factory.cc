@@ -13,23 +13,17 @@ Session::Pointer ObjectFactory::CreateSession(
     return nullptr;
   }
 
+  // Une seule disposition vit encore ici — cf. object_layouts/session/layouts.h
+  // pour la raison. Le `switch` est resté sous forme de test : c'est le point
+  // d'accroche s'il faut un jour en rouvrir une seconde.
   try {
-    switch (session_layout.as<uint32_t>()) {
-      case 20151102:
-        result = std::make_unique<Session_20151102>(session_configuration);
-        break;
-      case 20170613:
-        result = std::make_unique<Session_20170613>(session_configuration);
-        break;
-      case 20190116:
-        result = std::make_unique<Session_20190116>(session_configuration);
-        break;
-      case 20250716:
-        result = std::make_unique<Session_20250716>(session_configuration);
-        break;
-      default:
-        result = nullptr;
-        break;
+    const auto layout = session_layout.as<uint32_t>();
+    if (layout == 20250716) {
+      result = std::make_unique<Session_20250716>(session_configuration);
+    } else {
+      LogError("Unknown CSession layout {} (only 20250716 is implemented)",
+               layout);
+      result = nullptr;
     }
 
     return result;
