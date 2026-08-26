@@ -40,6 +40,7 @@
 #include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 #include "features/windows/viewer_probes.h"  // etat des fenetres voisines
 #include "ui/item_grid_chrome.h"  // ro::grid : le decor commun aux grilles
+#include "ui/ui_palette.h"  // ro::pal : la palette de l'UI
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -1229,7 +1230,7 @@ void StorageWindow::OnRenderUI() {
                               ImVec2(1.0f, 1.0f));
           }
           if (!sel && ImGui::IsItemHovered())
-            tdl->AddRectFilled(p, pe, IM_COL32(255, 255, 255, 45));  // survol
+            tdl->AddRectFilled(p, pe, ro::pal::kHoverTint);  // survol
         } else {
           // Pas d'images : onglet TEXTE au libellé tourné à 90° (lecture bas->haut).
           // Hauteur du bouton = longueur du libellé -> le nom entier tient dans un
@@ -1328,7 +1329,7 @@ void StorageWindow::OnRenderUI() {
                             ImVec2(1.0f, 1.0f));
         }
         if (!sel && ImGui::IsItemHovered())
-          tdl->AddRectFilled(p, pe, IM_COL32(255, 255, 255, 45));  // survol
+          tdl->AddRectFilled(p, pe, ro::pal::kHoverTint);  // survol
       } else if (ImGui::Selectable(i18n::Tr(kStgCats[c].label), sel, 0,
                                    ImVec2(ImGui::CalcTextSize(i18n::Tr(kStgCats[c].label)).x +
                                               ImGui::GetStyle().FramePadding.x * 2.0f,
@@ -2186,7 +2187,7 @@ void StorageWindow::OnRenderUI() {
     const ImU32 pont =
         !tab_images_ ? ImGui::GetColorU32(ImGuiCol_TabSelected)
         : kStgCats[cur_tab_].fav ? IM_COL32(0xD1, 0xDC, 0xE8, 255)
-                                 : IM_COL32(255, 255, 255, 255);
+                                 : IM_COL32_WHITE;
     ImGui::GetWindowDrawList()->AddRectFilled(
         ImVec2(active_tab_max.x - 1.0f, active_tab_min.y + 1.0f),
         ImVec2(active_tab_max.x + 2.0f, active_tab_max.y - 1.0f), pont);
@@ -2290,8 +2291,8 @@ void StorageWindow::OnRenderUI() {
     // et bordure ImGui SUPPRIMÉE : c'était elle, le liseré sombre à angles droits —
     // elle vient du style GLOBAL, les PushStyleVar du skin ayant déjà été dépilés
     // par EndRoWindow. Le cadre visible doit être l'art sysbox, rien d'autre.
-    ImGui::PushStyleColor(ImGuiCol_PopupBg, IM_COL32(255, 255, 255, 255));
-    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(0, 0, 0, 255));   // sur fond clair
+    ImGui::PushStyleColor(ImGuiCol_PopupBg, IM_COL32_WHITE);
+    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32_BLACK);   // sur fond clair
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 4.0f);  // = BeginRoDescWindow
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(edge, edge));

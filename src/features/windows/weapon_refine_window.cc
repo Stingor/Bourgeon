@@ -27,6 +27,7 @@
 #include "utils/i18n.h"
 #include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 #include "ui/ro_widgets.h"
+#include "ui/ui_palette.h"  // ro::pal : la palette de l'UI
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -190,9 +191,6 @@ constexpr int kMaxRefineEntries = 512;      // garde-fou (un inventaire fait 400
 // Et rassemblé : le pied de fenêtre et le journal avaient chacun leur jeu de
 // couleurs pour dire les mêmes trois choses (ça va / ça a échoué / attention),
 // si bien qu'un ajustement n'en corrigeait qu'un sur deux.
-constexpr ImU32 kColOk      = IM_COL32( 13, 107,  31, 255);  // succès, stock présent
-constexpr ImU32 kColBad     = IM_COL32(166,  38,  38, 255);  // échec, stock à zéro
-constexpr ImU32 kColWarn    = IM_COL32(166, 102,   0, 255);  // refus, attente, plafond
 constexpr ImU32 kColInfo    = IM_COL32( 30,  90, 175, 255);  // refine courant, relance
 constexpr ImU32 kColNeutral = IM_COL32( 60,  60,  60, 255);  // journal sans statut
 
@@ -549,7 +547,7 @@ void WeaponRefineWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
       // changera pas d'elle-même : relancer tournerait en rond en brûlant du SP.
       awaiting_result_ = false;
       PushLog(i18n::Tr("Tentative refusée par le serveur (aucun minerai consommé)."),
-              kColWarn);
+              ro::pal::kColWarn);
       auto_recast_at_   = 0;
       auto_stop_reason_ = i18n::Tr("Le serveur a refusé la tentative : relance arrêtée.");
       return;
@@ -683,7 +681,7 @@ void WeaponRefineWindow::RetryRecast() {
   if (++recast_retries_ > kMaxRecastRetries) {
     auto_stop_reason_ =
         i18n::Tr("La compétence ne repart pas (délai de lancement) : relance arrêtée.");
-    PushLog(auto_stop_reason_, kColWarn);
+    PushLog(auto_stop_reason_, ro::pal::kColWarn);
     return;
   }
   // Délai PLUS LONG que l'armement normal : la cause est précisément qu'on est
@@ -695,7 +693,7 @@ void WeaponRefineWindow::RetryRecast() {
   std::snprintf(line, sizeof(line),
                 i18n::Tr("Relance jetée par le délai de lancement : nouvel essai (%d/%d)."),
                 recast_retries_, kMaxRecastRetries);
-  PushLog(line, kColWarn);
+  PushLog(line, ro::pal::kColWarn);
 }
 
 void WeaponRefineWindow::LogServerResult(int result, uint32_t nameid) {
@@ -707,23 +705,23 @@ void WeaponRefineWindow::LogServerResult(int result, uint32_t nameid) {
   switch (result) {
     case 0:
       msg_id = kMsgRefineSuccess;
-      color  = kColOk;
+      color  = ro::pal::kColOk;
       prefix = i18n::Tr("Succès — ");
       break;
     case 1:
       // Le seul cas destructeur, et celui que le client rend indiscernable du
       // succès (911 == 912 dans msgstringtable.csv). D'où le préfixe explicite.
       msg_id = kMsgRefineFail;
-      color  = kColBad;
+      color  = ro::pal::kColBad;
       prefix = i18n::Tr("ÉCHEC — arme détruite — ");
       break;
     case 2:
       msg_id = kMsgFailLevel;
-      color  = kColWarn;
+      color  = ro::pal::kColWarn;
       break;
     case 3:
       msg_id = kMsgFailMaterial;
-      color  = kColWarn;
+      color  = ro::pal::kColWarn;
       break;
     default:
       return;
@@ -906,7 +904,7 @@ void WeaponRefineWindow::CloseForOtherCraft() {
   recast_sent_at_ = 0;
 
   PushLog(i18n::Tr("Session de refine abandonnée : une fabrication a été lancée (le serveur "
-          "n'en garde qu'une)."), kColWarn);
+          "n'en garde qu'une)."), ro::pal::kColWarn);
   FlushWindowPos();  // la fenêtre se referme : c'est le moment d'écrire sa position
   ResetSession();
 }
@@ -1356,7 +1354,7 @@ void WeaponRefineWindow::OnRenderUI() {
       // create items yet. ») ne parle ni d'arme, ni de refine, ni de minerai :
       // on énumère les vraies causes, celles du filtre serveur
       // (clif_item_refine_list, cf. docs/weapon_refine_re.md §7).
-      ImGui::TextColored(V4(kColWarn), i18n::Tr("Aucune arme refinable."));
+      ImGui::TextColored(V4(ro::pal::kColWarn), i18n::Tr("Aucune arme refinable."));
       ImGui::Spacing();
       ImGui::TextWrapped(i18n::Tr("Le serveur ne propose une arme que si TOUT est vrai :"));
       BulletWrapped(i18n::Tr("elle est identifiée et a un niveau d'arme (1 à 4) ;"));
@@ -1524,7 +1522,7 @@ void WeaponRefineWindow::OnRenderUI() {
       // largeur ne serait plus celle qu'on a fixée.
       ImGui::TextWrapped("%s", name[0] ? name : i18n::Tr("(arme inconnue)"));
       ImGui::Spacing();
-      ImGui::TextColored(V4(kColBad), i18n::Tr("Un échec DÉTRUIT l'arme."));
+      ImGui::TextColored(V4(ro::pal::kColBad), i18n::Tr("Un échec DÉTRUIT l'arme."));
       ImGui::TextWrapped(
           i18n::Tr("Le minerai est consommé dans tous les cas. En cas de réussite "
           "l'arme passe de +%d à +%d."),
@@ -1796,7 +1794,7 @@ void WeaponRefineWindow::DrawList(float list_h) {
     }
 
     const ImVec4 col_ref = V4(kColInfo);
-    const ImVec4 col_cap = V4(kColWarn);
+    const ImVec4 col_cap = V4(ro::pal::kColWarn);
 
     // Le nom est centré dans la hauteur de ligne, sinon il flotte en haut d'une
     // ligne dont l'icône fixe la hauteur.
@@ -1986,7 +1984,7 @@ void WeaponRefineWindow::DrawOreLinks() {
     // « 0 » n'est pas une information neutre — c'est la raison pour laquelle une
     // arme de ce niveau n'apparaît pas dans la liste — donc il est marqué en
     // rouge, pas grisé.
-    const ImVec4 col = V4(n > 0 ? kColOk : kColBad);
+    const ImVec4 col = V4(n > 0 ? ro::pal::kColOk : ro::pal::kColBad);
     const ImVec2 text_min = ImGui::GetCursorScreenPos();
     ImGui::TextColored(col, "%s", label);
     const ImVec2 text_max = ImGui::GetItemRectMax();
@@ -2069,7 +2067,7 @@ void WeaponRefineWindow::DrawFooter() {
         aimed->nameid, aimed->refine, OwnJobLevel(), false);
     if (chance >= 0) {
       const uint32_t col =
-          (chance >= 90) ? kColOk : (chance >= 50 ? kColWarn : kColBad);
+          (chance >= 90) ? ro::pal::kColOk : (chance >= 50 ? ro::pal::kColWarn : ro::pal::kColBad);
       ImGui::SameLine();
       ImGui::TextColored(V4(col), i18n::Tr("· Chances : %d %%"), chance);
       ImGui::SameLine();
@@ -2091,7 +2089,7 @@ void WeaponRefineWindow::DrawFooter() {
   // s'affiche plus bas, à sa place et au bon moment.)
 
   if (awaiting_result_) {
-    ImGui::TextColored(V4(kColWarn), i18n::Tr("Tentative envoyée — en attente du serveur…"));
+    ImGui::TextColored(V4(ro::pal::kColWarn), i18n::Tr("Tentative envoyée — en attente du serveur…"));
     ImGui::Spacing();
   }
 
@@ -2107,7 +2105,7 @@ void WeaponRefineWindow::DrawFooter() {
     // Le numéro de la tentative QUI VA PARTIR (donc jamais « 0 »), pas le compte
     // de celles qui sont derrière : c'est celle-là que le joueur peut encore
     // arrêter, et c'est la seule qui l'intéresse à cet instant.
-    ImGui::TextColored(V4(kColBad), i18n::Tr("Refine automatique imminent… (n° %d)"),
+    ImGui::TextColored(V4(ro::pal::kColBad), i18n::Tr("Refine automatique imminent… (n° %d)"),
                        auto_refine_count_ + 1);
     ImGui::Spacing();
   } else if (auto_recast_at_) {
@@ -2116,12 +2114,12 @@ void WeaponRefineWindow::DrawFooter() {
                        auto_chain_);
     ImGui::Spacing();
   } else if (auto_paused_) {
-    ImGui::TextColored(V4(kColWarn),
+    ImGui::TextColored(V4(ro::pal::kColWarn),
                        i18n::Tr("Chaîne arrêtée. Un clic sur « Refine » ou « Relancer le "
                        "skill » la reprend."));
     ImGui::Spacing();
   } else if (auto_stop_reason_ && AutoChain()) {
-    ImGui::TextColored(V4(kColWarn), "%s", auto_stop_reason_);
+    ImGui::TextColored(V4(ro::pal::kColWarn), "%s", auto_stop_reason_);
     ImGui::Spacing();
   }
 
@@ -2223,7 +2221,7 @@ void WeaponRefineWindow::DrawFooter() {
       // résultat, ScheduleAutoRecast testant `auto_paused_`.
       if (pending_ == kActRefine || pending_ == kActRecast) pending_ = kActNone;
       auto_stop_reason_ = nullptr;
-      PushLog(i18n::Tr("Chaîne automatique arrêtée à la demande."), kColWarn);
+      PushLog(i18n::Tr("Chaîne automatique arrêtée à la demande."), ro::pal::kColWarn);
     }
     if (ImGui::IsItemHovered()) {
       ImGui::SetTooltip(
@@ -2373,7 +2371,7 @@ bool WeaponRefineWindow::DrawSettings() {
       "pendant toute la chaîne."));
   if (auto_refine_) {
     ImGui::Indent();
-    ImGui::PushStyleColor(ImGuiCol_Text, V4(kColBad));
+    ImGui::PushStyleColor(ImGuiCol_Text, V4(ro::pal::kColBad));
     ImGui::TextWrapped(
         i18n::Tr("Chaque tentative peut DÉTRUIRE l'arme, et elles partent sans "
         "confirmation. La chaîne joue les armes de la liste jusqu'à épuisement "

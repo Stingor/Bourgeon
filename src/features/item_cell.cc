@@ -564,8 +564,8 @@ void DrawTooltip(uint32_t id, const uint32_t* cards, int card_count,
   // description en colonne de deux mots. (`DescPanelEdge` suit déjà l'échelle.)
   const float kWidth = ro::Px(330.0f);
   const float edge = ro::DescPanelEdge();
-  ImGui::PushStyleColor(ImGuiCol_PopupBg, IM_COL32(255, 255, 255, 255));
-  ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(0, 0, 0, 255));  // sur fond clair
+  ImGui::PushStyleColor(ImGuiCol_PopupBg, IM_COL32_WHITE);
+  ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32_BLACK);  // sur fond clair
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, ro::Px(4.0f));
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(edge, edge));
@@ -896,9 +896,9 @@ void DrawTile(ImDrawList* draw_list, const ImVec2& p0, const ImVec2& p1,
   if (badge[0]) {
     const ImVec2 ts = ImGui::CalcTextSize(badge);
     const ImVec2 bp(p1.x - ts.x - ro::Px(2.0f), p1.y - ts.y - ro::Px(1.0f));
-    const ImU32 white = IM_COL32(255, 255, 255, 255);
+    const ImU32 white = IM_COL32_WHITE;
     // Cerne blanc, texte noir dessus : lisible sur n'importe quelle icône.
-    ro::AddTextHalo(draw_list, bp, IM_COL32(0, 0, 0, 255), badge, white);
+    ro::AddTextHalo(draw_list, bp, IM_COL32_BLACK, badge, white);
   }
 }
 

@@ -8,6 +8,7 @@
 #include "ui/window_clamp.h"
 #include "ui/window_zorder.h"
 #include "ui/ro_imgui.h"  // ro::AddTextRelief
+#include "ui/ui_palette.h"  // ro::pal : la palette de l'UI
 
 namespace ro {
 namespace {
@@ -148,11 +149,11 @@ void HudCenteredText(ImDrawList* draw_list, ImVec2 p0, ImVec2 p1,
   // L'ombre suit la taille, sinon elle disparaît sous un gros texte.
   const float shadow = (std::max)(1.0f, std::floor(px * 0.08f));
   ro::AddTextRelief(draw_list, font, px, tp, color, text, nullptr,
-                    IM_COL32(0, 0, 0, 200), ImVec2(shadow, shadow));
+                    ro::pal::kTextShadow, ImVec2(shadow, shadow));
 }
 
 void HudBarText(ImDrawList* draw_list, ImVec2 p0, ImVec2 p1, const char* text) {
-  HudCenteredText(draw_list, p0, p1, text, IM_COL32(255, 255, 255, 255),
+  HudCenteredText(draw_list, p0, p1, text, IM_COL32_WHITE,
                   ImGui::GetFontSize());
 }
 

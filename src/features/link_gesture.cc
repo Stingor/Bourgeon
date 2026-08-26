@@ -802,8 +802,8 @@ void HoverPreview(const Target& target) {
       // le chrome de l'infobulle et l'adresse répétée en dessous ne font que
       // l'encombrer, et l'adresse est déjà lisible dans la ligne de chat.
       // Même recette que l'illustration d'une carte (item_desc_window).
-      ImGui::PushStyleColor(ImGuiCol_PopupBg, IM_COL32(0, 0, 0, 0));
-      ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(0, 0, 0, 0));
+      ImGui::PushStyleColor(ImGuiCol_PopupBg, IM_COL32_BLACK_TRANS);
+      ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32_BLACK_TRANS);
       ImGui::BeginTooltip();
       ImGui::Image(reinterpret_cast<ImTextureID>(p.tex),
                    ImVec2(static_cast<float>(p.w), static_cast<float>(p.h)));

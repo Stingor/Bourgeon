@@ -34,6 +34,7 @@
 #include "utils/i18n.h"
 #include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 #include "ui/ro_widgets.h"
+#include "ui/ui_palette.h"  // ro::pal : la palette de l'UI
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -298,9 +299,6 @@ constexpr unsigned kAutoReuseDelayMs = 300;
 // ── Palette ──────────────────────────────────────────────────────────────────
 // Le corps d'une fenêtre RO est CLAIR : tout ce qui est coloré ici est SATURÉ et
 // SOMBRE, sinon ça se délave (leçon du plugin de refine).
-constexpr ImU32 kColOk   = IM_COL32( 13, 107,  31, 255);
-constexpr ImU32 kColBad  = IM_COL32(166,  38,  38, 255);
-constexpr ImU32 kColWarn = IM_COL32(166, 102,   0, 255);
 constexpr ImU32 kColDim  = IM_COL32(110, 110, 110, 255);
 
 
@@ -898,7 +896,7 @@ void MakeItemWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
         std::snprintf(moved, sizeof(moved),
                       i18n::Tr("Maîtrise culinaire : %d -> %d."), previous,
                       cook_mastery_);
-        Log(moved, (cook_mastery_ > previous) ? kColOk : kColWarn);
+        Log(moved, (cook_mastery_ > previous) ? ro::pal::kColOk : ro::pal::kColWarn);
       }
     }
     return;
@@ -1000,11 +998,11 @@ void MakeItemWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
                       "déjà ouverte, le serveur n'en garde qu'une. Terminez-la "
                       "ou fermez-la d'abord."),
                       (used && *used) ? used : "Objet");
-        Log(lost, kColWarn);
+        Log(lost, ro::pal::kColWarn);
       } else {
         Log(i18n::Tr("Aucun produit proposé : une session de fabrication est déjà ouverte "
             "(le serveur n'en garde qu'une). La liste affichée reste valable."),
-            kColWarn);
+            ro::pal::kColWarn);
       }
       LogDiag(
           "[make] liste VIDE opcode=0x{:04X} ignoree : session armee conservee "
@@ -1194,7 +1192,7 @@ void MakeItemWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
         std::snprintf(gone, sizeof(gone),
                       i18n::Tr("Emplacement %d vidé : plus d'objet #%u en réserve."),
                       slot + 1, forge_slot_[slot]);
-      Log(gone, kColWarn);
+      Log(gone, ro::pal::kColWarn);
       forge_slot_[slot] = 0;
     }
 
@@ -1353,7 +1351,7 @@ void MakeItemWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
     if (!awaiting_result_) return;
     if (!sent_at_ || GetTickCount() - sent_at_ > kSkillFailWindowMs) return;
     awaiting_result_ = false;
-    Log(i18n::Tr("Demande refusée par le serveur."), kColWarn);
+    Log(i18n::Tr("Demande refusée par le serveur."), ro::pal::kColWarn);
     // Un REFUS n'est pas une tentative : la condition qui l'a causé ne changera
     // pas d'elle-même, relancer tournerait en rond en brûlant du SP.
     auto_recast_at_   = 0;
@@ -1568,8 +1566,8 @@ void MakeItemWindow::OnTick() {
         // dans la réponse — donc on ne l'invente pas.
         std::snprintf(line, sizeof(line), i18n::Tr("%s transformé."), subject);
       last_result_       = line;
-      last_result_color_ = kColOk;
-      Log(line, kColOk);
+      last_result_color_ = ro::pal::kColOk;
+      Log(line, ro::pal::kColOk);
       LogDiag("[make] succès CONSTATÉ (aucun 0x018F) : id={} {} -> {} (+{})",
               last_sent_id_, before, now_owned, gained);
       // 🔴 Décompter la série ICI AUSSI. Le décompte ne vivait que dans le
@@ -1601,8 +1599,8 @@ void MakeItemWindow::OnTick() {
       const char* subject = last_sent_name_[0] ? last_sent_name_ : "Objet";
       std::snprintf(line, sizeof(line), i18n::Tr("%s : échec, matériaux perdus."), subject);
       last_result_       = line;
-      last_result_color_ = kColWarn;
-      Log(line, kColWarn);
+      last_result_color_ = ro::pal::kColWarn;
+      Log(line, ro::pal::kColWarn);
       LogDiag("[make] échec CONSTATÉ (aucun paquet) : produit {} inchangé, "
               "matériau {} -{}",
               last_sent_id_, sent_mat_id_, spent);
@@ -1658,7 +1656,7 @@ void MakeItemWindow::OnTick() {
               "cas d'échec. Autre possibilité : une demande refusée à la "
               "revalidation des matériaux, qui elle n'aurait rien consommé.");
     Log(is_dish ? i18n::Tr("Échec probable — la cuisine ne dit rien quand elle rate.") : i18n::Tr("Aucune réponse du serveur — échec probable."),
-        kColWarn);
+        ro::pal::kColWarn);
     LogDiag("[make] TIMEOUT: aucun 0x018F ni 0x0110 après {} ms (produit {})",
             kAwaitResultTimeoutMs, last_sent_id_);
   }
@@ -1938,7 +1936,7 @@ void MakeItemWindow::SendReuseItem() {
   else
     std::snprintf(line, sizeof(line), i18n::Tr("Relance : %s consommé (%d au total)."),
                   source_item_name_, auto_items_used_);
-  Log(line, kColWarn);
+  Log(line, ro::pal::kColWarn);
 }
 
 void MakeItemWindow::ScheduleAutoRecast() {
@@ -2051,7 +2049,7 @@ void MakeItemWindow::RetryRelaunch() {
   if (++relaunch_retries_ > kMaxRelaunchRetries) {
     auto_stop_reason_ =
         i18n::Tr("La liste ne revient pas (délai de lancement) : relance arrêtée.");
-    Log(auto_stop_reason_, kColWarn);
+    Log(auto_stop_reason_, ro::pal::kColWarn);
     batch_left_ = 0;
     return;
   }
@@ -2068,7 +2066,7 @@ void MakeItemWindow::RetryRelaunch() {
   std::snprintf(line, sizeof(line),
                 i18n::Tr("Relance sans réponse : nouvel essai (%d/%d)."),
                 relaunch_retries_, kMaxRelaunchRetries);
-  Log(line, kColWarn);
+  Log(line, ro::pal::kColWarn);
 }
 
 void MakeItemWindow::FlushPending() {
@@ -2365,8 +2363,8 @@ void MakeItemWindow::LogResult(int result, uint32_t nameid) {
                   item_name);
   }
   last_result_       = line;
-  last_result_color_ = success ? kColOk : kColBad;
-  Log(line, success ? kColOk : kColBad);
+  last_result_color_ = success ? ro::pal::kColOk : ro::pal::kColBad;
+  Log(line, success ? ro::pal::kColOk : ro::pal::kColBad);
 }
 
 // ── Rendu ────────────────────────────────────────────────────────────────────
@@ -2473,7 +2471,7 @@ void MakeItemWindow::DrawList() {
     // fenêtre vide sans un mot. On énumère les vraies causes (§7.2).
     const char* warn = msgstr::Utf8(kMsgCantMakeItem);
     if (warn[0]) {
-      ImGui::PushStyleColor(ImGuiCol_Text, kColWarn);
+      ImGui::PushStyleColor(ImGuiCol_Text, ro::pal::kColWarn);
       TextWrapped(warn);
       ImGui::PopStyleColor();
     }
@@ -3072,7 +3070,7 @@ void MakeItemWindow::DrawSuccessChance(const Entry& chosen) {
                     (cook_mastery_ >= 0) ? i18n::Tr("reçue") : i18n::Tr("NON REÇUE"));
       const int chance = CookingChancePercent(chosen.id, kit, cook_mastery_);
       if (chance >= 0) {
-        ImGui::TextColored(V4(chance >= 80 ? kColOk : kColWarn),
+        ImGui::TextColored(V4(chance >= 80 ? ro::pal::kColOk : ro::pal::kColWarn),
                            i18n::Tr("Chances : %d %%"), chance);
         if (cook_mastery_ >= 0 && kit < 15) {
           ImGui::SameLine();
@@ -3128,10 +3126,10 @@ void MakeItemWindow::DrawSuccessChance(const Entry& chosen) {
         // saturent déjà, ou s'effondrent). Annoncer « entre 100 % et 100 % »
         // serait absurde — on donne le chiffre ferme, qui est exact.
         if (worst == best)
-          ImGui::TextColored(V4(worst >= 80 ? kColOk : kColWarn),
+          ImGui::TextColored(V4(worst >= 80 ? ro::pal::kColOk : ro::pal::kColWarn),
                              i18n::Tr("Chances : %d %%"), worst);
         else
-          ImGui::TextColored(V4(worst >= 80 ? kColOk : kColWarn),
+          ImGui::TextColored(V4(worst >= 80 ? ro::pal::kColOk : ro::pal::kColWarn),
                              i18n::Tr("Chances : entre %d %% et %d %%"), worst, best);
         ImGui::SameLine();
         char range_tip[1024];
@@ -3168,7 +3166,7 @@ void MakeItemWindow::DrawSuccessChance(const Entry& chosen) {
   if (potion) {
     const int chance = PharmacyChancePercent(chosen.id);
     if (chance >= 0) {
-      ImGui::TextColored(V4(chance >= 80 ? kColOk : kColWarn), i18n::Tr("Chances : %d %%"),
+      ImGui::TextColored(V4(chance >= 80 ? ro::pal::kColOk : ro::pal::kColWarn), i18n::Tr("Chances : %d %%"),
                          chance);
       ImGui::SameLine();
       HelpMarker(
@@ -3202,7 +3200,7 @@ void MakeItemWindow::DrawSuccessChance(const Entry& chosen) {
     const int chance = MetalCraftChancePercent(chosen.id, skill);
     // Vert au-dessus de 80 %, ambre en dessous : à ce jeu-là un échec consomme les
     // matériaux sans rien rendre, la couleur doit dire le risque et pas décorer.
-    ImGui::TextColored(V4(chance >= 80 ? kColOk : kColWarn), i18n::Tr("Chances : %d %%"),
+    ImGui::TextColored(V4(chance >= 80 ? ro::pal::kColOk : ro::pal::kColWarn), i18n::Tr("Chances : %d %%"),
                        chance);
     ImGui::SameLine();
     HelpMarker(
@@ -3236,7 +3234,7 @@ void MakeItemWindow::DrawSuccessChance(const Entry& chosen) {
     const int chance =
         ForgeChancePercent(chosen.id, skill, star_crumbs, element);
     if (chance >= 0) {
-      ImGui::TextColored(V4(chance >= 80 ? kColOk : kColWarn), i18n::Tr("Chances : %d %%"),
+      ImGui::TextColored(V4(chance >= 80 ? ro::pal::kColOk : ro::pal::kColWarn), i18n::Tr("Chances : %d %%"),
                          chance);
       ImGui::SameLine();
       HelpMarker(
@@ -3361,7 +3359,7 @@ void MakeItemWindow::DrawRecipe() {
     }
     // Le stock qui NE SUFFIT PAS est l'information la plus utile de cette liste :
     // il dit exactement ce qui bloque. Il est donc en rouge, pas grisé.
-    const ImVec4 col = enough ? V4(kColOk) : V4(kColBad);
+    const ImVec4 col = enough ? V4(ro::pal::kColOk) : V4(ro::pal::kColBad);
     const ImVec2 text_min = ImGui::GetCursorScreenPos();
     ImGui::TextColored(col, "%s", label);
     const ImVec2 text_max = ImGui::GetItemRectMax();
@@ -3504,7 +3502,7 @@ void MakeItemWindow::DrawForgeSlots() {
   }
 
   if (star_crumbs > 0) {
-    ImGui::PushStyleColor(ImGuiCol_Text, kColWarn);
+    ImGui::PushStyleColor(ImGuiCol_Text, ro::pal::kColWarn);
     // ⚠ Libellé COURT à dessein. Cette ligne se termine par un « (?) » posé en
     // SameLine, et la fenêtre a une largeur fixe : toute phrase un peu longue
     // pousse le marqueur hors du cadre, où il se fait rogner. Même cause que le
@@ -3532,7 +3530,7 @@ void MakeItemWindow::DrawForgeSlots() {
     // ⚠ En couleur d'AVERTISSEMENT, pas en vert : la pierre donne l'élément mais
     // coûte 25 points de réussite, davantage qu'un Star Crumb. L'afficher comme un
     // gain pur était trompeur.
-    ImGui::PushStyleColor(ImGuiCol_Text, kColWarn);
+    ImGui::PushStyleColor(ImGuiCol_Text, ro::pal::kColWarn);
     Text(i18n::Tr("Élément %s : -%d %% de réussite"), NameOf(element_id),
          kElementMalusPercent);
     ImGui::PopStyleColor();
@@ -3555,7 +3553,7 @@ void MakeItemWindow::DrawForgeSlots() {
       star_crumbs * kStarCrumbMalusPercent +
       (element_id ? kElementMalusPercent : 0);
   if (star_crumbs > 0 && element_id != 0) {
-    ImGui::PushStyleColor(ImGuiCol_Text, kColBad);
+    ImGui::PushStyleColor(ImGuiCol_Text, ro::pal::kColBad);
     Text(i18n::Tr("Total : -%d %% de réussite"), total_malus);
     ImGui::PopStyleColor();
   }
@@ -3580,7 +3578,7 @@ void MakeItemWindow::DrawForgeSlots() {
     }
     if (best_anvil) {
       ImGui::PushStyleColor(ImGuiCol_Text,
-                            best_anvil->percent > 0 ? kColOk : kColDim);
+                            best_anvil->percent > 0 ? ro::pal::kColOk : kColDim);
       Text(i18n::Tr("Enclume retenue : %s (+%d %%)"), NameOf(best_anvil->id),
            best_anvil->percent);
       ImGui::PopStyleColor();
@@ -3591,7 +3589,7 @@ void MakeItemWindow::DrawForgeSlots() {
         ImGui::PopStyleColor();
       }
     } else {
-      ImGui::PushStyleColor(ImGuiCol_Text, kColBad);
+      ImGui::PushStyleColor(ImGuiCol_Text, ro::pal::kColBad);
       TextUnformatted(i18n::Tr("Aucune enclume en sac."));
       ImGui::PopStyleColor();
     }
@@ -3617,7 +3615,7 @@ void MakeItemWindow::DrawForgeSlots() {
     for (int j = 0; j < 3; ++j) if (forge_slot_[j] == forge_slot_[i]) ++used;
     const int have = OwnedCount(forge_slot_[i]);
     if (used > have) {
-      ImGui::PushStyleColor(ImGuiCol_Text, kColBad);
+      ImGui::PushStyleColor(ImGuiCol_Text, ro::pal::kColBad);
       Text(i18n::Tr("%s : %d demandés, %d en sac"), NameOf(forge_slot_[i]), used, have);
       ImGui::PopStyleColor();
       break;  // un seul message suffit à dire que la sélection est intenable
@@ -3756,7 +3754,7 @@ void MakeItemWindow::DrawFooter() {
   if (ro::RoSmallButton(i18n::Tr("+##batchinc")) && batch_target_ < 999) ++batch_target_;
   SameLine();
   if (batch_left_ > 0) {
-    ImGui::PushStyleColor(ImGuiCol_Text, kColWarn);
+    ImGui::PushStyleColor(ImGuiCol_Text, ro::pal::kColWarn);
     Text(i18n::Tr("série : %d/%d"), batch_target_ - batch_left_, batch_target_);
     ImGui::PopStyleColor();
   } else {
@@ -3782,7 +3780,7 @@ void MakeItemWindow::DrawFooter() {
   if (batch_target_ > 1) {
     const bool relance_ok = from_item_ ? auto_reuse_item_ : auto_recast_;
     if (!relance_ok) {
-      ImGui::PushStyleColor(ImGuiCol_Text, kColWarn);
+      ImGui::PushStyleColor(ImGuiCol_Text, ro::pal::kColWarn);
       TextWrapped(from_item_
                       ? i18n::Tr("Série sans effet : la relance par OBJET est désactivée, "
                         "aucune nouvelle liste ne reviendra après la première "
@@ -3831,7 +3829,7 @@ void MakeItemWindow::DrawFooter() {
   // Une action que le client prend de lui-même DOIT se voir, et la raison de son
   // arrêt doit rester à l'écran.
   if (auto_chain_ > 0 && auto_recast_at_) {
-    ImGui::PushStyleColor(ImGuiCol_Text, kColWarn);
+    ImGui::PushStyleColor(ImGuiCol_Text, ro::pal::kColWarn);
     // Une relance par OBJET dépense du stock : elle dit CE qu'elle consomme et
     // où en est le plafond. Une relance par compétence ne coûte que du SP, le
     // simple compteur suffit.

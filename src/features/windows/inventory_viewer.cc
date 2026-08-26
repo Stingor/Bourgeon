@@ -40,6 +40,7 @@
 #include "features/windows/viewer_probes.h"  // etat des fenetres voisines
 #include "ui/item_grid_chrome.h"  // ro::grid : le decor commun aux grilles
 #include "ui/ro_widgets.h"
+#include "ui/ui_palette.h"  // ro::pal : la palette de l'UI
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -634,7 +635,7 @@ bool FooterImgToggle(const char* id, float x, float cyc, const BarTex& on,
   ImDrawList* dl = ImGui::GetWindowDrawList();
   const ImVec2 p0(x, y), p1(x + w, y + h);
   if (haveTex) {
-    const ImU32 tint = hov ? IM_COL32(255, 255, 255, 255) : ro::SkinImageTint();
+    const ImU32 tint = hov ? IM_COL32_WHITE : ro::SkinImageTint();
     dl->AddImage(TexId(t.tex), p0, p1, ImVec2(0, 0), ImVec2(1, 1), tint);
   } else {  // repli glyphe (bmp absent)
     const ImU32 bg = active ? IM_COL32(120, 165, 225, 220)
@@ -644,7 +645,7 @@ bool FooterImgToggle(const char* id, float x, float cyc, const BarTex& on,
     dl->AddRect(p0, p1, IM_COL32(110, 110, 110, 220), 2.0f);
     const ImVec2 ts = ImGui::CalcTextSize(glyph);
     dl->AddText(ImVec2(x + (w - ts.x) * 0.5f, y + (h - ts.y) * 0.5f),
-                active ? IM_COL32(255, 255, 255, 255) : IM_COL32(45, 45, 45, 255), glyph);
+                active ? IM_COL32_WHITE : IM_COL32(45, 45, 45, 255), glyph);
   }
   if (hov && tip) ImGui::SetTooltip(" %s ", tip);
   if (out_w) *out_w = w;
@@ -1481,7 +1482,7 @@ void InventoryViewer::OnRenderUI() {
         // L'image active/inactive indique déjà la sélection -> pas de cadre jaune.
         tdl->AddImage(TexId(img.tex), p, pe, ImVec2(0, 0), ImVec2(1, 1), ro::SkinImageTint());
         if (!sel && ImGui::IsItemHovered())
-          tdl->AddRectFilled(p, pe, IM_COL32(255, 255, 255, 45));  // survol : éclaircir (pas de bleu)
+          tdl->AddRectFilled(p, pe, ro::pal::kHoverTint);  // survol : éclaircir (pas de bleu)
       } else {
         const ImVec2 sz = vtabs
             ? ImVec2(tabW, 0.0f)
@@ -1992,7 +1993,7 @@ void InventoryViewer::OnRenderUI() {
   // verticale, bord BAS en horizontale (la grille est alors juste dessous).
   if (haveActiveTab) {
     const ImU32 pont = kCats[cur_tab_].fav ? IM_COL32(0xD1, 0xDC, 0xE8, 255)
-                                           : IM_COL32(255, 255, 255, 255);
+                                           : IM_COL32_WHITE;
     ImDrawList* dl = ImGui::GetWindowDrawList();
     if (vtabs)
       dl->AddRectFilled(ImVec2(activeTabMax.x - 1.0f, activeTabMin.y + 1.0f),

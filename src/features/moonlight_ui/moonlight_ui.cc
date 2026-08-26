@@ -347,7 +347,7 @@ const moonlight_ui::SettingDesc kGraphicsSettings[] = {
     {"fps_bg_col",        SType::kUInt,  MLUI_FIELD(screen_fx, fps_bg_col()),
      MLUI_LITERAL(uint32_t, IM_COL32(0, 0, 0, 115))},
     {"fps_text_col",      SType::kUInt,  MLUI_FIELD(screen_fx, fps_text_col()),
-     MLUI_LITERAL(uint32_t, IM_COL32(255, 255, 255, 255))},
+     MLUI_LITERAL(uint32_t, IM_COL32_WHITE)},
     {"cam_zoom_enabled",  SType::kBool,  MLUI_FIELD(screen_fx, zoom_enabled()),
      MLUI_LITERAL(bool, false)},
     {"cam_zoom_factor",   SType::kFloat, MLUI_FIELD(screen_fx, zoom_factor()),

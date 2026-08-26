@@ -146,8 +146,8 @@ void Gauge(const char* label, int cur, int max, const ImVec4& col) {
   const ImVec2 ts = ImGui::CalcTextSize(text);
   const ImVec2 at((p0.x + p1.x - ts.x) * 0.5f, (p0.y + p1.y - ts.y) * 0.5f - 2.0f);
   ImDrawList* dl = ImGui::GetWindowDrawList();
-  ro::AddTextRelief(dl, at, IM_COL32(255, 255, 255, 255), text,
-                    IM_COL32(0, 0, 0, 200), ImVec2(1.0f, 1.0f));
+  ro::AddTextRelief(dl, at, IM_COL32_WHITE, text,
+                    ro::pal::kTextShadow, ImVec2(1.0f, 1.0f));
 }
 
 // ⚠ L'ITID est rangé en TEXTE dans une `std::string` — c'est pour ça que le natif

@@ -36,6 +36,7 @@
 #include "utils/log_console.h"
 #include "yaml-cpp/yaml.h"
 #include "utils/i18n.h"
+#include "ui/ui_palette.h"  // ro::pal : la palette de l'UI
 
 namespace {
 
@@ -1214,7 +1215,7 @@ void CharSelect::DrawHallBackdrop(ImDrawList* dl, const ImVec2& disp) {
   }
   // Léger voile bas pour asseoir titre/barre d'action sur le décor.
   dl->AddRectFilledMultiColor(ImVec2(0, disp.y - 96.0f), disp,
-                              IM_COL32(0, 0, 0, 0), IM_COL32(0, 0, 0, 0),
+                              IM_COL32_BLACK_TRANS, IM_COL32_BLACK_TRANS,
                               IM_COL32(0, 0, 0, 150), IM_COL32(0, 0, 0, 150));
 }
 
@@ -2594,7 +2595,7 @@ void CharSelect::OnRenderLoginUI() {
           const ImVec2 ts = ImGui::CalcTextSize(num);
           const ImVec2 tp(cpos.x + 2.0f, cpos.y + cell - ts.y - 1.0f);
           ro::AddTextRelief(gdl, tp, IM_COL32(255, 255, 255, 235), num,
-                            IM_COL32(0, 0, 0, 200), ImVec2(1.0f, 1.0f));
+                            ro::pal::kTextShadow, ImVec2(1.0f, 1.0f));
         }
         ImGui::InvisibleButton("c", ImVec2(cell, cell));
         if (ImGui::IsItemClicked()) create_hair_ = hs;

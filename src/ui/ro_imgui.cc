@@ -1479,16 +1479,16 @@ static int PushSkinColors() {
       ImVec4(g_cfg.border_col[0], g_cfg.border_col[1], g_cfg.border_col[2],
              g_cfg.border_col[3]));
   ImGui::PushStyleColor(ImGuiCol_WindowBg, body);
-  ImGui::PushStyleColor(ImGuiCol_TitleBg, IM_COL32(0, 0, 0, 0));
-  ImGui::PushStyleColor(ImGuiCol_TitleBgActive, IM_COL32(0, 0, 0, 0));
-  ImGui::PushStyleColor(ImGuiCol_TitleBgCollapsed, IM_COL32(0, 0, 0, 0));
+  ImGui::PushStyleColor(ImGuiCol_TitleBg, IM_COL32_BLACK_TRANS);
+  ImGui::PushStyleColor(ImGuiCol_TitleBgActive, IM_COL32_BLACK_TRANS);
+  ImGui::PushStyleColor(ImGuiCol_TitleBgCollapsed, IM_COL32_BLACK_TRANS);
   ImGui::PushStyleColor(ImGuiCol_Border, border);
   ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertFloat4ToU32(ImVec4(
                                            g_cfg.body_text[0], g_cfg.body_text[1],
                                            g_cfg.body_text[2], g_cfg.body_text[3])));
-  ImGui::PushStyleColor(ImGuiCol_ResizeGrip, IM_COL32(0, 0, 0, 0));
-  ImGui::PushStyleColor(ImGuiCol_ResizeGripHovered, IM_COL32(0, 0, 0, 0));
-  ImGui::PushStyleColor(ImGuiCol_ResizeGripActive, IM_COL32(0, 0, 0, 0));
+  ImGui::PushStyleColor(ImGuiCol_ResizeGrip, IM_COL32_BLACK_TRANS);
+  ImGui::PushStyleColor(ImGuiCol_ResizeGripHovered, IM_COL32_BLACK_TRANS);
+  ImGui::PushStyleColor(ImGuiCol_ResizeGripActive, IM_COL32_BLACK_TRANS);
   const ImU32 inputc = ImGui::ColorConvertFloat4ToU32(
       ImVec4(g_cfg.input_col[0], g_cfg.input_col[1], g_cfg.input_col[2],
              g_cfg.input_col[3]));
@@ -1514,10 +1514,10 @@ static int PushSkinColors() {
   ImGui::PushStyleColor(ImGuiCol_Tab, tabi);
   ImGui::PushStyleColor(ImGuiCol_TabHovered, lighten(tabi, 14));
   ImGui::PushStyleColor(ImGuiCol_TabSelected, tabc);
-  ImGui::PushStyleColor(ImGuiCol_ScrollbarBg, IM_COL32(0, 0, 0, 0));
-  ImGui::PushStyleColor(ImGuiCol_ScrollbarGrab, IM_COL32(0, 0, 0, 0));
-  ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabHovered, IM_COL32(0, 0, 0, 0));
-  ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabActive, IM_COL32(0, 0, 0, 0));
+  ImGui::PushStyleColor(ImGuiCol_ScrollbarBg, IM_COL32_BLACK_TRANS);
+  ImGui::PushStyleColor(ImGuiCol_ScrollbarGrab, IM_COL32_BLACK_TRANS);
+  ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabHovered, IM_COL32_BLACK_TRANS);
+  ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabActive, IM_COL32_BLACK_TRANS);
   ImGui::PushStyleColor(ImGuiCol_TableHeaderBg,
                         ImGui::ColorConvertFloat4ToU32(ImVec4(
                             g_cfg.header_col[0], g_cfg.header_col[1],
@@ -1803,9 +1803,9 @@ bool BeginRoChatWindow(const char* id, const RoChatSkin& skin,
   g_skin_active = true;
 
   ImGui::PushStyleColor(ImGuiCol_WindowBg, skin.body_col);
-  ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(0, 0, 0, 0));
+  ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32_BLACK_TRANS);
   ImGui::PushStyleColor(ImGuiCol_Border, skin.border_col);
-  ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 255, 255));
+  ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32_WHITE);
   // Champs de saisie CLAIRS, comme les UIEditWnd du chat natif (la ligne de
   // saisie et la box du destinataire y sont blanches sur le cadre sombre).
   ImGui::PushStyleColor(ImGuiCol_FrameBg, IM_COL32(0xCE, 0xCE, 0xCE, 255));
@@ -1814,10 +1814,10 @@ bool BeginRoChatWindow(const char* id, const RoChatSkin& skin,
   ImGui::PushStyleColor(ImGuiCol_PopupBg, IM_COL32(0xF2, 0xF3, 0xF6, 255));
   ImGui::PushStyleColor(ImGuiCol_TextSelectedBg, IM_COL32(0x9C, 0xB8, 0xEA, 160));
   // Scrollbar ImGui rendue transparente : c'est DrawRoScrollbar qui la peint.
-  ImGui::PushStyleColor(ImGuiCol_ScrollbarBg, IM_COL32(0, 0, 0, 0));
-  ImGui::PushStyleColor(ImGuiCol_ScrollbarGrab, IM_COL32(0, 0, 0, 0));
-  ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabHovered, IM_COL32(0, 0, 0, 0));
-  ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabActive, IM_COL32(0, 0, 0, 0));
+  ImGui::PushStyleColor(ImGuiCol_ScrollbarBg, IM_COL32_BLACK_TRANS);
+  ImGui::PushStyleColor(ImGuiCol_ScrollbarGrab, IM_COL32_BLACK_TRANS);
+  ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabHovered, IM_COL32_BLACK_TRANS);
+  ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabActive, IM_COL32_BLACK_TRANS);
   g_chat_colors = 13;
 
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
@@ -2080,7 +2080,7 @@ bool BeginRoPopupModal(const char* title, int imgui_window_flags) {
   // ImGui fige la couleur du voile dans Begin (window->DC.ModalDimBgColor) : la
   // pousser ICI suffit, et elle se dépile avec les couleurs du skin.
   if (!dim_bg) {
-    ImGui::PushStyleColor(ImGuiCol_ModalWindowDimBg, IM_COL32(0, 0, 0, 0));
+    ImGui::PushStyleColor(ImGuiCol_ModalWindowDimBg, IM_COL32_BLACK_TRANS);
     ++g_modal_colors;
   }
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);  // cf. BeginRoWindow
@@ -2176,7 +2176,7 @@ bool BeginRoDescWindow(const char* title, bool* p_open, int imgui_window_flags,
   g_skin_colors = PushSkinColors();
   // Desc : fond BLANC + bordure 1px c2c2c2 (continuité avec le titre). Ces 2
   // pushes s'ajoutent aux 24 de PushSkinColors et écrasent WindowBg/Border.
-  ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(255, 255, 255, 255));
+  ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32_WHITE);
   ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(0xC2, 0xC2, 0xC2, 255));
   g_skin_colors += 2;
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);  // bordure 1px c2c2c2
@@ -2291,7 +2291,7 @@ void EndRoDescWindow() { EndRoWindow(); }  // même teardown (scrollbar + pop)
 bool BeginRoDescPanel(const char* id, int imgui_window_flags) {
   g_skin_active = true;
   g_skin_colors = PushSkinColors();
-  ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(255, 255, 255, 255));
+  ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32_WHITE);
   ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(0xC2, 0xC2, 0xC2, 255));
   g_skin_colors += 2;
   // Bordure 1px ARRONDIE (comme BeginRoDescWindow) EN PLUS du cadre sysbox : donne
@@ -2355,7 +2355,7 @@ void DrawDescPanelFrame(ImDrawList* dl, float x0, float y0, float x1, float y1,
   // quand l'appelant a déjà peint un fond ARRONDI : ce rect-ci est à angles droits
   // et recouvrirait ses coins.
   if (fill_bg)
-    dl->AddRectFilled(p0, p1, ApplySkinTint(IM_COL32(255, 255, 255, 255)), 0.0f);
+    dl->AddRectFilled(p0, p1, ApplySkinTint(IM_COL32_WHITE), 0.0f);
   EnsureTex("sysbox_lu.bmp", skin::kSysboxLu, g_sb_lu);
   EnsureTex("sysbox_mu.bmp", skin::kSysboxMu, g_sb_mu);
   EnsureTex("sysbox_ru.bmp", skin::kSysboxRu, g_sb_ru);
@@ -3297,7 +3297,7 @@ bool RoBeginTabBar(const char* str_id, int tab_bar_flags) {
   // Fonds ImGui neutralisés : l'onglet est entièrement peint par DrawRoTabBarArt.
   // (Le séparateur de bas de barre d'ImGui reprend ImGuiCol_TabSelected : il
   // disparaît donc avec eux, et c'est notre trait qui le remplace.)
-  const ImU32 kNone = IM_COL32(0, 0, 0, 0);
+  const ImU32 kNone = IM_COL32_BLACK_TRANS;
   ImGui::PushStyleColor(ImGuiCol_Tab, kNone);
   ImGui::PushStyleColor(ImGuiCol_TabHovered, kNone);
   ImGui::PushStyleColor(ImGuiCol_TabSelected, kNone);

@@ -1208,8 +1208,8 @@ void BasicInfo::RenderItemPreviewTooltip(int view_id, int emplacement,
   // cropés. Fond transparent -> l'espace vide est invisible.
   const float box_w = 260.0f, box_h = 240.0f;
   // Fond + bordure transparents : seul le sprite du perso s'affiche (pas de boîte).
-  ImGui::PushStyleColor(ImGuiCol_PopupBg, IM_COL32(0, 0, 0, 0));
-  ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(0, 0, 0, 0));
+  ImGui::PushStyleColor(ImGuiCol_PopupBg, IM_COL32_BLACK_TRANS);
+  ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32_BLACK_TRANS);
   // Ancre le preview PRÈS du curseur (sinon l'offset de tooltip par défaut + la
   // grande boîte l'éloignent). Le sprite est ancré en bas de la boîte (pieds à
   // top+box_h-14) -> on place la boîte au-dessus du curseur pour que le perso

@@ -1289,7 +1289,7 @@ void TargetFrame::DrawElements(void* game_mode, void* actor) {
                        static_cast<unsigned long long>(cur),
                        static_cast<unsigned long long>(max), ratio * 100.0);
             }
-            ro::HudCenteredText(dl, p0, p1, text, IM_COL32(255, 255, 255, 255),
+            ro::HudCenteredText(dl, p0, p1, text, IM_COL32_WHITE,
                                 font_px);
           }
           break;

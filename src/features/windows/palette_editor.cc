@@ -27,6 +27,7 @@
 #include "utils/log_console.h"
 #include "ui/sprite_path.h"
 #include "utils/i18n.h"
+#include "ui/ui_palette.h"  // ro::pal : la palette de l'UI
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -88,7 +89,7 @@ bool GrillePicker(int premier, int dernier, int cols, float cote, int* valeur,
     const ImVec2 ts = ImGui::CalcTextSize(num);
     const ImVec2 tp(p.x + 2.0f, p.y + cote - ts.y - 1.0f);
     ro::AddTextRelief(dl, tp, IM_COL32(255, 255, 255, 235), num,
-                      IM_COL32(0, 0, 0, 200), ImVec2(1.0f, 1.0f));
+                      ro::pal::kTextShadow, ImVec2(1.0f, 1.0f));
     ImGui::InvisibleButton("c", ImVec2(cote, cote));
     if (ImGui::IsItemClicked()) {
       *valeur = v;

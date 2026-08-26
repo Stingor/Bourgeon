@@ -270,7 +270,7 @@ void PartyFrames::DrawTile(const rag::social::Entry& m, ImVec2 p0, ImVec2 p1,
       const ImVec2 i1(i0.x + side, i0.y + side);
       // Hors ligne : la même icône, assombrie — comme la fenêtre Amis/Groupe.
       const ImU32 tint = m.offline ? IM_COL32(140, 140, 140, 220)
-                                   : IM_COL32(255, 255, 255, 255);
+                                   : IM_COL32_WHITE;
       dl->AddImage(reinterpret_cast<ImTextureID>(icon.tex), i0, i1,
                    ImVec2(0, 0), ImVec2(1, 1), tint);
       text_x = i1.x + pad;

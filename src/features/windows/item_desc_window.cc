@@ -40,6 +40,7 @@
 #include "utils/log_console.h"
 #include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 #include "ragnarok/item_info.h"  // rag::itemlist : la disposition d'ItemSkillInfo
+#include "ui/ui_palette.h"  // ro::pal : la palette de l'UI
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -1003,7 +1004,7 @@ void SelectableColoredText(const char* id, const char lines[][kLineLen],
         }
         // Texte blanc forcé : la couleur de texte poussée (noir, pour le fond
         // clair de la fenêtre) rendrait le tooltip invisible sur fond sombre.
-        ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 255, 255));
+        ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32_WHITE);
         ImGui::SetTooltip(i18n::Tr("Aller à : %s (%d, %d)"), mapn, nx, ny);
         ImGui::PopStyleColor();
         if (clicked && mapn[0])
@@ -1342,7 +1343,7 @@ void RenderCardDescBody(uint32_t id, const char* sctext_id, float wrap) {
   if (has_desc) {
     ImGui::BeginGroup();
     SelectableColoredText(sctext_id, cd->lines + skip, cd->line_count - skip,
-                          IM_COL32(0, 0, 0, 255), wrap);
+                          IM_COL32_BLACK, wrap);
     ImGui::EndGroup();
   } else if (!illust.tex) {
     ImGui::TextDisabled(i18n::Tr("(pas de description)"));
@@ -1354,8 +1355,8 @@ void RenderCardDescBody(uint32_t id, const char* sctext_id, float wrap) {
 void RenderCardTooltip(uint32_t id) {
   // Fond crème identique à la fenêtre desc, mais alpha conservé (~240) pour garder
   // la translucidité d'un tooltip. Texte noir (fond clair) comme la fenêtre.
-  ImGui::PushStyleColor(ImGuiCol_PopupBg, IM_COL32(245, 243, 232, 240));
-  ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(0, 0, 0, 255));
+  ImGui::PushStyleColor(ImGuiCol_PopupBg, ro::pal::kDescPopupBg);
+  ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32_BLACK);
   ImGui::BeginTooltip();
   RenderCardDescBody(id, "##cardtip", 340.0f);
   ImGui::Separator();
@@ -2339,7 +2340,7 @@ void RenderSimpleDesc(uint32_t id, float wrap, const uint32_t* cards,
   if (has_desc) {
     ImGui::BeginGroup();
     SelectableColoredText("##simpledesc", cd->lines + skip, cd->line_count - skip,
-                          IM_COL32(0, 0, 0, 255), text_wrap);
+                          IM_COL32_BLACK, text_wrap);
     ImGui::EndGroup();
   } else if (!img.tex) {
     ImGui::TextDisabled(i18n::Tr("(pas de description)"));
@@ -2827,12 +2828,12 @@ void ItemDescWindow::RenderItemWindow() {
     item_need_raise_ = false;
   }
   ImGui::SetNextWindowBgAlpha(1.0f);
-  ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(245, 243, 232, 255));
-  ImGui::PushStyleColor(ImGuiCol_TitleBg,       IM_COL32(120, 110, 90, 255));
-  ImGui::PushStyleColor(ImGuiCol_TitleBgActive, IM_COL32(120, 110, 90, 255));
-  ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(0, 0, 0, 255));
+  ImGui::PushStyleColor(ImGuiCol_WindowBg, ro::pal::kDescBg);
+  ImGui::PushStyleColor(ImGuiCol_TitleBg,       ro::pal::kDescTitleBg);
+  ImGui::PushStyleColor(ImGuiCol_TitleBgActive, ro::pal::kDescTitleBg);
+  ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32_BLACK);
 
-  const ImU32 black = IM_COL32(0, 0, 0, 255);
+  const ImU32 black = IM_COL32_BLACK;
   // Un aperçu de personnage est-il survolé CETTE frame ? La molette lui appartient
   // alors (elle fait tourner le pantin) — mais ImGui scrolle la fenêtre AVANT que
   // basic_info ne consomme l'événement, d'où le gel du scroll à la frame suivante.
@@ -2861,8 +2862,8 @@ void ItemDescWindow::RenderItemWindow() {
       ImGui::Image(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(w, h));
       if (ImGui::IsItemHovered()) {
         if (is_card) {  // mouseover illustration carte pleine taille
-          ImGui::PushStyleColor(ImGuiCol_PopupBg, IM_COL32(0, 0, 0, 0));
-          ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(0, 0, 0, 0));
+          ImGui::PushStyleColor(ImGuiCol_PopupBg, IM_COL32_BLACK_TRANS);
+          ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32_BLACK_TRANS);
           ImGui::BeginTooltip();
           ImGui::Image(reinterpret_cast<ImTextureID>(cill.tex),
                        ImVec2(ro::Px(static_cast<float>(cill.w)),
@@ -2891,7 +2892,7 @@ void ItemDescWindow::RenderItemWindow() {
     // la barre de titre ne peut pas rendre ; un item normal garde juste son nom
     // dans la barre de titre.
     if (header || e.hl_start >= 0 || e.name_shadow)
-      DrawTitle(e.name, e.hl_start, e.hl_end, e.hl_col, IM_COL32(0, 0, 0, 255),
+      DrawTitle(e.name, e.hl_start, e.hl_end, e.hl_col, IM_COL32_BLACK,
                 e.name_shadow);
 
     // La 1ère ligne de desc item est TOUJOURS le lien database (<URL>ItemID..),
@@ -3471,10 +3472,10 @@ void ItemDescWindow::RenderSkillWindow() {
     skill_need_raise_ = false;
   }
   ImGui::SetNextWindowBgAlpha(1.0f);
-  ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(245, 243, 232, 255));
-  ImGui::PushStyleColor(ImGuiCol_TitleBg,       IM_COL32(120, 110, 90, 255));
-  ImGui::PushStyleColor(ImGuiCol_TitleBgActive, IM_COL32(120, 110, 90, 255));
-  ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(0, 0, 0, 255));
+  ImGui::PushStyleColor(ImGuiCol_WindowBg, ro::pal::kDescBg);
+  ImGui::PushStyleColor(ImGuiCol_TitleBg,       ro::pal::kDescTitleBg);
+  ImGui::PushStyleColor(ImGuiCol_TitleBgActive, ro::pal::kDescTitleBg);
+  ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32_BLACK);
 
   const ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse |
                                  ImGuiWindowFlags_NoFocusOnAppearing;
@@ -3506,7 +3507,7 @@ void ItemDescWindow::RenderSkillWindow() {
       // reflow=true : les lignes viennent des rich-text box natifs déjà wrappés (le jeu
       // coupe en plein mot en comptant les tokens ^RRGGBB) -> on re-fusionne + re-wrap.
       SelectableColoredText("##seltext_skill", s_e.lines, s_e.line_count,
-                            IM_COL32(0, 0, 0, 255), 0.0f, /*reflow=*/true);
+                            IM_COL32_BLACK, 0.0f, /*reflow=*/true);
       ImGui::EndTabItem();
     }
     RenderTechTabs(skill_);  // onglets Infos techniques / Dégâts
@@ -3604,9 +3605,9 @@ void ItemDescWindow::RenderBookWindow() {
   // Fond = la couleur déclarée par le livre lui-même (en-tête %RRGGBB du .txt,
   // lue dans la fenêtre native) — le texte RO est écrit pour ce fond pâle.
   ImGui::PushStyleColor(ImGuiCol_WindowBg, be.bg);
-  ImGui::PushStyleColor(ImGuiCol_TitleBg,       IM_COL32(120, 110, 90, 255));
-  ImGui::PushStyleColor(ImGuiCol_TitleBgActive, IM_COL32(120, 110, 90, 255));
-  ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(0, 0, 0, 255));
+  ImGui::PushStyleColor(ImGuiCol_TitleBg,       ro::pal::kDescTitleBg);
+  ImGui::PushStyleColor(ImGuiCol_TitleBgActive, ro::pal::kDescTitleBg);
+  ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32_BLACK);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_GrabRounding, 6.0f);
@@ -3660,7 +3661,7 @@ void ItemDescWindow::RenderBookWindow() {
     // Lignes DÉJÀ wrappées par le client (à la largeur de la fenêtre native) : on
     // les re-fusionne et re-wrappe à la nôtre (reflow), comme la desc de skill.
     SelectableColoredText("##seltext_book", be.lines, be.line_count,
-                          IM_COL32(0, 0, 0, 255), 0.0f, /*reflow=*/true);
+                          IM_COL32_BLACK, 0.0f, /*reflow=*/true);
     // Molette = tourner les pages, MAIS seulement si la fenêtre n'a rien à faire
     // défiler (sinon on volerait le scroll d'une page trop haute pour le cadre).
     wheel_ok = ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows) &&

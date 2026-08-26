@@ -33,6 +33,7 @@
 #include "features/windows/viewer_probes.h"  // etat des fenetres voisines
 #include "ui/item_grid_chrome.h"  // ro::grid : le decor commun aux grilles
 #include "ui/ro_widgets.h"
+#include "ui/ui_palette.h"  // ro::pal : la palette de l'UI
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -453,7 +454,7 @@ void CartViewer::OnRenderUI() {
         const ImVec2 pe(p.x + iw, p.y + ih);
         tdl->AddImage(TexId(img.tex), p, pe, ImVec2(0, 0), ImVec2(1, 1), ro::SkinImageTint());
         if (!sel && ImGui::IsItemHovered())
-          tdl->AddRectFilled(p, pe, IM_COL32(255, 255, 255, 45));  // survol : éclaircir
+          tdl->AddRectFilled(p, pe, ro::pal::kHoverTint);  // survol : éclaircir
         if (sel) { activeTabMin = p; activeTabMax = pe; haveActiveTab = true; }
       } else {
         const ImVec2 sz = vtabs
@@ -707,7 +708,7 @@ void CartViewer::OnRenderUI() {
   // bord qui touche la grille (droit en vertical, bas en horizontal) -> passage
   // blanc continu qui souligne l'onglet actif.
   if (haveActiveTab) {
-    const ImU32 pont = IM_COL32(255, 255, 255, 255);
+    const ImU32 pont = IM_COL32_WHITE;
     ImDrawList* dl = ImGui::GetWindowDrawList();
     if (vtabs)
       dl->AddRectFilled(ImVec2(activeTabMax.x - 1.0f, activeTabMin.y + 1.0f),

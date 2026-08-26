@@ -86,7 +86,7 @@ class ScreenFx : public Plugin {
   bool     fps_show_ping_ = true;
   float    fps_scale_     = 1.0f;                       // multiplicateur de police
   uint32_t fps_bg_col_    = IM_COL32(0, 0, 0, 115);     // ≈ l'ancien BgAlpha 0.45
-  uint32_t fps_text_col_  = IM_COL32(255, 255, 255, 255);
+  uint32_t fps_text_col_  = IM_COL32_WHITE;
   // Dessine le texte à la position courante, avec son ombre si elle est active.
   void FpsText(const char* text) const;
 

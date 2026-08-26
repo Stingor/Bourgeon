@@ -755,10 +755,10 @@ void MonsterInfoWindow::OnRenderUI() {
   // et les trois arrondis ci-dessous sont EXACTEMENT ceux d'ItemDescWindow —
   // deux panneaux de description côte à côte doivent être indiscernables.
   ImGui::SetNextWindowBgAlpha(1.0f);
-  ImGui::PushStyleColor(ImGuiCol_WindowBg,      IM_COL32(245, 243, 232, 255));
-  ImGui::PushStyleColor(ImGuiCol_TitleBg,       IM_COL32(120, 110, 90, 255));
-  ImGui::PushStyleColor(ImGuiCol_TitleBgActive, IM_COL32(120, 110, 90, 255));
-  ImGui::PushStyleColor(ImGuiCol_Text,          IM_COL32(0, 0, 0, 255));
+  ImGui::PushStyleColor(ImGuiCol_WindowBg,      ro::pal::kDescBg);
+  ImGui::PushStyleColor(ImGuiCol_TitleBg,       ro::pal::kDescTitleBg);
+  ImGui::PushStyleColor(ImGuiCol_TitleBgActive, ro::pal::kDescTitleBg);
+  ImGui::PushStyleColor(ImGuiCol_Text,          IM_COL32_BLACK);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_GrabRounding, 6.0f);
@@ -1513,8 +1513,8 @@ void MonsterInfoWindow::DrawHoverPreview(uint32_t mob_id, bool by_view) {
   RequestInfo(mob_id, by_view);  // garde interne : une seule demande
   const MobInfo& mob = cache_[mob_id];
 
-  ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(0, 0, 0, 255));  // fond clair
-  ImGui::PushStyleColor(ImGuiCol_PopupBg, IM_COL32(245, 243, 232, 240));
+  ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32_BLACK);  // fond clair
+  ImGui::PushStyleColor(ImGuiCol_PopupBg, ro::pal::kDescPopupBg);
   ImGui::BeginTooltip();
   if (mob.state == Fetch::kUnknown) {
     ImGui::TextDisabled(i18n::Tr("Monstre inconnu du serveur (#%u)."), mob_id);

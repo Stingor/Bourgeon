@@ -156,7 +156,7 @@ void DrawStatusBadge(const char* txt, ImU32 bg, const char* tooltip) {
   p.y = static_cast<float>(static_cast<int>(p.y));
   ImDrawList* dl = ImGui::GetWindowDrawList();
   dl->AddRectFilled(p, ImVec2(p.x + size.x, p.y + size.y), bg, ro::Px(3.0f));
-  dl->AddText(ImVec2(p.x + pad_x, p.y + pad_y), IM_COL32(255, 255, 255, 255), txt);
+  dl->AddText(ImVec2(p.x + pad_x, p.y + pad_y), IM_COL32_WHITE, txt);
   ImGui::Dummy(size);
   if (tooltip && ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tooltip);
 }

@@ -395,7 +395,7 @@ void Roggle::OnRenderUI() {
       const IconTex& it = p.orange ? g_tex_orange : g_tex_blue;
       if (it.tex) {
         // Dim unhit pegs slightly; a lit peg pops to full brightness + a ring.
-        const ImU32 tint = p.hit ? IM_COL32(255, 255, 255, 255)
+        const ImU32 tint = p.hit ? IM_COL32_WHITE
                                   : IM_COL32(255, 255, 255, 225);
         dl->AddImage((ImTextureID)(uintptr_t)it.tex,
                      P(p.x - kPegDraw, p.y - kPegDraw), P(p.x + kPegDraw, p.y + kPegDraw),

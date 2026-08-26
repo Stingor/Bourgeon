@@ -22,6 +22,7 @@
 #include "ui/ro_widgets.h"
 #include "utils/i18n.h"
 #include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
+#include "ui/ui_palette.h"  // ro::pal : la palette de l'UI
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -38,10 +39,7 @@ using rag::itemlist::kNodeAmount;
 // Palette du projet, celle de la fabrication et du refine — sur le corps CLAIR
 // du skin RO (feedback_imgui_ro_light_body_colors) : `TextDisabled` y est
 // illisible, et un vert/rouge vif y bave.
-constexpr ImU32 kColOk   = IM_COL32( 13, 107,  31, 255);
-constexpr ImU32 kColBad  = IM_COL32(166,  38,  38, 255);
 constexpr ImU32 kColDim  = IM_COL32(110, 110, 110, 255);
-constexpr ImU32 kColWarn = IM_COL32(166, 102,   0, 255);
 constexpr ImU32 kColText = IM_COL32( 20,  20,  20, 255);
 
 inline ImVec4      V4(ImU32 c)   { return ImGui::ColorConvertU32ToFloat4(c); }
@@ -300,7 +298,7 @@ void CraftAtlas::OnRenderUI() {
       // Dire l'ABSENCE, et laquelle : le fichier est livré avec le patch, un
       // joueur peut ne pas l'avoir encore. Une fenêtre vide se lirait comme
       // « rien ne se fabrique sur ce serveur », ce qui est faux.
-      ImGui::PushStyleColor(ImGuiCol_Text, kColWarn);
+      ImGui::PushStyleColor(ImGuiCol_Text, ro::pal::kColWarn);
       TextWrapped(i18n::Tr(
           "Le fichier de recettes est introuvable ou illisible "
           "(SystemEN\\bourgeon_recipes.yaml). L'Atlas ne peut rien montrer tant "
@@ -506,7 +504,7 @@ void CraftAtlas::DrawSkillTree() {
       char suffix[32] = {0};
       if (craftable > 0) std::snprintf(suffix, sizeof(suffix), "x%d", craftable);
       DrawItemRow(id, suffix, id == sel_id_,
-                  (craftable > 0) ? kColOk : kColText);
+                  (craftable > 0) ? ro::pal::kColOk : kColText);
     }
     ImGui::TreePop();
   }
@@ -527,7 +525,7 @@ void CraftAtlas::DrawProductList() {
     if (only_craftable_ && craftable <= 0) continue;
     char suffix[32] = {0};
     if (craftable > 0) std::snprintf(suffix, sizeof(suffix), "x%d", craftable);
-    DrawItemRow(id, suffix, id == sel_id_, (craftable > 0) ? kColOk : kColText);
+    DrawItemRow(id, suffix, id == sel_id_, (craftable > 0) ? ro::pal::kColOk : kColText);
     ++shown;
   }
   if (shown == 0) {
@@ -551,7 +549,7 @@ void CraftAtlas::DrawMaterialList() {
     char suffix[48];
     if (have > 0) std::snprintf(suffix, sizeof(suffix), "(%d)  [%d]", have, uses);
     else          std::snprintf(suffix, sizeof(suffix), "[%d]", uses);
-    DrawItemRow(id, suffix, id == sel_id_, (have > 0) ? kColOk : kColText);
+    DrawItemRow(id, suffix, id == sel_id_, (have > 0) ? ro::pal::kColOk : kColText);
     ++shown;
   }
   if (shown == 0) {
@@ -567,7 +565,7 @@ void CraftAtlas::DrawArrowList() {
     if (only_craftable_ && have <= 0) continue;
     char suffix[32] = {0};
     if (have > 0) std::snprintf(suffix, sizeof(suffix), "(%d)", have);
-    DrawItemRow(id, suffix, id == sel_id_, (have > 0) ? kColOk : kColText);
+    DrawItemRow(id, suffix, id == sel_id_, (have > 0) ? ro::pal::kColOk : kColText);
     ++shown;
   }
   if (shown == 0) {
@@ -598,7 +596,7 @@ void CraftAtlas::DrawSheet() {
   ImGui::BeginGroup();
   ImGui::TextColored(V4(kColText), "%s", ItemName(id));
   const int have = Owned(id);
-  ImGui::TextColored(V4(have > 0 ? kColOk : kColDim),
+  ImGui::TextColored(V4(have > 0 ? ro::pal::kColOk : kColDim),
                      i18n::Tr("id %u  ·  en sac : %d"), id, have);
   ImGui::EndGroup();
   ImGui::Separator();
@@ -615,7 +613,7 @@ void CraftAtlas::DrawSheet() {
       // objet (`produce N;` d'une Mini Furnace, d'un marteau, d'un kit), sans
       // qu'aucune compétence n'y donne accès. Le dire évite de chercher un métier
       // qui n'existe pas.
-      ImGui::TextColored(V4(kColWarn), i18n::Tr(
+      ImGui::TextColored(V4(ro::pal::kColWarn), i18n::Tr(
           "Aucune compétence : cette recette s'ouvre en UTILISANT un objet "
           "(fourneau, marteau, kit)."));
     } else {
@@ -630,7 +628,7 @@ void CraftAtlas::DrawSheet() {
       // Affiché SEULEMENT quand le joueur a demandé à voir ces recettes : sinon
       // elles ne sont pas là. Le dire évite qu'il aille chercher un métier
       // qu'aucune classe n'ouvre sur ce serveur.
-      ImGui::TextColored(V4(kColWarn), i18n::Tr(
+      ImGui::TextColored(V4(ro::pal::kColWarn), i18n::Tr(
           "Injouable ici : aucune classe de ce serveur n'apprend cette "
           "compétence."));
     }
@@ -642,7 +640,7 @@ void CraftAtlas::DrawSheet() {
     const craftdata::ProduceQty qty = craftdata::QtyForSkill(r->skill);
     if (!qty.IsFixedOne()) {
       if (qty.mode == craftdata::ProduceQty::kTable) {
-        ImGui::TextColored(V4(kColWarn), i18n::Tr(
+        ImGui::TextColored(V4(ro::pal::kColWarn), i18n::Tr(
             "Le résultat n'est pas ce produit : le serveur tire dans sa propre "
             "table de transmutation, avec ses taux et ses quantités."));
       } else if (qty.mode == craftdata::ProduceQty::kBonusRoll) {
@@ -652,7 +650,7 @@ void CraftAtlas::DrawSheet() {
         // pile monte plus vite que le compte des fabrications.
         // La probabilité est écrite avec sa décimale : arrondie à 16 %, elle
         // serait fausse de plus d'un point.
-        ImGui::TextColored(V4(kColOk), i18n::Tr(
+        ImGui::TextColored(V4(ro::pal::kColOk), i18n::Tr(
             "Rendement : 1, et %d,%d %% de chances d'en obtenir %d à %d de plus "
             "(bonus propre à ce serveur)."),
             qty.bonus_chance_permille / 10, qty.bonus_chance_permille % 10,
@@ -660,11 +658,11 @@ void CraftAtlas::DrawSheet() {
       } else if (qty.mode == craftdata::ProduceQty::kPerUnit) {
         // « Jusqu'à » et non « de tant à tant » : chaque exemplaire est tiré
         // séparément, donc le bas de la fourchette n'est pas un plancher.
-        ImGui::TextColored(V4(kColOk), i18n::Tr(
+        ImGui::TextColored(V4(ro::pal::kColOk), i18n::Tr(
             "Rendement : %d à %d exemplaires, chacun tiré séparément (on peut "
             "en obtenir moins)."), qty.min, qty.max);
       } else {
-        ImGui::TextColored(V4(kColOk), i18n::Tr(
+        ImGui::TextColored(V4(ro::pal::kColOk), i18n::Tr(
             "Rendement : %d à %d exemplaires d'un coup, selon le niveau et la "
             "difficulté."), qty.min, qty.max);
       }
@@ -672,10 +670,10 @@ void CraftAtlas::DrawSheet() {
 
     const int craftable = CraftableCount(id);
     if (craftable > 0)
-      ImGui::TextColored(V4(kColOk), i18n::Tr("Réalisable %d fois avec le sac actuel."),
+      ImGui::TextColored(V4(ro::pal::kColOk), i18n::Tr("Réalisable %d fois avec le sac actuel."),
                          craftable);
     else if (craftable == 0)
-      ImGui::TextColored(V4(kColBad), i18n::Tr("Matériaux insuffisants."));
+      ImGui::TextColored(V4(ro::pal::kColBad), i18n::Tr("Matériaux insuffisants."));
 
     // Partager la RECETTE, pas l'objet : le lien posé s'affiche « [Recette: … ] »,
     // montre métier et composants au survol et ouvre l'Atlas au clic. C'est ce
@@ -709,7 +707,7 @@ void CraftAtlas::DrawSheet() {
                       ing.qty, stock, ing.qty - stock);
       else
         std::snprintf(suffix, sizeof(suffix), "x%d  (%d)", ing.qty, stock);
-      DrawItemRow(ing.id, suffix, false, enough ? kColOk : kColBad);
+      DrawItemRow(ing.id, suffix, false, enough ? ro::pal::kColOk : ro::pal::kColBad);
     }
   }
 
@@ -726,10 +724,10 @@ void CraftAtlas::DrawSheet() {
       // exemplaire est tiré au taux de réussite. Annoncer un chiffre ferme serait
       // promettre ce que le serveur ne garantit pas.
       if (source.min == source.max)
-        ImGui::TextColored(V4(kColOk), i18n::Tr("%s : jusqu'à %d par lancement"),
+        ImGui::TextColored(V4(ro::pal::kColOk), i18n::Tr("%s : jusqu'à %d par lancement"),
                            SkillLabel(source.skill), source.max);
       else
-        ImGui::TextColored(V4(kColOk), i18n::Tr("%s : de %d à %d par lancement"),
+        ImGui::TextColored(V4(ro::pal::kColOk), i18n::Tr("%s : de %d à %d par lancement"),
                            SkillLabel(source.skill), source.min, source.max);
     }
   }
@@ -857,7 +855,7 @@ bool CraftAtlas::DrawSettings() {
                   static_cast<int>(craftdata::AllArrows().size()));
     ImGui::TextColored(V4(kColDim), "%s", line);
   } else {
-    ImGui::TextColored(V4(kColWarn), i18n::Tr(
+    ImGui::TextColored(V4(ro::pal::kColWarn), i18n::Tr(
         "Fichier de recettes absent : SystemEN\\bourgeon_recipes.yaml"));
   }
   return changed;

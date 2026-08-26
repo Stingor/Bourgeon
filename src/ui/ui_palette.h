@@ -68,5 +68,63 @@ inline const ImVec4 kBlue(0.15f, 0.25f, 0.60f, 1.0f);   // information, neutre
 // une information — l'entre-deux.
 inline const ImVec4 kWarn(0.55f, 0.33f, 0.08f, 1.0f);
 
+// ── Les mêmes idées, mais en ImU32 ───────────────────────────────────────────
+//
+// Ce que consomment les ImDrawList et `PushStyleColor` — l'autre moitié de
+// l'interface, celle qui peint au lieu d'écrire.
+//
+// 🔴 CES TEINTES NE SONT PAS CELLES D'AU-DESSUS, et il ne faut pas les y
+// ramener sans le vouloir : `kColOk` vaut (13,107,31) quand `kGreen` vaut
+// (≈25,127,38) ; `kColWarn` vaut (166,102,0) quand `kWarn` vaut (≈140,84,20).
+// Elles ont été choisies séparément, pour des fonds différents. Les aligner est
+// un choix d'interface, pas une correction.
+
+// L'état d'une fabrication — les trois fenêtres (atlas de recettes, fabrication,
+// affinage) les déclaraient chacune pour elle, à la valeur près.
+inline constexpr ImU32 kColOk = IM_COL32(13, 107, 31, 255);   // succès, stock présent
+inline constexpr ImU32 kColBad = IM_COL32(166, 38, 38, 255);  // échec, stock à zéro
+inline constexpr ImU32 kColWarn =
+    IM_COL32(166, 102, 0, 255);  // refus, attente, plafond
+
+// ── Le chrome d'une fenêtre de DESCRIPTION ───────────────────────────────────
+// Le parchemin et son bandeau : la description d'objet et la fiche de monstre
+// les poussaient chacune, treize fois en tout.
+inline constexpr ImU32 kDescBg = IM_COL32(245, 243, 232, 255);
+// Le même fond pour une POPUP, qui laisse voir un peu de ce qu'il y a dessous.
+inline constexpr ImU32 kDescPopupBg = IM_COL32(245, 243, 232, 240);
+inline constexpr ImU32 kDescTitleBg = IM_COL32(120, 110, 90, 255);
+
+// L'OMBRE PORTÉE d'un texte, alpha par défaut. Six sites la posaient à
+// l'identique ; c'est la référence, pas une obligation — un texte sur fond très
+// clair peut vouloir moins.
+//
+// ⚠ N'est PAS la couleur d'un fond translucide : même valeur, autre rôle. La
+// minimap et l'enregistreur de zone posent le même (0,0,0,200) SOUS quelque
+// chose, et ils ne s'aligneront pas sur celui-ci.
+inline constexpr ImU32 kTextShadow = IM_COL32(0, 0, 0, 200);
+
+// ── 🔴 CE QUI N'EST PAS ICI, ET NE PEUT PAS Y ÊTRE SANS DÉCISION ─────────────
+//
+// Il reste ~340 littéraux `IM_COL32` dans le projet, et ils ne se rangent pas :
+// leurs teintes DIVERGENT pour un même rôle. Relevé du 2026-08-26 :
+//
+//     fond    60 nuances,  dont 7 noirs :  α = 205 200 180 150 45 40 30
+//     trait   45 nuances,  dont 8 noirs :  α = 200 190 180 160 120 90 80 40
+//     texte   35 nuances,  dont 4 noirs :  α = 200 190 180 160
+//
+// Sept alphas pour « un fond sombre », huit pour « un trait sombre ». Les
+// ramener à deux ou trois VALEURS CHANGERAIT L'APPARENCE de la moitié des
+// fenêtres — ce n'est pas un rangement, c'est une refonte visuelle, et elle
+// appartient à qui regarde l'écran.
+//
+// Ce qui a été rangé l'a été parce que c'était DÉJÀ identique : 73 littéraux
+// qu'ImGui nomme lui-même (`IM_COL32_WHITE`, `_BLACK`, `_BLACK_TRANS`) et les
+// valeurs partagées entre fichiers pour un même rôle. Le reste attend un choix.
+
+// Le survol d'une case : on ÉCLAIRCIT, on ne colore pas. Un voile bleu façon
+// ImGui jurerait avec l'art du jeu — les trois viewers d'objets s'accordaient
+// déjà là-dessus, chacun dans son coin.
+inline constexpr ImU32 kHoverTint = IM_COL32(255, 255, 255, 45);
+
 }  // namespace pal
 }  // namespace ro

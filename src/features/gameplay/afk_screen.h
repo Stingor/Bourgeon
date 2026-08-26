@@ -88,7 +88,7 @@ class AfkScreen : public Plugin {
     // ARGB empaqueté à la façon d'IM_COL32 (l'ordre d'ImGui), comme l'overlay
     // FPS : la table de réglages ne connaît pas `ImVec4`, et un entier se relit
     // à l'identique d'une version à l'autre.
-    uint32_t clock_col  = IM_COL32(255, 255, 255, 255);
+    uint32_t clock_col  = IM_COL32_WHITE;
   };
 
   AfkScreen();

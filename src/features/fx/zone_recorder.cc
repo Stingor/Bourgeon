@@ -672,7 +672,7 @@ void ZoneRecorder::DrawSelectionOverlay() {
     const float ly = (y0 - ts.y - 4.0f >= 0.0f) ? y0 - ts.y - 4.0f : y1 + 4.0f;
     dl->AddRectFilled(ImVec2(x0, ly), ImVec2(x0 + ts.x + 8.0f, ly + ts.y + 2.0f),
                       IM_COL32(0, 0, 0, 180));
-    dl->AddText(ImVec2(x0 + 4.0f, ly + 1.0f), IM_COL32(255, 255, 255, 255), size);
+    dl->AddText(ImVec2(x0 + 4.0f, ly + 1.0f), IM_COL32_WHITE, size);
   }
 
   // Consigne, en haut au centre.
@@ -684,7 +684,7 @@ void ZoneRecorder::DrawSelectionOverlay() {
   dl->AddRectFilled(ImVec2(hp.x - 10.0f, hp.y - 6.0f),
                     ImVec2(hp.x + hs.x + 10.0f, hp.y + hs.y + 6.0f),
                     IM_COL32(0, 0, 0, 200), 4.0f);
-  dl->AddText(hp, select_hint_.empty() ? IM_COL32(255, 255, 255, 255)
+  dl->AddText(hp, select_hint_.empty() ? IM_COL32_WHITE
                                        : IM_COL32(255, 120, 120, 255), hint);
 
   if (dragging_ && ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
@@ -740,7 +740,7 @@ void ZoneRecorder::DrawZonePreview() const {
   const float ly = (y0 - ts.y - 4.0f >= 0.0f) ? y0 - ts.y - 4.0f : y1 + 4.0f;
   dl->AddRectFilled(ImVec2(lx, ly), ImVec2(lx + lw, ly + ts.y + 2.0f),
                     IM_COL32(0, 0, 0, 180));
-  dl->AddText(ImVec2(lx + 4.0f, ly + 1.0f), IM_COL32(255, 255, 255, 255), size);
+  dl->AddText(ImVec2(lx + 4.0f, ly + 1.0f), IM_COL32_WHITE, size);
 }
 
 // ── Décompte, témoin d'enregistrement ────────────────────────────────────────
