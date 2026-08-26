@@ -21,10 +21,28 @@ void HotkeyDispatch::OnKeyDown(unsigned long vkey, int, int) {
   if (bourgeon.IsMapLoading()) return;
 
   // Le clavier appartient à une saisie : la frappe est un caractère. Les deux
-  // tests, parce qu'il y a deux mondes de saisie — la nôtre et celle du client
-  // (chat, message privé, montant de vente…).
-  if (ImGui::GetCurrentContext() != nullptr && ImGui::GetIO().WantCaptureKeyboard)
-    return;
+  // mondes de saisie sont testés — la nôtre et celle du client (chat, message
+  // privé, montant de vente…).
+  //
+  // 🔴 SURTOUT PAS `WantCaptureKeyboard` : ImGui le lève dès qu'un widget est
+  // ACTIF, et un GLISSER d'objet EST un widget actif —
+  //     if ((g.ActiveId != 0) || (modal_window != NULL))
+  //         io.WantCaptureKeyboard = true;            (imgui.cpp)
+  // Résultat : dès qu'on avait attrapé un item dans l'inventaire, TOUS les
+  // raccourcis tombaient, dont l'émote portant « @storage ». Le client natif
+  // l'acceptait, et c'est justement quand on tient quelque chose qu'on veut
+  // ouvrir l'entrepôt.
+  //
+  // Ce qui doit vraiment nous faire taire est plus étroit : une SAISIE (la
+  // frappe est un caractère) ou une MODALE (le joueur doit répondre avant
+  // tout). Un bouton enfoncé, un slider tiré, un objet glissé ne sont ni l'un
+  // ni l'autre.
+  if (ImGui::GetCurrentContext() != nullptr) {
+    if (ImGui::GetIO().WantTextInput) return;
+    if (ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId |
+                                        ImGuiPopupFlags_AnyPopupLevel))
+      return;
+  }
   if (hotkeys::NativeTextInputHasFocus()) return;
 
   // ⚠ `ProcessPushButton` ne transmet que la touche PRINCIPALE : les

@@ -892,8 +892,20 @@ static LRESULT CALLBACK WindowProcHook(HWND hwnd, UINT uMsg, WPARAM wParam,
       // la barre de chat attend des lettres, pas les F1-F9 de la barre de skills
       // ni Insert. Sans lui ici, ouvrir la barre éteignait toute la barre d'action
       // — alors même que le joueur n'a pas encore commencé à écrire.
-      const bool typing =
-          (io.WantTextInput || chat_wants_typed) && !Doom::WantsKeyboard();
+      //
+      // 🔴 ET UN WIDGET ACTIF N'EST PAS UNE PRISE DE CLAVIER. ImGui lève
+      // `WantCaptureKeyboard` dès que `ActiveId != 0` — donc pendant un GLISSER
+      // d'objet, un bouton tenu, un slider tiré. Aucun de ces gestes n'attend de
+      // touche, et pourtant le clavier du jeu s'éteignait ENTIÈREMENT : une émote
+      // portant « @storage » en Alt+3 ne partait plus dès qu'on avait attrapé un
+      // item — alors que le client natif l'acceptait, et que c'est justement
+      // quand on tient quelque chose qu'on veut ouvrir l'entrepôt.
+      // On le range donc du côté de la SAISIE et non de la prise totale : même
+      // libération ciblée, même critère (ce qu'aucun champ ne peut utiliser).
+      const bool widget_held =
+          ImGui::IsAnyItemActive() && !io.WantTextInput && !chat_wants_typed;
+      const bool typing = (io.WantTextInput || chat_wants_typed || widget_held) &&
+                          !Doom::WantsKeyboard();
       // 🔴 `wParam` ne désigne PAS la même chose selon le message : code VIRTUEL
       // pour WM_KEYDOWN/UP, mais CARACTÈRE pour WM_CHAR. Or VK_F1..VK_F12, ce
       // sont les codes 0x70..0x7B — c'est-à-dire 'p'..'z' en ASCII. La nuance
