@@ -1,5 +1,6 @@
 #include "features/windows/party_friend_window.h"
 
+#include <cfloat>  // FLT_MAX
 #include <Windows.h>
 
 #include <algorithm>
@@ -456,6 +457,14 @@ void PartyFriendWindow::OnRenderUI() {
     need_pos_ = false;
   }
   ImGui::SetNextWindowSize(ImVec2(kSpawnW, kSpawnH), ImGuiCond_FirstUseEver);
+  // 🔴 UN PLANCHER, sinon la fenêtre descend aux 32x32 d'ImGui — il n'y reste
+  // que deux icônes et plus rien de lisible. Le plafond est posé ailleurs (cf.
+  // ro::BeginRoWindow) ; le minimum, lui, n'avait jamais existé.
+  // La valeur tient au contenu : les DEUX onglets côte à côte, et une ligne de
+  // membre — icône de job de 40 px, nom, niveau. En dessous, la fenêtre ne
+  // montre plus ce pour quoi on l'ouvre.
+  ImGui::SetNextWindowSizeConstraints(ImVec2(ro::Px(260.0f), ro::Px(150.0f)),
+                                      ImVec2(FLT_MAX, FLT_MAX));
 
   if (ro::BeginRoWindow(i18n::Tr("Groupe / Amis"), &open_)) {
     // Les deux onglets du natif, dans le même ordre et avec le même sens de
