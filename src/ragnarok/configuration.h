@@ -7,13 +7,14 @@ const std::string kYamlConfiguration = R"(
 #
 # Trois autres ont figuré ici — 2015-11-04a, 2017-06-14b, 2019-01-16c — avec
 # treize adresses chacune. C'était une promesse que le projet ne tenait pas :
-# le reste de src/ porte ~920 adresses EN DUR, toutes propres au 20250716, et
-# ces trois blocs n'avaient aucun des champs de réception (RecvDispatchTable,
-# PacketLenLookup, RecvDispatchLoopHead). Un client plus ancien démarrait, puis
-# tombait au premier hook.
+# le reste de src/ appelle 407 adresses EN DUR (et en cite 475 autres dans ses
+# blocs de RE), toutes propres au 20250716. Ces trois blocs n'avaient d'ailleurs
+# aucun des champs de réception (RecvDispatchTable, PacketLenLookup,
+# RecvDispatchLoopHead) : même la couche réseau y tournait en mode dégradé. Un
+# client plus ancien démarrait, puis tombait au premier hook.
 #
 # ⚠ Rouvrir une version, ce n'est donc PAS ajouter un bloc ici : c'est relever
-# les 920 autres. Retirés le 2026-08-26 (git les conserve).
+# les 400 autres. Retirés le 2026-08-26 (git les conserve).
 
 # 2025-07-16_Ragexe
 # Confirmed: all addresses confirmed via Ghidra analysis.
