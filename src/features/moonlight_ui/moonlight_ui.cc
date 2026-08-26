@@ -642,8 +642,15 @@ const moonlight_ui::SettingDesc kPartyFramesSettings[] = {
      MLUI_LITERAL(int, 2)},
     {"partyframes_jobicon", SType::kBool,
      MLUI_FIELD(party_frames, show_job_icon_), MLUI_LITERAL(bool, true)},
-    {"partyframes_hptext", SType::kBool,
-     MLUI_FIELD(party_frames, show_hp_text_), MLUI_LITERAL(bool, true)},
+    // ⚠ CLÉ RENOMMÉE, sans migration : « partyframes_hptext » était un booléen,
+    // ce réglage est devenu un CHOIX à quatre valeurs (rien / chiffres /
+    // pourcentage / les deux). Réutiliser la clé aurait fait lire un booléen là
+    // où on attend un mode. L'ancienne est simplement ignorée au chargement.
+    {"partyframes_hp_mode", SType::kInt,
+     MLUI_FIELD(party_frames, hp_text_mode()),
+     MLUI_LITERAL(int, PartyFrames::kHpTextNumbers)},
+    {"partyframes_text_px", SType::kInt, MLUI_FIELD(party_frames, text_px()),
+     MLUI_LITERAL(int, 13)},
     {"partyframes_hp_mid", SType::kInt, MLUI_FIELD(party_frames, hp_mid_pct()),
      MLUI_LITERAL(int, 55)},
     {"partyframes_hp_low", SType::kInt, MLUI_FIELD(party_frames, hp_low_pct()),

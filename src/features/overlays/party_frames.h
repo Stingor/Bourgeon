@@ -76,7 +76,16 @@ class PartyFrames : public Plugin {
   bool show_offline_  = true;
   bool show_job_icon_ = true;   // icône de classe du client
   bool show_level_    = false;  // « Lv.N » devant le nom
-  bool show_hp_text_  = true;   // « 1234/5678 » sous le nom
+  // Comment les PV s'écrivent sous le nom. Une grille très dense n'a la place
+  // pour aucun chiffre, une grille large peut tout porter — et le pourcentage
+  // seul est souvent le plus lisible en combat, où l'on compare des membres
+  // entre eux plutôt que de lire des totaux.
+  enum HpText { kHpTextNone = 0, kHpTextNumbers, kHpTextPercent, kHpTextBoth };
+  int hp_text_mode_ = kHpTextNumbers;
+
+  // Taille du texte des tuiles, en pixels d'interface. Indépendante de la police
+  // du reste de l'UI : une grille se lit en périphérie de l'écran, pas au centre.
+  int text_px_ = 13;
   bool show_sp_       = true;   // barre de SP en bas de tuile
   int  sp_bar_h_      = 6;      // sa hauteur, en pixels d'interface
 
@@ -106,6 +115,8 @@ class PartyFrames : public Plugin {
   int& tile_h()  { return tile_h_; }
   int& gap()     { return gap_; }
   int& sp_bar_h() { return sp_bar_h_; }
+  int& hp_text_mode() { return hp_text_mode_; }
+  int& text_px()      { return text_px_; }
   int& hp_mid_pct() { return hp_mid_pct_; }
   int& hp_low_pct() { return hp_low_pct_; }
 

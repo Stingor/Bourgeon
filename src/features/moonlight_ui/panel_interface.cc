@@ -651,11 +651,10 @@ void MoonlightUi::DrawInterfacePanel() {
                                     &pf->locked_);
           SameLine(); HelpMarker(i18n::Tr(
               "Fige le cadre et laisse passer les clics vers le jeu.\n\n"
-              "Maintenir MAJ le déverrouille le temps d'un déplacement : pas "
-              "besoin de revenir décocher ici.\n\n"
-              "À savoir : MAJ+clic est l'attaque forcée du jeu. Tant que la "
-              "touche est tenue, un clic sur le cadre le déplace au lieu de "
-              "frapper ce qu'il y a dessous."));
+              "Maintenir MAJ, CURSEUR SUR LA GRILLE, la déverrouille le temps "
+              "d'un déplacement : pas besoin de revenir décocher ici.\n\n"
+              "Ailleurs à l'écran, MAJ garde son rôle habituel (attaque forcée) "
+              "— la grille ne reprend la souris que sous le curseur."));
 
           // ── Disposition ───────────────────────────────────────────────────
           SeparatorText(i18n::Tr("Disposition"));
@@ -688,8 +687,22 @@ void MoonlightUi::DrawInterfacePanel() {
                                     &pf->show_offline_);
           changed |= ro::RoCheckbox(i18n::Tr("Afficher le niveau"),
                                     &pf->show_level_);
-          changed |= ro::RoCheckbox(i18n::Tr("Afficher les PV chiffrés"),
-                                    &pf->show_hp_text_);
+          {
+            // Quatre façons d'écrire les PV. Le pourcentage seul est souvent le
+            // plus lisible en combat : on compare des membres entre eux, on ne
+            // lit pas des totaux.
+            const char* kHpModes[] = {
+                i18n::Tr("Rien"), i18n::Tr("Chiffres"),
+                i18n::Tr("Pourcentage"), i18n::Tr("Chiffres et pourcentage")};
+            changed |= ImGui::Combo(i18n::Tr("Points de vie"),
+                                    &pf->hp_text_mode_, kHpModes,
+                                    IM_ARRAYSIZE(kHpModes));
+          }
+          changed |= WheelSliderInt(i18n::Tr("Taille du texte"), &pf->text_px_,
+                                    8, 28, "%d px");
+          SameLine(); HelpMarker(i18n::Tr(
+              "Indépendante de la police des fenêtres : une grille se lit en "
+              "périphérie de l'écran, pas de face."));
           changed |= ro::RoCheckbox(i18n::Tr("Barre de SP"), &pf->show_sp_);
           SameLine(); HelpMarker(i18n::Tr(
               "Le SP d'un autre joueur ne circule dans AUCUN paquet du jeu : il "

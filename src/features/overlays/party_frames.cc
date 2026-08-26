@@ -7,7 +7,7 @@
 #include <cstring>
 
 #include "bourgeon.h"
-#include "features/moonlight_ui/moonlight_ui.h"  // SaveSettings (géométrie du cadre)
+#include "features/moonlight_ui/moonlight_ui.h"  // SaveSettings + AlignGrid partagée
 #include "features/systems/bourgeon_opcodes.h"   // bopcodes:: (catalogue partagé)
 #include "imgui.h"
 #include "ragnarok/globals.h"
@@ -190,25 +190,42 @@ void PartyFrames::OnRenderUI() {
   ro::HudFrameOpts opts;
   // 🔴 MAJ déverrouille temporairement : on replace un HUD figé sans aller
   // décocher sa case, puis on relâche et il redevient transparent aux clics.
-  // C'est le geste qu'on attend d'un HUD qu'on ne règle qu'une fois par an.
   //
-  // ⚠ Effet de bord assumé : en RO, MAJ+clic est l'ATTAQUE FORCÉE. Tant que la
-  // touche est tenue, un clic tombant sur le cadre le déplace au lieu de frapper
-  // ce qu'il y a dessous. Cela ne concerne que la surface du HUD — ailleurs, le
-  // geste du jeu est intact — mais c'est une raison de plus de le poser où il ne
-  // gêne pas.
-  const bool unlock_override = ImGui::GetIO().KeyShift;
+  // ⚠ SEULEMENT quand le curseur est SUR le cadre. La touche seule ne suffit pas :
+  // en RO, MAJ+clic est l'ATTAQUE FORCÉE, et un cadre déverrouillé reprend la
+  // souris au jeu. Tenir MAJ pour frapper aurait rendu muette toute la surface du
+  // HUD, où qu'on clique — le geste du jeu doit rester intact partout ailleurs.
+  const ImVec2 mouse = ImGui::GetIO().MousePos;
+  const bool over_frame =
+      mouse.x >= static_cast<float>(rect_.x) &&
+      mouse.y >= static_cast<float>(rect_.y) &&
+      mouse.x <  static_cast<float>(rect_.x + rect_.w) &&
+      mouse.y <  static_cast<float>(rect_.y + rect_.h);
+  const bool unlock_override = ImGui::GetIO().KeyShift && over_frame;
   opts.locked   = locked_ && !unlock_override;
   opts.border   = false;
   opts.rounding = ro::Px(3.0f);
   // Le fond du cadre : sans lui, des tuiles sombres sur une carte sombre ne se
   // distinguent plus du décor.
   opts.bg       = col_frame_bg_;
+  // La grille d'alignement appartient à MoonlightUi ; `ui/` ne doit rien savoir
+  // de `features/`, d'où son passage en paramètre plutôt qu'une lecture là-bas.
+  // Le HUD s'aligne donc sur les mêmes lignes que Basic Info, les icônes de menu
+  // ou la barre de statuts — c'est tout l'intérêt d'une grille PARTAGÉE : poser
+  // ses éléments d'interface au même pas, sans les caler à l'œil les uns après
+  // les autres.
+  if (auto* mui = Bourgeon::Instance().moonlight_ui()) opts.grid = &mui->grid_;
   opts.min_w    = ro::Px(60.0f);
   opts.min_h    = ro::Px(20.0f);
 
   if (ro::BeginHudFrame("##party_frames", &rect_, opts, &geometry_dirty_)) {
-    const ImVec2 origin = ImGui::GetCursorScreenPos();
+    // 🔴 L'origine vient de la FENÊTRE, pas du curseur ImGui — comme le font
+    // basic_info et target_frame. Déverrouillé, `BeginHudFrame` pose sur toute sa
+    // surface un `InvisibleButton` qui laisse le curseur EN DESSOUS du cadre :
+    // des tuiles posées à `GetCursorScreenPos()` tombaient hors du clip et
+    // disparaissaient dès qu'on tenait MAJ, ne laissant que le fond.
+    const ImVec2 win = ImGui::GetWindowPos();
+    const ImVec2 origin(win.x + pad, win.y + pad);
     for (size_t i = 0; i < shown.size(); ++i) {
       const int col = static_cast<int>(i) % cols;
       const int row = static_cast<int>(i) / cols;
@@ -217,9 +234,8 @@ void PartyFrames::OnRenderUI() {
       const ImVec2 p1(p0.x + tile_w, p0.y + tile_h);
       DrawTile(*shown[i], p0, p1, shown[i]->gid == me);
     }
-    // Réserver la place : sans ça le cadre ne saurait pas ce qu'il contient.
-    ImGui::Dummy(ImVec2(cols * tile_w + (cols - 1) * gap,
-                        rows * tile_h + (rows - 1) * gap));
+    // (Aucun `Dummy` à réserver : la taille du cadre est imposée plus haut par
+    // `rect_`, que `BeginHudFrame` ré-épingle à chaque frame.)
   }
   ro::EndHudFrame();
 
@@ -255,36 +271,20 @@ void PartyFrames::DrawTile(const rag::social::Entry& m, ImVec2 p0, ImVec2 p1,
     }
   }
 
-  // ── L'icône de classe, à gauche ──────────────────────────────────────────
-  // Le vrai art du client (`renewalparty\icon_jobs_<job>.bmp`), carré et calé sur
-  // la hauteur de la tuile. C'est ce qui rend une grille lisible d'un coup d'œil :
-  // on reconnaît le soigneur à sa silhouette, pas à son nom.
-  float text_x = p0.x + pad;
-  if (show_job_icon_) {
-    char path[160];
-    rag::social::JobIconPath(m.job, path, sizeof(path));
-    const ro::GameTexture icon = ro::CachedTextureFromGameFile(path);
-    if (icon.tex) {
-      const float side = std::min(p1.y - p0.y - pad, ro::Px(28.0f));
-      const ImVec2 i0(p0.x + pad, p0.y + ((p1.y - p0.y) - side) * 0.5f);
-      const ImVec2 i1(i0.x + side, i0.y + side);
-      // Hors ligne : la même icône, assombrie — comme la fenêtre Amis/Groupe.
-      const ImU32 tint = m.offline ? IM_COL32(140, 140, 140, 220)
-                                   : IM_COL32_WHITE;
-      dl->AddImage(reinterpret_cast<ImTextureID>(icon.tex), i0, i1,
-                   ImVec2(0, 0), ImVec2(1, 1), tint);
-      text_x = i1.x + pad;
-    }
-  }
-
-  // ── La fine barre de SP, en bas de la tuile ──────────────────────────────
+  // ── Le SP, résolu AVANT de dessiner quoi que ce soit d'autre ─────────────
+  //
+  // 🔴 L'ordre compte : la barre de SP occupe toute la largeur en bas de tuile,
+  // donc elle mange la hauteur disponible. Tant qu'on la dessinait après l'icône,
+  // celle-ci était calée sur la hauteur TOTALE et se faisait recouvrir par le
+  // bas. On détermine donc d'abord si une barre existe, puis tout le reste se
+  // range dans ce qu'elle laisse.
+  //
   // Pour MOI, le SP est dans mes propres globales — toujours juste, sans réseau.
   // Pour les autres, il vient de ZC 0x0F2A, et n'existe que tant qu'ils sont à
   // portée : sans réponse fraîche, on ne peint RIEN (une barre de SP figée
   // vaudrait moins que pas de barre du tout).
-  float bottom = p1.y;
+  int sp = 0, maxsp = 0;
   if (show_sp_ && !m.offline) {
-    int sp = 0, maxsp = 0;
     if (is_me) {
       sp    = rag::ReadInt(rag::kOwnSpAddr);
       maxsp = rag::ReadInt(rag::kOwnMaxSpAddr);
@@ -296,17 +296,50 @@ void PartyFrames::DrawTile(const rag::social::Entry& m, ImVec2 p0, ImVec2 p1,
         maxsp = it->second.maxsp;
       }
     }
-    if (maxsp > 0) {
-      float frac = static_cast<float>(sp) / static_cast<float>(maxsp);
-      frac = std::max(0.0f, std::min(1.0f, frac));
-      const float bar_h = ro::Px(static_cast<float>(std::max(2, sp_bar_h_)));
-      const ImVec2 s0(p0.x, p1.y - bar_h);
-      dl->AddRectFilled(s0, p1, ColA(col_tile_bg_, 0.95f));
-      if (frac > 0.0f) {
-        dl->AddRectFilled(s0, ImVec2(s0.x + (p1.x - s0.x) * frac, p1.y),
-                          Col(col_sp_));
+  }
+  const float sp_h = (maxsp > 0)
+                         ? ro::Px(static_cast<float>(std::max(2, sp_bar_h_)))
+                         : 0.0f;
+  // Le bas de la zone de CONTENU : tout (icône et texte) se range au-dessus.
+  const float bottom = p1.y - sp_h;
+
+  // ── L'icône de classe, à gauche ──────────────────────────────────────────
+  // Le vrai art du client (`renewalparty\icon_jobs_<job>.bmp`), carré et calé sur
+  // la hauteur DISPONIBLE. C'est ce qui rend une grille lisible d'un coup d'œil :
+  // on reconnaît le soigneur à sa silhouette, pas à son nom.
+  float text_x = p0.x + pad;
+  if (show_job_icon_) {
+    char path[160];
+    rag::social::JobIconPath(m.job, path, sizeof(path));
+    const ro::GameTexture icon = ro::CachedTextureFromGameFile(path);
+    if (icon.tex) {
+      // La hauteur utile, barre de SP déduite. Sur une tuile basse avec une
+      // grosse barre, il ne reste presque rien : l'icône rétrécit jusqu'à
+      // disparaître plutôt que de déborder sur ce qui l'entoure.
+      const float avail = bottom - p0.y - pad;
+      const float side = std::min(avail, ro::Px(28.0f));
+      if (side >= ro::Px(8.0f)) {
+        const ImVec2 i0(p0.x + pad, p0.y + ((bottom - p0.y) - side) * 0.5f);
+        const ImVec2 i1(i0.x + side, i0.y + side);
+        // Hors ligne : la même icône, assombrie — comme la fenêtre Amis/Groupe.
+        const ImU32 tint = m.offline ? IM_COL32(140, 140, 140, 220)
+                                     : IM_COL32_WHITE;
+        dl->AddImage(reinterpret_cast<ImTextureID>(icon.tex), i0, i1,
+                     ImVec2(0, 0), ImVec2(1, 1), tint);
+        text_x = i1.x + pad;
       }
-      bottom = s0.y;
+    }
+  }
+
+  // ── La barre de SP, en bas de la tuile ───────────────────────────────────
+  if (maxsp > 0) {
+    float frac = static_cast<float>(sp) / static_cast<float>(maxsp);
+    frac = std::max(0.0f, std::min(1.0f, frac));
+    const ImVec2 s0(p0.x, bottom);
+    dl->AddRectFilled(s0, p1, ColA(col_tile_bg_, 0.95f));
+    if (frac > 0.0f) {
+      dl->AddRectFilled(s0, ImVec2(s0.x + (p1.x - s0.x) * frac, p1.y),
+                        Col(col_sp_));
     }
   }
 
@@ -331,18 +364,45 @@ void PartyFrames::DrawTile(const rag::social::Entry& m, ImVec2 p0, ImVec2 p1,
     std::snprintf(second, sizeof(second), "%s", i18n::Tr("Hors ligne"));
   } else if (!has_hp) {
     std::snprintf(second, sizeof(second), "%s", i18n::Tr("Hors de portée"));
-  } else if (show_hp_text_) {
-    std::snprintf(second, sizeof(second), "%d/%d", m.hp, m.max_hp);
+  } else {
+    // Le pourcentage est arrondi VERS LE HAUT tant qu'il reste un point de vie :
+    // afficher « 0 % » sur quelqu'un de vivant ferait renoncer à le soigner.
+    const int pct = (m.hp > 0)
+        ? std::max(1, static_cast<int>((static_cast<float>(m.hp) /
+                                        static_cast<float>(m.max_hp)) * 100.0f))
+        : 0;
+    switch (hp_text_mode_) {
+      case kHpTextNumbers:
+        std::snprintf(second, sizeof(second), "%d/%d", m.hp, m.max_hp);
+        break;
+      case kHpTextPercent:
+        std::snprintf(second, sizeof(second), "%d %%", pct);
+        break;
+      case kHpTextBoth:
+        std::snprintf(second, sizeof(second), "%d/%d (%d %%)", m.hp, m.max_hp, pct);
+        break;
+      default:  // kHpTextNone
+        break;
+    }
   }
+
+  // ── La taille du texte est un RÉGLAGE ────────────────────────────────────
+  // Une grille se lit en périphérie de l'écran : sa police n'a pas de raison de
+  // suivre celle des fenêtres, qu'on lit de face. `AddText` prend la taille en
+  // paramètre, donc rien à empiler ni à dépiler.
+  const float fsz  = ro::Px(static_cast<float>(std::max(8, text_px_)));
+  const float line = fsz;
+  ImFont* font = ImGui::GetFont();
 
   // Le bloc de texte est centré verticalement dans ce qui reste sous la barre de
   // SP : une tuile basse n'affiche que le nom, une tuile haute les deux lignes.
-  const float line = ImGui::GetTextLineHeight();
   const bool two_lines = (second[0] != '\0') && ((bottom - p0.y) >= line * 2.0f);
   const float block_h = two_lines ? line * 2.0f : line;
   float ty = p0.y + ((bottom - p0.y) - block_h) * 0.5f;
   if (ty < p0.y) ty = p0.y;
 
-  dl->AddText(ImVec2(text_x, ty), text, first);
-  if (two_lines) dl->AddText(ImVec2(text_x, ty + line), text, second);
+  dl->AddText(font, fsz, ImVec2(text_x, ty), text, first);
+  if (two_lines) {
+    dl->AddText(font, fsz, ImVec2(text_x, ty + line), text, second);
+  }
 }
