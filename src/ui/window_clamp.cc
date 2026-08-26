@@ -26,6 +26,51 @@ ImVec2 ClampWindowPosToScreen(ImVec2 window_pos, ImVec2 window_size) {
   return clamped;
 }
 
+// La part d'écran qu'une fenêtre ne dépasse pas. 90 % : assez pour qu'une
+// fenêtre pleine reste utilisable, assez peu pour qu'il reste toujours de quoi
+// l'attraper et voir le jeu derrière.
+constexpr float kMaxScreenFraction = 0.90f;
+
+void KeepWindowsSizedToScreen() {
+  ImGuiContext* context = ImGui::GetCurrentContext();
+  if (!context) return;
+  const ImVec2 screen = ImGui::GetIO().DisplaySize;
+  if (screen.x <= 0.0f || screen.y <= 0.0f) return;
+
+  const ImVec2 largest(screen.x * kMaxScreenFraction,
+                       screen.y * kMaxScreenFraction);
+
+  constexpr ImGuiWindowFlags kOwnedByImGui =
+      ImGuiWindowFlags_ChildWindow | ImGuiWindowFlags_Popup |
+      ImGuiWindowFlags_Tooltip | ImGuiWindowFlags_ChildMenu;
+  // Taille dictée par le contenu ou par l'appelant : ce n'est pas le joueur qui
+  // l'a tirée, ce n'est pas à nous de la couper.
+  constexpr ImGuiWindowFlags kSizeNotOurs =
+      ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoResize;
+
+  for (ImGuiWindow* window : context->Windows) {
+    if (!window) continue;
+    if (window->Flags & (kOwnedByImGui | kSizeNotOurs)) continue;
+    // Jamais dessinée : sa taille n'est pas encore mesurée (même raison que le
+    // clamp de position ci-dessous).
+    if (window->SizeFull.x <= 0.0f || window->SizeFull.y <= 0.0f) continue;
+
+    // `SizeFull` et NON `Size` : `Size` est la taille EFFECTIVE de la dernière
+    // frame — la seule hauteur de barre de titre pour une fenêtre repliée. La
+    // borner déplierait la fenêtre à la taille d'un titre.
+    ImVec2 bounded = window->SizeFull;
+    bounded.x = ImMin(bounded.x, largest.x);
+    bounded.y = ImMin(bounded.y, largest.y);
+    if (bounded.x == window->SizeFull.x && bounded.y == window->SizeFull.y)
+      continue;
+
+    window->SizeFull = ImTrunc(bounded);
+    // La taille corrigée doit partir dans imgui.ini, sinon une fenêtre trop
+    // grande revient telle quelle au relancement.
+    ImGui::MarkIniSettingsDirty(window);
+  }
+}
+
 void KeepWindowsOnScreen() {
   ImGuiContext* context = ImGui::GetCurrentContext();
   if (!context) return;

@@ -35,6 +35,35 @@ namespace ro {
 // c'est ce que fait le clamp d'ImGui pour la taille.
 ImVec2 ClampWindowPosToScreen(ImVec2 window_pos, ImVec2 window_size);
 
+// Borne la TAILLE de toutes les fenêtres ImGui de haut niveau à 90 % de l'écran
+// de jeu. À appeler juste AVANT `KeepWindowsOnScreen` : une fenêtre rétrécie
+// tient dans l'écran plus facilement, l'ordre inverse ferait travailler le clamp
+// de position sur une taille qui va changer.
+//
+// Sans elle, rien n'empêche de tirer une fenêtre plus grande que l'écran : ImGui
+// ne borne la taille QUE si l'appelant a posé un `SetNextWindowSizeConstraints`,
+// et cinquante de nos fenêtres n'en ont aucun. Le joueur perd alors les bords —
+// dont la poignée de redimensionnement, qui est le seul moyen de revenir en
+// arrière.
+//
+// 🔴 CE QUI N'EST PAS BORNÉ, et ce n'est pas un oubli :
+//   · les fenêtres qu'ImGui possède (enfants, popups, tooltips, menus) — il les
+//     borne déjà lui-même au viewport ;
+//   · `AlwaysAutoResize` et `NoResize` — leur taille vient du CONTENU ou du
+//     code appelant, pas d'un glisser du joueur. La borner tronquerait ce
+//     qu'elles ont à montrer sans que personne n'ait rien demandé.
+//
+// ⚠ Une contrainte LOCALE plus stricte continue de gagner : elle s'applique dans
+// `Begin`, donc après cette passe. Les fenêtres déjà bornées à 80 % le restent.
+//
+// ⚠ ET C'EST AUSSI CE QUI PROTÈGE LES FENÊTRES PLEIN ÉCRAN, sans qu'elles aient
+// à se déclarer : `zone_recorder` (le rectangle de sélection) et l'écran de
+// choix de personnage reposent `SetNextWindowSize(DisplaySize)` à CHAQUE frame,
+// et `Begin` écrase alors `SizeFull` après nous. Une telle fenêtre ne perd donc
+// pas ses 10 % de bord — mais elle le doit à l'ordre des opérations, pas à un
+// drapeau. Qui déplacerait cette passe APRÈS les `Begin` les casserait toutes.
+void KeepWindowsSizedToScreen();
+
 // Ramène dans l'écran de jeu toutes les fenêtres ImGui de haut niveau. À appeler
 // UNE fois par frame, juste APRÈS ImGui::NewFrame() :
 //   * NewFrame a déjà appliqué le déplacement de la souris à la fenêtre glissée

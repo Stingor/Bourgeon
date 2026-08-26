@@ -589,6 +589,10 @@ void Bourgeon::RenderUI() {
   // clamp de dire le dernier mot. Il tourne à chaque frame, y compris éteint : il
   // y recycle la liste des fenêtres aimantables.
   ro::SnapMovingWindowToPeers();
+  // La taille AVANT la position : une fenêtre qu'on vient de rétrécir tient plus
+  // facilement dans l'écran, alors que l'ordre inverse ferait travailler le clamp
+  // de position sur une taille qui va changer juste après.
+  ro::KeepWindowsSizedToScreen();
   ro::KeepWindowsOnScreen();
   // Le HUD (barre de skills, barres HP/SP/XP/zeny/poids, portrait) reste sous
   // toutes les vraies fenêtres. Même endroit et mêmes raisons que le clamp
