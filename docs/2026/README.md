@@ -21,6 +21,42 @@ Relevés du **2026-08-26**.
 lancer.** C'est le test qui dit si EOS AntiCheat autorise le démarrage hors kRO —
 tant qu'on l'ignore, réparer des patchs est un pari.
 
+## 🔴🔴 Deux obstacles levés, et un piège de fond
+
+**`steam_api.dll`** — les clients 2026 la lient **statiquement** (7 imports). Le
+loader Windows refuse donc de démarrer le processus sans elle, avant la moindre
+instruction. Réglé par le patch WARP **`NoSteamAPI`** (retire le descripteur
+d'import + court-circuite le bloc Steam de `WinMain`, gardé par
+`strstr(cmdline, "Steam")`). Vérifié en jeu : `steam_api.dll` n'apparaît plus
+dans les modules chargés.
+
+**ASLR + Control Flow Guard** — le piège de fond, et il concerne Bourgeon
+directement :
+
+| | client 2025 | client 2026 |
+|---|---|---|
+| `DllCharacteristics` | `0x8100` | `0xC040` |
+| ASLR (`DYNAMIC_BASE`) | **non** | **oui** |
+| CFG (`GUARD_CF`) | non | **oui** |
+
+Le 2025 se charge toujours à `0x400000` — d'où les commentaires
+« no-ASLR : addr Ghidra == live » dans le code. Le 2026 bouge à chaque
+lancement (`0xB90000` sur un essai), donc **les 407 adresses en dur de Bourgeon
+sont décalées d'un delta imprévisible**, et CFG rejette les entrées de vtable
+détournées.
+
+⚠ `Exe.SetHex` de WARP **ne peut pas écrire dans l'en-tête PE** (l'outil ne
+patche que les sections). D'où **`fix_aslr.py`**, à lancer APRÈS la génération :
+
+```
+python docs/2026/fix_aslr.py "E:/Nouveau dossier/Moonlight-Destiny/2026-07-07_Ragexe_patched.exe"
+```
+
+Il efface les deux bits (`0xC040` → `0x8000`), sauvegarde l'original en
+`.aslr.bak`, et relit pour vérifier. `--check` n'affiche que l'état.
+⚠ Fermer x32dbg et le client avant : un fichier verrouillé fait échouer
+l'écriture.
+
 ## Les fichiers
 
 | fichier | contenu |
