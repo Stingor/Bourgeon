@@ -1,5 +1,6 @@
 #include "features/windows/pet_window.h"
 
+#include <cfloat>  // FLT_MAX
 #include <Windows.h>
 
 #include <algorithm>
@@ -481,6 +482,18 @@ void PetWindow::OnRenderUI() {
   // cas court. `AlwaysAutoResize` colle à ce qui est dessiné, comme la native —
   // qui n'était pas redimensionnable non plus.
 
+  // 🔴 UNE LARGEUR MINIMALE, ET C'EST TOUT CE QU'IL FAUT. Sans elle, la
+  // PREMIÈRE frame se dessine à la largeur par défaut d'ImGui — bien plus
+  // étroite que le contenu : chaque `TextWrapped` s'y enroule sur dix lignes,
+  // la hauteur auto-fit explose et ImGui la rabat sur celle de l'ÉCRAN. La
+  // frame d'après, la largeur ayant grandi, tout rentre dans l'ordre — d'où le
+  // clignotement pleine hauteur à chaque première ouverture.
+  // La hauteur, elle, reste libre : l'auto-fit vertical est le choix décrit
+  // ci-dessus, et il n'est pas en cause.
+  // Largeur retenue : celle de la fenêtre native, déjà relevée juste au-dessus.
+  ImGui::SetNextWindowSizeConstraints(ImVec2(ro::Px(kSpawnW), 0.0f),
+                                      ImVec2(FLT_MAX, FLT_MAX));
+
   // Le titre porte le NOM du pet, comme la native. L'id ### fige l'identité
   // ImGui : renommer le pet ne doit pas réinitialiser position et taille.
   char title[96];
@@ -910,6 +923,18 @@ void PetWindow::DrawHatchWindow() {
         ImGuiCond_FirstUseEver);
     hatch_need_pos_ = false;
   }
+
+  // 🔴 UNE LARGEUR MINIMALE, ET C'EST TOUT CE QU'IL FAUT. Sans elle, la
+  // PREMIÈRE frame se dessine à la largeur par défaut d'ImGui — bien plus
+  // étroite que le contenu : chaque `TextWrapped` s'y enroule sur dix lignes,
+  // la hauteur auto-fit explose et ImGui la rabat sur celle de l'ÉCRAN. La
+  // frame d'après, la largeur ayant grandi, tout rentre dans l'ordre — d'où le
+  // clignotement pleine hauteur à chaque première ouverture.
+  // La hauteur, elle, reste libre : l'auto-fit vertical est le choix décrit
+  // ci-dessus, et il n'est pas en cause.
+  // Largeur retenue : celle d'une rangée d'œuf, dont tout le contenu dérive.
+  ImGui::SetNextWindowSizeConstraints(ImVec2(ro::Px(kHatchRowW), 0.0f),
+                                      ImVec2(FLT_MAX, FLT_MAX));
 
   char title[96];
   std::snprintf(title, sizeof(title), "%s###pethatch", i18n::Tr("Éclore un œuf"));
