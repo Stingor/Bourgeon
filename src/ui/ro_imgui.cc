@@ -1543,6 +1543,33 @@ void SetNextWindowBodyColor(unsigned int argb) {
 
 void SetWindowCollapseAllowed(bool allowed) { g_collapse_allowed = allowed; }
 
+// ── Aucune fenêtre RO ne dépasse 90 % de l'écran ─────────────────────────────
+//
+// Posée AVANT `Begin`, donc la borne entre dans le calcul du glisser
+// (`CalcWindowSizeAfterConstraint`) : la POIGNÉE BUTE, au lieu que la taille
+// soit rabotée après coup. C'est toute la différence avec le filet de
+// `ui/window_clamp.h`, qui tourne après `NewFrame` — donc avant les `Begin` —
+// et arrive systématiquement une frame trop tôt pendant un redimensionnement :
+// il corrigeait la valeur de la frame précédente, que le glisser réécrivait
+// aussitôt depuis la position de la souris.
+//
+// 🔴 L'APPELANT EST PRIORITAIRE. S'il a posé sa propre contrainte, on ne la
+// remplace pas : la sienne est plus précise que la nôtre — une grille d'objets
+// s'aligne sur ses cellules, une liste sur sa rangée, et plusieurs portent un
+// `SizeCallback` d'aimantation qu'écraser casserait.
+void ConstrainNextWindowToScreen() {
+  ImGuiContext* ctx = ImGui::GetCurrentContext();
+  if (ctx == nullptr) return;
+  if (ctx->NextWindowData.HasFlags & ImGuiNextWindowDataFlags_HasSizeConstraint)
+    return;
+  const ImVec2 screen = ImGui::GetIO().DisplaySize;
+  // Écran de taille nulle = fenêtre du jeu minimisée : contraindre à 0 collerait
+  // toutes les fenêtres à rien, et la valeur partirait dans imgui.ini.
+  if (screen.x <= 0.0f || screen.y <= 0.0f) return;
+  ImGui::SetNextWindowSizeConstraints(
+      ImVec2(0.0f, 0.0f), ImVec2(screen.x * 0.90f, screen.y * 0.90f));
+}
+
 bool BeginRoWindow(const char* title, bool* p_open, int imgui_window_flags) {
   // Consommé quoi qu'il arrive : la demande ne doit pas fuiter sur la fenêtre
   // suivante si celle-ci n'est pas peinte (fenêtre masquée…).
@@ -1607,6 +1634,7 @@ bool BeginRoWindow(const char* title, bool* p_open, int imgui_window_flags) {
   // chaque frame, ce qui casserait le bouton minimiser dessine par le skin.
   const ImGuiDir menu_btn_backup = ImGui::GetStyle().WindowMenuButtonPosition;
   if (bullet_btn) ImGui::GetStyle().WindowMenuButtonPosition = ImGuiDir_None;
+  ConstrainNextWindowToScreen();
   const bool open = ImGui::Begin(title, nullptr, imgui_window_flags);
   ImGui::GetStyle().WindowMenuButtonPosition = menu_btn_backup;
   RegisterEscapeWindow(p_open);
@@ -1855,6 +1883,7 @@ bool BeginRoChatWindow(const char* id, const RoChatSkin& skin,
   g_chat_snap_base = skin.snap_base;
   g_chat_resizable = skin.resizable;
   if (!skin.movable) imgui_window_flags |= ImGuiWindowFlags_NoMove;
+  ConstrainNextWindowToScreen();
   const bool open = ImGui::Begin(id, nullptr, imgui_window_flags);
   // Aimantable : les chatbox se rangent bord à bord entre elles et sur l'écran.
   // 🔴 Marquée que Begin ait rendu true ou non — une fenêtre repliée ou clippée
@@ -2200,6 +2229,7 @@ bool BeginRoDescWindow(const char* title, bool* p_open, int imgui_window_flags,
                       ImVec2(ImGui::GetStyle().FramePadding.x, pad_y));
   g_skin_vars = 9;
 
+  ConstrainNextWindowToScreen();
   const bool open = ImGui::Begin(title, nullptr, imgui_window_flags);
   RegisterEscapeWindow(p_open);
 
@@ -2306,6 +2336,7 @@ bool BeginRoDescPanel(const char* id, int imgui_window_flags) {
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(e + Px(2.0f), Px(6.0f)));
   g_skin_vars = 4;
 
+  ConstrainNextWindowToScreen();
   const bool open = ImGui::Begin(id, nullptr, imgui_window_flags);
   ImGuiWindow* w = ImGui::GetCurrentWindow();
   if (open && w && !w->Hidden && !w->Collapsed) {

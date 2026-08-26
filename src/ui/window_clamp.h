@@ -40,6 +40,22 @@ ImVec2 ClampWindowPosToScreen(ImVec2 window_pos, ImVec2 window_size);
 // tient dans l'écran plus facilement, l'ordre inverse ferait travailler le clamp
 // de position sur une taille qui va changer.
 //
+// 🔴 C'EST UN FILET, PAS LE MÉCANISME PRINCIPAL — et ce n'est pas un doublon de
+// `ConstrainNextWindowToScreen` (ui/ro_imgui.cc). Les deux bornent à 90 %, mais
+// pas au même moment, et le moment fait tout :
+//
+//   · le wrapper RO pose un vrai `SetNextWindowSizeConstraints` AVANT `Begin`,
+//     donc la borne entre dans le calcul du glisser et LA POIGNÉE BUTE ;
+//   · cette passe-ci tourne après `NewFrame`, donc AVANT les `Begin` — elle
+//     arrive une frame trop tôt pendant un redimensionnement et se fait
+//     réécrire par `UpdateWindowManualResize`. Elle ne bride pas le geste : elle
+//     rattrape ce qui a échappé.
+//
+// Ce qu'elle rattrape, et qui justifie qu'elle reste : les `ImGui::Begin` qui ne
+// passent par aucun wrapper RO, et les tailles démesurées restaurées depuis
+// `imgui.ini` — qu'aucune contrainte posée à l'ouverture ne corrigerait, la
+// fenêtre étant créée avant son premier `Begin`.
+//
 // Sans elle, rien n'empêche de tirer une fenêtre plus grande que l'écran : ImGui
 // ne borne la taille QUE si l'appelant a posé un `SetNextWindowSizeConstraints`,
 // et cinquante de nos fenêtres n'en ont aucun. Le joueur perd alors les bords —
