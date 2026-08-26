@@ -46,16 +46,26 @@ sont décalées d'un delta imprévisible**, et CFG rejette les entrées de vtabl
 détournées.
 
 ⚠ `Exe.SetHex` de WARP **ne peut pas écrire dans l'en-tête PE** (l'outil ne
-patche que les sections). D'où **`fix_aslr.py`**, à lancer APRÈS la génération :
+patche que les sections : la lecture marche, l'écriture est ignorée en silence).
+D'où **`fix_aslr.py`**.
+
+🔴 **Appliqué UNE FOIS sur l'exe SOURCE, pas sur chaque sortie.** WARP copie la
+source et ne patche que les sections : l'en-tête PE traverse tel quel, donc les
+drapeaux restent effacés dans toutes les générations suivantes. Fait le
+2026-08-26 sur `E:\Nouveau dossier\2026-07-07_Ragexe.exe`
+(`0xC040` → `0x8000`, original en `.aslr.bak`) : **il n'y a plus rien à faire
+après un build.**
 
 ```
-python docs/2026/fix_aslr.py "E:/Nouveau dossier/Moonlight-Destiny/2026-07-07_Ragexe_patched.exe"
+python docs/2026/fix_aslr.py            # --check pour lire sans écrire
+python docs/2026/fix_aslr.py "<autre exe>"
 ```
 
-Il efface les deux bits (`0xC040` → `0x8000`), sauvegarde l'original en
-`.aslr.bak`, et relit pour vérifier. `--check` n'affiche que l'état.
+⚠ Ne PAS toucher à `D:\KRO\Ragexe.exe` : c'est l'installation kRO officielle,
+elle doit rester intacte. La copie de travail est celle de `E:\Nouveau dossier\`.
+
 ⚠ Fermer x32dbg et le client avant : un fichier verrouillé fait échouer
-l'écriture.
+l'écriture (le script le dit clairement au lieu de planter).
 
 ## Les fichiers
 
