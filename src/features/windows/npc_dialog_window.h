@@ -214,7 +214,9 @@ class NpcDialogWindow : public Plugin {
   void SendMenuCancel();
   void SendNumber(int value);
   void SendString(const char* text);
-  void CloseDialog();                 // cmd 0x28 (débloque client) + détruit natif
+  // notify_server=false : le serveur a DÉJÀ clos la session (timeout NPC), il ne
+  // reste que le ménage client. Cf. server_closed_.
+  void CloseDialog(bool notify_server = true);  // cmd 0x28 (débloque client) + détruit natif
   void OpenItemDescById(uint32_t id); // clic sur un lien <ITEM> -> fenêtre desc 0xc
 
   bool DialogActiveNative() const;    // lit CGameMode+0x24C (flag dialogue actif)
@@ -338,6 +340,7 @@ class NpcDialogWindow : public Plugin {
   bool  need_pos_ = false;            // (re)placer la fenêtre à l'ouverture
   bool  show_panel_ = true;
   bool  map_changed_ = false;         // warp reçu (fermer au tick)
+  bool  server_closed_ = false;       // CLOSE+CLEAR reçus (timeout NPC : fermer au tick)
   bool  pending_reset_ = false;       // reset modèle au prochain tick (thread sûr)
   bool  prev_imgui_enabled_ = false;  // détection changement du toggle -> close propre
 };

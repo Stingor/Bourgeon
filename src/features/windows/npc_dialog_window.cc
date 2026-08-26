@@ -709,6 +709,20 @@ void NpcDialogWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
       // faisait raboter à l'arrivée du nouveau menu. Deux réarrangements au lieu de
       // zéro. La page affichée doit rester ENTIÈRE — texte ET menu, grisés — jusqu'à
       // la seconde où la suivante la remplace.
+      //
+      // 🔴 UN CLEAR JUSTE APRÈS UN CLOSE, lui, n'est pas le `clear` d'un script : c'est
+      // le SERVEUR qui met fin à la session. Le timeout NPC envoie 0x00b6 puis 0x08d6
+      // (moon, npc_secure_timeout_timer), parce que 0x00b6 seul se contente d'échanger
+      // le bouton et laisse la LISTE DE CHOIX à l'écran — le joueur revenu d'AFK
+      // cliquait dedans, sur un script déjà mort.
+      //
+      // La séquence ne peut pas naître d'un flux normal : `close;` termine le script,
+      // rien n'est émis derrière, et le `clear;` d'une conversation suivante arrive
+      // après le clic du joueur — clic qui a déjà remis has_close_ à false via Reset.
+      //
+      // On ferme au prochain OnTick, comme map_changed_ : détruire des fenêtres
+      // natives depuis le drain, en plein arbre ImGui, n'est pas sûr.
+      if (has_close_) { server_closed_ = true; return; }
       start_fresh_ = true;
       return;
     default:
@@ -1850,7 +1864,7 @@ void NpcDialogWindow::SendString(const char* text) {
   awaiting_reply_ = true;  // le champ reste en place, grisé, jusqu'à la réponse
 }
 
-void NpcDialogWindow::CloseDialog() {
+void NpcDialogWindow::CloseDialog(bool notify_server) {
   // Le GID de NOTRE modèle, ou à défaut celui que le CLIENT porte (+0x2DC). Le
   // défaut n'est pas théorique : c'est le cas de l'interrupteur allumé en plein
   // dialogue natif, où nous n'avons vu passer aucun paquet. Sans ce repli, la
@@ -1871,7 +1885,10 @@ void NpcDialogWindow::CloseDialog() {
   // 1. SERVEUR : abandon adapté à l'état (sinon sd->npc_id reste -> perso figé côté
   //    serveur). Menu ouvert -> CZ_CHOOSE_MENU 0xFF (le script reçoit 255 puis
   //    termine) ; sinon CZ_CLOSE_DIALOG.
-  if (gid != 0) {
+  // notify_server=false : le serveur a déjà clos la session tout seul (timeout NPC,
+  // cf. server_closed_). sd->npc_id y vaut déjà 0, donc l'abandon n'a plus personne à
+  // débloquer et se ferait jeter à l'arrivée de toute façon.
+  if (notify_server && gid != 0) {
     if (menu_pending) {
       uint8_t pkt[7];
       *reinterpret_cast<uint16_t*>(pkt + 0) = kCzChoose;
@@ -1992,6 +2009,15 @@ void NpcDialogWindow::OnTick() {
   }
   if (!imgui_enabled_) {
     if (open_) { open_ = false; was_open_ = false; }
+    return;
+  }
+
+  // Timeout NPC : le serveur a clos la session (CLOSE+CLEAR). Ménage CLIENT complet —
+  // contrairement au warp, on reste sur la carte, donc le HUD n'est pas reconstruit et
+  // il faut vraiment débloquer l'état dialogue (cmd 0x28). Aucun paquet en retour.
+  if (server_closed_) {
+    server_closed_ = false;
+    CloseDialog(/*notify_server=*/false);
     return;
   }
 
