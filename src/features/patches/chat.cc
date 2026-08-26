@@ -853,7 +853,7 @@ ChatTweaks::ChatTweaks() {
   g_textout_low_orig = reinterpret_cast<TextOutLowFn>(
       hooking::HookManager::Instance().SetHook(
           hooking::HookType::kJmpHook,
-          reinterpret_cast<uint8_t*>(0x005471a0),
+          reinterpret_cast<uint8_t*>(kEngTextOutLow),
           reinterpret_cast<uint8_t*>(TextOutLowHook)));
   if (!g_textout_low_orig) {
     LogError("[Chat] failed to hook GDI text-out at 0x005471a0");
