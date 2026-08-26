@@ -713,6 +713,24 @@ void MoonlightUi::DrawInterfacePanel() {
                                     &pf->sp_bar_h_, 2, 14, "%d px");
           if (!pf->show_sp_) ImGui::EndDisabled();
 
+          // ── Interaction ───────────────────────────────────────────────────
+          SeparatorText(i18n::Tr("Interaction"));
+          changed |= ro::RoCheckbox(
+              i18n::Tr("Lancer les sorts de soutien sur la tuile survolée"),
+              &pf->cast_on_tile_);
+          SameLine(); HelpMarker(i18n::Tr(
+              "Une compétence de soutien (soin, buff) part sur le membre dont la "
+              "tuile est sous le curseur : la touche arme, la tuile désigne. Le "
+              "liseré blanc montre qui sera visé.\n\n"
+              "La grille ne prend PAS le clic : marcher et frapper restent "
+              "possibles curseur dessus.\n\n"
+              "Les sorts d'ATTAQUE ne sont jamais concernés — viser un allié "
+              "relève du PVP, que le jeu réserve au clic manuel."));
+          if (!pf->cast_on_tile_) {
+            SameLine();
+            ImGui::TextDisabled("%s", i18n::Tr("(éteint)"));
+          }
+
           // ── Couleurs ──────────────────────────────────────────────────────
           SeparatorText(i18n::Tr("Couleurs"));
           changed |= RoColorSwatch(i18n::Tr("Fond du cadre"), pf->col_frame_bg_);

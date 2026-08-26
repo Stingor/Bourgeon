@@ -86,6 +86,29 @@ class PartyFrames : public Plugin {
   // Taille du texte des tuiles, en pixels d'interface. Indépendante de la police
   // du reste de l'UI : une grille se lit en périphérie de l'écran, pas au centre.
   int text_px_ = 13;
+
+  // ── Lancer un sort sur la tuile survolée ──────────────────────────────────
+  //
+  // C'est ce qui fait qu'un raid frame sert à quelque chose : viser un membre
+  // sans le chercher à l'écran. Le client demande deux gestes pour une
+  // compétence ciblée — la touche arme le mode, puis le clic désigne QUI ; ici,
+  // c'est la tuile sous le curseur qui répond à la seconde question.
+  //
+  // 🔴 On ne prend PAS le clic au jeu : le cadre reste clic-traversant, on se
+  // contente de tester le rectangle. Le joueur garde donc son clic pour marcher
+  // ou frapper, même curseur sur la grille.
+  //
+  // Le lancement lui-même reste ENTIÈREMENT celui de QuickCast (les messages
+  // d'acteur du clic natif, puis `SendMsg(0x47)` pour désarmer) : animation,
+  // barre de cast, cooldowns et paquet restent natifs, et le serveur reste seul
+  // juge de la légalité (SP, portée, cible autorisée).
+  bool cast_on_tile_ = true;
+
+  // Le GID à viser pour ce mode de ciblage, ou 0 si la grille n'a rien à
+  // proposer. Contrat identique à `TargetFrame::SkillTargetGid`.
+  uint32_t SkillTargetGid(int targeting_mode) const;
+  // Opt-in, pour que QuickCast sache s'il doit s'autoriser à travailler.
+  bool CastsOnTile() const { return enabled_ && cast_on_tile_; }
   bool show_sp_       = true;   // barre de SP en bas de tuile
   int  sp_bar_h_      = 6;      // sa hauteur, en pixels d'interface
 
@@ -141,6 +164,9 @@ class PartyFrames : public Plugin {
 
   ro::HudRect rect_{40, 200, 190, 120};
   std::vector<rag::social::Entry> members_;
+  // Le membre sous le curseur, relevé au rendu (0 = aucun). C'est lui que la
+  // grille propose à QuickCast, et c'est lui qu'on surligne.
+  uint32_t hovered_gid_ = 0;
   // Dernier état appliqué au HUD natif : évite de rejouer SetVisible à chaque
   // tick (appel natif) alors que rien n'a changé.
   int  native_hidden_ = -1;

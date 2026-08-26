@@ -6,6 +6,7 @@
 #include "bourgeon.h"
 #include "features/moonlight_ui/moonlight_ui.h"
 #include "features/overlays/skill_bar.h"  // RepeatItemSlot (rejeu d'une case d'objet)
+#include "features/overlays/party_frames.h"  // la tuile survolée, source de visée
 #include "features/overlays/target_frame.h"  // la cible du HUD, comme source de visée
 #include "features/staff_gate.h"
 #include "imgui.h"
@@ -146,6 +147,17 @@ unsigned HudTargetGid(int mode) {
   return tf ? tf->SkillTargetGid(mode) : 0u;
 }
 
+// La GRILLE de groupe, troisième source de visée. Même contrat que le HUD de
+// cible, et pour la même raison : la légalité reste jugée chez elle.
+bool PartyTileArmed() {
+  auto* pf = Bourgeon::Instance().party_frames();
+  return pf != nullptr && pf->CastsOnTile();
+}
+unsigned PartyTileGid(int mode) {
+  auto* pf = Bourgeon::Instance().party_frames();
+  return pf ? pf->SkillTargetGid(mode) : 0u;
+}
+
 // L'utilisateur vise-t-il le monde, ou une fenêtre native ? (Pas d'effet de bord :
 // simple hit-test.) Viser une fenêtre = il ne désigne pas le sol derrière.
 bool CursorOverNativeWindow() {
@@ -279,7 +291,15 @@ bool EmitCast(void* cmode, void* actor, int mode, int skill, int level,
       // geste explicite : il ne doit jamais se faire voler par la cible du HUD.
       // Le second n'intervient que là où le premier ne dit rien — curseur dans
       // le vide, sur une fenêtre, ou visée à la souris tout simplement éteinte.
-      unsigned gid = (target_on && mouse_on_world) ? PickTargetGid(mode) : 0u;
+      // 🔴 LA GRILLE DE GROUPE D'ABORD, et c'est délibéré : une tuile est
+      // DESSINÉE PAR-DESSUS le monde. Curseur dessus, le joueur désigne ce
+      // membre — pas le monstre qui se trouve derrière et qu'il ne voit même
+      // pas. Laisser le picking du monde répondre en premier ferait partir le
+      // soin sur ce qui passe sous le HUD.
+      unsigned gid = PartyTileGid(mode);
+      // Puis la souris sur le monde : viser du curseur reste un geste explicite,
+      // il ne doit jamais se faire voler par une cible mémorisée.
+      if (gid == 0 && target_on && mouse_on_world) gid = PickTargetGid(mode);
       if (gid == 0) gid = HudTargetGid(mode);
       if (gid == 0) return false;
       // ⚠ Le GID part en 64 bits avec un mot haut à ZÉRO, pas une extension de
@@ -302,7 +322,9 @@ bool EmitCast(void* cmode, void* actor, int mode, int skill, int level,
 bool QuickCast::CanCastNow() const {
   // Trois opt-in mènent ici, dont un qui n'est pas à nous : le HUD de cible peut
   // fournir la visée à lui seul, QuickCast entièrement éteint par ailleurs.
-  if (!ground_enabled_ && !target_enabled_ && !HudCastArmed()) return false;
+  if (!ground_enabled_ && !target_enabled_ && !HudCastArmed() &&
+      !PartyTileArmed())
+    return false;
   if (Bourgeon::Instance().client().timestamp() != 20250716) return false;
   if (!Bourgeon::Instance().IsGameActive() ||
       Bourgeon::Instance().IsMapLoading())
@@ -346,7 +368,8 @@ unsigned long QuickCast::TakePendingKey() {
 // rester intact.
 bool QuickCast::ClaimsMode(int mode) const {
   if (mode == 1) return ground_enabled_;
-  if (mode == 2 || mode == 4) return target_enabled_ || HudCastArmed();
+  if (mode == 2 || mode == 4)
+    return target_enabled_ || HudCastArmed() || PartyTileArmed();
   return false;  // 3 et 5 : ciblage natif, on n'y touche pas
 }
 

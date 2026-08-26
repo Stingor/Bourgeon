@@ -10,6 +10,7 @@
 #include "features/moonlight_ui/moonlight_ui.h"  // SaveSettings + AlignGrid partagée
 #include "features/systems/bourgeon_opcodes.h"   // bopcodes:: (catalogue partagé)
 #include "imgui.h"
+#include "ragnarok/game_scene.h"  // gamescene::FindActorByGid (cible d'un sort)
 #include "ragnarok/globals.h"
 #include "ragnarok/uiwnd.h"
 #include "ui/game_texture.h"  // ro::CachedTextureFromGameFile (icône de classe)
@@ -153,6 +154,38 @@ void PartyFrames::HandlePacket(uint16_t opcode, const uint8_t* data,
   vitals_[gid] = v;
 }
 
+// ── Ce que la grille propose à QuickCast ────────────────────────────────────
+//
+// Contrat identique à `TargetFrame::SkillTargetGid` : rendre le GID à viser pour
+// ce mode de ciblage, ou 0. Modes 2 (offensif) et 4 (soutien) seulement — un sort
+// AU SOL vise une cellule, pas une entité.
+//
+// 🔴 UNE DIFFÉRENCE ASSUMÉE avec le HUD de cible : on autorise à se viser
+// SOI-MÊME. `ValidSkillTarget` le refuse, et c'est juste pour une cible externe ;
+// mais se soigner en cliquant sa propre case est le geste n°1 d'un raid frame.
+// La restriction n'aurait ici aucun sens.
+//
+// Le reste des règles est le même, et ce ne sont pas des filtres de confort :
+// les validations du chemin du CLIC (CursorMgr_UpdateHover) ne vivent PAS dans
+// les messages d'acteur qu'émet QuickCast. Ce qu'on laisse passer part.
+uint32_t PartyFrames::SkillTargetGid(int targeting_mode) const {
+  if (!CastsOnTile() || hovered_gid_ == 0) return 0u;
+  if (targeting_mode != 2 && targeting_mode != 4) return 0u;
+  // Les offsets sont ceux de CE build : ailleurs, on ne propose rien.
+  if (Bourgeon::Instance().client().timestamp() != 20250716) return 0u;
+
+  // 🔴 En OFFENSIF, la grille ne propose rien. Elle ne contient que des membres
+  // du groupe : viser un allié avec un sort d'attaque relève du PVP, que le
+  // client réserve au clic manuel (mêmes règles Maj/PVP/GVG que
+  // `ValidSkillTarget`). Un raid frame sert à soutenir.
+  if (targeting_mode == 2) return 0u;
+
+  // L'acteur doit être là : c'est lui que le message d'acteur vise. Un membre
+  // hors de portée n'a pas d'acteur chargé — le sort ne partirait sur personne.
+  if (gamescene::FindActorByGid(hovered_gid_) == nullptr) return 0u;
+  return hovered_gid_;
+}
+
 void PartyFrames::OnRenderUI() {
   if (!enabled_) return;
 
@@ -218,6 +251,10 @@ void PartyFrames::OnRenderUI() {
   opts.min_w    = ro::Px(60.0f);
   opts.min_h    = ro::Px(20.0f);
 
+  // Le membre survolé est relevé À CHAQUE frame, et remis à zéro d'abord : une
+  // valeur qui survit à la frame ferait viser quelqu'un que le curseur a quitté.
+  hovered_gid_ = 0;
+
   if (ro::BeginHudFrame("##party_frames", &rect_, opts, &geometry_dirty_)) {
     // 🔴 L'origine vient de la FENÊTRE, pas du curseur ImGui — comme le font
     // basic_info et target_frame. Déverrouillé, `BeginHudFrame` pose sur toute sa
@@ -232,6 +269,14 @@ void PartyFrames::OnRenderUI() {
       const ImVec2 p0(origin.x + col * (tile_w + gap),
                       origin.y + row * (tile_h + gap));
       const ImVec2 p1(p0.x + tile_w, p0.y + tile_h);
+      // 🔴 Test de rectangle À LA MAIN, et non `IsItemHovered` : le cadre est
+      // clic-traversant quand il est verrouillé (`NoInputs`), donc ImGui ne le
+      // survole jamais. C'est justement ce qu'on veut — la grille répond « sur
+      // qui ? » sans prendre le clic au jeu.
+      if (mouse.x >= p0.x && mouse.x < p1.x &&
+          mouse.y >= p0.y && mouse.y < p1.y) {
+        hovered_gid_ = shown[i]->gid;
+      }
       DrawTile(*shown[i], p0, p1, shown[i]->gid == me);
     }
     // (Aucun `Dummy` à réserver : la taille du cadre est imposée plus haut par
@@ -343,8 +388,16 @@ void PartyFrames::DrawTile(const rag::social::Entry& m, ImVec2 p0, ImVec2 p1,
     }
   }
 
-  dl->AddRect(p0, p1, is_me ? Col(col_me_) : IM_COL32(0, 0, 0, 190), rounding, 0,
-              is_me ? 2.0f : 1.0f);
+  // Le liseré : ma tuile se repère à sa couleur, la tuile SURVOLÉE s'éclaire.
+  // Ce retour-là n'est pas cosmétique — c'est lui qui dit au joueur sur QUI son
+  // prochain sort partira, avant qu'il n'appuie.
+  const bool hovered = (hovered_gid_ != 0 && hovered_gid_ == m.gid);
+  if (hovered) {
+    dl->AddRect(p0, p1, IM_COL32(255, 255, 255, 210), rounding, 0, 2.0f);
+  } else {
+    dl->AddRect(p0, p1, is_me ? Col(col_me_) : IM_COL32(0, 0, 0, 190), rounding,
+                0, is_me ? 2.0f : 1.0f);
+  }
 
   // ── Le texte : nom, puis l'état ou les PV ────────────────────────────────
   const bool dim = m.offline || !has_hp;
