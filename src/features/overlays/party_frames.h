@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -109,6 +110,26 @@ class PartyFrames : public Plugin {
   uint32_t SkillTargetGid(int targeting_mode) const;
   // Opt-in, pour que QuickCast sache s'il doit s'autoriser à travailler.
   bool CastsOnTile() const { return enabled_ && cast_on_tile_; }
+
+  // ── Les clics sur une tuile ───────────────────────────────────────────────
+  //
+  // 🔴 CE RÉGLAGE PREND LE CLIC AU JEU sur la surface de la grille, et c'est
+  // inévitable : un cadre ImGui qui reçoit la souris ne la laisse plus passer,
+  // molette et clic droit compris. Marcher en cliquant SOUS la grille devient
+  // donc impossible — d'où l'opt-in, et le défaut à FAUX. C'est le compromis
+  // habituel d'un raid frame : on gagne des gestes sur les membres, on perd une
+  // zone de clic sur le monde.
+  //
+  //   · gauche = CIBLER, comme un clic sur le sprite. Sans effet si le mode
+  //     Ciblage du joueur est éteint — c'est lui qui décide qu'une cible existe.
+  //   · droit  = le menu de groupe (chuchoter, nommer chef, expulser…), celui
+  //     de la fenêtre Amis/Groupe, dont les entrées suivent les mêmes droits.
+  bool clickable_ = false;
+
+  // Rejoue le clic mis en attente, HORS de la frame ImGui. Appelée par Bourgeon
+  // depuis OnProcessInput, comme FlushPending de la fenêtre : cibler rejoue du
+  // code natif, et ouvrir un menu lit le dictionnaire de noms.
+  void FlushPending();
   bool show_sp_       = true;   // barre de SP en bas de tuile
   int  sp_bar_h_      = 6;      // sa hauteur, en pixels d'interface
 
@@ -167,6 +188,20 @@ class PartyFrames : public Plugin {
   // Le membre sous le curseur, relevé au rendu (0 = aucun). C'est lui que la
   // grille propose à QuickCast, et c'est lui qu'on surligne.
   uint32_t hovered_gid_ = 0;
+  // Clics en attente de rejeu (0 = rien). Un seul de chaque : deux appuis dans
+  // la même frame, ça n'existe pas.
+  uint32_t pending_target_gid_ = 0;  // clic gauche -> cibler
+  uint32_t pending_menu_gid_   = 0;  // clic droit  -> menu de groupe
+  // Le membre dont le menu est ouvert, et son nom au moment du clic (la liste
+  // peut changer sous nos pieds pendant que le menu est déplié).
+  uint32_t menu_gid_ = 0;
+  std::string menu_name_;
+  // État FIGÉ au clic : un membre peut se déconnecter pendant que le menu est
+  // déplié, et les entrées ne doivent pas changer sous le curseur.
+  bool menu_offline_ = false;
+  bool     open_menu_ = false;
+
+  void DrawMemberMenu();
   // Dernier état appliqué au HUD natif : évite de rejouer SetVisible à chaque
   // tick (appel natif) alors que rien n'a changé.
   int  native_hidden_ = -1;

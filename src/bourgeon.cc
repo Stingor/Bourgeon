@@ -443,6 +443,9 @@ void Bourgeon::OnProcessInput() {
   // rejouent `CMode::SendMsg` 0x3D et 0x0B0, qui ouvrent des MODALES NATIVES
   // (UIWndMgr_ShowMessageBoxModal) — jamais entre NewFrame() et Render().
   if (auto* pf = party_friend_window()) pf->FlushPending();
+  // La grille de groupe : ses clics ciblent (code natif) et ouvrent un menu qui
+  // lit le dictionnaire de noms. Même raison, même endroit.
+  if (auto* pfr = party_frames()) pfr->FlushPending();
   // Déplacement clavier : ici AUSSI (pas seulement dans OnRenderUI) pour qu'il
   // survive au « cacher l'interface » natif (F11), qui coupe la passe UI des
   // plugins. Auto-limité dans le temps -> aucun doublon de demande.

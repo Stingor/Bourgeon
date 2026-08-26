@@ -251,6 +251,41 @@ void PartyFriendWindow::ReadList(bool party, std::vector<rag::social::Entry>& ou
   }
 }
 
+// ── Les gestes demandés par une AUTRE surface ───────────────────────────────
+//
+// Le HUD en grille n'a qu'un GID ; le nom, lui, est nécessaire (le chuchotement
+// et l'expulsion voyagent PAR NOM). On le retrouve dans la liste courante — et
+// s'il n'y est plus, on n'arme rien : agir sur un membre qui vient de partir
+// n'aurait pas de sens.
+bool PartyFriendWindow::ArmForGid(uint32_t gid, Action action) {
+  if (gid == 0) return false;
+  for (const rag::social::Entry& r : party_) {
+    if (r.gid != gid) continue;
+    pending_      = action;
+    pending_gid_  = r.gid;
+    pending_id2_  = r.id2;
+    pending_name_ = r.name;
+    return true;
+  }
+  return false;
+}
+
+void PartyFriendWindow::RequestWhisper(uint32_t gid) {
+  ArmForGid(gid, Action::kWhisper);
+}
+
+void PartyFriendWindow::RequestMakeLeader(uint32_t gid) {
+  // Les mêmes droits que le menu de la fenêtre : le serveur refuserait de toute
+  // façon, mais mieux vaut ne pas émettre une commande qu'on sait vaine.
+  if (!i_am_leader_) return;
+  ArmForGid(gid, Action::kMakeLeader);
+}
+
+void PartyFriendWindow::RequestKick(uint32_t gid) {
+  if (!i_am_leader_) return;
+  ArmForGid(gid, Action::kKick);
+}
+
 void PartyFriendWindow::FlushPending() {
   // Les lignes de chat d'abord : elles rejouent du code natif, donc jamais depuis
   // la frame ImGui. L'aiguillage de Bourgeon les route vers la chatbox moderne.

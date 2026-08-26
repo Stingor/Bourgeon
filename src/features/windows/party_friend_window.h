@@ -102,6 +102,21 @@ class PartyFriendWindow : public Plugin {
   void ToggleFromUi();
   bool IsOpen() const { return open_; }
 
+  // ── Ce qu'une AUTRE surface demande sur un membre ─────────────────────────
+  //
+  // Le HUD de groupe en grille propose les mêmes gestes que le menu contextuel
+  // de cette fenêtre. Plutôt que d'y recopier commandes et paquets, il ARME les
+  // actions ici : c'est le même `FlushPending` qui les émet, donc les mêmes
+  // gardes et le même comportement des deux côtés.
+  //
+  // Le nom est retrouvé dans la liste courante — l'appelant n'a qu'un GID.
+  // Sans effet si le membre a disparu entre-temps.
+  void RequestWhisper(uint32_t gid);
+  void RequestMakeLeader(uint32_t gid);
+  void RequestKick(uint32_t gid);
+  // Suis-je le chef ? Décide des entrées réservées (nommer chef, expulser).
+  bool IsPartyLeader() const { return i_am_leader_; }
+
   // 🔴 LE point d'ouverture, appelé par le hook de MakeWindow (window_pos_tweaks)
   // au **`case 0x22`** — l'id de FABRIQUE, pas 0x45. Voir le commentaire de
   // window_pos_tweaks : 0x45 n'est qu'un point d'entrée qui rappelle
@@ -191,6 +206,12 @@ class PartyFriendWindow : public Plugin {
     kAnswerFriend,  // CMode::SendMsg 0xAF -> CZ 0x0208 (AID, CID, oui/non)
     kPartyOptions,  // CMode::SendMsg 0x103 -> CZ 0x07D7 (exp, ramassage, partage)
   };
+
+  // Arme `action` sur ce GID en retrouvant son nom dans la liste courante (les
+  // actions voyagent PAR NOM). Rend false si le membre n'y est plus.
+  // ⚠ Déclarée APRÈS `Action` : dans le corps d'une classe, un type imbriqué
+  // doit exister avant d'apparaître dans une signature.
+  bool ArmForGid(uint32_t gid, Action action);
 
   // Les trois réglages du groupe, tels que le joueur les a réglés dans la section
   // « Réglages » — distincts des globales du client, qui portent l'état COURANT.

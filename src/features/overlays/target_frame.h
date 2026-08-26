@@ -434,6 +434,36 @@ class TargetFrame : public Plugin {
   // l'entrée que dans ce cas.
   bool IsShownFor(uint32_t gid) const;
 
+  // ── Ce qu'une AUTRE surface appelle pour cibler ───────────────────────────
+  //
+  // Rejoue le clic que le joueur aurait fait sur le sprite de ce GID : c'est le
+  // MÊME chemin que les cadres du HUD (mise en attente puis `OnGameFramePulse`,
+  // hors frame ImGui), donc les mêmes gardes et le même résultat.
+  //
+  // Née pour la grille de groupe, dont les tuiles doivent pouvoir cibler comme
+  // le sprite qu'elles représentent. Réutilise le vecteur existant plutôt que
+  // d'écrire la cible du jeu à la main : `CGameMode+0xF4` est gatée par `+0x28`,
+  // et `+0xF8` ne doit JAMAIS être touchée (elle coupe la marche au clic
+  // maintenu). Cf. la mémoire project_target_system_re.
+  //
+  // Sans effet si le mode Ciblage est éteint : c'est le réglage du joueur qui
+  // décide qu'une cible existe, pas l'appelant.
+  // 🔴 Passe par le ciblage CLAVIER (`ApplyKeyboardTarget`), pas par le clic
+  // rejoué. Ce n'est pas un détail : `CGameMode+0xF4` n'est écrite qu'au clic sur
+  // une cible « VALIDE » (0x00C79D3C), et un ALLIÉ n'en est pas une — le client
+  // ne cible pas les membres de son propre groupe à la souris. Un clic rejoué
+  // n'aurait donc rien fait, ce qu'on a vu en jeu.
+  //
+  // ⚠ À appeler HORS de la frame ImGui : elle touche l'état du jeu tout de suite
+  // (c'est déjà le cas de son appelant, qui vient de `OnProcessInput`).
+  //
+  // Rend false si le mode Ciblage est éteint : c'est le réglage du joueur qui
+  // décide qu'une cible existe, pas l'appelant.
+  bool RequestTargetFromProxy(uint32_t gid);
+  // Le mode Ciblage est-il actif ? L'appelant s'en sert pour ne pas proposer un
+  // geste qui ne ferait rien.
+  bool TargetingEnabled() const { return enabled_; }
+
  private:
   void HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
 

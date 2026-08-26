@@ -8,7 +8,9 @@
 
 #include "bourgeon.h"
 #include "features/moonlight_ui/moonlight_ui.h"  // SaveSettings + AlignGrid partagée
+#include "features/overlays/target_frame.h"      // cibler par le chemin du HUD
 #include "features/systems/bourgeon_opcodes.h"   // bopcodes:: (catalogue partagé)
+#include "features/windows/party_friend_window.h"  // les gestes de groupe
 #include "imgui.h"
 #include "ragnarok/game_scene.h"  // gamescene::FindActorByGid (cible d'un sort)
 #include "ragnarok/globals.h"
@@ -154,6 +156,91 @@ void PartyFrames::HandlePacket(uint16_t opcode, const uint8_t* data,
   vitals_[gid] = v;
 }
 
+// ── Le menu d'une tuile ─────────────────────────────────────────────────────
+//
+// Les mêmes gestes que le menu contextuel de la fenêtre Amis/Groupe, et pour
+// cause : c'est ELLE qui les exécute. On ne recopie ni commande ni paquet — on
+// arme chez elle, son `FlushPending` émet. Mêmes gardes des deux côtés.
+void PartyFrames::DrawMemberMenu() {
+  if (open_menu_) {
+    ImGui::OpenPopup("##party_tile_menu");
+    open_menu_ = false;
+  }
+  if (!ImGui::BeginPopup("##party_tile_menu")) return;
+
+  auto* pfw = Bourgeon::Instance().party_friend_window();
+  const bool is_me = (menu_gid_ == rag::social::OwnAid());
+
+  ImGui::TextDisabled("%s", ro::LocalToUtf8(menu_name_.c_str()));
+  ImGui::Separator();
+
+  if (pfw == nullptr) {
+    ImGui::TextDisabled("%s", i18n::Tr("Indisponible."));
+    ImGui::EndPopup();
+    return;
+  }
+
+  // 🔴 HORS LIGNE : la seule chose qui garde un sens est de l'EXPULSER. On ne
+  // chuchote pas à quelqu'un de déconnecté, et lui confier le commandement
+  // laisserait le groupe sans chef présent. Proposer ces entrées serait promettre
+  // des gestes qui échoueraient en silence côté serveur.
+  if (!menu_offline_) {
+    if (!is_me && ImGui::Selectable(i18n::Tr("Chuchoter"))) {
+      pfw->RequestWhisper(menu_gid_);
+    }
+    if (pfw->IsPartyLeader() && !is_me &&
+        ImGui::Selectable(i18n::Tr("Nommer chef de groupe"))) {
+      pfw->RequestMakeLeader(menu_gid_);
+    }
+  }
+  // Expulser reste offert dans les deux cas — c'est même le geste attendu sur un
+  // membre déconnecté depuis longtemps.
+  if (pfw->IsPartyLeader() && !is_me &&
+      ImGui::Selectable(i18n::Tr("Expulser du groupe"))) {
+    pfw->RequestKick(menu_gid_);
+  }
+  ImGui::EndPopup();
+}
+
+// ── Les clics, rejoués HORS de la frame ImGui ───────────────────────────────
+void PartyFrames::FlushPending() {
+  const uint32_t target = pending_target_gid_;
+  const uint32_t menu   = pending_menu_gid_;
+  pending_target_gid_ = 0;
+  pending_menu_gid_   = 0;
+
+  // Clic GAUCHE : cibler, comme un clic sur le sprite. On passe par le HUD de
+  // cible, qui possède déjà ce chemin (et ses gardes) — écrire `CGameMode+0xF4`
+  // à la main serait le piège que la mémoire project_target_system_re décrit.
+  // Sans effet si le mode Ciblage du joueur est éteint : c'est SON réglage qui
+  // décide qu'une cible existe.
+  if (target != 0) {
+    if (auto* tf = Bourgeon::Instance().target_frame()) {
+      // Rend false quand le mode Ciblage est éteint — on ne le signale pas :
+      // le réglage du panneau dit déjà que le geste en dépend.
+      tf->RequestTargetFromProxy(target);
+    }
+  }
+
+  // Clic DROIT : le menu. Il s'ouvre à la frame suivante (`open_menu_`), donc
+  // rien de natif n'est touché ici — on ne fait que retenir sur QUI il porte.
+  if (menu != 0) {
+    menu_gid_ = menu;
+    menu_name_.clear();
+    menu_offline_ = false;
+    // On fige l'état du membre AU MOMENT DU CLIC : la liste est relue à chaque
+    // frame, et un membre peut se déconnecter pendant que le menu est déplié.
+    for (const rag::social::Entry& m : members_) {
+      if (m.gid == menu) {
+        menu_name_    = m.name;
+        menu_offline_ = m.offline;
+        break;
+      }
+    }
+    open_menu_ = true;
+  }
+}
+
 // ── Ce que la grille propose à QuickCast ────────────────────────────────────
 //
 // Contrat identique à `TargetFrame::SkillTargetGid` : rendre le GID à viser pour
@@ -182,7 +269,18 @@ uint32_t PartyFrames::SkillTargetGid(int targeting_mode) const {
 
   // L'acteur doit être là : c'est lui que le message d'acteur vise. Un membre
   // hors de portée n'a pas d'acteur chargé — le sort ne partirait sur personne.
-  if (gamescene::FindActorByGid(hovered_gid_) == nullptr) return 0u;
+  //
+  // 🔴 SAUF MOI. Mon propre acteur n'est PAS dans la liste que parcourt
+  // `FindActorByGid` : le natif le range à part, en `actorMgr+0x2C`, et c'est
+  // exactement pour ça qu'il possède une fonction séparée —
+  // `ActorMgr_FindByGidOrSelf` (0x00a69e70) commence par
+  // `if (gid == g_Account_Aid) return mgr[+0x2C]` avant de parcourir quoi que ce
+  // soit. Exiger la liste rendait MA tuile inerte : impossible de s'y soigner ou
+  // de s'y buffer, alors que c'est le geste n°1 d'un raid frame.
+  if (hovered_gid_ != rag::social::OwnAid() &&
+      gamescene::FindActorByGid(hovered_gid_) == nullptr) {
+    return 0u;
+  }
   return hovered_gid_;
 }
 
@@ -250,12 +348,18 @@ void PartyFrames::OnRenderUI() {
   if (auto* mui = Bourgeon::Instance().moonlight_ui()) opts.grid = &mui->grid_;
   opts.min_w    = ro::Px(60.0f);
   opts.min_h    = ro::Px(20.0f);
+  // ⚠ Cliquable = la grille PREND la souris au jeu sur toute sa surface (molette
+  // et clic droit compris). C'est le prix des gestes sur les tuiles, d'où
+  // l'opt-in : sans lui, le cadre reste clic-traversant.
+  opts.clickable = clickable_;
 
   // Le membre survolé est relevé À CHAQUE frame, et remis à zéro d'abord : une
   // valeur qui survit à la frame ferait viser quelqu'un que le curseur a quitté.
   hovered_gid_ = 0;
 
-  if (ro::BeginHudFrame("##party_frames", &rect_, opts, &geometry_dirty_)) {
+  ro::HudFrameClicks clicks;
+  if (ro::BeginHudFrame("##party_frames", &rect_, opts, &geometry_dirty_,
+                        &clicks)) {
     // 🔴 L'origine vient de la FENÊTRE, pas du curseur ImGui — comme le font
     // basic_info et target_frame. Déverrouillé, `BeginHudFrame` pose sur toute sa
     // surface un `InvisibleButton` qui laisse le curseur EN DESSOUS du cadre :
@@ -281,8 +385,24 @@ void PartyFrames::OnRenderUI() {
     }
     // (Aucun `Dummy` à réserver : la taille du cadre est imposée plus haut par
     // `rect_`, que `BeginHudFrame` ré-épingle à chaque frame.)
+
+    // ── Les clics, MIS EN ATTENTE ────────────────────────────────────────────
+    // `hovered_gid_` vient d'être relevé au-dessus : il dit sur QUELLE tuile le
+    // clic est tombé. Rien n'agit ici — cibler rejoue du code natif et ouvrir un
+    // menu lit le dictionnaire de noms, deux choses à ne pas faire entre
+    // NewFrame() et Render().
+    if (clicks.left && hovered_gid_ != 0) {
+      pending_target_gid_ = hovered_gid_;
+    }
+    if (clicks.right && hovered_gid_ != 0) {
+      pending_menu_gid_ = hovered_gid_;
+    }
   }
   ro::EndHudFrame();
+
+  // Le menu vit HORS du cadre : une popup ouverte à l'intérieur serait clippée
+  // par lui, et il fait la taille d'une tuile.
+  DrawMemberMenu();
 
   if (geometry_dirty_) {
     geometry_dirty_ = false;

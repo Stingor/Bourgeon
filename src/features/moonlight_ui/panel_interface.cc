@@ -731,6 +731,18 @@ void MoonlightUi::DrawInterfacePanel() {
             ImGui::TextDisabled("%s", i18n::Tr("(éteint)"));
           }
 
+          changed |= ro::RoCheckbox(
+              i18n::Tr("Cliquer les tuiles (cibler, menu du groupe)"),
+              &pf->clickable_);
+          SameLine(); HelpMarker(i18n::Tr(
+              "Clic gauche : cibler le membre, comme un clic sur son "
+              "personnage — sans effet si le mode Ciblage est éteint.\n"
+              "Clic droit : chuchoter, nommer chef, expulser.\n\n"
+              "⚠ La grille PREND alors la souris sur toute sa surface : "
+              "impossible de marcher ou de frapper en cliquant dessous. C'est "
+              "le prix des gestes sur les tuiles — décoché, la grille se "
+              "contente d'afficher et laisse tout passer."));
+
           // ── Couleurs ──────────────────────────────────────────────────────
           SeparatorText(i18n::Tr("Couleurs"));
           changed |= RoColorSwatch(i18n::Tr("Fond du cadre"), pf->col_frame_bg_);

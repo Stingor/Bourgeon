@@ -653,6 +653,10 @@ const moonlight_ui::SettingDesc kPartyFramesSettings[] = {
      MLUI_LITERAL(int, 13)},
     {"partyframes_cast_on_tile", SType::kBool,
      MLUI_FIELD(party_frames, cast_on_tile_), MLUI_LITERAL(bool, true)},
+    // Défaut FAUX : cliquable, la grille prend la souris au jeu sur toute sa
+    // surface. C'est au joueur de décider qu'il veut ce compromis.
+    {"partyframes_clickable", SType::kBool,
+     MLUI_FIELD(party_frames, clickable_), MLUI_LITERAL(bool, false)},
     {"partyframes_hp_mid", SType::kInt, MLUI_FIELD(party_frames, hp_mid_pct()),
      MLUI_LITERAL(int, 55)},
     {"partyframes_hp_low", SType::kInt, MLUI_FIELD(party_frames, hp_low_pct()),

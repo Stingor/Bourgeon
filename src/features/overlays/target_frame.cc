@@ -613,6 +613,25 @@ bool TargetFrame::ApplyKeyboardTarget(void* gm, uint32_t gid) {
   return true;
 }
 
+// Cibler sur demande d'une AUTRE surface (la grille de groupe).
+//
+// 🔴 Par le chemin CLAVIER, et pas par un clic rejoué. `CGameMode+0xF4` n'est
+// écrite qu'au clic sur une cible « valide » — un ALLIÉ n'en est pas une, le
+// client ne cible pas les membres de son propre groupe à la souris. Rejouer un
+// clic ne faisait donc rien du tout, ce que le jeu a confirmé. Le ciblage
+// clavier, lui, écrit la sélection quelle que soit l'entité : c'est déjà ce que
+// font `TargetNearest` et `CycleTarget`.
+bool TargetFrame::RequestTargetFromProxy(uint32_t gid) {
+  // Le mode éteint, rien ne se passe : même règle que les raccourcis de ciblage.
+  if (!enabled_ || gid == 0) return false;
+  auto& bourgeon = Bourgeon::Instance();
+  if (bourgeon.client().timestamp() != 20250716) return false;
+  if (bourgeon.IsMapLoading() || !bourgeon.IsGameActive()) return false;
+  void* gm = rag::ActiveModeSafe();
+  if (!gm) return false;
+  return ApplyKeyboardTarget(gm, gid);
+}
+
 bool TargetFrame::TargetNearest() {
   // Le mode éteint, le raccourci ne fait rien : c'est le prix d'un interrupteur
   // maître honnête, et le panneau le dit noir sur blanc.
