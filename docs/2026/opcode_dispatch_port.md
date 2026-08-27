@@ -332,6 +332,62 @@ octets** du dernier membre mesure — c'est donc plausible.
 sont a **confirmer avant tout usage** — ce sont precisement les modeles dont
 dependent l'inventaire, le storage et le cart, donc une erreur y serait couteuse.
 
+## ✅✅ Passe finale : 217 TABLES appariees automatiquement
+
+Choisir les tables a la main ne passe pas a l'echelle. Une table s'identifie par
+sa **forme** — (plage de valeurs, nombre de valeurs, nombre de cibles) — qui ne
+depend d'aucune adresse. On peut donc apparier les tables ELLES-MEMES :
+
+| critere | paires |
+|---|---|
+| forme EXACTE (lo, hi, nvals, ntgts) | **199** |
+| meme plage + nombre de valeurs | 18 |
+| **total** | **217** tables, dont 108 nommees cote 2025 |
+
+**30 281 cases communes**, 2 070 fonctions et 1 046 globales atteintes.
+
+🔴 **Piege du pont MCP** : au-dela de ~1 min il coupe et **tue le script**
+cote IDA sans rien ecrire. La premiere tentative sur 217 tables a echoue
+silencieusement de cette facon. La parade : **traiter par lots** (`extract_batch.py`,
+`batch.json`) avec un **cache d'analyse persiste sur disque** entre les lots —
+15 tables en 8 s, puis 75 en 26 s grace au cache. ⚠ Un timeout du pont ne veut
+PAS dire que le script a echoue : verifier le fichier de sortie avant de relancer,
+sous peine de double execution.
+
+### Bilan des quatre passes
+
+| passe | paires |
+|---|---|
+| opcode (dispatch seul) | 623 |
+| id de fenetre | 198 |
+| 11 tables, signature composite | 1 121 |
+| **217 tables appariees automatiquement** | **943** |
+| **UNION** | **1 827** |
+| **conflits** | **0** |
+
+➡ **157 → 271 / 784 adresses du manifeste (20 % → 34,6 %)**, +114.
+
+Controles sur le jeu final : ratio de tailles **mediane 1,000** (temoin 0,258),
+monotonie **5,1 %** d'inversions (temoin 50,0 %).
+
+### Ce que le portage precedent avait faux
+
+11 recouvrements, **4 divergences** — et les tailles tranchent :
+
+| source | portage precedent | tables | verdict |
+|---|---|---|---|
+| `Arrow_SpawnProjectileToTarget` 0xB0 | 0x0D — **0,07** | 0xBE — **0,93** | tables ✅ |
+| `SkillMgr_SetOption` 0xFA | 0x0E — **0,06** | 0xFA — **1,00** | tables ✅ |
+| `Weapon_ItemIdToWeaponClass` 0x44 | 0x52 — 0,83 | 0x44 — **1,00** | tables, sans certitude |
+| `kItemSkillInfoDtor` 0x57 | 0x5F — 0,92 | 0x57 — 1,00 | 🔴 **rejete par la monotonie** |
+
+🔴 Le dernier cas est exactement ce pour quoi on garde plusieurs tests
+independants : les tailles ne departageaient pas (0,92 contre 1,00), la
+**monotonie** l'a rejete — sa cible sort de l'enveloppe de ses voisines. Sur ce
+point le portage precedent a probablement raison. Avec
+`kSpriteTexFactoryGetAddr`, ce sont les **2 seules** paires du manifeste que la
+monotonie met en cause (sur 1 827).
+
 ## Limites — ce que cette méthode ne peut PAS faire
 
 - Chaque switch ne voit que ce qui lui est **atteignable** : le dispatch de

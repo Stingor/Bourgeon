@@ -1,21 +1,57 @@
 [
  {
+  "2025": "0x00535380",
+  "2026": "0x0058aea0",
+  "manifeste": "",
+  "src": "tables217"
+ },
+ {
+  "2025": "0x00554070",
+  "2026": "0x004c5a40",
+  "manifeste": "kSpriteTexFactoryGetAddr",
+  "src": "multi+tables217"
+ },
+ {
+  "2025": "0x005a4300",
+  "2026": "0x004bd8a0",
+  "manifeste": "kItemSkillInfoDtor",
+  "src": "tables217"
+ },
+ {
+  "2025": "0x005ead80",
+  "2026": "0x004e1480",
+  "manifeste": "",
+  "src": "tables217"
+ },
+ {
   "2025": "0x006a2860",
   "2026": "0x004e2240",
   "manifeste": "",
+  "src": "opcode+multi+tables217"
+ },
+ {
+  "2025": "0x007007e0",
+  "2026": "0x004bd780",
+  "manifeste": "",
+  "src": "tables217"
+ },
+ {
+  "2025": "0x0073c520",
+  "2026": "0x0058ad50",
+  "manifeste": "",
   "src": "opcode+multi"
+ },
+ {
+  "2025": "0x00775860",
+  "2026": "0x004f2c50",
+  "manifeste": "",
+  "src": "opcode"
  },
  {
   "2025": "0x0078ce10",
   "2026": "0x008a9920",
   "manifeste": "",
   "src": "fenetre+multi"
- },
- {
-  "2025": "0x008d94f0",
-  "2026": "0x00504a20",
-  "manifeste": "",
-  "src": "opcode+multi"
  },
  {
   "2025": "0x009195a0",
@@ -30,10 +66,16 @@
   "src": "opcode+multi"
  },
  {
-  "2025": "0x00ac1c30",
-  "2026": "0x00597660",
+  "2025": "0x00a43c20",
+  "2026": "0x004cd270",
   "manifeste": "",
-  "src": "opcode+multi"
+  "src": "tables217"
+ },
+ {
+  "2025": "0x00b7f840",
+  "2026": "0x00ba1070",
+  "manifeste": "",
+  "src": "multi"
  },
  {
   "2025": "0x00bfaf90",
@@ -42,9 +84,39 @@
   "src": "multi"
  },
  {
+  "2025": "0x00c44470",
+  "2026": "0x004c64c0",
+  "manifeste": "",
+  "src": "tables217"
+ },
+ {
+  "2025": "0x00d42d00",
+  "2026": "0x004bec40",
+  "manifeste": "",
+  "src": "tables217"
+ },
+ {
+  "2025": "0x0100b79c",
+  "2026": "0x00ead128",
+  "manifeste": "",
+  "src": "tables217"
+ },
+ {
+  "2025": "0x0100ff60",
+  "2026": "0x00ecd258",
+  "manifeste": "",
+  "src": "tables217"
+ },
+ {
   "2025": "0x01085f40",
   "2026": "0x00eef220",
   "manifeste": "",
   "src": "multi"
+ },
+ {
+  "2025": "0x010868b0",
+  "2026": "0x00ead140",
+  "manifeste": "",
+  "src": "tables217"
  }
 ]

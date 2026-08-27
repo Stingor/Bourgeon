@@ -35,9 +35,11 @@
   "n": 2,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t113",
+   "t195"
   ],
-  "src": "opcode+multi"
+  "src": "opcode+multi+tables217"
  },
  "0x00ccd4c0": {
   "to": "0x00537a90",
@@ -63,9 +65,22 @@
   "kind": "functions",
   "n": 99,
   "tables": [
-   "opcode"
+   "opcode",
+   "t000",
+   "t041",
+   "t055",
+   "t056",
+   "t060",
+   "t066",
+   "t079",
+   "t088",
+   "t095",
+   "t112",
+   "t159",
+   "t160",
+   "t174"
   ],
-  "src": "opcode",
+  "src": "opcode+tables217",
   "manifeste": "kActorListFindByGid, kFindByGID",
   "comment": "ActorList_FindByGID(actorMgr,gid)->acteur",
   "nouveau_pour_bourgeon": false
@@ -86,9 +101,10 @@
   "n": 17,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t060"
   ],
-  "src": "opcode+multi"
+  "src": "opcode+multi+tables217"
  },
  "0x00ce7450": {
   "to": "0x00552cd0",
@@ -116,9 +132,12 @@
   "n": 15,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t060",
+   "t159",
+   "t174"
   ],
-  "src": "opcode+multi"
+  "src": "opcode+multi+tables217"
  },
  "0x00d8ea70": {
   "to": "0x00ca2000",
@@ -261,9 +280,12 @@
   "n": 2,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t016",
+   "t048",
+   "t096"
   ],
-  "src": "opcode+multi"
+  "src": "opcode+multi+tables217"
  },
  "0x00d76660": {
   "to": "0x00c89ba0",
@@ -369,9 +391,14 @@
   "n": 2,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t017",
+   "t073",
+   "t109",
+   "t140",
+   "t172"
   ],
-  "src": "opcode+multi"
+  "src": "opcode+multi+tables217"
  },
  "0x00b1f7d0": {
   "to": "0x00afe3d0",
@@ -379,9 +406,10 @@
   "n": 2,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t049"
   ],
-  "src": "opcode+multi"
+  "src": "opcode+multi+tables217"
  },
  "0x00cced10": {
   "to": "0x00538fe0",
@@ -447,9 +475,18 @@
   "kind": "functions",
   "n": 7,
   "tables": [
-   "opcode"
+   "opcode",
+   "t055",
+   "t056",
+   "t065",
+   "t073",
+   "t084",
+   "t085",
+   "t091",
+   "t100",
+   "t109"
   ],
-  "src": "opcode"
+  "src": "opcode+tables217"
  },
  "0x00dbc44d": {
   "to": "0x00ccaf9b",
@@ -538,9 +575,13 @@
   "kind": "functions",
   "n": 41,
   "tables": [
-   "opcode"
+   "opcode",
+   "t122",
+   "t127",
+   "t162",
+   "t190"
   ],
-  "src": "opcode"
+  "src": "opcode+tables217"
  },
  "0x00d770a0": {
   "to": "0x00c8a490",
@@ -567,9 +608,13 @@
   "n": 10,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t057",
+   "t122",
+   "t129",
+   "t199"
   ],
-  "src": "opcode+multi"
+  "src": "opcode+multi+tables217"
  },
  "0x00d547a0": {
   "to": "0x00c67ad0",
@@ -759,9 +804,14 @@
   "kind": "functions",
   "n": 15,
   "tables": [
-   "opcode"
+   "opcode",
+   "t041",
+   "t047",
+   "t053",
+   "t172",
+   "t185"
   ],
-  "src": "opcode"
+  "src": "opcode+tables217"
  },
  "0x006a2860": {
   "to": "0x004e2240",
@@ -769,9 +819,11 @@
   "n": 4,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t065",
+   "t075"
   ],
-  "src": "opcode+multi"
+  "src": "opcode+multi+tables217"
  },
  "0x00fc1b60": {
   "to": "0x00e7b8b0",
@@ -809,18 +861,21 @@
   "n": 2,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t041",
+   "t053"
   ],
-  "src": "opcode+multi"
+  "src": "opcode+multi+tables217"
  },
  "0x00d70cd0": {
   "to": "0x00c84450",
   "kind": "functions",
   "n": 6,
   "tables": [
-   "opcode"
+   "opcode",
+   "t041"
   ],
-  "src": "opcode"
+  "src": "opcode+tables217"
  },
  "0x00cc6020": {
   "to": "0x005303f0",
@@ -926,9 +981,10 @@
   "kind": "functions",
   "n": 6,
   "tables": [
-   "opcode"
+   "opcode",
+   "t204"
   ],
-  "src": "opcode",
+  "src": "opcode+tables217",
   "manifeste": "kShopCartResetAll",
   "nouveau_pour_bourgeon": true
  },
@@ -977,9 +1033,19 @@
   "kind": "functions",
   "n": 14,
   "tables": [
-   "opcode"
+   "opcode",
+   "t041",
+   "t055",
+   "t056",
+   "t072",
+   "t073",
+   "t083",
+   "t090",
+   "t109",
+   "t118",
+   "t188"
   ],
-  "src": "opcode",
+  "src": "opcode+tables217",
   "manifeste": "kOwnGetCharName",
   "comment": "__thiscall(ctxKey) -> char*",
   "nouveau_pour_bourgeon": true
@@ -1130,9 +1196,12 @@
   "n": 11,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t060",
+   "t133",
+   "t186"
   ],
-  "src": "opcode+multi"
+  "src": "opcode+multi+tables217"
  },
  "0x00c99560": {
   "to": "0x00502610",
@@ -1253,9 +1322,13 @@
   "n": 10,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t010",
+   "t017",
+   "t067",
+   "t188"
   ],
-  "src": "opcode+multi",
+  "src": "opcode+multi+tables217",
   "manifeste": "kJobDisplayName, kJobNameAddr, kJobResName",
   "comment": "__thiscall(ctx, classId, sex)",
   "nouveau_pour_bourgeon": true
@@ -1499,9 +1572,11 @@
   "n": 1,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t055",
+   "t182"
   ],
-  "src": "opcode+multi"
+  "src": "opcode+multi+tables217"
  },
  "0x00ce4390": {
   "to": "0x0054c5f0",
@@ -1555,9 +1630,12 @@
   "kind": "functions",
   "n": 3,
   "tables": [
-   "opcode"
+   "opcode",
+   "t058",
+   "t122",
+   "t204"
   ],
-  "src": "opcode"
+  "src": "opcode+tables217"
  },
  "0x00a83600": {
   "to": "0x00a7e190",
@@ -2303,9 +2381,10 @@
   "n": 2,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t069"
   ],
-  "src": "opcode+multi"
+  "src": "opcode+multi+tables217"
  },
  "0x00cc6d00": {
   "to": "0x005311c0",
@@ -2433,9 +2512,10 @@
   "n": 3,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t060"
   ],
-  "src": "opcode+multi"
+  "src": "opcode+multi+tables217"
  },
  "0x00ccb270": {
   "to": "0x00535780",
@@ -2464,9 +2544,10 @@
   "tables": [
    "dispatch",
    "makewindow",
-   "opcode"
+   "opcode",
+   "t098"
   ],
-  "src": "opcode+multi"
+  "src": "opcode+multi+tables217"
  },
  "0x00c3c680": {
   "to": "0x00c09b30",
@@ -2475,9 +2556,10 @@
   "tables": [
    "dispatch",
    "makewindow",
-   "opcode"
+   "opcode",
+   "t098"
   ],
-  "src": "opcode+multi"
+  "src": "opcode+multi+tables217"
  },
  "0x00c99370": {
   "to": "0x005022c0",
@@ -2575,9 +2657,10 @@
   "n": 2,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t060"
   ],
-  "src": "opcode+multi"
+  "src": "opcode+multi+tables217"
  },
  "0x00cbb370": {
   "to": "0x00525d20",
@@ -2654,9 +2737,10 @@
   "n": 1,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t060"
   ],
-  "src": "opcode+multi"
+  "src": "opcode+multi+tables217"
  },
  "0x00cbba60": {
   "to": "0x00526490",
@@ -3070,9 +3154,10 @@
   "n": 1,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t060"
   ],
-  "src": "opcode+multi"
+  "src": "opcode+multi+tables217"
  },
  "0x00cf5e20": {
   "to": "0x00563860",
@@ -3080,9 +3165,10 @@
   "n": 1,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t060"
   ],
-  "src": "opcode+multi"
+  "src": "opcode+multi+tables217"
  },
  "0x00d0bf20": {
   "to": "0x00577440",
@@ -3119,9 +3205,17 @@
   "kind": "functions",
   "n": 8,
   "tables": [
-   "opcode"
+   "opcode",
+   "t017",
+   "t025",
+   "t026",
+   "t041",
+   "t049",
+   "t072",
+   "t073",
+   "t109"
   ],
-  "src": "opcode"
+  "src": "opcode+tables217"
  },
  "0x00cdab50": {
   "to": "0x00544e80",
@@ -3388,9 +3482,10 @@
   "n": 1,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t060"
   ],
-  "src": "opcode+multi"
+  "src": "opcode+multi+tables217"
  },
  "0x00cf4030": {
   "to": "0x00561cb0",
@@ -3398,9 +3493,10 @@
   "n": 2,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t060"
   ],
-  "src": "opcode+multi"
+  "src": "opcode+multi+tables217"
  },
  "0x00cf4620": {
   "to": "0x005622a0",
@@ -3428,9 +3524,10 @@
   "n": 1,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t060"
   ],
-  "src": "opcode+multi"
+  "src": "opcode+multi+tables217"
  },
  "0x00cf6390": {
   "to": "0x00563e10",
@@ -3438,9 +3535,10 @@
   "n": 2,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t060"
   ],
-  "src": "opcode+multi"
+  "src": "opcode+multi+tables217"
  },
  "0x00cafb10": {
   "to": "0x0051acd0",
@@ -3497,9 +3595,15 @@
   "n": 2,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t014",
+   "t091",
+   "t109",
+   "t143",
+   "t144",
+   "t188"
   ],
-  "src": "opcode+multi"
+  "src": "opcode+multi+tables217"
  },
  "0x007d1a50": {
   "to": "0x00814b60",
@@ -3587,9 +3691,10 @@
   "n": 1,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t060"
   ],
-  "src": "opcode+multi"
+  "src": "opcode+multi+tables217"
  },
  "0x00cf4930": {
   "to": "0x00562510",
@@ -3607,9 +3712,10 @@
   "n": 1,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t060"
   ],
-  "src": "opcode+multi"
+  "src": "opcode+multi+tables217"
  },
  "0x00d7eb20": {
   "to": "0x00c91a80",
@@ -4409,9 +4515,10 @@
   "n": 1,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t060"
   ],
-  "src": "opcode+multi"
+  "src": "opcode+multi+tables217"
  },
  "0x00cd8b00": {
   "to": "0x00542d10",
@@ -5028,9 +5135,13 @@
   "n": 26,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t041",
+   "t060",
+   "t159",
+   "t174"
   ],
-  "src": "opcode+multi",
+  "src": "opcode+multi+tables217",
   "manifeste": "kAid, kOwnPetAid",
   "nouveau_pour_bourgeon": true
  },
@@ -5053,9 +5164,11 @@
   "n": 22,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t060",
+   "t112"
   ],
-  "src": "opcode+multi",
+  "src": "opcode+multi+tables217",
   "manifeste": "kPresent",
   "comment": "!= 0 <=> un homoncule est invoqué",
   "nouveau_pour_bourgeon": true
@@ -5066,9 +5179,12 @@
   "n": 23,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t060",
+   "t082",
+   "t112"
   ],
-  "src": "opcode+multi"
+  "src": "opcode+multi+tables217"
  },
  "0x00fd3860": {
   "to": "0x00ecbeb0",
@@ -5087,9 +5203,10 @@
   "tables": [
    "dispatch",
    "effectupd",
-   "opcode"
+   "opcode",
+   "t000"
   ],
-  "src": "opcode+multi"
+  "src": "opcode+multi+tables217"
  },
  "0x0131f7b0": {
   "to": "0x011f1ba0",
@@ -5097,9 +5214,10 @@
   "n": 7,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t041"
   ],
-  "src": "opcode+multi"
+  "src": "opcode+multi+tables217"
  },
  "0x015fb3dc": {
   "to": "0x014b8394",
@@ -5274,9 +5392,11 @@
   "n": 5,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t041",
+   "t047"
   ],
-  "src": "opcode+multi"
+  "src": "opcode+multi+tables217"
  },
  "0x0131f6c4": {
   "to": "0x011f1ab4",
@@ -5297,9 +5417,10 @@
   "n": 2,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t041"
   ],
-  "src": "opcode+multi",
+  "src": "opcode+multi+tables217",
   "manifeste": "kStatusPoint, kStatusPt",
   "comment": "g_Own_StatusPoints",
   "nouveau_pour_bourgeon": true
@@ -5310,9 +5431,13 @@
   "n": 2,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t041",
+   "t072",
+   "t175",
+   "t185"
   ],
-  "src": "opcode+multi",
+  "src": "opcode+multi+tables217",
   "manifeste": "kBaseLvl, kJobLevel, kJobLevelAddr, kOwnJobLevel",
   "comment": "DAT_015fb9f8 (UIBasicInfoWnd \"Job Lv.\")",
   "nouveau_pour_bourgeon": true
@@ -5323,9 +5448,10 @@
   "n": 2,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t041"
   ],
-  "src": "opcode+multi",
+  "src": "opcode+multi+tables217",
   "manifeste": "kOverweightPct",
   "comment": "red-tint % threshold",
   "nouveau_pour_bourgeon": true
@@ -5336,9 +5462,10 @@
   "n": 4,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t112"
   ],
-  "src": "opcode+multi",
+  "src": "opcode+multi+tables217",
   "manifeste": "kClanStatePtr",
   "comment": "*(byte*)(*ptr + 0x5C) = clan",
   "nouveau_pour_bourgeon": true
@@ -5379,9 +5506,13 @@
   "n": 5,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t058",
+   "t083",
+   "t202",
+   "t208"
   ],
-  "src": "opcode+multi",
+  "src": "opcode+multi+tables217",
   "manifeste": "kInPartyFlag",
   "nouveau_pour_bourgeon": true
  },
@@ -5538,9 +5669,12 @@
   "kind": "globals",
   "n": 4,
   "tables": [
-   "opcode"
+   "opcode",
+   "t058",
+   "t089",
+   "t134"
   ],
-  "src": "opcode",
+  "src": "opcode+tables217",
   "manifeste": "kGuildIsMaster",
   "nouveau_pour_bourgeon": true
  },
@@ -5559,9 +5693,10 @@
   "kind": "globals",
   "n": 4,
   "tables": [
-   "opcode"
+   "opcode",
+   "t083"
   ],
-  "src": "opcode",
+  "src": "opcode+tables217",
   "manifeste": "kOwnCharId, kOwnCharIdAddr, kOwnCid",
   "comment": "g_Own_CharId (cf. project_own_session_globals)",
   "nouveau_pour_bourgeon": true
@@ -5632,9 +5767,12 @@
   "n": 2,
   "tables": [
    "fenetre",
-   "opcode"
+   "opcode",
+   "t000",
+   "t079",
+   "t149"
   ],
-  "src": "opcode+fenetre"
+  "src": "opcode+fenetre+tables217"
  },
  "0x015e81b5": {
   "to": "0x011117d5",
@@ -5675,9 +5813,10 @@
   "n": 3,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t112"
   ],
-  "src": "opcode+multi",
+  "src": "opcode+multi+tables217",
   "manifeste": "kAid",
   "comment": "GID de l'homoncule",
   "nouveau_pour_bourgeon": true
@@ -5717,9 +5856,10 @@
   "kind": "globals",
   "n": 2,
   "tables": [
-   "opcode"
+   "opcode",
+   "t058"
   ],
-  "src": "opcode",
+  "src": "opcode+tables217",
   "manifeste": "kGuildOnlineNum",
   "comment": "connect_member (membres en ligne)",
   "nouveau_pour_bourgeon": true
@@ -5799,9 +5939,10 @@
   "n": 5,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t063"
   ],
-  "src": "opcode+multi"
+  "src": "opcode+multi+tables217"
  },
  "0x00fc1300": {
   "to": "0x00e7b1fc",
@@ -5830,9 +5971,10 @@
   "tables": [
    "dispatch",
    "opcode",
-   "saverect"
+   "saverect",
+   "t208"
   ],
-  "src": "opcode+multi"
+  "src": "opcode+multi+tables217"
  },
  "0x015ffd08": {
   "to": "0x014bc67c",
@@ -5892,9 +6034,10 @@
   "n": 1,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t060"
   ],
-  "src": "opcode+multi"
+  "src": "opcode+multi+tables217"
  },
  "0x015ff7e0": {
   "to": "0x014bc2e8",
@@ -5903,9 +6046,10 @@
   "tables": [
    "dispatch",
    "makewindow",
-   "opcode"
+   "opcode",
+   "t098"
   ],
-  "src": "opcode+multi",
+  "src": "opcode+multi+tables217",
   "manifeste": "kNativeList",
   "comment": "g_ShortCutCooldownList (objet std::list)",
   "nouveau_pour_bourgeon": true
@@ -5917,9 +6061,10 @@
   "tables": [
    "dispatch",
    "makewindow",
-   "opcode"
+   "opcode",
+   "t098"
   ],
-  "src": "opcode+multi"
+  "src": "opcode+multi+tables217"
  },
  "0x0136e5d4": {
   "to": "0x01240dd8",
@@ -5959,9 +6104,12 @@
   "kind": "globals",
   "n": 1,
   "tables": [
-   "opcode"
+   "opcode",
+   "t000",
+   "t126",
+   "t149"
   ],
-  "src": "opcode"
+  "src": "opcode+tables217"
  },
  "0x015fff80": {
   "to": "0x014bc8f4",
@@ -6062,9 +6210,10 @@
   "n": 6,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t108"
   ],
-  "src": "opcode+multi"
+  "src": "opcode+multi+tables217"
  },
  "0x0131ecdc": {
   "to": "0x011f11bc",
@@ -6074,9 +6223,10 @@
    "dispatch",
    "fenetre",
    "makewindow",
-   "opcode"
+   "opcode",
+   "t108"
   ],
-  "src": "opcode+fenetre+multi",
+  "src": "opcode+fenetre+multi+tables217",
   "manifeste": "kRodexMgrPtr",
   "nouveau_pour_bourgeon": true
  },
@@ -6086,9 +6236,10 @@
   "n": 4,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t108"
   ],
-  "src": "opcode+multi"
+  "src": "opcode+multi+tables217"
  },
  "0x016004e0": {
   "to": "0x014bcdec",
@@ -6185,9 +6336,11 @@
   "n": 1,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t083",
+   "t099"
   ],
-  "src": "opcode+multi"
+  "src": "opcode+multi+tables217"
  },
  "0x015ffd3c": {
   "to": "0x014bc6b0",
@@ -6259,9 +6412,10 @@
   "kind": "globals",
   "n": 1,
   "tables": [
-   "opcode"
+   "opcode",
+   "t201"
   ],
-  "src": "opcode"
+  "src": "opcode+tables217"
  },
  "0x01251814": {
   "to": "0x01121810",
@@ -6269,9 +6423,10 @@
   "n": 2,
   "tables": [
    "dispatch",
-   "opcode"
+   "opcode",
+   "t100"
   ],
-  "src": "opcode+multi"
+  "src": "opcode+multi+tables217"
  },
  "0x012517e4": {
   "to": "0x01121814",
@@ -6347,9 +6502,15 @@
   "n": 2,
   "tables": [
    "fenetre",
-   "makewindow"
+   "makewindow",
+   "t055",
+   "t056",
+   "t058",
+   "t112",
+   "t182",
+   "t202"
   ],
-  "src": "fenetre+multi",
+  "src": "fenetre+multi+tables217",
   "manifeste": "kPartyMemberCount",
   "comment": "__thiscall(ctxKey)",
   "nouveau_pour_bourgeon": true
@@ -6479,9 +6640,12 @@
   "kind": "functions",
   "n": 1,
   "tables": [
-   "fenetre"
+   "fenetre",
+   "t121",
+   "t122",
+   "t188"
   ],
-  "src": "fenetre"
+  "src": "fenetre+tables217"
  },
  "0x0088e340": {
   "to": "0x008cc5a0",
@@ -7389,9 +7553,11 @@
   "n": 3,
   "tables": [
    "fenetre",
-   "makewindow"
+   "makewindow",
+   "t072",
+   "t102"
   ],
-  "src": "fenetre+multi"
+  "src": "fenetre+multi+tables217"
  },
  "0x0088e6b0": {
   "to": "0x008cc8f0",
@@ -7409,9 +7575,10 @@
   "n": 10,
   "tables": [
    "fenetre",
-   "makewindow"
+   "makewindow",
+   "t169"
   ],
-  "src": "fenetre+multi"
+  "src": "fenetre+multi+tables217"
  },
  "0x00b3e2b0": {
   "to": "0x00b1ccc0",
@@ -7419,9 +7586,10 @@
   "n": 10,
   "tables": [
    "fenetre",
-   "makewindow"
+   "makewindow",
+   "t169"
   ],
-  "src": "fenetre+multi"
+  "src": "fenetre+multi+tables217"
  },
  "0x009347b0": {
   "to": "0x00970040",
@@ -8176,9 +8344,10 @@
   "n": 1,
   "tables": [
    "fenetre",
-   "makewindow"
+   "makewindow",
+   "t065"
   ],
-  "src": "fenetre+multi"
+  "src": "fenetre+multi+tables217"
  },
  "0x015ffa14": {
   "to": "0x014bc5ac",
@@ -8197,9 +8366,10 @@
   "n": 9,
   "tables": [
    "fenetre",
-   "makewindow"
+   "makewindow",
+   "t169"
   ],
-  "src": "fenetre+multi"
+  "src": "fenetre+multi+tables217"
  },
  "0x00fd5b00": {
   "to": "0x00ead0dc",
@@ -8244,9 +8414,11 @@
   "n": 2,
   "tables": [
    "dispatch",
-   "makewindow"
+   "makewindow",
+   "t088",
+   "t114"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x005ab170": {
   "to": "0x00671ce0",
@@ -8254,9 +8426,11 @@
   "n": 2,
   "tables": [
    "dispatch",
-   "saverect"
+   "saverect",
+   "t010",
+   "t027"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00c3f510": {
   "to": "0x00c0c5a0",
@@ -8292,9 +8466,15 @@
   "kind": "functions",
   "n": 3,
   "tables": [
-   "dispatch"
+   "dispatch",
+   "t012",
+   "t048",
+   "t051",
+   "t095",
+   "t159",
+   "t174"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00cdd330": {
   "to": "0x005475e0",
@@ -8312,18 +8492,23 @@
   "tables": [
    "dispatch",
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t048",
+   "t149",
+   "t191"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00c85d40": {
   "to": "0x004e2e70",
   "kind": "functions",
   "n": 2,
   "tables": [
-   "dispatch"
+   "dispatch",
+   "t048"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x0072ecb0": {
   "to": "0x0079d3a0",
@@ -8397,9 +8582,11 @@
   "tables": [
    "dispatch",
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t079"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00554070": {
   "to": "0x004c5a40",
@@ -8408,9 +8595,13 @@
   "tables": [
    "dispatch",
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t078",
+   "t099",
+   "t145"
   ],
-  "src": "multi",
+  "src": "multi+tables217",
   "manifeste": "kSpriteTexFactoryGetAddr",
   "nouveau_pour_bourgeon": true
  },
@@ -8420,9 +8611,14 @@
   "n": 3,
   "tables": [
    "dispatch",
-   "effectupd"
+   "effectupd",
+   "t000",
+   "t054",
+   "t159",
+   "t160",
+   "t174"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00ad7d00": {
   "to": "0x00ab3c90",
@@ -8456,9 +8652,11 @@
   "kind": "functions",
   "n": 8,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000",
+   "t078"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x0054a0e0": {
   "to": "0x0061fdb0",
@@ -8466,9 +8664,13 @@
   "n": 28,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t078",
+   "t079",
+   "t149"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x0054b290": {
   "to": "0x00620f70",
@@ -8476,9 +8678,13 @@
   "n": 108,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t078",
+   "t079",
+   "t149"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x0054c1d0": {
   "to": "0x00621eb0",
@@ -8486,18 +8692,23 @@
   "n": 72,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t078",
+   "t079",
+   "t149"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bb0330": {
   "to": "0x00b7ba80",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00554380": {
   "to": "0x0062a6d0",
@@ -8514,18 +8725,20 @@
   "kind": "functions",
   "n": 3,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00ba66c0": {
   "to": "0x00b721c0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bced10": {
   "to": "0x00b99fe0",
@@ -8533,9 +8746,12 @@
   "n": 202,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t059",
+   "t149"
   ],
-  "src": "multi",
+  "src": "multi+tables217",
   "manifeste": "kEffUpdateKF",
   "comment": "Effect_UpdateStrKeyframes(node,offXYZ,f,f)",
   "nouveau_pour_bourgeon": true
@@ -8545,9 +8761,10 @@
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00b7f840": {
   "to": "0x00ba1070",
@@ -8565,9 +8782,12 @@
   "n": 104,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t059",
+   "t149"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00ba7310": {
   "to": "0x00b72e00",
@@ -8575,9 +8795,10 @@
   "n": 2,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00ba86d0": {
   "to": "0x00b741b0",
@@ -8585,54 +8806,61 @@
   "n": 78,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t149"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00ba9b00": {
   "to": "0x00b75620",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00ba5900": {
   "to": "0x00b71400",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00ba4960": {
   "to": "0x00b70450",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bd7920": {
   "to": "0x00ba2d40",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bd7190": {
   "to": "0x00ba25b0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00ba7bb0": {
   "to": "0x00b736a0",
@@ -8640,9 +8868,10 @@
   "n": 8,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bfa8b0": {
   "to": "0x00bc56d0",
@@ -8650,9 +8879,11 @@
   "n": 29,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t149"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00ba6630": {
   "to": "0x00b72130",
@@ -8660,27 +8891,30 @@
   "n": 2,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bd2c50": {
   "to": "0x00b9df90",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00baeb10": {
   "to": "0x00b7a290",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00ba94b0": {
   "to": "0x00b74fd0",
@@ -8688,54 +8922,60 @@
   "n": 4,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bcceb0": {
   "to": "0x00b98110",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bae4c0": {
   "to": "0x00b79c40",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bd6410": {
   "to": "0x00ba1830",
   "kind": "functions",
   "n": 2,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00baf0c0": {
   "to": "0x00b7a7f0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00ba54d0": {
   "to": "0x00b70fd0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bace80": {
   "to": "0x00b787a0",
@@ -8743,18 +8983,20 @@
   "n": 2,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00baf890": {
   "to": "0x00b7afd0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00baff30": {
   "to": "0x00b7b670",
@@ -8762,18 +9004,20 @@
   "n": 2,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bd3030": {
   "to": "0x00b9e380",
   "kind": "functions",
   "n": 2,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00ba7060": {
   "to": "0x00b72b50",
@@ -8781,36 +9025,40 @@
   "n": 2,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00ba37b0": {
   "to": "0x00b6f2b0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bd2670": {
   "to": "0x00b9d9a0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bfc730": {
   "to": "0x00bc7550",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bb6fd0": {
   "to": "0x00b827f0",
@@ -8836,18 +9084,20 @@
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00ba6120": {
   "to": "0x00b71c20",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bdbfe0": {
   "to": "0x00ba6f00",
@@ -8855,45 +9105,50 @@
   "n": 16,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bd4530": {
   "to": "0x00b9f880",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bb2460": {
   "to": "0x00b7dbc0",
   "kind": "functions",
   "n": 2,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bd4990": {
   "to": "0x00b9fcf0",
   "kind": "functions",
   "n": 2,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bb1070": {
   "to": "0x00b7c7e0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bf1d20": {
   "to": "0x00bbcb40",
@@ -8901,9 +9156,10 @@
   "n": 3,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bf22a0": {
   "to": "0x00bbd0c0",
@@ -8911,9 +9167,10 @@
   "n": 4,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bf24b0": {
   "to": "0x00bbd2d0",
@@ -8921,36 +9178,41 @@
   "n": 7,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t149"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00becbb0": {
   "to": "0x00bb79e0",
   "kind": "functions",
   "n": 3,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00ba8020": {
   "to": "0x00b73b10",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bd4ee0": {
   "to": "0x00ba0250",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00ba5160": {
   "to": "0x00b70c60",
@@ -8958,18 +9220,20 @@
   "n": 2,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00baa040": {
   "to": "0x00b75b60",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bce280": {
   "to": "0x00b99500",
@@ -8977,36 +9241,40 @@
   "n": 5,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bd11b0": {
   "to": "0x00b9c4c0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bce850": {
   "to": "0x00b99af0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00be23a0": {
   "to": "0x00bad200",
   "kind": "functions",
   "n": 2,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00c01370": {
   "to": "0x00bcc1c0",
@@ -9014,18 +9282,20 @@
   "n": 13,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00c01850": {
   "to": "0x00bcc6c0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bf0cd0": {
   "to": "0x00bbbaf0",
@@ -9033,9 +9303,10 @@
   "n": 4,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00be0000": {
   "to": "0x00baaf90",
@@ -9043,18 +9314,20 @@
   "n": 8,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bf32d0": {
   "to": "0x00bbe0d0",
   "kind": "functions",
   "n": 4,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bf1af0": {
   "to": "0x00bbc910",
@@ -9062,9 +9335,10 @@
   "n": 3,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bdee20": {
   "to": "0x00ba9d70",
@@ -9072,18 +9346,20 @@
   "n": 4,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bac3b0": {
   "to": "0x00b77cc0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bdcf50": {
   "to": "0x00ba7e70",
@@ -9091,36 +9367,40 @@
   "n": 7,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bf3600": {
   "to": "0x00bbe400",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bfd050": {
   "to": "0x00bc7e90",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bf9020": {
   "to": "0x00bc3e60",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bfcd20": {
   "to": "0x00bc7b60",
@@ -9128,45 +9408,52 @@
   "n": 3,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bed1c0": {
   "to": "0x00bb8010",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000",
+   "t149"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bb2db0": {
   "to": "0x00b7e510",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00c40a30": {
   "to": "0x00c0da10",
   "kind": "functions",
   "n": 2,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000",
+   "t095"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00c010a0": {
   "to": "0x00bcbef0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bff000": {
   "to": "0x00bc9e80",
@@ -9174,27 +9461,30 @@
   "n": 3,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bff1f0": {
   "to": "0x00bca060",
   "kind": "functions",
   "n": 2,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bfecb0": {
   "to": "0x00bc9b30",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bdfcc0": {
   "to": "0x00baac40",
@@ -9202,9 +9492,10 @@
   "n": 4,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00badce0": {
   "to": "0x00b79620",
@@ -9212,36 +9503,40 @@
   "n": 2,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bf9580": {
   "to": "0x00bc43a0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bff4d0": {
   "to": "0x00bca350",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bde160": {
   "to": "0x00ba9080",
   "kind": "functions",
   "n": 5,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bdd8e0": {
   "to": "0x00ba8800",
@@ -9249,18 +9544,21 @@
   "n": 11,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t149"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bad950": {
   "to": "0x00b79280",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bdd210": {
   "to": "0x00ba8130",
@@ -9268,36 +9566,40 @@
   "n": 4,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bddd30": {
   "to": "0x00ba8c50",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00c00840": {
   "to": "0x00bcb680",
   "kind": "functions",
   "n": 2,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bf6990": {
   "to": "0x00bc1800",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00c00870": {
   "to": "0x00bcb6c0",
@@ -9305,54 +9607,61 @@
   "n": 10,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t149"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bb1820": {
   "to": "0x00b7cfa0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bab350": {
   "to": "0x00b76c50",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bb7d20": {
   "to": "0x00b83560",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bcde60": {
   "to": "0x00b990e0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bb3c60": {
   "to": "0x00b7f3e0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bda2f0": {
   "to": "0x00ba5210",
@@ -9360,9 +9669,10 @@
   "n": 5,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bf0900": {
   "to": "0x00bbb720",
@@ -9370,9 +9680,11 @@
   "n": 2,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t149"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bd91c0": {
   "to": "0x00ba40e0",
@@ -9380,27 +9692,31 @@
   "n": 7,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t149"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00be6fa0": {
   "to": "0x00bb1db0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00ba7680": {
   "to": "0x00b73180",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bf3040": {
   "to": "0x00bbde40",
@@ -9417,108 +9733,121 @@
   "n": 3,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bf16b0": {
   "to": "0x00bbc4d0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bffb80": {
   "to": "0x00bca9f0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bf8c30": {
   "to": "0x00bc3a80",
   "kind": "functions",
   "n": 8,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bfff50": {
   "to": "0x00bcadb0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bfdf40": {
   "to": "0x00bc8db0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000",
+   "t149"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bf18d0": {
   "to": "0x00bbc6f0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bb1e60": {
   "to": "0x00b7d5f0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bd1c10": {
   "to": "0x00b9cf20",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bfdcd0": {
   "to": "0x00bc8b40",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bfd080": {
   "to": "0x00bc7ec0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bf97d0": {
   "to": "0x00bc45f0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bf5f90": {
   "to": "0x00bc0df0",
@@ -9526,9 +9855,10 @@
   "n": 2,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bf6490": {
   "to": "0x00bc12f0",
@@ -9536,99 +9866,110 @@
   "n": 4,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bfe9e0": {
   "to": "0x00bc9860",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bd8bc0": {
   "to": "0x00ba3ae0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00be2c50": {
   "to": "0x00badac0",
   "kind": "functions",
   "n": 3,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00ba43f0": {
   "to": "0x00b6fee0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bef9f0": {
   "to": "0x00bba7f0",
   "kind": "functions",
   "n": 3,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bf0000": {
   "to": "0x00bbae10",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bb3750": {
   "to": "0x00b7eed0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bf0400": {
   "to": "0x00bbb220",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00be6bf0": {
   "to": "0x00bb1a00",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00be6140": {
   "to": "0x00bb0f60",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bfe1b0": {
   "to": "0x00bc9020",
@@ -9636,36 +9977,40 @@
   "n": 8,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bed040": {
   "to": "0x00bb7e90",
   "kind": "functions",
   "n": 2,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bd8fd0": {
   "to": "0x00ba3ef0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bd8df0": {
   "to": "0x00ba3d10",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bdf6e0": {
   "to": "0x00baa630",
@@ -9673,63 +10018,71 @@
   "n": 4,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bdc8c0": {
   "to": "0x00ba77e0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bfa720": {
   "to": "0x00bc5540",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00be92f0": {
   "to": "0x00bb4120",
   "kind": "functions",
   "n": 2,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000",
+   "t149"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00b90540": {
   "to": "0x00b6e370",
   "kind": "functions",
   "n": 4,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bac670": {
   "to": "0x00b77f80",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bd81a0": {
   "to": "0x00ba3630",
   "kind": "functions",
   "n": 2,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bf4bf0": {
   "to": "0x00bbfa20",
@@ -9737,9 +10090,10 @@
   "n": 2,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00be2a10": {
   "to": "0x00bad870",
@@ -9747,9 +10101,10 @@
   "n": 2,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00be0570": {
   "to": "0x00bab510",
@@ -9757,135 +10112,151 @@
   "n": 3,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bd0820": {
   "to": "0x00b9bae0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bda120": {
   "to": "0x00ba5040",
   "kind": "functions",
   "n": 10,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000",
+   "t149"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bd93e0": {
   "to": "0x00ba4300",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00be8e10": {
   "to": "0x00bb3c40",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00d595f0": {
   "to": "0x00c6c5b0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bb2160": {
   "to": "0x00b7d8e0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00ba6a80": {
   "to": "0x00b72560",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00baaa30": {
   "to": "0x00b76540",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bb63d0": {
   "to": "0x00b81be0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bd6b60": {
   "to": "0x00ba1f80",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bd1480": {
   "to": "0x00b9c790",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00baaf70": {
   "to": "0x00b76870",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00ba5d90": {
   "to": "0x00b71890",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bb3330": {
   "to": "0x00b7eaa0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00ba8700": {
   "to": "0x00b741e0",
@@ -9893,99 +10264,110 @@
   "n": 2,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bd6710": {
   "to": "0x00ba1b30",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bcd360": {
   "to": "0x00b985c0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bd5ce0": {
   "to": "0x00ba10d0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00ba3200": {
   "to": "0x00b6ecf0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bb5ef0": {
   "to": "0x00b81700",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bd49c0": {
   "to": "0x00b9fd20",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00baa3a0": {
   "to": "0x00b75ec0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bd7b80": {
   "to": "0x00ba3010",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00baf3a0": {
   "to": "0x00b7aad0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bad270": {
   "to": "0x00b78b90",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00a384c0": {
   "to": "0x00a070c0",
@@ -10032,18 +10414,20 @@
   "kind": "functions",
   "n": 227,
   "tables": [
-   "skillcast"
+   "skillcast",
+   "t002"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00742370": {
   "to": "0x007a8f70",
   "kind": "functions",
   "n": 251,
   "tables": [
-   "sw478"
+   "sw478",
+   "t001"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00d2f600": {
   "to": "0x00c420f0",
@@ -10068,9 +10452,10 @@
   "kind": "functions",
   "n": 4,
   "tables": [
-   "sw491"
+   "sw491",
+   "t149"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00be0c20": {
   "to": "0x00babbe0",
@@ -10086,9 +10471,10 @@
   "kind": "functions",
   "n": 1,
   "tables": [
-   "sw491"
+   "sw491",
+   "t149"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bfb5b0": {
   "to": "0x00bc63d0",
@@ -10311,18 +10697,20 @@
   "kind": "functions",
   "n": 3,
   "tables": [
-   "sw491"
+   "sw491",
+   "t149"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bdb180": {
   "to": "0x00ba60a0",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "sw491"
+   "sw491",
+   "t149"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bea0c0": {
   "to": "0x00bb4ef0",
@@ -10446,9 +10834,10 @@
   "kind": "functions",
   "n": 1,
   "tables": [
-   "sw491"
+   "sw491",
+   "t149"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00c00c70": {
   "to": "0x00bcbac0",
@@ -10464,18 +10853,20 @@
   "kind": "functions",
   "n": 3,
   "tables": [
-   "sw491"
+   "sw491",
+   "t149"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bfe400": {
   "to": "0x00bc9270",
   "kind": "functions",
   "n": 1,
   "tables": [
-   "sw491"
+   "sw491",
+   "t149"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bf11e0": {
   "to": "0x00bbc000",
@@ -10608,9 +10999,10 @@
   "kind": "functions",
   "n": 3,
   "tables": [
-   "sw491"
+   "sw491",
+   "t149"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00bce460": {
   "to": "0x00b996e0",
@@ -10788,9 +11180,10 @@
   "kind": "functions",
   "n": 1,
   "tables": [
-   "sw491"
+   "sw491",
+   "t149"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00c06440": {
   "to": "0x00bd13a0",
@@ -11081,9 +11474,17 @@
   "tables": [
    "dispatch",
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t048",
+   "t079",
+   "t106",
+   "t149",
+   "t155",
+   "t193",
+   "t207"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x0100beb8": {
   "to": "0x00ecd290",
@@ -11111,18 +11512,34 @@
   "tables": [
    "dispatch",
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t012",
+   "t048",
+   "t051",
+   "t078",
+   "t079",
+   "t095",
+   "t106",
+   "t149",
+   "t159",
+   "t191"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x0100de1c": {
   "to": "0x00ead0d8",
   "kind": "globals",
   "n": 1,
   "tables": [
-   "dispatch"
+   "dispatch",
+   "t012",
+   "t048",
+   "t051",
+   "t095",
+   "t159"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x015ffd0c": {
   "to": "0x014bc680",
@@ -11159,9 +11576,13 @@
   "kind": "globals",
   "n": 3,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000",
+   "t095",
+   "t191",
+   "t193"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x0100c908": {
   "to": "0x00eedb38",
@@ -11169,9 +11590,14 @@
   "n": 63,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t079",
+   "t149",
+   "t191",
+   "t193"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x0100d320": {
   "to": "0x00eef78c",
@@ -11179,9 +11605,10 @@
   "n": 5,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x0100bc74": {
   "to": "0x00eeb604",
@@ -11189,9 +11616,11 @@
   "n": 8,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t079"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x0102fcd8": {
   "to": "0x00f193c8",
@@ -11199,9 +11628,13 @@
   "n": 18,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t079",
+   "t149",
+   "t193"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x0108cb1c": {
   "to": "0x00fa2ffc",
@@ -11209,9 +11642,10 @@
   "n": 10,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x0108cb68": {
   "to": "0x00fa304c",
@@ -11219,9 +11653,12 @@
   "n": 104,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t059",
+   "t149"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00fd72d4": {
   "to": "0x00ed7344",
@@ -11229,9 +11666,13 @@
   "n": 80,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t079",
+   "t149",
+   "t198"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00fd6af0": {
   "to": "0x00ead0f0",
@@ -11239,9 +11680,15 @@
   "n": 56,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t079",
+   "t149",
+   "t155",
+   "t191",
+   "t198"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x0108cb60": {
   "to": "0x00ef5290",
@@ -11249,18 +11696,20 @@
   "n": 3,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x015c5870": {
   "to": "0x01493c9c",
   "kind": "globals",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x0100b398": {
   "to": "0x00eea780",
@@ -11268,18 +11717,24 @@
   "n": 36,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t079",
+   "t193"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00fd6ca4": {
   "to": "0x00ed66b0",
   "kind": "globals",
   "n": 2,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000",
+   "t079",
+   "t126"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00fd5f64": {
   "to": "0x00ed572c",
@@ -11287,9 +11742,11 @@
   "n": 28,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t149"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x0100c0b0": {
   "to": "0x00eec0f4",
@@ -11297,9 +11754,10 @@
   "n": 4,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x0108cb40": {
   "to": "0x00fa3020",
@@ -11307,9 +11765,10 @@
   "n": 2,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x0108cb28": {
   "to": "0x00ef9ed0",
@@ -11317,9 +11776,10 @@
   "n": 3,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x0100c78c": {
   "to": "0x00eed858",
@@ -11327,9 +11787,12 @@
   "n": 43,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t079",
+   "t149"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x0100b650": {
   "to": "0x00eeabb0",
@@ -11337,18 +11800,24 @@
   "n": 68,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t079",
+   "t149",
+   "t155",
+   "t191"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x015ffd80": {
   "to": "0x014bc6f4",
   "kind": "globals",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi",
+  "src": "multi+tables217",
   "manifeste": "kGridIds",
   "comment": "int[100] laid-out ids (-1 empty)",
   "nouveau_pour_bourgeon": true
@@ -11358,9 +11827,10 @@
   "kind": "globals",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00fd6cc0": {
   "to": "0x00ed66c8",
@@ -11368,9 +11838,12 @@
   "n": 29,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t079",
+   "t149"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x010278e0": {
   "to": "0x00ead130",
@@ -11378,9 +11851,11 @@
   "n": 24,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t079"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x0100c398": {
   "to": "0x00ead15c",
@@ -11388,9 +11863,11 @@
   "n": 11,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t149"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x0100fe40": {
   "to": "0x00ef58a8",
@@ -11398,9 +11875,11 @@
   "n": 13,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t149"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x01075494": {
   "to": "0x00f85fc4",
@@ -11408,9 +11887,10 @@
   "n": 12,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00fe1b2c": {
   "to": "0x00ee0210",
@@ -11418,9 +11898,13 @@
   "n": 37,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t079",
+   "t149",
+   "t193"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x0100ed54": {
   "to": "0x00ef31d4",
@@ -11428,18 +11912,25 @@
   "n": 14,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t079",
+   "t149"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x0100f1d0": {
   "to": "0x00ef3e1c",
   "kind": "globals",
   "n": 5,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000",
+   "t149",
+   "t155",
+   "t191"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x0104cda0": {
   "to": "0x00fa5414",
@@ -11447,9 +11938,11 @@
   "n": 2,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t149"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00fd5d60": {
   "to": "0x00ecbec0",
@@ -11478,18 +11971,22 @@
   "n": 4,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t079",
+   "t149"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x01086464": {
   "to": "0x00f99c94",
   "kind": "globals",
   "n": 1,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x0124ff40": {
   "to": "0x011225a8",
@@ -11517,9 +12014,12 @@
   "n": 12,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t149",
+   "t191"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x010752d8": {
   "to": "0x00f859e8",
@@ -11546,9 +12046,12 @@
   "n": 10,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t149",
+   "t155"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x01088cd8": {
   "to": "0x00f9f154",
@@ -11556,9 +12059,11 @@
   "n": 23,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t149"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x0108ed94": {
   "to": "0x00fa5410",
@@ -11566,9 +12071,11 @@
   "n": 2,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t149"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x0100a3c4": {
   "to": "0x00ead710",
@@ -11576,9 +12083,14 @@
   "n": 10,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t079",
+   "t096",
+   "t149",
+   "t155"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x00fd70a8": {
   "to": "0x00ed6ea0",
@@ -11586,9 +12098,12 @@
   "n": 4,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t149",
+   "t155"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x01010c68": {
   "to": "0x00ef7318",
@@ -11596,18 +12111,22 @@
   "n": 5,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t191"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x0108edc8": {
   "to": "0x00fa5444",
   "kind": "globals",
   "n": 10,
   "tables": [
-   "effectupd"
+   "effectupd",
+   "t000",
+   "t149"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x0100f620": {
   "to": "0x00ef47fc",
@@ -11615,18 +12134,21 @@
   "n": 2,
   "tables": [
    "effectupd",
-   "sw491"
+   "sw491",
+   "t000",
+   "t079"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x0108ed9c": {
   "to": "0x00fa5418",
   "kind": "globals",
   "n": 1,
   "tables": [
-   "sw491"
+   "sw491",
+   "t191"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x0108f280": {
   "to": "0x00fa5a30",
@@ -11642,9 +12164,10 @@
   "kind": "globals",
   "n": 5,
   "tables": [
-   "sw491"
+   "sw491",
+   "t149"
   ],
-  "src": "multi"
+  "src": "multi+tables217"
  },
  "0x012500a8": {
   "to": "0x01122710",
@@ -11663,5 +12186,6627 @@
    "sw491"
   ],
   "src": "multi"
+ },
+ "0x00568760": {
+  "to": "0x0063e950",
+  "kind": "functions",
+  "n": 356,
+  "tables": [
+   "t000",
+   "t010",
+   "t079",
+   "t145",
+   "t149",
+   "t155"
+  ],
+  "src": "tables217",
+  "manifeste": "kSpriteRef",
+  "comment": "__thiscall(cache,path,0,0,1,0) -> ref (5 args!)",
+  "nouveau_pour_bourgeon": false
+ },
+ "0x00b469f0": {
+  "to": "0x00b257e0",
+  "kind": "functions",
+  "n": 65,
+  "tables": [
+   "t000",
+   "t149"
+  ],
+  "src": "tables217"
+ },
+ "0x00bb5d10": {
+  "to": "0x00b81520",
+  "kind": "functions",
+  "n": 393,
+  "tables": [
+   "t000",
+   "t145",
+   "t149"
+  ],
+  "src": "tables217",
+  "manifeste": "kMakeNode",
+  "comment": "__thiscall(scene,0,0.0(8),0.0f) -> node",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x00c55bf0": {
+  "to": "0x00c24500",
+  "kind": "functions",
+  "n": 441,
+  "tables": [
+   "t000",
+   "t060",
+   "t064",
+   "t066",
+   "t149"
+  ],
+  "src": "tables217",
+  "manifeste": "kSetBodyAct",
+  "comment": "CActorSprite_SetBodyActFromPath",
+  "nouveau_pour_bourgeon": false
+ },
+ "0x00c58e90": {
+  "to": "0x00c27740",
+  "kind": "functions",
+  "n": 437,
+  "tables": [
+   "t000",
+   "t064",
+   "t066",
+   "t149"
+  ],
+  "src": "tables217",
+  "manifeste": "kSetBodySpr",
+  "comment": "CActorSprite_SetBodySprFromPath",
+  "nouveau_pour_bourgeon": false
+ },
+ "0x00dbc895": {
+  "to": "0x00cca8d3",
+  "kind": "functions",
+  "n": 356,
+  "tables": [
+   "t000",
+   "t094",
+   "t145",
+   "t149",
+   "t151",
+   "t167"
+  ],
+  "src": "tables217"
+ },
+ "0x00c40ac0": {
+  "to": "0x00c0daa0",
+  "kind": "functions",
+  "n": 64,
+  "tables": [
+   "t000",
+   "t159",
+   "t160",
+   "t174",
+   "t191",
+   "t193"
+  ],
+  "src": "tables217"
+ },
+ "0x00c40b70": {
+  "to": "0x00c0db50",
+  "kind": "functions",
+  "n": 17,
+  "tables": [
+   "t000",
+   "t078",
+   "t193"
+  ],
+  "src": "tables217"
+ },
+ "0x00c55ec0": {
+  "to": "0x00c247e0",
+  "kind": "functions",
+  "n": 37,
+  "tables": [
+   "t000",
+   "t149",
+   "t191"
+  ],
+  "src": "tables217"
+ },
+ "0x00a75250": {
+  "to": "0x00a3c1f0",
+  "kind": "functions",
+  "n": 251,
+  "tables": [
+   "t000",
+   "t078",
+   "t089",
+   "t092"
+  ],
+  "src": "tables217"
+ },
+ "0x00be1050": {
+  "to": "0x00bac010",
+  "kind": "functions",
+  "n": 3,
+  "tables": [
+   "t000"
+  ],
+  "src": "tables217"
+ },
+ "0x0054dcd0": {
+  "to": "0x006239e0",
+  "kind": "functions",
+  "n": 65,
+  "tables": [
+   "t000",
+   "t079",
+   "t149",
+   "t159",
+   "t174",
+   "t193"
+  ],
+  "src": "tables217"
+ },
+ "0x00b46830": {
+  "to": "0x00b25610",
+  "kind": "functions",
+  "n": 10,
+  "tables": [
+   "t000",
+   "t079",
+   "t149"
+  ],
+  "src": "tables217"
+ },
+ "0x00bdd500": {
+  "to": "0x00ba8420",
+  "kind": "functions",
+  "n": 3,
+  "tables": [
+   "t000",
+   "t149"
+  ],
+  "src": "tables217"
+ },
+ "0x0054c2b0": {
+  "to": "0x00621fb0",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t000",
+   "t078"
+  ],
+  "src": "tables217"
+ },
+ "0x00bd3a90": {
+  "to": "0x00b9ede0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t000"
+  ],
+  "src": "tables217"
+ },
+ "0x00bd3480": {
+  "to": "0x00b9e7d0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t000"
+  ],
+  "src": "tables217"
+ },
+ "0x00c42a10": {
+  "to": "0x00c0fb40",
+  "kind": "functions",
+  "n": 6,
+  "tables": [
+   "t000",
+   "t191",
+   "t193"
+  ],
+  "src": "tables217"
+ },
+ "0x00741790": {
+  "to": "0x007a8f10",
+  "kind": "functions",
+  "n": 1358,
+  "tables": [
+   "t001",
+   "t002",
+   "t013",
+   "t029",
+   "t048",
+   "t051"
+  ],
+  "src": "tables217"
+ },
+ "0x00741d50": {
+  "to": "0x007a8b70",
+  "kind": "functions",
+  "n": 478,
+  "tables": [
+   "t001",
+   "t002"
+  ],
+  "src": "tables217"
+ },
+ "0x00508e00": {
+  "to": "0x004f4a00",
+  "kind": "functions",
+  "n": 182,
+  "tables": [
+   "t010",
+   "t027",
+   "t065",
+   "t075",
+   "t094",
+   "t109",
+   "t167",
+   "t168"
+  ],
+  "src": "tables217"
+ },
+ "0x006c8330": {
+  "to": "0x00732660",
+  "kind": "functions",
+  "n": 8,
+  "tables": [
+   "t010",
+   "t027",
+   "t065",
+   "t085",
+   "t091",
+   "t094",
+   "t109"
+  ],
+  "src": "tables217"
+ },
+ "0x00a1ef70": {
+  "to": "0x009ecd50",
+  "kind": "functions",
+  "n": 58,
+  "tables": [
+   "t010",
+   "t027",
+   "t041",
+   "t055",
+   "t056",
+   "t065",
+   "t072",
+   "t077",
+   "t089",
+   "t178",
+   "t179",
+   "t190"
+  ],
+  "src": "tables217"
+ },
+ "0x00a93ca0": {
+  "to": "0x00a903d0",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t010",
+   "t027"
+  ],
+  "src": "tables217"
+ },
+ "0x005a5de0": {
+  "to": "0x0066cfd0",
+  "kind": "functions",
+  "n": 6,
+  "tables": [
+   "t010"
+  ],
+  "src": "tables217"
+ },
+ "0x005a6230": {
+  "to": "0x0066d600",
+  "kind": "functions",
+  "n": 6,
+  "tables": [
+   "t010"
+  ],
+  "src": "tables217"
+ },
+ "0x005aad90": {
+  "to": "0x006718a0",
+  "kind": "functions",
+  "n": 6,
+  "tables": [
+   "t010"
+  ],
+  "src": "tables217"
+ },
+ "0x00b37f50": {
+  "to": "0x00b16580",
+  "kind": "functions",
+  "n": 8,
+  "tables": [
+   "t010",
+   "t027"
+  ],
+  "src": "tables217"
+ },
+ "0x005f4090": {
+  "to": "0x006a65f0",
+  "kind": "functions",
+  "n": 4,
+  "tables": [
+   "t010",
+   "t027"
+  ],
+  "src": "tables217"
+ },
+ "0x005f44e0": {
+  "to": "0x006a6a40",
+  "kind": "functions",
+  "n": 4,
+  "tables": [
+   "t010",
+   "t027"
+  ],
+  "src": "tables217"
+ },
+ "0x00b2d590": {
+  "to": "0x00b0bda0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t010"
+  ],
+  "src": "tables217"
+ },
+ "0x00b2deb0": {
+  "to": "0x00b0c770",
+  "kind": "functions",
+  "n": 5,
+  "tables": [
+   "t010",
+   "t027"
+  ],
+  "src": "tables217"
+ },
+ "0x008e4ac0": {
+  "to": "0x00923470",
+  "kind": "functions",
+  "n": 4,
+  "tables": [
+   "t010",
+   "t027",
+   "t102"
+  ],
+  "src": "tables217"
+ },
+ "0x005a4360": {
+  "to": "0x0066b740",
+  "kind": "functions",
+  "n": 179,
+  "tables": [
+   "t010",
+   "t027",
+   "t075"
+  ],
+  "src": "tables217"
+ },
+ "0x00b35f80": {
+  "to": "0x00b14560",
+  "kind": "functions",
+  "n": 3,
+  "tables": [
+   "t010"
+  ],
+  "src": "tables217",
+  "manifeste": "kFnSelectResult",
+  "comment": "pose (ou EFFACE) la cible",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x00b39460": {
+  "to": "0x00b17c10",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t010"
+  ],
+  "src": "tables217"
+ },
+ "0x00548820": {
+  "to": "0x0061e570",
+  "kind": "functions",
+  "n": 4,
+  "tables": [
+   "t010",
+   "t065",
+   "t190"
+  ],
+  "src": "tables217"
+ },
+ "0x008210d0": {
+  "to": "0x0085f740",
+  "kind": "functions",
+  "n": 52,
+  "tables": [
+   "t010",
+   "t027",
+   "t065",
+   "t077",
+   "t083",
+   "t102",
+   "t109",
+   "t178",
+   "t179",
+   "t183",
+   "t200"
+  ],
+  "src": "tables217"
+ },
+ "0x008304e0": {
+  "to": "0x0086e650",
+  "kind": "functions",
+  "n": 49,
+  "tables": [
+   "t010",
+   "t017",
+   "t083",
+   "t100",
+   "t148",
+   "t173",
+   "t178"
+  ],
+  "src": "tables217"
+ },
+ "0x00903e20": {
+  "to": "0x00941d50",
+  "kind": "functions",
+  "n": 177,
+  "tables": [
+   "t010",
+   "t027",
+   "t075",
+   "t102"
+  ],
+  "src": "tables217"
+ },
+ "0x00b20dd0": {
+  "to": "0x00aff820",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t010",
+   "t095"
+  ],
+  "src": "tables217"
+ },
+ "0x00b2e700": {
+  "to": "0x00b0cb50",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t010"
+  ],
+  "src": "tables217",
+  "manifeste": "kFnGetResult",
+  "comment": "(out40, index)",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x005f4130": {
+  "to": "0x006a6690",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t010",
+   "t027"
+  ],
+  "src": "tables217"
+ },
+ "0x00903d70": {
+  "to": "0x00941c90",
+  "kind": "functions",
+  "n": 177,
+  "tables": [
+   "t010",
+   "t027",
+   "t075"
+  ],
+  "src": "tables217"
+ },
+ "0x00a24610": {
+  "to": "0x009f3160",
+  "kind": "functions",
+  "n": 9,
+  "tables": [
+   "t010",
+   "t027",
+   "t058",
+   "t093",
+   "t114",
+   "t190",
+   "t204"
+  ],
+  "src": "tables217"
+ },
+ "0x00b2eef0": {
+  "to": "0x00b0d360",
+  "kind": "functions",
+  "n": 3,
+  "tables": [
+   "t010",
+   "t027"
+  ],
+  "src": "tables217"
+ },
+ "0x008dc0d0": {
+  "to": "0x0091ab80",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t010",
+   "t112"
+  ],
+  "src": "tables217",
+  "manifeste": "kChatToggleInputBar",
+  "comment": "__thiscall(this), retn 0",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x00a4b760": {
+  "to": "0x00a194c0",
+  "kind": "functions",
+  "n": 8,
+  "tables": [
+   "t010",
+   "t065",
+   "t074",
+   "t087",
+   "t094",
+   "t109",
+   "t112",
+   "t120"
+  ],
+  "src": "tables217",
+  "manifeste": "kFnSetFocusedWnd",
+  "comment": "__thiscall(mgr, fenetre)",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x00b2ee60": {
+  "to": "0x00b0d2d0",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t010",
+   "t027"
+  ],
+  "src": "tables217"
+ },
+ "0x00b39660": {
+  "to": "0x00b17e10",
+  "kind": "functions",
+  "n": 3,
+  "tables": [
+   "t010",
+   "t027"
+  ],
+  "src": "tables217",
+  "manifeste": "kFnStepCount",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x005ab730": {
+  "to": "0x006722f0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t010"
+  ],
+  "src": "tables217"
+ },
+ "0x00ad52a0": {
+  "to": "0x005ad0e0",
+  "kind": "functions",
+  "n": 242,
+  "tables": [
+   "t012",
+   "t028",
+   "t096"
+  ],
+  "src": "tables217"
+ },
+ "0x00c6d070": {
+  "to": "0x004c67e0",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t012"
+  ],
+  "src": "tables217"
+ },
+ "0x00c6ac10": {
+  "to": "0x004c3de0",
+  "kind": "functions",
+  "n": 189,
+  "tables": [
+   "t012",
+   "t062",
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00c6da80": {
+  "to": "0x004c6f90",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t012"
+  ],
+  "src": "tables217"
+ },
+ "0x00da9e50": {
+  "to": "0x00cba180",
+  "kind": "functions",
+  "n": 14,
+  "tables": [
+   "t012",
+   "t035"
+  ],
+  "src": "tables217"
+ },
+ "0x00e07eef": {
+  "to": "0x00cefd74",
+  "kind": "functions",
+  "n": 195,
+  "tables": [
+   "t012",
+   "t062",
+   "t095",
+   "t192"
+  ],
+  "src": "tables217"
+ },
+ "0x00742600": {
+  "to": "0x007a90e0",
+  "kind": "functions",
+  "n": 230,
+  "tables": [
+   "t013"
+  ],
+  "src": "tables217"
+ },
+ "0x00a1b780": {
+  "to": "0x009e96a0",
+  "kind": "functions",
+  "n": 253,
+  "tables": [
+   "t014",
+   "t065",
+   "t086",
+   "t114",
+   "t162"
+  ],
+  "src": "tables217"
+ },
+ "0x00a24560": {
+  "to": "0x009f3090",
+  "kind": "functions",
+  "n": 251,
+  "tables": [
+   "t014",
+   "t065",
+   "t210"
+  ],
+  "src": "tables217"
+ },
+ "0x00a24ee0": {
+  "to": "0x009f3ad0",
+  "kind": "functions",
+  "n": 250,
+  "tables": [
+   "t014",
+   "t065"
+  ],
+  "src": "tables217"
+ },
+ "0x00a70c40": {
+  "to": "0x00a37b00",
+  "kind": "functions",
+  "n": 251,
+  "tables": [
+   "t014",
+   "t144"
+  ],
+  "src": "tables217"
+ },
+ "0x00a21c90": {
+  "to": "0x009f0750",
+  "kind": "functions",
+  "n": 17,
+  "tables": [
+   "t014",
+   "t017",
+   "t065",
+   "t073",
+   "t094",
+   "t109",
+   "t120",
+   "t121",
+   "t168",
+   "t204"
+  ],
+  "src": "tables217",
+  "manifeste": "kMeasureW",
+  "comment": "__thiscall(this,str,len,face,size,_,_) -> width",
+  "nouveau_pour_bourgeon": false
+ },
+ "0x00a6fc90": {
+  "to": "0x00a36ee0",
+  "kind": "functions",
+  "n": 4,
+  "tables": [
+   "t014",
+   "t143",
+   "t144"
+  ],
+  "src": "tables217"
+ },
+ "0x009a2ea0": {
+  "to": "0x009bd440",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t014"
+  ],
+  "src": "tables217"
+ },
+ "0x00a6fcd0": {
+  "to": "0x00a36f20",
+  "kind": "functions",
+  "n": 3,
+  "tables": [
+   "t014",
+   "t143",
+   "t144"
+  ],
+  "src": "tables217"
+ },
+ "0x00a6fd10": {
+  "to": "0x00a36f60",
+  "kind": "functions",
+  "n": 4,
+  "tables": [
+   "t014",
+   "t143",
+   "t144"
+  ],
+  "src": "tables217"
+ },
+ "0x00dbb143": {
+  "to": "0x00cc908e",
+  "kind": "functions",
+  "n": 37,
+  "tables": [
+   "t014",
+   "t144",
+   "t188"
+  ],
+  "src": "tables217"
+ },
+ "0x00c3f840": {
+  "to": "0x00c0c8d0",
+  "kind": "functions",
+  "n": 80,
+  "tables": [
+   "t016",
+   "t048",
+   "t153"
+  ],
+  "src": "tables217"
+ },
+ "0x0082dac0": {
+  "to": "0x0086be70",
+  "kind": "functions",
+  "n": 5,
+  "tables": [
+   "t017",
+   "t083",
+   "t114"
+  ],
+  "src": "tables217"
+ },
+ "0x00a23360": {
+  "to": "0x009f1df0",
+  "kind": "functions",
+  "n": 388,
+  "tables": [
+   "t017",
+   "t025",
+   "t026",
+   "t041",
+   "t080",
+   "t083",
+   "t089",
+   "t134",
+   "t165",
+   "t182",
+   "t210"
+  ],
+  "src": "tables217"
+ },
+ "0x0079af10": {
+  "to": "0x007e2770",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t017"
+  ],
+  "src": "tables217"
+ },
+ "0x005b6620": {
+  "to": "0x004f1cc0",
+  "kind": "functions",
+  "n": 22,
+  "tables": [
+   "t017",
+   "t041",
+   "t053"
+  ],
+  "src": "tables217"
+ },
+ "0x004f0550": {
+  "to": "0x004e06c0",
+  "kind": "functions",
+  "n": 296,
+  "tables": [
+   "t020",
+   "t049",
+   "t057",
+   "t209"
+  ],
+  "src": "tables217"
+ },
+ "0x004f0670": {
+  "to": "0x005ae330",
+  "kind": "functions",
+  "n": 276,
+  "tables": [
+   "t020",
+   "t209"
+  ],
+  "src": "tables217"
+ },
+ "0x004e5bf0": {
+  "to": "0x005bdac0",
+  "kind": "functions",
+  "n": 5,
+  "tables": [
+   "t020",
+   "t209"
+  ],
+  "src": "tables217"
+ },
+ "0x00a1b020": {
+  "to": "0x009e8fa0",
+  "kind": "functions",
+  "n": 24,
+  "tables": [
+   "t020",
+   "t057",
+   "t209"
+  ],
+  "src": "tables217"
+ },
+ "0x00520210": {
+  "to": "0x005f6bb0",
+  "kind": "functions",
+  "n": 5,
+  "tables": [
+   "t022"
+  ],
+  "src": "tables217"
+ },
+ "0x005293e0": {
+  "to": "0x005ffef0",
+  "kind": "functions",
+  "n": 353,
+  "tables": [
+   "t022",
+   "t023",
+   "t103",
+   "t111",
+   "t130",
+   "t192"
+  ],
+  "src": "tables217"
+ },
+ "0x0052a770": {
+  "to": "0x00601240",
+  "kind": "functions",
+  "n": 17,
+  "tables": [
+   "t022",
+   "t023"
+  ],
+  "src": "tables217"
+ },
+ "0x00526ee0": {
+  "to": "0x005fd9e0",
+  "kind": "functions",
+  "n": 255,
+  "tables": [
+   "t022",
+   "t023",
+   "t103",
+   "t111",
+   "t130"
+  ],
+  "src": "tables217"
+ },
+ "0x00529400": {
+  "to": "0x005fff10",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t022",
+   "t192"
+  ],
+  "src": "tables217"
+ },
+ "0x00fc1b50": {
+  "to": "0x00e7b854",
+  "kind": "globals",
+  "n": 167,
+  "tables": [
+   "t022",
+   "t023",
+   "t103",
+   "t111",
+   "t130",
+   "t187"
+  ],
+  "src": "tables217"
+ },
+ "0x00522ef0": {
+  "to": "0x005f98e0",
+  "kind": "functions",
+  "n": 351,
+  "tables": [
+   "t023",
+   "t103",
+   "t111",
+   "t130",
+   "t192"
+  ],
+  "src": "tables217"
+ },
+ "0x00527920": {
+  "to": "0x005fe420",
+  "kind": "functions",
+  "n": 351,
+  "tables": [
+   "t023",
+   "t103",
+   "t111",
+   "t130"
+  ],
+  "src": "tables217"
+ },
+ "0x00529210": {
+  "to": "0x005ffd20",
+  "kind": "functions",
+  "n": 351,
+  "tables": [
+   "t023",
+   "t103",
+   "t111",
+   "t130",
+   "t186",
+   "t192"
+  ],
+  "src": "tables217"
+ },
+ "0x00b1c820": {
+  "to": "0x00afb580",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t025",
+   "t049"
+  ],
+  "src": "tables217"
+ },
+ "0x00889510": {
+  "to": "0x008c8d30",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t026"
+  ],
+  "src": "tables217"
+ },
+ "0x00903950": {
+  "to": "0x009417b0",
+  "kind": "functions",
+  "n": 4,
+  "tables": [
+   "t027"
+  ],
+  "src": "tables217"
+ },
+ "0x00831a50": {
+  "to": "0x0086fc50",
+  "kind": "functions",
+  "n": 178,
+  "tables": [
+   "t027",
+   "t055",
+   "t075",
+   "t094"
+  ],
+  "src": "tables217",
+  "manifeste": "kSetName",
+  "comment": "UIItemLinkBtn_SetName(this, char*)",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x00904a00": {
+  "to": "0x00942a90",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t027"
+  ],
+  "src": "tables217"
+ },
+ "0x00b34a60": {
+  "to": "0x00b12f20",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t027"
+  ],
+  "src": "tables217"
+ },
+ "0x00c443c0": {
+  "to": "0x00c11610",
+  "kind": "functions",
+  "n": 467,
+  "tables": [
+   "t028",
+   "t042",
+   "t088"
+  ],
+  "src": "tables217"
+ },
+ "0x007421c0": {
+  "to": "0x007a8dc0",
+  "kind": "functions",
+  "n": 241,
+  "tables": [
+   "t029"
+  ],
+  "src": "tables217"
+ },
+ "0x0064d510": {
+  "to": "0x00553be0",
+  "kind": "functions",
+  "n": 246,
+  "tables": [
+   "t032",
+   "t188"
+  ],
+  "src": "tables217"
+ },
+ "0x006d7ce0": {
+  "to": "0x007441a0",
+  "kind": "functions",
+  "n": 245,
+  "tables": [
+   "t032"
+  ],
+  "src": "tables217"
+ },
+ "0x00c6d9d0": {
+  "to": "0x004c6ed0",
+  "kind": "functions",
+  "n": 15,
+  "tables": [
+   "t035",
+   "t160"
+  ],
+  "src": "tables217",
+  "manifeste": "kArrowSpawn",
+  "comment": "Arrow_SpawnProjectileToTarget",
+  "nouveau_pour_bourgeon": false
+ },
+ "0x00a9ecf0": {
+  "to": "0x00a9b430",
+  "kind": "functions",
+  "n": 425,
+  "tables": [
+   "t040",
+   "t064",
+   "t160"
+  ],
+  "src": "tables217"
+ },
+ "0x00d5b8e0": {
+  "to": "0x00c6e930",
+  "kind": "functions",
+  "n": 426,
+  "tables": [
+   "t040",
+   "t064",
+   "t200"
+  ],
+  "src": "tables217"
+ },
+ "0x00d3fd90": {
+  "to": "0x00c52850",
+  "kind": "functions",
+  "n": 406,
+  "tables": [
+   "t040",
+   "t064"
+  ],
+  "src": "tables217"
+ },
+ "0x00d8a1d0": {
+  "to": "0x00c9d340",
+  "kind": "functions",
+  "n": 218,
+  "tables": [
+   "t040",
+   "t159",
+   "t160"
+  ],
+  "src": "tables217",
+  "manifeste": "kItemIdToClass, kItemIdToWeaponClass",
+  "comment": "Weapon_ItemIdToWeaponClass (__stdcall, retn 4)",
+  "nouveau_pour_bourgeon": false
+ },
+ "0x00573cb0": {
+  "to": "0x00649b60",
+  "kind": "functions",
+  "n": 5,
+  "tables": [
+   "t040",
+   "t094"
+  ],
+  "src": "tables217"
+ },
+ "0x00d95e60": {
+  "to": "0x00ca9560",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t041"
+  ],
+  "src": "tables217"
+ },
+ "0x00ad4bf0": {
+  "to": "0x005aca50",
+  "kind": "functions",
+  "n": 242,
+  "tables": [
+   "t042",
+   "t088"
+  ],
+  "src": "tables217"
+ },
+ "0x00c134d0": {
+  "to": "0x00bde0f0",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t042"
+  ],
+  "src": "tables217"
+ },
+ "0x007368f0": {
+  "to": "0x007a3dc0",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t042",
+   "t098"
+  ],
+  "src": "tables217"
+ },
+ "0x00737e00": {
+  "to": "0x007a5340",
+  "kind": "functions",
+  "n": 3,
+  "tables": [
+   "t042",
+   "t098"
+  ],
+  "src": "tables217"
+ },
+ "0x00a69fa0": {
+  "to": "0x00a32a90",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t045"
+  ],
+  "src": "tables217"
+ },
+ "0x00ae88b0": {
+  "to": "0x00ac5460",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t045"
+  ],
+  "src": "tables217"
+ },
+ "0x00b1fb60": {
+  "to": "0x00afe760",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t049",
+   "t050"
+  ],
+  "src": "tables217"
+ },
+ "0x00b1ef90": {
+  "to": "0x00afdb90",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t050"
+  ],
+  "src": "tables217"
+ },
+ "0x00d84760": {
+  "to": "0x00c97b00",
+  "kind": "functions",
+  "n": 188,
+  "tables": [
+   "t050",
+   "t067",
+   "t188"
+  ],
+  "src": "tables217",
+  "manifeste": "kGetSex",
+  "comment": "GetSex(session)",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x00794210": {
+  "to": "0x007db8e0",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t052"
+  ],
+  "src": "tables217"
+ },
+ "0x00799650": {
+  "to": "0x007e0d20",
+  "kind": "functions",
+  "n": 5,
+  "tables": [
+   "t052"
+  ],
+  "src": "tables217"
+ },
+ "0x004dcba0": {
+  "to": "0x005b4b10",
+  "kind": "functions",
+  "n": 181,
+  "tables": [
+   "t052",
+   "t075",
+   "t091",
+   "t109",
+   "t167"
+  ],
+  "src": "tables217"
+ },
+ "0x00799b00": {
+  "to": "0x007e1280",
+  "kind": "functions",
+  "n": 4,
+  "tables": [
+   "t052",
+   "t121",
+   "t162",
+   "t173"
+  ],
+  "src": "tables217"
+ },
+ "0x0080d1a0": {
+  "to": "0x0084ae80",
+  "kind": "functions",
+  "n": 4,
+  "tables": [
+   "t052",
+   "t121",
+   "t173",
+   "t204"
+  ],
+  "src": "tables217",
+  "manifeste": "kListErase",
+  "comment": "std::list::erase(first,last) __thiscall(listObj,&out,first,last): frees nodes + dtors + si",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x007007e0": {
+  "to": "0x004bd780",
+  "kind": "functions",
+  "n": 10,
+  "tables": [
+   "t055",
+   "t056"
+  ],
+  "src": "tables217"
+ },
+ "0x00702880": {
+  "to": "0x007719f0",
+  "kind": "functions",
+  "n": 5,
+  "tables": [
+   "t055"
+  ],
+  "src": "tables217"
+ },
+ "0x005ead80": {
+  "to": "0x004e1480",
+  "kind": "functions",
+  "n": 9,
+  "tables": [
+   "t055",
+   "t056",
+   "t073",
+   "t084",
+   "t100"
+  ],
+  "src": "tables217"
+ },
+ "0x00863f10": {
+  "to": "0x008a2710",
+  "kind": "functions",
+  "n": 131,
+  "tables": [
+   "t055",
+   "t056",
+   "t095"
+  ],
+  "src": "tables217"
+ },
+ "0x007084b0": {
+  "to": "0x00777b30",
+  "kind": "functions",
+  "n": 5,
+  "tables": [
+   "t056"
+  ],
+  "src": "tables217"
+ },
+ "0x00da8b60": {
+  "to": "0x00cb9650",
+  "kind": "functions",
+  "n": 13,
+  "tables": [
+   "t057"
+  ],
+  "src": "tables217"
+ },
+ "0x00da8d60": {
+  "to": "0x00cb9850",
+  "kind": "functions",
+  "n": 6,
+  "tables": [
+   "t057"
+  ],
+  "src": "tables217"
+ },
+ "0x00d5cfa0": {
+  "to": "0x00c6fff0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t058"
+  ],
+  "src": "tables217"
+ },
+ "0x00ce6080": {
+  "to": "0x0054df90",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t060"
+  ],
+  "src": "tables217"
+ },
+ "0x00cd1ab0": {
+  "to": "0x0053bc10",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t060"
+  ],
+  "src": "tables217"
+ },
+ "0x00d35810": {
+  "to": "0x00c48380",
+  "kind": "functions",
+  "n": 6,
+  "tables": [
+   "t060",
+   "t088"
+  ],
+  "src": "tables217"
+ },
+ "0x00dbcba1": {
+  "to": "0x00cca716",
+  "kind": "functions",
+  "n": 19,
+  "tables": [
+   "t061",
+   "t065",
+   "t094",
+   "t109",
+   "t112",
+   "t167",
+   "t169"
+  ],
+  "src": "tables217"
+ },
+ "0x00dbcc1a": {
+  "to": "0x00cca78f",
+  "kind": "functions",
+  "n": 17,
+  "tables": [
+   "t061",
+   "t065",
+   "t094",
+   "t109",
+   "t112"
+  ],
+  "src": "tables217"
+ },
+ "0x00dbcc8f": {
+  "to": "0x00cca804",
+  "kind": "functions",
+  "n": 7,
+  "tables": [
+   "t061",
+   "t065",
+   "t094",
+   "t109"
+  ],
+  "src": "tables217"
+ },
+ "0x00d71ec0": {
+  "to": "0x00c85740",
+  "kind": "functions",
+  "n": 278,
+  "tables": [
+   "t062",
+   "t131"
+  ],
+  "src": "tables217",
+  "manifeste": "kFnIsNpcOrPortalId",
+  "nouveau_pour_bourgeon": false
+ },
+ "0x00573060": {
+  "to": "0x00649020",
+  "kind": "functions",
+  "n": 197,
+  "tables": [
+   "t063",
+   "t089",
+   "t092",
+   "t118",
+   "t167",
+   "t216"
+  ],
+  "src": "tables217"
+ },
+ "0x00a36ff0": {
+  "to": "0x00a05b80",
+  "kind": "functions",
+  "n": 11,
+  "tables": [
+   "t063",
+   "t073"
+  ],
+  "src": "tables217"
+ },
+ "0x00d5bc30": {
+  "to": "0x00c6ec60",
+  "kind": "functions",
+  "n": 192,
+  "tables": [
+   "t064",
+   "t200"
+  ],
+  "src": "tables217"
+ },
+ "0x00821460": {
+  "to": "0x0085fad0",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t065",
+   "t094"
+  ],
+  "src": "tables217"
+ },
+ "0x00d71ef0": {
+  "to": "0x00c85770",
+  "kind": "functions",
+  "n": 48,
+  "tables": [
+   "t065",
+   "t094",
+   "t109",
+   "t178",
+   "t179",
+   "t183",
+   "t200"
+  ],
+  "src": "tables217"
+ },
+ "0x008d58b0": {
+  "to": "0x00914b20",
+  "kind": "functions",
+  "n": 4,
+  "tables": [
+   "t065",
+   "t085",
+   "t091"
+  ],
+  "src": "tables217"
+ },
+ "0x008f96b0": {
+  "to": "0x009371d0",
+  "kind": "functions",
+  "n": 4,
+  "tables": [
+   "t065",
+   "t074"
+  ],
+  "src": "tables217"
+ },
+ "0x00a47ab0": {
+  "to": "0x00a15a20",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t065",
+   "t210"
+  ],
+  "src": "tables217"
+ },
+ "0x008f9840": {
+  "to": "0x00937390",
+  "kind": "functions",
+  "n": 4,
+  "tables": [
+   "t065",
+   "t074",
+   "t112"
+  ],
+  "src": "tables217",
+  "manifeste": "kInputRowLayout",
+  "comment": "__thiscall(this) — input-row controls",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x00903160": {
+  "to": "0x00940e10",
+  "kind": "functions",
+  "n": 3,
+  "tables": [
+   "t065",
+   "t074",
+   "t112"
+  ],
+  "src": "tables217",
+  "manifeste": "kSetTabBarHeight",
+  "comment": "__thiscall(this, rows) — relayout",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x00a32e00": {
+  "to": "0x00a01670",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t065",
+   "t074"
+  ],
+  "src": "tables217"
+ },
+ "0x008daa90": {
+  "to": "0x00919650",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t065",
+   "t085"
+  ],
+  "src": "tables217"
+ },
+ "0x00fc1824": {
+  "to": "0x00e7b5b4",
+  "kind": "globals",
+  "n": 191,
+  "tables": [
+   "t065",
+   "t067",
+   "t073",
+   "t086",
+   "t148",
+   "t188"
+  ],
+  "src": "tables217"
+ },
+ "0x00c441d0": {
+  "to": "0x00c11460",
+  "kind": "functions",
+  "n": 191,
+  "tables": [
+   "t066"
+  ],
+  "src": "tables217"
+ },
+ "0x00fc1b3c": {
+  "to": "0x00e7b8a4",
+  "kind": "globals",
+  "n": 187,
+  "tables": [
+   "t067",
+   "t183",
+   "t200"
+  ],
+  "src": "tables217"
+ },
+ "0x00a4ccf0": {
+  "to": "0x00a1a850",
+  "kind": "functions",
+  "n": 182,
+  "tables": [
+   "t072",
+   "t094",
+   "t109",
+   "t121",
+   "t162",
+   "t173",
+   "t201",
+   "t204"
+  ],
+  "src": "tables217"
+ },
+ "0x00a52be0": {
+  "to": "0x00a1feb0",
+  "kind": "functions",
+  "n": 9,
+  "tables": [
+   "t072",
+   "t091",
+   "t098",
+   "t112",
+   "t199"
+  ],
+  "src": "tables217"
+ },
+ "0x008697f0": {
+  "to": "0x008a84d0",
+  "kind": "functions",
+  "n": 4,
+  "tables": [
+   "t073",
+   "t100"
+  ],
+  "src": "tables217"
+ },
+ "0x008d52f0": {
+  "to": "0x00914620",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t074"
+  ],
+  "src": "tables217"
+ },
+ "0x008f99f0": {
+  "to": "0x00937610",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t074"
+  ],
+  "src": "tables217"
+ },
+ "0x00889ab0": {
+  "to": "0x008c9330",
+  "kind": "functions",
+  "n": 3,
+  "tables": [
+   "t077"
+  ],
+  "src": "tables217"
+ },
+ "0x00881610": {
+  "to": "0x008c0ad0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t077"
+  ],
+  "src": "tables217"
+ },
+ "0x00b5e180": {
+  "to": "0x00b3cdd0",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t078"
+  ],
+  "src": "tables217"
+ },
+ "0x00b64ce0": {
+  "to": "0x00b432f0",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b73800": {
+  "to": "0x00b518b0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b6fbe0": {
+  "to": "0x00b4dc60",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b6f480": {
+  "to": "0x00b4d4f0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b7b080": {
+  "to": "0x00b590c0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b72f10": {
+  "to": "0x00b50fc0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b68da0": {
+  "to": "0x00b47130",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b7cf30": {
+  "to": "0x00b5ac60",
+  "kind": "functions",
+  "n": 33,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b68a00": {
+  "to": "0x00b46d90",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b61550": {
+  "to": "0x00b401a0",
+  "kind": "functions",
+  "n": 16,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b7a040": {
+  "to": "0x00b58070",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b61840": {
+  "to": "0x00b40490",
+  "kind": "functions",
+  "n": 3,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b7a460": {
+  "to": "0x00b584a0",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b731c0": {
+  "to": "0x00b51270",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b6c630": {
+  "to": "0x00b4a870",
+  "kind": "functions",
+  "n": 13,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b63d70": {
+  "to": "0x00b425f0",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b79100": {
+  "to": "0x00b57150",
+  "kind": "functions",
+  "n": 3,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b61b60": {
+  "to": "0x00b407b0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b78c60": {
+  "to": "0x00b56ca0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b78950": {
+  "to": "0x00b56990",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b78e10": {
+  "to": "0x00b56e60",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b6e7e0": {
+  "to": "0x00b4c850",
+  "kind": "functions",
+  "n": 4,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b62e40": {
+  "to": "0x00b417d0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b7eab0": {
+  "to": "0x00b5c7c0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b70b40": {
+  "to": "0x00b4ebe0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b6c060": {
+  "to": "0x00b4a2a0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b70350": {
+  "to": "0x00b4e3f0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b6d110": {
+  "to": "0x00b4b1d0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b8ad90": {
+  "to": "0x00b68a40",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b8c3e0": {
+  "to": "0x00b6a0b0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b86bd0": {
+  "to": "0x00b64880",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b650d0": {
+  "to": "0x00b435f0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b8f2a0": {
+  "to": "0x00b6d0d0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b8f640": {
+  "to": "0x00b6d470",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b85180": {
+  "to": "0x00b62e30",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b84920": {
+  "to": "0x00b625d0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b87250": {
+  "to": "0x00b64f00",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b8aaa0": {
+  "to": "0x00b68750",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b68200": {
+  "to": "0x00b46590",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b85410": {
+  "to": "0x00b630c0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b83f50": {
+  "to": "0x00b61c10",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b65ce0": {
+  "to": "0x00b44060",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b8fc30": {
+  "to": "0x00b6da60",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b8dbc0": {
+  "to": "0x00b6b890",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b8e440": {
+  "to": "0x00b6c130",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b87990": {
+  "to": "0x00b65640",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b8d330": {
+  "to": "0x00b6b000",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b85760": {
+  "to": "0x00b63410",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b8bea0": {
+  "to": "0x00b69b70",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b84420": {
+  "to": "0x00b620d0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b8b7a0": {
+  "to": "0x00b69470",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b623e0": {
+  "to": "0x00b40ed0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b896d0": {
+  "to": "0x00b67380",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b5f1e0": {
+  "to": "0x00b3de30",
+  "kind": "functions",
+  "n": 6,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b894e0": {
+  "to": "0x00b67190",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b88050": {
+  "to": "0x00b65d00",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b882e0": {
+  "to": "0x00b65f90",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b88640": {
+  "to": "0x00b662f0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b8c900": {
+  "to": "0x00b6a5d0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b84c30": {
+  "to": "0x00b628e0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b846a0": {
+  "to": "0x00b62350",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b5e950": {
+  "to": "0x00b3d5a0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b75e90": {
+  "to": "0x00b53ed0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b5f900": {
+  "to": "0x00b3e550",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b6a2c0": {
+  "to": "0x00b48650",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b61180": {
+  "to": "0x00b3fdd0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b72290": {
+  "to": "0x00b50330",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b70e50": {
+  "to": "0x00b4eef0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b75640": {
+  "to": "0x00b53670",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b5e460": {
+  "to": "0x00b3d0b0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b746b0": {
+  "to": "0x00b52760",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b7ba70": {
+  "to": "0x00b59ab0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b6a030": {
+  "to": "0x00b483c0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b76f20": {
+  "to": "0x00b54f60",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b6ba80": {
+  "to": "0x00b49cc0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b6b070": {
+  "to": "0x00b49400",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b6b340": {
+  "to": "0x00b496d0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b71870": {
+  "to": "0x00b4f910",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b7e870": {
+  "to": "0x00b5c580",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b782e0": {
+  "to": "0x00b56320",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b708c0": {
+  "to": "0x00b4e960",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b7de80": {
+  "to": "0x00b5bb90",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b73f20": {
+  "to": "0x00b51fd0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b69650": {
+  "to": "0x00b479e0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b76cd0": {
+  "to": "0x00b54d10",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b75c50": {
+  "to": "0x00b53c80",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b6ae30": {
+  "to": "0x00b491c0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b79af0": {
+  "to": "0x00b57b40",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b79420": {
+  "to": "0x00b57470",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b7ade0": {
+  "to": "0x00b58e20",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b6d6b0": {
+  "to": "0x00b4b770",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b7e390": {
+  "to": "0x00b5c0a0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b753a0": {
+  "to": "0x00b533d0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b79d50": {
+  "to": "0x00b57da0",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b69040": {
+  "to": "0x00b473d0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b77710": {
+  "to": "0x00b55750",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b76730": {
+  "to": "0x00b54770",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b769f0": {
+  "to": "0x00b54a30",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b67f80": {
+  "to": "0x00b46310",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00b6da00": {
+  "to": "0x00b4bac0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x007f0090": {
+  "to": "0x0082f870",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t080"
+  ],
+  "src": "tables217"
+ },
+ "0x00d65e00": {
+  "to": "0x00c78e10",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t082",
+   "t112"
+  ],
+  "src": "tables217"
+ },
+ "0x0082fed0": {
+  "to": "0x0086df50",
+  "kind": "functions",
+  "n": 11,
+  "tables": [
+   "t083",
+   "t087"
+  ],
+  "src": "tables217"
+ },
+ "0x005ac1a0": {
+  "to": "0x00672d50",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t083",
+   "t099"
+  ],
+  "src": "tables217"
+ },
+ "0x00909210": {
+  "to": "0x00946240",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t084"
+  ],
+  "src": "tables217"
+ },
+ "0x00a1b190": {
+  "to": "0x009e9110",
+  "kind": "functions",
+  "n": 4,
+  "tables": [
+   "t086",
+   "t097",
+   "t162"
+  ],
+  "src": "tables217"
+ },
+ "0x005bcfe0": {
+  "to": "0x00554680",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t086",
+   "t129"
+  ],
+  "src": "tables217"
+ },
+ "0x005c5950": {
+  "to": "0x004de520",
+  "kind": "functions",
+  "n": 149,
+  "tables": [
+   "t087",
+   "t098",
+   "t099"
+  ],
+  "src": "tables217",
+  "manifeste": "kSetOption",
+  "comment": "SkillMgr_SetOption(mgr,key,val,0) ; key5=UI-lock (≥1 bloque OnMsg 0x29)",
+  "nouveau_pour_bourgeon": false
+ },
+ "0x00738570": {
+  "to": "0x007a5ad0",
+  "kind": "functions",
+  "n": 147,
+  "tables": [
+   "t087"
+  ],
+  "src": "tables217",
+  "manifeste": "kSkillSetUseLevel",
+  "comment": "__thiscall(bundle, id, lv)",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x008da950": {
+  "to": "0x005053e0",
+  "kind": "functions",
+  "n": 159,
+  "tables": [
+   "t087",
+   "t098"
+  ],
+  "src": "tables217"
+ },
+ "0x006fc7b0": {
+  "to": "0x0076c340",
+  "kind": "functions",
+  "n": 100,
+  "tables": [
+   "t087",
+   "t124"
+  ],
+  "src": "tables217"
+ },
+ "0x00738370": {
+  "to": "0x007a58d0",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t087"
+  ],
+  "src": "tables217",
+  "manifeste": "kSkillGetTabList",
+  "comment": "__thiscall(bundle, tab) -> std::list*",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x00974530": {
+  "to": "0x009b07e0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t087"
+  ],
+  "src": "tables217"
+ },
+ "0x00ac19b0": {
+  "to": "0x005973e0",
+  "kind": "functions",
+  "n": 13,
+  "tables": [
+   "t088",
+   "t177"
+  ],
+  "src": "tables217"
+ },
+ "0x0091dc30": {
+  "to": "0x009586f0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t089"
+  ],
+  "src": "tables217"
+ },
+ "0x0092bd40": {
+  "to": "0x00967760",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t089"
+  ],
+  "src": "tables217"
+ },
+ "0x0086b950": {
+  "to": "0x008abd80",
+  "kind": "functions",
+  "n": 8,
+  "tables": [
+   "t091",
+   "t122",
+   "t127",
+   "t169"
+  ],
+  "src": "tables217"
+ },
+ "0x0085f340": {
+  "to": "0x0089d500",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t094",
+   "t109"
+  ],
+  "src": "tables217"
+ },
+ "0x008642d0": {
+  "to": "0x008a2b20",
+  "kind": "functions",
+  "n": 3,
+  "tables": [
+   "t094",
+   "t109"
+  ],
+  "src": "tables217",
+  "manifeste": "kRebuildFromHist",
+  "comment": "__thiscall(tab): clear+re-wrap history",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x007faf70": {
+  "to": "0x00839590",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t094",
+   "t109"
+  ],
+  "src": "tables217"
+ },
+ "0x00dbc89e": {
+  "to": "0x00cca8dc",
+  "kind": "functions",
+  "n": 134,
+  "tables": [
+   "t094",
+   "t118",
+   "t216"
+  ],
+  "src": "tables217"
+ },
+ "0x008d1010": {
+  "to": "0x00912490",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t094"
+  ],
+  "src": "tables217"
+ },
+ "0x00c428e0": {
+  "to": "0x00c0fa10",
+  "kind": "functions",
+  "n": 130,
+  "tables": [
+   "t095"
+  ],
+  "src": "tables217"
+ },
+ "0x00d5dfd0": {
+  "to": "0x00c70ef0",
+  "kind": "functions",
+  "n": 44,
+  "tables": [
+   "t095",
+   "t174"
+  ],
+  "src": "tables217"
+ },
+ "0x00d70fd0": {
+  "to": "0x00c84790",
+  "kind": "functions",
+  "n": 9,
+  "tables": [
+   "t095",
+   "t177"
+  ],
+  "src": "tables217"
+ },
+ "0x00a787c0": {
+  "to": "0x00a3f500",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t095"
+  ],
+  "src": "tables217"
+ },
+ "0x00d42d00": {
+  "to": "0x004bec40",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t095"
+  ],
+  "src": "tables217"
+ },
+ "0x00e07f5b": {
+  "to": "0x00ceff06",
+  "kind": "functions",
+  "n": 54,
+  "tables": [
+   "t095",
+   "t159",
+   "t160",
+   "t174",
+   "t191",
+   "t193"
+  ],
+  "src": "tables217"
+ },
+ "0x00dab340": {
+  "to": "0x00cbb670",
+  "kind": "functions",
+  "n": 9,
+  "tables": [
+   "t096"
+  ],
+  "src": "tables217"
+ },
+ "0x008005c0": {
+  "to": "0x0083e080",
+  "kind": "functions",
+  "n": 7,
+  "tables": [
+   "t097"
+  ],
+  "src": "tables217"
+ },
+ "0x00800f60": {
+  "to": "0x0083eb30",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t097"
+  ],
+  "src": "tables217"
+ },
+ "0x005a4300": {
+  "to": "0x004bd8a0",
+  "kind": "functions",
+  "n": 5,
+  "tables": [
+   "t098",
+   "t121",
+   "t129",
+   "t188",
+   "t190"
+  ],
+  "src": "tables217",
+  "manifeste": "kItemSkillInfoDtor",
+  "nouveau_pour_bourgeon": false
+ },
+ "0x00fc1700": {
+  "to": "0x00e7b48c",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t099"
+  ],
+  "src": "tables217"
+ },
+ "0x00561780": {
+  "to": "0x00637620",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t099"
+  ],
+  "src": "tables217"
+ },
+ "0x00848b20": {
+  "to": "0x00887290",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t100"
+  ],
+  "src": "tables217"
+ },
+ "0x005ecac0": {
+  "to": "0x006a0100",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t100"
+  ],
+  "src": "tables217"
+ },
+ "0x00b31980": {
+  "to": "0x00b0fd50",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t102"
+  ],
+  "src": "tables217"
+ },
+ "0x005243b0": {
+  "to": "0x005faec0",
+  "kind": "functions",
+  "n": 129,
+  "tables": [
+   "t103",
+   "t111",
+   "t113",
+   "t130",
+   "t192"
+  ],
+  "src": "tables217"
+ },
+ "0x00528530": {
+  "to": "0x005ff040",
+  "kind": "functions",
+  "n": 418,
+  "tables": [
+   "t103",
+   "t111",
+   "t130",
+   "t146",
+   "t192"
+  ],
+  "src": "tables217"
+ },
+ "0x00528580": {
+  "to": "0x005ff090",
+  "kind": "functions",
+  "n": 415,
+  "tables": [
+   "t103",
+   "t111",
+   "t130",
+   "t146",
+   "t192"
+  ],
+  "src": "tables217"
+ },
+ "0x005297a0": {
+  "to": "0x006002b0",
+  "kind": "functions",
+  "n": 125,
+  "tables": [
+   "t103",
+   "t192"
+  ],
+  "src": "tables217"
+ },
+ "0x0052d2e0": {
+  "to": "0x00603dd0",
+  "kind": "functions",
+  "n": 205,
+  "tables": [
+   "t103",
+   "t111",
+   "t113",
+   "t130",
+   "t146",
+   "t192"
+  ],
+  "src": "tables217"
+ },
+ "0x0052fc00": {
+  "to": "0x00606700",
+  "kind": "functions",
+  "n": 120,
+  "tables": [
+   "t103",
+   "t111",
+   "t130"
+  ],
+  "src": "tables217"
+ },
+ "0x0052fd10": {
+  "to": "0x00606810",
+  "kind": "functions",
+  "n": 118,
+  "tables": [
+   "t103",
+   "t111",
+   "t192"
+  ],
+  "src": "tables217"
+ },
+ "0x005347e0": {
+  "to": "0x0060b2f0",
+  "kind": "functions",
+  "n": 341,
+  "tables": [
+   "t103",
+   "t111",
+   "t130"
+  ],
+  "src": "tables217"
+ },
+ "0x00fc1b4c": {
+  "to": "0x00e7b848",
+  "kind": "globals",
+  "n": 154,
+  "tables": [
+   "t103",
+   "t187"
+  ],
+  "src": "tables217"
+ },
+ "0x005267f0": {
+  "to": "0x005fd300",
+  "kind": "functions",
+  "n": 10,
+  "tables": [
+   "t103",
+   "t111",
+   "t130"
+  ],
+  "src": "tables217"
+ },
+ "0x00527570": {
+  "to": "0x005fe060",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t103"
+  ],
+  "src": "tables217"
+ },
+ "0x00526fe0": {
+  "to": "0x005fdae0",
+  "kind": "functions",
+  "n": 3,
+  "tables": [
+   "t103",
+   "t130"
+  ],
+  "src": "tables217"
+ },
+ "0x00527180": {
+  "to": "0x005fdc80",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t103"
+  ],
+  "src": "tables217"
+ },
+ "0x005279e0": {
+  "to": "0x005fe4e0",
+  "kind": "functions",
+  "n": 4,
+  "tables": [
+   "t103",
+   "t130"
+  ],
+  "src": "tables217"
+ },
+ "0x00e07d5d": {
+  "to": "0x00cefccc",
+  "kind": "functions",
+  "n": 173,
+  "tables": [
+   "t103",
+   "t133",
+   "t146"
+  ],
+  "src": "tables217"
+ },
+ "0x007ff1f0": {
+  "to": "0x0083cce0",
+  "kind": "functions",
+  "n": 8,
+  "tables": [
+   "t104"
+  ],
+  "src": "tables217"
+ },
+ "0x006aa840": {
+  "to": "0x00715b70",
+  "kind": "functions",
+  "n": 3,
+  "tables": [
+   "t105"
+  ],
+  "src": "tables217"
+ },
+ "0x00573ba0": {
+  "to": "0x004f29d0",
+  "kind": "functions",
+  "n": 115,
+  "tables": [
+   "t106",
+   "t109"
+  ],
+  "src": "tables217"
+ },
+ "0x00a764a0": {
+  "to": "0x00a3d710",
+  "kind": "functions",
+  "n": 126,
+  "tables": [
+   "t107",
+   "t120"
+  ],
+  "src": "tables217"
+ },
+ "0x00c86150": {
+  "to": "0x004e3230",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t108"
+  ],
+  "src": "tables217"
+ },
+ "0x0086deb0": {
+  "to": "0x008add10",
+  "kind": "functions",
+  "n": 3,
+  "tables": [
+   "t109"
+  ],
+  "src": "tables217"
+ },
+ "0x0086b650": {
+  "to": "0x008abad0",
+  "kind": "functions",
+  "n": 4,
+  "tables": [
+   "t109"
+  ],
+  "src": "tables217"
+ },
+ "0x0086dc30": {
+  "to": "0x008ada90",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t109"
+  ],
+  "src": "tables217"
+ },
+ "0x0088a440": {
+  "to": "0x008c9b00",
+  "kind": "functions",
+  "n": 3,
+  "tables": [
+   "t109"
+  ],
+  "src": "tables217"
+ },
+ "0x0088a970": {
+  "to": "0x008c9ed0",
+  "kind": "functions",
+  "n": 3,
+  "tables": [
+   "t109"
+  ],
+  "src": "tables217"
+ },
+ "0x00a43c20": {
+  "to": "0x004cd270",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t112"
+  ],
+  "src": "tables217"
+ },
+ "0x00a52da0": {
+  "to": "0x00a20000",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t112"
+  ],
+  "src": "tables217"
+ },
+ "0x00a4bc70": {
+  "to": "0x00a19a90",
+  "kind": "functions",
+  "n": 10,
+  "tables": [
+   "t112"
+  ],
+  "src": "tables217"
+ },
+ "0x0051a3d0": {
+  "to": "0x005f0d90",
+  "kind": "functions",
+  "n": 149,
+  "tables": [
+   "t113",
+   "t133",
+   "t170",
+   "t171",
+   "t181",
+   "t184",
+   "t187"
+  ],
+  "src": "tables217"
+ },
+ "0x0051ae20": {
+  "to": "0x005f17e0",
+  "kind": "functions",
+  "n": 54,
+  "tables": [
+   "t113",
+   "t170",
+   "t171",
+   "t181",
+   "t184"
+  ],
+  "src": "tables217"
+ },
+ "0x00534400": {
+  "to": "0x0060af10",
+  "kind": "functions",
+  "n": 8,
+  "tables": [
+   "t113",
+   "t192"
+  ],
+  "src": "tables217"
+ },
+ "0x00e07d81": {
+  "to": "0x00cefcc0",
+  "kind": "functions",
+  "n": 7,
+  "tables": [
+   "t113",
+   "t183",
+   "t200"
+  ],
+  "src": "tables217"
+ },
+ "0x004e6150": {
+  "to": "0x005be030",
+  "kind": "functions",
+  "n": 12,
+  "tables": [
+   "t115",
+   "t215"
+  ],
+  "src": "tables217"
+ },
+ "0x004e8d30": {
+  "to": "0x005c07c0",
+  "kind": "functions",
+  "n": 99,
+  "tables": [
+   "t115"
+  ],
+  "src": "tables217"
+ },
+ "0x004d8e40": {
+  "to": "0x005b0d90",
+  "kind": "functions",
+  "n": 5,
+  "tables": [
+   "t115",
+   "t214"
+  ],
+  "src": "tables217"
+ },
+ "0x004f9d40": {
+  "to": "0x005d1560",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t115"
+  ],
+  "src": "tables217"
+ },
+ "0x004fc020": {
+  "to": "0x005d3670",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t115"
+  ],
+  "src": "tables217"
+ },
+ "0x004ec6c0": {
+  "to": "0x005c3fb0",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t117"
+  ],
+  "src": "tables217"
+ },
+ "0x004ef320": {
+  "to": "0x005c6c30",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t117"
+  ],
+  "src": "tables217"
+ },
+ "0x00d7b120": {
+  "to": "0x00c8de90",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t118"
+  ],
+  "src": "tables217"
+ },
+ "0x00849310": {
+  "to": "0x00887a90",
+  "kind": "functions",
+  "n": 7,
+  "tables": [
+   "t120"
+  ],
+  "src": "tables217"
+ },
+ "0x00950400": {
+  "to": "0x0098bc20",
+  "kind": "functions",
+  "n": 176,
+  "tables": [
+   "t121",
+   "t173",
+   "t204"
+  ],
+  "src": "tables217",
+  "manifeste": "kInvFinalize",
+  "comment": "FUN_00950400(inv): refresh scrollbar/scroll from inv+0xec count",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x00950780": {
+  "to": "0x0098c040",
+  "kind": "functions",
+  "n": 172,
+  "tables": [
+   "t121",
+   "t173",
+   "t204"
+  ],
+  "src": "tables217"
+ },
+ "0x00830a70": {
+  "to": "0x0086ec10",
+  "kind": "functions",
+  "n": 5,
+  "tables": [
+   "t121",
+   "t204"
+  ],
+  "src": "tables217"
+ },
+ "0x00d7af90": {
+  "to": "0x00c8dd50",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t121",
+   "t162"
+  ],
+  "src": "tables217"
+ },
+ "0x005e1550": {
+  "to": "0x00694a80",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t122"
+  ],
+  "src": "tables217"
+ },
+ "0x008a0570": {
+  "to": "0x008dd850",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t122"
+  ],
+  "src": "tables217",
+  "manifeste": "kBuildDisplayNameAddr",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x00a9abc0": {
+  "to": "0x00a98090",
+  "kind": "functions",
+  "n": 5,
+  "tables": [
+   "t122",
+   "t157"
+  ],
+  "src": "tables217"
+ },
+ "0x005e2520": {
+  "to": "0x00695d60",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t122"
+  ],
+  "src": "tables217"
+ },
+ "0x00864460": {
+  "to": "0x008a2ce0",
+  "kind": "functions",
+  "n": 112,
+  "tables": [
+   "t127",
+   "t129",
+   "t162",
+   "t165",
+   "t173",
+   "t201",
+   "t204"
+  ],
+  "src": "tables217"
+ },
+ "0x00973740": {
+  "to": "0x009af750",
+  "kind": "functions",
+  "n": 95,
+  "tables": [
+   "t127"
+  ],
+  "src": "tables217"
+ },
+ "0x005149c0": {
+  "to": "0x004e0750",
+  "kind": "functions",
+  "n": 22,
+  "tables": [
+   "t127",
+   "t190",
+   "t216"
+  ],
+  "src": "tables217"
+ },
+ "0x00864470": {
+  "to": "0x008a2cf0",
+  "kind": "functions",
+  "n": 17,
+  "tables": [
+   "t129",
+   "t162",
+   "t165",
+   "t173",
+   "t201",
+   "t204"
+  ],
+  "src": "tables217"
+ },
+ "0x0051b090": {
+  "to": "0x005f1a20",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t133"
+  ],
+  "src": "tables217"
+ },
+ "0x0051b1b0": {
+  "to": "0x005f1b50",
+  "kind": "functions",
+  "n": 142,
+  "tables": [
+   "t133",
+   "t170",
+   "t171",
+   "t181",
+   "t184"
+  ],
+  "src": "tables217"
+ },
+ "0x0051b690": {
+  "to": "0x005f2030",
+  "kind": "functions",
+  "n": 133,
+  "tables": [
+   "t133",
+   "t187"
+  ],
+  "src": "tables217"
+ },
+ "0x0091b2e0": {
+  "to": "0x00955db0",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t134"
+  ],
+  "src": "tables217"
+ },
+ "0x00a6fad0": {
+  "to": "0x00a36cf0",
+  "kind": "functions",
+  "n": 5,
+  "tables": [
+   "t143"
+  ],
+  "src": "tables217"
+ },
+ "0x00521980": {
+  "to": "0x005f8340",
+  "kind": "functions",
+  "n": 90,
+  "tables": [
+   "t146",
+   "t192"
+  ],
+  "src": "tables217"
+ },
+ "0x00522730": {
+  "to": "0x005f9100",
+  "kind": "functions",
+  "n": 86,
+  "tables": [
+   "t146",
+   "t192"
+  ],
+  "src": "tables217"
+ },
+ "0x00522da0": {
+  "to": "0x005f9790",
+  "kind": "functions",
+  "n": 117,
+  "tables": [
+   "t146",
+   "t192"
+  ],
+  "src": "tables217"
+ },
+ "0x00530ce0": {
+  "to": "0x006077e0",
+  "kind": "functions",
+  "n": 97,
+  "tables": [
+   "t146",
+   "t192"
+  ],
+  "src": "tables217"
+ },
+ "0x00532770": {
+  "to": "0x00609270",
+  "kind": "functions",
+  "n": 93,
+  "tables": [
+   "t146",
+   "t192"
+  ],
+  "src": "tables217"
+ },
+ "0x00bdfb60": {
+  "to": "0x00baaae0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t149"
+  ],
+  "src": "tables217"
+ },
+ "0x00bf6cf0": {
+  "to": "0x00bc1b70",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t149"
+  ],
+  "src": "tables217"
+ },
+ "0x00be2ad0": {
+  "to": "0x00bad930",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t149"
+  ],
+  "src": "tables217"
+ },
+ "0x00bdf490": {
+  "to": "0x00baa3e0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t149"
+  ],
+  "src": "tables217"
+ },
+ "0x00bff6c0": {
+  "to": "0x00bca530",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t149"
+  ],
+  "src": "tables217"
+ },
+ "0x00be8b80": {
+  "to": "0x00bb39b0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t149"
+  ],
+  "src": "tables217"
+ },
+ "0x00bf4e00": {
+  "to": "0x00bbfc40",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t149"
+  ],
+  "src": "tables217"
+ },
+ "0x00bee690": {
+  "to": "0x00bb94a0",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t149"
+  ],
+  "src": "tables217"
+ },
+ "0x00be7f70": {
+  "to": "0x00bb2da0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t149"
+  ],
+  "src": "tables217"
+ },
+ "0x00bea420": {
+  "to": "0x00bb5260",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t149"
+  ],
+  "src": "tables217"
+ },
+ "0x00bf99a0": {
+  "to": "0x00bc47c0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t149"
+  ],
+  "src": "tables217"
+ },
+ "0x00bf6d60": {
+  "to": "0x00bc1be0",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t149"
+  ],
+  "src": "tables217"
+ },
+ "0x00c00350": {
+  "to": "0x00bcb1a0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t149"
+  ],
+  "src": "tables217"
+ },
+ "0x00bf4950": {
+  "to": "0x00bbf760",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t149"
+  ],
+  "src": "tables217"
+ },
+ "0x00bf50e0": {
+  "to": "0x00bbff30",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t149"
+  ],
+  "src": "tables217"
+ },
+ "0x00bf3690": {
+  "to": "0x00bbe490",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t149"
+  ],
+  "src": "tables217"
+ },
+ "0x00bdf310": {
+  "to": "0x00baa260",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t149"
+  ],
+  "src": "tables217"
+ },
+ "0x00bef580": {
+  "to": "0x00bba380",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t149"
+  ],
+  "src": "tables217"
+ },
+ "0x00be7800": {
+  "to": "0x00bb2630",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t149"
+  ],
+  "src": "tables217"
+ },
+ "0x00bfc520": {
+  "to": "0x00bc7340",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t149"
+  ],
+  "src": "tables217"
+ },
+ "0x00be1f70": {
+  "to": "0x00bacdc0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t149"
+  ],
+  "src": "tables217"
+ },
+ "0x00bea1e0": {
+  "to": "0x00bb5010",
+  "kind": "functions",
+  "n": 3,
+  "tables": [
+   "t149"
+  ],
+  "src": "tables217"
+ },
+ "0x00bfd290": {
+  "to": "0x00bc80d0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t149"
+  ],
+  "src": "tables217"
+ },
+ "0x00bd9170": {
+  "to": "0x00ba4090",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t149"
+  ],
+  "src": "tables217"
+ },
+ "0x00c68f80": {
+  "to": "0x004c1d80",
+  "kind": "functions",
+  "n": 5,
+  "tables": [
+   "t153"
+  ],
+  "src": "tables217"
+ },
+ "0x00c68f60": {
+  "to": "0x004c1d60",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t153"
+  ],
+  "src": "tables217"
+ },
+ "0x00affee0": {
+  "to": "0x00ade220",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t155"
+  ],
+  "src": "tables217"
+ },
+ "0x00d72d30": {
+  "to": "0x00c865b0",
+  "kind": "functions",
+  "n": 45,
+  "tables": [
+   "t159",
+   "t160",
+   "t174"
+  ],
+  "src": "tables217"
+ },
+ "0x00c44470": {
+  "to": "0x004c64c0",
+  "kind": "functions",
+  "n": 44,
+  "tables": [
+   "t159",
+   "t174"
+  ],
+  "src": "tables217"
+ },
+ "0x00c44190": {
+  "to": "0x00c11420",
+  "kind": "functions",
+  "n": 82,
+  "tables": [
+   "t159",
+   "t174",
+   "t191"
+  ],
+  "src": "tables217"
+ },
+ "0x00c58040": {
+  "to": "0x00c26a30",
+  "kind": "functions",
+  "n": 9,
+  "tables": [
+   "t160"
+  ],
+  "src": "tables217"
+ },
+ "0x007a5e90": {
+  "to": "0x007eee20",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t162"
+  ],
+  "src": "tables217"
+ },
+ "0x007a5d40": {
+  "to": "0x007eec80",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t162"
+  ],
+  "src": "tables217"
+ },
+ "0x00926980": {
+  "to": "0x00961e70",
+  "kind": "functions",
+  "n": 4,
+  "tables": [
+   "t165"
+  ],
+  "src": "tables217"
+ },
+ "0x00894940": {
+  "to": "0x008d2ae0",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t168"
+  ],
+  "src": "tables217"
+ },
+ "0x008d1f80": {
+  "to": "0x00912fb0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t168"
+  ],
+  "src": "tables217"
+ },
+ "0x008d7260": {
+  "to": "0x00916290",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t169"
+  ],
+  "src": "tables217"
+ },
+ "0x00d81a30": {
+  "to": "0x00c94c10",
+  "kind": "functions",
+  "n": 49,
+  "tables": [
+   "t169"
+  ],
+  "src": "tables217"
+ },
+ "0x008d7820": {
+  "to": "0x00916850",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t169"
+  ],
+  "src": "tables217"
+ },
+ "0x008d8150": {
+  "to": "0x00917070",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t169"
+  ],
+  "src": "tables217"
+ },
+ "0x0051ae50": {
+  "to": "0x005f1810",
+  "kind": "functions",
+  "n": 49,
+  "tables": [
+   "t170",
+   "t171",
+   "t181",
+   "t184"
+  ],
+  "src": "tables217"
+ },
+ "0x0051b3f0": {
+  "to": "0x005f1d90",
+  "kind": "functions",
+  "n": 3,
+  "tables": [
+   "t170",
+   "t171",
+   "t184"
+  ],
+  "src": "tables217"
+ },
+ "0x00dbca00": {
+  "to": "0x00ccad10",
+  "kind": "functions",
+  "n": 4,
+  "tables": [
+   "t170"
+  ],
+  "src": "tables217"
+ },
+ "0x00b17ea0": {
+  "to": "0x00af69f0",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t171",
+   "t184"
+  ],
+  "src": "tables217"
+ },
+ "0x00aeae80": {
+  "to": "0x00ac7a20",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t171",
+   "t184"
+  ],
+  "src": "tables217"
+ },
+ "0x00aeae50": {
+  "to": "0x00ac79e0",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t171",
+   "t184"
+  ],
+  "src": "tables217"
+ },
+ "0x00c47700": {
+  "to": "0x00c14b60",
+  "kind": "functions",
+  "n": 43,
+  "tables": [
+   "t174"
+  ],
+  "src": "tables217"
+ },
+ "0x008be010": {
+  "to": "0x00901c70",
+  "kind": "functions",
+  "n": 41,
+  "tables": [
+   "t178"
+  ],
+  "src": "tables217"
+ },
+ "0x00521630": {
+  "to": "0x005f7ff0",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t186",
+   "t192"
+  ],
+  "src": "tables217"
+ },
+ "0x0052ed30": {
+  "to": "0x00605830",
+  "kind": "functions",
+  "n": 38,
+  "tables": [
+   "t187"
+  ],
+  "src": "tables217"
+ },
+ "0x0052f020": {
+  "to": "0x00605b20",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t187"
+  ],
+  "src": "tables217"
+ },
+ "0x007c1930": {
+  "to": "0x00804080",
+  "kind": "functions",
+  "n": 9,
+  "tables": [
+   "t189"
+  ],
+  "src": "tables217"
+ },
+ "0x00514e80": {
+  "to": "0x004e0a30",
+  "kind": "functions",
+  "n": 23,
+  "tables": [
+   "t190",
+   "t216"
+  ],
+  "src": "tables217"
+ },
+ "0x0070e490": {
+  "to": "0x0077dc50",
+  "kind": "functions",
+  "n": 34,
+  "tables": [
+   "t191",
+   "t206"
+  ],
+  "src": "tables217"
+ },
+ "0x0070f2c0": {
+  "to": "0x0077ea00",
+  "kind": "functions",
+  "n": 58,
+  "tables": [
+   "t191",
+   "t193",
+   "t206"
+  ],
+  "src": "tables217"
+ },
+ "0x0070f6b0": {
+  "to": "0x0077edf0",
+  "kind": "functions",
+  "n": 28,
+  "tables": [
+   "t191",
+   "t193"
+  ],
+  "src": "tables217"
+ },
+ "0x00522650": {
+  "to": "0x005f9010",
+  "kind": "functions",
+  "n": 38,
+  "tables": [
+   "t192"
+  ],
+  "src": "tables217"
+ },
+ "0x00524250": {
+  "to": "0x005fad60",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t192"
+  ],
+  "src": "tables217"
+ },
+ "0x00521aa0": {
+  "to": "0x005f8460",
+  "kind": "functions",
+  "n": 10,
+  "tables": [
+   "t192"
+  ],
+  "src": "tables217"
+ },
+ "0x0052f630": {
+  "to": "0x00606130",
+  "kind": "functions",
+  "n": 3,
+  "tables": [
+   "t192"
+  ],
+  "src": "tables217"
+ },
+ "0x00530cb0": {
+  "to": "0x006077b0",
+  "kind": "functions",
+  "n": 5,
+  "tables": [
+   "t192"
+  ],
+  "src": "tables217"
+ },
+ "0x005217d0": {
+  "to": "0x005f8190",
+  "kind": "functions",
+  "n": 7,
+  "tables": [
+   "t192"
+  ],
+  "src": "tables217"
+ },
+ "0x00532560": {
+  "to": "0x00609060",
+  "kind": "functions",
+  "n": 5,
+  "tables": [
+   "t192"
+  ],
+  "src": "tables217"
+ },
+ "0x005225c0": {
+  "to": "0x005f8f80",
+  "kind": "functions",
+  "n": 7,
+  "tables": [
+   "t192"
+  ],
+  "src": "tables217"
+ },
+ "0x0052f860": {
+  "to": "0x00606360",
+  "kind": "functions",
+  "n": 3,
+  "tables": [
+   "t192"
+  ],
+  "src": "tables217"
+ },
+ "0x00534700": {
+  "to": "0x0060b210",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t192"
+  ],
+  "src": "tables217"
+ },
+ "0x0052f6d0": {
+  "to": "0x006061d0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t192"
+  ],
+  "src": "tables217"
+ },
+ "0x0052f7c0": {
+  "to": "0x006062c0",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t192"
+  ],
+  "src": "tables217"
+ },
+ "0x00522830": {
+  "to": "0x005f9200",
+  "kind": "functions",
+  "n": 3,
+  "tables": [
+   "t192"
+  ],
+  "src": "tables217"
+ },
+ "0x00522920": {
+  "to": "0x005f92f0",
+  "kind": "functions",
+  "n": 3,
+  "tables": [
+   "t192"
+  ],
+  "src": "tables217"
+ },
+ "0x005214f0": {
+  "to": "0x005f7eb0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t192"
+  ],
+  "src": "tables217"
+ },
+ "0x00532d20": {
+  "to": "0x00609830",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t192"
+  ],
+  "src": "tables217"
+ },
+ "0x00523ef0": {
+  "to": "0x005faa00",
+  "kind": "functions",
+  "n": 3,
+  "tables": [
+   "t192"
+  ],
+  "src": "tables217"
+ },
+ "0x00dab560": {
+  "to": "0x00cbb890",
+  "kind": "functions",
+  "n": 4,
+  "tables": [
+   "t193"
+  ],
+  "src": "tables217"
+ },
+ "0x00521490": {
+  "to": "0x005f7e50",
+  "kind": "functions",
+  "n": 26,
+  "tables": [
+   "t194"
+  ],
+  "src": "tables217"
+ },
+ "0x00535380": {
+  "to": "0x0058aea0",
+  "kind": "functions",
+  "n": 36,
+  "tables": [
+   "t195"
+  ],
+  "src": "tables217"
+ },
+ "0x00848e60": {
+  "to": "0x008875e0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t199"
+  ],
+  "src": "tables217"
+ },
+ "0x007bdd60": {
+  "to": "0x008002d0",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t199"
+  ],
+  "src": "tables217"
+ },
+ "0x007affc0": {
+  "to": "0x007f6740",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t199"
+  ],
+  "src": "tables217"
+ },
+ "0x00811880": {
+  "to": "0x0084f910",
+  "kind": "functions",
+  "n": 5,
+  "tables": [
+   "t201"
+  ],
+  "src": "tables217"
+ },
+ "0x00dc4fa0": {
+  "to": "0x00cd39c0",
+  "kind": "functions",
+  "n": 28,
+  "tables": [
+   "t203"
+  ],
+  "src": "tables217"
+ },
+ "0x00dc59e0": {
+  "to": "0x00cd4400",
+  "kind": "functions",
+  "n": 2,
+  "tables": [
+   "t203"
+  ],
+  "src": "tables217"
+ },
+ "0x00dc5f00": {
+  "to": "0x00cd4920",
+  "kind": "functions",
+  "n": 1,
+  "tables": [
+   "t203"
+  ],
+  "src": "tables217"
+ },
+ "0x00e07d63": {
+  "to": "0x00cefca2",
+  "kind": "functions",
+  "n": 4,
+  "tables": [
+   "t215"
+  ],
+  "src": "tables217"
+ },
+ "0x0050ecf0": {
+  "to": "0x004bb840",
+  "kind": "functions",
+  "n": 20,
+  "tables": [
+   "t216"
+  ],
+  "src": "tables217"
+ },
+ "0x00fd6af4": {
+  "to": "0x00ead148",
+  "kind": "globals",
+  "n": 78,
+  "tables": [
+   "t000",
+   "t048",
+   "t079",
+   "t095",
+   "t159",
+   "t160",
+   "t174",
+   "t191",
+   "t193"
+  ],
+  "src": "tables217"
+ },
+ "0x0100b79c": {
+  "to": "0x00ead128",
+  "kind": "globals",
+  "n": 52,
+  "tables": [
+   "t000",
+   "t079",
+   "t096",
+   "t149",
+   "t193"
+  ],
+  "src": "tables217"
+ },
+ "0x00fd5b08": {
+  "to": "0x00ead0e0",
+  "kind": "globals",
+  "n": 446,
+  "tables": [
+   "t000",
+   "t059",
+   "t078",
+   "t079",
+   "t096",
+   "t106",
+   "t126",
+   "t149",
+   "t191",
+   "t198"
+  ],
+  "src": "tables217"
+ },
+ "0x0100ff60": {
+  "to": "0x00ecd258",
+  "kind": "globals",
+  "n": 27,
+  "tables": [
+   "t000",
+   "t079",
+   "t149",
+   "t191"
+  ],
+  "src": "tables217"
+ },
+ "0x00fda2fc": {
+  "to": "0x00ead100",
+  "kind": "globals",
+  "n": 53,
+  "tables": [
+   "t000",
+   "t078",
+   "t079",
+   "t149",
+   "t191",
+   "t193"
+  ],
+  "src": "tables217"
+ },
+ "0x0100bf54": {
+  "to": "0x00eebcd8",
+  "kind": "globals",
+  "n": 26,
+  "tables": [
+   "t000",
+   "t149"
+  ],
+  "src": "tables217"
+ },
+ "0x01013e84": {
+  "to": "0x00ecd25c",
+  "kind": "globals",
+  "n": 11,
+  "tables": [
+   "t000",
+   "t079",
+   "t149"
+  ],
+  "src": "tables217"
+ },
+ "0x01039a00": {
+  "to": "0x00ecd280",
+  "kind": "globals",
+  "n": 2,
+  "tables": [
+   "t000",
+   "t149"
+  ],
+  "src": "tables217"
+ },
+ "0x01088d54": {
+  "to": "0x00ecd274",
+  "kind": "globals",
+  "n": 4,
+  "tables": [
+   "t000",
+   "t079",
+   "t149"
+  ],
+  "src": "tables217"
+ },
+ "0x0136e6c8": {
+  "to": "0x01240e78",
+  "kind": "globals",
+  "n": 7,
+  "tables": [
+   "t000",
+   "t058",
+   "t078",
+   "t079"
+  ],
+  "src": "tables217",
+  "manifeste": "kVecBegin",
+  "comment": "std::vector<StatusIcon>::begin (raw bytes)",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x0136e6cc": {
+  "to": "0x01240e7c",
+  "kind": "globals",
+  "n": 241,
+  "tables": [
+   "t000",
+   "t042",
+   "t058",
+   "t078",
+   "t079"
+  ],
+  "src": "tables217",
+  "manifeste": "kVecEnd",
+  "comment": "::end",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x00fd5d28": {
+  "to": "0x00ed5404",
+  "kind": "globals",
+  "n": 28,
+  "tables": [
+   "t000",
+   "t149",
+   "t155"
+  ],
+  "src": "tables217"
+ },
+ "0x00fda7ac": {
+  "to": "0x00edc7c8",
+  "kind": "globals",
+  "n": 17,
+  "tables": [
+   "t000",
+   "t078",
+   "t079",
+   "t106"
+  ],
+  "src": "tables217"
+ },
+ "0x0100c0a8": {
+  "to": "0x00ecd264",
+  "kind": "globals",
+  "n": 6,
+  "tables": [
+   "t000",
+   "t191"
+  ],
+  "src": "tables217"
+ },
+ "0x00fc1628": {
+  "to": "0x00e7b430",
+  "kind": "globals",
+  "n": 248,
+  "tables": [
+   "t000",
+   "t078"
+  ],
+  "src": "tables217"
+ },
+ "0x0100b7a0": {
+  "to": "0x00eeae44",
+  "kind": "globals",
+  "n": 20,
+  "tables": [
+   "t000",
+   "t079",
+   "t149",
+   "t155"
+  ],
+  "src": "tables217"
+ },
+ "0x01088d44": {
+  "to": "0x00f9f1c0",
+  "kind": "globals",
+  "n": 3,
+  "tables": [
+   "t000"
+  ],
+  "src": "tables217"
+ },
+ "0x0108edc0": {
+  "to": "0x00fa543c",
+  "kind": "globals",
+  "n": 79,
+  "tables": [
+   "t000",
+   "t145"
+  ],
+  "src": "tables217"
+ },
+ "0x01027160": {
+  "to": "0x00f867ec",
+  "kind": "globals",
+  "n": 25,
+  "tables": [
+   "t000",
+   "t079",
+   "t096",
+   "t149",
+   "t155"
+  ],
+  "src": "tables217"
+ },
+ "0x0104cd94": {
+  "to": "0x00ecd248",
+  "kind": "globals",
+  "n": 9,
+  "tables": [
+   "t000",
+   "t079",
+   "t149",
+   "t191"
+  ],
+  "src": "tables217"
+ },
+ "0x0100f1d4": {
+  "to": "0x00ef3e20",
+  "kind": "globals",
+  "n": 8,
+  "tables": [
+   "t000",
+   "t149",
+   "t191"
+  ],
+  "src": "tables217"
+ },
+ "0x01013e8c": {
+  "to": "0x00f29f5c",
+  "kind": "globals",
+  "n": 6,
+  "tables": [
+   "t000",
+   "t149"
+  ],
+  "src": "tables217"
+ },
+ "0x010868b0": {
+  "to": "0x00ead140",
+  "kind": "globals",
+  "n": 11,
+  "tables": [
+   "t000",
+   "t149",
+   "t191"
+  ],
+  "src": "tables217"
+ },
+ "0x01088da4": {
+  "to": "0x00f9f390",
+  "kind": "globals",
+  "n": 3,
+  "tables": [
+   "t000",
+   "t079",
+   "t149"
+  ],
+  "src": "tables217"
+ },
+ "0x01088ce0": {
+  "to": "0x00f9f15c",
+  "kind": "globals",
+  "n": 2,
+  "tables": [
+   "t000",
+   "t149"
+  ],
+  "src": "tables217"
+ },
+ "0x01011270": {
+  "to": "0x00ef5288",
+  "kind": "globals",
+  "n": 11,
+  "tables": [
+   "t000",
+   "t079",
+   "t149",
+   "t155"
+  ],
+  "src": "tables217"
+ },
+ "0x0108cb58": {
+  "to": "0x00fa3038",
+  "kind": "globals",
+  "n": 6,
+  "tables": [
+   "t000",
+   "t191",
+   "t193"
+  ],
+  "src": "tables217"
+ },
+ "0x00fd70b0": {
+  "to": "0x00ead0e8",
+  "kind": "globals",
+  "n": 2,
+  "tables": [
+   "t000",
+   "t095"
+  ],
+  "src": "tables217"
+ },
+ "0x00fd5b0c": {
+  "to": "0x00ecd24c",
+  "kind": "globals",
+  "n": 60,
+  "tables": [
+   "t000",
+   "t048",
+   "t095",
+   "t159",
+   "t160",
+   "t174",
+   "t191",
+   "t193"
+  ],
+  "src": "tables217"
+ },
+ "0x015c4354": {
+  "to": "0x014927a4",
+  "kind": "globals",
+  "n": 6,
+  "tables": [
+   "t010"
+  ],
+  "src": "tables217"
+ },
+ "0x00fda320": {
+  "to": "0x00edb980",
+  "kind": "globals",
+  "n": 7,
+  "tables": [
+   "t010",
+   "t027"
+  ],
+  "src": "tables217"
+ },
+ "0x0131f8e8": {
+  "to": "0x011f1cd4",
+  "kind": "globals",
+  "n": 196,
+  "tables": [
+   "t010",
+   "t027",
+   "t072",
+   "t075",
+   "t091",
+   "t098",
+   "t102",
+   "t112",
+   "t199"
+  ],
+  "src": "tables217"
+ },
+ "0x015c42e8": {
+  "to": "0x01492738",
+  "kind": "globals",
+  "n": 6,
+  "tables": [
+   "t010",
+   "t027"
+  ],
+  "src": "tables217"
+ },
+ "0x01088404": {
+  "to": "0x00f9d924",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t010"
+  ],
+  "src": "tables217"
+ },
+ "0x015c4358": {
+  "to": "0x014927a8",
+  "kind": "globals",
+  "n": 2,
+  "tables": [
+   "t010"
+  ],
+  "src": "tables217"
+ },
+ "0x0131ed60": {
+  "to": "0x011f123c",
+  "kind": "globals",
+  "n": 253,
+  "tables": [
+   "t010",
+   "t014",
+   "t094",
+   "t097",
+   "t109"
+  ],
+  "src": "tables217"
+ },
+ "0x0122acb8": {
+  "to": "0x010fdbb8",
+  "kind": "globals",
+  "n": 18,
+  "tables": [
+   "t017",
+   "t055",
+   "t056",
+   "t073",
+   "t083",
+   "t090",
+   "t109",
+   "t118",
+   "t188"
+  ],
+  "src": "tables217"
+ },
+ "0x015f8262": {
+  "to": "0x014b535a",
+  "kind": "globals",
+  "n": 10,
+  "tables": [
+   "t017"
+  ],
+  "src": "tables217",
+  "manifeste": "kSelectedSlot",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015fb23c": {
+  "to": "0x014b8200",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t017"
+  ],
+  "src": "tables217",
+  "manifeste": "kAccountSex",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x01251624": {
+  "to": "0x01123c74",
+  "kind": "globals",
+  "n": 4,
+  "tables": [
+   "t017",
+   "t083",
+   "t089",
+   "t099"
+  ],
+  "src": "tables217"
+ },
+ "0x012517c4": {
+  "to": "0x01123df8",
+  "kind": "globals",
+  "n": 4,
+  "tables": [
+   "t017",
+   "t074",
+   "t099"
+  ],
+  "src": "tables217"
+ },
+ "0x015fb398": {
+  "to": "0x014b8350",
+  "kind": "globals",
+  "n": 12,
+  "tables": [
+   "t017",
+   "t099",
+   "t112"
+  ],
+  "src": "tables217",
+  "manifeste": "kMacrosFirst",
+  "comment": "_Myfirst",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015ffd6c": {
+  "to": "0x014bc6e0",
+  "kind": "globals",
+  "n": 4,
+  "tables": [
+   "t017"
+  ],
+  "src": "tables217",
+  "manifeste": "kCreatableSlots",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015ffd74": {
+  "to": "0x014bc6e8",
+  "kind": "globals",
+  "n": 3,
+  "tables": [
+   "t017"
+  ],
+  "src": "tables217"
+ },
+ "0x0131f8c4": {
+  "to": "0x011f1cb0",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t017"
+  ],
+  "src": "tables217"
+ },
+ "0x00fd3bf4": {
+  "to": "0x00ed31cc",
+  "kind": "globals",
+  "n": 129,
+  "tables": [
+   "t022",
+   "t023",
+   "t103",
+   "t111",
+   "t130"
+  ],
+  "src": "tables217"
+ },
+ "0x00fd0450": {
+  "to": "0x00ecf900",
+  "kind": "globals",
+  "n": 20,
+  "tables": [
+   "t023",
+   "t192"
+  ],
+  "src": "tables217"
+ },
+ "0x015c4314": {
+  "to": "0x01492764",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t027"
+  ],
+  "src": "tables217"
+ },
+ "0x00fce7a0": {
+  "to": "0x00ecdd20",
+  "kind": "globals",
+  "n": 192,
+  "tables": [
+   "t030"
+  ],
+  "src": "tables217"
+ },
+ "0x0159b80a": {
+  "to": "0x0146df8d",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t031"
+  ],
+  "src": "tables217"
+ },
+ "0x015c57c8": {
+  "to": "0x01493c18",
+  "kind": "globals",
+  "n": 424,
+  "tables": [
+   "t040",
+   "t064"
+  ],
+  "src": "tables217"
+ },
+ "0x015fba94": {
+  "to": "0x014b8a4c",
+  "kind": "globals",
+  "n": 3,
+  "tables": [
+   "t041",
+   "t095"
+  ],
+  "src": "tables217",
+  "manifeste": "kWalkSpeed",
+  "comment": "g_Own_Speed",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015fb9fc": {
+  "to": "0x014b89b4",
+  "kind": "globals",
+  "n": 2,
+  "tables": [
+   "t041",
+   "t087"
+  ],
+  "src": "tables217",
+  "manifeste": "kSkillPoint, kSkillPointLvl, kSkillPointsAddr",
+  "comment": "changes when points are spent",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015fba24": {
+  "to": "0x014b89dc",
+  "kind": "globals",
+  "n": 4,
+  "tables": [
+   "t041",
+   "t053",
+   "t175",
+   "t185"
+  ],
+  "src": "tables217",
+  "manifeste": "kStatBase, kStatBaseAddr",
+  "comment": "STR..LUK, pas de 4",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015fba28": {
+  "to": "0x014b89e0",
+  "kind": "globals",
+  "n": 4,
+  "tables": [
+   "t041",
+   "t053",
+   "t175",
+   "t185"
+  ],
+  "src": "tables217",
+  "manifeste": "(littéral)",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015fba2c": {
+  "to": "0x014b89e4",
+  "kind": "globals",
+  "n": 4,
+  "tables": [
+   "t041",
+   "t053",
+   "t175",
+   "t185"
+  ],
+  "src": "tables217",
+  "manifeste": "(littéral)",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015fba30": {
+  "to": "0x014b89e8",
+  "kind": "globals",
+  "n": 4,
+  "tables": [
+   "t041",
+   "t053",
+   "t175",
+   "t185"
+  ],
+  "src": "tables217",
+  "manifeste": "(littéral)",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015fba34": {
+  "to": "0x014b89ec",
+  "kind": "globals",
+  "n": 4,
+  "tables": [
+   "t041",
+   "t053",
+   "t175",
+   "t185"
+  ],
+  "src": "tables217",
+  "manifeste": "(littéral)",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015fba38": {
+  "to": "0x014b89f0",
+  "kind": "globals",
+  "n": 4,
+  "tables": [
+   "t041",
+   "t053",
+   "t175",
+   "t185"
+  ],
+  "src": "tables217",
+  "manifeste": "(littéral)",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015fbaa4": {
+  "to": "0x014b8a5c",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t041"
+  ],
+  "src": "tables217"
+ },
+ "0x015fba98": {
+  "to": "0x014b8a50",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t041"
+  ],
+  "src": "tables217",
+  "manifeste": "kManner",
+  "comment": "g_Own_Manner",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015fba58": {
+  "to": "0x014b8a10",
+  "kind": "globals",
+  "n": 2,
+  "tables": [
+   "t041",
+   "t185"
+  ],
+  "src": "tables217",
+  "manifeste": "kAtk1",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015fba6c": {
+  "to": "0x014b8a24",
+  "kind": "globals",
+  "n": 2,
+  "tables": [
+   "t041",
+   "t185"
+  ],
+  "src": "tables217",
+  "manifeste": "kAtk1",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015fba70": {
+  "to": "0x014b8a28",
+  "kind": "globals",
+  "n": 2,
+  "tables": [
+   "t041",
+   "t185"
+  ],
+  "src": "tables217",
+  "manifeste": "kMatkMax, kMatkMin",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015fba74": {
+  "to": "0x014b8a2c",
+  "kind": "globals",
+  "n": 2,
+  "tables": [
+   "t041",
+   "t185"
+  ],
+  "src": "tables217",
+  "manifeste": "kMatkMax, kMatkMin",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015fba64": {
+  "to": "0x014b8a1c",
+  "kind": "globals",
+  "n": 2,
+  "tables": [
+   "t041",
+   "t185"
+  ],
+  "src": "tables217",
+  "manifeste": "kDefSoft",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015fba68": {
+  "to": "0x014b8a20",
+  "kind": "globals",
+  "n": 2,
+  "tables": [
+   "t041",
+   "t185"
+  ],
+  "src": "tables217",
+  "manifeste": "kDefSoft",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015fba5c": {
+  "to": "0x014b8a14",
+  "kind": "globals",
+  "n": 2,
+  "tables": [
+   "t041",
+   "t185"
+  ],
+  "src": "tables217",
+  "manifeste": "kMdefSoft",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015fba78": {
+  "to": "0x014b8a30",
+  "kind": "globals",
+  "n": 2,
+  "tables": [
+   "t041",
+   "t185"
+  ],
+  "src": "tables217",
+  "manifeste": "kMdefSoft",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015fba7c": {
+  "to": "0x014b8a34",
+  "kind": "globals",
+  "n": 2,
+  "tables": [
+   "t041",
+   "t185"
+  ],
+  "src": "tables217",
+  "manifeste": "kHit, kOwnHit",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015ff908": {
+  "to": "0x014bc4a4",
+  "kind": "globals",
+  "n": 2,
+  "tables": [
+   "t041",
+   "t055"
+  ],
+  "src": "tables217",
+  "manifeste": "kHp",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015ff90c": {
+  "to": "0x014bc4a8",
+  "kind": "globals",
+  "n": 3,
+  "tables": [
+   "t041",
+   "t055"
+  ],
+  "src": "tables217",
+  "manifeste": "kHp, kHpMax",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015fba80": {
+  "to": "0x014b8a38",
+  "kind": "globals",
+  "n": 2,
+  "tables": [
+   "t041",
+   "t185"
+  ],
+  "src": "tables217",
+  "manifeste": "kFlee, kHit, kOwnFlee",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015fba88": {
+  "to": "0x014b8a40",
+  "kind": "globals",
+  "n": 2,
+  "tables": [
+   "t041",
+   "t185"
+  ],
+  "src": "tables217",
+  "manifeste": "kCrit, kFlee, kOwnPdodge",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015fba84": {
+  "to": "0x014b8a3c",
+  "kind": "globals",
+  "n": 2,
+  "tables": [
+   "t041",
+   "t185"
+  ],
+  "src": "tables217",
+  "manifeste": "kCrit, kHit, kOwnCrit",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015fba54": {
+  "to": "0x014b8a0c",
+  "kind": "globals",
+  "n": 2,
+  "tables": [
+   "t041",
+   "t185"
+  ],
+  "src": "tables217",
+  "manifeste": "kAspdRaw, kAttackDelay, kFlee",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015fba60": {
+  "to": "0x014b8a18",
+  "kind": "globals",
+  "n": 2,
+  "tables": [
+   "t041",
+   "t185"
+  ],
+  "src": "tables217"
+ },
+ "0x015ff910": {
+  "to": "0x014bc4ac",
+  "kind": "globals",
+  "n": 2,
+  "tables": [
+   "t041",
+   "t175"
+  ],
+  "src": "tables217",
+  "manifeste": "kOwnSpCur, kSp",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015ff914": {
+  "to": "0x014bc4b0",
+  "kind": "globals",
+  "n": 2,
+  "tables": [
+   "t041",
+   "t175"
+  ],
+  "src": "tables217",
+  "manifeste": "kSp, kSpMax",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015fba3c": {
+  "to": "0x014b89f4",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t047"
+  ],
+  "src": "tables217",
+  "manifeste": "kRaiseCost, kStatCost",
+  "comment": "coût de la prochaine montée",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015fba40": {
+  "to": "0x014b89f8",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t047"
+  ],
+  "src": "tables217",
+  "manifeste": "(littéral)",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015fba44": {
+  "to": "0x014b89fc",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t047"
+  ],
+  "src": "tables217",
+  "manifeste": "(littéral)",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015fba48": {
+  "to": "0x014b8a00",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t047"
+  ],
+  "src": "tables217",
+  "manifeste": "(littéral)",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015fba4c": {
+  "to": "0x014b8a04",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t047"
+  ],
+  "src": "tables217",
+  "manifeste": "(littéral)",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015fba50": {
+  "to": "0x014b8a08",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t047"
+  ],
+  "src": "tables217",
+  "manifeste": "(littéral)",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x01088d38": {
+  "to": "0x00ecd270",
+  "kind": "globals",
+  "n": 7,
+  "tables": [
+   "t048",
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x0159b814": {
+  "to": "0x0146dfa0",
+  "kind": "globals",
+  "n": 3,
+  "tables": [
+   "t049",
+   "t094",
+   "t109"
+  ],
+  "src": "tables217"
+ },
+ "0x015fba0c": {
+  "to": "0x014b89c4",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t053"
+  ],
+  "src": "tables217",
+  "manifeste": "kStatBonus, kStatBonusAddr",
+  "comment": "bonus",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015fba10": {
+  "to": "0x014b89c8",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t053"
+  ],
+  "src": "tables217",
+  "manifeste": "(littéral)",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015fba14": {
+  "to": "0x014b89cc",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t053"
+  ],
+  "src": "tables217",
+  "manifeste": "(littéral)",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015fba18": {
+  "to": "0x014b89d0",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t053"
+  ],
+  "src": "tables217",
+  "manifeste": "(littéral)",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015fba1c": {
+  "to": "0x014b89d4",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t053"
+  ],
+  "src": "tables217",
+  "manifeste": "(littéral)",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015fba20": {
+  "to": "0x014b89d8",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t053"
+  ],
+  "src": "tables217",
+  "manifeste": "(littéral)",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x01602360": {
+  "to": "0x014be9f4",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t053"
+  ],
+  "src": "tables217"
+ },
+ "0x01602364": {
+  "to": "0x014be9f8",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t053"
+  ],
+  "src": "tables217"
+ },
+ "0x01602368": {
+  "to": "0x014be9fc",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t053"
+  ],
+  "src": "tables217"
+ },
+ "0x0160236c": {
+  "to": "0x014bea00",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t053"
+  ],
+  "src": "tables217"
+ },
+ "0x01602370": {
+  "to": "0x014bea04",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t053"
+  ],
+  "src": "tables217"
+ },
+ "0x01602374": {
+  "to": "0x014bea08",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t053"
+  ],
+  "src": "tables217"
+ },
+ "0x015fff10": {
+  "to": "0x014bc884",
+  "kind": "globals",
+  "n": 12,
+  "tables": [
+   "t055",
+   "t056"
+  ],
+  "src": "tables217"
+ },
+ "0x0159c264": {
+  "to": "0x0146e96c",
+  "kind": "globals",
+  "n": 2,
+  "tables": [
+   "t055",
+   "t056"
+  ],
+  "src": "tables217"
+ },
+ "0x0131f824": {
+  "to": "0x011f1c14",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t055"
+  ],
+  "src": "tables217"
+ },
+ "0x01011274": {
+  "to": "0x00ef7d3c",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t055"
+  ],
+  "src": "tables217"
+ },
+ "0x015faadc": {
+  "to": "0x014b7a8c",
+  "kind": "globals",
+  "n": 2,
+  "tables": [
+   "t065",
+   "t091"
+  ],
+  "src": "tables217",
+  "manifeste": "kChannelRegistryAddr",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015ff838": {
+  "to": "0x014bc3d4",
+  "kind": "globals",
+  "n": 11,
+  "tables": [
+   "t065",
+   "t112"
+  ],
+  "src": "tables217",
+  "manifeste": "kInputTargetMode",
+  "comment": "0 public 1 groupe 2 guilde 3 clan 4 alliés",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x0131f8b0": {
+  "to": "0x011f1ca0",
+  "kind": "globals",
+  "n": 185,
+  "tables": [
+   "t069"
+  ],
+  "src": "tables217"
+ },
+ "0x015ffa04": {
+  "to": "0x014bc59c",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t069"
+  ],
+  "src": "tables217"
+ },
+ "0x015ffa2c": {
+  "to": "0x014bc5c4",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t069"
+  ],
+  "src": "tables217"
+ },
+ "0x015ffa24": {
+  "to": "0x014bc5bc",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t069"
+  ],
+  "src": "tables217"
+ },
+ "0x015ff9ec": {
+  "to": "0x014bc584",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t069"
+  ],
+  "src": "tables217"
+ },
+ "0x015ff9f4": {
+  "to": "0x014bc58c",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t069"
+  ],
+  "src": "tables217"
+ },
+ "0x015ffa0c": {
+  "to": "0x014bc5a4",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t069"
+  ],
+  "src": "tables217"
+ },
+ "0x015ffa08": {
+  "to": "0x014bc5a0",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t069"
+  ],
+  "src": "tables217"
+ },
+ "0x015ffa10": {
+  "to": "0x014bc5a8",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t069"
+  ],
+  "src": "tables217"
+ },
+ "0x015ffa1c": {
+  "to": "0x014bc5b4",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t069"
+  ],
+  "src": "tables217"
+ },
+ "0x015ffa20": {
+  "to": "0x014bc5b8",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t069"
+  ],
+  "src": "tables217"
+ },
+ "0x015fffbc": {
+  "to": "0x014bc91c",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t072"
+  ],
+  "src": "tables217"
+ },
+ "0x015fff1c": {
+  "to": "0x014bc890",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t073"
+  ],
+  "src": "tables217"
+ },
+ "0x015fff34": {
+  "to": "0x014bc8a8",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t073"
+  ],
+  "src": "tables217"
+ },
+ "0x0131f50e": {
+  "to": "0x011f1906",
+  "kind": "globals",
+  "n": 2,
+  "tables": [
+   "t074",
+   "t112"
+  ],
+  "src": "tables217",
+  "manifeste": "kBattleModeFlag, kChangeChatModeAddr",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x0131f54c": {
+  "to": "0x011f1940",
+  "kind": "globals",
+  "n": 2,
+  "tables": [
+   "t076"
+  ],
+  "src": "tables217"
+ },
+ "0x01212cf0": {
+  "to": "0x010db174",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t077"
+  ],
+  "src": "tables217"
+ },
+ "0x01022f0c": {
+  "to": "0x00f0b3f0",
+  "kind": "globals",
+  "n": 16,
+  "tables": [
+   "t078",
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x01602aa4": {
+  "to": "0x014bf11c",
+  "kind": "globals",
+  "n": 174,
+  "tables": [
+   "t078"
+  ],
+  "src": "tables217"
+ },
+ "0x0104cd9c": {
+  "to": "0x00f322ec",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x01088d78": {
+  "to": "0x00f9f1f4",
+  "kind": "globals",
+  "n": 3,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x01011278": {
+  "to": "0x00ef7d40",
+  "kind": "globals",
+  "n": 9,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x01088d30": {
+  "to": "0x00f9f1b0",
+  "kind": "globals",
+  "n": 20,
+  "tables": [
+   "t079",
+   "t211"
+  ],
+  "src": "tables217"
+ },
+ "0x0100ed4c": {
+  "to": "0x00ef31cc",
+  "kind": "globals",
+  "n": 11,
+  "tables": [
+   "t079",
+   "t149",
+   "t191"
+  ],
+  "src": "tables217"
+ },
+ "0x00fda30c": {
+  "to": "0x00edb974",
+  "kind": "globals",
+  "n": 58,
+  "tables": [
+   "t079",
+   "t126"
+  ],
+  "src": "tables217"
+ },
+ "0x011dd478": {
+  "to": "0x010ad5f8",
+  "kind": "globals",
+  "n": 14,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x0104cda8": {
+  "to": "0x00f9f188",
+  "kind": "globals",
+  "n": 23,
+  "tables": [
+   "t079",
+   "t198"
+  ],
+  "src": "tables217"
+ },
+ "0x01013e94": {
+  "to": "0x00f9f20c",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x0100ed58": {
+  "to": "0x00ef31d8",
+  "kind": "globals",
+  "n": 7,
+  "tables": [
+   "t079",
+   "t106"
+  ],
+  "src": "tables217"
+ },
+ "0x01088d7c": {
+  "to": "0x00f9f1f8",
+  "kind": "globals",
+  "n": 2,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x0100c454": {
+  "to": "0x00eeceb8",
+  "kind": "globals",
+  "n": 3,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x01088da8": {
+  "to": "0x00f9f394",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x01022f24": {
+  "to": "0x00f9f380",
+  "kind": "globals",
+  "n": 2,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00fd4420": {
+  "to": "0x00ecbea0",
+  "kind": "globals",
+  "n": 2,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00fd5d34": {
+  "to": "0x00ed5410",
+  "kind": "globals",
+  "n": 3,
+  "tables": [
+   "t079",
+   "t191"
+  ],
+  "src": "tables217"
+ },
+ "0x01088d48": {
+  "to": "0x00f9f1c4",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x01018dd0": {
+  "to": "0x00f9f1ec",
+  "kind": "globals",
+  "n": 13,
+  "tables": [
+   "t079",
+   "t149",
+   "t191"
+  ],
+  "src": "tables217"
+ },
+ "0x01088d04": {
+  "to": "0x00f9f180",
+  "kind": "globals",
+  "n": 2,
+  "tables": [
+   "t079",
+   "t191"
+  ],
+  "src": "tables217"
+ },
+ "0x01088d08": {
+  "to": "0x00f9f184",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x01074f70": {
+  "to": "0x00f850c4",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x01088cd4": {
+  "to": "0x00f9f150",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t079"
+  ],
+  "src": "tables217"
+ },
+ "0x00fc1b58": {
+  "to": "0x00e7b84c",
+  "kind": "globals",
+  "n": 362,
+  "tables": [
+   "t083",
+   "t103",
+   "t111",
+   "t133",
+   "t187"
+  ],
+  "src": "tables217"
+ },
+ "0x015faae4": {
+  "to": "0x014b7a94",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t085"
+  ],
+  "src": "tables217",
+  "manifeste": "kDetachedRegistryAddr",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x0131f0a4": {
+  "to": "0x011f1498",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t086"
+  ],
+  "src": "tables217"
+ },
+ "0x015fa454": {
+  "to": "0x014b7444",
+  "kind": "globals",
+  "n": 159,
+  "tables": [
+   "t087"
+  ],
+  "src": "tables217"
+ },
+ "0x015fa458": {
+  "to": "0x014b7448",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t087"
+  ],
+  "src": "tables217"
+ },
+ "0x01027188": {
+  "to": "0x00fb1c90",
+  "kind": "globals",
+  "n": 20,
+  "tables": [
+   "t088"
+  ],
+  "src": "tables217"
+ },
+ "0x0159c26c": {
+  "to": "0x0146e974",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t089"
+  ],
+  "src": "tables217",
+  "manifeste": "kGuildRelHead",
+  "comment": "CGuild+0xe4 : liste alliés/ennemis",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x0131f510": {
+  "to": "0x011f1908",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t091"
+  ],
+  "src": "tables217",
+  "manifeste": "kDetachedChatTree",
+  "comment": "std::set<UIChatWnd*> head node",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x00fc1238": {
+  "to": "0x00e7b180",
+  "kind": "globals",
+  "n": 187,
+  "tables": [
+   "t092",
+   "t118",
+   "t167",
+   "t216"
+  ],
+  "src": "tables217"
+ },
+ "0x0131f95c": {
+  "to": "0x011f1d38",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t093"
+  ],
+  "src": "tables217"
+ },
+ "0x0100a3c8": {
+  "to": "0x00ead124",
+  "kind": "globals",
+  "n": 4,
+  "tables": [
+   "t095",
+   "t193"
+  ],
+  "src": "tables217"
+ },
+ "0x010900e0": {
+  "to": "0x00fa70b8",
+  "kind": "globals",
+  "n": 6,
+  "tables": [
+   "t095",
+   "t191",
+   "t193"
+  ],
+  "src": "tables217"
+ },
+ "0x01602a8f": {
+  "to": "0x014bf107",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t095"
+  ],
+  "src": "tables217"
+ },
+ "0x0122b468": {
+  "to": "0x010fe334",
+  "kind": "globals",
+  "n": 3,
+  "tables": [
+   "t099"
+  ],
+  "src": "tables217"
+ },
+ "0x0124f2cc": {
+  "to": "0x011116ec",
+  "kind": "globals",
+  "n": 3,
+  "tables": [
+   "t099"
+  ],
+  "src": "tables217"
+ },
+ "0x01602a90": {
+  "to": "0x014bf108",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t099"
+  ],
+  "src": "tables217"
+ },
+ "0x01254d84": {
+  "to": "0x0112735c",
+  "kind": "globals",
+  "n": 2,
+  "tables": [
+   "t101"
+  ],
+  "src": "tables217"
+ },
+ "0x00fc18b4": {
+  "to": "0x00e7b654",
+  "kind": "globals",
+  "n": 117,
+  "tables": [
+   "t103"
+  ],
+  "src": "tables217"
+ },
+ "0x00fc1b54": {
+  "to": "0x00e7b850",
+  "kind": "globals",
+  "n": 155,
+  "tables": [
+   "t103",
+   "t187"
+  ],
+  "src": "tables217"
+ },
+ "0x015ffa74": {
+  "to": "0x014bc60c",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t110"
+  ],
+  "src": "tables217"
+ },
+ "0x015ffa78": {
+  "to": "0x014bc610",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t110"
+  ],
+  "src": "tables217"
+ },
+ "0x015ff9c8": {
+  "to": "0x014bc560",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t112"
+  ],
+  "src": "tables217"
+ },
+ "0x015ff80c": {
+  "to": "0x014bc3a8",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t112"
+  ],
+  "src": "tables217"
+ },
+ "0x00fc1a40": {
+  "to": "0x00e7b830",
+  "kind": "globals",
+  "n": 154,
+  "tables": [
+   "t113",
+   "t195"
+  ],
+  "src": "tables217"
+ },
+ "0x015ff834": {
+  "to": "0x014bc3d0",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t114"
+  ],
+  "src": "tables217"
+ },
+ "0x0131f7f0": {
+  "to": "0x011f1be0",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t121"
+  ],
+  "src": "tables217"
+ },
+ "0x01229498": {
+  "to": "0x010ac500",
+  "kind": "globals",
+  "n": 7,
+  "tables": [
+   "t125"
+  ],
+  "src": "tables217"
+ },
+ "0x00fc174c": {
+  "to": "0x00e7b524",
+  "kind": "globals",
+  "n": 172,
+  "tables": [
+   "t133",
+   "t146"
+  ],
+  "src": "tables217"
+ },
+ "0x00fc1510": {
+  "to": "0x00e7b3a0",
+  "kind": "globals",
+  "n": 4,
+  "tables": [
+   "t144"
+  ],
+  "src": "tables217"
+ },
+ "0x0160245c": {
+  "to": "0x014beae8",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t153"
+  ],
+  "src": "tables217"
+ },
+ "0x010860bc": {
+  "to": "0x00f98d48",
+  "kind": "globals",
+  "n": 4,
+  "tables": [
+   "t155"
+  ],
+  "src": "tables217"
+ },
+ "0x010860c0": {
+  "to": "0x00f98d4c",
+  "kind": "globals",
+  "n": 2,
+  "tables": [
+   "t155"
+  ],
+  "src": "tables217"
+ },
+ "0x015beec8": {
+  "to": "0x01490520",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t155"
+  ],
+  "src": "tables217"
+ },
+ "0x010860b4": {
+  "to": "0x00f98d40",
+  "kind": "globals",
+  "n": 3,
+  "tables": [
+   "t155"
+  ],
+  "src": "tables217"
+ },
+ "0x0100d328": {
+  "to": "0x00eef790",
+  "kind": "globals",
+  "n": 39,
+  "tables": [
+   "t159",
+   "t174",
+   "t191"
+  ],
+  "src": "tables217"
+ },
+ "0x00fc1658": {
+  "to": "0x00e7b468",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t162"
+  ],
+  "src": "tables217"
+ },
+ "0x0159c278": {
+  "to": "0x0146e980",
+  "kind": "globals",
+  "n": 4,
+  "tables": [
+   "t165"
+  ],
+  "src": "tables217"
+ },
+ "0x012046b4": {
+  "to": "0x010d0f28",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t168"
+  ],
+  "src": "tables217"
+ },
+ "0x0109bd38": {
+  "to": "0x00fb0634",
+  "kind": "globals",
+  "n": 49,
+  "tables": [
+   "t169"
+  ],
+  "src": "tables217"
+ },
+ "0x00fd0430": {
+  "to": "0x00ecbe90",
+  "kind": "globals",
+  "n": 46,
+  "tables": [
+   "t170",
+   "t171",
+   "t181",
+   "t184"
+  ],
+  "src": "tables217"
+ },
+ "0x0122b3e0": {
+  "to": "0x010fe328",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t180"
+  ],
+  "src": "tables217"
+ },
+ "0x012552f4": {
+  "to": "0x0112786c",
+  "kind": "globals",
+  "n": 34,
+  "tables": [
+   "t191",
+   "t206"
+  ],
+  "src": "tables217"
+ },
+ "0x0109d24c": {
+  "to": "0x00fb1c8c",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t191"
+  ],
+  "src": "tables217"
+ },
+ "0x0100f1cc": {
+  "to": "0x00ead714",
+  "kind": "globals",
+  "n": 8,
+  "tables": [
+   "t191"
+  ],
+  "src": "tables217"
+ },
+ "0x0109d250": {
+  "to": "0x00fb1c98",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t191"
+  ],
+  "src": "tables217"
+ },
+ "0x0109d260": {
+  "to": "0x00fb1ca8",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t191"
+  ],
+  "src": "tables217"
+ },
+ "0x010943a0": {
+  "to": "0x00fa8b98",
+  "kind": "globals",
+  "n": 5,
+  "tables": [
+   "t191"
+  ],
+  "src": "tables217"
+ },
+ "0x00fc193c": {
+  "to": "0x00e7b6c8",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t192"
+  ],
+  "src": "tables217"
+ },
+ "0x00fc1938": {
+  "to": "0x00e7b6a0",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t192"
+  ],
+  "src": "tables217"
+ },
+ "0x00fd5378": {
+  "to": "0x00ed4920",
+  "kind": "globals",
+  "n": 3,
+  "tables": [
+   "t192"
+  ],
+  "src": "tables217"
+ },
+ "0x00fc1ad8": {
+  "to": "0x00e7b8a8",
+  "kind": "globals",
+  "n": 2,
+  "tables": [
+   "t192"
+  ],
+  "src": "tables217"
+ },
+ "0x0109d254": {
+  "to": "0x00fb1c9c",
+  "kind": "globals",
+  "n": 2,
+  "tables": [
+   "t193"
+  ],
+  "src": "tables217"
+ },
+ "0x0109d248": {
+  "to": "0x00fb1c88",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t193"
+  ],
+  "src": "tables217"
+ },
+ "0x00fd48c8": {
+  "to": "0x00ed3e70",
+  "kind": "globals",
+  "n": 41,
+  "tables": [
+   "t194",
+   "t195"
+  ],
+  "src": "tables217"
+ },
+ "0x00fd48f0": {
+  "to": "0x00ed3e98",
+  "kind": "globals",
+  "n": 15,
+  "tables": [
+   "t195"
+  ],
+  "src": "tables217"
+ },
+ "0x0131f860": {
+  "to": "0x011f1c50",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t199"
+  ],
+  "src": "tables217"
+ },
+ "0x0131f6d4": {
+  "to": "0x011f1ac4",
+  "kind": "globals",
+  "n": 3,
+  "tables": [
+   "t199"
+  ],
+  "src": "tables217"
+ },
+ "0x01602314": {
+  "to": "0x014be9b4",
+  "kind": "globals",
+  "n": 2,
+  "tables": [
+   "t200"
+  ],
+  "src": "tables217"
+ },
+ "0x010a7f58": {
+  "to": "0x00fb69d0",
+  "kind": "globals",
+  "n": 1,
+  "tables": [
+   "t203"
+  ],
+  "src": "tables217"
+ },
+ "0x00fc1758": {
+  "to": "0x00e7b510",
+  "kind": "globals",
+  "n": 4,
+  "tables": [
+   "t215"
+  ],
+  "src": "tables217"
  }
 }

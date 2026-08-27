@@ -34,6 +34,7 @@ jeux = [
     (load('opcode_pairs_d1.json', 'opcode', 'nop'), 'opcode'),
     (load('window_pairs.json', 'fenetre', 'nid'), 'fenetre'),
     (load('multi_pairs.json', 'multi', 'n'), 'multi'),
+    (load('all_pairs.json', 'tables217', 'n'), 'tables217'),
 ]
 
 merged = {}

@@ -18,7 +18,7 @@ Relevés du **2026-08-26**, mis à jour le **2026-08-27**.
 | **ASLR + CFG** | ✅ levé — `fix_aslr.py` sur l'exe SOURCE, une fois pour toutes |
 | **protocole** | ✅ **aucun obstacle** — 0 opcode utilisé par Moonlight ne change de longueur |
 | **patchs WARP** | 🟠 **65/116 passent tels quels** (56 %), 43 à réparer |
-| **adresses Bourgeon** | 🟠 **205/784 portées** (26,1 %) ; 579 restantes |
+| **adresses Bourgeon** | 🟠 **271/784 portées** (34,6 %) ; 513 restantes |
 | **layout `g_session`** | ✅ **porté statiquement** : `0x015FA3C0` → `0x014B73B0`, 49 membres, 14 paliers |
 | **connexion au login** | 🟠 en cours — voir `clientinfo_service_select_re.md` |
 
@@ -86,9 +86,9 @@ l'écriture (le script le dit clairement au lieu de planter).
 | `opcode_dispatch_port.md` | **porter par les OPCODES** : la methode, sa validation par temoin aleatoire, et l'audit du portage precedent |
 | `port_opcode_pairs.json` | les 623 paires, avec taille, ratio et niveau de confiance |
 | `window_pairs.json` | les 198 paires trouvées par les **ids de fenêtre** (`MakeWindow`) |
-| `merged_pairs.json` | **l'union des trois passes, 1181 paires**, 0 conflit ; champ `tables` = par quels identifiants |
+| `merged_pairs.json` | **l'union des quatre passes, 1827 paires**, 0 conflit ; champ `tables` = par quels identifiants |
 | `port_suspects.json` | les **11 entrees fausses ou douteuses** trouvees dans `port_2025_2026.json` |
-| `apply_plan.md` | **le plan d'application** : les 277 sites du code a modifier, par fichier — rien n'est applique |
+| `apply_plan.md` | **le plan d'application** : les 398 sites du code a modifier, par fichier — rien n'est applique |
 | `scripts/` | les scripts rejouables du portage par opcodes |
 | `client_2026_opcodes.md` | les 1577 opcodes du client, nommés et croisés avec rAthena |
 | `packet_len_diff.md` | méthode d'extraction des longueurs de paquets + le diff entre les deux clients |
