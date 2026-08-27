@@ -13,15 +13,17 @@ Session::Pointer ObjectFactory::CreateSession(
     return nullptr;
   }
 
-  // Une seule disposition vit encore ici — cf. object_layouts/session/layouts.h
-  // pour la raison. Le `switch` est resté sous forme de test : c'est le point
-  // d'accroche s'il faut un jour en rouvrir une seconde.
+  // Deux dispositions vivent ici — cf. object_layouts/session/layouts.h pour la
+  // raison. Le `switch` est resté sous forme de test ; c'était le point
+  // d'accroche annoncé, et le client 2026 s'y accroche.
   try {
     const auto layout = session_layout.as<uint32_t>();
     if (layout == 20250716) {
       result = std::make_unique<Session_20250716>(session_configuration);
+    } else if (layout == 20260707) {
+      result = std::make_unique<Session_20260707>(session_configuration);
     } else {
-      LogError("Unknown CSession layout {} (only 20250716 is implemented)",
+      LogError("Unknown CSession layout {} (20250716 and 20260707 only)",
                layout);
       result = nullptr;
     }

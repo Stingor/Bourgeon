@@ -93,7 +93,9 @@ const std::string kYamlConfiguration = R"(
 #
 20260707:
   CSession:
-    layout: 20250716
+    # Releve le 2026-08-27 : g_session = 0x014B73B0, et les cinq champs que la
+    # macro expose reellement sont mesures. cf. docs/2026/session_layout_2026.md
+    layout: 20260707
     CSession: 0x00c6a730
     GetTalkType: 0x00c71310
   UIWindowMgr:

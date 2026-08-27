@@ -59,18 +59,26 @@ part entre `+0x51F0` et `+0x5420`, et rien ne dit qu'elle est après.
 −2384. Une seule mesure, aberrante de deux ordres de grandeur : c'est une entrée
 fausse du portage de globaux. À écarter, et à traiter si elle sert ailleurs.
 
-## Pourquoi il n'y a pas de `20260707.h`
+## 🔴 Les deux champs indéterminés n'ont aucune portée
 
-Le layout est une structure à padding : un seul offset faux décale tout ce qui
-suit et se lit comme une valeur plausible. Avec deux champs indéterminés sur les
-quinze, écrire le fichier maintenant produirait des lectures fausses **et
-silencieuses** — exactement le défaut qui a fait vivre `item_list_ (+0x16D8)`
-pendant des mois dans le layout 2025.
+Vérification faite : `SESSION_IMPLEMENTATION` n'expose que **sept accesseurs** —
+`aid_`, `hp_`, `max_hp_`, `sp_`, `max_sp_`, `char_name_` et `item_list_`. Tous
+les autres champs du layout 20250716, `mkcount_` et `talk_type_table_` compris,
+**ne sont lus par personne**. Ce sont des déclarations décoratives.
 
-Le relevé est donc le livrable. Les données chiffrées sont dans
-[session_layout_2026.json](session_layout_2026.json), paliers compris, prêtes à
-devenir un layout dès que les deux champs manquants seront mesurés — ce qui
-demande de lire en jeu, pas de deviner.
+Or les six champs vivants sont précisément ceux qui sont mesurés. Le layout
+[20260707.h](../../src/ragnarok/object_layouts/session/20260707.h) a donc été
+écrit, et il ne déclare **que ce qui est mesuré et réellement lu** : le reste est
+du remplissage, pour ne pas propager des offsets que rien ne vérifierait.
+
+⚠ Seule exception, assumée : `item_list_` est placé par report du palier −56,
+sans mesure. Sans conséquence — le champ était **déjà faux en 2025** (tête de
+liste lue à 0, crash au premier parcours) et son unique consommateur,
+`GetItemInfoById`, n'a aucun appelant. La macro exige le champ, donc il est
+déclaré ; il ne doit pas être lu.
+
+Les données chiffrées restent dans
+[session_layout_2026.json](session_layout_2026.json), paliers compris.
 
 ## Ce que la méthode ne pouvait pas donner
 
