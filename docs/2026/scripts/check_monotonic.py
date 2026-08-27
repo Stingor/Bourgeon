@@ -15,7 +15,7 @@ import os
 import random
 
 DOCS = r"d:/Mes documents/GitHub/Bourgeon/docs/2026"
-merged = json.load(io.open(os.path.join(DOCS, 'merged_pairs.json'), encoding='utf-8'))
+merged = json.load(io.open(os.path.join(DOCS, 'all_pairs_final.json'), encoding='utf-8'))
 
 pts = sorted(((int(k, 16), int(v['to'], 16), k, v) for k, v in merged.items()))
 print("paires analysees : %d" % len(pts))

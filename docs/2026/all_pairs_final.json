@@ -851,7 +851,7 @@
  },
  "0x00fc19c4": {
   "to": "0x00e7b72c",
-  "via": "portage+tables"
+  "via": "appel-i1+portage+tables"
  },
  "0x0104ee7c": {
   "to": "0x00f37e40",
@@ -877,7 +877,7 @@
  },
  "0x0131f6b0": {
   "to": "0x011f1aa4",
-  "via": "portage+tables",
+  "via": "portage+position+tables",
   "manifeste": "kNewChatWndPtr",
   "comment": "g_pNewChatWnd"
  },
@@ -895,7 +895,7 @@
  },
  "0x00fc1a28": {
   "to": "0x00e7b7ec",
-  "via": "tables"
+  "via": "appel-i1+tables"
  },
  "0x00ccd4c0": {
   "to": "0x00537a90",
@@ -1188,7 +1188,7 @@
  },
  "0x00fc1b60": {
   "to": "0x00e7b8b0",
-  "via": "tables"
+  "via": "appel-i1+tables"
  },
  "0x00684920": {
   "to": "0x007015e0",
@@ -1331,7 +1331,7 @@
  },
  "0x00fc1b1c": {
   "to": "0x00e7b840",
-  "via": "tables"
+  "via": "appel-i1+tables"
  },
  "0x00c99560": {
   "to": "0x00502610",
@@ -2890,7 +2890,7 @@
  },
  "0x00fc1b68": {
   "to": "0x00e7b8c0",
-  "via": "tables"
+  "via": "appel-i1+tables"
  },
  "0x015fb3b0": {
   "to": "0x014b8368",
@@ -2987,7 +2987,7 @@
  },
  "0x00fc1b30": {
   "to": "0x00e7b884",
-  "via": "tables"
+  "via": "appel-i1+tables"
  },
  "0x0131f6ac": {
   "to": "0x011f1aa0",
@@ -3080,7 +3080,7 @@
  },
  "0x015ffd78": {
   "to": "0x014bc6ec",
-  "via": "position+tables",
+  "via": "tables",
   "manifeste": "kStateHolderAddr"
  },
  "0x0159c22c": {
@@ -3185,7 +3185,7 @@
  },
  "0x00fc1b88": {
   "to": "0x00e7b8c8",
-  "via": "tables"
+  "via": "appel-i1+tables"
  },
  "0x015fa3c0": {
   "to": "0x014b73b0",
@@ -4194,7 +4194,7 @@
  },
  "0x00fc120c": {
   "to": "0x00e7b210",
-  "via": "tables"
+  "via": "appel-i1+tables"
  },
  "0x005ab170": {
   "to": "0x00671ce0",
@@ -5445,7 +5445,7 @@
  },
  "0x0100b39c": {
   "to": "0x00eea784",
-  "via": "tables"
+  "via": "position+tables"
  },
  "0x01085f40": {
   "to": "0x00eef220",
@@ -5987,7 +5987,7 @@
  },
  "0x00fc1b50": {
   "to": "0x00e7b854",
-  "via": "tables"
+  "via": "appel-i1+tables"
  },
  "0x00522ef0": {
   "to": "0x005f98e0",
@@ -6233,7 +6233,7 @@
  },
  "0x00fc1824": {
   "to": "0x00e7b5b4",
-  "via": "tables"
+  "via": "appel-i1+tables"
  },
  "0x00c441d0": {
   "to": "0x00c11460",
@@ -6855,7 +6855,7 @@
  },
  "0x00fc1b4c": {
   "to": "0x00e7b848",
-  "via": "tables"
+  "via": "appel-i1+tables"
  },
  "0x005267f0": {
   "to": "0x005fd300",
@@ -7478,7 +7478,7 @@
  },
  "0x00fc1628": {
   "to": "0x00e7b430",
-  "via": "tables"
+  "via": "appel-i1+tables"
  },
  "0x0100b7a0": {
   "to": "0x00eeae44",
@@ -7506,7 +7506,7 @@
  },
  "0x01013e8c": {
   "to": "0x00f29f5c",
-  "via": "position+tables"
+  "via": "tables"
  },
  "0x010868b0": {
   "to": "0x00ead140",
@@ -7576,11 +7576,11 @@
  },
  "0x01251624": {
   "to": "0x01123c74",
-  "via": "tables"
+  "via": "position+tables"
  },
  "0x012517c4": {
   "to": "0x01123df8",
-  "via": "tables"
+  "via": "position+tables"
  },
  "0x015fb398": {
   "to": "0x014b8350",
@@ -7879,7 +7879,7 @@
  },
  "0x015faadc": {
   "to": "0x014b7a8c",
-  "via": "tables",
+  "via": "position+tables",
   "manifeste": "kChannelRegistryAddr"
  },
  "0x015ff838": {
@@ -8023,7 +8023,7 @@
  },
  "0x00fd4420": {
   "to": "0x00ecbea0",
-  "via": "tables"
+  "via": "position+tables"
  },
  "0x00fd5d34": {
   "to": "0x00ed5410",
@@ -8055,11 +8055,11 @@
  },
  "0x00fc1b58": {
   "to": "0x00e7b84c",
-  "via": "tables"
+  "via": "appel-i1+tables"
  },
  "0x015faae4": {
   "to": "0x014b7a94",
-  "via": "tables",
+  "via": "position+tables",
   "manifeste": "kDetachedRegistryAddr"
  },
  "0x0131f0a4": {
@@ -8092,7 +8092,7 @@
  },
  "0x00fc1238": {
   "to": "0x00e7b180",
-  "via": "tables"
+  "via": "appel-i1+tables"
  },
  "0x0131f95c": {
   "to": "0x011f1d38",
@@ -8100,7 +8100,7 @@
  },
  "0x0100a3c8": {
   "to": "0x00ead124",
-  "via": "tables"
+  "via": "position+tables"
  },
  "0x010900e0": {
   "to": "0x00fa70b8",
@@ -8132,7 +8132,7 @@
  },
  "0x00fc1b54": {
   "to": "0x00e7b850",
-  "via": "tables"
+  "via": "appel-i1+tables"
  },
  "0x015ffa74": {
   "to": "0x014bc60c",
@@ -8152,7 +8152,7 @@
  },
  "0x00fc1a40": {
   "to": "0x00e7b830",
-  "via": "tables"
+  "via": "appel-i1+tables"
  },
  "0x015ff834": {
   "to": "0x014bc3d0",
@@ -8188,7 +8188,7 @@
  },
  "0x015beec8": {
   "to": "0x01490520",
-  "via": "tables"
+  "via": "position+tables"
  },
  "0x010860b4": {
   "to": "0x00f98d40",
@@ -8200,7 +8200,7 @@
  },
  "0x00fc1658": {
   "to": "0x00e7b468",
-  "via": "tables"
+  "via": "appel-i1+tables"
  },
  "0x0159c278": {
   "to": "0x0146e980",
@@ -8260,7 +8260,7 @@
  },
  "0x00fc1ad8": {
   "to": "0x00e7b8a8",
-  "via": "tables"
+  "via": "appel-i2+tables"
  },
  "0x0109d254": {
   "to": "0x00fb1c9c",
@@ -8272,7 +8272,7 @@
  },
  "0x00fd48c8": {
   "to": "0x00ed3e70",
-  "via": "tables"
+  "via": "position+tables"
  },
  "0x00fd48f0": {
   "to": "0x00ed3e98",
@@ -25479,6 +25479,675 @@
   "to": "0x0065ccd0",
   "via": "vtable"
  },
+ "0x0159b8a4": {
+  "to": "0x0146df92",
+  "via": "position"
+ },
+ "0x0159b810": {
+  "to": "0x0146df9c",
+  "via": "position"
+ },
+ "0x0159b80c": {
+  "to": "0x0146df98",
+  "via": "position"
+ },
+ "0x011dcf30": {
+  "to": "0x010ad0c8",
+  "via": "position"
+ },
+ "0x011dd458": {
+  "to": "0x010ad5d8",
+  "via": "position"
+ },
+ "0x011dd438": {
+  "to": "0x010ad5b8",
+  "via": "position"
+ },
+ "0x011dd448": {
+  "to": "0x010ad5c8",
+  "via": "position"
+ },
+ "0x00fd5b40": {
+  "to": "0x00ed5230",
+  "via": "position"
+ },
+ "0x00fd6b00": {
+  "to": "0x00ed6414",
+  "via": "position"
+ },
+ "0x00fd6af8": {
+  "to": "0x00ead158",
+  "via": "position"
+ },
+ "0x00fd6ae4": {
+  "to": "0x00ed6400",
+  "via": "position",
+  "manifeste": "kNativeDepthQuantumVa"
+ },
+ "0x00fd6afc": {
+  "to": "0x00ed6410",
+  "via": "position"
+ },
+ "0x0125102c": {
+  "to": "0x01123694",
+  "via": "position"
+ },
+ "0x012504e4": {
+  "to": "0x01122b4c",
+  "via": "position"
+ },
+ "0x00fd6cb0": {
+  "to": "0x00ed66b8",
+  "via": "position"
+ },
+ "0x00fd6cb8": {
+  "to": "0x00ed66c0",
+  "via": "position"
+ },
+ "0x00fd6ccc": {
+  "to": "0x00ed66cc",
+  "via": "position"
+ },
+ "0x00fd6ca8": {
+  "to": "0x00ed66b4",
+  "via": "position"
+ },
+ "0x00fd6cc8": {
+  "to": "0x00ead154",
+  "via": "position"
+ },
+ "0x00fd6cd0": {
+  "to": "0x00ed66d0",
+  "via": "position"
+ },
+ "0x01228a9c": {
+  "to": "0x010fc510",
+  "via": "position"
+ },
+ "0x011dd474": {
+  "to": "0x010ad5f4",
+  "via": "position"
+ },
+ "0x011dd47c": {
+  "to": "0x010ad5fc",
+  "via": "position"
+ },
+ "0x01602640": {
+  "to": "0x014becb8",
+  "via": "position",
+  "manifeste": "kCfgRenderSystemAddr"
+ },
+ "0x01602644": {
+  "to": "0x014becbc",
+  "via": "position",
+  "manifeste": "kCfgDx9AdapterGuid",
+  "comment": "16 o."
+ },
+ "0x016025d8": {
+  "to": "0x014bec50",
+  "via": "position",
+  "manifeste": "kCfgDx7DriverGuid",
+  "comment": "16 o."
+ },
+ "0x016025c8": {
+  "to": "0x014bec40",
+  "via": "position",
+  "manifeste": "kCfgDx7DeviceGuid",
+  "comment": "16 o."
+ },
+ "0x0109db90": {
+  "to": "0x00fb2780",
+  "via": "position"
+ },
+ "0x01251824": {
+  "to": "0x01123e44",
+  "via": "position",
+  "manifeste": "kChatBlockListPtr"
+ },
+ "0x015fb9a4": {
+  "to": "0x014b895c",
+  "via": "position",
+  "manifeste": "kAccountAid, kOwnAccountAid, kOwnAccountId, kOwnAid, kOwnAidAddr, kOwnHandlePtr",
+  "comment": "handle/AID du joueur"
+ },
+ "0x015fab14": {
+  "to": "0x014b7adc",
+  "via": "position"
+ },
+ "0x015fab00": {
+  "to": "0x014b7ac8",
+  "via": "position"
+ },
+ "0x0160226c": {
+  "to": "0x014bc340",
+  "via": "position"
+ },
+ "0x015fa424": {
+  "to": "0x014b7414",
+  "via": "position",
+  "manifeste": "kSkillHead"
+ },
+ "0x0159b818": {
+  "to": "0x0146dfa4",
+  "via": "position",
+  "manifeste": "kClientCodePageAddr"
+ },
+ "0x01251800": {
+  "to": "0x01123e30",
+  "via": "position"
+ },
+ "0x01602674": {
+  "to": "0x014becec",
+  "via": "position",
+  "manifeste": "kSoundModeVal",
+  "comment": "SOUNDMODE (registre, boot) : 0 = son coupé au setup"
+ },
+ "0x015beecc": {
+  "to": "0x01490524",
+  "via": "position",
+  "manifeste": "kReplayActive",
+  "comment": "lecture d'un replay"
+ },
+ "0x01602c00": {
+  "to": "0x014bf284",
+  "via": "position"
+ },
+ "0x0125517c": {
+  "to": "0x01127704",
+  "via": "position"
+ },
+ "0x01255128": {
+  "to": "0x011276ac",
+  "via": "position"
+ },
+ "0x0125519c": {
+  "to": "0x01127724",
+  "via": "position"
+ },
+ "0x01255118": {
+  "to": "0x0112769c",
+  "via": "position"
+ },
+ "0x015beeac": {
+  "to": "0x01121820",
+  "via": "position"
+ },
+ "0x011f29a0": {
+  "to": "0x010c23c8",
+  "via": "position"
+ },
+ "0x00fd5e00": {
+  "to": "0x00ed54c0",
+  "via": "position"
+ },
+ "0x010129f4": {
+  "to": "0x00efb6a8",
+  "via": "position"
+ },
+ "0x01012a04": {
+  "to": "0x00efb6b8",
+  "via": "position"
+ },
+ "0x01012a06": {
+  "to": "0x00efb6ba",
+  "via": "position"
+ },
+ "0x010129d0": {
+  "to": "0x00efb684",
+  "via": "position"
+ },
+ "0x010129e0": {
+  "to": "0x00efb694",
+  "via": "position"
+ },
+ "0x010129e2": {
+  "to": "0x00efb696",
+  "via": "position"
+ },
+ "0x012551d4": {
+  "to": "0x0112182c",
+  "via": "position"
+ },
+ "0x015fb290": {
+  "to": "0x014b8250",
+  "via": "position",
+  "manifeste": "kHairCol",
+  "comment": "palette de cheveux"
+ },
+ "0x015fb278": {
+  "to": "0x014b823c",
+  "via": "position",
+  "manifeste": "kHair",
+  "comment": "style de coiffure"
+ },
+ "0x015fb28c": {
+  "to": "0x014b824c",
+  "via": "position",
+  "manifeste": "kClothesCol",
+  "comment": "palette de vêtements"
+ },
+ "0x01026aa8": {
+  "to": "0x00f0f270",
+  "via": "position"
+ },
+ "0x01026ab8": {
+  "to": "0x00f0f280",
+  "via": "position"
+ },
+ "0x01026ac8": {
+  "to": "0x00f0f290",
+  "via": "position"
+ },
+ "0x015fb2a8": {
+  "to": "0x014b8268",
+  "via": "position"
+ },
+ "0x010278d8": {
+  "to": "0x00f103e8",
+  "via": "position"
+ },
+ "0x010278dc": {
+  "to": "0x00f103ec",
+  "via": "position"
+ },
+ "0x0120416c": {
+  "to": "0x010d07cc",
+  "via": "position"
+ },
+ "0x01204158": {
+  "to": "0x010d07b8",
+  "via": "position"
+ },
+ "0x01204168": {
+  "to": "0x010d07c8",
+  "via": "position"
+ },
+ "0x01204154": {
+  "to": "0x010d07b4",
+  "via": "position"
+ },
+ "0x01204150": {
+  "to": "0x010d07b0",
+  "via": "position"
+ },
+ "0x01204140": {
+  "to": "0x010d07a0",
+  "via": "position"
+ },
+ "0x0159b808": {
+  "to": "0x0146df93",
+  "via": "position"
+ },
+ "0x012518dc": {
+  "to": "0x01123efc",
+  "via": "position"
+ },
+ "0x0131edec": {
+  "to": "0x011f12d0",
+  "via": "position"
+ },
+ "0x0131eddc": {
+  "to": "0x011f12c0",
+  "via": "position"
+ },
+ "0x01039680": {
+  "to": "0x00eac1c4",
+  "via": "position"
+ },
+ "0x01039690": {
+  "to": "0x00eac1d4",
+  "via": "position"
+ },
+ "0x01039692": {
+  "to": "0x00eac1d6",
+  "via": "position"
+ },
+ "0x012518a8": {
+  "to": "0x01123ec8",
+  "via": "position"
+ },
+ "0x012518c8": {
+  "to": "0x01123ee8",
+  "via": "position"
+ },
+ "0x012518c0": {
+  "to": "0x01123ee0",
+  "via": "position"
+ },
+ "0x012518c4": {
+  "to": "0x01123ee4",
+  "via": "position"
+ },
+ "0x012518e8": {
+  "to": "0x01123f08",
+  "via": "position"
+ },
+ "0x01251900": {
+  "to": "0x01123f20",
+  "via": "position"
+ },
+ "0x012518e0": {
+  "to": "0x01123f00",
+  "via": "position"
+ },
+ "0x012518e4": {
+  "to": "0x01123f04",
+  "via": "position"
+ },
+ "0x012518f8": {
+  "to": "0x01123f18",
+  "via": "position"
+ },
+ "0x012518fc": {
+  "to": "0x01123f1c",
+  "via": "position"
+ },
+ "0x01251910": {
+  "to": "0x01123f30",
+  "via": "position"
+ },
+ "0x015fff74": {
+  "to": "0x014bc8e8",
+  "via": "position"
+ },
+ "0x015fff78": {
+  "to": "0x014bc8ec",
+  "via": "position"
+ },
+ "0x015faaec": {
+  "to": "0x014b7a9c",
+  "via": "position"
+ },
+ "0x015faae0": {
+  "to": "0x014b7a90",
+  "via": "position"
+ },
+ "0x015fb9c8": {
+  "to": "0x014b8980",
+  "via": "position",
+  "manifeste": "kOwnJobId, kOwnJobIdAddr",
+  "comment": "g_Own_JobId — le job RÉEL"
+ },
+ "0x00fe68bc": {
+  "to": "0x00ee57f0",
+  "via": "position"
+ },
+ "0x00fe68cc": {
+  "to": "0x00ee57f8",
+  "via": "position"
+ },
+ "0x00fe68d4": {
+  "to": "0x00ee57fc",
+  "via": "position"
+ },
+ "0x00fe68d8": {
+  "to": "0x00ee57fe",
+  "via": "position"
+ },
+ "0x0131eee4": {
+  "to": "0x011f13c0",
+  "via": "position"
+ },
+ "0x0131ef08": {
+  "to": "0x011f13ec",
+  "via": "position"
+ },
+ "0x0131f0c8": {
+  "to": "0x011f14bc",
+  "via": "position"
+ },
+ "0x00fd40dc": {
+  "to": "0x00ed36b4",
+  "via": "position"
+ },
+ "0x00fd40de": {
+  "to": "0x00ed36b6",
+  "via": "position"
+ },
+ "0x0131f0c4": {
+  "to": "0x011f14b8",
+  "via": "position"
+ },
+ "0x0131f0b0": {
+  "to": "0x011f14a4",
+  "via": "position"
+ },
+ "0x0131f0c0": {
+  "to": "0x011f14b4",
+  "via": "position"
+ },
+ "0x0120f568": {
+  "to": "0x010d84d8",
+  "via": "position"
+ },
+ "0x0100cb90": {
+  "to": "0x00eee1c8",
+  "via": "position"
+ },
+ "0x0159b194": {
+  "to": "0x0146d914",
+  "via": "position"
+ },
+ "0x012154c8": {
+  "to": "0x0146df94",
+  "via": "position"
+ },
+ "0x015fb2bc": {
+  "to": "0x014b827c",
+  "via": "position"
+ },
+ "0x015fb2b8": {
+  "to": "0x014b8278",
+  "via": "position"
+ },
+ "0x00fd6cc4": {
+  "to": "0x00ead120",
+  "via": "position"
+ },
+ "0x01087e0c": {
+  "to": "0x00f9d174",
+  "via": "position"
+ },
+ "0x01226df0": {
+  "to": "0x010f7aa8",
+  "via": "position"
+ },
+ "0x01227088": {
+  "to": "0x010f7d28",
+  "via": "position"
+ },
+ "0x01227310": {
+  "to": "0x010f7f98",
+  "via": "position"
+ },
+ "0x01250b3c": {
+  "to": "0x011231a4",
+  "via": "position"
+ },
+ "0x0124fff4": {
+  "to": "0x0112265c",
+  "via": "position"
+ },
+ "0x01250ca4": {
+  "to": "0x0112330c",
+  "via": "position"
+ },
+ "0x0125015c": {
+  "to": "0x011227c4",
+  "via": "position"
+ },
+ "0x01250e0c": {
+  "to": "0x01123474",
+  "via": "position"
+ },
+ "0x012502c4": {
+  "to": "0x0112292c",
+  "via": "position"
+ },
+ "0x01250f74": {
+  "to": "0x011235dc",
+  "via": "position"
+ },
+ "0x0125042c": {
+  "to": "0x01122a94",
+  "via": "position"
+ },
+ "0x01074c80": {
+  "to": "0x00f84568",
+  "via": "position"
+ },
+ "0x01022f5c": {
+  "to": "0x00f0b41c",
+  "via": "position",
+  "manifeste": "kStrCanvasCx",
+  "comment": "DAT_01022f5c (soustrait de workBuf[0])"
+ },
+ "0x01013e88": {
+  "to": "0x00f84570",
+  "via": "position",
+  "manifeste": "kStrCanvasCy",
+  "comment": "DAT_01013e88 (soustrait de workBuf[1])"
+ },
+ "0x015bee9c": {
+  "to": "0x01490500",
+  "via": "position"
+ },
+ "0x01602344": {
+  "to": "0x014be9d8",
+  "via": "position"
+ },
+ "0x01228d00": {
+  "to": "0x010fc760",
+  "via": "position"
+ },
+ "0x01228d04": {
+  "to": "0x010fc764",
+  "via": "position"
+ },
+ "0x01005f54": {
+  "to": "0x00ead70c",
+  "via": "position"
+ },
+ "0x0122947c": {
+  "to": "0x01110634",
+  "via": "position"
+ },
+ "0x01229468": {
+  "to": "0x01110620",
+  "via": "position"
+ },
+ "0x012550fc": {
+  "to": "0x0112768c",
+  "via": "position"
+ },
+ "0x0131f6c8": {
+  "to": "0x011f1ab8",
+  "via": "position"
+ },
+ "0x0122b930": {
+  "to": "0x010fe844",
+  "via": "position"
+ },
+ "0x01602f24": {
+  "to": "0x014bf5a4",
+  "via": "position"
+ },
+ "0x010a5110": {
+  "to": "0x00fb3bb0",
+  "via": "position"
+ },
+ "0x010a5120": {
+  "to": "0x00fb3bc0",
+  "via": "position"
+ },
+ "0x010a5118": {
+  "to": "0x00fb3bb8",
+  "via": "position"
+ },
+ "0x01602d08": {
+  "to": "0x014bf388",
+  "via": "position"
+ },
+ "0x01602d04": {
+  "to": "0x014bf384",
+  "via": "position"
+ },
+ "0x01602d00": {
+  "to": "0x014bf380",
+  "via": "position"
+ },
+ "0x01602cfc": {
+  "to": "0x014bf37c",
+  "via": "position"
+ },
+ "0x01602cf8": {
+  "to": "0x014bf378",
+  "via": "position"
+ },
+ "0x01602cf4": {
+  "to": "0x014bf374",
+  "via": "position"
+ },
+ "0x01602d20": {
+  "to": "0x014bf3a0",
+  "via": "position"
+ },
+ "0x01602d14": {
+  "to": "0x014bf394",
+  "via": "position"
+ },
+ "0x01602cf0": {
+  "to": "0x014bf370",
+  "via": "position"
+ },
+ "0x01602cec": {
+  "to": "0x014bf36c",
+  "via": "position"
+ },
+ "0x01602ce8": {
+  "to": "0x014bf368",
+  "via": "position"
+ },
+ "0x01602ce4": {
+  "to": "0x014bf364",
+  "via": "position"
+ },
+ "0x01602d18": {
+  "to": "0x014bf398",
+  "via": "position"
+ },
+ "0x01602d0c": {
+  "to": "0x014bf38c",
+  "via": "position"
+ },
+ "0x01602d10": {
+  "to": "0x014bf390",
+  "via": "position"
+ },
+ "0x01602d1c": {
+  "to": "0x014bf39c",
+  "via": "position"
+ },
+ "0x01602c14": {
+  "to": "0x014bf294",
+  "via": "position"
+ },
+ "0x01602c08": {
+  "to": "0x014bf288",
+  "via": "position"
+ },
+ "0x01602c0c": {
+  "to": "0x014bf28c",
+  "via": "position"
+ },
+ "0x01602c18": {
+  "to": "0x014bf298",
+  "via": "position"
+ },
+ "0x01602c1c": {
+  "to": "0x014bf29c",
+  "via": "position"
+ },
  "0x00fcefe0": {
   "to": "0x00ece4c8",
   "via": "position"
@@ -25647,10 +26316,6 @@
   "to": "0x00ed1ad4",
   "via": "position"
  },
- "0x00fd40dc": {
-  "to": "0x00ed36b4",
-  "via": "position"
- },
  "0x00fd48b4": {
   "to": "0x00ed3e5c",
   "via": "position"
@@ -25675,27 +26340,6 @@
   "to": "0x010ae140",
   "via": "position"
  },
- "0x012515f8": {
-  "to": "0x01123c60",
-  "via": "position",
-  "manifeste": "kContextPtr"
- },
- "0x011dd438": {
-  "to": "0x010ad5b8",
-  "via": "position"
- },
- "0x011dd448": {
-  "to": "0x010ad5c8",
-  "via": "position"
- },
- "0x011dd458": {
-  "to": "0x010ad5d8",
-  "via": "position"
- },
- "0x00fd5b40": {
-  "to": "0x00ed5230",
-  "via": "position"
- },
  "0x0124f99c": {
   "to": "0x01122004",
   "via": "position"
@@ -25712,14 +26356,6 @@
   "to": "0x01123c3c",
   "via": "position"
  },
- "0x01602c00": {
-  "to": "0x014bf284",
-  "via": "position"
- },
- "0x00fd6cc4": {
-  "to": "0x00ead120",
-  "via": "position"
- },
  "0x011e39bc": {
   "to": "0x010b4b70",
   "via": "position"
@@ -25734,10 +26370,6 @@
  },
  "0x012515e0": {
   "to": "0x01123c38",
-  "via": "position"
- },
- "0x0109db90": {
-  "to": "0x00fb2780",
   "via": "position"
  },
  "0x010a660c": {
@@ -25837,18 +26469,8 @@
   "to": "0x00edfd80",
   "via": "position"
  },
- "0x01602674": {
-  "to": "0x014becec",
-  "via": "position",
-  "manifeste": "kSoundModeVal",
-  "comment": "SOUNDMODE (registre, boot) : 0 = son coupé au setup"
- },
  "0x01254fa0": {
   "to": "0x01127578",
-  "via": "position"
- },
- "0x0159b810": {
-  "to": "0x0146df9c",
   "via": "position"
  },
  "0x0100bd0c": {
@@ -25913,10 +26535,6 @@
  },
  "0x01318a2c": {
   "to": "0x011eafe4",
-  "via": "position"
- },
- "0x015beeac": {
-  "to": "0x01121820",
   "via": "position"
  },
  "0x01318a34": {
@@ -26125,10 +26743,6 @@
  },
  "0x010148f0": {
   "to": "0x00efd324",
-  "via": "position"
- },
- "0x012551d4": {
-  "to": "0x0112182c",
   "via": "position"
  },
  "0x01015c68": {
@@ -26583,10 +27197,6 @@
   "to": "0x00f01db0",
   "via": "position"
  },
- "0x01005f54": {
-  "to": "0x00ead70c",
-  "via": "position"
- },
  "0x015ff8f0": {
   "to": "0x014bc48c",
   "via": "position"
@@ -26598,11 +27208,6 @@
  "0x0101ea10": {
   "to": "0x00f058f0",
   "via": "position"
- },
- "0x00fd6ae4": {
-  "to": "0x00ed6400",
-  "via": "position",
-  "manifeste": "kNativeDepthQuantumVa"
  },
  "0x0100c190": {
   "to": "0x00ecd234",
@@ -26633,46 +27238,6 @@
   "via": "position",
   "manifeste": "kGarmentView",
   "comment": "g_OwnLook_GarmentRobeViewId"
- },
- "0x015fb278": {
-  "to": "0x014b823c",
-  "via": "position",
-  "manifeste": "kHair",
-  "comment": "style de coiffure"
- },
- "0x015fb2a8": {
-  "to": "0x014b8268",
-  "via": "position"
- },
- "0x015fb290": {
-  "to": "0x014b8250",
-  "via": "position",
-  "manifeste": "kHairCol",
-  "comment": "palette de cheveux"
- },
- "0x015fb28c": {
-  "to": "0x014b824c",
-  "via": "position",
-  "manifeste": "kClothesCol",
-  "comment": "palette de vêtements"
- },
- "0x015fb298": {
-  "to": "0x014b8258",
-  "via": "position",
-  "manifeste": "kHeadTopView",
-  "comment": "g_OwnLook_HeadTopViewId"
- },
- "0x015fb29c": {
-  "to": "0x014b825c",
-  "via": "position",
-  "manifeste": "kHeadMidView",
-  "comment": "g_OwnLook_HeadMidViewId"
- },
- "0x015fb294": {
-  "to": "0x014b8254",
-  "via": "position",
-  "manifeste": "kHeadLowView",
-  "comment": "g_OwnLook_HeadBottomViewId"
  },
  "0x01602318": {
   "to": "0x014be9b8",
@@ -26717,12 +27282,6 @@
  "0x0102745c": {
   "to": "0x00f0fd14",
   "via": "position"
- },
- "0x015fb9c8": {
-  "to": "0x014b8980",
-  "via": "position",
-  "manifeste": "kOwnJobId, kOwnJobIdAddr",
-  "comment": "g_Own_JobId — le job RÉEL"
  },
  "0x01602268": {
   "to": "0x014be90c",
@@ -26790,10 +27349,6 @@
  },
  "0x0131ed7c": {
   "to": "0x011f1258",
-  "via": "position"
- },
- "0x0159b80c": {
-  "to": "0x0146df98",
   "via": "position"
  },
  "0x01203e24": {
@@ -27040,12 +27595,6 @@
   "to": "0x014b7430",
   "via": "position"
  },
- "0x015beecc": {
-  "to": "0x01490524",
-  "via": "position",
-  "manifeste": "kReplayActive",
-  "comment": "lecture d'un replay"
- },
  "0x015e5aa4": {
   "to": "0x014b3ee4",
   "via": "position"
@@ -27070,24 +27619,12 @@
   "to": "0x011f1cca",
   "via": "position"
  },
- "0x015fff74": {
-  "to": "0x014bc8e8",
-  "via": "position"
- },
- "0x015fff78": {
-  "to": "0x014bc8ec",
-  "via": "position"
- },
  "0x015fff88": {
   "to": "0x014bc8fc",
   "via": "position"
  },
  "0x015fff8c": {
   "to": "0x014bc900",
-  "via": "position"
- },
- "0x015faaec": {
-  "to": "0x014b7a9c",
   "via": "position"
  },
  "0x0131f6fc": {
@@ -27140,10 +27677,6 @@
  },
  "0x0131f920": {
   "to": "0x011f1d0c",
-  "via": "position"
- },
- "0x0159b8a4": {
-  "to": "0x0146df92",
   "via": "position"
  },
  "0x015fffd0": {
@@ -27246,10 +27779,6 @@
   "to": "0x00f331f0",
   "via": "position"
  },
- "0x00fd6b00": {
-  "to": "0x00ed6414",
-  "via": "position"
- },
  "0x015c5804": {
   "to": "0x01493c54",
   "via": "position"
@@ -27261,17 +27790,6 @@
  "0x0104d57c": {
   "to": "0x00f3340c",
   "via": "position"
- },
- "0x015fb9a4": {
-  "to": "0x014b895c",
-  "via": "position",
-  "manifeste": "kAccountAid, kOwnAccountAid, kOwnAccountId, kOwnAid, kOwnAidAddr, kOwnHandlePtr",
-  "comment": "handle/AID du joueur"
- },
- "0x0159b818": {
-  "to": "0x0146dfa4",
-  "via": "position",
-  "manifeste": "kClientCodePageAddr"
  },
  "0x0159b8e0": {
   "to": "0x0146dfe0",
@@ -27486,14 +28004,6 @@
   "to": "0x010f7ae4",
   "via": "position"
  },
- "0x0159b194": {
-  "to": "0x0146d914",
-  "via": "position"
- },
- "0x00fd5e00": {
-  "to": "0x00ed54c0",
-  "via": "position"
- },
  "0x01088d28": {
   "to": "0x00f9f1a8",
   "via": "position"
@@ -27516,38 +28026,6 @@
  },
  "0x01010078": {
   "to": "0x00ef5d90",
-  "via": "position"
- },
- "0x01250b3c": {
-  "to": "0x011231a4",
-  "via": "position"
- },
- "0x0124fff4": {
-  "to": "0x0112265c",
-  "via": "position"
- },
- "0x01250ca4": {
-  "to": "0x0112330c",
-  "via": "position"
- },
- "0x0125015c": {
-  "to": "0x011227c4",
-  "via": "position"
- },
- "0x01250e0c": {
-  "to": "0x01123474",
-  "via": "position"
- },
- "0x012502c4": {
-  "to": "0x0112292c",
-  "via": "position"
- },
- "0x01250f74": {
-  "to": "0x011235dc",
-  "via": "position"
- },
- "0x0125042c": {
-  "to": "0x01122a94",
   "via": "position"
  },
  "0x0100fe44": {
@@ -28171,10 +28649,6 @@
   "to": "0x0146e950",
   "via": "position"
  },
- "0x01251800": {
-  "to": "0x01123e30",
-  "via": "position"
- },
  "0x0159c270": {
   "to": "0x0146e978",
   "via": "position"
@@ -28235,14 +28709,6 @@
  },
  "0x010999f0": {
   "to": "0x00fae34c",
-  "via": "position"
- },
- "0x01602f24": {
-  "to": "0x014bf5a4",
-  "via": "position"
- },
- "0x010a5110": {
-  "to": "0x00fb3bb0",
   "via": "position"
  },
  "0x010a5148": {
@@ -28384,5 +28850,6311 @@
  "0x00d5cf90": {
   "to": "0x00c6ffe0",
   "via": "accesseur"
+ },
+ "0x004f1400": {
+  "to": "0x005c8b00",
+  "via": "appel-i1"
+ },
+ "0x00e07d7b": {
+  "to": "0x00cefcb4",
+  "via": "appel-i1"
+ },
+ "0x004ecf20": {
+  "to": "0x005c4820",
+  "via": "appel-i1"
+ },
+ "0x004f2850": {
+  "to": "0x005c9cb0",
+  "via": "appel-i1"
+ },
+ "0x00e07d6f": {
+  "to": "0x00cefcae",
+  "via": "appel-i1"
+ },
+ "0x004f0ff0": {
+  "to": "0x005c8750",
+  "via": "appel-i1"
+ },
+ "0x004f1160": {
+  "to": "0x005c8860",
+  "via": "appel-i1"
+ },
+ "0x00fc188c": {
+  "to": "0x00e7b628",
+  "via": "appel-i1"
+ },
+ "0x004e8070": {
+  "to": "0x005bfcb0",
+  "via": "appel-i1"
+ },
+ "0x004f05e0": {
+  "to": "0x005c7e90",
+  "via": "appel-i1"
+ },
+ "0x004e7640": {
+  "to": "0x005bf280",
+  "via": "appel-i1"
+ },
+ "0x004e7700": {
+  "to": "0x005bf340",
+  "via": "appel-i1"
+ },
+ "0x00fc1458": {
+  "to": "0x00e7b3c4",
+  "via": "appel-i1"
+ },
+ "0x004e81c0": {
+  "to": "0x005bfe00",
+  "via": "appel-i1"
+ },
+ "0x004e8110": {
+  "to": "0x005bfd50",
+  "via": "appel-i1"
+ },
+ "0x004e7540": {
+  "to": "0x005bf180",
+  "via": "appel-i1"
+ },
+ "0x00e07d69": {
+  "to": "0x00cefca8",
+  "via": "appel-i1"
+ },
+ "0x00fc1488": {
+  "to": "0x00e7b374",
+  "via": "appel-i1"
+ },
+ "0x004f0f20": {
+  "to": "0x004e0950",
+  "via": "appel-i1"
+ },
+ "0x00dba93d": {
+  "to": "0x00cc9323",
+  "via": "appel-i1"
+ },
+ "0x004e8d10": {
+  "to": "0x005c07a0",
+  "via": "appel-i1"
+ },
+ "0x00dba943": {
+  "to": "0x00cc9329",
+  "via": "appel-i1"
+ },
+ "0x004e5330": {
+  "to": "0x004bb580",
+  "via": "appel-i1",
+  "manifeste": "kStdStringCtorCStr",
+  "comment": "__thiscall(this, cstr)"
+ },
+ "0x004d8d60": {
+  "to": "0x005b0cb0",
+  "via": "appel-i1"
+ },
+ "0x004d7020": {
+  "to": "0x005af040",
+  "via": "appel-i1"
+ },
+ "0x004d9b30": {
+  "to": "0x005b1a80",
+  "via": "appel-i1"
+ },
+ "0x004da8b0": {
+  "to": "0x005b2800",
+  "via": "appel-i1"
+ },
+ "0x004d7150": {
+  "to": "0x005af170",
+  "via": "appel-i1"
+ },
+ "0x004d9cb0": {
+  "to": "0x005b1c00",
+  "via": "appel-i1"
+ },
+ "0x004d6d60": {
+  "to": "0x005aed80",
+  "via": "appel-i1"
+ },
+ "0x004d9530": {
+  "to": "0x005b1480",
+  "via": "appel-i1"
+ },
+ "0x004fc3f0": {
+  "to": "0x005d39a0",
+  "via": "appel-i1"
+ },
+ "0x004d6e00": {
+  "to": "0x005aee20",
+  "via": "appel-i1"
+ },
+ "0x004d96b0": {
+  "to": "0x005b1600",
+  "via": "appel-i1"
+ },
+ "0x004f2470": {
+  "to": "0x005c9910",
+  "via": "appel-i1"
+ },
+ "0x004d6ec0": {
+  "to": "0x005aeee0",
+  "via": "appel-i1"
+ },
+ "0x004d9830": {
+  "to": "0x005b1780",
+  "via": "appel-i1"
+ },
+ "0x004d6960": {
+  "to": "0x005ae970",
+  "via": "appel-i1"
+ },
+ "0x004d90b0": {
+  "to": "0x005b1000",
+  "via": "appel-i1"
+ },
+ "0x004f6090": {
+  "to": "0x005cd720",
+  "via": "appel-i1"
+ },
+ "0x004fbaf0": {
+  "to": "0x005d3170",
+  "via": "appel-i1"
+ },
+ "0x004ddbe0": {
+  "to": "0x005b5af0",
+  "via": "appel-i1"
+ },
+ "0x004f1820": {
+  "to": "0x005c8c70",
+  "via": "appel-i1"
+ },
+ "0x004efe60": {
+  "to": "0x005c7770",
+  "via": "appel-i1"
+ },
+ "0x004e4800": {
+  "to": "0x005bc770",
+  "via": "appel-i1"
+ },
+ "0x004d8f70": {
+  "to": "0x005b0ec0",
+  "via": "appel-i1"
+ },
+ "0x004f4100": {
+  "to": "0x005cb710",
+  "via": "appel-i1"
+ },
+ "0x00dbbbd4": {
+  "to": "0x00cca510",
+  "via": "appel-i1"
+ },
+ "0x004f0fc0": {
+  "to": "0x005c8720",
+  "via": "appel-i1"
+ },
+ "0x004e5650": {
+  "to": "0x005bd520",
+  "via": "appel-i1"
+ },
+ "0x004deb60": {
+  "to": "0x005b6a70",
+  "via": "appel-i1"
+ },
+ "0x004f9b00": {
+  "to": "0x005d1320",
+  "via": "appel-i1"
+ },
+ "0x004d6f80": {
+  "to": "0x005aefa0",
+  "via": "appel-i1"
+ },
+ "0x004d99b0": {
+  "to": "0x005b1900",
+  "via": "appel-i1"
+ },
+ "0x004d6c20": {
+  "to": "0x005aec40",
+  "via": "appel-i1"
+ },
+ "0x004d9230": {
+  "to": "0x005b1180",
+  "via": "appel-i1"
+ },
+ "0x004da180": {
+  "to": "0x005b20d0",
+  "via": "appel-i1"
+ },
+ "0x004d7220": {
+  "to": "0x005af240",
+  "via": "appel-i1"
+ },
+ "0x004d9e30": {
+  "to": "0x005b1d80",
+  "via": "appel-i1"
+ },
+ "0x004e48a0": {
+  "to": "0x005bc820",
+  "via": "appel-i1"
+ },
+ "0x004d6cc0": {
+  "to": "0x005aece0",
+  "via": "appel-i1"
+ },
+ "0x004d93b0": {
+  "to": "0x005b1300",
+  "via": "appel-i1"
+ },
+ "0x004f0490": {
+  "to": "0x004b97b0",
+  "via": "appel-i1"
+ },
+ "0x005097f0": {
+  "to": "0x004baf10",
+  "via": "appel-i1"
+ },
+ "0x004f1000": {
+  "to": "0x004e09c0",
+  "via": "appel-i1"
+ },
+ "0x0052d020": {
+  "to": "0x00603b00",
+  "via": "appel-i1"
+ },
+ "0x005198d0": {
+  "to": "0x005f0280",
+  "via": "appel-i1"
+ },
+ "0x004fed50": {
+  "to": "0x004e13c0",
+  "via": "appel-i1"
+ },
+ "0x0051a450": {
+  "to": "0x005f0e10",
+  "via": "appel-i1"
+ },
+ "0x0051aed0": {
+  "to": "0x005f1890",
+  "via": "appel-i1"
+ },
+ "0x00521cf0": {
+  "to": "0x005f86b0",
+  "via": "appel-i1"
+ },
+ "0x00521b60": {
+  "to": "0x005f8520",
+  "via": "appel-i1"
+ },
+ "0x0051aca0": {
+  "to": "0x005f1660",
+  "via": "appel-i1",
+  "manifeste": "kToLStringAddr",
+  "comment": "lua_tolstring(L, idx, &len)"
+ },
+ "0x00519a20": {
+  "to": "0x005f03d0",
+  "via": "appel-i1"
+ },
+ "0x0051a5a0": {
+  "to": "0x005f0f60",
+  "via": "appel-i1"
+ },
+ "0x00519a90": {
+  "to": "0x005f0440",
+  "via": "appel-i1"
+ },
+ "0x00519c30": {
+  "to": "0x005f05e0",
+  "via": "appel-i1"
+ },
+ "0x0051d650": {
+  "to": "0x005f3ff0",
+  "via": "appel-i1"
+ },
+ "0x00521550": {
+  "to": "0x005f7f10",
+  "via": "appel-i1"
+ },
+ "0x005239d0": {
+  "to": "0x005fa4e0",
+  "via": "appel-i1"
+ },
+ "0x00521e00": {
+  "to": "0x005f87c0",
+  "via": "appel-i1"
+ },
+ "0x00521790": {
+  "to": "0x005f8150",
+  "via": "appel-i1"
+ },
+ "0x005246d0": {
+  "to": "0x005fb1e0",
+  "via": "appel-i1"
+ },
+ "0x00524a10": {
+  "to": "0x005fb520",
+  "via": "appel-i1"
+ },
+ "0x00523c80": {
+  "to": "0x005fa790",
+  "via": "appel-i1"
+ },
+ "0x00524f10": {
+  "to": "0x005fba20",
+  "via": "appel-i1"
+ },
+ "0x0052d5d0": {
+  "to": "0x006040c0",
+  "via": "appel-i1"
+ },
+ "0x00523ba0": {
+  "to": "0x005fa6b0",
+  "via": "appel-i1"
+ },
+ "0x00fc1b24": {
+  "to": "0x00e7b8ac",
+  "via": "appel-i1"
+ },
+ "0x00fc1b20": {
+  "to": "0x00e7b8b4",
+  "via": "appel-i1"
+ },
+ "0x00529850": {
+  "to": "0x004e1410",
+  "via": "appel-i1"
+ },
+ "0x005329b0": {
+  "to": "0x006094c0",
+  "via": "appel-i1"
+ },
+ "0x00527130": {
+  "to": "0x005fdc30",
+  "via": "appel-i1"
+ },
+ "0x00527110": {
+  "to": "0x005fdc10",
+  "via": "appel-i1"
+ },
+ "0x00527040": {
+  "to": "0x005fdb40",
+  "via": "appel-i1"
+ },
+ "0x00fc1ad4": {
+  "to": "0x00e7b868",
+  "via": "appel-i1"
+ },
+ "0x00fc1af8": {
+  "to": "0x00e7b85c",
+  "via": "appel-i1"
+ },
+ "0x00fc1aec": {
+  "to": "0x00e7b864",
+  "via": "appel-i1"
+ },
+ "0x00fc1b40": {
+  "to": "0x00e7b898",
+  "via": "appel-i1"
+ },
+ "0x00fc1afc": {
+  "to": "0x00e7b858",
+  "via": "appel-i1"
+ },
+ "0x00fc1af0": {
+  "to": "0x00e7b860",
+  "via": "appel-i1"
+ },
+ "0x0052ee70": {
+  "to": "0x00605970",
+  "via": "appel-i1"
+ },
+ "0x0052e8c0": {
+  "to": "0x006053b0",
+  "via": "appel-i1"
+ },
+ "0x0052fc60": {
+  "to": "0x00606760",
+  "via": "appel-i1"
+ },
+ "0x00529740": {
+  "to": "0x00600250",
+  "via": "appel-i1"
+ },
+ "0x0052fe10": {
+  "to": "0x00606910",
+  "via": "appel-i1"
+ },
+ "0x0052fac0": {
+  "to": "0x006065c0",
+  "via": "appel-i1"
+ },
+ "0x00e07ee9": {
+  "to": "0x00cefea0",
+  "via": "appel-i1"
+ },
+ "0x00534560": {
+  "to": "0x0060b070",
+  "via": "appel-i1"
+ },
+ "0x00523f10": {
+  "to": "0x005faa20",
+  "via": "appel-i1"
+ },
+ "0x00529360": {
+  "to": "0x005ffe70",
+  "via": "appel-i1"
+ },
+ "0x0052f8a0": {
+  "to": "0x006063a0",
+  "via": "appel-i1"
+ },
+ "0x005328a0": {
+  "to": "0x006093a0",
+  "via": "appel-i1"
+ },
+ "0x00521930": {
+  "to": "0x005f82f0",
+  "via": "appel-i1"
+ },
+ "0x00532930": {
+  "to": "0x00609430",
+  "via": "appel-i1"
+ },
+ "0x00532820": {
+  "to": "0x00609320",
+  "via": "appel-i1"
+ },
+ "0x0052fa80": {
+  "to": "0x00606580",
+  "via": "appel-i1"
+ },
+ "0x0052fbb0": {
+  "to": "0x006066b0",
+  "via": "appel-i1"
+ },
+ "0x00523770": {
+  "to": "0x005fa280",
+  "via": "appel-i1"
+ },
+ "0x00523a60": {
+  "to": "0x005fa570",
+  "via": "appel-i1"
+ },
+ "0x00523820": {
+  "to": "0x005fa330",
+  "via": "appel-i1"
+ },
+ "0x00569330": {
+  "to": "0x0063f4d0",
+  "via": "appel-i1"
+ },
+ "0x0053add0": {
+  "to": "0x00611260",
+  "via": "appel-i1"
+ },
+ "0x0070f390": {
+  "to": "0x0077ead0",
+  "via": "appel-i1"
+ },
+ "0x00fc1120": {
+  "to": "0x00e7b084",
+  "via": "appel-i1"
+ },
+ "0x00fc1124": {
+  "to": "0x00e7b058",
+  "via": "appel-i1"
+ },
+ "0x0053e990": {
+  "to": "0x00614cb0",
+  "via": "appel-i1"
+ },
+ "0x0053faa0": {
+  "to": "0x00615db0",
+  "via": "appel-i1",
+  "manifeste": "kVecU32Resize",
+  "comment": "std::vector<uint32_t>::resize"
+ },
+ "0x00dbbbf0": {
+  "to": "0x00ccab80",
+  "via": "appel-i1"
+ },
+ "0x00dbc640": {
+  "to": "0x00ccb1f0",
+  "via": "appel-i1"
+ },
+ "0x005494c0": {
+  "to": "0x004defb0",
+  "via": "appel-i1"
+ },
+ "0x00515900": {
+  "to": "0x004e0fd0",
+  "via": "appel-i1"
+ },
+ "0x00514e10": {
+  "to": "0x004e0970",
+  "via": "appel-i1"
+ },
+ "0x00559180": {
+  "to": "0x0062ef10",
+  "via": "appel-i1"
+ },
+ "0x00560460": {
+  "to": "0x00636220",
+  "via": "appel-i1"
+ },
+ "0x00557a20": {
+  "to": "0x0062d7b0",
+  "via": "appel-i1"
+ },
+ "0x0054ddd0": {
+  "to": "0x00623ae0",
+  "via": "appel-i1"
+ },
+ "0x00540640": {
+  "to": "0x00616b40",
+  "via": "appel-i1"
+ },
+ "0x005405e0": {
+  "to": "0x00616ad0",
+  "via": "appel-i1"
+ },
+ "0x00dbbdc0": {
+  "to": "0x00ccaa2a",
+  "via": "appel-i1"
+ },
+ "0x00560960": {
+  "to": "0x00636710",
+  "via": "appel-i1"
+ },
+ "0x00dbbbbf": {
+  "to": "0x00cca4fa",
+  "via": "appel-i1"
+ },
+ "0x00dbbd76": {
+  "to": "0x00cca9e0",
+  "via": "appel-i1"
+ },
+ "0x00fc17b0": {
+  "to": "0x00e7b564",
+  "via": "appel-i1"
+ },
+ "0x005614c0": {
+  "to": "0x00637310",
+  "via": "appel-i1"
+ },
+ "0x0053fef0": {
+  "to": "0x00616210",
+  "via": "appel-i1"
+ },
+ "0x005443c0": {
+  "to": "0x0061a9d0",
+  "via": "appel-i1"
+ },
+ "0x00546f60": {
+  "to": "0x0061cc80",
+  "via": "appel-i1"
+ },
+ "0x00fc10e0": {
+  "to": "0x00e7b05c",
+  "via": "appel-i1"
+ },
+ "0x00fc10d8": {
+  "to": "0x00e7b044",
+  "via": "appel-i1"
+ },
+ "0x005446f0": {
+  "to": "0x0061ac40",
+  "via": "appel-i1"
+ },
+ "0x0053ffe0": {
+  "to": "0x00616350",
+  "via": "appel-i1"
+ },
+ "0x005429e0": {
+  "to": "0x00619200",
+  "via": "appel-i1"
+ },
+ "0x0055e5b0": {
+  "to": "0x006343c0",
+  "via": "appel-i1"
+ },
+ "0x00542f60": {
+  "to": "0x006197f0",
+  "via": "appel-i1"
+ },
+ "0x00543420": {
+  "to": "0x00619d30",
+  "via": "appel-i1"
+ },
+ "0x00dbbeae": {
+  "to": "0x00ccab18",
+  "via": "appel-i1"
+ },
+ "0x00539a60": {
+  "to": "0x00610050",
+  "via": "appel-i1"
+ },
+ "0x0053aaa0": {
+  "to": "0x006110b0",
+  "via": "appel-i1"
+ },
+ "0x00541d60": {
+  "to": "0x00618480",
+  "via": "appel-i1"
+ },
+ "0x00539c70": {
+  "to": "0x00610280",
+  "via": "appel-i1"
+ },
+ "0x00562880": {
+  "to": "0x006387e0",
+  "via": "appel-i1"
+ },
+ "0x005610b0": {
+  "to": "0x00636ee0",
+  "via": "appel-i1",
+  "manifeste": "kGetCurrentAdapterAddr"
+ },
+ "0x00560d60": {
+  "to": "0x00636b00",
+  "via": "appel-i1",
+  "manifeste": "kAdapterEqualsAddr"
+ },
+ "0x005419e0": {
+  "to": "0x00618090",
+  "via": "appel-i1"
+ },
+ "0x005609d0": {
+  "to": "0x00636780",
+  "via": "appel-i1"
+ },
+ "0x0055bfa0": {
+  "to": "0x00631d50",
+  "via": "appel-i1"
+ },
+ "0x00556790": {
+  "to": "0x0062c660",
+  "via": "appel-i1"
+ },
+ "0x005676e0": {
+  "to": "0x0063d7d0",
+  "via": "appel-i1"
+ },
+ "0x00569580": {
+  "to": "0x0063f720",
+  "via": "appel-i1"
+ },
+ "0x00564730": {
+  "to": "0x0063a7c0",
+  "via": "appel-i1"
+ },
+ "0x00543050": {
+  "to": "0x00619900",
+  "via": "appel-i1"
+ },
+ "0x00565a20": {
+  "to": "0x0063bb00",
+  "via": "appel-i1"
+ },
+ "0x00565c20": {
+  "to": "0x0063bd00",
+  "via": "appel-i1"
+ },
+ "0x00569340": {
+  "to": "0x0063f990",
+  "via": "appel-i1"
+ },
+ "0x00dba282": {
+  "to": "0x00cc8bb8",
+  "via": "appel-i1"
+ },
+ "0x00dba288": {
+  "to": "0x0063fee0",
+  "via": "appel-i1"
+ },
+ "0x006ff470": {
+  "to": "0x0076f040",
+  "via": "appel-i1"
+ },
+ "0x00572db0": {
+  "to": "0x00648cf0",
+  "via": "appel-i1"
+ },
+ "0x006ff490": {
+  "to": "0x0076f060",
+  "via": "appel-i1"
+ },
+ "0x00a892c0": {
+  "to": "0x00a82d10",
+  "via": "appel-i1",
+  "manifeste": "kFreeBuffer, kFreeBufferAddr",
+  "comment": "__stdcall(void*)"
+ },
+ "0x00e07d75": {
+  "to": "0x00cefcd8",
+  "via": "appel-i1"
+ },
+ "0x00572f20": {
+  "to": "0x00648e60",
+  "via": "appel-i1"
+ },
+ "0x0057fb70": {
+  "to": "0x00655940",
+  "via": "appel-i1"
+ },
+ "0x00fc1520": {
+  "to": "0x00e7b270",
+  "via": "appel-i1"
+ },
+ "0x00fc14a8": {
+  "to": "0x00e7b354",
+  "via": "appel-i1"
+ },
+ "0x00547760": {
+  "to": "0x00659b50",
+  "via": "appel-i1"
+ },
+ "0x0057f430": {
+  "to": "0x00655260",
+  "via": "appel-i1"
+ },
+ "0x005840d0": {
+  "to": "0x0065a100",
+  "via": "appel-i1"
+ },
+ "0x00fc1244": {
+  "to": "0x00e7b174",
+  "via": "appel-i1"
+ },
+ "0x00fc1498": {
+  "to": "0x00e7b364",
+  "via": "appel-i1"
+ },
+ "0x00584290": {
+  "to": "0x004e0f90",
+  "via": "appel-i1"
+ },
+ "0x00a9bbe0": {
+  "to": "0x00a990b0",
+  "via": "appel-i1"
+ },
+ "0x00a9a690": {
+  "to": "0x00a97c50",
+  "via": "appel-i1"
+ },
+ "0x0059e3c0": {
+  "to": "0x00666060",
+  "via": "appel-i1"
+ },
+ "0x0059cdf0": {
+  "to": "0x004e13d0",
+  "via": "appel-i1"
+ },
+ "0x005c6ba0": {
+  "to": "0x00682de0",
+  "via": "appel-i1"
+ },
+ "0x005c71c0": {
+  "to": "0x00683530",
+  "via": "appel-i1"
+ },
+ "0x005c7520": {
+  "to": "0x00683ac0",
+  "via": "appel-i1"
+ },
+ "0x005c75e0": {
+  "to": "0x00683ce0",
+  "via": "appel-i1"
+ },
+ "0x0059bed0": {
+  "to": "0x00663d40",
+  "via": "appel-i1"
+ },
+ "0x0059bfb0": {
+  "to": "0x00663e20",
+  "via": "appel-i1"
+ },
+ "0x005c72d0": {
+  "to": "0x006836f0",
+  "via": "appel-i1"
+ },
+ "0x0057fe30": {
+  "to": "0x004bd120",
+  "via": "appel-i1"
+ },
+ "0x006b2090": {
+  "to": "0x0071d570",
+  "via": "appel-i1"
+ },
+ "0x005a0570": {
+  "to": "0x00667f90",
+  "via": "appel-i1"
+ },
+ "0x005a0180": {
+  "to": "0x00667c60",
+  "via": "appel-i1"
+ },
+ "0x005a2f30": {
+  "to": "0x0066a750",
+  "via": "appel-i1"
+ },
+ "0x005149b0": {
+  "to": "0x004e06b0",
+  "via": "appel-i1"
+ },
+ "0x005a32c0": {
+  "to": "0x0066aae0",
+  "via": "appel-i1"
+ },
+ "0x005a3200": {
+  "to": "0x0066aa20",
+  "via": "appel-i1"
+ },
+ "0x005a04d0": {
+  "to": "0x00667f00",
+  "via": "appel-i1"
+ },
+ "0x00819b60": {
+  "to": "0x00858390",
+  "via": "appel-i1"
+ },
+ "0x00839360": {
+  "to": "0x008774f0",
+  "via": "appel-i1"
+ },
+ "0x0086d0e0": {
+  "to": "0x008ad2c0",
+  "via": "appel-i1"
+ },
+ "0x00836a00": {
+  "to": "0x00874cf0",
+  "via": "appel-i1"
+ },
+ "0x00843dc0": {
+  "to": "0x00881f30",
+  "via": "appel-i1"
+ },
+ "0x008962c0": {
+  "to": "0x008d4350",
+  "via": "appel-i1"
+ },
+ "0x00896800": {
+  "to": "0x008d48a0",
+  "via": "appel-i1"
+ },
+ "0x00b26400": {
+  "to": "0x00b04af0",
+  "via": "appel-i1"
+ },
+ "0x00b26cf0": {
+  "to": "0x00b053f0",
+  "via": "appel-i1",
+  "manifeste": "kFnNodeName",
+  "comment": "CNaviNode::GetName (interne)"
+ },
+ "0x005ab550": {
+  "to": "0x00672100",
+  "via": "appel-i1",
+  "manifeste": "kFnShareToChat",
+  "comment": "pose la balise dans le chat"
+ },
+ "0x005abf10": {
+  "to": "0x00672a90",
+  "via": "appel-i1"
+ },
+ "0x00d59060": {
+  "to": "0x00c6c060",
+  "via": "appel-i1"
+ },
+ "0x005acc70": {
+  "to": "0x00673840",
+  "via": "appel-i1"
+ },
+ "0x005aee10": {
+  "to": "0x00675a30",
+  "via": "appel-i1"
+ },
+ "0x0059c3b0": {
+  "to": "0x006641d0",
+  "via": "appel-i1"
+ },
+ "0x005af3e0": {
+  "to": "0x00664580",
+  "via": "appel-i1"
+ },
+ "0x005c7000": {
+  "to": "0x006832d0",
+  "via": "appel-i1"
+ },
+ "0x00599ac0": {
+  "to": "0x004e1f30",
+  "via": "appel-i1"
+ },
+ "0x005acf60": {
+  "to": "0x00673b40",
+  "via": "appel-i1"
+ },
+ "0x005aff30": {
+  "to": "0x00676af0",
+  "via": "appel-i1"
+ },
+ "0x005adaf0": {
+  "to": "0x006746d0",
+  "via": "appel-i1"
+ },
+ "0x005b0cb0": {
+  "to": "0x00677870",
+  "via": "appel-i1"
+ },
+ "0x005ad750": {
+  "to": "0x00674330",
+  "via": "appel-i1"
+ },
+ "0x00512ea0": {
+  "to": "0x005e9db0",
+  "via": "appel-i1"
+ },
+ "0x005ae470": {
+  "to": "0x00675060",
+  "via": "appel-i1"
+ },
+ "0x0050e350": {
+  "to": "0x005e54e0",
+  "via": "appel-i1"
+ },
+ "0x005ae7e0": {
+  "to": "0x006753e0",
+  "via": "appel-i1"
+ },
+ "0x005b4520": {
+  "to": "0x0067b0e0",
+  "via": "appel-i1"
+ },
+ "0x005b56d0": {
+  "to": "0x0067c240",
+  "via": "appel-i1"
+ },
+ "0x005b57f0": {
+  "to": "0x0067c2c0",
+  "via": "appel-i1"
+ },
+ "0x005b6f90": {
+  "to": "0x0067d760",
+  "via": "appel-i1"
+ },
+ "0x005b9390": {
+  "to": "0x004f2800",
+  "via": "appel-i1"
+ },
+ "0x005b7800": {
+  "to": "0x0067ddd0",
+  "via": "appel-i1"
+ },
+ "0x005c4070": {
+  "to": "0x00680d80",
+  "via": "appel-i1"
+ },
+ "0x005c2cb0": {
+  "to": "0x0067fac0",
+  "via": "appel-i1"
+ },
+ "0x006ad990": {
+  "to": "0x00718d90",
+  "via": "appel-i1"
+ },
+ "0x006ad8b0": {
+  "to": "0x00718c90",
+  "via": "appel-i1"
+ },
+ "0x006ae810": {
+  "to": "0x00719c80",
+  "via": "appel-i1"
+ },
+ "0x006ae280": {
+  "to": "0x007196e0",
+  "via": "appel-i1"
+ },
+ "0x006ae0e0": {
+  "to": "0x00719520",
+  "via": "appel-i1"
+ },
+ "0x006af760": {
+  "to": "0x0071abf0",
+  "via": "appel-i1"
+ },
+ "0x005c8c00": {
+  "to": "0x00685310",
+  "via": "appel-i1"
+ },
+ "0x005c75b0": {
+  "to": "0x00683b60",
+  "via": "appel-i1"
+ },
+ "0x005c76e0": {
+  "to": "0x00683e40",
+  "via": "appel-i1"
+ },
+ "0x005c8ed0": {
+  "to": "0x006855e0",
+  "via": "appel-i1"
+ },
+ "0x005191a0": {
+  "to": "0x005efc40",
+  "via": "appel-i1"
+ },
+ "0x005d5aa0": {
+  "to": "0x00687c40",
+  "via": "appel-i1"
+ },
+ "0x005d5ba0": {
+  "to": "0x00687d40",
+  "via": "appel-i1"
+ },
+ "0x00a447d0": {
+  "to": "0x00a12bf0",
+  "via": "appel-i1",
+  "manifeste": "kQueueDestroyWindow"
+ },
+ "0x00c14d60": {
+  "to": "0x00be1f70",
+  "via": "appel-i1",
+  "manifeste": "kConnGetInstanceAddr"
+ },
+ "0x00c14460": {
+  "to": "0x00bdee40",
+  "via": "appel-i1"
+ },
+ "0x00c14920": {
+  "to": "0x00bdf440",
+  "via": "appel-i1",
+  "manifeste": "(littéral)"
+ },
+ "0x005beb00": {
+  "to": "0x00556330",
+  "via": "appel-i1"
+ },
+ "0x005d8e40": {
+  "to": "0x0068afe0",
+  "via": "appel-i1"
+ },
+ "0x008196c0": {
+  "to": "0x00857ee0",
+  "via": "appel-i1"
+ },
+ "0x00a1b590": {
+  "to": "0x009e9400",
+  "via": "appel-i1"
+ },
+ "0x00fc1830": {
+  "to": "0x00e7b5d8",
+  "via": "appel-i1"
+ },
+ "0x00a25ed0": {
+  "to": "0x009f4bf0",
+  "via": "appel-i1"
+ },
+ "0x00a1dae0": {
+  "to": "0x009eb7f0",
+  "via": "appel-i1"
+ },
+ "0x00a1d760": {
+  "to": "0x009eb3d0",
+  "via": "appel-i1"
+ },
+ "0x00a753d0": {
+  "to": "0x00a3c490",
+  "via": "appel-i1"
+ },
+ "0x005bcd70": {
+  "to": "0x00554210",
+  "via": "appel-i1"
+ },
+ "0x005dbe90": {
+  "to": "0x0068e530",
+  "via": "appel-i1"
+ },
+ "0x009720b0": {
+  "to": "0x009ae020",
+  "via": "appel-i1"
+ },
+ "0x00c938e0": {
+  "to": "0x004ef920",
+  "via": "appel-i1"
+ },
+ "0x005defc0": {
+  "to": "0x00692030",
+  "via": "appel-i1"
+ },
+ "0x00fc1a20": {
+  "to": "0x00e7b7c4",
+  "via": "appel-i1"
+ },
+ "0x005dfc00": {
+  "to": "0x006930b0",
+  "via": "appel-i1"
+ },
+ "0x005e2b40": {
+  "to": "0x006963a0",
+  "via": "appel-i1"
+ },
+ "0x005e45c0": {
+  "to": "0x00697d70",
+  "via": "appel-i1"
+ },
+ "0x005e43b0": {
+  "to": "0x00697b50",
+  "via": "appel-i1"
+ },
+ "0x005e7870": {
+  "to": "0x0069aec0",
+  "via": "appel-i1"
+ },
+ "0x005e6320": {
+  "to": "0x00699a50",
+  "via": "appel-i1"
+ },
+ "0x005e63b0": {
+  "to": "0x00699af0",
+  "via": "appel-i1"
+ },
+ "0x005e6230": {
+  "to": "0x00699960",
+  "via": "appel-i1"
+ },
+ "0x005e7660": {
+  "to": "0x0069acb0",
+  "via": "appel-i1"
+ },
+ "0x005e7940": {
+  "to": "0x0069af90",
+  "via": "appel-i1"
+ },
+ "0x005190f0": {
+  "to": "0x005efbf0",
+  "via": "appel-i1"
+ },
+ "0x005ecb10": {
+  "to": "0x006a0150",
+  "via": "appel-i1"
+ },
+ "0x005ca780": {
+  "to": "0x006a0250",
+  "via": "appel-i1"
+ },
+ "0x00b90d90": {
+  "to": "0x00b6e840",
+  "via": "appel-i1"
+ },
+ "0x005f0ff0": {
+  "to": "0x006a34e0",
+  "via": "appel-i1"
+ },
+ "0x005f15a0": {
+  "to": "0x006a3aa0",
+  "via": "appel-i1"
+ },
+ "0x00fc1d7c": {
+  "to": "0x00e7ba64",
+  "via": "appel-i1"
+ },
+ "0x00fc1dd0": {
+  "to": "0x00e7baf8",
+  "via": "appel-i1"
+ },
+ "0x00fc1d84": {
+  "to": "0x00e7ba6c",
+  "via": "appel-i1"
+ },
+ "0x005ff5a0": {
+  "to": "0x006ad820",
+  "via": "appel-i1"
+ },
+ "0x00fc1d60": {
+  "to": "0x00e7bab0",
+  "via": "appel-i1"
+ },
+ "0x00fc1d38": {
+  "to": "0x00e7babc",
+  "via": "appel-i1"
+ },
+ "0x00fc1d48": {
+  "to": "0x00e7bac8",
+  "via": "appel-i1"
+ },
+ "0x00606fa0": {
+  "to": "0x006b2050",
+  "via": "appel-i1"
+ },
+ "0x0061b6b0": {
+  "to": "0x006b8be0",
+  "via": "appel-i1"
+ },
+ "0x0061b5e0": {
+  "to": "0x006b8b10",
+  "via": "appel-i1"
+ },
+ "0x00fc1558": {
+  "to": "0x00e7b2a0",
+  "via": "appel-i1"
+ },
+ "0x0061c310": {
+  "to": "0x006b97c0",
+  "via": "appel-i1"
+ },
+ "0x0061b360": {
+  "to": "0x006b8890",
+  "via": "appel-i1"
+ },
+ "0x0061dec0": {
+  "to": "0x006bb360",
+  "via": "appel-i1"
+ },
+ "0x0062b260": {
+  "to": "0x006bbaf0",
+  "via": "appel-i1"
+ },
+ "0x00548960": {
+  "to": "0x0061e6b0",
+  "via": "appel-i1"
+ },
+ "0x0062f9c0": {
+  "to": "0x006c01d0",
+  "via": "appel-i1"
+ },
+ "0x00630fa0": {
+  "to": "0x006c15b0",
+  "via": "appel-i1"
+ },
+ "0x00630f10": {
+  "to": "0x006c1510",
+  "via": "appel-i1"
+ },
+ "0x00640a20": {
+  "to": "0x00502f00",
+  "via": "appel-i1"
+ },
+ "0x00649060": {
+  "to": "0x0054e910",
+  "via": "appel-i1"
+ },
+ "0x0064e340": {
+  "to": "0x006ca0e0",
+  "via": "appel-i1"
+ },
+ "0x00667430": {
+  "to": "0x006e3590",
+  "via": "appel-i1"
+ },
+ "0x00664d20": {
+  "to": "0x006e0980",
+  "via": "appel-i1"
+ },
+ "0x0065a0a0": {
+  "to": "0x006d5e60",
+  "via": "appel-i1"
+ },
+ "0x006798d0": {
+  "to": "0x006f6470",
+  "via": "appel-i1"
+ },
+ "0x00684770": {
+  "to": "0x00701430",
+  "via": "appel-i1"
+ },
+ "0x00519df0": {
+  "to": "0x005f07b0",
+  "via": "appel-i1",
+  "manifeste": "kGetFieldAddr",
+  "comment": "lua_getfield(L, idx, k)"
+ },
+ "0x0051a400": {
+  "to": "0x005f0dc0",
+  "via": "appel-i1"
+ },
+ "0x00519eb0": {
+  "to": "0x005f0870",
+  "via": "appel-i1"
+ },
+ "0x0065aa90": {
+  "to": "0x006d6890",
+  "via": "appel-i1"
+ },
+ "0x0051aab0": {
+  "to": "0x005f1470",
+  "via": "appel-i1",
+  "manifeste": "kSetTopAddr",
+  "comment": "lua_settop(L, idx)"
+ },
+ "0x00668b40": {
+  "to": "0x006e4d60",
+  "via": "appel-i1"
+ },
+ "0x0065ba60": {
+  "to": "0x006d7900",
+  "via": "appel-i1"
+ },
+ "0x0065ac70": {
+  "to": "0x006d6a80",
+  "via": "appel-i1"
+ },
+ "0x00e07d99": {
+  "to": "0x00cefcc6",
+  "via": "appel-i1"
+ },
+ "0x00603e20": {
+  "to": "0x006af060",
+  "via": "appel-i1"
+ },
+ "0x00669ae0": {
+  "to": "0x006e5c30",
+  "via": "appel-i1"
+ },
+ "0x00669c50": {
+  "to": "0x006e5da0",
+  "via": "appel-i1"
+ },
+ "0x0065c650": {
+  "to": "0x006d8480",
+  "via": "appel-i1"
+ },
+ "0x005b5310": {
+  "to": "0x0067bed0",
+  "via": "appel-i1"
+ },
+ "0x0065eb90": {
+  "to": "0x006da970",
+  "via": "appel-i1"
+ },
+ "0x00a958a0": {
+  "to": "0x00a92b50",
+  "via": "appel-i1"
+ },
+ "0x0065ea10": {
+  "to": "0x006da7f0",
+  "via": "appel-i1"
+ },
+ "0x00a96840": {
+  "to": "0x00a93bf0",
+  "via": "appel-i1"
+ },
+ "0x005472f0": {
+  "to": "0x00659810",
+  "via": "appel-i1"
+ },
+ "0x0065eae0": {
+  "to": "0x006da8c0",
+  "via": "appel-i1"
+ },
+ "0x00664eb0": {
+  "to": "0x004bda20",
+  "via": "appel-i1"
+ },
+ "0x00665230": {
+  "to": "0x006e0ec0",
+  "via": "appel-i1"
+ },
+ "0x00588970": {
+  "to": "0x0065e6e0",
+  "via": "appel-i1"
+ },
+ "0x0067aa90": {
+  "to": "0x006f7450",
+  "via": "appel-i1"
+ },
+ "0x00679590": {
+  "to": "0x006f6130",
+  "via": "appel-i1"
+ },
+ "0x0065ffb0": {
+  "to": "0x006dbd70",
+  "via": "appel-i1"
+ },
+ "0x00659110": {
+  "to": "0x006d4eb0",
+  "via": "appel-i1"
+ },
+ "0x00684db0": {
+  "to": "0x00701a90",
+  "via": "appel-i1"
+ },
+ "0x0066f840": {
+  "to": "0x006ebcd0",
+  "via": "appel-i1"
+ },
+ "0x0066f8f0": {
+  "to": "0x006ebd80",
+  "via": "appel-i1"
+ },
+ "0x00685530": {
+  "to": "0x00702210",
+  "via": "appel-i1"
+ },
+ "0x00684cc0": {
+  "to": "0x007019a0",
+  "via": "appel-i1"
+ },
+ "0x0066f790": {
+  "to": "0x006ebc20",
+  "via": "appel-i1"
+ },
+ "0x00685440": {
+  "to": "0x00702120",
+  "via": "appel-i1"
+ },
+ "0x00685170": {
+  "to": "0x00701e50",
+  "via": "appel-i1"
+ },
+ "0x00673410": {
+  "to": "0x006ef8a0",
+  "via": "appel-i1"
+ },
+ "0x00599eb0": {
+  "to": "0x00660ad0",
+  "via": "appel-i1"
+ },
+ "0x006a23a0": {
+  "to": "0x0070d780",
+  "via": "appel-i1"
+ },
+ "0x006a0d40": {
+  "to": "0x0070c540",
+  "via": "appel-i1",
+  "manifeste": "kLookupAddr",
+  "comment": "__cdecl(id, &table) -> record"
+ },
+ "0x0059f670": {
+  "to": "0x004e0b50",
+  "via": "appel-i1"
+ },
+ "0x00509c40": {
+  "to": "0x004bb1c0",
+  "via": "appel-i1"
+ },
+ "0x0059f550": {
+  "to": "0x004df010",
+  "via": "appel-i1"
+ },
+ "0x00fc18a0": {
+  "to": "0x00e7b634",
+  "via": "appel-i1"
+ },
+ "0x006b4a80": {
+  "to": "0x0071ff60",
+  "via": "appel-i1"
+ },
+ "0x006b4940": {
+  "to": "0x0071fe20",
+  "via": "appel-i1"
+ },
+ "0x006b51a0": {
+  "to": "0x00720680",
+  "via": "appel-i1"
+ },
+ "0x006b4680": {
+  "to": "0x0071fb60",
+  "via": "appel-i1"
+ },
+ "0x00ae9f80": {
+  "to": "0x00ac6b20",
+  "via": "appel-i1"
+ },
+ "0x00aea240": {
+  "to": "0x00ac6df0",
+  "via": "appel-i1"
+ },
+ "0x00fc1bb0": {
+  "to": "0x00e7b8f0",
+  "via": "appel-i1"
+ },
+ "0x00aea2d0": {
+  "to": "0x00ac6ea0",
+  "via": "appel-i1"
+ },
+ "0x00ada510": {
+  "to": "0x00ab6770",
+  "via": "appel-i1"
+ },
+ "0x00aeaaa0": {
+  "to": "0x00ac7630",
+  "via": "appel-i1"
+ },
+ "0x006cc570": {
+  "to": "0x0058b320",
+  "via": "appel-i1"
+ },
+ "0x006f9fa0": {
+  "to": "0x00769ad0",
+  "via": "appel-i1"
+ },
+ "0x006ff2a0": {
+  "to": "0x0076ee60",
+  "via": "appel-i1"
+ },
+ "0x00fc139c": {
+  "to": "0x00e7b220",
+  "via": "appel-i1"
+ },
+ "0x006fa2e0": {
+  "to": "0x00769e20",
+  "via": "appel-i1"
+ },
+ "0x006fc180": {
+  "to": "0x0076bd10",
+  "via": "appel-i1"
+ },
+ "0x006fc6d0": {
+  "to": "0x0076c260",
+  "via": "appel-i1"
+ },
+ "0x00fc1a44": {
+  "to": "0x00e7b7c0",
+  "via": "appel-i1"
+ },
+ "0x006fc240": {
+  "to": "0x0076bdd0",
+  "via": "appel-i1"
+ },
+ "0x006fda20": {
+  "to": "0x0076d5b0",
+  "via": "appel-i1"
+ },
+ "0x006fec20": {
+  "to": "0x0076e7d0",
+  "via": "appel-i1"
+ },
+ "0x006fefa0": {
+  "to": "0x0076eb50",
+  "via": "appel-i1"
+ },
+ "0x006ff090": {
+  "to": "0x0076ec40",
+  "via": "appel-i1"
+ },
+ "0x00fc12a8": {
+  "to": "0x00e7b0e8",
+  "via": "appel-i1"
+ },
+ "0x00819530": {
+  "to": "0x00857d50",
+  "via": "appel-i1"
+ },
+ "0x007022a0": {
+  "to": "0x00771420",
+  "via": "appel-i1"
+ },
+ "0x00d5bcf0": {
+  "to": "0x00c6ed20",
+  "via": "appel-i1",
+  "manifeste": "kMapDisplayNameAddr"
+ },
+ "0x00a21f90": {
+  "to": "0x009f0a60",
+  "via": "appel-i1"
+ },
+ "0x00a8c750": {
+  "to": "0x00a88b90",
+  "via": "appel-i1"
+ },
+ "0x0070e8e0": {
+  "to": "0x0077e0a0",
+  "via": "appel-i1"
+ },
+ "0x0070eb10": {
+  "to": "0x0077e2b0",
+  "via": "appel-i1"
+ },
+ "0x0070e2c0": {
+  "to": "0x0077da60",
+  "via": "appel-i1"
+ },
+ "0x00712660": {
+  "to": "0x00781be0",
+  "via": "appel-i1"
+ },
+ "0x00712590": {
+  "to": "0x00781b10",
+  "via": "appel-i1"
+ },
+ "0x007151b0": {
+  "to": "0x007845c0",
+  "via": "appel-i1"
+ },
+ "0x00715a80": {
+  "to": "0x00784c00",
+  "via": "appel-i1"
+ },
+ "0x007169e0": {
+  "to": "0x00785ab0",
+  "via": "appel-i1"
+ },
+ "0x00716720": {
+  "to": "0x007857f0",
+  "via": "appel-i1"
+ },
+ "0x00718630": {
+  "to": "0x00787690",
+  "via": "appel-i1"
+ },
+ "0x0071d770": {
+  "to": "0x0078c590",
+  "via": "appel-i1"
+ },
+ "0x0071eb40": {
+  "to": "0x0078d8d0",
+  "via": "appel-i1"
+ },
+ "0x00722260": {
+  "to": "0x007928c0",
+  "via": "appel-i1"
+ },
+ "0x0071e810": {
+  "to": "0x0078d5a0",
+  "via": "appel-i1"
+ },
+ "0x0071ec70": {
+  "to": "0x0078d9f0",
+  "via": "appel-i1"
+ },
+ "0x0071e770": {
+  "to": "0x0078d500",
+  "via": "appel-i1"
+ },
+ "0x0071e6e0": {
+  "to": "0x0078d470",
+  "via": "appel-i1"
+ },
+ "0x0071c020": {
+  "to": "0x0078ae20",
+  "via": "appel-i1"
+ },
+ "0x0071e640": {
+  "to": "0x0078d3d0",
+  "via": "appel-i1"
+ },
+ "0x0071e5a0": {
+  "to": "0x0078d330",
+  "via": "appel-i1"
+ },
+ "0x00fc1dec": {
+  "to": "0x00e7bad4",
+  "via": "appel-i1"
+ },
+ "0x0072b8e0": {
+  "to": "0x0079a140",
+  "via": "appel-i1"
+ },
+ "0x00a68f20": {
+  "to": "0x00a31a80",
+  "via": "appel-i1"
+ },
+ "0x0072db60": {
+  "to": "0x0079c1f0",
+  "via": "appel-i1"
+ },
+ "0x0072da10": {
+  "to": "0x0079c090",
+  "via": "appel-i1"
+ },
+ "0x0072f450": {
+  "to": "0x0079da60",
+  "via": "appel-i1"
+ },
+ "0x00739430": {
+  "to": "0x007a6990",
+  "via": "appel-i1"
+ },
+ "0x00739700": {
+  "to": "0x007a6a50",
+  "via": "appel-i1"
+ },
+ "0x00736670": {
+  "to": "0x007a3ac0",
+  "via": "appel-i1"
+ },
+ "0x007366c0": {
+  "to": "0x007a3b10",
+  "via": "appel-i1"
+ },
+ "0x00738700": {
+  "to": "0x007a5c60",
+  "via": "appel-i1"
+ },
+ "0x00736710": {
+  "to": "0x007a3b60",
+  "via": "appel-i1"
+ },
+ "0x007389c0": {
+  "to": "0x007a5f20",
+  "via": "appel-i1"
+ },
+ "0x007395a0": {
+  "to": "0x00554a40",
+  "via": "appel-i1"
+ },
+ "0x007394f0": {
+  "to": "0x00554980",
+  "via": "appel-i1"
+ },
+ "0x00739650": {
+  "to": "0x00554b00",
+  "via": "appel-i1"
+ },
+ "0x00ac1fe0": {
+  "to": "0x00597a70",
+  "via": "appel-i1"
+ },
+ "0x00ac12e0": {
+  "to": "0x00596ed0",
+  "via": "appel-i1"
+ },
+ "0x006f1b50": {
+  "to": "0x007614d0",
+  "via": "appel-i1"
+ },
+ "0x006f1dd0": {
+  "to": "0x00761760",
+  "via": "appel-i1"
+ },
+ "0x006f1d70": {
+  "to": "0x00761700",
+  "via": "appel-i1"
+ },
+ "0x0073b9b0": {
+  "to": "0x005ae410",
+  "via": "appel-i1"
+ },
+ "0x006cddf0": {
+  "to": "0x00738880",
+  "via": "appel-i1"
+ },
+ "0x00a94930": {
+  "to": "0x00a91a50",
+  "via": "appel-i1",
+  "manifeste": "kStdStringFromFmt",
+  "comment": "(dst, fmt, …) -> std::string du jeu"
+ },
+ "0x006f6360": {
+  "to": "0x00765d80",
+  "via": "appel-i1"
+ },
+ "0x0076e3f0": {
+  "to": "0x007c2330",
+  "via": "appel-i1"
+ },
+ "0x00774b50": {
+  "to": "0x007c5af0",
+  "via": "appel-i1"
+ },
+ "0x007724d0": {
+  "to": "0x007c3830",
+  "via": "appel-i1"
+ },
+ "0x00839b50": {
+  "to": "0x00877d50",
+  "via": "appel-i1"
+ },
+ "0x00778920": {
+  "to": "0x007c8620",
+  "via": "appel-i1"
+ },
+ "0x00778890": {
+  "to": "0x007c8590",
+  "via": "appel-i1"
+ },
+ "0x0083a1a0": {
+  "to": "0x008783a0",
+  "via": "appel-i1"
+ },
+ "0x00776ce0": {
+  "to": "0x007c69e0",
+  "via": "appel-i1"
+ },
+ "0x0062b330": {
+  "to": "0x006bbbc0",
+  "via": "appel-i1"
+ },
+ "0x00d7f940": {
+  "to": "0x00c92920",
+  "via": "appel-i1"
+ },
+ "0x00d8e3a0": {
+  "to": "0x00ca1930",
+  "via": "appel-i1"
+ },
+ "0x00a26e30": {
+  "to": "0x009f5dd0",
+  "via": "appel-i1"
+ },
+ "0x0062c640": {
+  "to": "0x006bce50",
+  "via": "appel-i1"
+ },
+ "0x0062d170": {
+  "to": "0x006bd980",
+  "via": "appel-i1"
+ },
+ "0x0062d1c0": {
+  "to": "0x006bd9d0",
+  "via": "appel-i1"
+ },
+ "0x0062e750": {
+  "to": "0x006bef60",
+  "via": "appel-i1"
+ },
+ "0x00a1d330": {
+  "to": "0x009eaec0",
+  "via": "appel-i1"
+ },
+ "0x007795e0": {
+  "to": "0x007c92e0",
+  "via": "appel-i1"
+ },
+ "0x00a4b750": {
+  "to": "0x00a194b0",
+  "via": "appel-i1"
+ },
+ "0x00a482e0": {
+  "to": "0x00a15ff0",
+  "via": "appel-i1"
+ },
+ "0x0077da40": {
+  "to": "0x007cdae0",
+  "via": "appel-i1"
+ },
+ "0x007879c0": {
+  "to": "0x007d88d0",
+  "via": "appel-i1"
+ },
+ "0x007886a0": {
+  "to": "0x007d9310",
+  "via": "appel-i1"
+ },
+ "0x00545370": {
+  "to": "0x0061b2e0",
+  "via": "appel-i1"
+ },
+ "0x00a27c20": {
+  "to": "0x009f6e60",
+  "via": "appel-i1"
+ },
+ "0x00a21880": {
+  "to": "0x009f02e0",
+  "via": "appel-i1"
+ },
+ "0x00793e50": {
+  "to": "0x007db520",
+  "via": "appel-i1"
+ },
+ "0x00793b60": {
+  "to": "0x007db230",
+  "via": "appel-i1"
+ },
+ "0x007936c0": {
+  "to": "0x007dabc0",
+  "via": "appel-i1"
+ },
+ "0x00793d30": {
+  "to": "0x007db400",
+  "via": "appel-i1"
+ },
+ "0x00793ee0": {
+  "to": "0x007db5b0",
+  "via": "appel-i1"
+ },
+ "0x00793dc0": {
+  "to": "0x007db490",
+  "via": "appel-i1"
+ },
+ "0x00fc160c": {
+  "to": "0x00e7b420",
+  "via": "appel-i1"
+ },
+ "0x005b72d0": {
+  "to": "0x005028f0",
+  "via": "appel-i1"
+ },
+ "0x00dba80a": {
+  "to": "0x00cc9082",
+  "via": "appel-i1"
+ },
+ "0x0079a6a0": {
+  "to": "0x007e1e40",
+  "via": "appel-i1"
+ },
+ "0x00dbcd5e": {
+  "to": "0x00ccba05",
+  "via": "appel-i1"
+ },
+ "0x0079a580": {
+  "to": "0x007e1d20",
+  "via": "appel-i1"
+ },
+ "0x0079a610": {
+  "to": "0x007e1db0",
+  "via": "appel-i1"
+ },
+ "0x0079a840": {
+  "to": "0x007e2000",
+  "via": "appel-i1"
+ },
+ "0x007a2ca0": {
+  "to": "0x007eaca0",
+  "via": "appel-i1"
+ },
+ "0x0062ffc0": {
+  "to": "0x006c07f0",
+  "via": "appel-i1"
+ },
+ "0x006a2b50": {
+  "to": "0x0070de80",
+  "via": "appel-i1",
+  "manifeste": "kBaseNameFallbackAddr"
+ },
+ "0x007a4c50": {
+  "to": "0x007edaf0",
+  "via": "appel-i1"
+ },
+ "0x007a53b0": {
+  "to": "0x007ee280",
+  "via": "appel-i1"
+ },
+ "0x007a5b90": {
+  "to": "0x007eead0",
+  "via": "appel-i1"
+ },
+ "0x007a4dc0": {
+  "to": "0x007edc60",
+  "via": "appel-i1"
+ },
+ "0x0082dbf0": {
+  "to": "0x0086bfc0",
+  "via": "appel-i1"
+ },
+ "0x00d5a760": {
+  "to": "0x00c6d8c0",
+  "via": "appel-i1"
+ },
+ "0x007a6900": {
+  "to": "0x007ef8e0",
+  "via": "appel-i1"
+ },
+ "0x00712b30": {
+  "to": "0x007820c0",
+  "via": "appel-i1"
+ },
+ "0x007a8200": {
+  "to": "0x007f11b0",
+  "via": "appel-i1"
+ },
+ "0x007af690": {
+  "to": "0x007f5dc0",
+  "via": "appel-i1"
+ },
+ "0x007af5f0": {
+  "to": "0x007f5d20",
+  "via": "appel-i1"
+ },
+ "0x007bd710": {
+  "to": "0x007ffc50",
+  "via": "appel-i1"
+ },
+ "0x0081a190": {
+  "to": "0x008589c0",
+  "via": "appel-i1"
+ },
+ "0x007c2740": {
+  "to": "0x00804f30",
+  "via": "appel-i1"
+ },
+ "0x008199b0": {
+  "to": "0x008581e0",
+  "via": "appel-i1"
+ },
+ "0x007c7fb0": {
+  "to": "0x0080a920",
+  "via": "appel-i1"
+ },
+ "0x007caa00": {
+  "to": "0x0080d3c0",
+  "via": "appel-i1"
+ },
+ "0x007ddf40": {
+  "to": "0x0081e440",
+  "via": "appel-i1"
+ },
+ "0x00819e80": {
+  "to": "0x008586b0",
+  "via": "appel-i1"
+ },
+ "0x0072ee10": {
+  "to": "0x0079d4f0",
+  "via": "appel-i1"
+ },
+ "0x0072f070": {
+  "to": "0x0079d6d0",
+  "via": "appel-i1"
+ },
+ "0x00d5a720": {
+  "to": "0x00c6d880",
+  "via": "appel-i1",
+  "manifeste": "kBuildIconPath, kEngBuildPath",
+  "comment": "__fastcall(session, 0, idstr, outbuf, 0)"
+ },
+ "0x007e4790": {
+  "to": "0x008247a0",
+  "via": "appel-i1"
+ },
+ "0x00a1d2b0": {
+  "to": "0x009eae40",
+  "via": "appel-i1"
+ },
+ "0x0072f290": {
+  "to": "0x0079d8f0",
+  "via": "appel-i1"
+ },
+ "0x0072f1e0": {
+  "to": "0x0079d840",
+  "via": "appel-i1"
+ },
+ "0x0072f5d0": {
+  "to": "0x0079dca0",
+  "via": "appel-i1"
+ },
+ "0x007e7de0": {
+  "to": "0x00827900",
+  "via": "appel-i1"
+ },
+ "0x0072f030": {
+  "to": "0x0079d690",
+  "via": "appel-i1"
+ },
+ "0x0072f1f0": {
+  "to": "0x0079d850",
+  "via": "appel-i1"
+ },
+ "0x007e7d00": {
+  "to": "0x00827820",
+  "via": "appel-i1"
+ },
+ "0x0072eef0": {
+  "to": "0x0079d550",
+  "via": "appel-i1"
+ },
+ "0x0072f2f0": {
+  "to": "0x0079d950",
+  "via": "appel-i1"
+ },
+ "0x0072f140": {
+  "to": "0x0079d7a0",
+  "via": "appel-i1"
+ },
+ "0x0072eea0": {
+  "to": "0x0079d500",
+  "via": "appel-i1"
+ },
+ "0x007df550": {
+  "to": "0x0081f9b0",
+  "via": "appel-i1"
+ },
+ "0x0072ee00": {
+  "to": "0x0079d4e0",
+  "via": "appel-i1"
+ },
+ "0x007df660": {
+  "to": "0x0081fac0",
+  "via": "appel-i1"
+ },
+ "0x00c404e0": {
+  "to": "0x00c0d540",
+  "via": "appel-i1"
+ },
+ "0x00819840": {
+  "to": "0x00858070",
+  "via": "appel-i1"
+ },
+ "0x007ec150": {
+  "to": "0x0082bb10",
+  "via": "appel-i1"
+ },
+ "0x007ec1e0": {
+  "to": "0x0082bba0",
+  "via": "appel-i1"
+ },
+ "0x007f2dd0": {
+  "to": "0x00832170",
+  "via": "appel-i1"
+ },
+ "0x007f5310": {
+  "to": "0x008341f0",
+  "via": "appel-i1"
+ },
+ "0x007f45f0": {
+  "to": "0x00833890",
+  "via": "appel-i1"
+ },
+ "0x007ed1e0": {
+  "to": "0x0082ca30",
+  "via": "appel-i1"
+ },
+ "0x00575780": {
+  "to": "0x004fc680",
+  "via": "appel-i1"
+ },
+ "0x005d8ee0": {
+  "to": "0x0068b080",
+  "via": "appel-i1"
+ },
+ "0x007ffd10": {
+  "to": "0x0083d790",
+  "via": "appel-i1"
+ },
+ "0x007ffc80": {
+  "to": "0x0083d700",
+  "via": "appel-i1"
+ },
+ "0x00803220": {
+  "to": "0x00840650",
+  "via": "appel-i1"
+ },
+ "0x007fe800": {
+  "to": "0x0083c2f0",
+  "via": "appel-i1"
+ },
+ "0x00a1bcc0": {
+  "to": "0x009e9be0",
+  "via": "appel-i1"
+ },
+ "0x00806aa0": {
+  "to": "0x00843f90",
+  "via": "appel-i1"
+ },
+ "0x00935610": {
+  "to": "0x00970d70",
+  "via": "appel-i1"
+ },
+ "0x00935810": {
+  "to": "0x00970f30",
+  "via": "appel-i1"
+ },
+ "0x00871160": {
+  "to": "0x008b0870",
+  "via": "appel-i1"
+ },
+ "0x005b6490": {
+  "to": "0x0067cfc0",
+  "via": "appel-i1"
+ },
+ "0x00a86480": {
+  "to": "0x00a7ffe0",
+  "via": "appel-i1"
+ },
+ "0x005b6280": {
+  "to": "0x0067cdb0",
+  "via": "appel-i1"
+ },
+ "0x008085e0": {
+  "to": "0x00845b70",
+  "via": "appel-i1"
+ },
+ "0x00871040": {
+  "to": "0x008b0770",
+  "via": "appel-i1"
+ },
+ "0x00809d80": {
+  "to": "0x00847330",
+  "via": "appel-i1"
+ },
+ "0x005b5360": {
+  "to": "0x0067bf20",
+  "via": "appel-i1"
+ },
+ "0x006a19e0": {
+  "to": "0x0070ce40",
+  "via": "appel-i1"
+ },
+ "0x00a863d0": {
+  "to": "0x00a7ff30",
+  "via": "appel-i1"
+ },
+ "0x008093f0": {
+  "to": "0x008469e0",
+  "via": "appel-i1"
+ },
+ "0x005b65c0": {
+  "to": "0x0067d0f0",
+  "via": "appel-i1"
+ },
+ "0x00808750": {
+  "to": "0x00845ce0",
+  "via": "appel-i1"
+ },
+ "0x006a1920": {
+  "to": "0x004bb900",
+  "via": "appel-i1"
+ },
+ "0x0065c760": {
+  "to": "0x006d8590",
+  "via": "appel-i1"
+ },
+ "0x0080d5a0": {
+  "to": "0x0084b280",
+  "via": "appel-i1"
+ },
+ "0x0080e670": {
+  "to": "0x0084c3c0",
+  "via": "appel-i1"
+ },
+ "0x00a86520": {
+  "to": "0x00a80070",
+  "via": "appel-i1"
+ },
+ "0x00a86420": {
+  "to": "0x00a7ff80",
+  "via": "appel-i1"
+ },
+ "0x005b89b0": {
+  "to": "0x0067ef40",
+  "via": "appel-i1"
+ },
+ "0x0080d250": {
+  "to": "0x0084af30",
+  "via": "appel-i1"
+ },
+ "0x0080f050": {
+  "to": "0x0084cd90",
+  "via": "appel-i1"
+ },
+ "0x0080e820": {
+  "to": "0x0084c570",
+  "via": "appel-i1"
+ },
+ "0x0053c860": {
+  "to": "0x004bcf20",
+  "via": "appel-i1"
+ },
+ "0x00544530": {
+  "to": "0x004bc4f0",
+  "via": "appel-i1"
+ },
+ "0x008190b0": {
+  "to": "0x00857950",
+  "via": "appel-i1"
+ },
+ "0x00819180": {
+  "to": "0x00857a00",
+  "via": "appel-i1"
+ },
+ "0x0081c2a0": {
+  "to": "0x0085aaf0",
+  "via": "appel-i1"
+ },
+ "0x00818fd0": {
+  "to": "0x00857870",
+  "via": "appel-i1"
+ },
+ "0x00819ff0": {
+  "to": "0x00858820",
+  "via": "appel-i1"
+ },
+ "0x00a33100": {
+  "to": "0x00a019f0",
+  "via": "appel-i1"
+ },
+ "0x00836790": {
+  "to": "0x00874a80",
+  "via": "appel-i1"
+ },
+ "0x00a26540": {
+  "to": "0x009f5440",
+  "via": "appel-i1"
+ },
+ "0x00a8e500": {
+  "to": "0x00a8a870",
+  "via": "appel-i1"
+ },
+ "0x00a27a30": {
+  "to": "0x009f6c50",
+  "via": "appel-i1"
+ },
+ "0x00d56300": {
+  "to": "0x00c69350",
+  "via": "appel-i1",
+  "manifeste": "kVendingBasketClear",
+  "comment": "__thiscall(&session)"
+ },
+ "0x00a389c0": {
+  "to": "0x00a07590",
+  "via": "appel-i1"
+ },
+ "0x00a4b7e0": {
+  "to": "0x00a19570",
+  "via": "appel-i1"
+ },
+ "0x00a4b940": {
+  "to": "0x00a19770",
+  "via": "appel-i1"
+ },
+ "0x0081bae0": {
+  "to": "0x0085a310",
+  "via": "appel-i1"
+ },
+ "0x00838410": {
+  "to": "0x00876680",
+  "via": "appel-i1"
+ },
+ "0x008385f0": {
+  "to": "0x00876880",
+  "via": "appel-i1"
+ },
+ "0x008387f0": {
+  "to": "0x00876a80",
+  "via": "appel-i1"
+ },
+ "0x0081a2c0": {
+  "to": "0x00858af0",
+  "via": "appel-i1"
+ },
+ "0x00833e40": {
+  "to": "0x008721e0",
+  "via": "appel-i1"
+ },
+ "0x0083a2f0": {
+  "to": "0x008784f0",
+  "via": "appel-i1"
+ },
+ "0x00819960": {
+  "to": "0x00858190",
+  "via": "appel-i1"
+ },
+ "0x00839110": {
+  "to": "0x008772a0",
+  "via": "appel-i1"
+ },
+ "0x00842610": {
+  "to": "0x00880590",
+  "via": "appel-i1"
+ },
+ "0x008398c0": {
+  "to": "0x00877a50",
+  "via": "appel-i1"
+ },
+ "0x00837f10": {
+  "to": "0x00876160",
+  "via": "appel-i1"
+ },
+ "0x00838150": {
+  "to": "0x008763a0",
+  "via": "appel-i1"
+ },
+ "0x00867490": {
+  "to": "0x008a5f90",
+  "via": "appel-i1"
+ },
+ "0x00867520": {
+  "to": "0x008a6020",
+  "via": "appel-i1"
+ },
+ "0x008667c0": {
+  "to": "0x008a51a0",
+  "via": "appel-i1"
+ },
+ "0x0083ccb0": {
+  "to": "0x0087ae40",
+  "via": "appel-i1"
+ },
+ "0x00a1cb50": {
+  "to": "0x009ea7c0",
+  "via": "appel-i1"
+ },
+ "0x00846a50": {
+  "to": "0x008850e0",
+  "via": "appel-i1"
+ },
+ "0x00847750": {
+  "to": "0x00885ea0",
+  "via": "appel-i1"
+ },
+ "0x00847250": {
+  "to": "0x00885990",
+  "via": "appel-i1"
+ },
+ "0x00fc16c8": {
+  "to": "0x00e7b448",
+  "via": "appel-i1"
+ },
+ "0x00848fe0": {
+  "to": "0x00887760",
+  "via": "appel-i1"
+ },
+ "0x00dbc2c0": {
+  "to": "0x00ccb8d0",
+  "via": "appel-i1"
+ },
+ "0x007dc480": {
+  "to": "0x0081c940",
+  "via": "appel-i1"
+ },
+ "0x007dbf30": {
+  "to": "0x0081c3b0",
+  "via": "appel-i1"
+ },
+ "0x00848f20": {
+  "to": "0x008876a0",
+  "via": "appel-i1"
+ },
+ "0x00848910": {
+  "to": "0x00887070",
+  "via": "appel-i1"
+ },
+ "0x0085b2a0": {
+  "to": "0x00899400",
+  "via": "appel-i1"
+ },
+ "0x00739ef0": {
+  "to": "0x007a6c70",
+  "via": "appel-i1"
+ },
+ "0x00739e20": {
+  "to": "0x007a6ba0",
+  "via": "appel-i1"
+ },
+ "0x00d8ec20": {
+  "to": "0x00ca21b0",
+  "via": "appel-i1"
+ },
+ "0x00739fc0": {
+  "to": "0x007a6d40",
+  "via": "appel-i1"
+ },
+ "0x007eb0e0": {
+  "to": "0x0082ab70",
+  "via": "appel-i1"
+ },
+ "0x007eb170": {
+  "to": "0x0082ac00",
+  "via": "appel-i1"
+ },
+ "0x00833820": {
+  "to": "0x00871bc0",
+  "via": "appel-i1"
+ },
+ "0x00a21940": {
+  "to": "0x009f03b0",
+  "via": "appel-i1"
+ },
+ "0x0086a5a0": {
+  "to": "0x008a9280",
+  "via": "appel-i1"
+ },
+ "0x0085f1f0": {
+  "to": "0x0089d3c0",
+  "via": "appel-i1"
+ },
+ "0x008909c0": {
+  "to": "0x008cea70",
+  "via": "appel-i1"
+ },
+ "0x008382c0": {
+  "to": "0x00876510",
+  "via": "appel-i1"
+ },
+ "0x006a78a0": {
+  "to": "0x00712c70",
+  "via": "appel-i1"
+ },
+ "0x006a1660": {
+  "to": "0x004bac50",
+  "via": "appel-i1"
+ },
+ "0x005a2790": {
+  "to": "0x004deed0",
+  "via": "appel-i1"
+ },
+ "0x004f0f30": {
+  "to": "0x004e0960",
+  "via": "appel-i1"
+ },
+ "0x00871340": {
+  "to": "0x008b0a40",
+  "via": "appel-i1"
+ },
+ "0x00fc1ba4": {
+  "to": "0x00e7b8d8",
+  "via": "appel-i1"
+ },
+ "0x00a36fa0": {
+  "to": "0x00a05ac0",
+  "via": "appel-i1"
+ },
+ "0x007a8550": {
+  "to": "0x007f1520",
+  "via": "appel-i1"
+ },
+ "0x007a87f0": {
+  "to": "0x007f17e0",
+  "via": "appel-i1"
+ },
+ "0x00a32eb0": {
+  "to": "0x00a01720",
+  "via": "appel-i1"
+ },
+ "0x009344d0": {
+  "to": "0x0096fd60",
+  "via": "appel-i1"
+ },
+ "0x008904d0": {
+  "to": "0x008ce460",
+  "via": "appel-i1"
+ },
+ "0x00890b20": {
+  "to": "0x008cebd0",
+  "via": "appel-i1"
+ },
+ "0x009355c0": {
+  "to": "0x00970d20",
+  "via": "appel-i1"
+ },
+ "0x00890110": {
+  "to": "0x008ce0c0",
+  "via": "appel-i1"
+ },
+ "0x00890060": {
+  "to": "0x008ce020",
+  "via": "appel-i1"
+ },
+ "0x00935540": {
+  "to": "0x00970cc0",
+  "via": "appel-i1"
+ },
+ "0x008490b0": {
+  "to": "0x00887830",
+  "via": "appel-i1"
+ },
+ "0x00849280": {
+  "to": "0x00887a00",
+  "via": "appel-i1"
+ },
+ "0x0088cb20": {
+  "to": "0x004bb7a0",
+  "via": "appel-i1"
+ },
+ "0x008d2850": {
+  "to": "0x00913400",
+  "via": "appel-i1"
+ },
+ "0x0059ad80": {
+  "to": "0x00661030",
+  "via": "appel-i1"
+ },
+ "0x006a5f30": {
+  "to": "0x007113d0",
+  "via": "appel-i1"
+ },
+ "0x006a42b0": {
+  "to": "0x0070f800",
+  "via": "appel-i1"
+ },
+ "0x008d2450": {
+  "to": "0x009133d0",
+  "via": "appel-i1"
+ },
+ "0x006a4600": {
+  "to": "0x0070fb50",
+  "via": "appel-i1"
+ },
+ "0x006a2ac0": {
+  "to": "0x0070ddf0",
+  "via": "appel-i1"
+ },
+ "0x006a4170": {
+  "to": "0x0070f6c0",
+  "via": "appel-i1"
+ },
+ "0x00a2c8b0": {
+  "to": "0x009fb5f0",
+  "via": "appel-i1"
+ },
+ "0x005993e0": {
+  "to": "0x00660850",
+  "via": "appel-i1"
+ },
+ "0x006a4000": {
+  "to": "0x0070f550",
+  "via": "appel-i1"
+ },
+ "0x006a5d70": {
+  "to": "0x00711210",
+  "via": "appel-i1"
+ },
+ "0x006a4d40": {
+  "to": "0x007101d0",
+  "via": "appel-i1"
+ },
+ "0x006a44b0": {
+  "to": "0x0070fa00",
+  "via": "appel-i1"
+ },
+ "0x006a4310": {
+  "to": "0x0070f860",
+  "via": "appel-i1"
+ },
+ "0x006a4c40": {
+  "to": "0x007100d0",
+  "via": "appel-i1"
+ },
+ "0x006a40f0": {
+  "to": "0x0070f640",
+  "via": "appel-i1"
+ },
+ "0x006a4cc0": {
+  "to": "0x00710150",
+  "via": "appel-i1"
+ },
+ "0x008373c0": {
+  "to": "0x00875690",
+  "via": "appel-i1"
+ },
+ "0x0082d6a0": {
+  "to": "0x0086de70",
+  "via": "appel-i1"
+ },
+ "0x0085f480": {
+  "to": "0x0086c0a0",
+  "via": "appel-i1"
+ },
+ "0x00894fa0": {
+  "to": "0x008d3010",
+  "via": "appel-i1"
+ },
+ "0x008972c0": {
+  "to": "0x008d5360",
+  "via": "appel-i1"
+ },
+ "0x00891f60": {
+  "to": "0x007112d0",
+  "via": "appel-i1"
+ },
+ "0x00a1dbe0": {
+  "to": "0x009eb920",
+  "via": "appel-i1"
+ },
+ "0x00c6aef0": {
+  "to": "0x004c40e0",
+  "via": "appel-i1"
+ },
+ "0x008d0aa0": {
+  "to": "0x00912040",
+  "via": "appel-i1"
+ },
+ "0x0089d340": {
+  "to": "0x004e25f0",
+  "via": "appel-i1"
+ },
+ "0x0089e460": {
+  "to": "0x008dbe50",
+  "via": "appel-i1"
+ },
+ "0x008a0340": {
+  "to": "0x008dd610",
+  "via": "appel-i1"
+ },
+ "0x007c81a0": {
+  "to": "0x0080ab20",
+  "via": "appel-i1"
+ },
+ "0x008217f0": {
+  "to": "0x0085ff20",
+  "via": "appel-i1",
+  "manifeste": "(littéral)"
+ },
+ "0x0089e7d0": {
+  "to": "0x008dc1c0",
+  "via": "appel-i1"
+ },
+ "0x0089d590": {
+  "to": "0x008db370",
+  "via": "appel-i1"
+ },
+ "0x006a2990": {
+  "to": "0x0070dcc0",
+  "via": "appel-i1"
+ },
+ "0x00a32b30": {
+  "to": "0x00a01350",
+  "via": "appel-i1"
+ },
+ "0x00863740": {
+  "to": "0x008a1e60",
+  "via": "appel-i1"
+ },
+ "0x00a39340": {
+  "to": "0x00a07bc0",
+  "via": "appel-i1",
+  "manifeste": "kMakeWindowAddr",
+  "comment": "UIWindowMgr::MakeWindow(id)"
+ },
+ "0x008d40a0": {
+  "to": "0x004b9a80",
+  "via": "appel-i1"
+ },
+ "0x00907fc0": {
+  "to": "0x00944ff0",
+  "via": "appel-i1"
+ },
+ "0x008d9b10": {
+  "to": "0x00918830",
+  "via": "appel-i1"
+ },
+ "0x008f9d00": {
+  "to": "0x009379d0",
+  "via": "appel-i1"
+ },
+ "0x008d9a80": {
+  "to": "0x009187a0",
+  "via": "appel-i1"
+ },
+ "0x008da410": {
+  "to": "0x009190d0",
+  "via": "appel-i1"
+ },
+ "0x008d5420": {
+  "to": "0x00914760",
+  "via": "appel-i1"
+ },
+ "0x008dfd30": {
+  "to": "0x0091e7e0",
+  "via": "appel-i1"
+ },
+ "0x008e0700": {
+  "to": "0x0091f110",
+  "via": "appel-i1"
+ },
+ "0x008dffe0": {
+  "to": "0x0091ea90",
+  "via": "appel-i1"
+ },
+ "0x008dfa80": {
+  "to": "0x0091e530",
+  "via": "appel-i1"
+ },
+ "0x008deca0": {
+  "to": "0x0091d700",
+  "via": "appel-i1"
+ },
+ "0x008d6a80": {
+  "to": "0x00915b70",
+  "via": "appel-i1"
+ },
+ "0x00a240e0": {
+  "to": "0x009f2bb0",
+  "via": "appel-i1"
+ },
+ "0x008db010": {
+  "to": "0x00919bd0",
+  "via": "appel-i1"
+ },
+ "0x008f9600": {
+  "to": "0x00937110",
+  "via": "appel-i1"
+ },
+ "0x008e1d50": {
+  "to": "0x004de520",
+  "via": "appel-i1",
+  "manifeste": "kGetOption",
+  "comment": "SkillInfoMgr_GetOption(mgr,key) ; key10=onglet courant"
+ },
+ "0x008e1af0": {
+  "to": "0x00920460",
+  "via": "appel-i1"
+ },
+ "0x008e2470": {
+  "to": "0x00920df0",
+  "via": "appel-i1"
+ },
+ "0x00917790": {
+  "to": "0x009522b0",
+  "via": "appel-i1"
+ },
+ "0x0090d220": {
+  "to": "0x00949ae0",
+  "via": "appel-i1"
+ },
+ "0x0090d3d0": {
+  "to": "0x00949bb0",
+  "via": "appel-i1"
+ },
+ "0x00a25b10": {
+  "to": "0x009f4790",
+  "via": "appel-i1"
+ },
+ "0x005a41d0": {
+  "to": "0x006a4ac0",
+  "via": "appel-i1"
+ },
+ "0x009183c0": {
+  "to": "0x004e15b0",
+  "via": "appel-i1"
+ },
+ "0x0091a6e0": {
+  "to": "0x00955270",
+  "via": "appel-i1"
+ },
+ "0x0092b150": {
+  "to": "0x009667c0",
+  "via": "appel-i1"
+ },
+ "0x0061d370": {
+  "to": "0x006ba800",
+  "via": "appel-i1",
+  "manifeste": "kGetEmblemPath",
+  "comment": "__thiscall(this, out_str, guildId)"
+ },
+ "0x00a8d9f0": {
+  "to": "0x00a89df0",
+  "via": "appel-i1"
+ },
+ "0x005a4270": {
+  "to": "0x00968330",
+  "via": "appel-i1"
+ },
+ "0x0092c700": {
+  "to": "0x009683c0",
+  "via": "appel-i1"
+ },
+ "0x0092c170": {
+  "to": "0x00967d90",
+  "via": "appel-i1"
+ },
+ "0x00a8f4b0": {
+  "to": "0x00a8b5b0",
+  "via": "appel-i1"
+ },
+ "0x00817da0": {
+  "to": "0x00857110",
+  "via": "appel-i1"
+ },
+ "0x00d9aa70": {
+  "to": "0x00cad160",
+  "via": "appel-i1",
+  "manifeste": "kCntEquipped",
+  "comment": "__fastcall(session) : nb items ÉQUIPÉS distincts (10 slots @+0x17d4)"
+ },
+ "0x00d9a960": {
+  "to": "0x00cad050",
+  "via": "appel-i1",
+  "manifeste": "kCntCostume",
+  "comment": "__fastcall(session) : nb items COSTUME distincts (10 slots @+0x2b34)"
+ },
+ "0x00939a70": {
+  "to": "0x009750a0",
+  "via": "appel-i1"
+ },
+ "0x00d5e430": {
+  "to": "0x00c711b0",
+  "via": "appel-i1"
+ },
+ "0x00939bb0": {
+  "to": "0x009751e0",
+  "via": "appel-i1"
+ },
+ "0x00939cf0": {
+  "to": "0x00975320",
+  "via": "appel-i1"
+ },
+ "0x00939e30": {
+  "to": "0x00975460",
+  "via": "appel-i1"
+ },
+ "0x00939900": {
+  "to": "0x00974f30",
+  "via": "appel-i1"
+ },
+ "0x00d5bf70": {
+  "to": "0x00c6efb0",
+  "via": "appel-i1"
+ },
+ "0x00d5c0d0": {
+  "to": "0x00c6f110",
+  "via": "appel-i1"
+ },
+ "0x00939f80": {
+  "to": "0x009755b0",
+  "via": "appel-i1"
+ },
+ "0x00d5be10": {
+  "to": "0x00c6ee50",
+  "via": "appel-i1"
+ },
+ "0x009396f0": {
+  "to": "0x00974d00",
+  "via": "appel-i1"
+ },
+ "0x00939870": {
+  "to": "0x00974e90",
+  "via": "appel-i1"
+ },
+ "0x0072d420": {
+  "to": "0x0079baa0",
+  "via": "appel-i1"
+ },
+ "0x0088fb10": {
+  "to": "0x008cdb10",
+  "via": "appel-i1"
+ },
+ "0x00963fb0": {
+  "to": "0x009a03b0",
+  "via": "appel-i1"
+ },
+ "0x006a3f20": {
+  "to": "0x0070f470",
+  "via": "appel-i1",
+  "manifeste": "kRecipeGetLines"
+ },
+ "0x00574b70": {
+  "to": "0x0064a9f0",
+  "via": "appel-i1"
+ },
+ "0x00837fb0": {
+  "to": "0x00876200",
+  "via": "appel-i1"
+ },
+ "0x009750d0": {
+  "to": "0x009b1350",
+  "via": "appel-i1"
+ },
+ "0x00975730": {
+  "to": "0x009b1990",
+  "via": "appel-i1"
+ },
+ "0x00974700": {
+  "to": "0x009b09e0",
+  "via": "appel-i1"
+ },
+ "0x009789c0": {
+  "to": "0x009b2260",
+  "via": "appel-i1"
+ },
+ "0x00976cc0": {
+  "to": "0x009b2eb0",
+  "via": "appel-i1"
+ },
+ "0x00985ae0": {
+  "to": "0x009b9be0",
+  "via": "appel-i1"
+ },
+ "0x00971fe0": {
+  "to": "0x009adeb0",
+  "via": "appel-i1"
+ },
+ "0x009a4c80": {
+  "to": "0x009bf370",
+  "via": "appel-i1"
+ },
+ "0x00982a00": {
+  "to": "0x009b9300",
+  "via": "appel-i1"
+ },
+ "0x009a0150": {
+  "to": "0x009b9d20",
+  "via": "appel-i1"
+ },
+ "0x009a1bc0": {
+  "to": "0x009bb9f0",
+  "via": "appel-i1"
+ },
+ "0x009a23d0": {
+  "to": "0x009bc780",
+  "via": "appel-i1"
+ },
+ "0x00a1edd0": {
+  "to": "0x009ecb50",
+  "via": "appel-i1"
+ },
+ "0x004fc350": {
+  "to": "0x00553440",
+  "via": "appel-i1"
+ },
+ "0x00a6ff30": {
+  "to": "0x00a37110",
+  "via": "appel-i1"
+ },
+ "0x00fc1664": {
+  "to": "0x00e7b4d0",
+  "via": "appel-i1"
+ },
+ "0x00a6ea10": {
+  "to": "0x00a35f30",
+  "via": "appel-i1"
+ },
+ "0x009a2ce0": {
+  "to": "0x009bd270",
+  "via": "appel-i1"
+ },
+ "0x009a2c20": {
+  "to": "0x009bd1b0",
+  "via": "appel-i1"
+ },
+ "0x00a1d4d0": {
+  "to": "0x009eb0b0",
+  "via": "appel-i1"
+ },
+ "0x00a1d220": {
+  "to": "0x009ead80",
+  "via": "appel-i1"
+ },
+ "0x00a1d530": {
+  "to": "0x009eb120",
+  "via": "appel-i1"
+ },
+ "0x00982a90": {
+  "to": "0x009c07b0",
+  "via": "appel-i1"
+ },
+ "0x0099fb10": {
+  "to": "0x009b93e0",
+  "via": "appel-i1"
+ },
+ "0x009a9cc0": {
+  "to": "0x009c5e50",
+  "via": "appel-i1"
+ },
+ "0x00804320": {
+  "to": "0x008418b0",
+  "via": "appel-i1"
+ },
+ "0x00803e10": {
+  "to": "0x008413a0",
+  "via": "appel-i1"
+ },
+ "0x00803f50": {
+  "to": "0x008414f0",
+  "via": "appel-i1"
+ },
+ "0x00804250": {
+  "to": "0x008417e0",
+  "via": "appel-i1"
+ },
+ "0x008042b0": {
+  "to": "0x00841840",
+  "via": "appel-i1"
+ },
+ "0x009aac00": {
+  "to": "0x009c6fe0",
+  "via": "appel-i1"
+ },
+ "0x009ad280": {
+  "to": "0x009c9f50",
+  "via": "appel-i1"
+ },
+ "0x009ae190": {
+  "to": "0x009cb170",
+  "via": "appel-i1"
+ },
+ "0x009abb80": {
+  "to": "0x009c83a0",
+  "via": "appel-i1"
+ },
+ "0x009af710": {
+  "to": "0x009cc840",
+  "via": "appel-i1"
+ },
+ "0x009be400": {
+  "to": "0x009dda30",
+  "via": "appel-i1"
+ },
+ "0x009b2a50": {
+  "to": "0x009d0740",
+  "via": "appel-i1"
+ },
+ "0x00998c20": {
+  "to": "0x009c9e20",
+  "via": "appel-i1"
+ },
+ "0x009b35c0": {
+  "to": "0x009d15a0",
+  "via": "appel-i1"
+ },
+ "0x009b3680": {
+  "to": "0x009d1660",
+  "via": "appel-i1"
+ },
+ "0x009a6160": {
+  "to": "0x009c0bc0",
+  "via": "appel-i1"
+ },
+ "0x009adbc0": {
+  "to": "0x009caac0",
+  "via": "appel-i1"
+ },
+ "0x009bc200": {
+  "to": "0x009db480",
+  "via": "appel-i1"
+ },
+ "0x009bc400": {
+  "to": "0x009db6c0",
+  "via": "appel-i1"
+ },
+ "0x009bfe60": {
+  "to": "0x009df5e0",
+  "via": "appel-i1"
+ },
+ "0x009bf400": {
+  "to": "0x009dea80",
+  "via": "appel-i1"
+ },
+ "0x009bf510": {
+  "to": "0x009deb90",
+  "via": "appel-i1"
+ },
+ "0x009bf730": {
+  "to": "0x009dee00",
+  "via": "appel-i1"
+ },
+ "0x009afc10": {
+  "to": "0x009ccdc0",
+  "via": "appel-i1"
+ },
+ "0x009ac870": {
+  "to": "0x009c9140",
+  "via": "appel-i1"
+ },
+ "0x009c25f0": {
+  "to": "0x009e20b0",
+  "via": "appel-i1"
+ },
+ "0x009c5fc0": {
+  "to": "0x009e6140",
+  "via": "appel-i1"
+ },
+ "0x009c7af0": {
+  "to": "0x009e7be0",
+  "via": "appel-i1"
+ },
+ "0x009c7b00": {
+  "to": "0x009e7bf0",
+  "via": "appel-i1"
+ },
+ "0x009c8140": {
+  "to": "0x009e8330",
+  "via": "appel-i1"
+ },
+ "0x00684910": {
+  "to": "0x007015d0",
+  "via": "appel-i1"
+ },
+ "0x009c7f40": {
+  "to": "0x009e8130",
+  "via": "appel-i1"
+ },
+ "0x007db200": {
+  "to": "0x0081b580",
+  "via": "appel-i1"
+ },
+ "0x00a1a830": {
+  "to": "0x009e87b0",
+  "via": "appel-i1"
+ },
+ "0x00b1ed60": {
+  "to": "0x00afd960",
+  "via": "appel-i1"
+ },
+ "0x00a2ba00": {
+  "to": "0x009fa7b0",
+  "via": "appel-i1"
+ },
+ "0x00a294c0": {
+  "to": "0x009f88f0",
+  "via": "appel-i1"
+ },
+ "0x00a58500": {
+  "to": "0x00a215f0",
+  "via": "appel-i1"
+ },
+ "0x00a58470": {
+  "to": "0x00a21560",
+  "via": "appel-i1"
+ },
+ "0x00a58780": {
+  "to": "0x00a21890",
+  "via": "appel-i1"
+ },
+ "0x00a58190": {
+  "to": "0x00a21280",
+  "via": "appel-i1"
+ },
+ "0x0054a6c0": {
+  "to": "0x00620390",
+  "via": "appel-i1"
+ },
+ "0x00a59990": {
+  "to": "0x00a22b60",
+  "via": "appel-i1"
+ },
+ "0x00a5d3e0": {
+  "to": "0x00a26690",
+  "via": "appel-i1"
+ },
+ "0x0054bf30": {
+  "to": "0x00621c10",
+  "via": "appel-i1"
+ },
+ "0x00549830": {
+  "to": "0x0061f500",
+  "via": "appel-i1"
+ },
+ "0x0054a3e0": {
+  "to": "0x006200b0",
+  "via": "appel-i1"
+ },
+ "0x00549b10": {
+  "to": "0x0061f7e0",
+  "via": "appel-i1"
+ },
+ "0x0054b9b0": {
+  "to": "0x00621690",
+  "via": "appel-i1"
+ },
+ "0x0054b790": {
+  "to": "0x00621470",
+  "via": "appel-i1"
+ },
+ "0x0054c320": {
+  "to": "0x00622030",
+  "via": "appel-i1"
+ },
+ "0x00716680": {
+  "to": "0x00785750",
+  "via": "appel-i1"
+ },
+ "0x0070e6e0": {
+  "to": "0x0077dea0",
+  "via": "appel-i1"
+ },
+ "0x00a5faf0": {
+  "to": "0x00a28d50",
+  "via": "appel-i1"
+ },
+ "0x00a5fce0": {
+  "to": "0x00a28f40",
+  "via": "appel-i1"
+ },
+ "0x00a5fb90": {
+  "to": "0x00a28df0",
+  "via": "appel-i1"
+ },
+ "0x00a65120": {
+  "to": "0x00a2e3f0",
+  "via": "appel-i1"
+ },
+ "0x00558f30": {
+  "to": "0x0062ecc0",
+  "via": "appel-i1"
+ },
+ "0x00a5fc30": {
+  "to": "0x00a28e90",
+  "via": "appel-i1"
+ },
+ "0x0054aed0": {
+  "to": "0x00620ba0",
+  "via": "appel-i1"
+ },
+ "0x00a64c60": {
+  "to": "0x00a2df30",
+  "via": "appel-i1"
+ },
+ "0x00a63e10": {
+  "to": "0x00a2d080",
+  "via": "appel-i1"
+ },
+ "0x00a63800": {
+  "to": "0x00a2ca70",
+  "via": "appel-i1"
+ },
+ "0x00a64610": {
+  "to": "0x00a2d8d0",
+  "via": "appel-i1"
+ },
+ "0x00a62b70": {
+  "to": "0x00a2bdd0",
+  "via": "appel-i1"
+ },
+ "0x00711070": {
+  "to": "0x00780740",
+  "via": "appel-i1"
+ },
+ "0x00a68cf0": {
+  "to": "0x00a318d0",
+  "via": "appel-i1"
+ },
+ "0x00a6e7f0": {
+  "to": "0x00a35d10",
+  "via": "appel-i1"
+ },
+ "0x00a70c90": {
+  "to": "0x00a37b50",
+  "via": "appel-i1"
+ },
+ "0x00a70d50": {
+  "to": "0x00a37bc0",
+  "via": "appel-i1"
+ },
+ "0x00fc16dc": {
+  "to": "0x00e7b4ec",
+  "via": "appel-i1"
+ },
+ "0x00560fa0": {
+  "to": "0x00636db0",
+  "via": "appel-i1"
+ },
+ "0x005c4da0": {
+  "to": "0x00681610",
+  "via": "appel-i1"
+ },
+ "0x005aeb80": {
+  "to": "0x006757a0",
+  "via": "appel-i1"
+ },
+ "0x00a79550": {
+  "to": "0x00a3fe80",
+  "via": "appel-i1"
+ },
+ "0x00fc1398": {
+  "to": "0x00e7b1f8",
+  "via": "appel-i1"
+ },
+ "0x00a7c880": {
+  "to": "0x00a432d0",
+  "via": "appel-i1"
+ },
+ "0x00a7dbe0": {
+  "to": "0x00a44660",
+  "via": "appel-i1"
+ },
+ "0x00a7e2c0": {
+  "to": "0x00a44d30",
+  "via": "appel-i1"
+ },
+ "0x00a7e6e0": {
+  "to": "0x00a45150",
+  "via": "appel-i1"
+ },
+ "0x00a81c70": {
+  "to": "0x00a7c8f0",
+  "via": "appel-i1"
+ },
+ "0x00a803c0": {
+  "to": "0x00a7b000",
+  "via": "appel-i1"
+ },
+ "0x00a82510": {
+  "to": "0x00a7d190",
+  "via": "appel-i1"
+ },
+ "0x006174d0": {
+  "to": "0x006b43d0",
+  "via": "appel-i1"
+ },
+ "0x004e7f20": {
+  "to": "0x005bfb70",
+  "via": "appel-i1"
+ },
+ "0x00a88500": {
+  "to": "0x00a81ff0",
+  "via": "appel-i1"
+ },
+ "0x00fc1220": {
+  "to": "0x00e7b1c8",
+  "via": "appel-i1"
+ },
+ "0x00a926b0": {
+  "to": "0x00a8edf0",
+  "via": "appel-i1"
+ },
+ "0x0051a300": {
+  "to": "0x005f0cc0",
+  "via": "appel-i1"
+ },
+ "0x0051a4b0": {
+  "to": "0x005f0e70",
+  "via": "appel-i1",
+  "manifeste": "kPushNumberAddr",
+  "comment": "lua_pushnumber(L, double)"
+ },
+ "0x0051a4d0": {
+  "to": "0x005f0e90",
+  "via": "appel-i1"
+ },
+ "0x00a9b000": {
+  "to": "0x00a984d0",
+  "via": "appel-i1"
+ },
+ "0x0051a290": {
+  "to": "0x005f0c50",
+  "via": "appel-i1",
+  "manifeste": "kPCallAddr",
+  "comment": "lua_pcall(L, nargs, nres, errfunc)"
+ },
+ "0x0051abf0": {
+  "to": "0x005f15b0",
+  "via": "appel-i1",
+  "manifeste": "kToBooleanAddr",
+  "comment": "lua_toboolean(L, idx)"
+ },
+ "0x0051ad20": {
+  "to": "0x005f16e0",
+  "via": "appel-i1",
+  "manifeste": "kToNumberAddr",
+  "comment": "lua_tonumber(L, idx)"
+ },
+ "0x00dbc8c0": {
+  "to": "0x00ccabd0",
+  "via": "appel-i1"
+ },
+ "0x00ac1e40": {
+  "to": "0x00597880",
+  "via": "appel-i1"
+ },
+ "0x00ab6410": {
+  "to": "0x0058b290",
+  "via": "appel-i1"
+ },
+ "0x00ab6350": {
+  "to": "0x0058b1d0",
+  "via": "appel-i1"
+ },
+ "0x00aba4a0": {
+  "to": "0x0058f7b0",
+  "via": "appel-i1"
+ },
+ "0x00ad6460": {
+  "to": "0x005ae4c0",
+  "via": "appel-i1"
+ },
+ "0x00ab64f0": {
+  "to": "0x0058b420",
+  "via": "appel-i1"
+ },
+ "0x00abae40": {
+  "to": "0x00590460",
+  "via": "appel-i1"
+ },
+ "0x00ab64a0": {
+  "to": "0x0058b3d0",
+  "via": "appel-i1"
+ },
+ "0x00e07f79": {
+  "to": "0x00ceff24",
+  "via": "appel-i1"
+ },
+ "0x00ad9cd0": {
+  "to": "0x00ab5f30",
+  "via": "appel-i1"
+ },
+ "0x00ae7e30": {
+  "to": "0x00ac49a0",
+  "via": "appel-i1"
+ },
+ "0x00d9d260": {
+  "to": "0x00caefa0",
+  "via": "appel-i1"
+ },
+ "0x00d8eb40": {
+  "to": "0x00ca20d0",
+  "via": "appel-i1"
+ },
+ "0x00ad6a50": {
+  "to": "0x00ab2d70",
+  "via": "appel-i1"
+ },
+ "0x00b1b4b0": {
+  "to": "0x00afa150",
+  "via": "appel-i1"
+ },
+ "0x00adac60": {
+  "to": "0x00ab6ec0",
+  "via": "appel-i1"
+ },
+ "0x00ada060": {
+  "to": "0x00ab62c0",
+  "via": "appel-i1"
+ },
+ "0x00ae8820": {
+  "to": "0x00ac53d0",
+  "via": "appel-i1"
+ },
+ "0x006c8e00": {
+  "to": "0x00733130",
+  "via": "appel-i1"
+ },
+ "0x00ae7f00": {
+  "to": "0x00ac4a50",
+  "via": "appel-i1"
+ },
+ "0x00600770": {
+  "to": "0x006ae6c0",
+  "via": "appel-i1",
+  "manifeste": "kSoundPlay3D"
+ },
+ "0x00afea40": {
+  "to": "0x00adcdc0",
+  "via": "appel-i1"
+ },
+ "0x00b1b430": {
+  "to": "0x00afa0d0",
+  "via": "appel-i1"
+ },
+ "0x00ada4e0": {
+  "to": "0x00ab6740",
+  "via": "appel-i1"
+ },
+ "0x00ada4a0": {
+  "to": "0x00ab6700",
+  "via": "appel-i1"
+ },
+ "0x00ada000": {
+  "to": "0x00ab6260",
+  "via": "appel-i1"
+ },
+ "0x006c8bb0": {
+  "to": "0x00732ee0",
+  "via": "appel-i1"
+ },
+ "0x00b1b790": {
+  "to": "0x00afa420",
+  "via": "appel-i1"
+ },
+ "0x00b1f8e0": {
+  "to": "0x00afe4e0",
+  "via": "appel-i1"
+ },
+ "0x00b28ae0": {
+  "to": "0x00b07320",
+  "via": "appel-i1"
+ },
+ "0x00b25240": {
+  "to": "0x00b03900",
+  "via": "appel-i1"
+ },
+ "0x00b23400": {
+  "to": "0x00b01a20",
+  "via": "appel-i1"
+ },
+ "0x00a787d0": {
+  "to": "0x00a3f510",
+  "via": "appel-i1"
+ },
+ "0x00b28fd0": {
+  "to": "0x00b07810",
+  "via": "appel-i1"
+ },
+ "0x00b20f90": {
+  "to": "0x00aff9d0",
+  "via": "appel-i1"
+ },
+ "0x00fc1b5c": {
+  "to": "0x00e7b844",
+  "via": "appel-i1"
+ },
+ "0x00509390": {
+  "to": "0x005e0590",
+  "via": "appel-i1"
+ },
+ "0x00b3a240": {
+  "to": "0x00b188a0",
+  "via": "appel-i1"
+ },
+ "0x00b3a360": {
+  "to": "0x00b189c0",
+  "via": "appel-i1"
+ },
+ "0x0059ce30": {
+  "to": "0x004b9960",
+  "via": "appel-i1"
+ },
+ "0x00a87060": {
+  "to": "0x00a80af0",
+  "via": "appel-i1"
+ },
+ "0x00fc1b9c": {
+  "to": "0x00e7b8e8",
+  "via": "appel-i1"
+ },
+ "0x00a87210": {
+  "to": "0x00a80ca0",
+  "via": "appel-i1"
+ },
+ "0x00a871d0": {
+  "to": "0x00a80c60",
+  "via": "appel-i1"
+ },
+ "0x00a871c0": {
+  "to": "0x00a80c50",
+  "via": "appel-i1"
+ },
+ "0x00a871b0": {
+  "to": "0x00a80c40",
+  "via": "appel-i1"
+ },
+ "0x00a871e0": {
+  "to": "0x00a80c70",
+  "via": "appel-i1"
+ },
+ "0x00a87270": {
+  "to": "0x00a80d00",
+  "via": "appel-i1"
+ },
+ "0x00b407e0": {
+  "to": "0x00b1f350",
+  "via": "appel-i1"
+ },
+ "0x006195d0": {
+  "to": "0x00b1f960",
+  "via": "appel-i1"
+ },
+ "0x006176f0": {
+  "to": "0x007affd0",
+  "via": "appel-i1"
+ },
+ "0x00b40f70": {
+  "to": "0x00b1fc80",
+  "via": "appel-i1"
+ },
+ "0x00550de0": {
+  "to": "0x00626980",
+  "via": "appel-i1"
+ },
+ "0x0054b2e0": {
+  "to": "0x00620fc0",
+  "via": "appel-i1"
+ },
+ "0x0054b240": {
+  "to": "0x00620f20",
+  "via": "appel-i1"
+ },
+ "0x00c3dc10": {
+  "to": "0x00c0b010",
+  "via": "appel-i1"
+ },
+ "0x00c3da10": {
+  "to": "0x00c0ae10",
+  "via": "appel-i1"
+ },
+ "0x00c3db90": {
+  "to": "0x00c0af90",
+  "via": "appel-i1"
+ },
+ "0x00b7c4e0": {
+  "to": "0x00b5a500",
+  "via": "appel-i1"
+ },
+ "0x00b7f5f0": {
+  "to": "0x00b5d300",
+  "via": "appel-i1"
+ },
+ "0x00d9d020": {
+  "to": "0x00caef00",
+  "via": "appel-i1"
+ },
+ "0x00b7f8d0": {
+  "to": "0x00b5d580",
+  "via": "appel-i1"
+ },
+ "0x00b639e0": {
+  "to": "0x00b42260",
+  "via": "appel-i1"
+ },
+ "0x00b8eda0": {
+  "to": "0x00b6ca90",
+  "via": "appel-i1"
+ },
+ "0x00b8e050": {
+  "to": "0x00b6bd40",
+  "via": "appel-i1"
+ },
+ "0x00b8a1d0": {
+  "to": "0x00b67e80",
+  "via": "appel-i1"
+ },
+ "0x00b71450": {
+  "to": "0x00b4f4f0",
+  "via": "appel-i1"
+ },
+ "0x00b77370": {
+  "to": "0x00b553b0",
+  "via": "appel-i1"
+ },
+ "0x00b74e40": {
+  "to": "0x00b52e70",
+  "via": "appel-i1"
+ },
+ "0x00c44180": {
+  "to": "0x00c11410",
+  "via": "appel-i1"
+ },
+ "0x00c42c80": {
+  "to": "0x00c0fdc0",
+  "via": "appel-i1"
+ },
+ "0x00c4a0d0": {
+  "to": "0x00c17350",
+  "via": "appel-i1"
+ },
+ "0x00717330": {
+  "to": "0x00786400",
+  "via": "appel-i1"
+ },
+ "0x00717000": {
+  "to": "0x007860d0",
+  "via": "appel-i1"
+ },
+ "0x00710010": {
+  "to": "0x0077f770",
+  "via": "appel-i1"
+ },
+ "0x0070ffb0": {
+  "to": "0x0077f710",
+  "via": "appel-i1"
+ },
+ "0x00b45cc0": {
+  "to": "0x00b24aa0",
+  "via": "appel-i1"
+ },
+ "0x00b46950": {
+  "to": "0x00b25740",
+  "via": "appel-i1"
+ },
+ "0x00c0afa0": {
+  "to": "0x00bd5e90",
+  "via": "appel-i1"
+ },
+ "0x00bcfb10": {
+  "to": "0x00b9add0",
+  "via": "appel-i1",
+  "manifeste": "kStrSubmitQuad",
+  "comment": "Effect_SubmitStrQuad (hooké)"
+ },
+ "0x00c16520": {
+  "to": "0x00be3b20",
+  "via": "appel-i1"
+ },
+ "0x00c20650": {
+  "to": "0x00bedca0",
+  "via": "appel-i1"
+ },
+ "0x00c37bd0": {
+  "to": "0x00c04fe0",
+  "via": "appel-i1"
+ },
+ "0x00c20ab0": {
+  "to": "0x00bee100",
+  "via": "appel-i1"
+ },
+ "0x00c20b40": {
+  "to": "0x00bee190",
+  "via": "appel-i1"
+ },
+ "0x00c20be0": {
+  "to": "0x00bee230",
+  "via": "appel-i1"
+ },
+ "0x00c382c0": {
+  "to": "0x00c05750",
+  "via": "appel-i1"
+ },
+ "0x00c37f30": {
+  "to": "0x00c05380",
+  "via": "appel-i1"
+ },
+ "0x00a7c640": {
+  "to": "0x00a430a0",
+  "via": "appel-i1"
+ },
+ "0x00c16db0": {
+  "to": "0x00be43a0",
+  "via": "appel-i1"
+ },
+ "0x0088c0b0": {
+  "to": "0x00be3f70",
+  "via": "appel-i1"
+ },
+ "0x00c18d30": {
+  "to": "0x00c07940",
+  "via": "appel-i1"
+ },
+ "0x005a2870": {
+  "to": "0x0066a0a0",
+  "via": "appel-i1"
+ },
+ "0x00c16c30": {
+  "to": "0x00be4220",
+  "via": "appel-i1"
+ },
+ "0x00c191d0": {
+  "to": "0x00be6810",
+  "via": "appel-i1"
+ },
+ "0x00c385c0": {
+  "to": "0x00c05a50",
+  "via": "appel-i1"
+ },
+ "0x00c2c260": {
+  "to": "0x00bf9bf0",
+  "via": "appel-i1"
+ },
+ "0x00c24dc0": {
+  "to": "0x00bf2450",
+  "via": "appel-i1"
+ },
+ "0x00c35610": {
+  "to": "0x00c02a60",
+  "via": "appel-i1"
+ },
+ "0x00c344e0": {
+  "to": "0x00c01a10",
+  "via": "appel-i1"
+ },
+ "0x00c39ee0": {
+  "to": "0x00c07370",
+  "via": "appel-i1"
+ },
+ "0x00c3b890": {
+  "to": "0x00c08d40",
+  "via": "appel-i1"
+ },
+ "0x00b39e70": {
+  "to": "0x00b184d0",
+  "via": "appel-i1"
+ },
+ "0x00c3cf20": {
+  "to": "0x00c0a380",
+  "via": "appel-i1"
+ },
+ "0x008d8b70": {
+  "to": "0x00504360",
+  "via": "appel-i1"
+ },
+ "0x00c3ee30": {
+  "to": "0x00c0beb0",
+  "via": "appel-i1"
+ },
+ "0x00c3eec0": {
+  "to": "0x00c0bf40",
+  "via": "appel-i1"
+ },
+ "0x00c3ede0": {
+  "to": "0x00c0be60",
+  "via": "appel-i1"
+ },
+ "0x00c3fc80": {
+  "to": "0x00c0ccf0",
+  "via": "appel-i1"
+ },
+ "0x00c40190": {
+  "to": "0x00c0d200",
+  "via": "appel-i1"
+ },
+ "0x00c3ff70": {
+  "to": "0x00c0cfe0",
+  "via": "appel-i1"
+ },
+ "0x00b1ca50": {
+  "to": "0x00afb6f0",
+  "via": "appel-i1"
+ },
+ "0x00a777b0": {
+  "to": "0x00a3e570",
+  "via": "appel-i1"
+ },
+ "0x00a77c30": {
+  "to": "0x00a3e9f0",
+  "via": "appel-i1"
+ },
+ "0x00d73520": {
+  "to": "0x00c86da0",
+  "via": "appel-i1"
+ },
+ "0x00d8e960": {
+  "to": "0x00ca1ee0",
+  "via": "appel-i1"
+ },
+ "0x0070f420": {
+  "to": "0x0077eb60",
+  "via": "appel-i1"
+ },
+ "0x00d813b0": {
+  "to": "0x00c945a0",
+  "via": "appel-i1"
+ },
+ "0x00c6e100": {
+  "to": "0x004c75b0",
+  "via": "appel-i1"
+ },
+ "0x00c49d20": {
+  "to": "0x00c16fc0",
+  "via": "appel-i1"
+ },
+ "0x00c48820": {
+  "to": "0x00c15a40",
+  "via": "appel-i1"
+ },
+ "0x0070f3d0": {
+  "to": "0x0077eb10",
+  "via": "appel-i1"
+ },
+ "0x00b1c9a0": {
+  "to": "0x00afb640",
+  "via": "appel-i1"
+ },
+ "0x00d8e880": {
+  "to": "0x00ca1e00",
+  "via": "appel-i1"
+ },
+ "0x00c847a0": {
+  "to": "0x004e08d0",
+  "via": "appel-i1"
+ },
+ "0x00c849c0": {
+  "to": "0x004e09a0",
+  "via": "appel-i1"
+ },
+ "0x00c64870": {
+  "to": "0x004bd240",
+  "via": "appel-i1"
+ },
+ "0x00819d80": {
+  "to": "0x008585b0",
+  "via": "appel-i1"
+ },
+ "0x005987b0": {
+  "to": "0x0065f110",
+  "via": "appel-i1"
+ },
+ "0x00c5ac30": {
+  "to": "0x00c29010",
+  "via": "appel-i1"
+ },
+ "0x00d2fe80": {
+  "to": "0x00c42990",
+  "via": "appel-i1"
+ },
+ "0x00b41600": {
+  "to": "0x004e3750",
+  "via": "appel-i1"
+ },
+ "0x00b41890": {
+  "to": "0x006adfd0",
+  "via": "appel-i1"
+ },
+ "0x00c866f0": {
+  "to": "0x00a33d20",
+  "via": "appel-i1"
+ },
+ "0x00568c10": {
+  "to": "0x00a8b770",
+  "via": "appel-i1"
+ },
+ "0x00566d30": {
+  "to": "0x00626d70",
+  "via": "appel-i1"
+ },
+ "0x00a4d540": {
+  "to": "0x0063cdf0",
+  "via": "appel-i1"
+ },
+ "0x00fc1058": {
+  "to": "0x00e7b02c",
+  "via": "appel-i1"
+ },
+ "0x00fc1054": {
+  "to": "0x00e7b030",
+  "via": "appel-i1"
+ },
+ "0x00c65bf0": {
+  "to": "0x004be850",
+  "via": "appel-i1"
+ },
+ "0x00ac1d50": {
+  "to": "0x00597780",
+  "via": "appel-i1"
+ },
+ "0x00d767b0": {
+  "to": "0x00c89d00",
+  "via": "appel-i1"
+ },
+ "0x00d71c50": {
+  "to": "0x00c85480",
+  "via": "appel-i1"
+ },
+ "0x00c84c10": {
+  "to": "0x004e1710",
+  "via": "appel-i1"
+ },
+ "0x008d63e0": {
+  "to": "0x00502430",
+  "via": "appel-i1"
+ },
+ "0x00c9c280": {
+  "to": "0x00507820",
+  "via": "appel-i1"
+ },
+ "0x00d95740": {
+  "to": "0x00ca8e00",
+  "via": "appel-i1"
+ },
+ "0x00d73e40": {
+  "to": "0x00c876d0",
+  "via": "appel-i1"
+ },
+ "0x00a48060": {
+  "to": "0x00a15ea0",
+  "via": "appel-i1"
+ },
+ "0x00d56500": {
+  "to": "0x00c69560",
+  "via": "appel-i1"
+ },
+ "0x00d7f4c0": {
+  "to": "0x00c92440",
+  "via": "appel-i1"
+ },
+ "0x00d7e650": {
+  "to": "0x00c91590",
+  "via": "appel-i1"
+ },
+ "0x00d54f40": {
+  "to": "0x00c681b0",
+  "via": "appel-i1"
+ },
+ "0x00fc1998": {
+  "to": "0x00e7b70c",
+  "via": "appel-i1"
+ },
+ "0x00fc19fc": {
+  "to": "0x00e7b710",
+  "via": "appel-i1"
+ },
+ "0x00c3c490": {
+  "to": "0x00c09960",
+  "via": "appel-i1"
+ },
+ "0x00a82e60": {
+  "to": "0x00a7d9e0",
+  "via": "appel-i1"
+ },
+ "0x00a838e0": {
+  "to": "0x00a7e480",
+  "via": "appel-i1"
+ },
+ "0x005e6df0": {
+  "to": "0x0069a550",
+  "via": "appel-i1"
+ },
+ "0x00ce7fe0": {
+  "to": "0x00554d40",
+  "via": "appel-i1"
+ },
+ "0x00d1c880": {
+  "to": "0x0058a1e0",
+  "via": "appel-i1"
+ },
+ "0x00ce7b90": {
+  "to": "0x00554450",
+  "via": "appel-i1"
+ },
+ "0x00ced690": {
+  "to": "0x0055a810",
+  "via": "appel-i1"
+ },
+ "0x00640ed0": {
+  "to": "0x00503090",
+  "via": "appel-i1"
+ },
+ "0x00646130": {
+  "to": "0x006c69b0",
+  "via": "appel-i1"
+ },
+ "0x00c85650": {
+  "to": "0x004e2700",
+  "via": "appel-i1"
+ },
+ "0x006027b0": {
+  "to": "0x00502aa0",
+  "via": "appel-i1"
+ },
+ "0x00788ed0": {
+  "to": "0x007d9b40",
+  "via": "appel-i1"
+ },
+ "0x00602a20": {
+  "to": "0x004e1df0",
+  "via": "appel-i1"
+ },
+ "0x00d99830": {
+  "to": "0x00cac160",
+  "via": "appel-i1"
+ },
+ "0x00d99800": {
+  "to": "0x00cac130",
+  "via": "appel-i1"
+ },
+ "0x00d99ee0": {
+  "to": "0x00cac5f0",
+  "via": "appel-i1"
+ },
+ "0x00d98ef0": {
+  "to": "0x00cabe10",
+  "via": "appel-i1"
+ },
+ "0x00d98fb0": {
+  "to": "0x00cabec0",
+  "via": "appel-i1"
+ },
+ "0x00d35ca0": {
+  "to": "0x00c48810",
+  "via": "appel-i1"
+ },
+ "0x00d30390": {
+  "to": "0x00c42eb0",
+  "via": "appel-i1"
+ },
+ "0x00c47200": {
+  "to": "0x00c14660",
+  "via": "appel-i1"
+ },
+ "0x00dbc010": {
+  "to": "0x00ccb620",
+  "via": "appel-i1"
+ },
+ "0x00c58410": {
+  "to": "0x00c26cf0",
+  "via": "appel-i1"
+ },
+ "0x00c58e30": {
+  "to": "0x00c276e0",
+  "via": "appel-i1"
+ },
+ "0x00d71a10": {
+  "to": "0x00c851d0",
+  "via": "appel-i1"
+ },
+ "0x00d5dff0": {
+  "to": "0x00c70f10",
+  "via": "appel-i1"
+ },
+ "0x00c3f900": {
+  "to": "0x00c0c990",
+  "via": "appel-i1"
+ },
+ "0x00d35330": {
+  "to": "0x00c47ea0",
+  "via": "appel-i1"
+ },
+ "0x00d42b00": {
+  "to": "0x00c55540",
+  "via": "appel-i1"
+ },
+ "0x00d35190": {
+  "to": "0x00c47cf0",
+  "via": "appel-i1"
+ },
+ "0x00d42aa0": {
+  "to": "0x00c554e0",
+  "via": "appel-i1"
+ },
+ "0x005a4250": {
+  "to": "0x0066b720",
+  "via": "appel-i1"
+ },
+ "0x005a4260": {
+  "to": "0x0066b730",
+  "via": "appel-i1"
+ },
+ "0x00d35b10": {
+  "to": "0x00c48670",
+  "via": "appel-i1"
+ },
+ "0x00c402c0": {
+  "to": "0x00c0d340",
+  "via": "appel-i1"
+ },
+ "0x00fc1ccc": {
+  "to": "0x00e7ba20",
+  "via": "appel-i1"
+ },
+ "0x00c131e0": {
+  "to": "0x00bdde00",
+  "via": "appel-i1"
+ },
+ "0x00d3a3f0": {
+  "to": "0x00c4cdb0",
+  "via": "appel-i1"
+ },
+ "0x00d3ac30": {
+  "to": "0x00c4d600",
+  "via": "appel-i1"
+ },
+ "0x00d3b6b0": {
+  "to": "0x00c4e0f0",
+  "via": "appel-i1"
+ },
+ "0x00d3dd70": {
+  "to": "0x00c507e0",
+  "via": "appel-i1"
+ },
+ "0x00d58f80": {
+  "to": "0x00c6bf80",
+  "via": "appel-i1"
+ },
+ "0x00d58ff0": {
+  "to": "0x00c6bff0",
+  "via": "appel-i1"
+ },
+ "0x00d5e1d0": {
+  "to": "0x00c70f50",
+  "via": "appel-i1",
+  "manifeste": "kShieldAct"
+ },
+ "0x00d5e240": {
+  "to": "0x00c70fc0",
+  "via": "appel-i1",
+  "manifeste": "kShieldSpr"
+ },
+ "0x00d724f0": {
+  "to": "0x00c85d70",
+  "via": "appel-i1"
+ },
+ "0x00d8a010": {
+  "to": "0x00c9d180",
+  "via": "appel-i1",
+  "manifeste": "kWeaponSpr"
+ },
+ "0x00d8a160": {
+  "to": "0x00c9d2d0",
+  "via": "appel-i1",
+  "manifeste": "kWeaponAct"
+ },
+ "0x00d8a080": {
+  "to": "0x00c9d1f0",
+  "via": "appel-i1",
+  "manifeste": "kShieldGenSpr"
+ },
+ "0x00d8a0f0": {
+  "to": "0x00c9d260",
+  "via": "appel-i1",
+  "manifeste": "kShieldGenAct"
+ },
+ "0x00b43af0": {
+  "to": "0x00b22900",
+  "via": "appel-i1"
+ },
+ "0x00d95500": {
+  "to": "0x00ca8bc0",
+  "via": "appel-i1"
+ },
+ "0x00d5ddb0": {
+  "to": "0x00c70cd0",
+  "via": "appel-i1"
+ },
+ "0x006843d0": {
+  "to": "0x00700d90",
+  "via": "appel-i1"
+ },
+ "0x00d7be50": {
+  "to": "0x00c8eda0",
+  "via": "appel-i1"
+ },
+ "0x00d80240": {
+  "to": "0x00c933e0",
+  "via": "appel-i1"
+ },
+ "0x00d7d120": {
+  "to": "0x00c90070",
+  "via": "appel-i1"
+ },
+ "0x00d96c20": {
+  "to": "0x00caa390",
+  "via": "appel-i1",
+  "manifeste": "kSetShortCut",
+  "comment": "SkillMgr_SetShortCutSlot"
+ },
+ "0x006a6620": {
+  "to": "0x00711ab0",
+  "via": "appel-i1"
+ },
+ "0x00daa6e0": {
+  "to": "0x00cbaa30",
+  "via": "appel-i1"
+ },
+ "0x00c40bb0": {
+  "to": "0x00c0db90",
+  "via": "appel-i1"
+ },
+ "0x00c431a0": {
+  "to": "0x00c102f0",
+  "via": "appel-i1"
+ },
+ "0x00c46680": {
+  "to": "0x00c13920",
+  "via": "appel-i1"
+ },
+ "0x00c48060": {
+  "to": "0x00c154e0",
+  "via": "appel-i1"
+ },
+ "0x0054dcc0": {
+  "to": "0x006239d0",
+  "via": "appel-i1"
+ },
+ "0x0054dcb0": {
+  "to": "0x006239c0",
+  "via": "appel-i1"
+ },
+ "0x00daaac0": {
+  "to": "0x00cbae30",
+  "via": "appel-i1"
+ },
+ "0x00c58810": {
+  "to": "0x00c270f0",
+  "via": "appel-i1"
+ },
+ "0x00e08231": {
+  "to": "0x00cf015a",
+  "via": "appel-i1"
+ },
+ "0x00e07ded": {
+  "to": "0x00cefd92",
+  "via": "appel-i1"
+ },
+ "0x00dbbbe2": {
+  "to": "0x00cca6a1",
+  "via": "appel-i1"
+ },
+ "0x00dbc459": {
+  "to": "0x00ccafa7",
+  "via": "appel-i1"
+ },
+ "0x00dbd6f0": {
+  "to": "0x00ccc130",
+  "via": "appel-i1"
+ },
+ "0x00fc1e0c": {
+  "to": "0x00e7bb34",
+  "via": "appel-i1"
+ },
+ "0x00dbcc01": {
+  "to": "0x00cca776",
+  "via": "appel-i1"
+ },
+ "0x00dbccce": {
+  "to": "0x00cca843",
+  "via": "appel-i1"
+ },
+ "0x004ddaa0": {
+  "to": "0x005b59b0",
+  "via": "appel-i2"
+ },
+ "0x004f4710": {
+  "to": "0x005cbd30",
+  "via": "appel-i2"
+ },
+ "0x004ddb40": {
+  "to": "0x005b5a50",
+  "via": "appel-i2"
+ },
+ "0x004e7bb0": {
+  "to": "0x005bf810",
+  "via": "appel-i2"
+ },
+ "0x004f1340": {
+  "to": "0x005c8a40",
+  "via": "appel-i2"
+ },
+ "0x004dd030": {
+  "to": "0x005b4f30",
+  "via": "appel-i2"
+ },
+ "0x004ece10": {
+  "to": "0x005c4710",
+  "via": "appel-i2"
+ },
+ "0x004eda80": {
+  "to": "0x005c5380",
+  "via": "appel-i2"
+ },
+ "0x004f2790": {
+  "to": "0x005c9bf0",
+  "via": "appel-i2"
+ },
+ "0x004f1280": {
+  "to": "0x005c8980",
+  "via": "appel-i2"
+ },
+ "0x004dcfa0": {
+  "to": "0x005b4ea0",
+  "via": "appel-i2"
+ },
+ "0x004ecd20": {
+  "to": "0x005c4620",
+  "via": "appel-i2"
+ },
+ "0x004eda60": {
+  "to": "0x005c5360",
+  "via": "appel-i2"
+ },
+ "0x004f2710": {
+  "to": "0x005c9b70",
+  "via": "appel-i2"
+ },
+ "0x004f0fa0": {
+  "to": "0x005c8700",
+  "via": "appel-i2"
+ },
+ "0x004dd270": {
+  "to": "0x005b5180",
+  "via": "appel-i2"
+ },
+ "0x004f12e0": {
+  "to": "0x005c89e0",
+  "via": "appel-i2"
+ },
+ "0x004f0da0": {
+  "to": "0x005c8530",
+  "via": "appel-i2"
+ },
+ "0x004f0ce0": {
+  "to": "0x005c8470",
+  "via": "appel-i2"
+ },
+ "0x004ecdb0": {
+  "to": "0x005c46b0",
+  "via": "appel-i2"
+ },
+ "0x004f2750": {
+  "to": "0x005c9bb0",
+  "via": "appel-i2"
+ },
+ "0x004f0fb0": {
+  "to": "0x005c8710",
+  "via": "appel-i2"
+ },
+ "0x004fc5d0": {
+  "to": "0x005d3b90",
+  "via": "appel-i2"
+ },
+ "0x004ea5e0": {
+  "to": "0x005c1e80",
+  "via": "appel-i2"
+ },
+ "0x00dbbf10": {
+  "to": "0x00ccb1c0",
+  "via": "appel-i2"
+ },
+ "0x004eff10": {
+  "to": "0x005c7820",
+  "via": "appel-i2"
+ },
+ "0x004e58b0": {
+  "to": "0x005bd780",
+  "via": "appel-i2"
+ },
+ "0x004da300": {
+  "to": "0x005b2250",
+  "via": "appel-i2"
+ },
+ "0x004db1a0": {
+  "to": "0x005b30f0",
+  "via": "appel-i2"
+ },
+ "0x004dcaf0": {
+  "to": "0x005b4a50",
+  "via": "appel-i2"
+ },
+ "0x004dbf10": {
+  "to": "0x005b3e70",
+  "via": "appel-i2"
+ },
+ "0x004d8dd0": {
+  "to": "0x005b0d20",
+  "via": "appel-i2"
+ },
+ "0x004f0fd0": {
+  "to": "0x005c8730",
+  "via": "appel-i2"
+ },
+ "0x004ea890": {
+  "to": "0x005c2130",
+  "via": "appel-i2"
+ },
+ "0x004f23f0": {
+  "to": "0x005c9890",
+  "via": "appel-i2"
+ },
+ "0x004f0790": {
+  "to": "0x005c7fb0",
+  "via": "appel-i2"
+ },
+ "0x004e62e0": {
+  "to": "0x004b96a0",
+  "via": "appel-i2"
+ },
+ "0x00dba810": {
+  "to": "0x00cc9088",
+  "via": "appel-i2"
+ },
+ "0x004e2040": {
+  "to": "0x005b9f60",
+  "via": "appel-i2"
+ },
+ "0x004e0dd0": {
+  "to": "0x005b8cd0",
+  "via": "appel-i2"
+ },
+ "0x004e01c0": {
+  "to": "0x005b80b0",
+  "via": "appel-i2"
+ },
+ "0x004e1410": {
+  "to": "0x005b9320",
+  "via": "appel-i2"
+ },
+ "0x004e2d60": {
+  "to": "0x005bac80",
+  "via": "appel-i2"
+ },
+ "0x004e1100": {
+  "to": "0x005b9000",
+  "via": "appel-i2"
+ },
+ "0x004e0aa0": {
+  "to": "0x005b89a0",
+  "via": "appel-i2"
+ },
+ "0x004e2790": {
+  "to": "0x005ba6c0",
+  "via": "appel-i2"
+ },
+ "0x004e1ad0": {
+  "to": "0x005b99e0",
+  "via": "appel-i2"
+ },
+ "0x004e0530": {
+  "to": "0x005b8420",
+  "via": "appel-i2"
+ },
+ "0x004dfda0": {
+  "to": "0x005b7c80",
+  "via": "appel-i2"
+ },
+ "0x004e2370": {
+  "to": "0x005ba290",
+  "via": "appel-i2"
+ },
+ "0x004e1740": {
+  "to": "0x005b9650",
+  "via": "appel-i2"
+ },
+ "0x0051bcf0": {
+  "to": "0x005f2690",
+  "via": "appel-i2"
+ },
+ "0x00525360": {
+  "to": "0x005fbe80",
+  "via": "appel-i2"
+ },
+ "0x0051a320": {
+  "to": "0x005f0ce0",
+  "via": "appel-i2"
+ },
+ "0x0051a950": {
+  "to": "0x005f1310",
+  "via": "appel-i2"
+ },
+ "0x005218a0": {
+  "to": "0x005f8260",
+  "via": "appel-i2"
+ },
+ "0x00522760": {
+  "to": "0x005f9130",
+  "via": "appel-i2"
+ },
+ "0x00534750": {
+  "to": "0x0060b260",
+  "via": "appel-i2"
+ },
+ "0x0051a220": {
+  "to": "0x005f0be0",
+  "via": "appel-i2"
+ },
+ "0x00528470": {
+  "to": "0x005fef70",
+  "via": "appel-i2"
+ },
+ "0x005211f0": {
+  "to": "0x005f7bb0",
+  "via": "appel-i2"
+ },
+ "0x00524280": {
+  "to": "0x005fad90",
+  "via": "appel-i2"
+ },
+ "0x00524ca0": {
+  "to": "0x005fb7b0",
+  "via": "appel-i2"
+ },
+ "0x00524750": {
+  "to": "0x005fb260",
+  "via": "appel-i2"
+ },
+ "0x005245d0": {
+  "to": "0x005fb0e0",
+  "via": "appel-i2"
+ },
+ "0x005251a0": {
+  "to": "0x005fbcc0",
+  "via": "appel-i2"
+ },
+ "0x00525040": {
+  "to": "0x005fbb50",
+  "via": "appel-i2"
+ },
+ "0x00522d20": {
+  "to": "0x005f9710",
+  "via": "appel-i2"
+ },
+ "0x00523900": {
+  "to": "0x005fa410",
+  "via": "appel-i2"
+ },
+ "0x005238c0": {
+  "to": "0x005fa3d0",
+  "via": "appel-i2"
+ },
+ "0x00523990": {
+  "to": "0x005fa4a0",
+  "via": "appel-i2"
+ },
+ "0x0052f5d0": {
+  "to": "0x006060d0",
+  "via": "appel-i2"
+ },
+ "0x0052cf70": {
+  "to": "0x00603a50",
+  "via": "appel-i2"
+ },
+ "0x00526880": {
+  "to": "0x005fd390",
+  "via": "appel-i2"
+ },
+ "0x00524300": {
+  "to": "0x005fae10",
+  "via": "appel-i2"
+ },
+ "0x00522c90": {
+  "to": "0x005f9670",
+  "via": "appel-i2"
+ },
+ "0x0052ce60": {
+  "to": "0x00603940",
+  "via": "appel-i2"
+ },
+ "0x0052e6a0": {
+  "to": "0x00605190",
+  "via": "appel-i2"
+ },
+ "0x0052f240": {
+  "to": "0x00605d40",
+  "via": "appel-i2"
+ },
+ "0x00530200": {
+  "to": "0x00606d00",
+  "via": "appel-i2"
+ },
+ "0x00530270": {
+  "to": "0x00606d70",
+  "via": "appel-i2"
+ },
+ "0x00530060": {
+  "to": "0x00606b60",
+  "via": "appel-i2"
+ },
+ "0x0052f580": {
+  "to": "0x00606080",
+  "via": "appel-i2"
+ },
+ "0x005293b0": {
+  "to": "0x005ffec0",
+  "via": "appel-i2"
+ },
+ "0x00521870": {
+  "to": "0x005f8230",
+  "via": "appel-i2"
+ },
+ "0x005348a0": {
+  "to": "0x0060b3d0",
+  "via": "appel-i2"
+ },
+ "0x0053c2f0": {
+  "to": "0x004dfbe0",
+  "via": "appel-i2"
+ },
+ "0x00560190": {
+  "to": "0x00635f20",
+  "via": "appel-i2"
+ },
+ "0x0053c4d0": {
+  "to": "0x006128c0",
+  "via": "appel-i2"
+ },
+ "0x00543a90": {
+  "to": "0x004ba560",
+  "via": "appel-i2"
+ },
+ "0x00568750": {
+  "to": "0x0063e940",
+  "via": "appel-i2"
+ },
+ "0x00547700": {
+  "to": "0x00659ac0",
+  "via": "appel-i2"
+ },
+ "0x00557700": {
+  "to": "0x0062d490",
+  "via": "appel-i2"
+ },
+ "0x00556e20": {
+  "to": "0x0062cbb0",
+  "via": "appel-i2"
+ },
+ "0x005578e0": {
+  "to": "0x0062d670",
+  "via": "appel-i2"
+ },
+ "0x005576b0": {
+  "to": "0x0062d440",
+  "via": "appel-i2"
+ },
+ "0x00557050": {
+  "to": "0x0062cde0",
+  "via": "appel-i2"
+ },
+ "0x0055ff00": {
+  "to": "0x00635c90",
+  "via": "appel-i2"
+ },
+ "0x00e07faf": {
+  "to": "0x00ceff5a",
+  "via": "appel-i2"
+ },
+ "0x0054e190": {
+  "to": "0x00623ea0",
+  "via": "appel-i2"
+ },
+ "0x00558fc0": {
+  "to": "0x0062ed50",
+  "via": "appel-i2"
+ },
+ "0x00559050": {
+  "to": "0x0062ede0",
+  "via": "appel-i2"
+ },
+ "0x00558e10": {
+  "to": "0x0062eba0",
+  "via": "appel-i2"
+ },
+ "0x00558ea0": {
+  "to": "0x0062ec30",
+  "via": "appel-i2"
+ },
+ "0x00566240": {
+  "to": "0x0063c320",
+  "via": "appel-i2"
+ },
+ "0x00558780": {
+  "to": "0x0062e510",
+  "via": "appel-i2"
+ },
+ "0x00558a60": {
+  "to": "0x0062e7f0",
+  "via": "appel-i2"
+ },
+ "0x00558b40": {
+  "to": "0x0062e8d0",
+  "via": "appel-i2"
+ },
+ "0x00558990": {
+  "to": "0x0062e720",
+  "via": "appel-i2"
+ },
+ "0x00557b30": {
+  "to": "0x0062d8c0",
+  "via": "appel-i2"
+ },
+ "0x00553ec0": {
+  "to": "0x0062a2a0",
+  "via": "appel-i2"
+ },
+ "0x00d9ac90": {
+  "to": "0x00cad380",
+  "via": "appel-i2"
+ },
+ "0x007b2af0": {
+  "to": "0x007f9180",
+  "via": "appel-i2"
+ },
+ "0x007b2640": {
+  "to": "0x007f8cc0",
+  "via": "appel-i2"
+ },
+ "0x007b2ad0": {
+  "to": "0x007f9160",
+  "via": "appel-i2"
+ },
+ "0x007b2ae0": {
+  "to": "0x007f9170",
+  "via": "appel-i2"
+ },
+ "0x00562050": {
+  "to": "0x00637f10",
+  "via": "appel-i2"
+ },
+ "0x00561950": {
+  "to": "0x00637820",
+  "via": "appel-i2"
+ },
+ "0x005694c0": {
+  "to": "0x0063f660",
+  "via": "appel-i2"
+ },
+ "0x00569460": {
+  "to": "0x0063f600",
+  "via": "appel-i2"
+ },
+ "0x005728b0": {
+  "to": "0x006487f0",
+  "via": "appel-i2"
+ },
+ "0x00fc1248": {
+  "to": "0x00e7b170",
+  "via": "appel-i2"
+ },
+ "0x0057a680": {
+  "to": "0x006505e0",
+  "via": "appel-i2"
+ },
+ "0x0059ae90": {
+  "to": "0x00661140",
+  "via": "appel-i2"
+ },
+ "0x0059ad10": {
+  "to": "0x00660fc0",
+  "via": "appel-i2"
+ },
+ "0x0059af30": {
+  "to": "0x006611e0",
+  "via": "appel-i2"
+ },
+ "0x0059ae80": {
+  "to": "0x00661130",
+  "via": "appel-i2"
+ },
+ "0x00fc1a48": {
+  "to": "0x00e7b7c8",
+  "via": "appel-i2"
+ },
+ "0x005a0290": {
+  "to": "0x00667d70",
+  "via": "appel-i2"
+ },
+ "0x006a7d90": {
+  "to": "0x00713170",
+  "via": "appel-i2"
+ },
+ "0x006aa9b0": {
+  "to": "0x00715ce0",
+  "via": "appel-i2"
+ },
+ "0x006af8d0": {
+  "to": "0x0071ad60",
+  "via": "appel-i2"
+ },
+ "0x006b08b0": {
+  "to": "0x0071bd50",
+  "via": "appel-i2"
+ },
+ "0x00787e90": {
+  "to": "0x007d8de0",
+  "via": "appel-i2"
+ },
+ "0x006ad5e0": {
+  "to": "0x007189f0",
+  "via": "appel-i2"
+ },
+ "0x005abdb0": {
+  "to": "0x00672930",
+  "via": "appel-i2"
+ },
+ "0x006ad950": {
+  "to": "0x00718d40",
+  "via": "appel-i2"
+ },
+ "0x006b01e0": {
+  "to": "0x0071b670",
+  "via": "appel-i2"
+ },
+ "0x006af980": {
+  "to": "0x0071ae10",
+  "via": "appel-i2"
+ },
+ "0x006af810": {
+  "to": "0x0071aca0",
+  "via": "appel-i2"
+ },
+ "0x00dbc080": {
+  "to": "0x00ccb690",
+  "via": "appel-i2"
+ },
+ "0x005abd00": {
+  "to": "0x00672880",
+  "via": "appel-i2"
+ },
+ "0x00787930": {
+  "to": "0x007d8840",
+  "via": "appel-i2"
+ },
+ "0x0056a990": {
+  "to": "0x00640cb0",
+  "via": "appel-i2"
+ },
+ "0x0059da30": {
+  "to": "0x006656d0",
+  "via": "appel-i2"
+ },
+ "0x0056bf00": {
+  "to": "0x00642290",
+  "via": "appel-i2"
+ },
+ "0x005b52a0": {
+  "to": "0x0067be60",
+  "via": "appel-i2"
+ },
+ "0x00c149b0": {
+  "to": "0x00be0810",
+  "via": "appel-i2"
+ },
+ "0x005d65a0": {
+  "to": "0x00688740",
+  "via": "appel-i2"
+ },
+ "0x005d6060": {
+  "to": "0x00688200",
+  "via": "appel-i2"
+ },
+ "0x005df0a0": {
+  "to": "0x00692110",
+  "via": "appel-i2"
+ },
+ "0x005e2d30": {
+  "to": "0x00696590",
+  "via": "appel-i2"
+ },
+ "0x0061dc20": {
+  "to": "0x006bb0b0",
+  "via": "appel-i2"
+ },
+ "0x0061b9b0": {
+  "to": "0x006b8ee0",
+  "via": "appel-i2"
+ },
+ "0x0062ebb0": {
+  "to": "0x006bf3c0",
+  "via": "appel-i2"
+ },
+ "0x0062beb0": {
+  "to": "0x006bc6b0",
+  "via": "appel-i2"
+ },
+ "0x0062fa40": {
+  "to": "0x006c0250",
+  "via": "appel-i2"
+ },
+ "0x00631760": {
+  "to": "0x006c1d70",
+  "via": "appel-i2"
+ },
+ "0x00650600": {
+  "to": "0x006cc3b0",
+  "via": "appel-i2"
+ },
+ "0x0065bdd0": {
+  "to": "0x006d7c80",
+  "via": "appel-i2"
+ },
+ "0x00660140": {
+  "to": "0x006dbf00",
+  "via": "appel-i2"
+ },
+ "0x00668df0": {
+  "to": "0x006e4fb0",
+  "via": "appel-i2"
+ },
+ "0x006849f0": {
+  "to": "0x007016d0",
+  "via": "appel-i2"
+ },
+ "0x00684ae0": {
+  "to": "0x007017c0",
+  "via": "appel-i2"
+ },
+ "0x00684ea0": {
+  "to": "0x00701b80",
+  "via": "appel-i2"
+ },
+ "0x006711f0": {
+  "to": "0x006ed680",
+  "via": "appel-i2"
+ },
+ "0x0066c820": {
+  "to": "0x006e8970",
+  "via": "appel-i2"
+ },
+ "0x006713a0": {
+  "to": "0x006ed830",
+  "via": "appel-i2"
+ },
+ "0x0066c940": {
+  "to": "0x006e8ab0",
+  "via": "appel-i2"
+ },
+ "0x006706e0": {
+  "to": "0x006ecb70",
+  "via": "appel-i2"
+ },
+ "0x00671e30": {
+  "to": "0x006ee2c0",
+  "via": "appel-i2"
+ },
+ "0x00670890": {
+  "to": "0x006ecd20",
+  "via": "appel-i2"
+ },
+ "0x00670ce0": {
+  "to": "0x006ed170",
+  "via": "appel-i2"
+ },
+ "0x00670770": {
+  "to": "0x006ecc00",
+  "via": "appel-i2"
+ },
+ "0x00671040": {
+  "to": "0x006ed4d0",
+  "via": "appel-i2"
+ },
+ "0x0066c700": {
+  "to": "0x006e8840",
+  "via": "appel-i2"
+ },
+ "0x00670fb0": {
+  "to": "0x006ed440",
+  "via": "appel-i2"
+ },
+ "0x0066c650": {
+  "to": "0x006e8790",
+  "via": "appel-i2"
+ },
+ "0x0066bd30": {
+  "to": "0x006e7e70",
+  "via": "appel-i2"
+ },
+ "0x00671db0": {
+  "to": "0x006ee240",
+  "via": "appel-i2"
+ },
+ "0x00671b70": {
+  "to": "0x006ee000",
+  "via": "appel-i2"
+ },
+ "0x00671bf0": {
+  "to": "0x006ee080",
+  "via": "appel-i2"
+ },
+ "0x00671c70": {
+  "to": "0x006ee100",
+  "via": "appel-i2"
+ },
+ "0x0066bf10": {
+  "to": "0x006e8050",
+  "via": "appel-i2"
+ },
+ "0x0066c0d0": {
+  "to": "0x006e8210",
+  "via": "appel-i2"
+ },
+ "0x00689bd0": {
+  "to": "0x007068b0",
+  "via": "appel-i2"
+ },
+ "0x0066e580": {
+  "to": "0x006ea700",
+  "via": "appel-i2"
+ },
+ "0x0066e5f0": {
+  "to": "0x006ea770",
+  "via": "appel-i2"
+ },
+ "0x0066e7b0": {
+  "to": "0x006ea930",
+  "via": "appel-i2"
+ },
+ "0x0066e900": {
+  "to": "0x006eaa80",
+  "via": "appel-i2"
+ },
+ "0x0066e970": {
+  "to": "0x006eaaf0",
+  "via": "appel-i2"
+ },
+ "0x006a1610": {
+  "to": "0x0070cdf0",
+  "via": "appel-i2"
+ },
+ "0x006a0880": {
+  "to": "0x0070c170",
+  "via": "appel-i2"
+ },
+ "0x005a2810": {
+  "to": "0x004def50",
+  "via": "appel-i2"
+ },
+ "0x006a77c0": {
+  "to": "0x004e0870",
+  "via": "appel-i2"
+ },
+ "0x006a1520": {
+  "to": "0x0070cd00",
+  "via": "appel-i2"
+ },
+ "0x006a15c0": {
+  "to": "0x0070cda0",
+  "via": "appel-i2"
+ },
+ "0x006a0ab0": {
+  "to": "0x0070c2b0",
+  "via": "appel-i2"
+ },
+ "0x006a5df0": {
+  "to": "0x00711290",
+  "via": "appel-i2"
+ },
+ "0x006b14d0": {
+  "to": "0x0071c9c0",
+  "via": "appel-i2"
+ },
+ "0x006b18b0": {
+  "to": "0x0071cd90",
+  "via": "appel-i2"
+ },
+ "0x006ae600": {
+  "to": "0x00719a60",
+  "via": "appel-i2"
+ },
+ "0x006b0550": {
+  "to": "0x0071b9e0",
+  "via": "appel-i2"
+ },
+ "0x006b0250": {
+  "to": "0x0071b6e0",
+  "via": "appel-i2"
+ },
+ "0x006b2a50": {
+  "to": "0x0071df30",
+  "via": "appel-i2"
+ },
+ "0x006b1a70": {
+  "to": "0x0071cf50",
+  "via": "appel-i2"
+ },
+ "0x006b35e0": {
+  "to": "0x0071eac0",
+  "via": "appel-i2"
+ },
+ "0x006afab0": {
+  "to": "0x0071af40",
+  "via": "appel-i2"
+ },
+ "0x006b36b0": {
+  "to": "0x0071eb90",
+  "via": "appel-i2"
+ },
+ "0x006b3760": {
+  "to": "0x0071ec40",
+  "via": "appel-i2"
+ },
+ "0x006af800": {
+  "to": "0x0071ac90",
+  "via": "appel-i2"
+ },
+ "0x006b2ef0": {
+  "to": "0x0071e3d0",
+  "via": "appel-i2"
+ },
+ "0x006af790": {
+  "to": "0x0071ac20",
+  "via": "appel-i2"
+ },
+ "0x006b38d0": {
+  "to": "0x0071edb0",
+  "via": "appel-i2"
+ },
+ "0x006ae850": {
+  "to": "0x00719cc0",
+  "via": "appel-i2"
+ },
+ "0x006b0330": {
+  "to": "0x0071b7c0",
+  "via": "appel-i2"
+ },
+ "0x006ae830": {
+  "to": "0x00719ca0",
+  "via": "appel-i2"
+ },
+ "0x006b2de0": {
+  "to": "0x0071e2c0",
+  "via": "appel-i2"
+ },
+ "0x006b4050": {
+  "to": "0x0071f530",
+  "via": "appel-i2"
+ },
+ "0x006b5620": {
+  "to": "0x00720b00",
+  "via": "appel-i2"
+ },
+ "0x006b2440": {
+  "to": "0x0071d920",
+  "via": "appel-i2"
+ },
+ "0x006b2eb0": {
+  "to": "0x0071e390",
+  "via": "appel-i2"
+ },
+ "0x006c93e0": {
+  "to": "0x00733710",
+  "via": "appel-i2"
+ },
+ "0x006cd910": {
+  "to": "0x007383a0",
+  "via": "appel-i2"
+ },
+ "0x006f16f0": {
+  "to": "0x00761070",
+  "via": "appel-i2"
+ },
+ "0x00c448f0": {
+  "to": "0x00c11b00",
+  "via": "appel-i2"
+ },
+ "0x006f1990": {
+  "to": "0x00761310",
+  "via": "appel-i2"
+ },
+ "0x00b1b3b0": {
+  "to": "0x00afa050",
+  "via": "appel-i2"
+ },
+ "0x00ad7f30": {
+  "to": "0x00ab3e90",
+  "via": "appel-i2"
+ },
+ "0x006f69b0": {
+  "to": "0x007663d0",
+  "via": "appel-i2"
+ },
+ "0x00fc1264": {
+  "to": "0x00e7b214",
+  "via": "appel-i2"
+ },
+ "0x006fc1f0": {
+  "to": "0x0076bd80",
+  "via": "appel-i2"
+ },
+ "0x006fc530": {
+  "to": "0x0076c0c0",
+  "via": "appel-i2"
+ },
+ "0x006fd870": {
+  "to": "0x0076d400",
+  "via": "appel-i2"
+ },
+ "0x00fc12a4": {
+  "to": "0x00e7b0e4",
+  "via": "appel-i2"
+ },
+ "0x0070d660": {
+  "to": "0x0077ce20",
+  "via": "appel-i2"
+ },
+ "0x0070ea30": {
+  "to": "0x0077e1f0",
+  "via": "appel-i2"
+ },
+ "0x00716380": {
+  "to": "0x00785480",
+  "via": "appel-i2"
+ },
+ "0x00573240": {
+  "to": "0x00649200",
+  "via": "appel-i2"
+ },
+ "0x00716c00": {
+  "to": "0x00785cd0",
+  "via": "appel-i2"
+ },
+ "0x00718b30": {
+  "to": "0x00787b90",
+  "via": "appel-i2"
+ },
+ "0x00536930": {
+  "to": "0x0060cf10",
+  "via": "appel-i2"
+ },
+ "0x00724aa0": {
+  "to": "0x007936f0",
+  "via": "appel-i2"
+ },
+ "0x005694a0": {
+  "to": "0x0063f640",
+  "via": "appel-i2"
+ },
+ "0x005686b0": {
+  "to": "0x0063e890",
+  "via": "appel-i2"
+ },
+ "0x00548cf0": {
+  "to": "0x0061ea20",
+  "via": "appel-i2"
+ },
+ "0x0072c310": {
+  "to": "0x0079ab80",
+  "via": "appel-i2"
+ },
+ "0x0072c510": {
+  "to": "0x0079ad80",
+  "via": "appel-i2"
+ },
+ "0x00737480": {
+  "to": "0x007a4970",
+  "via": "appel-i2"
+ },
+ "0x00739370": {
+  "to": "0x007a68d0",
+  "via": "appel-i2"
+ },
+ "0x007392b0": {
+  "to": "0x007a6810",
+  "via": "appel-i2"
+ },
+ "0x007374e0": {
+  "to": "0x007a49d0",
+  "via": "appel-i2"
+ },
+ "0x007393d0": {
+  "to": "0x007a6930",
+  "via": "appel-i2"
+ },
+ "0x00739310": {
+  "to": "0x007a6870",
+  "via": "appel-i2"
+ },
+ "0x00776da0": {
+  "to": "0x007c6aa0",
+  "via": "appel-i2"
+ },
+ "0x00776840": {
+  "to": "0x007c6540",
+  "via": "appel-i2"
+ },
+ "0x00788c70": {
+  "to": "0x007d98e0",
+  "via": "appel-i2"
+ },
+ "0x007896f0": {
+  "to": "0x007da280",
+  "via": "appel-i2"
+ },
+ "0x00788730": {
+  "to": "0x007d93a0",
+  "via": "appel-i2"
+ },
+ "0x00a21a50": {
+  "to": "0x007d9d50",
+  "via": "appel-i2"
+ },
+ "0x00793600": {
+  "to": "0x007dab00",
+  "via": "appel-i2"
+ },
+ "0x00793020": {
+  "to": "0x007da520",
+  "via": "appel-i2"
+ },
+ "0x00fc1860": {
+  "to": "0x00e7b604",
+  "via": "appel-i2"
+ },
+ "0x00a92d40": {
+  "to": "0x00a8f490",
+  "via": "appel-i2"
+ },
+ "0x007a92f0": {
+  "to": "0x007f2330",
+  "via": "appel-i2"
+ },
+ "0x0072f240": {
+  "to": "0x0079d8a0",
+  "via": "appel-i2"
+ },
+ "0x007ed380": {
+  "to": "0x0082cbd0",
+  "via": "appel-i2"
+ },
+ "0x007ee390": {
+  "to": "0x0082dd40",
+  "via": "appel-i2"
+ },
+ "0x007f7f30": {
+  "to": "0x00836ac0",
+  "via": "appel-i2"
+ },
+ "0x008064e0": {
+  "to": "0x00843a40",
+  "via": "appel-i2"
+ },
+ "0x00806540": {
+  "to": "0x00843aa0",
+  "via": "appel-i2"
+ },
+ "0x008064a0": {
+  "to": "0x00843a00",
+  "via": "appel-i2"
+ },
+ "0x007fe970": {
+  "to": "0x0083c460",
+  "via": "appel-i2"
+ },
+ "0x0097abe0": {
+  "to": "0x009b89d0",
+  "via": "appel-i2"
+ },
+ "0x00cf98b0": {
+  "to": "0x005667a0",
+  "via": "appel-i2"
+ },
+ "0x00894db0": {
+  "to": "0x008d2dd0",
+  "via": "appel-i2"
+ },
+ "0x008066b0": {
+  "to": "0x00843ba0",
+  "via": "appel-i2"
+ },
+ "0x00a86260": {
+  "to": "0x00a7fde0",
+  "via": "appel-i2"
+ },
+ "0x008125e0": {
+  "to": "0x008507d0",
+  "via": "appel-i2"
+ },
+ "0x00a86310": {
+  "to": "0x00a7fe80",
+  "via": "appel-i2"
+ },
+ "0x005b70e0": {
+  "to": "0x0067d8b0",
+  "via": "appel-i2"
+ },
+ "0x00832b00": {
+  "to": "0x00870d70",
+  "via": "appel-i2"
+ },
+ "0x00833100": {
+  "to": "0x00871480",
+  "via": "appel-i2"
+ },
+ "0x005ff070": {
+  "to": "0x008a6130",
+  "via": "appel-i2"
+ },
+ "0x005fed10": {
+  "to": "0x008a5850",
+  "via": "appel-i2"
+ },
+ "0x0053fa60": {
+  "to": "0x0058abb0",
+  "via": "appel-i2"
+ },
+ "0x0053fa50": {
+  "to": "0x0058aa10",
+  "via": "appel-i2"
+ },
+ "0x008380a0": {
+  "to": "0x008762f0",
+  "via": "appel-i2"
+ },
+ "0x00837d30": {
+  "to": "0x00875f80",
+  "via": "appel-i2"
+ },
+ "0x0083a550": {
+  "to": "0x008787d0",
+  "via": "appel-i2"
+ },
+ "0x007fbbd0": {
+  "to": "0x0083a190",
+  "via": "appel-i2"
+ },
+ "0x00b36630": {
+  "to": "0x00b14bc0",
+  "via": "appel-i2"
+ },
+ "0x0085fca0": {
+  "to": "0x0089e210",
+  "via": "appel-i2",
+  "manifeste": "kTabRecompute",
+  "comment": "FUN_0085fca0(tabctrl): recompute strip size after a size[] change"
+ },
+ "0x004ef090": {
+  "to": "0x005c69a0",
+  "via": "appel-i2"
+ },
+ "0x0088bdc0": {
+  "to": "0x008ca750",
+  "via": "appel-i2"
+ },
+ "0x0088be30": {
+  "to": "0x008ca7c0",
+  "via": "appel-i2"
+ },
+ "0x0089e380": {
+  "to": "0x008dbd80",
+  "via": "appel-i2"
+ },
+ "0x00d5cea0": {
+  "to": "0x00c6fef0",
+  "via": "appel-i2"
+ },
+ "0x00574ff0": {
+  "to": "0x004e0980",
+  "via": "appel-i2"
+ },
+ "0x00908ef0": {
+  "to": "0x00945f20",
+  "via": "appel-i2"
+ },
+ "0x008d44a0": {
+  "to": "0x004f36a0",
+  "via": "appel-i2"
+ },
+ "0x008d5190": {
+  "to": "0x004f4b80",
+  "via": "appel-i2"
+ },
+ "0x008d5a70": {
+  "to": "0x00914ce0",
+  "via": "appel-i2"
+ },
+ "0x008d59e0": {
+  "to": "0x00914c50",
+  "via": "appel-i2"
+ },
+ "0x008d5950": {
+  "to": "0x00914bc0",
+  "via": "appel-i2"
+ },
+ "0x008dadb0": {
+  "to": "0x00919970",
+  "via": "appel-i2"
+ },
+ "0x005f4db0": {
+  "to": "0x006a7320",
+  "via": "appel-i2"
+ },
+ "0x008db0d0": {
+  "to": "0x00649a20",
+  "via": "appel-i2"
+ },
+ "0x0090c550": {
+  "to": "0x009492a0",
+  "via": "appel-i2"
+ },
+ "0x007081f0": {
+  "to": "0x007c5cb0",
+  "via": "appel-i2"
+ },
+ "0x00971dd0": {
+  "to": "0x009adc40",
+  "via": "appel-i2"
+ },
+ "0x0099faa0": {
+  "to": "0x009b9290",
+  "via": "appel-i2"
+ },
+ "0x00fc1660": {
+  "to": "0x00e7b4d4",
+  "via": "appel-i2"
+ },
+ "0x009a84b0": {
+  "to": "0x009c4790",
+  "via": "appel-i2"
+ },
+ "0x009a5080": {
+  "to": "0x009bf7c0",
+  "via": "appel-i2"
+ },
+ "0x009a5290": {
+  "to": "0x009bf9d0",
+  "via": "appel-i2"
+ },
+ "0x009a9f60": {
+  "to": "0x009c60f0",
+  "via": "appel-i2"
+ },
+ "0x009a9af0": {
+  "to": "0x009b9f50",
+  "via": "appel-i2"
+ },
+ "0x00fc1668": {
+  "to": "0x00e7b4cc",
+  "via": "appel-i2"
+ },
+ "0x009ace60": {
+  "to": "0x009c9870",
+  "via": "appel-i2"
+ },
+ "0x009ad7f0": {
+  "to": "0x009ca6b0",
+  "via": "appel-i2"
+ },
+ "0x009b2ee0": {
+  "to": "0x009d0d50",
+  "via": "appel-i2"
+ },
+ "0x006517a0": {
+  "to": "0x006cd550",
+  "via": "appel-i2"
+ },
+ "0x009ae020": {
+  "to": "0x009caff0",
+  "via": "appel-i2"
+ },
+ "0x00582890": {
+  "to": "0x00658b10",
+  "via": "appel-i2"
+ },
+ "0x009ae0d0": {
+  "to": "0x009cb0b0",
+  "via": "appel-i2"
+ },
+ "0x0067a2d0": {
+  "to": "0x006f6e70",
+  "via": "appel-i2"
+ },
+ "0x009afd50": {
+  "to": "0x009ccf30",
+  "via": "appel-i2"
+ },
+ "0x009b0060": {
+  "to": "0x009cd310",
+  "via": "appel-i2"
+ },
+ "0x00a1ad30": {
+  "to": "0x009e8cb0",
+  "via": "appel-i2"
+ },
+ "0x00a1f820": {
+  "to": "0x009ed460",
+  "via": "appel-i2"
+ },
+ "0x00a21d50": {
+  "to": "0x009f0820",
+  "via": "appel-i2"
+ },
+ "0x00a27cf0": {
+  "to": "0x009f6f80",
+  "via": "appel-i2"
+ },
+ "0x00546c80": {
+  "to": "0x0061cb10",
+  "via": "appel-i2"
+ },
+ "0x005470f0": {
+  "to": "0x0061ce10",
+  "via": "appel-i2"
+ },
+ "0x005471a0": {
+  "to": "0x0061cec0",
+  "via": "appel-i2",
+  "manifeste": "kEngTextOutLow",
+  "comment": "__thiscall(ctx, x, y, str, len)"
+ },
+ "0x0097af40": {
+  "to": "0x009b8d30",
+  "via": "appel-i2"
+ },
+ "0x0097aef0": {
+  "to": "0x009b8ce0",
+  "via": "appel-i2"
+ },
+ "0x0097ac60": {
+  "to": "0x009b8a50",
+  "via": "appel-i2"
+ },
+ "0x007a8b50": {
+  "to": "0x007f1b50",
+  "via": "appel-i2"
+ },
+ "0x007a89d0": {
+  "to": "0x007f19d0",
+  "via": "appel-i2"
+ },
+ "0x007a8d90": {
+  "to": "0x007f1d90",
+  "via": "appel-i2"
+ },
+ "0x00a2c2e0": {
+  "to": "0x009fb020",
+  "via": "appel-i2"
+ },
+ "0x00a30f70": {
+  "to": "0x009ff800",
+  "via": "appel-i2"
+ },
+ "0x00a20450": {
+  "to": "0x009eee60",
+  "via": "appel-i2"
+ },
+ "0x00a57500": {
+  "to": "0x00a20600",
+  "via": "appel-i2"
+ },
+ "0x00a63470": {
+  "to": "0x00a2c6d0",
+  "via": "appel-i2"
+ },
+ "0x00560540": {
+  "to": "0x00636300",
+  "via": "appel-i2"
+ },
+ "0x00a68c60": {
+  "to": "0x00a31840",
+  "via": "appel-i2"
+ },
+ "0x005a0ab0": {
+  "to": "0x006683c0",
+  "via": "appel-i2"
+ },
+ "0x00a78700": {
+  "to": "0x00a3f440",
+  "via": "appel-i2"
+ },
+ "0x00a77ef0": {
+  "to": "0x00a3ecb0",
+  "via": "appel-i2"
+ },
+ "0x00a765a0": {
+  "to": "0x00a3d810",
+  "via": "appel-i2"
+ },
+ "0x00a76940": {
+  "to": "0x00a3daa0",
+  "via": "appel-i2"
+ },
+ "0x00a78410": {
+  "to": "0x00a3f1e0",
+  "via": "appel-i2"
+ },
+ "0x00a784d0": {
+  "to": "0x00a3f290",
+  "via": "appel-i2"
+ },
+ "0x00a77660": {
+  "to": "0x00a3e420",
+  "via": "appel-i2"
+ },
+ "0x00a79710": {
+  "to": "0x00a40040",
+  "via": "appel-i2"
+ },
+ "0x00a80150": {
+  "to": "0x00a7ad90",
+  "via": "appel-i2"
+ },
+ "0x005b78c0": {
+  "to": "0x004e1e80",
+  "via": "appel-i2"
+ },
+ "0x00fc1334": {
+  "to": "0x00e7b11c",
+  "via": "appel-i2"
+ },
+ "0x00a8bb20": {
+  "to": "0x00a87ed0",
+  "via": "appel-i2"
+ },
+ "0x004f2230": {
+  "to": "0x005c96b0",
+  "via": "appel-i2"
+ },
+ "0x00fc1200": {
+  "to": "0x00e7b1dc",
+  "via": "appel-i2"
+ },
+ "0x00fc15ec": {
+  "to": "0x00e7b418",
+  "via": "appel-i2"
+ },
+ "0x00fc15f8": {
+  "to": "0x00e7b414",
+  "via": "appel-i2"
+ },
+ "0x00a92230": {
+  "to": "0x00a8e8f0",
+  "via": "appel-i2"
+ },
+ "0x00a921b0": {
+  "to": "0x00a8e870",
+  "via": "appel-i2"
+ },
+ "0x00fc1204": {
+  "to": "0x00e7b16c",
+  "via": "appel-i2"
+ },
+ "0x00abaa60": {
+  "to": "0x0058ff20",
+  "via": "appel-i2"
+ },
+ "0x00ab62e0": {
+  "to": "0x0058b160",
+  "via": "appel-i2"
+ },
+ "0x00ad5ff0": {
+  "to": "0x005adf10",
+  "via": "appel-i2"
+ },
+ "0x00ada090": {
+  "to": "0x00ab62f0",
+  "via": "appel-i2"
+ },
+ "0x00adaa60": {
+  "to": "0x00ab6cc0",
+  "via": "appel-i2"
+ },
+ "0x00ada8e0": {
+  "to": "0x00ab6b40",
+  "via": "appel-i2"
+ },
+ "0x00ad6b00": {
+  "to": "0x00ab2e20",
+  "via": "appel-i2"
+ },
+ "0x00adac10": {
+  "to": "0x00ab6e70",
+  "via": "appel-i2"
+ },
+ "0x00adab70": {
+  "to": "0x00ab6dd0",
+  "via": "appel-i2"
+ },
+ "0x00b1a5a0": {
+  "to": "0x00af91f0",
+  "via": "appel-i2"
+ },
+ "0x00b1ac40": {
+  "to": "0x00af98d0",
+  "via": "appel-i2"
+ },
+ "0x00b1f980": {
+  "to": "0x00afe580",
+  "via": "appel-i2"
+ },
+ "0x00b1b4e0": {
+  "to": "0x00afa170",
+  "via": "appel-i2"
+ },
+ "0x00b1fa20": {
+  "to": "0x00afe620",
+  "via": "appel-i2"
+ },
+ "0x00aa0040": {
+  "to": "0x00a9c480",
+  "via": "appel-i2"
+ },
+ "0x00fc1a14": {
+  "to": "0x00e7b818",
+  "via": "appel-i2"
+ },
+ "0x00fc1a54": {
+  "to": "0x00e7b7bc",
+  "via": "appel-i2"
+ },
+ "0x00b1be00": {
+  "to": "0x00afab90",
+  "via": "appel-i2"
+ },
+ "0x00b28d90": {
+  "to": "0x00b075d0",
+  "via": "appel-i2"
+ },
+ "0x00b28c60": {
+  "to": "0x00b074a0",
+  "via": "appel-i2"
+ },
+ "0x00b28b70": {
+  "to": "0x00b073b0",
+  "via": "appel-i2"
+ },
+ "0x00b28e30": {
+  "to": "0x00b07670",
+  "via": "appel-i2"
+ },
+ "0x00b28d60": {
+  "to": "0x00b075a0",
+  "via": "appel-i2"
+ },
+ "0x00b39ce0": {
+  "to": "0x00b18340",
+  "via": "appel-i2"
+ },
+ "0x00544a20": {
+  "to": "0x004bde10",
+  "via": "appel-i2"
+ },
+ "0x00b7f8a0": {
+  "to": "0x00b5d550",
+  "via": "appel-i2"
+ },
+ "0x00b7d910": {
+  "to": "0x00b5b630",
+  "via": "appel-i2"
+ },
+ "0x00b8a670": {
+  "to": "0x00b68320",
+  "via": "appel-i2"
+ },
+ "0x00c43070": {
+  "to": "0x00c101c0",
+  "via": "appel-i2"
+ },
+ "0x00715be0": {
+  "to": "0x00784d60",
+  "via": "appel-i2",
+  "manifeste": "kStrLayerTex",
+  "comment": "Str_GetLayerTexture(layer, idx)"
+ },
+ "0x00d72d10": {
+  "to": "0x00c86590",
+  "via": "appel-i2"
+ },
+ "0x00aa7b00": {
+  "to": "0x00aa4290",
+  "via": "appel-i2",
+  "manifeste": "(littéral)"
+ },
+ "0x00c164c0": {
+  "to": "0x00be3ac0",
+  "via": "appel-i2"
+ },
+ "0x00c165c0": {
+  "to": "0x00be3bc0",
+  "via": "appel-i2"
+ },
+ "0x004e7f10": {
+  "to": "0x004bcf00",
+  "via": "appel-i2"
+ },
+ "0x004ecc40": {
+  "to": "0x005c4540",
+  "via": "appel-i2"
+ },
+ "0x004f25d0": {
+  "to": "0x005c9a30",
+  "via": "appel-i2"
+ },
+ "0x004f0f50": {
+  "to": "0x005c86b0",
+  "via": "appel-i2"
+ },
+ "0x00c39720": {
+  "to": "0x00c06bb0",
+  "via": "appel-i2"
+ },
+ "0x00c39040": {
+  "to": "0x00c064d0",
+  "via": "appel-i2"
+ },
+ "0x00c36d50": {
+  "to": "0x00c04160",
+  "via": "appel-i2"
+ },
+ "0x00c372a0": {
+  "to": "0x00c046a0",
+  "via": "appel-i2"
+ },
+ "0x00c374d0": {
+  "to": "0x00c048e0",
+  "via": "appel-i2"
+ },
+ "0x00c39c00": {
+  "to": "0x00c07090",
+  "via": "appel-i2"
+ },
+ "0x00c39460": {
+  "to": "0x00c068f0",
+  "via": "appel-i2"
+ },
+ "0x00c19dc0": {
+  "to": "0x00be7400",
+  "via": "appel-i2"
+ },
+ "0x00c389e0": {
+  "to": "0x00c05e70",
+  "via": "appel-i2"
+ },
+ "0x00c2ee00": {
+  "to": "0x00bfc5d0",
+  "via": "appel-i2"
+ },
+ "0x00c1aa10": {
+  "to": "0x00be8060",
+  "via": "appel-i2"
+ },
+ "0x00c16b10": {
+  "to": "0x00be4100",
+  "via": "appel-i2"
+ },
+ "0x00fc1844": {
+  "to": "0x00e7b5bc",
+  "via": "appel-i2"
+ },
+ "0x00b39c70": {
+  "to": "0x00b182d0",
+  "via": "appel-i2"
+ },
+ "0x00c1af60": {
+  "to": "0x00be85c0",
+  "via": "appel-i2"
+ },
+ "0x00fc1838": {
+  "to": "0x00e7b5b8",
+  "via": "appel-i2"
+ },
+ "0x00c36ac0": {
+  "to": "0x00c03e80",
+  "via": "appel-i2"
+ },
+ "0x007fa920": {
+  "to": "0x00839440",
+  "via": "appel-i2"
+ },
+ "0x008d54b0": {
+  "to": "0x004f4c70",
+  "via": "appel-i2"
+ },
+ "0x00c3ca40": {
+  "to": "0x00c09e90",
+  "via": "appel-i2"
+ },
+ "0x00c3c6e0": {
+  "to": "0x00c09b90",
+  "via": "appel-i2"
+ },
+ "0x00c3d930": {
+  "to": "0x00c0ad30",
+  "via": "appel-i2"
+ },
+ "0x00c3cfa0": {
+  "to": "0x00c0a400",
+  "via": "appel-i2"
+ },
+ "0x00c3e160": {
+  "to": "0x00c0b560",
+  "via": "appel-i2"
+ },
+ "0x00c3ec20": {
+  "to": "0x00c0bca0",
+  "via": "appel-i2"
+ },
+ "0x00c46110": {
+  "to": "0x00c13390",
+  "via": "appel-i2"
+ },
+ "0x00c3f7a0": {
+  "to": "0x00c0c830",
+  "via": "appel-i2"
+ },
+ "0x00554040": {
+  "to": "0x0062a420",
+  "via": "appel-i2",
+  "manifeste": "kWorldDepthConvertVa"
+ },
+ "0x00568620": {
+  "to": "0x0063e800",
+  "via": "appel-i2"
+ },
+ "0x006c5f70": {
+  "to": "0x00730290",
+  "via": "appel-i2"
+ },
+ "0x00d2f320": {
+  "to": "0x00c41df0",
+  "via": "appel-i2"
+ },
+ "0x00b1c400": {
+  "to": "0x0063ed90",
+  "via": "appel-i2"
+ },
+ "0x00a4bf30": {
+  "to": "0x00a19cd0",
+  "via": "appel-i2"
+ },
+ "0x00c820e0": {
+  "to": "0x004ddde0",
+  "via": "appel-i2"
+ },
+ "0x00d5afc0": {
+  "to": "0x00c6e030",
+  "via": "appel-i2"
+ },
+ "0x00d1ccb0": {
+  "to": "0x0058a7d0",
+  "via": "appel-i2"
+ },
+ "0x00d1cdb0": {
+  "to": "0x0058aa30",
+  "via": "appel-i2"
+ },
+ "0x007db020": {
+  "to": "0x0081b3a0",
+  "via": "appel-i2"
+ },
+ "0x007db030": {
+  "to": "0x0081b3b0",
+  "via": "appel-i2"
+ },
+ "0x00d35120": {
+  "to": "0x00c47c80",
+  "via": "appel-i2"
+ },
+ "0x007216c0": {
+  "to": "0x007903c0",
+  "via": "appel-i2"
+ },
+ "0x0071f600": {
+  "to": "0x0078e380",
+  "via": "appel-i2"
+ },
+ "0x00b41d90": {
+  "to": "0x00b20b30",
+  "via": "appel-i2"
+ },
+ "0x0069c0d0": {
+  "to": "0x0070b080",
+  "via": "appel-i2"
+ },
+ "0x00b44b80": {
+  "to": "0x00b239a0",
+  "via": "appel-i2"
+ },
+ "0x007eb670": {
+  "to": "0x0082b100",
+  "via": "appel-i2"
+ },
+ "0x00fc1a34": {
+  "to": "0x00e7b7b8",
+  "via": "appel-i2"
+ },
+ "0x00fc1a74": {
+  "to": "0x00e7b7b4",
+  "via": "appel-i2"
+ },
+ "0x00d97cb0": {
+  "to": "0x00cab460",
+  "via": "appel-i2"
+ },
+ "0x00b456c0": {
+  "to": "0x00b244d0",
+  "via": "appel-i2"
+ },
+ "0x00b45180": {
+  "to": "0x00b23fa0",
+  "via": "appel-i2"
+ },
+ "0x00d981a0": {
+  "to": "0x00cab960",
+  "via": "appel-i2"
+ },
+ "0x00d7cf00": {
+  "to": "0x00c8fe50",
+  "via": "appel-i2"
+ },
+ "0x00780780": {
+  "to": "0x007d0c10",
+  "via": "appel-i2"
+ },
+ "0x008a01c0": {
+  "to": "0x008dd480",
+  "via": "appel-i2"
+ },
+ "0x00da94a0": {
+  "to": "0x00cb9dc0",
+  "via": "appel-i2"
+ },
+ "0x00d800b0": {
+  "to": "0x00c93230",
+  "via": "appel-i2"
+ },
+ "0x00508ac0": {
+  "to": "0x004ba140",
+  "via": "appel-i2"
+ },
+ "0x00dab230": {
+  "to": "0x00cbb5a0",
+  "via": "appel-i2"
+ },
+ "0x00a6c4b0": {
+  "to": "0x00a346c0",
+  "via": "appel-i2"
+ },
+ "0x00daa470": {
+  "to": "0x00cba7a0",
+  "via": "appel-i2"
+ },
+ "0x00dbbb6f": {
+  "to": "0x00cca4aa",
+  "via": "appel-i2"
+ },
+ "0x00dbbe60": {
+  "to": "0x00ccaaca",
+  "via": "appel-i2"
+ },
+ "0x00fc1350": {
+  "to": "0x00e7b238",
+  "via": "appel-i2"
+ },
+ "0x00dbc32b": {
+  "to": "0x00ccae79",
+  "via": "appel-i2"
+ },
+ "0x00e07dbd": {
+  "to": "0x00cefd02",
+  "via": "appel-i2"
+ },
+ "0x00e07dc3": {
+  "to": "0x00cefd08",
+  "via": "appel-i2"
+ },
+ "0x00e080c3": {
+  "to": "0x00cf0052",
+  "via": "appel-i2"
+ },
+ "0x006a7730": {
+  "to": "0x004e07e0",
+  "via": "appel-i2"
  }
 }

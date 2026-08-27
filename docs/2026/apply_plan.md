@@ -7,15 +7,15 @@ GENERE par `scripts/apply_plan.py` a partir de `merged_pairs.json`,
 intervenir, le jour ou le client 2026 deviendra la cible. Le client de
 production reste le 2025-07-16.
 
-- adresses connues et utilisees par Bourgeon : **312**
-- fichiers concernes : **76**
-- sites a modifier : **474**
+- adresses connues et utilisees par Bourgeon : **360**
+- fichiers concernes : **83**
+- sites a modifier : **530**
 
 🔴 Les lignes marquees **SUSPECT** viennent du portage precedent et ont
 echoue au controle collision/taille : les verifier AVANT de les appliquer
 (voir `port_suspects.json`).
 
-## `features/windows/character_sheet.cc` — 49 site(s)
+## `features/windows/character_sheet.cc` — 51 site(s)
 
 | ligne | 2025 | 2026 | symbole | source |
 |---|---|---|---|---|
@@ -38,8 +38,10 @@ echoue au controle collision/taille : les verifier AVANT de les appliquer
 | 105 | `0x015ff914` | `0x014bc4b0` | kSp, kSpMax | position+tables |
 | 119 | `0x015fba8c` | `0x014b8a44` | kAmmoInvIndex | tables |
 | 1232 | `0x01254d70` | `0x01127350` | kCGuildMgrPtr | position+tables |
+| 1233 | `0x0061d370` | `0x006ba800` | kGetEmblemPath | appel-i1 |
 | 138 | `0x00d7fa90` | `0x007a6b50` | kGetInvItemAddr, kSkillEntryFill | **SUSPECT** propagation |
 | 1555 | `0x012517b8` | `0x01123dec` | kEmblemDataMgrPtr | position |
+| 1557 | `0x00a94930` | `0x00a91a50` | kStdStringFromFmt | appel-i1 |
 | 2137 | `0x016004fc` | `0x014bce08` | kOwnTitleId | tables |
 | 2142 | `0x00d89ed0` | `0x00c9d040` | kTitleGetStr | texte |
 | 2792 | `0x0073a1f0` | `0x007a6f50` | kGetSkillNameLua | tables |
@@ -161,7 +163,7 @@ echoue au controle collision/taille : les verifier AVANT de les appliquer
 | 81 | `0x01228f60` | `0x010fc9a8` | kMotionSpeedCap | position |
 | 96 | `0x00d5bb40` | `0x00c6eb90` | kJobDisplayName, kJobNameAddr, kJobResNa | tables |
 
-## `features/overlays/basic_info.cc` — 31 site(s)
+## `features/overlays/basic_info.cc` — 32 site(s)
 
 | ligne | 2025 | 2026 | symbole | source |
 |---|---|---|---|---|
@@ -175,14 +177,15 @@ echoue au controle collision/taille : les verifier AVANT de les appliquer
 | 149 | `0x015fb28c` | `0x014b824c` | kClothesCol | position |
 | 150 | `0x015fb290` | `0x014b8250` | kHairCol | position |
 | 151 | `0x015fb2a0` | `0x014b8260` | kGarmentView | position |
-| 155 | `0x015fb294` | `0x014b8254` | kHeadLowView | position |
-| 156 | `0x015fb298` | `0x014b8258` | kHeadTopView | position |
-| 157 | `0x015fb29c` | `0x014b825c` | kHeadMidView | position |
 | 160 | `0x015fb9c8` | `0x014b8980` | kOwnJobId, kOwnJobIdAddr | position |
 | 162 | `0x015fb9a4` | `0x014b895c` | kAccountAid, kOwnAccountAid, kOwnAccount | position |
 | 2772 | `0x015fb9d8` | `0x014b8990` | kBaseExpNextLo, kOwnBaseExpNext | position |
 | 2773 | `0x015fb9e0` | `0x014b8998` | kJobExpNextLo, kOwnJobExpNext | position |
 | 2966 | `0x0131f6c4` | `0x011f1ab4` | kBasicInfoPtr | position+tables |
+| 303 | `0x00bcfb10` | `0x00b9add0` | kStrSubmitQuad | appel-i1 |
+| 304 | `0x00715be0` | `0x00784d60` | kStrLayerTex | appel-i2 |
+| 460 | `0x01022f5c` | `0x00f0b41c` | kStrCanvasCx | position |
+| 461 | `0x01013e88` | `0x00f84570` | kStrCanvasCy | position |
 | 77 | `0x015fb9d0` | `0x014b8988` | kBaseExpLo | position |
 | 77 | `0x015fb9d8` | `0x014b8990` | kBaseExpNextLo, kOwnBaseExpNext | position |
 | 78 | `0x015fb9e8` | `0x014b89a0` | kJobExpLo | position |
@@ -197,7 +200,7 @@ echoue au controle collision/taille : les verifier AVANT de les appliquer
 | 82 | `0x015fbaa0` | `0x014b8a58` | kWeight, kWeightCur | position |
 | 935 | `0x00a8e800` | `0x00a8ab30` | kResAddRef, kTexAddRef | propagation |
 
-## `features/patches/inventory_tweaks.cc` — 30 site(s)
+## `features/patches/inventory_tweaks.cc` — 31 site(s)
 
 | ligne | 2025 | 2026 | symbole | source |
 |---|---|---|---|---|
@@ -210,6 +213,7 @@ echoue au controle collision/taille : les verifier AVANT de les appliquer
 | 127 | `0x00947053` | `0x00982a53` | (littéral) | rtti |
 | 130 | `0x0093f278` | `0x0097ad28` | (littéral) | rtti |
 | 141 | `0x007a6df0` | `0x007efdd0` | kColorChip | propagation |
+| 150 | `0x0085fca0` | `0x0089e210` | kTabRecompute | appel-i2 |
 | 157 | `0x00857910` | `0x008954a0` | kTabDrawOrig | rtti |
 | 167 | `0x00955530` | `0x00991260` | kMsgOrig | rtti |
 | 168 | `0x00864690` | `0x008a2f50` | kAddTab | propagation |
@@ -254,15 +258,42 @@ echoue au controle collision/taille : les verifier AVANT de les appliquer
 | 785 | `0x00c7a7eb` | `0x004d519b` | kPartyPrefixByte | texte |
 | 786 | `0x00c7a822` | `0x004d51d2` | kGuildPrefixByte | texte |
 | 787 | `0x00c7a89a` | `0x004d524a` | kAllyPrefixByte | texte |
-| 79 | `0x015faadc` | `0x014b7a8c` | kChannelRegistryAddr | tables |
-| 80 | `0x015faae4` | `0x014b7a94` | kDetachedRegistryAddr | tables |
+| 79 | `0x015faadc` | `0x014b7a8c` | kChannelRegistryAddr | position+tables |
+| 80 | `0x015faae4` | `0x014b7a94` | kDetachedRegistryAddr | position+tables |
 | 95 | `0x004f1940` | `0x004e0ea0` | kStdStringAssign, kStdStringAssignAddr | propagation |
 
-## `ragnarok/configuration.h` — 17 site(s)
+## `features/patches/chat.cc` — 21 site(s)
+
+| ligne | 2025 | 2026 | symbole | source |
+|---|---|---|---|---|
+| 102 | `0x00d5a720` | `0x00c6d880` | kBuildIconPath, kEngBuildPath | appel-i1 |
+| 158 | `0x008fd12a` | `0x0093adea` | kChatWrapCaller | rtti |
+| 191 | `0x00a1d260` | `0x009eade0` | kBlit, kBlitImageToNode | propagation |
+| 192 | `0x008f3498` | `0x00931d98` | kDialogBgBlitRet | rtti |
+| 293 | `0x005471a0` | `0x0061cec0` | kEngTextOutLow | appel-i2 |
+| 366 | `0x0053f140` | `0x00615470` | kEngNodeBlit | rtti |
+| 531 | `0x008fc220` | `0x00939ee0` | kChatWndProc | rtti |
+| 532 | `0x00903160` | `0x00940e10` | kSetTabBarHeight | tables |
+| 533 | `0x008f9840` | `0x00937390` | kInputRowLayout | tables |
+| 535 | `0x008642d0` | `0x008a2b20` | kRebuildFromHist | tables |
+| 745 | `0x0053faa0` | `0x00615db0` | kVecU32Resize | appel-i1 |
+| 774 | `0x0131f510` | `0x011f1908` | kDetachedChatTree | tables |
+| 833 | `0x0083d840` | `0x00880180` | (littéral) | **SUSPECT** rtti |
+| 836 | `0x0083d840` | `0x00880180` | (littéral) | **SUSPECT** rtti |
+| 866 | `0x005471a0` | `0x0061cec0` | kEngTextOutLow | appel-i2 |
+| 869 | `0x005471a0` | `0x0061cec0` | kEngTextOutLow | appel-i2 |
+| 877 | `0x00a21c90` | `0x009f0750` | kMeasureW | propagation |
+| 880 | `0x00a21c90` | `0x009f0750` | kMeasureW | propagation |
+| 891 | `0x008fc220` | `0x00939ee0` | kChatWndProc | rtti |
+| 913 | `0x00a1d260` | `0x009eade0` | kBlit, kBlitImageToNode | propagation |
+| 925 | `0x008f9840` | `0x00937390` | kInputRowLayout | tables |
+
+## `ragnarok/configuration.h` — 19 site(s)
 
 | ligne | 2025 | 2026 | symbole | source |
 |---|---|---|---|---|
 | 10 | `0x0093da20` | `0x009793b0` | (littéral) | rtti |
+| 105 | `0x00aa7b00` | `0x00aa4290` | (littéral) | appel-i2 |
 | 11 | `0x0094afb0` | `0x009867f0` | (littéral) | rtti |
 | 112 | `0x00c74a80` | `0x004cef40` | (littéral) | rtti |
 | 113 | `0x00c86740` | `0x004e37a0` | (littéral) | vtable |
@@ -279,27 +310,61 @@ echoue au controle collision/taille : les verifier AVANT de les appliquer
 | 81 | `0x00d5e590` | `0x00c71310` | kLookupSlashCmd | texte |
 | 85 | `0x00a4ad20` | `0x00a18a20` | kChatActionAddr, kChatAddLine | texte |
 | 87 | `0x00c13fc0` | `0x00bdeca0` | (littéral) | **SUSPECT** rtti |
+| 88 | `0x00c14920` | `0x00bdf440` | (littéral) | appel-i1 |
 
-## `features/patches/chat.cc` — 16 site(s)
+## `ragnarok/game_settings.cc` — 15 site(s)
 
 | ligne | 2025 | 2026 | symbole | source |
 |---|---|---|---|---|
-| 158 | `0x008fd12a` | `0x0093adea` | kChatWrapCaller | rtti |
-| 191 | `0x00a1d260` | `0x009eade0` | kBlit, kBlitImageToNode | propagation |
-| 192 | `0x008f3498` | `0x00931d98` | kDialogBgBlitRet | rtti |
-| 366 | `0x0053f140` | `0x00615470` | kEngNodeBlit | rtti |
-| 531 | `0x008fc220` | `0x00939ee0` | kChatWndProc | rtti |
-| 532 | `0x00903160` | `0x00940e10` | kSetTabBarHeight | tables |
-| 533 | `0x008f9840` | `0x00937390` | kInputRowLayout | tables |
-| 535 | `0x008642d0` | `0x008a2b20` | kRebuildFromHist | tables |
-| 774 | `0x0131f510` | `0x011f1908` | kDetachedChatTree | tables |
-| 833 | `0x0083d840` | `0x00880180` | (littéral) | **SUSPECT** rtti |
-| 836 | `0x0083d840` | `0x00880180` | (littéral) | **SUSPECT** rtti |
-| 877 | `0x00a21c90` | `0x009f0750` | kMeasureW | propagation |
-| 880 | `0x00a21c90` | `0x009f0750` | kMeasureW | propagation |
-| 891 | `0x008fc220` | `0x00939ee0` | kChatWndProc | rtti |
-| 913 | `0x00a1d260` | `0x009eade0` | kBlit, kBlitImageToNode | propagation |
-| 925 | `0x008f9840` | `0x00937390` | kInputRowLayout | tables |
+| 114 | `0x01602610` | `0x014bec88` | kCfgFullscreenAddr | position |
+| 115 | `0x01602614` | `0x014bec8c` | kCfgWidthAddr | position |
+| 116 | `0x01602618` | `0x014bec90` | kCfgHeightAddr | position |
+| 117 | `0x0160261c` | `0x014bec94` | kCfgBppAddr | position |
+| 121 | `0x01602640` | `0x014becb8` | kCfgRenderSystemAddr | position |
+| 122 | `0x01602644` | `0x014becbc` | kCfgDx9AdapterGuid | position |
+| 124 | `0x016025c8` | `0x014bec40` | kCfgDx7DeviceGuid | position |
+| 125 | `0x016025d8` | `0x014bec50` | kCfgDx7DriverGuid | position |
+| 154 | `0x00554070` | `0x004c5a40` | kSpriteTexFactoryGetAddr | tables |
+| 194 | `0x005610b0` | `0x00636ee0` | kGetCurrentAdapterAddr | appel-i1 |
+| 202 | `0x00560d60` | `0x00636b00` | kAdapterEqualsAddr | appel-i1 |
+| 208 | `0x00d78970` | `0x00c8bab0` | kOptionSaveAddr | texte |
+| 209 | `0x015fa3c0` | `0x014b73b0` | kJobNameCtx, kOptionContextAddr, kSessio | tables |
+| 215 | `0x00c14d60` | `0x00be1f70` | kConnGetInstanceAddr | appel-i1 |
+| 222 | `0x0121333c` | `0x010db79c` | kActiveModePtr, kCurrentModePtr, kCurren | position |
+
+## `features/overlays/skill_bar.cc` — 13 site(s)
+
+| ligne | 2025 | 2026 | symbole | source |
+|---|---|---|---|---|
+| 149 | `0x008f5800` | `0x00933970` | kOnDraw | rtti |
+| 158 | `0x009030c0` | `0x00940da0` | kHideNative, kSetVisibleFn | rtti |
+| 211 | `0x00901310` | `0x0093f110` | kShortCutOnMsg | rtti |
+| 257 | `0x00d7fa90` | `0x007a6b50` | kGetInvItemAddr, kSkillEntryFill | **SUSPECT** propagation |
+| 455 | `0x00d80950` | `0x00c93b30` | kGetHotKey, kGetHotKeyAddr | texte |
+| 56 | `0x00d96c20` | `0x00caa390` | kSetShortCut | appel-i1 |
+| 57 | `0x008e1d50` | `0x004de520` | kGetOption | appel-i1 |
+| 58 | `0x005c5950` | `0x00cca703` | kSetOption | **SUSPECT** propagation |
+| 582 | `0x00d5a720` | `0x00c6d880` | kBuildIconPath, kEngBuildPath | appel-i1 |
+| 600 | `0x00d7fa90` | `0x007a6b50` | kGetInvItemAddr, kSkillEntryFill | **SUSPECT** propagation |
+| 671 | `0x00d7fa90` | `0x007a6b50` | kGetInvItemAddr, kSkillEntryFill | **SUSPECT** propagation |
+| 69 | `0x00d5a980` | `0x00a3c3d0` | kGetSkillInfo | **SUSPECT** propagation |
+| 97 | `0x0073a1f0` | `0x007a6f50` | kGetSkillNameLua | tables |
+
+## `ragnarok/lua.h` — 11 site(s)
+
+| ligne | 2025 | 2026 | symbole | source |
+|---|---|---|---|---|
+| 33 | `0x015ffd78` | `0x014bc6ec` | kStateHolderAddr | tables |
+| 46 | `0x00519df0` | `0x005f07b0` | kGetFieldAddr | appel-i1 |
+| 47 | `0x0051a290` | `0x005f0c50` | kPCallAddr | appel-i1 |
+| 48 | `0x0051a4b0` | `0x005f0e70` | kPushNumberAddr | appel-i1 |
+| 49 | `0x0051aab0` | `0x005f1470` | kSetTopAddr | appel-i1 |
+| 50 | `0x0051abf0` | `0x005f15b0` | kToBooleanAddr | appel-i1 |
+| 51 | `0x0051aca0` | `0x005f1660` | kToLStringAddr | appel-i1 |
+| 52 | `0x0051ad20` | `0x005f16e0` | kToNumberAddr | appel-i1 |
+| 53 | `0x0051b570` | `0x005f1f10` | kCheckStackAddr | texte |
+| 60 | `0x00a9a7d0` | `0x00a97ca0` | kCallGlobalVaAddr | tables |
+| 61 | `0x00a9bc90` | `0x00a99160` | kExecFileAddr | texte |
 
 ## `ragnarok/pet.cc` — 11 site(s)
 
@@ -317,20 +382,35 @@ echoue au controle collision/taille : les verifier AVANT de les appliquer
 | 36 | `0x0131f940` | `0x011f1d24` | kMailWriteWnd, kWriteWndPtr | position+tables |
 | 49 | `0x01254d8c` | `0x01127364` | kEvolutionMgrPtr | position |
 
-## `features/overlays/skill_bar.cc` — 10 site(s)
+## `features/windows/navigation_window.cc` — 10 site(s)
 
 | ligne | 2025 | 2026 | symbole | source |
 |---|---|---|---|---|
-| 149 | `0x008f5800` | `0x00933970` | kOnDraw | rtti |
-| 158 | `0x009030c0` | `0x00940da0` | kHideNative, kSetVisibleFn | rtti |
-| 211 | `0x00901310` | `0x0093f110` | kShortCutOnMsg | rtti |
-| 257 | `0x00d7fa90` | `0x007a6b50` | kGetInvItemAddr, kSkillEntryFill | **SUSPECT** propagation |
-| 455 | `0x00d80950` | `0x00c93b30` | kGetHotKey, kGetHotKeyAddr | texte |
-| 58 | `0x005c5950` | `0x00cca703` | kSetOption | **SUSPECT** propagation |
-| 600 | `0x00d7fa90` | `0x007a6b50` | kGetInvItemAddr, kSkillEntryFill | **SUSPECT** propagation |
-| 671 | `0x00d7fa90` | `0x007a6b50` | kGetInvItemAddr, kSkillEntryFill | **SUSPECT** propagation |
-| 69 | `0x00d5a980` | `0x00a3c3d0` | kGetSkillInfo | **SUSPECT** propagation |
-| 97 | `0x0073a1f0` | `0x007a6f50` | kGetSkillNameLua | tables |
+| 59 | `0x00b2e700` | `0x00b0cb50` | kFnGetResult | tables |
+| 60 | `0x00b314f0` | `0x00b0f8d0` | kFnSearchRoute, kNaviRoute | tables |
+| 61 | `0x00b35f80` | `0x00b14560` | kFnSelectResult | tables |
+| 62 | `0x00b39660` | `0x00b17e10` | kFnStepCount | tables |
+| 64 | `0x00b26cf0` | `0x00b053f0` | kFnNodeName | appel-i1 |
+| 65 | `0x005ab550` | `0x00672100` | kFnShareToChat | appel-i1 |
+| 66 | `0x00a4b760` | `0x00a194c0` | kFnSetFocusedWnd | tables |
+| 68 | `0x0131f6b0` | `0x011f1aa4` | kNewChatWndPtr | globale |
+| 71 | `0x004f1940` | `0x004e0ea0` | kStdStringAssign, kStdStringAssignAddr | propagation |
+| 73 | `0x004e5330` | `0x004bb580` | kStdStringCtorCStr | appel-i1 |
+
+## `features/windows/entity_context_menu.cc` — 10 site(s)
+
+| ligne | 2025 | 2026 | symbole | source |
+|---|---|---|---|---|
+| 118 | `0x01251824` | `0x01123e44` | kChatBlockListPtr | position |
+| 156 | `0x0159c230` | `0x0146e938` | kGuildIdAddr, kOwnGuildId | position+tables |
+| 157 | `0x0159c23c` | `0x0146e944` | kGuildIsMaster | position+tables |
+| 158 | `0x015ff804` | `0x014bc3a0` | kInPartyFlag | position+tables |
+| 159 | `0x015fb3b0` | `0x014b8368` | kAid, kOwnPetAid | tables |
+| 160 | `0x015fa3c0` | `0x014b73b0` | kJobNameCtx, kOptionContextAddr, kSessio | tables |
+| 37 | `0x00c6e990` | `0x004c8110` | kShowEntityContextMenu | texte |
+| 74 | `0x015beecc` | `0x01490524` | kReplayActive | position |
+| 96 | `0x00a727f0` | `0x00a395f0` | kActiveIdSetContains | tables |
+| 99 | `0x00a69eb0` | `0x00a329a0` | kActorListFindByGid, kFindByGID | propagation |
 
 ## `features/fx/wand_bolt.cc` — 10 site(s)
 
@@ -347,6 +427,21 @@ echoue au controle collision/taille : les verifier AVANT de les appliquer
 | 53 | `0x00dabb10` | `0x00cbbe70` | kArrowEffectUpdate | rtti |
 | 54 | `0x00db01b0` | `0x00cc0320` | kArrowEffectOnMsg | rtti |
 
+## `ragnarok/globals.h` — 10 site(s)
+
+| ligne | 2025 | 2026 | symbole | source |
+|---|---|---|---|---|
+| 153 | `0x015fba24` | `0x014b89dc` | kStatBase, kStatBaseAddr | position+tables |
+| 154 | `0x015fba0c` | `0x014b89c4` | kStatBonus, kStatBonusAddr | position+tables |
+| 172 | `0x015fb9f8` | `0x014b89b0` | kBaseLvl, kJobLevel, kJobLevelAddr, kOwn | tables |
+| 188 | `0x0159b818` | `0x0146dfa4` | kClientCodePageAddr | position |
+| 197 | `0x00dbbc4f` | `0x00cca6d3` | kGameOperatorNewAddr | propagation |
+| 198 | `0x00dbbc7f` | `0x00cca703` | kClientOperatorDelete, kGameOperatorDele | **SUSPECT** propagation |
+| 255 | `0x00d5bcf0` | `0x00c6ed20` | kMapDisplayNameAddr | appel-i1 |
+| 26 | `0x015fa3c0` | `0x014b73b0` | kJobNameCtx, kOptionContextAddr, kSessio | tables |
+| 49 | `0x01213338` | `0x010db798` | kModeMgr, kModeMgrAddr | position |
+| 55 | `0x0121333c` | `0x010db79c` | kActiveModePtr, kCurrentModePtr, kCurren | position |
+
 ## `ragnarok/emotion_hotkey.cc` — 9 site(s)
 
 | ligne | 2025 | 2026 | symbole | source |
@@ -361,33 +456,19 @@ echoue au controle collision/taille : les verifier AVANT de les appliquer
 | 54 | `0x0159c07c` | `0x0146e780` | kClanStatePtr | position+tables |
 | 55 | `0x00d5cf50` | `0x00c6ffa0` | kPartyMemberCount | accesseur+tables |
 
-## `features/windows/entity_context_menu.cc` — 9 site(s)
+## `features/windows/inventory_viewer.cc` — 9 site(s)
 
 | ligne | 2025 | 2026 | symbole | source |
 |---|---|---|---|---|
-| 156 | `0x0159c230` | `0x0146e938` | kGuildIdAddr, kOwnGuildId | position+tables |
-| 157 | `0x0159c23c` | `0x0146e944` | kGuildIsMaster | position+tables |
-| 158 | `0x015ff804` | `0x014bc3a0` | kInPartyFlag | position+tables |
-| 159 | `0x015fb3b0` | `0x014b8368` | kAid, kOwnPetAid | tables |
-| 160 | `0x015fa3c0` | `0x014b73b0` | kJobNameCtx, kOptionContextAddr, kSessio | tables |
-| 37 | `0x00c6e990` | `0x004c8110` | kShowEntityContextMenu | texte |
-| 74 | `0x015beecc` | `0x01490524` | kReplayActive | position |
-| 96 | `0x00a727f0` | `0x00a395f0` | kActiveIdSetContains | tables |
-| 99 | `0x00a69eb0` | `0x00a329a0` | kActorListFindByGid, kFindByGID | propagation |
-
-## `ragnarok/globals.h` — 9 site(s)
-
-| ligne | 2025 | 2026 | symbole | source |
-|---|---|---|---|---|
-| 153 | `0x015fba24` | `0x014b89dc` | kStatBase, kStatBaseAddr | position+tables |
-| 154 | `0x015fba0c` | `0x014b89c4` | kStatBonus, kStatBonusAddr | position+tables |
-| 172 | `0x015fb9f8` | `0x014b89b0` | kBaseLvl, kJobLevel, kJobLevelAddr, kOwn | tables |
-| 188 | `0x0159b818` | `0x0146dfa4` | kClientCodePageAddr | position |
-| 197 | `0x00dbbc4f` | `0x00cca6d3` | kGameOperatorNewAddr | propagation |
-| 198 | `0x00dbbc7f` | `0x00cca703` | kClientOperatorDelete, kGameOperatorDele | **SUSPECT** propagation |
-| 26 | `0x015fa3c0` | `0x014b73b0` | kJobNameCtx, kOptionContextAddr, kSessio | tables |
-| 49 | `0x01213338` | `0x010db798` | kModeMgr, kModeMgrAddr | position |
-| 55 | `0x0121333c` | `0x010db79c` | kActiveModePtr, kCurrentModePtr, kCurren | position |
+| 54 | `0x00d9aa70` | `0x00cad160` | kCntEquipped | appel-i1 |
+| 55 | `0x00d9a960` | `0x00cad050` | kCntCostume | appel-i1 |
+| 550 | `0x008217f0` | `0x0085ff20` | (littéral) | appel-i1 |
+| 554 | `0x0131f6b0` | `0x011f1aa4` | kNewChatWndPtr | globale |
+| 71 | `0x015fbaa0` | `0x014b8a58` | kWeight, kWeightCur | position |
+| 72 | `0x015fba9c` | `0x014b8a54` | kWeightMax | position |
+| 73 | `0x01602324` | `0x014be9c4` | kOverweightPct | position+tables |
+| 74 | `0x01602354` | `0x014be9e8` | kInvExpansion | tables |
+| 86 | `0x00a948d0` | `0x00a91460` | kFmtComma, kFmtComma32 | **SUSPECT** propagation |
 
 ## `features/overlays/status_icon_bar.cc` — 8 site(s)
 
@@ -428,31 +509,6 @@ echoue au controle collision/taille : les verifier AVANT de les appliquer
 | 92 | `0x008c049c` | `0x009044dc` | kSwapWidthImm | rtti |
 | 93 | `0x007f9688` | `0x00838168` | kSwapTitleImm | rtti |
 
-## `ragnarok/game_settings.cc` — 8 site(s)
-
-| ligne | 2025 | 2026 | symbole | source |
-|---|---|---|---|---|
-| 114 | `0x01602610` | `0x014bec88` | kCfgFullscreenAddr | position |
-| 115 | `0x01602614` | `0x014bec8c` | kCfgWidthAddr | position |
-| 116 | `0x01602618` | `0x014bec90` | kCfgHeightAddr | position |
-| 117 | `0x0160261c` | `0x014bec94` | kCfgBppAddr | position |
-| 154 | `0x00554070` | `0x004c5a40` | kSpriteTexFactoryGetAddr | tables |
-| 208 | `0x00d78970` | `0x00c8bab0` | kOptionSaveAddr | texte |
-| 209 | `0x015fa3c0` | `0x014b73b0` | kJobNameCtx, kOptionContextAddr, kSessio | tables |
-| 222 | `0x0121333c` | `0x010db79c` | kActiveModePtr, kCurrentModePtr, kCurren | position |
-
-## `features/windows/navigation_window.cc` — 7 site(s)
-
-| ligne | 2025 | 2026 | symbole | source |
-|---|---|---|---|---|
-| 59 | `0x00b2e700` | `0x00b0cb50` | kFnGetResult | tables |
-| 60 | `0x00b314f0` | `0x00b0f8d0` | kFnSearchRoute, kNaviRoute | tables |
-| 61 | `0x00b35f80` | `0x00b14560` | kFnSelectResult | tables |
-| 62 | `0x00b39660` | `0x00b17e10` | kFnStepCount | tables |
-| 66 | `0x00a4b760` | `0x00a194c0` | kFnSetFocusedWnd | tables |
-| 68 | `0x0131f6b0` | `0x011f1aa4` | kNewChatWndPtr | globale |
-| 71 | `0x004f1940` | `0x004e0ea0` | kStdStringAssign, kStdStringAssignAddr | propagation |
-
 ## `features/windows/palette_editor.cc` — 7 site(s)
 
 | ligne | 2025 | 2026 | symbole | source |
@@ -465,6 +521,18 @@ echoue au controle collision/taille : les verifier AVANT de les appliquer
 | 75 | `0x015fb28c` | `0x014b824c` | kClothesCol | position |
 | 76 | `0x015fb290` | `0x014b8250` | kHairCol | position |
 
+## `features/windows/monster_info_window.cc` — 7 site(s)
+
+| ligne | 2025 | 2026 | symbole | source |
+|---|---|---|---|---|
+| 170 | `0x00600770` | `0x006ae6c0` | kSoundPlay3D | appel-i1 |
+| 319 | `0x015fba7c` | `0x014b8a34` | kHit, kOwnHit | position+tables |
+| 320 | `0x015fba80` | `0x014b8a38` | kFlee, kHit, kOwnFlee | position+tables |
+| 321 | `0x015fba84` | `0x014b8a3c` | kCrit, kHit, kOwnCrit | position+tables |
+| 322 | `0x015fba88` | `0x014b8a40` | kCrit, kFlee, kOwnPdodge | position+tables |
+| 393 | `0x0073a1f0` | `0x007a6f50` | kGetSkillNameLua | tables |
+| 436 | `0x015fb9c8` | `0x014b8980` | kOwnJobId, kOwnJobIdAddr | position |
+
 ## `features/fx/ez_effect_capture.cc` — 6 site(s)
 
 | ligne | 2025 | 2026 | symbole | source |
@@ -476,45 +544,54 @@ echoue au controle collision/taille : les verifier AVANT de les appliquer
 | 44 | `0x015fb9a4` | `0x014b895c` | kAccountAid, kOwnAccountAid, kOwnAccount | position |
 | 89 | `0x00bc2de1` | `0x00b8e631` | kEffectJumpDefault | rtti |
 
-## `features/windows/inventory_viewer.cc` — 6 site(s)
+## `ragnarok/held_sprites.cc` — 6 site(s)
 
 | ligne | 2025 | 2026 | symbole | source |
 |---|---|---|---|---|
-| 554 | `0x0131f6b0` | `0x011f1aa4` | kNewChatWndPtr | globale |
-| 71 | `0x015fbaa0` | `0x014b8a58` | kWeight, kWeightCur | position |
-| 72 | `0x015fba9c` | `0x014b8a54` | kWeightMax | position |
-| 73 | `0x01602324` | `0x014be9c4` | kOverweightPct | position+tables |
-| 74 | `0x01602354` | `0x014be9e8` | kInvExpansion | tables |
-| 86 | `0x00a948d0` | `0x00a91460` | kFmtComma, kFmtComma32 | **SUSPECT** propagation |
+| 25 | `0x00d8a010` | `0x00c9d180` | kWeaponSpr | appel-i1 |
+| 26 | `0x00d8a160` | `0x00c9d2d0` | kWeaponAct | appel-i1 |
+| 34 | `0x00d5e1d0` | `0x00c70f50` | kShieldAct | appel-i1 |
+| 35 | `0x00d5e240` | `0x00c70fc0` | kShieldSpr | appel-i1 |
+| 38 | `0x00d8a080` | `0x00c9d1f0` | kShieldGenSpr | appel-i1 |
+| 39 | `0x00d8a0f0` | `0x00c9d260` | kShieldGenAct | appel-i1 |
 
-## `features/windows/monster_info_window.cc` — 6 site(s)
-
-| ligne | 2025 | 2026 | symbole | source |
-|---|---|---|---|---|
-| 319 | `0x015fba7c` | `0x014b8a34` | kHit, kOwnHit | position+tables |
-| 320 | `0x015fba80` | `0x014b8a38` | kFlee, kHit, kOwnFlee | position+tables |
-| 321 | `0x015fba84` | `0x014b8a3c` | kCrit, kHit, kOwnCrit | position+tables |
-| 322 | `0x015fba88` | `0x014b8a40` | kCrit, kFlee, kOwnPdodge | position+tables |
-| 393 | `0x0073a1f0` | `0x007a6f50` | kGetSkillNameLua | tables |
-| 436 | `0x015fb9c8` | `0x014b8980` | kOwnJobId, kOwnJobIdAddr | position |
-
-## `ragnarok/lua.h` — 4 site(s)
+## `ragnarok/item_db.h` — 5 site(s)
 
 | ligne | 2025 | 2026 | symbole | source |
 |---|---|---|---|---|
-| 33 | `0x015ffd78` | `0x014bc6ec` | kStateHolderAddr | position+tables |
-| 53 | `0x0051b570` | `0x005f1f10` | kCheckStackAddr | texte |
-| 60 | `0x00a9a7d0` | `0x00a97ca0` | kCallGlobalVaAddr | tables |
-| 61 | `0x00a9bc90` | `0x00a99160` | kExecFileAddr | texte |
+| 27 | `0x006a0d40` | `0x0070c540` | kLookupAddr | appel-i1 |
+| 40 | `0x006a1b20` | `0x0070cf80` | kInfoCtorAddr, kItemSkillInfoCtor | propagation |
+| 41 | `0x006a6570` | `0x00711a00` | kInfoSetIdAddr, kItemSkillInfoSetId | tables |
+| 47 | `0x008a0570` | `0x008dd850` | kBuildDisplayNameAddr | tables |
+| 48 | `0x006a2b50` | `0x0070de80` | kBaseNameFallbackAddr | appel-i1 |
 
-## `ragnarok/render.h` — 4 site(s)
+## `ragnarok/homunculus.cc` — 5 site(s)
 
 | ligne | 2025 | 2026 | symbole | source |
 |---|---|---|---|---|
-| 23 | `0x012515f8` | `0x01123c60` | kContextPtr | position |
-| 53 | `0x00566b70` | `0x0063cc00` | kAtlasGetCachedAddr | propagation |
-| 54 | `0x005663d0` | `0x0063c4b0` | kAtlasBuildAddr | propagation |
-| 58 | `0x0070f4b0` | `0x0077ebf0` | kActionGetFrameAddr | propagation |
+| 18 | `0x015ff918` | `0x014bc4b4` | kAid | tables |
+| 22 | `0x015ff95c` | `0x014bc4f8` | kClass | tables |
+| 35 | `0x015ff9b4` | `0x014bc54c` | kPresent | tables |
+| 41 | `0x015fa424` | `0x014b7414` | kSkillHead | position |
+| 67 | `0x015fa3c0` | `0x014b73b0` | kJobNameCtx, kOptionContextAddr, kSessio | tables |
+
+## `features/windows/make_item_window.cc` — 4 site(s)
+
+| ligne | 2025 | 2026 | symbole | source |
+|---|---|---|---|---|
+| 230 | `0x006a1b20` | `0x0070cf80` | kInfoCtorAddr, kItemSkillInfoCtor | propagation |
+| 231 | `0x005a4300` | `0x00c09b30` | kItemSkillInfoDtor | propagation |
+| 374 | `0x006a6570` | `0x00711a00` | kInfoSetIdAddr, kItemSkillInfoSetId | tables |
+| 611 | `0x006a3f20` | `0x0070f470` | kRecipeGetLines | appel-i1 |
+
+## `ragnarok/uiwnd.h` — 4 site(s)
+
+| ligne | 2025 | 2026 | symbole | source |
+|---|---|---|---|---|
+| 26 | `0x00a47b90` | `0x00a15af0` | kFindWindowAddr | propagation |
+| 57 | `0x00a39340` | `0x00a07bc0` | kMakeWindowAddr | appel-i1 |
+| 58 | `0x00a2e770` | `0x009fd250` | kCloseWindowAddr | propagation |
+| 99 | `0x0131f6bc` | `0x011f1aac` | kInventoryWndSlot | tables |
 
 ## `features/fx/weapon_dual_sprites.cc` — 4 site(s)
 
@@ -534,15 +611,6 @@ echoue au controle collision/taille : les verifier AVANT de les appliquer
 | 18 | `0x01213338` | `0x010db798` | kModeMgr, kModeMgrAddr | position |
 | 19 | `0x00dbbc7f` | `0x00cca703` | kClientOperatorDelete, kGameOperatorDele | **SUSPECT** propagation |
 
-## `ragnarok/homunculus.cc` — 4 site(s)
-
-| ligne | 2025 | 2026 | symbole | source |
-|---|---|---|---|---|
-| 18 | `0x015ff918` | `0x014bc4b4` | kAid | tables |
-| 22 | `0x015ff95c` | `0x014bc4f8` | kClass | tables |
-| 35 | `0x015ff9b4` | `0x014bc54c` | kPresent | tables |
-| 67 | `0x015fa3c0` | `0x014b73b0` | kJobNameCtx, kOptionContextAddr, kSessio | tables |
-
 ## `features/windows/cart_viewer.cc` — 4 site(s)
 
 | ligne | 2025 | 2026 | symbole | source |
@@ -560,21 +628,21 @@ echoue au controle collision/taille : les verifier AVANT de les appliquer
 | 61 | `0x00d3ded0` | `0x00c50950` | kRebuildHeadPalette | rtti |
 | 72 | `0x004f1940` | `0x004e0ea0` | kStdStringAssign, kStdStringAssignAddr | propagation |
 
-## `features/windows/make_item_window.cc` — 3 site(s)
+## `ragnarok/render.h` — 3 site(s)
 
 | ligne | 2025 | 2026 | symbole | source |
 |---|---|---|---|---|
-| 230 | `0x006a1b20` | `0x0070cf80` | kInfoCtorAddr, kItemSkillInfoCtor | propagation |
-| 231 | `0x005a4300` | `0x00c09b30` | kItemSkillInfoDtor | propagation |
-| 374 | `0x006a6570` | `0x00711a00` | kInfoSetIdAddr, kItemSkillInfoSetId | tables |
+| 53 | `0x00566b70` | `0x0063cc00` | kAtlasGetCachedAddr | propagation |
+| 54 | `0x005663d0` | `0x0063c4b0` | kAtlasBuildAddr | propagation |
+| 58 | `0x0070f4b0` | `0x0077ebf0` | kActionGetFrameAddr | propagation |
 
-## `ragnarok/item_db.h` — 3 site(s)
+## `features/overlays/chat_balloon.cc` — 3 site(s)
 
 | ligne | 2025 | 2026 | symbole | source |
 |---|---|---|---|---|
-| 40 | `0x006a1b20` | `0x0070cf80` | kInfoCtorAddr, kItemSkillInfoCtor | propagation |
-| 41 | `0x006a6570` | `0x00711a00` | kInfoSetIdAddr, kItemSkillInfoSetId | tables |
-| 47 | `0x008a0570` | `0x008dd850` | kBuildDisplayNameAddr | tables |
+| 34 | `0x008263a0` | `0x008645d0` | kBalloonPaint | rtti |
+| 37 | `0x00a1cb30` | `0x009ea790` | kClearSurface | propagation |
+| 45 | `0x00a447d0` | `0x00a12bf0` | kQueueDestroyWindow | appel-i1 |
 
 ## `features/windows/item_desc_window.cc` — 3 site(s)
 
@@ -583,14 +651,6 @@ echoue au controle collision/taille : les verifier AVANT de les appliquer
 | 117 | `0x00b314f0` | `0x00b0f8d0` | kFnSearchRoute, kNaviRoute | tables |
 | 63 | `0x0131f708` | `0x011f1af8` | kCompareWndSlot | position |
 | 78 | `0x009030c0` | `0x00940da0` | kHideNative, kSetVisibleFn | rtti |
-
-## `ragnarok/uiwnd.h` — 3 site(s)
-
-| ligne | 2025 | 2026 | symbole | source |
-|---|---|---|---|---|
-| 26 | `0x00a47b90` | `0x00a15af0` | kFindWindowAddr | propagation |
-| 58 | `0x00a2e770` | `0x009fd250` | kCloseWindowAddr | propagation |
-| 99 | `0x0131f6bc` | `0x011f1aac` | kInventoryWndSlot | tables |
 
 ## `ui/game_texture.h` — 3 site(s)
 
@@ -632,6 +692,14 @@ echoue au controle collision/taille : les verifier AVANT de les appliquer
 | 70 | `0x015fb9f8` | `0x014b89b0` | kBaseLvl, kJobLevel, kJobLevelAddr, kOwn | tables |
 | 86 | `0x015ff910` | `0x014bc4ac` | kOwnSpCur, kSp | position+tables |
 
+## `features/fx/hat_effect_depth.cc` — 3 site(s)
+
+| ligne | 2025 | 2026 | symbole | source |
+|---|---|---|---|---|
+| 32 | `0x00554040` | `0x0062a420` | kWorldDepthConvertVa | appel-i2 |
+| 34 | `0x00fd6ae4` | `0x00ed6400` | kNativeDepthQuantumVa | position |
+| 35 | `0x00fd5d60` | `0x00ecbec0` | kNativeAbsMaskVa | position+tables |
+
 ## `ragnarok/user_hotkey.cc` — 2 site(s)
 
 | ligne | 2025 | 2026 | symbole | source |
@@ -652,13 +720,6 @@ echoue au controle collision/taille : les verifier AVANT de les appliquer
 |---|---|---|---|---|
 | 17 | `0x007110c0` | `0x00780790` | kTerrainHeight | propagation |
 | 18 | `0x00a69eb0` | `0x00a329a0` | kActorListFindByGid, kFindByGID | propagation |
-
-## `features/overlays/chat_balloon.cc` — 2 site(s)
-
-| ligne | 2025 | 2026 | symbole | source |
-|---|---|---|---|---|
-| 34 | `0x008263a0` | `0x008645d0` | kBalloonPaint | rtti |
-| 37 | `0x00a1cb30` | `0x009ea790` | kClearSurface | propagation |
 
 ## `features/systems/native_login.cc` — 2 site(s)
 
@@ -730,12 +791,12 @@ echoue au controle collision/taille : les verifier AVANT de les appliquer
 | 24 | `0x015fb9a4` | `0x014b895c` | kAccountAid, kOwnAccountAid, kOwnAccount | position |
 | 28 | `0x015fb9a8` | `0x014b8960` | kOwnCharId, kOwnCharIdAddr, kOwnCid | position+tables |
 
-## `features/fx/hat_effect_depth.cc` — 2 site(s)
+## `features/minigames/roggle.cc` — 2 site(s)
 
 | ligne | 2025 | 2026 | symbole | source |
 |---|---|---|---|---|
-| 34 | `0x00fd6ae4` | `0x00ed6400` | kNativeDepthQuantumVa | position |
-| 35 | `0x00fd5d60` | `0x00ecbec0` | kNativeAbsMaskVa | position+tables |
+| 208 | `0x00d5a720` | `0x00c6d880` | kBuildIconPath, kEngBuildPath | appel-i1 |
+| 237 | `0x00600770` | `0x006ae6c0` | kSoundPlay3D | appel-i1 |
 
 ## `features/systems/discord_relay.cc` — 1 site(s)
 
@@ -851,12 +912,6 @@ echoue au controle collision/taille : les verifier AVANT de les appliquer
 |---|---|---|---|---|
 | 60 | `0x0131f50e` | `0x011f1906` | kBattleModeFlag, kChangeChatModeAddr | tables |
 
-## `features/overlays/login_parade.cc` — 1 site(s)
-
-| ligne | 2025 | 2026 | symbole | source |
-|---|---|---|---|---|
-| 35 | `0x01602674` | `0x014becec` | kSoundModeVal | position |
-
 ## `features/gameplay/quick_cast.cc` — 1 site(s)
 
 | ligne | 2025 | 2026 | symbole | source |
@@ -868,4 +923,40 @@ echoue au controle collision/taille : les verifier AVANT de les appliquer
 | ligne | 2025 | 2026 | symbole | source |
 |---|---|---|---|---|
 |  | `0x015fb9a4` | `0x014b895c` | kAccountAid, kOwnAccountAid, kOwnAccount | position |
+
+## `features/overlays/login_parade.cc` — 1 site(s)
+
+| ligne | 2025 | 2026 | symbole | source |
+|---|---|---|---|---|
+| 35 | `0x01602674` | `0x014becec` | kSoundModeVal | position |
+
+## `ragnarok/msgstring_override.cc` — 1 site(s)
+
+| ligne | 2025 | 2026 | symbole | source |
+|---|---|---|---|---|
+| 144 | `0x00a892c0` | `0x00a82d10` | kFreeBuffer, kFreeBufferAddr | appel-i1 |
+
+## `ui/spr_act.cc` — 1 site(s)
+
+| ligne | 2025 | 2026 | symbole | source |
+|---|---|---|---|---|
+| 31 | `0x00a892c0` | `0x00a82d10` | kFreeBuffer, kFreeBufferAddr | appel-i1 |
+
+## `ui/icon_cache.cc` — 1 site(s)
+
+| ligne | 2025 | 2026 | symbole | source |
+|---|---|---|---|---|
+| 15 | `0x00d5a720` | `0x00c6d880` | kBuildIconPath, kEngBuildPath | appel-i1 |
+
+## `features/windows/vending_window.cc` — 1 site(s)
+
+| ligne | 2025 | 2026 | symbole | source |
+|---|---|---|---|---|
+| 205 | `0x00d56300` | `0x00c69350` | kVendingBasketClear | appel-i1 |
+
+## `features/minigames/rojeweled.cc` — 1 site(s)
+
+| ligne | 2025 | 2026 | symbole | source |
+|---|---|---|---|---|
+| 92 | `0x00600770` | `0x006ae6c0` | kSoundPlay3D | appel-i1 |
 

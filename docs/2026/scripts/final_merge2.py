@@ -26,6 +26,10 @@ gp = json.load(io.open(os.path.join(DOCS, 'global_pos_pairs.json'), encoding='ut
 sources.append(('position', {n(k): n(v['to']) for k, v in gp.items()}))
 ac = json.load(io.open(os.path.join(DOCS, 'accessor_pairs.json'), encoding='utf-8'))
 sources.append(('accesseur', {n(p['2025']): n(p['2026']) for p in ac}))
+c1 = json.load(open(os.path.join(D, 'call_prop_iter1.json')))
+sources.append(('appel-i1', {n(k): n(v['to']) for k, v in c1.items()}))
+c2 = json.load(io.open(os.path.join(DOCS, 'call_prop_pairs.json'), encoding='utf-8'))
+sources.append(('appel-i2', {n(k): n(v['to']) for k, v in c2.items()}))
 
 final, srcs, conflicts = {}, {}, []
 for label, d in sources:

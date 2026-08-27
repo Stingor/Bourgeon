@@ -18,7 +18,7 @@ Relevés du **2026-08-26**, mis à jour le **2026-08-27**.
 | **ASLR + CFG** | ✅ levé — `fix_aslr.py` sur l'exe SOURCE, une fois pour toutes |
 | **protocole** | ✅ **aucun obstacle** — 0 opcode utilisé par Moonlight ne change de longueur |
 | **patchs WARP** | 🟠 **65/116 passent tels quels** (56 %), 43 à réparer |
-| **adresses Bourgeon** | 🟠 **312/784 portées** (39,8 %) ; 472 restantes |
+| **adresses Bourgeon** | 🟠 **360/784 portées** (45,9 %) ; 424 restantes |
 | **layout `g_session`** | ✅ **porté statiquement** : `0x015FA3C0` → `0x014B73B0`, 49 membres, 14 paliers |
 | **connexion au login** | 🟠 en cours — voir `clientinfo_service_select_re.md` |
 
@@ -95,7 +95,9 @@ l'écriture (le script le dit clairement au lieu de planter).
 | `reste_a_porter.json` | les 518 adresses restantes, par zone et par fichier |
 | `global_position_port.md` | **porter les GLOBALES par position** : le vecteur qui atteint les zones de donnees, 230/231 en croise |
 | `global_pos_pairs.json` | les 909 globales appariees |
-| `all_pairs_final.json` | **l'union de TOUS les vecteurs, 6971 paires**, 7 conflits |
+| `call_propagation.md` | **propagation par les APPELS** : le vecteur iteratif, 2 tours, et la convergence |
+| `call_prop_pairs.json` | les paires trouvees par propagation |
+| `all_pairs_final.json` | **l'union de TOUS les vecteurs, 8645 paires**, 7 conflits |
 | `scripts/` | les scripts rejouables du portage par opcodes |
 | `client_2026_opcodes.md` | les 1577 opcodes du client, nommés et croisés avec rAthena |
 | `packet_len_diff.md` | méthode d'extraction des longueurs de paquets + le diff entre les deux clients |

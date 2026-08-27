@@ -24,13 +24,13 @@ DOCS = r"d:/Mes documents/GitHub/Bourgeon/docs/2026"
 
 def load(tag):
     out = {}
-    for f in sorted(glob.glob(os.path.join(D, 'seqs_%s_*.json' % tag))):
+    for f in sorted(glob.glob(os.path.join(D, 'seqs*_%s_*.json' % tag))):
         out.update(json.load(open(f)))
     return out
 
 
 a, b = load('2025'), load('2026')
-pairs = json.load(open(os.path.join(D, 'fnpairs_all.json')))
+pairs = json.load(open(os.path.join(D, 'fnpairs_iter.json')))
 print("fonctions avec sequence : 2025 %d | 2026 %d" % (len(a), len(b)))
 
 votes = defaultdict(Counter)
