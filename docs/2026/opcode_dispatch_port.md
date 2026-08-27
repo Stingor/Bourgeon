@@ -228,6 +228,66 @@ recouvrement est petit, mais 9/9 sur des tables disjointes n'est pas un hasard.
 vrai case en 2025 : elle n'est peut-être plus construite par la fabrique. À
 vérifier avant de porter quoi que ce soit qui en dépende.
 
+## ✅✅ Généralisation : ONZE tables, signatures composites
+
+Le procédé vaut pour tout switch indexe par un identifiant que le protocole ou
+les données figent. Onze paires de tables ont été appariées (repérées en
+listant les fonctions à gros switch, puis rapprochées par nombre de cases et
+taille) :
+
+| table | plage de valeurs | nature | 2025 → 2026 |
+|---|---|---|---|
+| `dispatch` | 115..3125 | opcode de paquet | 3011 → 3029 |
+| `effectres` | 13..2422 | effect id | 2410 → 2398 |
+| `sw491` | 491..2437 | effect id | 1947 → 1923 |
+| `effectsnd` | 1101..2422 | effect id | 1322 → 1308 |
+| `effectupd` | 0..490 | effect id | **491 → 491** |
+| `sw478` | 230..707 | skill id | **478 → 478** |
+| `skillcast` | 2202..2610 | skill id | **409 → 409** |
+| `makewindow` | 0..362 | id de fenêtre | 363 → 370 |
+| `saverect` | 10..361 | id de fenêtre | 352 → 336 |
+| `weaponcombo` | 4002..4316 | item id | **315 → 315** |
+| `sw289` | 291..579 | skill id | **289 → 289** |
+
+✅ **Cinq tables sont rigoureusement identiques** des deux côtés (même nombre de
+valeurs ET de cibles) : leurs identifiants sont stables sans discussion.
+
+La signature devient l'ensemble des couples **(table, valeur)** : un objet vu par
+plusieurs tables indépendantes est d'autant plus discriminant. **11 321 cases
+communes**, 1 121 paires.
+
+### Bilan consolidé des trois passes
+
+| | paires |
+|---|---|
+| par opcode (dispatch seul, appels à profondeur 1) | 623 |
+| par id de fenêtre | 198 |
+| par les 11 tables, signature composite | 1 121 |
+| **union** | **1 181** |
+| **conflits entre passes** | **0** |
+
+➡ **157 → 205 / 784 adresses du manifeste (26,1 %)**, +48.
+
+### ⚠ Ne pas surestimer la validation croisée
+
+756 paires sont « confirmées par au moins deux passes » — **ce chiffre est
+trompeur** : la passe multi-tables **contient** `dispatch` et `makewindow`, donc
+un accord entre elles teste la robustesse aux paramètres (profondeur, cache),
+pas l'indépendance.
+
+En ne comptant que les accords entre **familles réellement disjointes**
+(réseau / UI / effet / skill / item) :
+
+| | |
+|---|---|
+| paires vues par 2 familles indépendantes | **42** (4 %) |
+| divergences | **0** |
+| parmi les 48 adresses gagnées | 7 |
+
+C'est peu, mais c'est **la seule validation croisée qui vaille**, et elle est
+parfaite. Le gros de la confiance vient du **témoin aléatoire** (médiane 0,999
+contre 0,303), pas du recoupement.
+
 ## Limites — ce que cette méthode ne peut PAS faire
 
 - Chaque switch ne voit que ce qui lui est **atteignable** : le dispatch de
