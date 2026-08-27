@@ -1,0 +1,186 @@
+[
+ {
+  "opcode": "0x0101",
+  "w2025": 403,
+  "w2026": 68,
+  "calls2025": 41,
+  "calls2026": 8,
+  "moonlight": true
+ },
+ {
+  "opcode": "0x0229",
+  "w2025": 377,
+  "w2026": 60,
+  "calls2025": 38,
+  "calls2026": 7,
+  "moonlight": true
+ },
+ {
+  "opcode": "0x08FE",
+  "w2025": 286,
+  "w2026": 92,
+  "calls2025": 27,
+  "calls2026": 11,
+  "moonlight": true
+ },
+ {
+  "opcode": "0x02D9",
+  "w2025": 36,
+  "w2026": 4,
+  "calls2025": 4,
+  "calls2026": 0,
+  "moonlight": true
+ },
+ {
+  "opcode": "0x0A28",
+  "w2025": 840,
+  "w2026": 85,
+  "calls2025": 92,
+  "calls2026": 10,
+  "moonlight": false
+ },
+ {
+  "opcode": "0x0BEB",
+  "w2025": 423,
+  "w2026": 60,
+  "calls2025": 48,
+  "calls2026": 7,
+  "moonlight": false
+ },
+ {
+  "opcode": "0x00D6",
+  "w2025": 407,
+  "w2026": 52,
+  "calls2025": 38,
+  "calls2026": 6,
+  "moonlight": false
+ },
+ {
+  "opcode": "0x0BED",
+  "w2025": 406,
+  "w2026": 60,
+  "calls2025": 48,
+  "calls2026": 7,
+  "moonlight": false
+ },
+ {
+  "opcode": "0x0C20",
+  "w2025": 285,
+  "w2026": 20,
+  "calls2025": 28,
+  "calls2026": 2,
+  "moonlight": false
+ },
+ {
+  "opcode": "0x0851",
+  "w2025": 285,
+  "w2026": 60,
+  "calls2025": 28,
+  "calls2026": 7,
+  "moonlight": false
+ },
+ {
+  "opcode": "0x0853",
+  "w2025": 285,
+  "w2026": 60,
+  "calls2025": 28,
+  "calls2026": 7,
+  "moonlight": false
+ },
+ {
+  "opcode": "0x09B7",
+  "w2025": 285,
+  "w2026": 60,
+  "calls2025": 28,
+  "calls2026": 7,
+  "moonlight": false
+ },
+ {
+  "opcode": "0x09B9",
+  "w2025": 285,
+  "w2026": 60,
+  "calls2025": 28,
+  "calls2026": 7,
+  "moonlight": false
+ },
+ {
+  "opcode": "0x09CC",
+  "w2025": 285,
+  "w2026": 60,
+  "calls2025": 28,
+  "calls2026": 7,
+  "moonlight": false
+ },
+ {
+  "opcode": "0x0B1D",
+  "w2025": 285,
+  "w2026": 60,
+  "calls2025": 28,
+  "calls2026": 7,
+  "moonlight": false
+ },
+ {
+  "opcode": "0x016A",
+  "w2025": 262,
+  "w2026": 42,
+  "calls2025": 27,
+  "calls2026": 2,
+  "moonlight": false
+ },
+ {
+  "opcode": "0x0BEE",
+  "w2025": 279,
+  "w2026": 60,
+  "calls2025": 33,
+  "calls2026": 7,
+  "moonlight": false
+ },
+ {
+  "opcode": "0x0BF6",
+  "w2025": 258,
+  "w2026": 60,
+  "calls2025": 27,
+  "calls2026": 7,
+  "moonlight": false
+ },
+ {
+  "opcode": "0x0171",
+  "w2025": 230,
+  "w2026": 42,
+  "calls2025": 24,
+  "calls2026": 2,
+  "moonlight": false
+ },
+ {
+  "opcode": "0x0BC8",
+  "w2025": 237,
+  "w2026": 60,
+  "calls2025": 18,
+  "calls2026": 7,
+  "moonlight": false
+ },
+ {
+  "opcode": "0x01B9",
+  "w2025": 195,
+  "w2026": 36,
+  "calls2025": 7,
+  "calls2026": 4,
+  "moonlight": false
+ },
+ {
+  "opcode": "0x0BB3",
+  "w2025": 204,
+  "w2026": 60,
+  "calls2025": 25,
+  "calls2026": 7,
+  "moonlight": false
+ },
+ {
+  "opcode": "0x0B1B",
+  "w2025": 36,
+  "w2026": 12,
+  "calls2025": 4,
+  "calls2026": 1,
+  "moonlight": false
+ }
+]

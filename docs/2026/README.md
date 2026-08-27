@@ -16,7 +16,7 @@ Relevés du **2026-08-26**, mis à jour le **2026-08-27**.
 | **nProtect GameGuard** | ✅ **levé** — patch `NoGGuardLoader` (2026-08-27) |
 | **`steam_api.dll`** | ✅ levé — patch `NoSteamAPI` |
 | **ASLR + CFG** | ✅ levé — `fix_aslr.py` sur l'exe SOURCE, une fois pour toutes |
-| **protocole** | ✅ **aucun obstacle** — 0 opcode utilisé par Moonlight ne change de longueur |
+| **protocole** | 🟠 **2 paquets corrigés côté serveur** — une longueur inchangée ne dit RIEN du traitement, cf. `protocol_regressions.md` |
 | **patchs WARP** | 🟠 **65/116 passent tels quels** (56 %), 43 à réparer |
 | **adresses Bourgeon** | 🟠 **360/784 portées** (45,9 %) ; 424 restantes |
 | **layout `g_session`** | ✅ **porté statiquement** : `0x015FA3C0` → `0x014B73B0`, 49 membres, 14 paliers |

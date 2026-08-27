@@ -1,0 +1,74 @@
+[
+ {
+  "opcode": "0x0C20",
+  "w2025": 1799,
+  "w2026": 38,
+  "ea2025": "0x00d27a06",
+  "ea2026": "0x00c3b90f",
+  "moonlight": false
+ },
+ {
+  "opcode": "0x09C2",
+  "w2025": 1799,
+  "w2026": 88,
+  "ea2025": "0x00d27a06",
+  "ea2026": "0x00c3b9c4",
+  "moonlight": false
+ },
+ {
+  "opcode": "0x0069",
+  "w2025": 1799,
+  "w2026": 166,
+  "ea2025": "0x00d27a06",
+  "ea2026": "0x00c3a7a1",
+  "moonlight": false
+ },
+ {
+  "opcode": "0x0AE0",
+  "w2025": 1799,
+  "w2026": 249,
+  "ea2025": "0x00d27a06",
+  "ea2026": "0x00c3b6c7",
+  "moonlight": false
+ },
+ {
+  "opcode": "0x0B02",
+  "w2025": 833,
+  "w2026": 128,
+  "ea2025": "0x00d28ac7",
+  "ea2026": "0x00c3b6d8",
+  "moonlight": false
+ },
+ {
+  "opcode": "0x083E",
+  "w2025": 699,
+  "w2026": 88,
+  "ea2025": "0x00d281bb",
+  "ea2026": "0x00c3b9c4",
+  "moonlight": false
+ },
+ {
+  "opcode": "0x006A",
+  "w2025": 700,
+  "w2026": 91,
+  "ea2025": "0x00d2769d",
+  "ea2026": "0x00c3a7b4",
+  "moonlight": false
+ },
+ {
+  "opcode": "0x006E",
+  "w2025": 506,
+  "w2026": 5,
+  "ea2025": "0x00d277a4",
+  "ea2026": "0x00c3a948",
+  "moonlight": false
+ },
+ {
+  "opcode": "0x0071",
+  "w2025": 380,
+  "w2026": 115,
+  "ea2025": "0x00d27a71",
+  "ea2026": "0x00c3abf0",
+  "moonlight": false
+ }
+]
