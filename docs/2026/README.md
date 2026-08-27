@@ -18,8 +18,8 @@ Relevés du **2026-08-26**, mis à jour le **2026-08-27**.
 | **ASLR + CFG** | ✅ levé — `fix_aslr.py` sur l'exe SOURCE, une fois pour toutes |
 | **protocole** | ✅ **aucun obstacle** — 0 opcode utilisé par Moonlight ne change de longueur |
 | **patchs WARP** | 🟠 **65/116 passent tels quels** (56 %), 43 à réparer |
-| **adresses Bourgeon** | 🟠 **157/784 portées, 0 divergence** ; 632 restantes (370 en données) |
-| **layout `CSession`** | 🔴 offsets déplacés, à rescanner **en jeu** |
+| **adresses Bourgeon** | 🟠 **200/784 portées** (25,5 %) ; 584 restantes |
+| **layout `g_session`** | ✅ **porté statiquement** : `0x015FA3C0` → `0x014B73B0`, 49 membres, 14 paliers |
 | **connexion au login** | 🟠 en cours — voir `clientinfo_service_select_re.md` |
 
 ➡ **Les quatre verrous de démarrage sont tombés.** Ce qui reste est du travail
@@ -83,6 +83,10 @@ l'écriture (le script le dit clairement au lieu de planter).
 | `port_2025_2026.json` | le résultat brut de ce portage, exploitable par script |
 | `clientinfo_service_select_re.md` | **`clientinfo.xml`** : les DEUX listes de serveurs, où vont `address`/`port`, les défauts kRO en dur |
 | `fix_aslr.py` | efface `DYNAMIC_BASE`\|`GUARD_CF` de l'en-tête PE (WARP ne sait pas écrire là) |
+| `opcode_dispatch_port.md` | **porter par les OPCODES** : la methode, sa validation par temoin aleatoire, et l'audit du portage precedent |
+| `port_opcode_pairs.json` | les 623 paires, avec taille, ratio et niveau de confiance |
+| `port_suspects.json` | les **11 entrees fausses ou douteuses** trouvees dans `port_2025_2026.json` |
+| `scripts/` | les scripts rejouables du portage par opcodes |
 | `client_2026_opcodes.md` | les 1577 opcodes du client, nommés et croisés avec rAthena |
 | `packet_len_diff.md` | méthode d'extraction des longueurs de paquets + le diff entre les deux clients |
 | `packet_len_client_2025.json` | table extraite du client 2025-07-16 (1522 entrées) |

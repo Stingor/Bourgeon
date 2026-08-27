@@ -1,0 +1,9542 @@
+{
+ "0x0051af90": {
+  "to": "0x004f2ae0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0073",
+   "0x007F",
+   "0x02EB",
+   "0x0A31"
+  ],
+  "nop": 4,
+  "name25": "sub_51AF90",
+  "size25": "0x24",
+  "size26": "0x24",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00a764e0": {
+  "to": "0x00a3d750",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0073",
+   "0x0091",
+   "0x00B3",
+   "0x02EB"
+  ],
+  "nop": 4,
+  "name25": "CModeMgr_RequestSwitch",
+  "size25": "0x2F",
+  "size26": "0x2F",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d77630": {
+  "to": "0x00c8aa20",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0073",
+   "0x007F",
+   "0x02EB"
+  ],
+  "nop": 3,
+  "name25": "sub_D77630",
+  "size25": "0x24",
+  "size26": "0x24",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00fc1a28": {
+  "to": "0x00e7b7ec",
+  "kind": "globale",
+  "opcodes": [
+   "0x0073",
+   "0x007F"
+  ],
+  "nop": 2,
+  "name25": "__imp___stdio_common_vfprintf",
+  "confiance": "moyenne"
+ },
+ "0x00ccd4c0": {
+  "to": "0x00537a90",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0078"
+  ],
+  "nop": 1,
+  "name25": "sub_CCD4C0",
+  "size25": "0x511",
+  "size26": "0x50D",
+  "ratio": 0.997,
+  "confiance": "haute"
+ },
+ "0x007e9a10": {
+  "to": "0x004e12b0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0078",
+   "0x0079",
+   "0x007B",
+   "0x007C",
+   "0x009D",
+   "0x009E",
+   "0x011F",
+   "0x01C9",
+   "0x01D8",
+   "0x01D9",
+   "0x01DA",
+   "0x022A",
+   "0x022B",
+   "0x022C",
+   "0x02EC",
+   "0x02ED",
+   "0x02EE",
+   "0x07F7",
+   "0x07F8",
+   "0x07F9",
+   "0x084B",
+   "0x0856",
+   "0x0857",
+   "0x0858",
+   "0x08C7",
+   "0x090F",
+   "0x0914",
+   "0x0915",
+   "0x099F",
+   "0x09CA",
+   "0x0A89",
+   "0x0ADD",
+   "0x0B05"
+  ],
+  "nop": 33,
+  "name25": "SceneNodeList_PushBack",
+  "size25": "0xA5",
+  "size26": "0xA5",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00a69eb0": {
+  "to": "0x00a329a0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0078",
+   "0x0079",
+   "0x007B",
+   "0x007C",
+   "0x0080",
+   "0x0086",
+   "0x0088",
+   "0x008A",
+   "0x008B",
+   "0x008D",
+   "0x009C",
+   "0x00B0",
+   "0x00C0",
+   "0x00C3",
+   "0x00D7",
+   "0x00D8",
+   "0x00DB",
+   "0x0105",
+   "0x0106",
+   "0x0109",
+   "0x010C",
+   "0x0114",
+   "0x0115",
+   "0x0117",
+   "0x0119",
+   "0x0131",
+   "0x0132",
+   "0x0139",
+   "0x0142",
+   "0x0148",
+   "0x0196",
+   "0x019A",
+   "0x019B",
+   "0x01A3",
+   "0x01A4",
+   "0x01AA",
+   "0x01AB",
+   "0x01B0",
+   "0x01B4",
+   "0x01B9",
+   "0x01C8",
+   "0x01CF",
+   "0x01D1",
+   "0x01D2",
+   "0x01D3",
+   "0x01D4",
+   "0x01D8",
+   "0x01D9",
+   "0x01DA",
+   "0x01DE",
+   "0x01E1",
+   "0x01EA",
+   "0x01EC",
+   "0x01FF",
+   "0x0229",
+   "0x022A",
+   "0x022B",
+   "0x022C",
+   "0x022F",
+   "0x0230",
+   "0x029B",
+   "0x02C1",
+   "0x02DC",
+   "0x02DD",
+   "0x02E0",
+   "0x02E1",
+   "0x02EC",
+   "0x02ED",
+   "0x02EE",
+   "0x02EF",
+   "0x0440",
+   "0x07F7",
+   "0x07F8",
+   "0x07F9",
+   "0x080E",
+   "0x0814",
+   "0x0816",
+   "0x081D",
+   "0x081E",
+   "0x0856",
+   "0x0857",
+   "0x0858",
+   "0x08B3",
+   "0x08C8",
+   "0x08CD",
+   "0x090F",
+   "0x0914",
+   "0x0915",
+   "0x0977",
+   "0x09D1",
+   "0x0A0E",
+   "0x0A36",
+   "0x0A83",
+   "0x0A89",
+   "0x0B05",
+   "0x0B47",
+   "0x0B68",
+   "0x0B6B",
+   "0x0B6C"
+  ],
+  "nop": 99,
+  "name25": "ActorList_FindByGID",
+  "size25": "0x2F",
+  "size26": "0x2F",
+  "ratio": 1.0,
+  "confiance": "haute",
+  "manifeste": "kActorListFindByGid, kFindByGID",
+  "comment": "ActorList_FindByGID(actorMgr,gid)->acteur",
+  "nouveau_pour_bourgeon": false
+ },
+ "0x00c73040": {
+  "to": "0x004cd610",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0078",
+   "0x0079",
+   "0x007B",
+   "0x007C",
+   "0x01D8",
+   "0x01D9",
+   "0x01DA",
+   "0x022A",
+   "0x022B",
+   "0x022C",
+   "0x02EC",
+   "0x02ED",
+   "0x02EE",
+   "0x07F7",
+   "0x07F8",
+   "0x07F9",
+   "0x0856",
+   "0x0857",
+   "0x0858",
+   "0x090F",
+   "0x0914",
+   "0x0915"
+  ],
+  "nop": 22,
+  "name25": "ActorFactory_CreateByJobId",
+  "size25": "0xDF",
+  "size26": "0xE0",
+  "ratio": 0.996,
+  "confiance": "haute"
+ },
+ "0x00c999e0": {
+  "to": "0x00503340",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0078",
+   "0x0079",
+   "0x007C",
+   "0x01D8",
+   "0x01D9",
+   "0x022A",
+   "0x022B",
+   "0x02ED",
+   "0x02EE",
+   "0x07F8",
+   "0x07F9",
+   "0x0857",
+   "0x0858",
+   "0x090F",
+   "0x0915",
+   "0x0A89",
+   "0x0B05"
+  ],
+  "nop": 17,
+  "name25": "ActorSpawnInfo_Clear",
+  "size25": "0xCE",
+  "size26": "0xCE",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00ce7450": {
+  "to": "0x00552cd0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0078",
+   "0x0079",
+   "0x007B",
+   "0x007C",
+   "0x01D8",
+   "0x01D9",
+   "0x01DA",
+   "0x022A",
+   "0x022B",
+   "0x022C",
+   "0x02EC",
+   "0x02ED",
+   "0x02EE",
+   "0x07F7",
+   "0x07F8",
+   "0x07F9",
+   "0x0856",
+   "0x0857",
+   "0x0858",
+   "0x090F",
+   "0x0914",
+   "0x0915",
+   "0x0A89",
+   "0x0B05"
+  ],
+  "nop": 24,
+  "name25": "SceneActorList_PushBack",
+  "size25": "0xA5",
+  "size26": "0xA5",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cec8a0": {
+  "to": "0x005595f0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0078",
+   "0x0079",
+   "0x007B",
+   "0x01D8",
+   "0x01D9",
+   "0x01DA",
+   "0x022A",
+   "0x022B",
+   "0x022C",
+   "0x028A",
+   "0x02EC",
+   "0x02ED",
+   "0x02EE",
+   "0x07F7",
+   "0x07F8",
+   "0x07F9",
+   "0x0856",
+   "0x0857",
+   "0x0858",
+   "0x090F",
+   "0x0914",
+   "0x0915"
+  ],
+  "nop": 22,
+  "name25": "Actor_ApplyOptionEffects",
+  "size25": "0xDAF",
+  "size26": "0xEE3",
+  "ratio": 0.919,
+  "confiance": "haute"
+ },
+ "0x00d8e980": {
+  "to": "0x00ca1f00",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0078",
+   "0x0079",
+   "0x007B",
+   "0x0080",
+   "0x01D8",
+   "0x01D9",
+   "0x01DA",
+   "0x022A",
+   "0x022B",
+   "0x022C",
+   "0x02EC",
+   "0x02ED",
+   "0x02EE",
+   "0x07F7",
+   "0x0856"
+  ],
+  "nop": 15,
+  "name25": "Job_IsSpecialUnitId",
+  "size25": "0x19",
+  "size26": "0x19",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d8ea70": {
+  "to": "0x00ca2000",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0078",
+   "0x0079",
+   "0x007B",
+   "0x01D8",
+   "0x01D9",
+   "0x01DA",
+   "0x022A",
+   "0x022B",
+   "0x022C",
+   "0x0230",
+   "0x02EC",
+   "0x02ED",
+   "0x02EE",
+   "0x07F7",
+   "0x07F8",
+   "0x07F9",
+   "0x0856",
+   "0x0857",
+   "0x0858",
+   "0x090F",
+   "0x0914",
+   "0x0915"
+  ],
+  "nop": 22,
+  "name25": "Session_IsOwnHomunculusAid",
+  "size25": "0x1A",
+  "size26": "0x1A",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d8ea90": {
+  "to": "0x00ca2020",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0078",
+   "0x0079",
+   "0x007B",
+   "0x0106",
+   "0x01D8",
+   "0x01D9",
+   "0x01DA",
+   "0x022A",
+   "0x022B",
+   "0x022C",
+   "0x02EC",
+   "0x02ED",
+   "0x02EE",
+   "0x07F7",
+   "0x07F8",
+   "0x07F9",
+   "0x0856",
+   "0x0857",
+   "0x0858",
+   "0x090F",
+   "0x0914",
+   "0x0915"
+  ],
+  "nop": 22,
+  "name25": "Session_IsOwnMercenaryAid",
+  "size25": "0x1A",
+  "size26": "0x1A",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d8ebd0": {
+  "to": "0x00ca2160",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0078",
+   "0x0079",
+   "0x007B",
+   "0x01D8",
+   "0x01D9",
+   "0x01DA",
+   "0x022A",
+   "0x022B",
+   "0x022C",
+   "0x02EC",
+   "0x02ED",
+   "0x02EE",
+   "0x07F7",
+   "0x0856",
+   "0x090F",
+   "0x0914",
+   "0x0915"
+  ],
+  "nop": 17,
+  "name25": "Job_IsPlayerJobId_Fwd_0",
+  "size25": "0x9",
+  "size26": "0x9",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00ccb770": {
+  "to": "0x00535cb0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0079"
+  ],
+  "nop": 1,
+  "name25": "sub_CCB770",
+  "size25": "0x4E6",
+  "size26": "0x528",
+  "ratio": 0.95,
+  "confiance": "haute"
+ },
+ "0x00a727f0": {
+  "to": "0x00a395f0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0079",
+   "0x00C2",
+   "0x019A",
+   "0x01D9",
+   "0x022B",
+   "0x02DD",
+   "0x02ED"
+  ],
+  "nop": 7,
+  "name25": "ActiveIdSet_Contains",
+  "size25": "0x27",
+  "size26": "0x27",
+  "ratio": 1.0,
+  "confiance": "haute",
+  "manifeste": "kActiveIdSetContains",
+  "comment": "__cdecl(aid) -> bool",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x00d71290": {
+  "to": "0x00c84a40",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0079",
+   "0x0080",
+   "0x019A",
+   "0x01D9",
+   "0x022B",
+   "0x02DD",
+   "0x02ED"
+  ],
+  "nop": 7,
+  "name25": "Option_IsInvisible",
+  "size25": "0xD",
+  "size26": "0xD",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cc9f20": {
+  "to": "0x00534330",
+  "kind": "fonction",
+  "opcodes": [
+   "0x007B"
+  ],
+  "nop": 1,
+  "name25": "GameMode_OnRecv_ActorSpawnMoving",
+  "size25": "0x4B0",
+  "size26": "0x4F2",
+  "ratio": 0.948,
+  "confiance": "haute"
+ },
+ "0x00c9b0d0": {
+  "to": "0x00506e20",
+  "kind": "fonction",
+  "opcodes": [
+   "0x007B",
+   "0x0086",
+   "0x0087",
+   "0x01DA",
+   "0x022C",
+   "0x02EC",
+   "0x07F7",
+   "0x0856",
+   "0x0914"
+  ],
+  "nop": 9,
+  "name25": "MapPos_UnpackMove2",
+  "size25": "0x83",
+  "size26": "0x83",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d78900": {
+  "to": "0x00c8ba40",
+  "kind": "fonction",
+  "opcodes": [
+   "0x007B",
+   "0x007F",
+   "0x0086",
+   "0x0087",
+   "0x01DA",
+   "0x022C",
+   "0x02EC",
+   "0x07F7",
+   "0x0856",
+   "0x0914"
+  ],
+  "nop": 10,
+  "name25": "sub_D78900",
+  "size25": "0x6F",
+  "size26": "0x6E",
+  "ratio": 0.991,
+  "confiance": "haute"
+ },
+ "0x00ccd9e0": {
+  "to": "0x00537fa0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x007C"
+  ],
+  "nop": 1,
+  "name25": "sub_CCD9E0",
+  "size25": "0x26C",
+  "size26": "0x293",
+  "ratio": 0.941,
+  "confiance": "haute"
+ },
+ "0x00d76450": {
+  "to": "0x00c89930",
+  "kind": "fonction",
+  "opcodes": [
+   "0x007F"
+  ],
+  "nop": 1,
+  "name25": "sub_D76450",
+  "size25": "0x117",
+  "size26": "0x117",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00a31a30": {
+  "to": "0x00a00650",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0080",
+   "0x0081",
+   "0x012D",
+   "0x018D",
+   "0x01FC",
+   "0x0221",
+   "0x02D5",
+   "0x0803",
+   "0x0805",
+   "0x0807",
+   "0x0810",
+   "0x0812",
+   "0x0849",
+   "0x08D8",
+   "0x08DB",
+   "0x08DE",
+   "0x09BF",
+   "0x0A28",
+   "0x0A47",
+   "0x0A7E",
+   "0x0A93",
+   "0x0B15",
+   "0x0B2D",
+   "0x0B65",
+   "0x0B99",
+   "0x0BD9"
+  ],
+  "nop": 26,
+  "name25": "UIWndMgr_ShowMessageBoxModal",
+  "size25": "0x3E6",
+  "size26": "0x432",
+  "ratio": 0.929,
+  "confiance": "haute",
+  "manifeste": "(littéral)",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x00a6bd30": {
+  "to": "0x00a34100",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0080",
+   "0x0120",
+   "0x0A8A",
+   "0x0B30"
+  ],
+  "nop": 4,
+  "name25": "sub_A6BD30",
+  "size25": "0xAF",
+  "size26": "0xB4",
+  "ratio": 0.972,
+  "confiance": "haute"
+ },
+ "0x00c752a0": {
+  "to": "0x004cf9c0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0080",
+   "0x0117"
+  ],
+  "nop": 2,
+  "name25": "sub_C752A0",
+  "size25": "0xE6",
+  "size26": "0xF4",
+  "ratio": 0.943,
+  "confiance": "haute"
+ },
+ "0x00d76660": {
+  "to": "0x00c89ba0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0080",
+   "0x00FB",
+   "0x0104",
+   "0x0105",
+   "0x0148",
+   "0x07FC",
+   "0x0AB2",
+   "0x0ABD"
+  ],
+  "nop": 8,
+  "name25": "sub_D76660",
+  "size25": "0x28",
+  "size26": "0x38",
+  "ratio": 0.714,
+  "confiance": "moyenne"
+ },
+ "0x00d82050": {
+  "to": "0x00c95230",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0080",
+   "0x008A",
+   "0x00B0",
+   "0x01A3",
+   "0x01A4",
+   "0x022F",
+   "0x02E1",
+   "0x08C8"
+  ],
+  "nop": 8,
+  "name25": "Pet_GetIntimacyRank",
+  "size25": "0x45",
+  "size26": "0x45",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00da8f50": {
+  "to": "0x00cb9a50",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0080",
+   "0x081D"
+  ],
+  "nop": 2,
+  "name25": "sub_DA8F50",
+  "size25": "0x39",
+  "size26": "0x10",
+  "ratio": 0.281,
+  "confiance": "A VERIFIER"
+ },
+ "0x00cda520": {
+  "to": "0x00544850",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0088",
+   "0x08CD"
+  ],
+  "nop": 2,
+  "name25": "sub_CDA520",
+  "size25": "0x53",
+  "size26": "0x65",
+  "ratio": 0.822,
+  "confiance": "haute"
+ },
+ "0x00a6a090": {
+  "to": "0x00a32b90",
+  "kind": "fonction",
+  "opcodes": [
+   "0x008A",
+   "0x00C3",
+   "0x0114",
+   "0x0115",
+   "0x011F",
+   "0x0191",
+   "0x01AC",
+   "0x01C9",
+   "0x01DE",
+   "0x02E1",
+   "0x08C7",
+   "0x08C8",
+   "0x099F",
+   "0x09CA"
+  ],
+  "nop": 14,
+  "name25": "sub_A6A090",
+  "size25": "0x2F",
+  "size26": "0x2F",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cc8310": {
+  "to": "0x005327e0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x008D"
+  ],
+  "nop": 1,
+  "name25": "GameMode_OnRecv_EntityChat_ZC008D",
+  "size25": "0x2D3",
+  "size26": "0x221",
+  "ratio": 0.754,
+  "confiance": "moyenne"
+ },
+ "0x00a72820": {
+  "to": "0x00a39620",
+  "kind": "fonction",
+  "opcodes": [
+   "0x008D",
+   "0x02DC"
+  ],
+  "nop": 2,
+  "name25": "sub_A72820",
+  "size25": "0x3",
+  "size26": "0x3",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00a72830": {
+  "to": "0x00a39630",
+  "kind": "fonction",
+  "opcodes": [
+   "0x008D",
+   "0x0207"
+  ],
+  "nop": 2,
+  "name25": "IsGidInActorFilterList",
+  "size25": "0x27",
+  "size26": "0x27",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00c82f10": {
+  "to": "0x004deb90",
+  "kind": "fonction",
+  "opcodes": [
+   "0x008D",
+   "0x008E",
+   "0x0109",
+   "0x017F",
+   "0x02C1",
+   "0x02DC",
+   "0x07DD",
+   "0x09DF"
+  ],
+  "nop": 8,
+  "name25": "sub_C82F10",
+  "size25": "0x1BD",
+  "size26": "0x139",
+  "ratio": 0.703,
+  "confiance": "moyenne"
+ },
+ "0x00ccbc60": {
+  "to": "0x005361e0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x008E"
+  ],
+  "nop": 1,
+  "name25": "GameMode_OnRecv_SelfChat_ZC008E",
+  "size25": "0x240",
+  "size26": "0x17D",
+  "ratio": 0.661,
+  "confiance": "moyenne"
+ },
+ "0x004f1480": {
+  "to": "0x004e0bb0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0091",
+   "0x0BBC"
+  ],
+  "nop": 2,
+  "name25": "sub_4F1480",
+  "size25": "0x15F",
+  "size26": "0x15F",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00b1f7d0": {
+  "to": "0x00afe3d0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0091",
+   "0x02EB"
+  ],
+  "nop": 2,
+  "name25": "sub_B1F7D0",
+  "size25": "0x70",
+  "size26": "0x70",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cced10": {
+  "to": "0x00538fe0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0092"
+  ],
+  "nop": 1,
+  "name25": "sub_CCED10",
+  "size25": "0x16F",
+  "size26": "0x16F",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00c9c360": {
+  "to": "0x005078e0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0092",
+   "0x0AC7"
+  ],
+  "nop": 2,
+  "name25": "sub_C9C360",
+  "size25": "0x373",
+  "size26": "0x3AD",
+  "ratio": 0.938,
+  "confiance": "haute"
+ },
+ "0x005a25b0": {
+  "to": "0x00669ec0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0095",
+   "0x02EC",
+   "0x07F7",
+   "0x07F8",
+   "0x07F9",
+   "0x0856",
+   "0x0857",
+   "0x0858",
+   "0x090F",
+   "0x0914",
+   "0x0915",
+   "0x0A89",
+   "0x0B05"
+  ],
+  "nop": 13,
+  "name25": "CNameDict_SetName",
+  "size25": "0x93",
+  "size26": "0x93",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x005a0d30": {
+  "to": "0x00668640",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0095"
+  ],
+  "nop": 1,
+  "name25": "CNameDict_GetOrCreateEntry",
+  "size25": "0xF3",
+  "size26": "0xF3",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cdcc10": {
+  "to": "0x00546fe0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0097"
+  ],
+  "nop": 1,
+  "name25": "sub_CDCC10",
+  "size25": "0x1E1",
+  "size26": "0x172",
+  "ratio": 0.769,
+  "confiance": "moyenne"
+ },
+ "0x00cafd00": {
+  "to": "0x0051ae50",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0097",
+   "0x09DE"
+  ],
+  "nop": 2,
+  "name25": "sub_CAFD00",
+  "size25": "0x10F9",
+  "size26": "0x11F3",
+  "ratio": 0.946,
+  "confiance": "haute"
+ },
+ "0x004dcc30": {
+  "to": "0x004bb150",
+  "kind": "fonction",
+  "opcodes": [
+   "0x009A",
+   "0x0104",
+   "0x0150",
+   "0x015A",
+   "0x01A2",
+   "0x01B6",
+   "0x0A84"
+  ],
+  "nop": 7,
+  "name25": "sub_4DCC30",
+  "size25": "0x64",
+  "size26": "0x64",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00dbc44d": {
+  "to": "0x00ccaf9b",
+  "kind": "fonction",
+  "opcodes": [
+   "0x009A",
+   "0x00B4",
+   "0x01C3",
+   "0x0972"
+  ],
+  "nop": 4,
+  "name25": "___report_rangecheckfailure",
+  "size25": "0xC",
+  "size26": "0xC",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cc3430": {
+  "to": "0x0052d730",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00A0"
+  ],
+  "nop": 1,
+  "name25": "Recv_ZC_ITEM_PICKUP_ACK_00A0",
+  "size25": "0x653",
+  "size26": "0x696",
+  "ratio": 0.96,
+  "confiance": "haute"
+ },
+ "0x006a1b20": {
+  "to": "0x0070cf80",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00A0",
+   "0x00A3",
+   "0x00A4",
+   "0x00A5",
+   "0x00A6",
+   "0x00C6",
+   "0x00F6",
+   "0x010A",
+   "0x0110",
+   "0x0122",
+   "0x0123",
+   "0x0124",
+   "0x0125",
+   "0x0133",
+   "0x0136",
+   "0x018F",
+   "0x01A3",
+   "0x01C4",
+   "0x01C5",
+   "0x01EE",
+   "0x01EF",
+   "0x01F0",
+   "0x020E",
+   "0x0223",
+   "0x022F",
+   "0x0295",
+   "0x0296",
+   "0x0297",
+   "0x029A",
+   "0x02B8",
+   "0x02D0",
+   "0x02D1",
+   "0x02D2",
+   "0x02D4",
+   "0x02D7",
+   "0x02E8",
+   "0x02E9",
+   "0x02EA",
+   "0x07E2",
+   "0x07FD",
+   "0x0800",
+   "0x080F",
+   "0x0813",
+   "0x0818",
+   "0x0836",
+   "0x0859",
+   "0x08CA",
+   "0x0900",
+   "0x0901",
+   "0x0902",
+   "0x0903",
+   "0x0904",
+   "0x0905",
+   "0x0906",
+   "0x0975",
+   "0x0976",
+   "0x0990",
+   "0x0991",
+   "0x0992",
+   "0x0993",
+   "0x0994",
+   "0x0995",
+   "0x0996",
+   "0x0997",
+   "0x09D2",
+   "0x09D3",
+   "0x09D5",
+   "0x09DA",
+   "0x0A05",
+   "0x0A09",
+   "0x0A0A",
+   "0x0A0B",
+   "0x0A0C",
+   "0x0A0D",
+   "0x0A0F",
+   "0x0A10",
+   "0x0A11",
+   "0x0A2D",
+   "0x0A31",
+   "0x0A37",
+   "0x0A8D",
+   "0x0A91",
+   "0x0A96",
+   "0x0ADA",
+   "0x0B03",
+   "0x0B09",
+   "0x0B0A",
+   "0x0B37",
+   "0x0B39",
+   "0x0B3C",
+   "0x0B3D",
+   "0x0B3E",
+   "0x0B3F",
+   "0x0B40",
+   "0x0B41",
+   "0x0B42",
+   "0x0B44",
+   "0x0B45",
+   "0x0B4D",
+   "0x0B5E",
+   "0x0B62",
+   "0x0B63",
+   "0x0B64",
+   "0x0B67"
+  ],
+  "nop": 104,
+  "name25": "ItemSkillInfo_ctor",
+  "size25": "0x84",
+  "size26": "0x84",
+  "ratio": 1.0,
+  "confiance": "haute",
+  "manifeste": "kInfoCtorAddr, kItemSkillInfoCtor",
+  "nouveau_pour_bourgeon": false
+ },
+ "0x006a2ce0": {
+  "to": "0x0070e010",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00A0",
+   "0x00AA",
+   "0x00AC",
+   "0x00AF",
+   "0x010A",
+   "0x0110",
+   "0x0135",
+   "0x0137",
+   "0x018F",
+   "0x01A3",
+   "0x0223",
+   "0x022F",
+   "0x029A",
+   "0x02B8",
+   "0x02BB",
+   "0x02D3",
+   "0x02D4",
+   "0x07FD",
+   "0x081C",
+   "0x0824",
+   "0x08D0",
+   "0x08D1",
+   "0x0990",
+   "0x09DA",
+   "0x09E5",
+   "0x0A0C",
+   "0x0A37",
+   "0x0A98",
+   "0x0A9A",
+   "0x0ADA",
+   "0x0B41",
+   "0x0B5E",
+   "0x0B67"
+  ],
+  "nop": 33,
+  "name25": "ItemSkillInfo_ComposeDisplayName",
+  "size25": "0x11B7",
+  "size26": "0x13DA",
+  "ratio": 0.892,
+  "confiance": "haute"
+ },
+ "0x006a6570": {
+  "to": "0x00711a00",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00A0",
+   "0x00A3",
+   "0x00A4",
+   "0x00A5",
+   "0x00A6",
+   "0x00C6",
+   "0x0110",
+   "0x0122",
+   "0x0123",
+   "0x0124",
+   "0x0133",
+   "0x0136",
+   "0x018F",
+   "0x01A3",
+   "0x01C4",
+   "0x01C5",
+   "0x01EE",
+   "0x01EF",
+   "0x01F0",
+   "0x020E",
+   "0x0223",
+   "0x022F",
+   "0x0295",
+   "0x0296",
+   "0x0297",
+   "0x029A",
+   "0x02B8",
+   "0x02D0",
+   "0x02D1",
+   "0x02D2",
+   "0x02D4",
+   "0x02D7",
+   "0x02E8",
+   "0x02E9",
+   "0x02EA",
+   "0x07E2",
+   "0x07FD",
+   "0x0800",
+   "0x080F",
+   "0x0813",
+   "0x0818",
+   "0x0836",
+   "0x0859",
+   "0x08CA",
+   "0x0900",
+   "0x0901",
+   "0x0902",
+   "0x0903",
+   "0x0904",
+   "0x0905",
+   "0x0906",
+   "0x0975",
+   "0x0976",
+   "0x0990",
+   "0x0991",
+   "0x0992",
+   "0x0993",
+   "0x0994",
+   "0x0995",
+   "0x0996",
+   "0x0997",
+   "0x09D2",
+   "0x09D3",
+   "0x09D5",
+   "0x0A05",
+   "0x0A09",
+   "0x0A0A",
+   "0x0A0B",
+   "0x0A0C",
+   "0x0A0D",
+   "0x0A0F",
+   "0x0A10",
+   "0x0A11",
+   "0x0A2D",
+   "0x0A31",
+   "0x0A37",
+   "0x0A8D",
+   "0x0A91",
+   "0x0A96",
+   "0x0ADA",
+   "0x0B03",
+   "0x0B09",
+   "0x0B0A",
+   "0x0B37",
+   "0x0B39",
+   "0x0B3C",
+   "0x0B3D",
+   "0x0B3F",
+   "0x0B40",
+   "0x0B41",
+   "0x0B42",
+   "0x0B44",
+   "0x0B45",
+   "0x0B4D",
+   "0x0B5E",
+   "0x0B62",
+   "0x0B63",
+   "0x0B64",
+   "0x0B67"
+  ],
+  "nop": 99,
+  "name25": "ItemSkillInfo_SetId",
+  "size25": "0x58",
+  "size26": "0x58",
+  "ratio": 1.0,
+  "confiance": "haute",
+  "manifeste": "kInfoSetIdAddr, kItemSkillInfoSetId",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x00cc3aa0": {
+  "to": "0x0052dde0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00A0",
+   "0x029A",
+   "0x02D4",
+   "0x0990",
+   "0x0A0C",
+   "0x0A37",
+   "0x0B41"
+  ],
+  "nop": 7,
+  "name25": "ItemPickup_ReportFailureToChat",
+  "size25": "0x7D",
+  "size26": "0x7A",
+  "ratio": 0.976,
+  "confiance": "haute"
+ },
+ "0x00d54a60": {
+  "to": "0x00c67d00",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00A0",
+   "0x00A4",
+   "0x00AC",
+   "0x0295",
+   "0x029A",
+   "0x02D0",
+   "0x02D4",
+   "0x08D1",
+   "0x0901",
+   "0x0990",
+   "0x0992",
+   "0x0A0C",
+   "0x0A0D",
+   "0x0A37",
+   "0x0B0A",
+   "0x0B39",
+   "0x0B3C",
+   "0x0B41"
+  ],
+  "nop": 18,
+  "name25": "Inventory_AddOrStackItem",
+  "size25": "0x77",
+  "size26": "0x77",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d56190": {
+  "to": "0x00c69270",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00A0",
+   "0x00AF",
+   "0x00B1",
+   "0x00E7",
+   "0x00EE",
+   "0x00F0",
+   "0x00F1",
+   "0x01F5",
+   "0x029A",
+   "0x02D4",
+   "0x07FA",
+   "0x0990",
+   "0x0A0C",
+   "0x0A37",
+   "0x0ACB",
+   "0x0B41"
+  ],
+  "nop": 16,
+  "name25": "sub_D56190",
+  "size25": "0x6F",
+  "size26": "0x6F",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d5aa40": {
+  "to": "0x00c6dba0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00A0",
+   "0x00A8",
+   "0x00AA",
+   "0x00AC",
+   "0x00AF",
+   "0x00C6",
+   "0x00C7",
+   "0x00EA",
+   "0x0177",
+   "0x0179",
+   "0x017B",
+   "0x017D",
+   "0x0188",
+   "0x01A6",
+   "0x01C8",
+   "0x029A",
+   "0x02D3",
+   "0x02D4",
+   "0x081C",
+   "0x08D0",
+   "0x08D1",
+   "0x0908",
+   "0x0990",
+   "0x0992",
+   "0x0999",
+   "0x0A0C",
+   "0x0A0D",
+   "0x0A2D",
+   "0x0A37",
+   "0x0A9A",
+   "0x0AB9",
+   "0x0B03",
+   "0x0B0A",
+   "0x0B13",
+   "0x0B37",
+   "0x0B39",
+   "0x0B3C",
+   "0x0B41",
+   "0x0B43",
+   "0x0B5D",
+   "0x0B92"
+  ],
+  "nop": 41,
+  "name25": "Session_GetEquipInfoByInvIndex",
+  "size25": "0x161",
+  "size26": "0x161",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d770a0": {
+  "to": "0x00c8a490",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00A0",
+   "0x00A3",
+   "0x00A4",
+   "0x0179",
+   "0x017D",
+   "0x0188",
+   "0x01A4",
+   "0x01EE",
+   "0x0295",
+   "0x029A",
+   "0x02D0",
+   "0x02D4",
+   "0x02E8",
+   "0x0900",
+   "0x0901",
+   "0x0908",
+   "0x0990",
+   "0x0991",
+   "0x0992",
+   "0x0A0C",
+   "0x0A0D",
+   "0x0A37",
+   "0x0AB9",
+   "0x0B09",
+   "0x0B0A",
+   "0x0B13",
+   "0x0B39",
+   "0x0B3C",
+   "0x0B41",
+   "0x0B43",
+   "0x0B5D"
+  ],
+  "nop": 31,
+  "name25": "Inventory_UpsertOrRemoveItem",
+  "size25": "0x68",
+  "size26": "0x6A",
+  "ratio": 0.981,
+  "confiance": "haute"
+ },
+ "0x00d55e90": {
+  "to": "0x00c68f70",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00A3",
+   "0x01EE",
+   "0x02E8",
+   "0x0900",
+   "0x0991"
+  ],
+  "nop": 5,
+  "name25": "sub_D55E90",
+  "size25": "0xCD",
+  "size26": "0xCD",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x006a25f0": {
+  "to": "0x0070da10",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00A3",
+   "0x00A4",
+   "0x00AA",
+   "0x0179",
+   "0x01EE",
+   "0x02E8",
+   "0x08D0",
+   "0x0900",
+   "0x0B13",
+   "0x0B43"
+  ],
+  "nop": 10,
+  "name25": "ItemSkillInfo_Copy",
+  "size25": "0x196",
+  "size26": "0x16B",
+  "ratio": 0.894,
+  "confiance": "haute"
+ },
+ "0x00d547a0": {
+  "to": "0x00c67ad0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00A4",
+   "0x0295",
+   "0x02D0",
+   "0x0901",
+   "0x0992",
+   "0x0A0D",
+   "0x0B0A",
+   "0x0B39",
+   "0x0B3C"
+  ],
+  "nop": 9,
+  "name25": "Equipment_SetEquippedItem",
+  "size25": "0x11F",
+  "size26": "0x101",
+  "ratio": 0.895,
+  "confiance": "haute"
+ },
+ "0x00d55ff0": {
+  "to": "0x00c690d0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00A4",
+   "0x0295",
+   "0x02D0",
+   "0x0901",
+   "0x0992",
+   "0x0A0D",
+   "0x0B08",
+   "0x0B3C"
+  ],
+  "nop": 8,
+  "name25": "Equipment_ClearAllSlots",
+  "size25": "0xAB",
+  "size26": "0xAB",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d560a0": {
+  "to": "0x00c69180",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00A4",
+   "0x0295",
+   "0x02D0",
+   "0x0901",
+   "0x0992",
+   "0x0A0D",
+   "0x0B3C"
+  ],
+  "nop": 7,
+  "name25": "Inventory_RemoveEquipTypeItems",
+  "size25": "0xCD",
+  "size26": "0xCD",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d8ebe0": {
+  "to": "0x00ca2170",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00A4",
+   "0x0295",
+   "0x02D0",
+   "0x0901",
+   "0x0992",
+   "0x0A0D",
+   "0x0A2D",
+   "0x0B03",
+   "0x0B0A",
+   "0x0B37",
+   "0x0B39",
+   "0x0B3C"
+  ],
+  "nop": 12,
+  "name25": "IsPetEggItem",
+  "size25": "0x19",
+  "size26": "0x19",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x0066f9a0": {
+  "to": "0x006ebe30",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00A4",
+   "0x00AA",
+   "0x00AC",
+   "0x00B0",
+   "0x010F",
+   "0x013C",
+   "0x0141",
+   "0x0235",
+   "0x029D",
+   "0x07E1",
+   "0x08D0",
+   "0x08D1",
+   "0x0992",
+   "0x0A0D",
+   "0x0A2D",
+   "0x0B03",
+   "0x0B0A",
+   "0x0B32",
+   "0x0B33",
+   "0x0B37",
+   "0x0B39",
+   "0x0B3C",
+   "0x0BBB"
+  ],
+  "nop": 23,
+  "name25": "EquipPreviewMgr_ctor",
+  "size25": "0x43E",
+  "size26": "0x43E",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00679120": {
+  "to": "0x006f5c70",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00A4"
+  ],
+  "nop": 1,
+  "name25": "sub_679120",
+  "size25": "0x1B1",
+  "size26": "0x1D6",
+  "ratio": 0.921,
+  "confiance": "haute"
+ },
+ "0x00683eb0": {
+  "to": "0x007007c0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00A4",
+   "0x00AA",
+   "0x08D0"
+  ],
+  "nop": 3,
+  "name25": "EquipPreviewMgr_SetItem",
+  "size25": "0x223",
+  "size26": "0x25C",
+  "ratio": 0.906,
+  "confiance": "haute"
+ },
+ "0x00a38430": {
+  "to": "0x00a07010",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00A4",
+   "0x00AA",
+   "0x00AC",
+   "0x013C",
+   "0x08D0",
+   "0x08D1"
+  ],
+  "nop": 6,
+  "name25": "sub_A38430",
+  "size25": "0x46",
+  "size26": "0x64",
+  "ratio": 0.7,
+  "confiance": "moyenne"
+ },
+ "0x00d55850": {
+  "to": "0x00c689f0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00A4",
+   "0x00AA",
+   "0x00AC",
+   "0x02BB",
+   "0x08D0",
+   "0x08D1",
+   "0x0A3F"
+  ],
+  "nop": 7,
+  "name25": "EquipLocation_DecodeToSlots",
+  "size25": "0x133",
+  "size26": "0x191",
+  "ratio": 0.766,
+  "confiance": "moyenne"
+ },
+ "0x00da8840": {
+  "to": "0x00cb9320",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00A4",
+   "0x00AA",
+   "0x00AC",
+   "0x08D0",
+   "0x08D1"
+  ],
+  "nop": 5,
+  "name25": "Equipment_RefreshWindow",
+  "size25": "0x22",
+  "size26": "0x32",
+  "ratio": 0.68,
+  "confiance": "moyenne"
+ },
+ "0x00d555c0": {
+  "to": "0x00c68750",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00A5",
+   "0x00A6",
+   "0x01C4",
+   "0x01F0",
+   "0x0296",
+   "0x02D1",
+   "0x02EA",
+   "0x0904",
+   "0x0905",
+   "0x0975",
+   "0x0976",
+   "0x0995",
+   "0x0996",
+   "0x09D2",
+   "0x09D3",
+   "0x0A0A",
+   "0x0A10",
+   "0x0A11",
+   "0x0B09",
+   "0x0B0A",
+   "0x0B39",
+   "0x0B44"
+  ],
+  "nop": 22,
+  "name25": "ItemModel_AddOrStackStorageItem",
+  "size25": "0xA7",
+  "size26": "0xBF",
+  "ratio": 0.874,
+  "confiance": "haute"
+ },
+ "0x00d76690": {
+  "to": "0x00c89be0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00A5",
+   "0x00A6",
+   "0x01F0",
+   "0x0296",
+   "0x02D1",
+   "0x02EA",
+   "0x0904",
+   "0x0905",
+   "0x0975",
+   "0x0976",
+   "0x0995",
+   "0x0996",
+   "0x09D2",
+   "0x09D3",
+   "0x0A10",
+   "0x0A11"
+  ],
+  "nop": 16,
+  "name25": "sub_D76690",
+  "size25": "0x1F",
+  "size26": "0x2F",
+  "ratio": 0.66,
+  "confiance": "moyenne"
+ },
+ "0x006a5fb0": {
+  "to": "0x00711450",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00A8"
+  ],
+  "nop": 1,
+  "name25": "sub_6A5FB0",
+  "size25": "0x40",
+  "size26": "0x40",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d57a30": {
+  "to": "0x00c6ab10",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00A8",
+   "0x00AA",
+   "0x00AF",
+   "0x017D",
+   "0x01C8",
+   "0x0299",
+   "0x07FA",
+   "0x081C",
+   "0x08D0",
+   "0x0A05",
+   "0x0B3F"
+  ],
+  "nop": 11,
+  "name25": "Inventory_DecreaseOrRemoveByInvIndex",
+  "size25": "0x85",
+  "size26": "0x93",
+  "ratio": 0.905,
+  "confiance": "haute",
+  "manifeste": "kInvDecrease",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x006a1a90": {
+  "to": "0x0070cef0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00A8",
+   "0x00AA",
+   "0x00AF",
+   "0x0177",
+   "0x0179",
+   "0x017B",
+   "0x01A6",
+   "0x01C8",
+   "0x02D3",
+   "0x08D0"
+  ],
+  "nop": 10,
+  "name25": "ItemSkillInfo_InitEmpty",
+  "size25": "0x86",
+  "size26": "0x86",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d741d0": {
+  "to": "0x00c87a60",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00AA",
+   "0x08D0",
+   "0x0999"
+  ],
+  "nop": 3,
+  "name25": "sub_D741D0",
+  "size25": "0x1EA",
+  "size26": "0x1F1",
+  "ratio": 0.986,
+  "confiance": "haute"
+ },
+ "0x00d7e340": {
+  "to": "0x00c912a0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00AA",
+   "0x02D0",
+   "0x08D0",
+   "0x0901",
+   "0x0992",
+   "0x0A0D",
+   "0x0B0A",
+   "0x0B39",
+   "0x0B3C"
+  ],
+  "nop": 9,
+  "name25": "Costume_SetEquippedItem",
+  "size25": "0x145",
+  "size26": "0x121",
+  "ratio": 0.889,
+  "confiance": "haute"
+ },
+ "0x00d8e630": {
+  "to": "0x00ca1bc0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00AA",
+   "0x00AC",
+   "0x02D0",
+   "0x02D7",
+   "0x0859",
+   "0x08D0",
+   "0x08D1",
+   "0x0901",
+   "0x0906",
+   "0x0992",
+   "0x0997",
+   "0x099A",
+   "0x0A0D",
+   "0x0A2D",
+   "0x0A98",
+   "0x0A9A",
+   "0x0A9B",
+   "0x0B03",
+   "0x0B0A",
+   "0x0B37",
+   "0x0B39",
+   "0x0B3C"
+  ],
+  "nop": 22,
+  "name25": "EquipLocation_IsCostume",
+  "size25": "0x81",
+  "size26": "0x7A",
+  "ratio": 0.946,
+  "confiance": "haute"
+ },
+ "0x00d70dd0": {
+  "to": "0x00c84590",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00AC",
+   "0x00B0",
+   "0x00B1",
+   "0x00BC",
+   "0x00BD",
+   "0x00BE",
+   "0x00EA",
+   "0x0141",
+   "0x0162",
+   "0x022E",
+   "0x08D1",
+   "0x0ACB",
+   "0x0B2F",
+   "0x0B76",
+   "0x0BA4"
+  ],
+  "nop": 15,
+  "name25": "Homun_NotifySkillWnd",
+  "size25": "0xA",
+  "size26": "0xA",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x006a2860": {
+  "to": "0x004e2240",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00AF",
+   "0x010A",
+   "0x02D3",
+   "0x08D8"
+  ],
+  "nop": 4,
+  "name25": "sub_6A2860",
+  "size25": "0x28",
+  "size26": "0x28",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00fc1b60": {
+  "to": "0x00e7b8b0",
+  "kind": "globale",
+  "opcodes": [
+   "0x00AF",
+   "0x010A",
+   "0x02D3",
+   "0x0B3E"
+  ],
+  "nop": 4,
+  "name25": "__imp_strncpy_s",
+  "confiance": "haute"
+ },
+ "0x00684920": {
+  "to": "0x007015e0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00B0",
+   "0x010F",
+   "0x0141",
+   "0x0235",
+   "0x029D",
+   "0x07E1",
+   "0x0B32",
+   "0x0B33"
+  ],
+  "nop": 8,
+  "name25": "sub_684920",
+  "size25": "0xAC",
+  "size26": "0xB9",
+  "ratio": 0.93,
+  "confiance": "haute"
+ },
+ "0x008995a0": {
+  "to": "0x008d7460",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00B0",
+   "0x0B25"
+  ],
+  "nop": 2,
+  "name25": "sub_8995A0",
+  "size25": "0x55",
+  "size26": "0x6B",
+  "ratio": 0.794,
+  "confiance": "moyenne"
+ },
+ "0x00cae2b0": {
+  "to": "0x00519550",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00B0",
+   "0x0141"
+  ],
+  "nop": 2,
+  "name25": "sub_CAE2B0",
+  "size25": "0xE8",
+  "size26": "0x108",
+  "ratio": 0.879,
+  "confiance": "haute"
+ },
+ "0x00d70cd0": {
+  "to": "0x00c84450",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00B0",
+   "0x00B1",
+   "0x00EA",
+   "0x013D",
+   "0x0A27",
+   "0x0ACB"
+  ],
+  "nop": 6,
+  "name25": "sub_D70CD0",
+  "size25": "0x5E",
+  "size26": "0x6D",
+  "ratio": 0.862,
+  "confiance": "haute"
+ },
+ "0x00cc6020": {
+  "to": "0x005303f0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00B1"
+  ],
+  "nop": 1,
+  "name25": "sub_CC6020",
+  "size25": "0x227",
+  "size26": "0x229",
+  "ratio": 0.996,
+  "confiance": "haute"
+ },
+ "0x00863760": {
+  "to": "0x008a1e90",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00B1",
+   "0x0ACB",
+   "0x0BA4",
+   "0x0BA5"
+  ],
+  "nop": 4,
+  "name25": "UIINT64BarGraph_SetCurMax",
+  "size25": "0x2B",
+  "size26": "0x2B",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00a7e120": {
+  "to": "0x00a44ba0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00B3",
+   "0x0989",
+   "0x098A"
+  ],
+  "nop": 3,
+  "name25": "sub_A7E120",
+  "size25": "0x70",
+  "size26": "0x70",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cbaf10": {
+  "to": "0x005258c0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00B6",
+   "0x0C08"
+  ],
+  "nop": 2,
+  "name25": "NpcDialog_OnRecv_ZC_CLOSE_DIALOG",
+  "size25": "0xFD",
+  "size26": "0x128",
+  "ratio": 0.855,
+  "confiance": "haute"
+ },
+ "0x00583950": {
+  "to": "0x0054fd00",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00B7",
+   "0x08FE",
+   "0x09F9",
+   "0x09FA",
+   "0x0AFE",
+   "0x0B0C"
+  ],
+  "nop": 6,
+  "name25": "sub_583950",
+  "size25": "0xAF",
+  "size26": "0xAF",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cda280": {
+  "to": "0x00544590",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00BC"
+  ],
+  "nop": 1,
+  "name25": "sub_CDA280",
+  "size25": "0x216",
+  "size26": "0x231",
+  "ratio": 0.952,
+  "confiance": "haute"
+ },
+ "0x00cd9e30": {
+  "to": "0x00544120",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00BD"
+  ],
+  "nop": 1,
+  "name25": "sub_CD9E30",
+  "size25": "0x22B",
+  "size26": "0x239",
+  "ratio": 0.975,
+  "confiance": "haute"
+ },
+ "0x00cda060": {
+  "to": "0x00544360",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00BE"
+  ],
+  "nop": 1,
+  "name25": "sub_CDA060",
+  "size25": "0x10A",
+  "size26": "0x11A",
+  "ratio": 0.943,
+  "confiance": "haute"
+ },
+ "0x00d1fd50": {
+  "to": "0x00c33980",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00C2"
+  ],
+  "nop": 1,
+  "name25": "sub_D1FD50",
+  "size25": "0x70",
+  "size26": "0x70",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d553b0": {
+  "to": "0x00c68550",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00C6",
+   "0x00C7",
+   "0x0287",
+   "0x07E3"
+  ],
+  "nop": 4,
+  "name25": "sub_D553B0",
+  "size25": "0x1B8",
+  "size26": "0x1A6",
+  "ratio": 0.959,
+  "confiance": "haute"
+ },
+ "0x00d55f80": {
+  "to": "0x00c69060",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00C6",
+   "0x00C7",
+   "0x00CB",
+   "0x0287",
+   "0x07E3",
+   "0x09D5"
+  ],
+  "nop": 6,
+  "name25": "ShopCart_ResetAll",
+  "size25": "0x54",
+  "size26": "0x54",
+  "ratio": 1.0,
+  "confiance": "haute",
+  "manifeste": "kShopCartResetAll",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x006a2790": {
+  "to": "0x0070d9c0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00C6",
+   "0x09D5"
+  ],
+  "nop": 2,
+  "name25": "sub_6A2790",
+  "size25": "0x61",
+  "size26": "0x4B",
+  "ratio": 0.773,
+  "confiance": "moyenne"
+ },
+ "0x00cd0f00": {
+  "to": "0x0053b010",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00C7"
+  ],
+  "nop": 1,
+  "name25": "NpcSell_BuildSellableList",
+  "size25": "0x1F6",
+  "size26": "0x1EC",
+  "ratio": 0.98,
+  "confiance": "haute"
+ },
+ "0x00cd0d00": {
+  "to": "0x0053adf0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00CA"
+  ],
+  "nop": 1,
+  "name25": "sub_CD0D00",
+  "size25": "0x1BC",
+  "size26": "0x1E4",
+  "ratio": 0.917,
+  "confiance": "haute"
+ },
+ "0x00cd4ad0": {
+  "to": "0x0053eef0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00D1"
+  ],
+  "nop": 1,
+  "name25": "sub_CD4AD0",
+  "size25": "0x18D",
+  "size26": "0x191",
+  "ratio": 0.99,
+  "confiance": "haute"
+ },
+ "0x00d7fe40": {
+  "to": "0x00c92eb0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00D6",
+   "0x00DC",
+   "0x00DD",
+   "0x0105",
+   "0x0150",
+   "0x015A",
+   "0x019A",
+   "0x01B6",
+   "0x0205",
+   "0x020E",
+   "0x09DF",
+   "0x0A83",
+   "0x0A84",
+   "0x0A86"
+  ],
+  "nop": 14,
+  "name25": "Own_GetCharName",
+  "size25": "0xD6",
+  "size26": "0xD6",
+  "ratio": 1.0,
+  "confiance": "haute",
+  "manifeste": "kOwnGetCharName",
+  "comment": "__thiscall(ctxKey) -> char*",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x00cd38d0": {
+  "to": "0x0053dc10",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00D7"
+  ],
+  "nop": 1,
+  "name25": "sub_CD38D0",
+  "size25": "0x1DE",
+  "size26": "0x219",
+  "ratio": 0.89,
+  "confiance": "haute"
+ },
+ "0x00c9ad60": {
+  "to": "0x005056c0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00D7",
+   "0x00D8",
+   "0x00DB",
+   "0x00DF"
+  ],
+  "nop": 4,
+  "name25": "sub_C9AD60",
+  "size25": "0x107",
+  "size26": "0x107",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00ce69c0": {
+  "to": "0x0054f220",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00D8"
+  ],
+  "nop": 1,
+  "name25": "sub_CE69C0",
+  "size25": "0x205",
+  "size26": "0x205",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cd2700": {
+  "to": "0x0053c870",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00DA"
+  ],
+  "nop": 1,
+  "name25": "sub_CD2700",
+  "size25": "0x134",
+  "size26": "0x150",
+  "ratio": 0.917,
+  "confiance": "haute"
+ },
+ "0x00c994e0": {
+  "to": "0x00502590",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00DC",
+   "0x00DD"
+  ],
+  "nop": 2,
+  "name25": "sub_C994E0",
+  "size25": "0x7E",
+  "size26": "0x7E",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cba530": {
+  "to": "0x00524ee0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00DF"
+  ],
+  "nop": 1,
+  "name25": "sub_CBA530",
+  "size25": "0x1C6",
+  "size26": "0x1D0",
+  "ratio": 0.978,
+  "confiance": "haute"
+ },
+ "0x00cb1c00": {
+  "to": "0x0051ce30",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00E7"
+  ],
+  "nop": 1,
+  "name25": "sub_CB1C00",
+  "size25": "0x139",
+  "size26": "0x155",
+  "ratio": 0.918,
+  "confiance": "haute"
+ },
+ "0x00d56490": {
+  "to": "0x00c694f0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00E7",
+   "0x01F5"
+  ],
+  "nop": 2,
+  "name25": "sub_D56490",
+  "size25": "0x6F",
+  "size26": "0x6F",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d58200": {
+  "to": "0x00c6b220",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00F6"
+  ],
+  "nop": 1,
+  "name25": "sub_D58200",
+  "size25": "0xAB",
+  "size26": "0xC7",
+  "ratio": 0.859,
+  "confiance": "haute"
+ },
+ "0x00d566d0": {
+  "to": "0x00c696a0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00F8",
+   "0x09BF"
+  ],
+  "nop": 2,
+  "name25": "ItemModel_ClearStorageList",
+  "size25": "0x20",
+  "size26": "0x20",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cbf910": {
+  "to": "0x00529cc0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00FB"
+  ],
+  "nop": 1,
+  "name25": "sub_CBF910",
+  "size25": "0x3B8",
+  "size26": "0x2E8",
+  "ratio": 0.782,
+  "confiance": "moyenne"
+ },
+ "0x00d54ae0": {
+  "to": "0x00c67d80",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00FB",
+   "0x0104"
+  ],
+  "nop": 2,
+  "name25": "sub_D54AE0",
+  "size25": "0x15B",
+  "size26": "0xE9",
+  "ratio": 0.671,
+  "confiance": "moyenne"
+ },
+ "0x00d56530": {
+  "to": "0x00c69590",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00FB",
+   "0x0105"
+  ],
+  "nop": 2,
+  "name25": "sub_D56530",
+  "size25": "0xCD",
+  "size26": "0x40",
+  "ratio": 0.312,
+  "confiance": "A VERIFIER"
+ },
+ "0x00cb2d80": {
+  "to": "0x0051dff0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x00FD",
+   "0x02C5"
+  ],
+  "nop": 2,
+  "name25": "sub_CB2D80",
+  "size25": "0x2D7",
+  "size26": "0x2F4",
+  "ratio": 0.962,
+  "confiance": "haute"
+ },
+ "0x00fc1b1c": {
+  "to": "0x00e7b840",
+  "kind": "globale",
+  "opcodes": [
+   "0x00FE",
+   "0x0104",
+   "0x0131",
+   "0x0145",
+   "0x01B3",
+   "0x01E2",
+   "0x01F6",
+   "0x0207",
+   "0x02C6",
+   "0x0814",
+   "0x0AE7"
+  ],
+  "nop": 11,
+  "name25": "__imp_strncpy",
+  "confiance": "haute"
+ },
+ "0x00c99560": {
+  "to": "0x00502610",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0104",
+   "0x0209"
+  ],
+  "nop": 2,
+  "name25": "sub_C99560",
+  "size25": "0x88",
+  "size26": "0x88",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00c581f0": {
+  "to": "0x00c26be0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0105",
+   "0x01D8",
+   "0x01D9",
+   "0x01DA",
+   "0x01EC",
+   "0x022A",
+   "0x022B",
+   "0x022C",
+   "0x02EC",
+   "0x02ED",
+   "0x02EE",
+   "0x07F7",
+   "0x07F8",
+   "0x07F9",
+   "0x0856",
+   "0x0857",
+   "0x0858",
+   "0x090F",
+   "0x0914",
+   "0x0915"
+  ],
+  "nop": 20,
+  "name25": "sub_C581F0",
+  "size25": "0x10",
+  "size26": "0x10",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00a4cb30": {
+  "to": "0x00a1a6e0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0106",
+   "0x080E"
+  ],
+  "nop": 2,
+  "name25": "sub_A4CB30",
+  "size25": "0x15C",
+  "size26": "0x16A",
+  "ratio": 0.961,
+  "confiance": "haute"
+ },
+ "0x00cc85f0": {
+  "to": "0x00532a10",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0109"
+  ],
+  "nop": 1,
+  "name25": "sub_CC85F0",
+  "size25": "0x257",
+  "size26": "0x1C5",
+  "ratio": 0.756,
+  "confiance": "moyenne"
+ },
+ "0x00738590": {
+  "to": "0x007a5af0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x010E",
+   "0x010F",
+   "0x0235",
+   "0x0239",
+   "0x029D",
+   "0x029E",
+   "0x0B32"
+  ],
+  "nop": 7,
+  "name25": "sub_738590",
+  "size25": "0x16B",
+  "size26": "0x16B",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d7e730": {
+  "to": "0x00c91650",
+  "kind": "fonction",
+  "opcodes": [
+   "0x010E",
+   "0x010F",
+   "0x0111",
+   "0x0235",
+   "0x0239",
+   "0x029D",
+   "0x029E",
+   "0x0B31",
+   "0x0B32"
+  ],
+  "nop": 9,
+  "name25": "sub_D7E730",
+  "size25": "0x1B9",
+  "size26": "0x200",
+  "ratio": 0.861,
+  "confiance": "haute"
+ },
+ "0x0073a090": {
+  "to": "0x007a6df0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x010F",
+   "0x0111",
+   "0x0147",
+   "0x0162",
+   "0x0235",
+   "0x029D",
+   "0x0B31",
+   "0x0B32"
+  ],
+  "nop": 8,
+  "name25": "Lua_GetSkillIdName",
+  "size25": "0xA9",
+  "size26": "0xA9",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00ce7260": {
+  "to": "0x00552400",
+  "kind": "fonction",
+  "opcodes": [
+   "0x010F",
+   "0x0162",
+   "0x0235",
+   "0x029B",
+   "0x029D",
+   "0x0B32"
+  ],
+  "nop": 6,
+  "name25": "sub_CE7260",
+  "size25": "0x77",
+  "size26": "0x92",
+  "ratio": 0.815,
+  "confiance": "haute"
+ },
+ "0x00cb3f10": {
+  "to": "0x0051f1c0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0110"
+  ],
+  "nop": 1,
+  "name25": "sub_CB3F10",
+  "size25": "0x97F",
+  "size26": "0x9BF",
+  "ratio": 0.974,
+  "confiance": "haute"
+ },
+ "0x0073a1f0": {
+  "to": "0x007a6f50",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0110",
+   "0x07E6"
+  ],
+  "nop": 2,
+  "name25": "Lua_GetSkillName",
+  "size25": "0xC2",
+  "size26": "0xA9",
+  "ratio": 0.871,
+  "confiance": "haute",
+  "manifeste": "kGetSkillNameLua",
+  "comment": "char* GetSkillName(int id) (__cdecl, via Lua)",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x00d096f0": {
+  "to": "0x005758a0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0114"
+  ],
+  "nop": 1,
+  "name25": "sub_D096F0",
+  "size25": "0x1C4",
+  "size26": "0x218",
+  "ratio": 0.843,
+  "confiance": "haute"
+ },
+ "0x00d5bb40": {
+  "to": "0x00c6eb90",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0114",
+   "0x0115",
+   "0x0117",
+   "0x01DE",
+   "0x020E",
+   "0x07DD",
+   "0x09F8",
+   "0x09F9",
+   "0x0AFF",
+   "0x0B0C"
+  ],
+  "nop": 10,
+  "name25": "Job_GetDisplayNameOrResName",
+  "size25": "0xE7",
+  "size26": "0xCE",
+  "ratio": 0.892,
+  "confiance": "haute",
+  "manifeste": "kJobDisplayName, kJobNameAddr, kJobResName",
+  "comment": "__thiscall(ctx, classId, sex)",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x00d098c0": {
+  "to": "0x00575ac0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0115"
+  ],
+  "nop": 1,
+  "name25": "sub_D098C0",
+  "size25": "0x1A4",
+  "size26": "0x1E6",
+  "ratio": 0.864,
+  "confiance": "haute"
+ },
+ "0x0073c520": {
+  "to": "0x0058ad50",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0117",
+   "0x0196",
+   "0x01DE"
+  ],
+  "nop": 3,
+  "name25": "EffectRegistry_GetInstance",
+  "size25": "0x10E",
+  "size26": "0x10E",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d56360": {
+  "to": "0x00c693b0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0119",
+   "0x012B",
+   "0x0229",
+   "0x0B08"
+  ],
+  "nop": 4,
+  "name25": "ItemModel_ClearCartList",
+  "size25": "0x20",
+  "size26": "0x20",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d0d3a0": {
+  "to": "0x00578bd0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x011A",
+   "0x09CB"
+  ],
+  "nop": 2,
+  "name25": "EffectDispatch_PlayEffectOnActorById",
+  "size25": "0xD061",
+  "size26": "0xF189",
+  "ratio": 0.863,
+  "confiance": "haute"
+ },
+ "0x00cd5980": {
+  "to": "0x0053fcf0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x011F"
+  ],
+  "nop": 1,
+  "name25": "sub_CD5980",
+  "size25": "0x18D",
+  "size26": "0x19B",
+  "ratio": 0.966,
+  "confiance": "haute"
+ },
+ "0x00a6c3d0": {
+  "to": "0x00a34540",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0120",
+   "0x0B30"
+  ],
+  "nop": 2,
+  "name25": "sub_A6C3D0",
+  "size25": "0xD2",
+  "size26": "0x172",
+  "ratio": 0.568,
+  "confiance": "A VERIFIER"
+ },
+ "0x00d54cf0": {
+  "to": "0x00c67f30",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0122",
+   "0x0123",
+   "0x0124",
+   "0x01C5",
+   "0x01EF",
+   "0x0297",
+   "0x02D2",
+   "0x02E9",
+   "0x0902",
+   "0x0903",
+   "0x0993",
+   "0x0994",
+   "0x0A0B",
+   "0x0A0F",
+   "0x0B09",
+   "0x0B0A",
+   "0x0B39",
+   "0x0B45"
+  ],
+  "nop": 18,
+  "name25": "Inventory_AddItem_NoStack",
+  "size25": "0x85",
+  "size26": "0x9D",
+  "ratio": 0.847,
+  "confiance": "haute"
+ },
+ "0x00d76590": {
+  "to": "0x00c89a80",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0122",
+   "0x0123",
+   "0x01EF",
+   "0x0297",
+   "0x02D2",
+   "0x02E9",
+   "0x0902",
+   "0x0903",
+   "0x0993",
+   "0x0994",
+   "0x0A0F",
+   "0x0B0B"
+  ],
+  "nop": 12,
+  "name25": "Cart_NotifyWindowRebuild",
+  "size25": "0x1F",
+  "size26": "0x2F",
+  "ratio": 0.66,
+  "confiance": "moyenne"
+ },
+ "0x00d57bb0": {
+  "to": "0x00c6acc0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0125"
+  ],
+  "nop": 1,
+  "name25": "Cart_DecreaseOrRemoveByInvIndex",
+  "size25": "0xAB",
+  "size26": "0xC7",
+  "ratio": 0.859,
+  "confiance": "haute"
+ },
+ "0x0093a670": {
+  "to": "0x00975cd0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x012D",
+   "0x0810"
+  ],
+  "nop": 2,
+  "name25": "UIMerchantShopMakeWnd_CreateActionButton",
+  "size25": "0xDA",
+  "size26": "0xF4",
+  "ratio": 0.893,
+  "confiance": "haute"
+ },
+ "0x00d56340": {
+  "to": "0x00c69390",
+  "kind": "fonction",
+  "opcodes": [
+   "0x012D",
+   "0x0810",
+   "0x0812",
+   "0x0813",
+   "0x0A7E",
+   "0x0A81",
+   "0x0A93"
+  ],
+  "nop": 7,
+  "name25": "VendingShop_Clear",
+  "size25": "0x20",
+  "size26": "0x20",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00ce4bb0": {
+  "to": "0x0054cd00",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0133",
+   "0x0800"
+  ],
+  "nop": 2,
+  "name25": "sub_CE4BB0",
+  "size25": "0x280",
+  "size26": "0x29E",
+  "ratio": 0.955,
+  "confiance": "haute"
+ },
+ "0x00ce4e30": {
+  "to": "0x0054cfa0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0136"
+  ],
+  "nop": 1,
+  "name25": "RecvHandler_MyShopItemList",
+  "size25": "0x290",
+  "size26": "0x2C0",
+  "ratio": 0.932,
+  "confiance": "haute"
+ },
+ "0x00cdf930": {
+  "to": "0x00549910",
+  "kind": "fonction",
+  "opcodes": [
+   "0x013B"
+  ],
+  "nop": 1,
+  "name25": "sub_CDF930",
+  "size25": "0x11A",
+  "size26": "0x12C",
+  "ratio": 0.94,
+  "confiance": "haute"
+ },
+ "0x0065c540": {
+  "to": "0x00552ba0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x013C",
+   "0x01A4",
+   "0x07FA",
+   "0x0BCF",
+   "0x0BD1",
+   "0x0BD3"
+  ],
+  "nop": 6,
+  "name25": "sub_65C540",
+  "size25": "0x72",
+  "size26": "0x72",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00c628e0": {
+  "to": "0x004b9d70",
+  "kind": "fonction",
+  "opcodes": [
+   "0x013C",
+   "0x0196",
+   "0x0AF5"
+  ],
+  "nop": 3,
+  "name25": "sub_C628E0",
+  "size25": "0x1F6",
+  "size26": "0x22A",
+  "ratio": 0.906,
+  "confiance": "haute"
+ },
+ "0x00d1c480": {
+  "to": "0x00589810",
+  "kind": "fonction",
+  "opcodes": [
+   "0x013E",
+   "0x07FB"
+  ],
+  "nop": 2,
+  "name25": "SkillCast_DispatchVisualByType",
+  "size25": "0xA1",
+  "size26": "0xAB",
+  "ratio": 0.942,
+  "confiance": "haute"
+ },
+ "0x00cee6e0": {
+  "to": "0x0055be00",
+  "kind": "fonction",
+  "opcodes": [
+   "0x013E",
+   "0x07FB",
+   "0x0B1A"
+  ],
+  "nop": 3,
+  "name25": "Effect_ApplySkillCastVisual",
+  "size25": "0x382",
+  "size26": "0x30E",
+  "ratio": 0.871,
+  "confiance": "haute"
+ },
+ "0x00ce1120": {
+  "to": "0x0054a570",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0141"
+  ],
+  "nop": 1,
+  "name25": "sub_CE1120",
+  "size25": "0x226",
+  "size26": "0x227",
+  "ratio": 0.998,
+  "confiance": "haute"
+ },
+ "0x007376b0": {
+  "to": "0x007a4bd0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0147"
+  ],
+  "nop": 1,
+  "name25": "sub_7376B0",
+  "size25": "0x57",
+  "size26": "0x57",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00a9a7d0": {
+  "to": "0x00a97ca0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0147",
+   "0x0162",
+   "0x07E6",
+   "0x0A41",
+   "0x0B2D"
+  ],
+  "nop": 5,
+  "name25": "Lua_CallGlobal_va",
+  "size25": "0x377",
+  "size26": "0x377",
+  "ratio": 1.0,
+  "confiance": "haute",
+  "manifeste": "kCallGlobalVaAddr",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x00d55a40": {
+  "to": "0x00c68c40",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0148",
+   "0x0AB2"
+  ],
+  "nop": 2,
+  "name25": "sub_D55A40",
+  "size25": "0x2B",
+  "size26": "0x2B",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d5d650": {
+  "to": "0x00c70590",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0148",
+   "0x0196",
+   "0x02B8",
+   "0x02BB",
+   "0x07FC",
+   "0x0AB2",
+   "0x0B67"
+  ],
+  "nop": 7,
+  "name25": "sub_D5D650",
+  "size25": "0xE5",
+  "size26": "0xE5",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00701df0": {
+  "to": "0x00770f90",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0148"
+  ],
+  "nop": 1,
+  "name25": "sub_701DF0",
+  "size25": "0xA4",
+  "size26": "0xA4",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00ce4390": {
+  "to": "0x0054c5f0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x014C"
+  ],
+  "nop": 1,
+  "name25": "sub_CE4390",
+  "size25": "0x374",
+  "size26": "0x22C",
+  "ratio": 0.629,
+  "confiance": "moyenne"
+ },
+ "0x00a38190": {
+  "to": "0x00a06d60",
+  "kind": "fonction",
+  "opcodes": [
+   "0x014C",
+   "0x0150",
+   "0x0154",
+   "0x0156",
+   "0x0160",
+   "0x0163",
+   "0x0166",
+   "0x016D",
+   "0x0174",
+   "0x0182",
+   "0x0184",
+   "0x0185",
+   "0x01B6",
+   "0x01F2",
+   "0x0A84",
+   "0x0A85",
+   "0x0A86",
+   "0x0A87"
+  ],
+  "nop": 18,
+  "name25": "sub_A38190",
+  "size25": "0xD7",
+  "size26": "0x12F",
+  "ratio": 0.71,
+  "confiance": "moyenne"
+ },
+ "0x0061ddc0": {
+  "to": "0x006bb260",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0150",
+   "0x0152",
+   "0x01B6",
+   "0x0A84",
+   "0x0B47"
+  ],
+  "nop": 5,
+  "name25": "CGuildEmblemMgr_SetEmblemVersion",
+  "size25": "0xF5",
+  "size26": "0xF5",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00ce3440": {
+  "to": "0x0054bcb0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0154"
+  ],
+  "nop": 1,
+  "name25": "GuildNet_OnMemberList_v104",
+  "size25": "0x377",
+  "size26": "0x377",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00a83100": {
+  "to": "0x00a7dc80",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0154",
+   "0x0A86"
+  ],
+  "nop": 2,
+  "name25": "sub_A83100",
+  "size25": "0x28",
+  "size26": "0x28",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x005df6b0": {
+  "to": "0x004e1450",
+  "kind": "fonction",
+  "opcodes": [
+   "0x015A",
+   "0x0A82",
+   "0x0A83"
+  ],
+  "nop": 3,
+  "name25": "sub_5DF6B0",
+  "size25": "0x2F",
+  "size26": "0x2F",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00a83600": {
+  "to": "0x00a7e190",
+  "kind": "fonction",
+  "opcodes": [
+   "0x015A",
+   "0x015E",
+   "0x0A83"
+  ],
+  "nop": 3,
+  "name25": "sub_A83600",
+  "size25": "0x2AD",
+  "size26": "0x2B9",
+  "ratio": 0.983,
+  "confiance": "haute"
+ },
+ "0x00d7f6a0": {
+  "to": "0x00c92680",
+  "kind": "fonction",
+  "opcodes": [
+   "0x015E",
+   "0x0A82",
+   "0x0A83"
+  ],
+  "nop": 3,
+  "name25": "sub_D7F6A0",
+  "size25": "0x7A",
+  "size26": "0x7A",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00513510": {
+  "to": "0x0054ee00",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0160",
+   "0x0166",
+   "0x0174"
+  ],
+  "nop": 3,
+  "name25": "sub_513510",
+  "size25": "0x205",
+  "size26": "0x205",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d7e490": {
+  "to": "0x00c913d0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0162"
+  ],
+  "nop": 1,
+  "name25": "sub_D7E490",
+  "size25": "0x57",
+  "size26": "0x57",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00ce71b0": {
+  "to": "0x00552350",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0163",
+   "0x0A87"
+  ],
+  "nop": 2,
+  "name25": "sub_CE71B0",
+  "size25": "0xA8",
+  "size26": "0xA8",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00ce5450": {
+  "to": "0x0054d600",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0166"
+  ],
+  "nop": 1,
+  "name25": "sub_CE5450",
+  "size25": "0x275",
+  "size26": "0x1BF",
+  "ratio": 0.711,
+  "confiance": "moyenne"
+ },
+ "0x00a83e90": {
+  "to": "0x00a7ea30",
+  "kind": "fonction",
+  "opcodes": [
+   "0x016D"
+  ],
+  "nop": 1,
+  "name25": "sub_A83E90",
+  "size25": "0x5C",
+  "size26": "0x3F",
+  "ratio": 0.685,
+  "confiance": "moyenne"
+ },
+ "0x005e6e50": {
+  "to": "0x0069a5b0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x016D",
+   "0x01F2"
+  ],
+  "nop": 2,
+  "name25": "ChatItemLinkInfoCache_GetOrRequest",
+  "size25": "0x1D6",
+  "size26": "0x116",
+  "ratio": 0.591,
+  "confiance": "A VERIFIER"
+ },
+ "0x00ce23b0": {
+  "to": "0x0054b1e0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x016F"
+  ],
+  "nop": 1,
+  "name25": "GuildNet_OnGuildNotice",
+  "size25": "0x52D",
+  "size26": "0x268",
+  "ratio": 0.465,
+  "confiance": "A VERIFIER"
+ },
+ "0x00cddd80": {
+  "to": "0x00547ed0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x017D"
+  ],
+  "nop": 1,
+  "name25": "Recv_ZC_ACK_ITEMCOMPOSITION_017D",
+  "size25": "0x1C1",
+  "size26": "0x1C2",
+  "ratio": 0.998,
+  "confiance": "haute"
+ },
+ "0x00ce1790": {
+  "to": "0x00553e90",
+  "kind": "fonction",
+  "opcodes": [
+   "0x017F"
+  ],
+  "nop": 1,
+  "name25": "sub_CE1790",
+  "size25": "0x1E4",
+  "size26": "0x9F",
+  "ratio": 0.329,
+  "confiance": "A VERIFIER"
+ },
+ "0x00ce2be0": {
+  "to": "0x0054b7f0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0182"
+  ],
+  "nop": 1,
+  "name25": "sub_CE2BE0",
+  "size25": "0x257",
+  "size26": "0x254",
+  "ratio": 0.995,
+  "confiance": "haute"
+ },
+ "0x005e69f0": {
+  "to": "0x0069a130",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0182",
+   "0x0194"
+  ],
+  "nop": 2,
+  "name25": "ChatItemLinkInfoCache_Set",
+  "size25": "0x21D",
+  "size26": "0x21D",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x009195a0": {
+  "to": "0x00502850",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0182",
+   "0x0A85"
+  ],
+  "nop": 2,
+  "name25": "sub_9195A0",
+  "size25": "0x94",
+  "size26": "0x94",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00a83180": {
+  "to": "0x00a7dd00",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0184"
+  ],
+  "nop": 1,
+  "name25": "sub_A83180",
+  "size25": "0xB7",
+  "size26": "0xB7",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cdece0": {
+  "to": "0x00548cf0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x018F"
+  ],
+  "nop": 1,
+  "name25": "Recv_ZC_ACK_REQMAKINGITEM",
+  "size25": "0x906",
+  "size26": "0x8D8",
+  "ratio": 0.98,
+  "confiance": "haute"
+ },
+ "0x00cb3680": {
+  "to": "0x0051e920",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0195"
+  ],
+  "nop": 1,
+  "name25": "sub_CB3680",
+  "size25": "0x414",
+  "size26": "0x414",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x005a1b00": {
+  "to": "0x00669410",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0195",
+   "0x0ADF"
+  ],
+  "nop": 2,
+  "name25": "CNameDict_SetFullNameInfo",
+  "size25": "0x1FB",
+  "size26": "0x1FB",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00ac1c30": {
+  "to": "0x00597660",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0196",
+   "0x01D0"
+  ],
+  "nop": 2,
+  "name25": "EffectMgr_UnlinkEffectFromActor",
+  "size25": "0x117",
+  "size26": "0x117",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00ccbf90": {
+  "to": "0x005364a0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x019A"
+  ],
+  "nop": 1,
+  "name25": "sub_CCBF90",
+  "size25": "0x302",
+  "size26": "0x32A",
+  "ratio": 0.951,
+  "confiance": "haute"
+ },
+ "0x00d05cd0": {
+  "to": "0x005719e0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x019B"
+  ],
+  "nop": 1,
+  "name25": "sub_D05CD0",
+  "size25": "0x235",
+  "size26": "0x235",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d0cc60": {
+  "to": "0x005784b0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x019E"
+  ],
+  "nop": 1,
+  "name25": "GameMode_OnRecv_ZC_START_CAPTURE",
+  "size25": "0x2B",
+  "size26": "0x2B",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d0d180": {
+  "to": "0x00578a10",
+  "kind": "fonction",
+  "opcodes": [
+   "0x01A0"
+  ],
+  "nop": 1,
+  "name25": "GameMode_OnRecv_ZC_TRYCAPTURE_MONSTER",
+  "size25": "0x4A",
+  "size26": "0x4A",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00888f00": {
+  "to": "0x008c8700",
+  "kind": "fonction",
+  "opcodes": [
+   "0x01A2",
+   "0x01A4"
+  ],
+  "nop": 2,
+  "name25": "UIPetInfoWnd_RefreshIntimacyLabel",
+  "size25": "0x2DC",
+  "size26": "0x2E6",
+  "ratio": 0.987,
+  "confiance": "haute"
+ },
+ "0x00cbede0": {
+  "to": "0x00529330",
+  "kind": "fonction",
+  "opcodes": [
+   "0x01A3",
+   "0x022F"
+  ],
+  "nop": 2,
+  "name25": "sub_CBEDE0",
+  "size25": "0x530",
+  "size26": "0x551",
+  "ratio": 0.976,
+  "confiance": "haute"
+ },
+ "0x00d5a980": {
+  "to": "0x00c6dae0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x01A3",
+   "0x01C8",
+   "0x022F",
+   "0x0824"
+  ],
+  "nop": 4,
+  "name25": "ItemSkillMgr_GetInfoByResId_UNIFIED",
+  "size25": "0xBE",
+  "size26": "0xBE",
+  "ratio": 1.0,
+  "confiance": "haute",
+  "manifeste": "kGetSkillInfo",
+  "comment": "SkillMgr_GetSkillInfo(mgr,out,id,gate) ; out+4!=0 => trouvé",
+  "nouveau_pour_bourgeon": false
+ },
+ "0x005d98a0": {
+  "to": "0x004e2ab0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x01A4",
+   "0x01C8"
+  ],
+  "nop": 2,
+  "name25": "ItemSkillInfo_GetId",
+  "size25": "0x16",
+  "size26": "0x16",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00683cc0": {
+  "to": "0x007005a0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x01A4",
+   "0x0992",
+   "0x0A0D",
+   "0x0A2D",
+   "0x0B03",
+   "0x0B0A",
+   "0x0B37",
+   "0x0B39",
+   "0x0B3C"
+  ],
+  "nop": 9,
+  "name25": "sub_683CC0",
+  "size25": "0x1EA",
+  "size26": "0x212",
+  "ratio": 0.925,
+  "confiance": "haute"
+ },
+ "0x006840e0": {
+  "to": "0x00700a20",
+  "kind": "fonction",
+  "opcodes": [
+   "0x01A4",
+   "0x07FA"
+  ],
+  "nop": 2,
+  "name25": "sub_6840E0",
+  "size25": "0xB9",
+  "size26": "0xE3",
+  "ratio": 0.815,
+  "confiance": "haute"
+ },
+ "0x00684280": {
+  "to": "0x00700c30",
+  "kind": "fonction",
+  "opcodes": [
+   "0x01A4",
+   "0x0BCF",
+   "0x0BD1",
+   "0x0BD3"
+  ],
+  "nop": 4,
+  "name25": "sub_684280",
+  "size25": "0x14F",
+  "size26": "0x15B",
+  "ratio": 0.965,
+  "confiance": "haute"
+ },
+ "0x00d8a830": {
+  "to": "0x00c9d880",
+  "kind": "fonction",
+  "opcodes": [
+   "0x01A4",
+   "0x07FA",
+   "0x09FC"
+  ],
+  "nop": 3,
+  "name25": "Pet_ResetOwnGlobals",
+  "size25": "0x15",
+  "size26": "0x15",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cd2870": {
+  "to": "0x0053c9f0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x01C1"
+  ],
+  "nop": 1,
+  "name25": "sub_CD2870",
+  "size25": "0x539",
+  "size26": "0x53F",
+  "ratio": 0.996,
+  "confiance": "haute"
+ },
+ "0x00cb7510": {
+  "to": "0x005222d0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x01C3"
+  ],
+  "nop": 1,
+  "name25": "sub_CB7510",
+  "size25": "0x52D",
+  "size26": "0x433",
+  "ratio": 0.811,
+  "confiance": "haute"
+ },
+ "0x00c990f0": {
+  "to": "0x00501010",
+  "kind": "fonction",
+  "opcodes": [
+   "0x01C3",
+   "0x027B"
+  ],
+  "nop": 2,
+  "name25": "sub_C990F0",
+  "size25": "0xD4",
+  "size26": "0xD4",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cd4e90": {
+  "to": "0x0053f2c0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x01C9"
+  ],
+  "nop": 1,
+  "name25": "sub_CD4E90",
+  "size25": "0x222",
+  "size26": "0x248",
+  "ratio": 0.935,
+  "confiance": "haute"
+ },
+ "0x00ce73e0": {
+  "to": "0x00552940",
+  "kind": "fonction",
+  "opcodes": [
+   "0x01C9",
+   "0x09CA"
+  ],
+  "nop": 2,
+  "name25": "sub_CE73E0",
+  "size25": "0x5F",
+  "size26": "0x5F",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cbb850": {
+  "to": "0x00526250",
+  "kind": "fonction",
+  "opcodes": [
+   "0x01CF"
+  ],
+  "nop": 1,
+  "name25": "sub_CBB850",
+  "size25": "0x203",
+  "size26": "0x236",
+  "ratio": 0.91,
+  "confiance": "haute"
+ },
+ "0x00a69e70": {
+  "to": "0x00a32960",
+  "kind": "fonction",
+  "opcodes": [
+   "0x01D0",
+   "0x01F3",
+   "0x0B0D",
+   "0x0B73"
+  ],
+  "nop": 4,
+  "name25": "ActorMgr_FindByGidOrSelf",
+  "size25": "0x3A",
+  "size26": "0x3A",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d8e780": {
+  "to": "0x00ca1d00",
+  "kind": "fonction",
+  "opcodes": [
+   "0x01D6",
+   "0x099B"
+  ],
+  "nop": 2,
+  "name25": "OptionState_IsInGroup9",
+  "size25": "0x10",
+  "size26": "0x10",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00ccc730": {
+  "to": "0x00536cc0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x01D8"
+  ],
+  "nop": 1,
+  "name25": "sub_CCC730",
+  "size25": "0x47E",
+  "size26": "0x495",
+  "ratio": 0.98,
+  "confiance": "haute"
+ },
+ "0x00c96670": {
+  "to": "0x004f2980",
+  "kind": "fonction",
+  "opcodes": [
+   "0x01D8",
+   "0x01D9",
+   "0x01DA",
+   "0x022A",
+   "0x022B",
+   "0x022C",
+   "0x02EC",
+   "0x02ED",
+   "0x02EE",
+   "0x07F7",
+   "0x07F8",
+   "0x07F9",
+   "0x0856",
+   "0x0857",
+   "0x0858",
+   "0x090F",
+   "0x0914",
+   "0x0915"
+  ],
+  "nop": 18,
+  "name25": "sub_C96670",
+  "size25": "0x43",
+  "size26": "0x43",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cca8a0": {
+  "to": "0x00534d70",
+  "kind": "fonction",
+  "opcodes": [
+   "0x01D9"
+  ],
+  "nop": 1,
+  "name25": "GameMode_OnRecv_ActorSpawn_WarpIn",
+  "size25": "0x4E0",
+  "size26": "0x4FA",
+  "ratio": 0.98,
+  "confiance": "haute"
+ },
+ "0x00cc8fa0": {
+  "to": "0x00533320",
+  "kind": "fonction",
+  "opcodes": [
+   "0x01DA"
+  ],
+  "nop": 1,
+  "name25": "sub_CC8FA0",
+  "size25": "0x4E3",
+  "size26": "0x504",
+  "ratio": 0.974,
+  "confiance": "haute"
+ },
+ "0x00d0c430": {
+  "to": "0x00577a80",
+  "kind": "fonction",
+  "opcodes": [
+   "0x01E1"
+  ],
+  "nop": 1,
+  "name25": "sub_D0C430",
+  "size25": "0x27A",
+  "size26": "0x299",
+  "ratio": 0.953,
+  "confiance": "haute"
+ },
+ "0x00d0ccc0": {
+  "to": "0x00578510",
+  "kind": "fonction",
+  "opcodes": [
+   "0x01E4"
+  ],
+  "nop": 1,
+  "name25": "sub_D0CCC0",
+  "size25": "0x2B",
+  "size26": "0x2B",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d00900": {
+  "to": "0x0056c370",
+  "kind": "fonction",
+  "opcodes": [
+   "0x01E6"
+  ],
+  "nop": 1,
+  "name25": "sub_D00900",
+  "size25": "0x1D",
+  "size26": "0x1D",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d00880": {
+  "to": "0x0056c2f0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x01EA"
+  ],
+  "nop": 1,
+  "name25": "sub_D00880",
+  "size25": "0x7B",
+  "size26": "0x72",
+  "ratio": 0.927,
+  "confiance": "haute"
+ },
+ "0x00a83e10": {
+  "to": "0x00a7e9d0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x01F2"
+  ],
+  "nop": 1,
+  "name25": "sub_A83E10",
+  "size25": "0x75",
+  "size26": "0x54",
+  "ratio": 0.718,
+  "confiance": "moyenne"
+ },
+ "0x00cb19f0": {
+  "to": "0x0051cc00",
+  "kind": "fonction",
+  "opcodes": [
+   "0x01F5"
+  ],
+  "nop": 1,
+  "name25": "Recv_ZC_ACK_EXCHANGE_ITEM",
+  "size25": "0x1F3",
+  "size26": "0x217",
+  "ratio": 0.933,
+  "confiance": "haute"
+ },
+ "0x00d0cc30": {
+  "to": "0x00578480",
+  "kind": "fonction",
+  "opcodes": [
+   "0x01F8"
+  ],
+  "nop": 1,
+  "name25": "sub_D0CC30",
+  "size25": "0x2B",
+  "size26": "0x2B",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d54940": {
+  "to": "0x00c67c60",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0201",
+   "0x0209"
+  ],
+  "nop": 2,
+  "name25": "sub_D54940",
+  "size25": "0x111",
+  "size26": "0xA0",
+  "ratio": 0.586,
+  "confiance": "A VERIFIER"
+ },
+ "0x00d76570": {
+  "to": "0x00c89a50",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0201",
+   "0x0206",
+   "0x0209",
+   "0x020A"
+  ],
+  "nop": 4,
+  "name25": "sub_D76570",
+  "size25": "0x1F",
+  "size26": "0x2F",
+  "ratio": 0.66,
+  "confiance": "moyenne"
+ },
+ "0x00d76f00": {
+  "to": "0x00c8a360",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0206"
+  ],
+  "nop": 1,
+  "name25": "sub_D76F00",
+  "size25": "0x135",
+  "size26": "0xC7",
+  "ratio": 0.644,
+  "confiance": "moyenne"
+ },
+ "0x00c991d0": {
+  "to": "0x005010f0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x020E",
+   "0x07FD"
+  ],
+  "nop": 2,
+  "name25": "sub_C991D0",
+  "size25": "0xD4",
+  "size26": "0xD4",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cb3ce0": {
+  "to": "0x0051ef90",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0214"
+  ],
+  "nop": 1,
+  "name25": "sub_CB3CE0",
+  "size25": "0x195",
+  "size26": "0x19F",
+  "ratio": 0.976,
+  "confiance": "haute"
+ },
+ "0x00cd3ef0": {
+  "to": "0x0053e290",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0215"
+  ],
+  "nop": 1,
+  "name25": "sub_CD3EF0",
+  "size25": "0x8C",
+  "size26": "0x8E",
+  "ratio": 0.986,
+  "confiance": "haute"
+ },
+ "0x00cdf6c0": {
+  "to": "0x005496a0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0223"
+  ],
+  "nop": 1,
+  "name25": "Recv_ZC_ACK_WEAPONREFINE_0223",
+  "size25": "0x256",
+  "size26": "0x25E",
+  "ratio": 0.987,
+  "confiance": "haute"
+ },
+ "0x00ce9a60": {
+  "to": "0x005569b0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0229",
+   "0x043F",
+   "0x08FF",
+   "0x0983",
+   "0x0984",
+   "0x0A3B"
+  ],
+  "nop": 6,
+  "name25": "sub_CE9A60",
+  "size25": "0x1E4F",
+  "size26": "0x1F3A",
+  "ratio": 0.971,
+  "confiance": "haute"
+ },
+ "0x00cccbb0": {
+  "to": "0x00537160",
+  "kind": "fonction",
+  "opcodes": [
+   "0x022A"
+  ],
+  "nop": 1,
+  "name25": "sub_CCCBB0",
+  "size25": "0x478",
+  "size26": "0x48F",
+  "ratio": 0.98,
+  "confiance": "haute"
+ },
+ "0x00ccad80": {
+  "to": "0x00535270",
+  "kind": "fonction",
+  "opcodes": [
+   "0x022B"
+  ],
+  "nop": 1,
+  "name25": "GameMode_OnRecv_ActorSpawn_WarpIn32",
+  "size25": "0x4E9",
+  "size26": "0x503",
+  "ratio": 0.98,
+  "confiance": "haute"
+ },
+ "0x00cc9490": {
+  "to": "0x00533830",
+  "kind": "fonction",
+  "opcodes": [
+   "0x022C"
+  ],
+  "nop": 1,
+  "name25": "GameMode_OnRecv_ActorSpawn",
+  "size25": "0x502",
+  "size26": "0x523",
+  "ratio": 0.975,
+  "confiance": "haute"
+ },
+ "0x00cd1b50": {
+  "to": "0x0053bcc0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x022E"
+  ],
+  "nop": 1,
+  "name25": "Recv_ZC_PROPERTY_HOMUN_022E",
+  "size25": "0x1CD",
+  "size26": "0x1DF",
+  "ratio": 0.962,
+  "confiance": "haute"
+ },
+ "0x00d70d30": {
+  "to": "0x00c844c0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x022E",
+   "0x0230",
+   "0x07DB",
+   "0x0B2F",
+   "0x0B76",
+   "0x0BA4",
+   "0x0BA5"
+  ],
+  "nop": 7,
+  "name25": "Homun_InvalidateInfoWnd",
+  "size25": "0x2C",
+  "size26": "0x3D",
+  "ratio": 0.721,
+  "confiance": "moyenne"
+ },
+ "0x00cba900": {
+  "to": "0x00525270",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0230"
+  ],
+  "nop": 1,
+  "name25": "Recv_ZC_CHANGESTATE_MER_0230",
+  "size25": "0x1CD",
+  "size26": "0x1F8",
+  "ratio": 0.915,
+  "confiance": "haute"
+ },
+ "0x00a2d240": {
+  "to": "0x009fbf90",
+  "kind": "fonction",
+  "opcodes": [
+   "0x027B",
+   "0x0A24"
+  ],
+  "nop": 2,
+  "name25": "UIWindowMgr_AddWindowToList",
+  "size25": "0x1A",
+  "size26": "0x1A",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d05cb0": {
+  "to": "0x005719c0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0284"
+  ],
+  "nop": 1,
+  "name25": "sub_D05CB0",
+  "size25": "0x1D",
+  "size26": "0x1D",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cf2c30": {
+  "to": "0x00560a00",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0284",
+   "0x0B69"
+  ],
+  "nop": 2,
+  "name25": "EffectApply_EffectByIdWithNumber",
+  "size25": "0x240",
+  "size26": "0x226",
+  "ratio": 0.955,
+  "confiance": "haute"
+ },
+ "0x00cd0560": {
+  "to": "0x0053a7c0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0287"
+  ],
+  "nop": 1,
+  "name25": "sub_CD0560",
+  "size25": "0x1B9",
+  "size26": "0x1E6",
+  "ratio": 0.907,
+  "confiance": "haute"
+ },
+ "0x00cd0720": {
+  "to": "0x0053a9b0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0289"
+  ],
+  "nop": 1,
+  "name25": "sub_CD0720",
+  "size25": "0x286",
+  "size26": "0x2AB",
+  "ratio": 0.946,
+  "confiance": "haute"
+ },
+ "0x00d09e90": {
+  "to": "0x00575d60",
+  "kind": "fonction",
+  "opcodes": [
+   "0x028A"
+  ],
+  "nop": 1,
+  "name25": "sub_D09E90",
+  "size25": "0x1B",
+  "size26": "0x1B",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cb7360": {
+  "to": "0x00522120",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0293"
+  ],
+  "nop": 1,
+  "name25": "sub_CB7360",
+  "size25": "0x194",
+  "size26": "0x1A0",
+  "ratio": 0.971,
+  "confiance": "haute"
+ },
+ "0x00cbc880": {
+  "to": "0x00527180",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0295"
+  ],
+  "nop": 1,
+  "name25": "sub_CBC880",
+  "size25": "0x1F0",
+  "size26": "0x1DB",
+  "ratio": 0.958,
+  "confiance": "haute"
+ },
+ "0x006a2bd0": {
+  "to": "0x0070df00",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0298",
+   "0x0299",
+   "0x08B1",
+   "0x0A98",
+   "0x0B15"
+  ],
+  "nop": 5,
+  "name25": "ResolveItemResNameById",
+  "size25": "0x15",
+  "size26": "0x15",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cc28d0": {
+  "to": "0x0052cb40",
+  "kind": "fonction",
+  "opcodes": [
+   "0x029A"
+  ],
+  "nop": 1,
+  "name25": "Recv_ZC_ITEM_PICKUP_ACK_029A",
+  "size25": "0x558",
+  "size26": "0x59B",
+  "ratio": 0.953,
+  "confiance": "haute"
+ },
+ "0x00d70da0": {
+  "to": "0x00c84550",
+  "kind": "fonction",
+  "opcodes": [
+   "0x029B",
+   "0x02A2"
+  ],
+  "nop": 2,
+  "name25": "sub_D70DA0",
+  "size25": "0x2C",
+  "size26": "0x3D",
+  "ratio": 0.721,
+  "confiance": "moyenne"
+ },
+ "0x00cc6d00": {
+  "to": "0x005311c0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x02A2"
+  ],
+  "nop": 1,
+  "name25": "sub_CC6D00",
+  "size25": "0x137",
+  "size26": "0x137",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00645420": {
+  "to": "0x006c5f20",
+  "kind": "fonction",
+  "opcodes": [
+   "0x02B4",
+   "0x08FE",
+   "0x09FA",
+   "0x0AFE"
+  ],
+  "nop": 4,
+  "name25": "sub_645420",
+  "size25": "0xDE",
+  "size26": "0xDE",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x006471b0": {
+  "to": "0x006c7200",
+  "kind": "fonction",
+  "opcodes": [
+   "0x02B4",
+   "0x02B7",
+   "0x09F8",
+   "0x09F9",
+   "0x0AFF",
+   "0x0B0C"
+  ],
+  "nop": 6,
+  "name25": "QuestMgr_InvalidateTracker",
+  "size25": "0x2F",
+  "size26": "0x58",
+  "ratio": 0.534,
+  "confiance": "A VERIFIER"
+ },
+ "0x00a0bf30": {
+  "to": "0x006c37d0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x02B4",
+   "0x02B7"
+  ],
+  "nop": 2,
+  "name25": "sub_A0BF30",
+  "size25": "0xA10",
+  "size26": "0x4B",
+  "ratio": 0.029,
+  "confiance": "A VERIFIER"
+ },
+ "0x00647300": {
+  "to": "0x006c72e0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x02B7",
+   "0x09F8",
+   "0x09F9",
+   "0x0AFF",
+   "0x0B0C"
+  ],
+  "nop": 5,
+  "name25": "sub_647300",
+  "size25": "0x46",
+  "size26": "0x46",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cc5ce0": {
+  "to": "0x005300b0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x02B8"
+  ],
+  "nop": 1,
+  "name25": "sub_CC5CE0",
+  "size25": "0x1C1",
+  "size26": "0x1C3",
+  "ratio": 0.996,
+  "confiance": "haute"
+ },
+ "0x00cbc420": {
+  "to": "0x00526e90",
+  "kind": "fonction",
+  "opcodes": [
+   "0x02BB"
+  ],
+  "nop": 1,
+  "name25": "sub_CBC420",
+  "size25": "0x345",
+  "size26": "0x2E7",
+  "ratio": 0.888,
+  "confiance": "haute"
+ },
+ "0x00d59b90": {
+  "to": "0x00c6ccf0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x02BB",
+   "0x0A3F"
+  ],
+  "nop": 2,
+  "name25": "Session_GetEquipInfoBySlot",
+  "size25": "0xAF",
+  "size26": "0xAF",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cbca70": {
+  "to": "0x00527360",
+  "kind": "fonction",
+  "opcodes": [
+   "0x02D0"
+  ],
+  "nop": 1,
+  "name25": "sub_CBCA70",
+  "size25": "0x22A",
+  "size26": "0x213",
+  "ratio": 0.958,
+  "confiance": "haute"
+ },
+ "0x00d7f450": {
+  "to": "0x00c923d0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x02D0",
+   "0x0901",
+   "0x0992",
+   "0x0A0D",
+   "0x0B08",
+   "0x0B3C"
+  ],
+  "nop": 6,
+  "name25": "Costume_ClearAllSlots",
+  "size25": "0x2C",
+  "size26": "0x2C",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cc2e40": {
+  "to": "0x0052d0f0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x02D4"
+  ],
+  "nop": 1,
+  "name25": "Recv_ZC_ITEM_PICKUP_ACK_02D4",
+  "size25": "0x5D7",
+  "size26": "0x62B",
+  "ratio": 0.947,
+  "confiance": "haute"
+ },
+ "0x00cbce90": {
+  "to": "0x00527760",
+  "kind": "fonction",
+  "opcodes": [
+   "0x02D7",
+   "0x0859"
+  ],
+  "nop": 2,
+  "name25": "Recv_ZC_EQUIPWIN_MICROSCOPE_02D7_0859",
+  "size25": "0x22E",
+  "size26": "0x22E",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cc99a0": {
+  "to": "0x00533d60",
+  "kind": "fonction",
+  "opcodes": [
+   "0x02EC",
+   "0x07F7",
+   "0x0856"
+  ],
+  "nop": 3,
+  "name25": "GameMode_OnRecv_ActorSpawn_Named",
+  "size25": "0x57D",
+  "size26": "0x5CC",
+  "ratio": 0.947,
+  "confiance": "haute"
+ },
+ "0x00ccb270": {
+  "to": "0x00535780",
+  "kind": "fonction",
+  "opcodes": [
+   "0x02ED"
+  ],
+  "nop": 1,
+  "name25": "sub_CCB270",
+  "size25": "0x4FE",
+  "size26": "0x518",
+  "ratio": 0.98,
+  "confiance": "haute"
+ },
+ "0x00ccd030": {
+  "to": "0x005375f0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x02EE"
+  ],
+  "nop": 1,
+  "name25": "sub_CCD030",
+  "size25": "0x485",
+  "size26": "0x49C",
+  "ratio": 0.981,
+  "confiance": "haute"
+ },
+ "0x008d94f0": {
+  "to": "0x00504a20",
+  "kind": "fonction",
+  "opcodes": [
+   "0x043D",
+   "0x0985"
+  ],
+  "nop": 2,
+  "name25": "sub_8D94F0",
+  "size25": "0x7F",
+  "size26": "0x7F",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00c3c680": {
+  "to": "0x00c09b30",
+  "kind": "fonction",
+  "opcodes": [
+   "0x043D",
+   "0x043E",
+   "0x0985",
+   "0x0A3A"
+  ],
+  "nop": 4,
+  "name25": "sub_C3C680",
+  "size25": "0x5F",
+  "size26": "0x5F",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00c99370": {
+  "to": "0x005022c0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x043D",
+   "0x043E",
+   "0x0985"
+  ],
+  "nop": 3,
+  "name25": "sub_C99370",
+  "size25": "0x16A",
+  "size26": "0x16A",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00ce7710": {
+  "to": "0x00552f90",
+  "kind": "fonction",
+  "opcodes": [
+   "0x043D",
+   "0x0A3A"
+  ],
+  "nop": 2,
+  "name25": "sub_CE7710",
+  "size25": "0xE4",
+  "size26": "0xE4",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cd6cb0": {
+  "to": "0x00540e60",
+  "kind": "fonction",
+  "opcodes": [
+   "0x043E"
+  ],
+  "nop": 1,
+  "name25": "Recv_SkillPostDelayList",
+  "size25": "0x228",
+  "size26": "0x228",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d03930": {
+  "to": "0x0056f300",
+  "kind": "fonction",
+  "opcodes": [
+   "0x043F"
+  ],
+  "nop": 1,
+  "name25": "sub_D03930",
+  "size25": "0x60",
+  "size26": "0x2C",
+  "ratio": 0.458,
+  "confiance": "A VERIFIER"
+ },
+ "0x00d037e0": {
+  "to": "0x0056f170",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0440"
+  ],
+  "nop": 1,
+  "name25": "sub_D037E0",
+  "size25": "0x150",
+  "size26": "0x187",
+  "ratio": 0.859,
+  "confiance": "haute"
+ },
+ "0x00cd3060": {
+  "to": "0x0053d240",
+  "kind": "fonction",
+  "opcodes": [
+   "0x07D8"
+  ],
+  "nop": 1,
+  "name25": "sub_CD3060",
+  "size25": "0x25C",
+  "size26": "0x270",
+  "ratio": 0.968,
+  "confiance": "haute"
+ },
+ "0x00cc7340": {
+  "to": "0x005317f0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x07E2"
+  ],
+  "nop": 1,
+  "name25": "sub_CC7340",
+  "size25": "0x169",
+  "size26": "0x16B",
+  "ratio": 0.994,
+  "confiance": "haute"
+ },
+ "0x00cc8940": {
+  "to": "0x00532cd0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x07F6"
+  ],
+  "nop": 1,
+  "name25": "sub_CC8940",
+  "size25": "0x209",
+  "size26": "0x20B",
+  "ratio": 0.996,
+  "confiance": "haute"
+ },
+ "0x00cca3d0": {
+  "to": "0x00534830",
+  "kind": "fonction",
+  "opcodes": [
+   "0x07F8",
+   "0x0858"
+  ],
+  "nop": 2,
+  "name25": "GameMode_OnRecv_ActorEntryUnified",
+  "size25": "0x4CD",
+  "size26": "0x53D",
+  "ratio": 0.916,
+  "confiance": "haute"
+ },
+ "0x00ccc2a0": {
+  "to": "0x005367d0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x07F9",
+   "0x0857"
+  ],
+  "nop": 2,
+  "name25": "sub_CCC2A0",
+  "size25": "0x486",
+  "size26": "0x4E1",
+  "ratio": 0.927,
+  "confiance": "haute"
+ },
+ "0x00cbb370": {
+  "to": "0x00525d20",
+  "kind": "fonction",
+  "opcodes": [
+   "0x07FA"
+  ],
+  "nop": 1,
+  "name25": "GameMode_OnRecv_ZC_DELETEITEM_FROM_BODY",
+  "size25": "0xEF",
+  "size26": "0x101",
+  "ratio": 0.93,
+  "confiance": "haute"
+ },
+ "0x00cb8830": {
+  "to": "0x00523380",
+  "kind": "fonction",
+  "opcodes": [
+   "0x07FD"
+  ],
+  "nop": 1,
+  "name25": "sub_CB8830",
+  "size25": "0x5ED",
+  "size26": "0x4AA",
+  "ratio": 0.787,
+  "confiance": "moyenne"
+ },
+ "0x00600540": {
+  "to": "0x006ae460",
+  "kind": "fonction",
+  "opcodes": [
+   "0x07FE",
+   "0x0B8C"
+  ],
+  "nop": 2,
+  "name25": "sub_600540",
+  "size25": "0x223",
+  "size26": "0x255",
+  "ratio": 0.916,
+  "confiance": "haute"
+ },
+ "0x00ccfec0": {
+  "to": "0x0053a0f0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0807"
+  ],
+  "nop": 1,
+  "name25": "sub_CCFEC0",
+  "size25": "0x88",
+  "size26": "0x88",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cb4df0": {
+  "to": "0x005200c0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x080F"
+  ],
+  "nop": 1,
+  "name25": "sub_CB4DF0",
+  "size25": "0x1FF",
+  "size26": "0x22F",
+  "ratio": 0.914,
+  "confiance": "haute"
+ },
+ "0x00ccee80": {
+  "to": "0x00539150",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0810"
+  ],
+  "nop": 1,
+  "name25": "sub_CCEE80",
+  "size25": "0xE8",
+  "size26": "0xEE",
+  "ratio": 0.975,
+  "confiance": "haute"
+ },
+ "0x00cbe9d0": {
+  "to": "0x00528ef0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0812"
+  ],
+  "nop": 1,
+  "name25": "sub_CBE9D0",
+  "size25": "0x19E",
+  "size26": "0x1AA",
+  "ratio": 0.972,
+  "confiance": "haute"
+ },
+ "0x00cb8eb0": {
+  "to": "0x00523830",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0814"
+  ],
+  "nop": 1,
+  "name25": "sub_CB8EB0",
+  "size25": "0x78",
+  "size26": "0x88",
+  "ratio": 0.882,
+  "confiance": "haute"
+ },
+ "0x00cbba60": {
+  "to": "0x00526490",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0816"
+  ],
+  "nop": 1,
+  "name25": "sub_CBBA60",
+  "size25": "0x40",
+  "size26": "0x54",
+  "ratio": 0.762,
+  "confiance": "moyenne"
+ },
+ "0x00cb2700": {
+  "to": "0x0051d8e0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0818"
+  ],
+  "nop": 1,
+  "name25": "sub_CB2700",
+  "size25": "0x237",
+  "size26": "0x258",
+  "ratio": 0.945,
+  "confiance": "haute"
+ },
+ "0x00cbeb90": {
+  "to": "0x005290c0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x081A"
+  ],
+  "nop": 1,
+  "name25": "sub_CBEB90",
+  "size25": "0x92",
+  "size26": "0xA5",
+  "ratio": 0.885,
+  "confiance": "haute"
+ },
+ "0x00cdbe10": {
+  "to": "0x00546140",
+  "kind": "fonction",
+  "opcodes": [
+   "0x081B"
+  ],
+  "nop": 1,
+  "name25": "sub_CDBE10",
+  "size25": "0x3B",
+  "size26": "0x3B",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00c9dc60": {
+  "to": "0x00509330",
+  "kind": "fonction",
+  "opcodes": [
+   "0x081B",
+   "0x09E6"
+  ],
+  "nop": 2,
+  "name25": "sub_C9DC60",
+  "size25": "0x1A9",
+  "size26": "0x1E1",
+  "ratio": 0.884,
+  "confiance": "haute"
+ },
+ "0x00cc2370": {
+  "to": "0x0052c5a0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x081C"
+  ],
+  "nop": 1,
+  "name25": "sub_CC2370",
+  "size25": "0x13C",
+  "size26": "0x140",
+  "ratio": 0.988,
+  "confiance": "haute"
+ },
+ "0x00cbbc70": {
+  "to": "0x00526700",
+  "kind": "fonction",
+  "opcodes": [
+   "0x081D"
+  ],
+  "nop": 1,
+  "name25": "sub_CBBC70",
+  "size25": "0x70",
+  "size26": "0x80",
+  "ratio": 0.875,
+  "confiance": "haute"
+ },
+ "0x00cbbce0": {
+  "to": "0x00526780",
+  "kind": "fonction",
+  "opcodes": [
+   "0x081E"
+  ],
+  "nop": 1,
+  "name25": "sub_CBBCE0",
+  "size25": "0x82",
+  "size26": "0x93",
+  "ratio": 0.884,
+  "confiance": "haute"
+ },
+ "0x00cb8720": {
+  "to": "0x00523270",
+  "kind": "fonction",
+  "opcodes": [
+   "0x081F"
+  ],
+  "nop": 1,
+  "name25": "sub_CB8720",
+  "size25": "0x101",
+  "size26": "0x103",
+  "ratio": 0.992,
+  "confiance": "haute"
+ },
+ "0x00cbec30": {
+  "to": "0x00529170",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0824"
+  ],
+  "nop": 1,
+  "name25": "sub_CBEC30",
+  "size25": "0x1AE",
+  "size26": "0x1B9",
+  "ratio": 0.975,
+  "confiance": "haute"
+ },
+ "0x00cd44f0": {
+  "to": "0x0053e8d0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0836"
+  ],
+  "nop": 1,
+  "name25": "sub_CD44F0",
+  "size25": "0x303",
+  "size26": "0x31F",
+  "ratio": 0.965,
+  "confiance": "haute"
+ },
+ "0x00cd4800": {
+  "to": "0x0053ebf0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0837"
+  ],
+  "nop": 1,
+  "name25": "sub_CD4800",
+  "size25": "0x36",
+  "size26": "0x46",
+  "ratio": 0.771,
+  "confiance": "moyenne"
+ },
+ "0x00ccefc0": {
+  "to": "0x005392a0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x083A"
+  ],
+  "nop": 1,
+  "name25": "sub_CCEFC0",
+  "size25": "0x2B",
+  "size26": "0x2B",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00b314f0": {
+  "to": "0x00b0f8d0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x08AE",
+   "0x08E2"
+  ],
+  "nop": 2,
+  "name25": "CNavigation_SearchRoute",
+  "size25": "0x484",
+  "size26": "0x47D",
+  "ratio": 0.994,
+  "confiance": "haute",
+  "manifeste": "kFnSearchRoute, kNaviRoute",
+  "comment": "CNavigation::SearchRoute",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x00cc6390": {
+  "to": "0x005307c0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x08B1"
+  ],
+  "nop": 1,
+  "name25": "sub_CC6390",
+  "size25": "0xE5",
+  "size26": "0xE9",
+  "ratio": 0.983,
+  "confiance": "haute"
+ },
+ "0x00d0bf50": {
+  "to": "0x00577470",
+  "kind": "fonction",
+  "opcodes": [
+   "0x08B3"
+  ],
+  "nop": 1,
+  "name25": "sub_D0BF50",
+  "size25": "0x91",
+  "size26": "0x9F",
+  "ratio": 0.912,
+  "confiance": "haute"
+ },
+ "0x00d0cc90": {
+  "to": "0x005784e0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x08B4"
+  ],
+  "nop": 1,
+  "name25": "sub_D0CC90",
+  "size25": "0x2B",
+  "size26": "0x2B",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d0d1d0": {
+  "to": "0x00578a60",
+  "kind": "fonction",
+  "opcodes": [
+   "0x08B6"
+  ],
+  "nop": 1,
+  "name25": "sub_D0D1D0",
+  "size25": "0x4B",
+  "size26": "0x4D",
+  "ratio": 0.974,
+  "confiance": "haute"
+ },
+ "0x00cd50c0": {
+  "to": "0x0053f510",
+  "kind": "fonction",
+  "opcodes": [
+   "0x08C7"
+  ],
+  "nop": 1,
+  "name25": "sub_CD50C0",
+  "size25": "0x242",
+  "size26": "0x261",
+  "ratio": 0.949,
+  "confiance": "haute"
+ },
+ "0x00cb0e00": {
+  "to": "0x0051c050",
+  "kind": "fonction",
+  "opcodes": [
+   "0x08CA"
+  ],
+  "nop": 1,
+  "name25": "Recv_ZC_ACK_SCHEDULER_CASHITEM",
+  "size25": "0x1FD",
+  "size26": "0x1FB",
+  "ratio": 0.996,
+  "confiance": "haute"
+ },
+ "0x006a6540": {
+  "to": "0x007119d0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x08CA",
+   "0x0B4D"
+  ],
+  "nop": 2,
+  "name25": "sub_6A6540",
+  "size25": "0x30",
+  "size26": "0x30",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d00b40": {
+  "to": "0x0056c620",
+  "kind": "fonction",
+  "opcodes": [
+   "0x08CE"
+  ],
+  "nop": 1,
+  "name25": "sub_D00B40",
+  "size25": "0x26",
+  "size26": "0x28",
+  "ratio": 0.95,
+  "confiance": "haute"
+ },
+ "0x00d806a0": {
+  "to": "0x00c93880",
+  "kind": "fonction",
+  "opcodes": [
+   "0x08CF",
+   "0x08D2",
+   "0x0A41"
+  ],
+  "nop": 3,
+  "name25": "Actor_FindByGid",
+  "size25": "0x21",
+  "size26": "0x21",
+  "ratio": 1.0,
+  "confiance": "haute",
+  "manifeste": "kActorFindByGid",
+  "comment": "__stdcall(gid)",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x00d00b70": {
+  "to": "0x0056c650",
+  "kind": "fonction",
+  "opcodes": [
+   "0x08D2"
+  ],
+  "nop": 1,
+  "name25": "sub_D00B70",
+  "size25": "0x67",
+  "size26": "0x79",
+  "ratio": 0.851,
+  "confiance": "haute"
+ },
+ "0x00d00060": {
+  "to": "0x0056bfd0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x08D6"
+  ],
+  "nop": 1,
+  "name25": "NpcDialog_ClearPrimaryText",
+  "size25": "0x29",
+  "size26": "0x39",
+  "ratio": 0.719,
+  "confiance": "moyenne"
+ },
+ "0x00b3a5d0": {
+  "to": "0x00b18c40",
+  "kind": "fonction",
+  "opcodes": [
+   "0x08D8"
+  ],
+  "nop": 1,
+  "name25": "sub_B3A5D0",
+  "size25": "0x310",
+  "size26": "0x312",
+  "ratio": 0.997,
+  "confiance": "haute"
+ },
+ "0x00b3a920": {
+  "to": "0x00b18f90",
+  "kind": "fonction",
+  "opcodes": [
+   "0x08DB"
+  ],
+  "nop": 1,
+  "name25": "sub_B3A920",
+  "size25": "0x21B",
+  "size26": "0x21D",
+  "ratio": 0.996,
+  "confiance": "haute"
+ },
+ "0x00b3ab70": {
+  "to": "0x00b191f0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x08DC"
+  ],
+  "nop": 1,
+  "name25": "nullsub_25",
+  "size25": "0x3",
+  "size26": "0x3",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00b3b100": {
+  "to": "0x00b19780",
+  "kind": "fonction",
+  "opcodes": [
+   "0x08DE"
+  ],
+  "nop": 1,
+  "name25": "sub_B3B100",
+  "size25": "0x60",
+  "size26": "0x60",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00b3af20": {
+  "to": "0x00b195a0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x08DF"
+  ],
+  "nop": 1,
+  "name25": "sub_B3AF20",
+  "size25": "0x1D5",
+  "size26": "0x1D6",
+  "ratio": 0.998,
+  "confiance": "haute"
+ },
+ "0x00b3b160": {
+  "to": "0x00b197e0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x08E1"
+  ],
+  "nop": 1,
+  "name25": "sub_B3B160",
+  "size25": "0x41",
+  "size26": "0x41",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d058c0": {
+  "to": "0x005715e0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x08E2"
+  ],
+  "nop": 1,
+  "name25": "Handler_ZC_NAVIGATION_ACTIVE",
+  "size25": "0xDE",
+  "size26": "0xDF",
+  "ratio": 0.996,
+  "confiance": "haute"
+ },
+ "0x00641e10": {
+  "to": "0x00504fa0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x08FE",
+   "0x09F8",
+   "0x09F9",
+   "0x09FA",
+   "0x0AFE",
+   "0x0AFF",
+   "0x0B0C"
+  ],
+  "nop": 7,
+  "name25": "sub_641E10",
+  "size25": "0x96",
+  "size26": "0x96",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00649d80": {
+  "to": "0x0054fc70",
+  "kind": "fonction",
+  "opcodes": [
+   "0x08FE",
+   "0x09F9",
+   "0x09FA",
+   "0x0AFE",
+   "0x0B0C"
+  ],
+  "nop": 5,
+  "name25": "sub_649D80",
+  "size25": "0x81",
+  "size26": "0x81",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d00a70": {
+  "to": "0x0056c540",
+  "kind": "fonction",
+  "opcodes": [
+   "0x08FF"
+  ],
+  "nop": 1,
+  "name25": "sub_D00A70",
+  "size25": "0x29",
+  "size26": "0x29",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cc0f30": {
+  "to": "0x0052b1a0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0901"
+  ],
+  "nop": 1,
+  "name25": "sub_CC0F30",
+  "size25": "0x217",
+  "size26": "0x20A",
+  "ratio": 0.976,
+  "confiance": "haute"
+ },
+ "0x00cc6f20": {
+  "to": "0x005313e0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0906"
+  ],
+  "nop": 1,
+  "name25": "Recv_ZC_EQUIPWIN_MICROSCOPE_0906",
+  "size25": "0x228",
+  "size26": "0x225",
+  "ratio": 0.995,
+  "confiance": "haute"
+ },
+ "0x00cc2230": {
+  "to": "0x0052c470",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0908"
+  ],
+  "nop": 1,
+  "name25": "sub_CC2230",
+  "size25": "0xB3",
+  "size26": "0xB0",
+  "ratio": 0.983,
+  "confiance": "haute"
+ },
+ "0x00b3ab60": {
+  "to": "0x00b191e0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x090E"
+  ],
+  "nop": 1,
+  "name25": "sub_B3AB60",
+  "size25": "0xE",
+  "size26": "0xE",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cf4c50": {
+  "to": "0x00562780",
+  "kind": "fonction",
+  "opcodes": [
+   "0x090F"
+  ],
+  "nop": 1,
+  "name25": "sub_CF4C50",
+  "size25": "0x543",
+  "size26": "0x58D",
+  "ratio": 0.948,
+  "confiance": "haute"
+ },
+ "0x00cf3ae0": {
+  "to": "0x00561730",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0914"
+  ],
+  "nop": 1,
+  "name25": "sub_CF3AE0",
+  "size25": "0x52E",
+  "size26": "0x558",
+  "ratio": 0.969,
+  "confiance": "haute"
+ },
+ "0x00cf5e20": {
+  "to": "0x00563860",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0915"
+  ],
+  "nop": 1,
+  "name25": "sub_CF5E20",
+  "size25": "0x54A",
+  "size26": "0x594",
+  "ratio": 0.948,
+  "confiance": "haute"
+ },
+ "0x00d0bf20": {
+  "to": "0x00577440",
+  "kind": "fonction",
+  "opcodes": [
+   "0x096B"
+  ],
+  "nop": 1,
+  "name25": "sub_D0BF20",
+  "size25": "0x24",
+  "size26": "0x24",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cfc8c0": {
+  "to": "0x00569210",
+  "kind": "fonction",
+  "opcodes": [
+   "0x096F"
+  ],
+  "nop": 1,
+  "name25": "sub_CFC8C0",
+  "size25": "0xCA",
+  "size26": "0xD4",
+  "ratio": 0.953,
+  "confiance": "haute"
+ },
+ "0x00cdb5d0": {
+  "to": "0x00545900",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0975"
+  ],
+  "nop": 1,
+  "name25": "sub_CDB5D0",
+  "size25": "0x1F8",
+  "size26": "0x1F5",
+  "ratio": 0.994,
+  "confiance": "haute"
+ },
+ "0x00830ba0": {
+  "to": "0x0086ed60",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0975",
+   "0x0976",
+   "0x0995",
+   "0x0996",
+   "0x09D2",
+   "0x09D3",
+   "0x0A10",
+   "0x0A11"
+  ],
+  "nop": 8,
+  "name25": "sub_830BA0",
+  "size25": "0x372",
+  "size26": "0x37C",
+  "ratio": 0.989,
+  "confiance": "haute"
+ },
+ "0x00cdab50": {
+  "to": "0x00544e80",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0976"
+  ],
+  "nop": 1,
+  "name25": "sub_CDAB50",
+  "size25": "0x218",
+  "size26": "0x215",
+  "ratio": 0.994,
+  "confiance": "haute"
+ },
+ "0x00cf33f0": {
+  "to": "0x00561170",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0977"
+  ],
+  "nop": 1,
+  "name25": "sub_CF33F0",
+  "size25": "0x48",
+  "size26": "0x5A",
+  "ratio": 0.8,
+  "confiance": "moyenne"
+ },
+ "0x00caf9b0": {
+  "to": "0x0051ab60",
+  "kind": "fonction",
+  "opcodes": [
+   "0x097E"
+  ],
+  "nop": 1,
+  "name25": "sub_CAF9B0",
+  "size25": "0x14E",
+  "size26": "0x154",
+  "ratio": 0.982,
+  "confiance": "haute"
+ },
+ "0x00cf8810": {
+  "to": "0x005658d0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0983"
+  ],
+  "nop": 1,
+  "name25": "sub_CF8810",
+  "size25": "0x2D",
+  "size26": "0x2D",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cf8050": {
+  "to": "0x005650b0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0984"
+  ],
+  "nop": 1,
+  "name25": "sub_CF8050",
+  "size25": "0x2A",
+  "size26": "0x2A",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cd6790": {
+  "to": "0x00540940",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0985"
+  ],
+  "nop": 1,
+  "name25": "sub_CD6790",
+  "size25": "0x515",
+  "size26": "0x515",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cf8a00": {
+  "to": "0x005659a0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0988"
+  ],
+  "nop": 1,
+  "name25": "sub_CF8A00",
+  "size25": "0x22",
+  "size26": "0x22",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00a38170": {
+  "to": "0x00a06d30",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0989",
+   "0x098A"
+  ],
+  "nop": 2,
+  "name25": "sub_A38170",
+  "size25": "0x1F",
+  "size26": "0x2F",
+  "ratio": 0.66,
+  "confiance": "moyenne"
+ },
+ "0x00cf7950": {
+  "to": "0x00564c30",
+  "kind": "fonction",
+  "opcodes": [
+   "0x098A"
+  ],
+  "nop": 1,
+  "name25": "sub_CF7950",
+  "size25": "0x6D2",
+  "size26": "0x47D",
+  "ratio": 0.658,
+  "confiance": "moyenne"
+ },
+ "0x00cf8860": {
+  "to": "0x00565910",
+  "kind": "fonction",
+  "opcodes": [
+   "0x098E"
+  ],
+  "nop": 1,
+  "name25": "sub_CF8860",
+  "size25": "0x196",
+  "size26": "0x89",
+  "ratio": 0.337,
+  "confiance": "A VERIFIER"
+ },
+ "0x00cc3b50": {
+  "to": "0x0052de80",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0990"
+  ],
+  "nop": 1,
+  "name25": "Recv_ZC_ITEM_PICKUP_ACK_0990",
+  "size25": "0x6D5",
+  "size26": "0x73B",
+  "ratio": 0.945,
+  "confiance": "haute"
+ },
+ "0x00cc20d0": {
+  "to": "0x0052c320",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0991"
+  ],
+  "nop": 1,
+  "name25": "sub_CC20D0",
+  "size25": "0x157",
+  "size26": "0x14A",
+  "ratio": 0.962,
+  "confiance": "haute"
+ },
+ "0x00cc1150": {
+  "to": "0x0052b3b0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0992"
+  ],
+  "nop": 1,
+  "name25": "GameMode_OnRecv_EquipmentItemList",
+  "size25": "0x48F",
+  "size26": "0x48F",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cb9d90": {
+  "to": "0x00524720",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0993"
+  ],
+  "nop": 1,
+  "name25": "sub_CB9D90",
+  "size25": "0x145",
+  "size26": "0x142",
+  "ratio": 0.991,
+  "confiance": "haute"
+ },
+ "0x00cb96c0": {
+  "to": "0x00524050",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0994"
+  ],
+  "nop": 1,
+  "name25": "sub_CB96C0",
+  "size25": "0x2AA",
+  "size26": "0x2AA",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cdb7d0": {
+  "to": "0x00545b00",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0995"
+  ],
+  "nop": 1,
+  "name25": "sub_CDB7D0",
+  "size25": "0x1F8",
+  "size26": "0x1F5",
+  "ratio": 0.994,
+  "confiance": "haute"
+ },
+ "0x00cdad70": {
+  "to": "0x005450a0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0996"
+  ],
+  "nop": 1,
+  "name25": "sub_CDAD70",
+  "size25": "0x39C",
+  "size26": "0x39C",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cbd0c0": {
+  "to": "0x00527990",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0997"
+  ],
+  "nop": 1,
+  "name25": "Recv_ZC_EQUIPWIN_MICROSCOPE_0997",
+  "size25": "0x245",
+  "size26": "0x245",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cb4a90": {
+  "to": "0x0051fd70",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0999"
+  ],
+  "nop": 1,
+  "name25": "sub_CB4A90",
+  "size25": "0x12F",
+  "size26": "0x133",
+  "ratio": 0.987,
+  "confiance": "haute"
+ },
+ "0x00cb3e80": {
+  "to": "0x0051f130",
+  "kind": "fonction",
+  "opcodes": [
+   "0x099A"
+  ],
+  "nop": 1,
+  "name25": "sub_CB3E80",
+  "size25": "0x83",
+  "size26": "0x85",
+  "ratio": 0.985,
+  "confiance": "haute"
+ },
+ "0x00cd5310": {
+  "to": "0x0053f780",
+  "kind": "fonction",
+  "opcodes": [
+   "0x099F"
+  ],
+  "nop": 1,
+  "name25": "sub_CD5310",
+  "size25": "0x271",
+  "size26": "0x290",
+  "ratio": 0.953,
+  "confiance": "haute"
+ },
+ "0x00cb2b60": {
+  "to": "0x0051ddc0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x09BB"
+  ],
+  "nop": 1,
+  "name25": "sub_CB2B60",
+  "size25": "0x109",
+  "size26": "0x10B",
+  "ratio": 0.993,
+  "confiance": "haute"
+ },
+ "0x00cb1790": {
+  "to": "0x0051c970",
+  "kind": "fonction",
+  "opcodes": [
+   "0x09BF"
+  ],
+  "nop": 1,
+  "name25": "sub_CB1790",
+  "size25": "0xAE",
+  "size26": "0xC0",
+  "ratio": 0.906,
+  "confiance": "haute"
+ },
+ "0x00cc0760": {
+  "to": "0x0052a980",
+  "kind": "fonction",
+  "opcodes": [
+   "0x09D2"
+  ],
+  "nop": 1,
+  "name25": "sub_CC0760",
+  "size25": "0x1F8",
+  "size26": "0x1F5",
+  "ratio": 0.994,
+  "confiance": "haute"
+ },
+ "0x00cc0080": {
+  "to": "0x0052a2a0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x09D3"
+  ],
+  "nop": 1,
+  "name25": "sub_CC0080",
+  "size25": "0x33C",
+  "size26": "0x33C",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d55000": {
+  "to": "0x00c68250",
+  "kind": "fonction",
+  "opcodes": [
+   "0x09D5"
+  ],
+  "nop": 1,
+  "name25": "sub_D55000",
+  "size25": "0xF2",
+  "size26": "0xF2",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cf3490": {
+  "to": "0x00561230",
+  "kind": "fonction",
+  "opcodes": [
+   "0x09DB"
+  ],
+  "nop": 1,
+  "name25": "sub_CF3490",
+  "size25": "0x31F",
+  "size26": "0x272",
+  "ratio": 0.783,
+  "confiance": "moyenne"
+ },
+ "0x00cf4030": {
+  "to": "0x00561cb0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x09DB",
+   "0x09FD"
+  ],
+  "nop": 2,
+  "name25": "sub_CF4030",
+  "size25": "0x5C8",
+  "size26": "0x5C6",
+  "ratio": 0.999,
+  "confiance": "haute"
+ },
+ "0x00cf4620": {
+  "to": "0x005622a0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x09DC"
+  ],
+  "nop": 1,
+  "name25": "sub_CF4620",
+  "size25": "0x310",
+  "size26": "0x263",
+  "ratio": 0.779,
+  "confiance": "moyenne"
+ },
+ "0x00cf51b0": {
+  "to": "0x00562d30",
+  "kind": "fonction",
+  "opcodes": [
+   "0x09DC",
+   "0x09FE"
+  ],
+  "nop": 2,
+  "name25": "sub_CF51B0",
+  "size25": "0x600",
+  "size26": "0x609",
+  "ratio": 0.994,
+  "confiance": "haute"
+ },
+ "0x00cf57d0": {
+  "to": "0x00563360",
+  "kind": "fonction",
+  "opcodes": [
+   "0x09DD"
+  ],
+  "nop": 1,
+  "name25": "sub_CF57D0",
+  "size25": "0x31F",
+  "size26": "0x272",
+  "ratio": 0.783,
+  "confiance": "moyenne"
+ },
+ "0x00cf6390": {
+  "to": "0x00563e10",
+  "kind": "fonction",
+  "opcodes": [
+   "0x09DD",
+   "0x09FF"
+  ],
+  "nop": 2,
+  "name25": "sub_CF6390",
+  "size25": "0x609",
+  "size26": "0x5FF",
+  "ratio": 0.994,
+  "confiance": "haute"
+ },
+ "0x00cafb10": {
+  "to": "0x0051acd0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x09DE"
+  ],
+  "nop": 1,
+  "name25": "sub_CAFB10",
+  "size25": "0x1E4",
+  "size26": "0x172",
+  "ratio": 0.764,
+  "confiance": "moyenne"
+ },
+ "0x00775860": {
+  "to": "0x004f2c50",
+  "kind": "fonction",
+  "opcodes": [
+   "0x09DF",
+   "0x0A82",
+   "0x0A83",
+   "0x0A84",
+   "0x0A85"
+  ],
+  "nop": 5,
+  "name25": "sub_775860",
+  "size25": "0x8D",
+  "size26": "0x8F",
+  "ratio": 0.986,
+  "confiance": "haute"
+ },
+ "0x00c9dc30": {
+  "to": "0x00509300",
+  "kind": "fonction",
+  "opcodes": [
+   "0x09E6"
+  ],
+  "nop": 1,
+  "name25": "sub_C9DC30",
+  "size25": "0x23",
+  "size26": "0x23",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d09a70": {
+  "to": "0x00575cb0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x09E7"
+  ],
+  "nop": 1,
+  "name25": "Recv_ZC_MailWindows_0x0260",
+  "size25": "0x69",
+  "size26": "0x79",
+  "ratio": 0.868,
+  "confiance": "haute"
+ },
+ "0x00cfdcc0": {
+  "to": "0x00569d10",
+  "kind": "fonction",
+  "opcodes": [
+   "0x09ED"
+  ],
+  "nop": 1,
+  "name25": "sub_CFDCC0",
+  "size25": "0x11D",
+  "size26": "0x167",
+  "ratio": 0.794,
+  "confiance": "moyenne"
+ },
+ "0x00517590": {
+  "to": "0x004e1120",
+  "kind": "fonction",
+  "opcodes": [
+   "0x09F0",
+   "0x0B63"
+  ],
+  "nop": 2,
+  "name25": "sub_517590",
+  "size25": "0xCE",
+  "size26": "0xD0",
+  "ratio": 0.99,
+  "confiance": "haute"
+ },
+ "0x007d1a50": {
+  "to": "0x00814b60",
+  "kind": "fonction",
+  "opcodes": [
+   "0x09F0",
+   "0x0A7D"
+  ],
+  "nop": 2,
+  "name25": "sub_7D1A50",
+  "size25": "0xE6",
+  "size26": "0x1A9",
+  "ratio": 0.541,
+  "confiance": "A VERIFIER"
+ },
+ "0x00ce7f80": {
+  "to": "0x00554ce0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x09F0",
+   "0x09F6",
+   "0x0A7D",
+   "0x0AC2",
+   "0x0B99"
+  ],
+  "nop": 5,
+  "name25": "Rodex_MapLowerBound",
+  "size25": "0x57",
+  "size26": "0x57",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x007cc300": {
+  "to": "0x0058acb0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x09F2",
+   "0x09F4",
+   "0x0B63"
+  ],
+  "nop": 3,
+  "name25": "Rodex_MapFindByMailId",
+  "size25": "0x68",
+  "size26": "0x4D",
+  "ratio": 0.74,
+  "confiance": "moyenne"
+ },
+ "0x00cfb6b0": {
+  "to": "0x005683c0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x09F6"
+  ],
+  "nop": 1,
+  "name25": "Recv_ZC_AckDeleteMail_0x09F6",
+  "size25": "0x146",
+  "size26": "0x15E",
+  "ratio": 0.931,
+  "confiance": "haute"
+ },
+ "0x00cfe480": {
+  "to": "0x0056a630",
+  "kind": "fonction",
+  "opcodes": [
+   "0x09F8"
+  ],
+  "nop": 1,
+  "name25": "sub_CFE480",
+  "size25": "0x5BB",
+  "size26": "0x5BB",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cb6570": {
+  "to": "0x005217c0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x09F9"
+  ],
+  "nop": 1,
+  "name25": "sub_CB6570",
+  "size25": "0x2EA",
+  "size26": "0x2ED",
+  "ratio": 0.996,
+  "confiance": "haute"
+ },
+ "0x00cdc310": {
+  "to": "0x00546670",
+  "kind": "fonction",
+  "opcodes": [
+   "0x09FA"
+  ],
+  "nop": 1,
+  "name25": "sub_CDC310",
+  "size25": "0x4B8",
+  "size26": "0x4EA",
+  "ratio": 0.96,
+  "confiance": "haute"
+ },
+ "0x00cd15c0": {
+  "to": "0x0053b720",
+  "kind": "fonction",
+  "opcodes": [
+   "0x09FC"
+  ],
+  "nop": 1,
+  "name25": "GameMode_OnRecv_ZC_PET_EVOLUTION_RESULT",
+  "size25": "0x9B",
+  "size26": "0xA7",
+  "ratio": 0.928,
+  "confiance": "haute"
+ },
+ "0x00cf37b0": {
+  "to": "0x005614b0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x09FD"
+  ],
+  "nop": 1,
+  "name25": "sub_CF37B0",
+  "size25": "0x324",
+  "size26": "0x275",
+  "ratio": 0.782,
+  "confiance": "moyenne"
+ },
+ "0x00cf4930": {
+  "to": "0x00562510",
+  "kind": "fonction",
+  "opcodes": [
+   "0x09FE"
+  ],
+  "nop": 1,
+  "name25": "sub_CF4930",
+  "size25": "0x315",
+  "size26": "0x266",
+  "ratio": 0.778,
+  "confiance": "moyenne"
+ },
+ "0x00cf5af0": {
+  "to": "0x005635e0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x09FF"
+  ],
+  "nop": 1,
+  "name25": "sub_CF5AF0",
+  "size25": "0x324",
+  "size26": "0x275",
+  "ratio": 0.782,
+  "confiance": "moyenne"
+ },
+ "0x00d7eb20": {
+  "to": "0x00c91a80",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A05",
+   "0x0B3F"
+  ],
+  "nop": 2,
+  "name25": "sub_D7EB20",
+  "size25": "0xD7",
+  "size26": "0xE3",
+  "ratio": 0.947,
+  "confiance": "haute"
+ },
+ "0x00cb4ff0": {
+  "to": "0x005202f0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A09"
+  ],
+  "nop": 1,
+  "name25": "sub_CB4FF0",
+  "size25": "0x22F",
+  "size26": "0x24F",
+  "ratio": 0.946,
+  "confiance": "haute"
+ },
+ "0x00cb5b30": {
+  "to": "0x00520e10",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A0A"
+  ],
+  "nop": 1,
+  "name25": "sub_CB5B30",
+  "size25": "0x210",
+  "size26": "0x210",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cb55f0": {
+  "to": "0x005208d0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A0B"
+  ],
+  "nop": 1,
+  "name25": "sub_CB55F0",
+  "size25": "0x20E",
+  "size26": "0x20E",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cc4240": {
+  "to": "0x0052e5d0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A0C"
+  ],
+  "nop": 1,
+  "name25": "Recv_ZC_ITEM_PICKUP_ACK_0A0C",
+  "size25": "0x81F",
+  "size26": "0x87A",
+  "ratio": 0.958,
+  "confiance": "haute"
+ },
+ "0x00cc15e0": {
+  "to": "0x0052b840",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A0D"
+  ],
+  "nop": 1,
+  "name25": "sub_CC15E0",
+  "size25": "0x4BF",
+  "size26": "0x4BF",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cb9970": {
+  "to": "0x00524300",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A0F"
+  ],
+  "nop": 1,
+  "name25": "sub_CB9970",
+  "size25": "0x2DB",
+  "size26": "0x2DB",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cdb110": {
+  "to": "0x00545440",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A10"
+  ],
+  "nop": 1,
+  "name25": "sub_CDB110",
+  "size25": "0x36C",
+  "size26": "0x36C",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cc03c0": {
+  "to": "0x0052a5e0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A11"
+  ],
+  "nop": 1,
+  "name25": "sub_CC03C0",
+  "size25": "0x39C",
+  "size26": "0x39C",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cf33a0": {
+  "to": "0x00561160",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A15"
+  ],
+  "nop": 1,
+  "name25": "sub_CF33A0",
+  "size25": "0x45",
+  "size26": "0x3",
+  "ratio": 0.043,
+  "confiance": "A VERIFIER"
+ },
+ "0x00cf32b0": {
+  "to": "0x00561070",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A17"
+  ],
+  "nop": 1,
+  "name25": "sub_CF32B0",
+  "size25": "0xC5",
+  "size26": "0xCB",
+  "ratio": 0.97,
+  "confiance": "haute"
+ },
+ "0x00cfe3d0": {
+  "to": "0x0056a590",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A23"
+  ],
+  "nop": 1,
+  "name25": "Recv_ZC_ALL_ACH_LIST_0A23",
+  "size25": "0xA4",
+  "size26": "0x91",
+  "ratio": 0.884,
+  "confiance": "haute"
+ },
+ "0x00d7d6c0": {
+  "to": "0x00c90610",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A23",
+   "0x0A26"
+  ],
+  "nop": 2,
+  "name25": "Achievement_GrantRewardTitle",
+  "size25": "0xBF",
+  "size26": "0xD4",
+  "ratio": 0.901,
+  "confiance": "haute"
+ },
+ "0x00d7e1c0": {
+  "to": "0x00c91120",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A23",
+   "0x0A24"
+  ],
+  "nop": 2,
+  "name25": "Achievement_ApplyProgressRecord",
+  "size25": "0x177",
+  "size26": "0x177",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d0b7e0": {
+  "to": "0x00576e80",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A29"
+  ],
+  "nop": 1,
+  "name25": "sub_D0B7E0",
+  "size25": "0x41",
+  "size26": "0x41",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cbd310": {
+  "to": "0x00527be0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A2D"
+  ],
+  "nop": 1,
+  "name25": "Recv_ZC_EQUIPWIN_MICROSCOPE_0A2D",
+  "size25": "0x54B",
+  "size26": "0x54B",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cf3440": {
+  "to": "0x005611d0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A36"
+  ],
+  "nop": 1,
+  "name25": "sub_CF3440",
+  "size25": "0x47",
+  "size26": "0x59",
+  "ratio": 0.798,
+  "confiance": "moyenne"
+ },
+ "0x00cc4a80": {
+  "to": "0x0052ee60",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A37"
+  ],
+  "nop": 1,
+  "name25": "Recv_ZC_ITEM_PICKUP_ACK_0A37",
+  "size25": "0x883",
+  "size26": "0x8EE",
+  "ratio": 0.953,
+  "confiance": "haute"
+ },
+ "0x00caf890": {
+  "to": "0x0051aae0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A38",
+   "0x0AE2"
+  ],
+  "nop": 2,
+  "name25": "UI_OpenByOutUiType",
+  "size25": "0xEA",
+  "size26": "0x78",
+  "ratio": 0.513,
+  "confiance": "A VERIFIER"
+ },
+ "0x00cd5ce0": {
+  "to": "0x0053fe90",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A3A"
+  ],
+  "nop": 1,
+  "name25": "sub_CD5CE0",
+  "size25": "0x3C9",
+  "size26": "0x3C9",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d00aa0": {
+  "to": "0x0056c570",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A3B"
+  ],
+  "nop": 1,
+  "name25": "sub_D00AA0",
+  "size25": "0x53",
+  "size26": "0x53",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cf69d0": {
+  "to": "0x00564440",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A3F"
+  ],
+  "nop": 1,
+  "name25": "Recv_ZC_UPDATE_CARDSLOT_0A3F",
+  "size25": "0xF5",
+  "size26": "0xEC",
+  "ratio": 0.963,
+  "confiance": "haute"
+ },
+ "0x00d76ec0": {
+  "to": "0x00c8a320",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A3F",
+   "0x0B13",
+   "0x0B43"
+  ],
+  "nop": 3,
+  "name25": "Equipment_SetSlotItemInfo",
+  "size25": "0x38",
+  "size26": "0x38",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d1b920": {
+  "to": "0x005892c0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A43"
+  ],
+  "nop": 1,
+  "name25": "sub_D1B920",
+  "size25": "0x3C",
+  "size26": "0x3C",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cf2560": {
+  "to": "0x005603e0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A43",
+   "0x0AE4"
+  ],
+  "nop": 2,
+  "name25": "sub_CF2560",
+  "size25": "0x4E5",
+  "size26": "0x44E",
+  "ratio": 0.879,
+  "confiance": "haute"
+ },
+ "0x00d01820": {
+  "to": "0x0056d280",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A44"
+  ],
+  "nop": 1,
+  "name25": "sub_D01820",
+  "size25": "0x1BB",
+  "size26": "0x1BB",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cfb150": {
+  "to": "0x00567fb0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A47"
+  ],
+  "nop": 1,
+  "name25": "sub_CFB150",
+  "size25": "0xBF",
+  "size26": "0xC4",
+  "ratio": 0.974,
+  "confiance": "haute"
+ },
+ "0x00d0b200": {
+  "to": "0x00576b40",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A4E"
+  ],
+  "nop": 1,
+  "name25": "sub_D0B200",
+  "size25": "0x35",
+  "size26": "0x35",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d00010": {
+  "to": "0x0056bf80",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A51"
+  ],
+  "nop": 1,
+  "name25": "Rodex_ApplyRecipientCheckAck",
+  "size25": "0x44",
+  "size26": "0x46",
+  "ratio": 0.971,
+  "confiance": "haute",
+  "manifeste": "kApplyCheckNameAck",
+  "comment": "__stdcall, retn 0x10",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x00d05810": {
+  "to": "0x00571530",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A6F"
+  ],
+  "nop": 1,
+  "name25": "sub_D05810",
+  "size25": "0xAC",
+  "size26": "0xAE",
+  "ratio": 0.989,
+  "confiance": "haute"
+ },
+ "0x00d0a090": {
+  "to": "0x00575f80",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A7E"
+  ],
+  "nop": 1,
+  "name25": "RecvHandler_OpenVendingWithPlacement",
+  "size25": "0xD1",
+  "size26": "0xDE",
+  "ratio": 0.941,
+  "confiance": "haute"
+ },
+ "0x0095aad0": {
+  "to": "0x00996a00",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A7E",
+   "0x0A93"
+  ],
+  "nop": 2,
+  "name25": "VendingWnd_EnablePlacementMode",
+  "size25": "0x4D",
+  "size26": "0x5D",
+  "ratio": 0.828,
+  "confiance": "haute"
+ },
+ "0x00a830f0": {
+  "to": "0x00a7dc70",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A82",
+   "0x0B27"
+  ],
+  "nop": 2,
+  "name25": "sub_A830F0",
+  "size25": "0xD",
+  "size26": "0xD",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00a83ac0": {
+  "to": "0x00a7e660",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A82",
+   "0x0A83"
+  ],
+  "nop": 2,
+  "name25": "sub_A83AC0",
+  "size25": "0x9D",
+  "size26": "0xB0",
+  "ratio": 0.892,
+  "confiance": "haute"
+ },
+ "0x00cde6f0": {
+  "to": "0x005487a0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A83"
+  ],
+  "nop": 1,
+  "name25": "sub_CDE6F0",
+  "size25": "0x3CA",
+  "size26": "0x31A",
+  "ratio": 0.819,
+  "confiance": "haute"
+ },
+ "0x00ce1c40": {
+  "to": "0x0054af80",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A84"
+  ],
+  "nop": 1,
+  "name25": "GuildNet_OnGuildInfoEx",
+  "size25": "0x2FF",
+  "size26": "0x25F",
+  "ratio": 0.791,
+  "confiance": "moyenne"
+ },
+ "0x00ce31e0": {
+  "to": "0x0054ba50",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A85"
+  ],
+  "nop": 1,
+  "name25": "sub_CE31E0",
+  "size25": "0x25A",
+  "size26": "0x25A",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00ce3de0": {
+  "to": "0x0054c030",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A86"
+  ],
+  "nop": 1,
+  "name25": "GuildNet_OnMemberList_v80",
+  "size25": "0x53F",
+  "size26": "0x53F",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00ce0420": {
+  "to": "0x00549fc0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A87"
+  ],
+  "nop": 1,
+  "name25": "sub_CE0420",
+  "size25": "0x5F4",
+  "size26": "0x4EB",
+  "ratio": 0.826,
+  "confiance": "haute"
+ },
+ "0x00d0cd20": {
+  "to": "0x00578580",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A89"
+  ],
+  "nop": 1,
+  "name25": "sub_D0CD20",
+  "size25": "0x1C3",
+  "size26": "0x1D3",
+  "ratio": 0.966,
+  "confiance": "haute"
+ },
+ "0x00d0ccf0": {
+  "to": "0x00578540",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A8A"
+  ],
+  "nop": 1,
+  "name25": "sub_D0CCF0",
+  "size25": "0x2F",
+  "size26": "0x3B",
+  "ratio": 0.797,
+  "confiance": "moyenne"
+ },
+ "0x00d026b0": {
+  "to": "0x0056e180",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A8D"
+  ],
+  "nop": 1,
+  "name25": "sub_D026B0",
+  "size25": "0x453",
+  "size26": "0x48C",
+  "ratio": 0.951,
+  "confiance": "haute"
+ },
+ "0x00d01f30": {
+  "to": "0x0056d9c0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A91"
+  ],
+  "nop": 1,
+  "name25": "sub_D01F30",
+  "size25": "0x384",
+  "size26": "0x3CC",
+  "ratio": 0.926,
+  "confiance": "haute"
+ },
+ "0x00d09fb0": {
+  "to": "0x00575e90",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A93"
+  ],
+  "nop": 1,
+  "name25": "RecvHandler_OpenBuyingStoreWithPlacement",
+  "size25": "0xDB",
+  "size26": "0xE8",
+  "ratio": 0.944,
+  "confiance": "haute"
+ },
+ "0x00d005a0": {
+  "to": "0x0056c0e0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A95"
+  ],
+  "nop": 1,
+  "name25": "sub_D005A0",
+  "size25": "0x9F",
+  "size26": "0x9E",
+  "ratio": 0.994,
+  "confiance": "haute"
+ },
+ "0x00cfdff0": {
+  "to": "0x0056a0c0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A96"
+  ],
+  "nop": 1,
+  "name25": "sub_CFDFF0",
+  "size25": "0x1B9",
+  "size26": "0x1C7",
+  "ratio": 0.969,
+  "confiance": "haute"
+ },
+ "0x00d1c350": {
+  "to": "0x005896e0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A9B"
+  ],
+  "nop": 1,
+  "name25": "sub_D1C350",
+  "size25": "0x130",
+  "size26": "0x130",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d1b890": {
+  "to": "0x00589220",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0A9D"
+  ],
+  "nop": 1,
+  "name25": "sub_D1B890",
+  "size25": "0x83",
+  "size26": "0x91",
+  "ratio": 0.903,
+  "confiance": "haute"
+ },
+ "0x00d0b370": {
+  "to": "0x00576c00",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0AA2"
+  ],
+  "nop": 1,
+  "name25": "sub_D0B370",
+  "size25": "0x39",
+  "size26": "0x39",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d00640": {
+  "to": "0x0056c180",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0AA8"
+  ],
+  "nop": 1,
+  "name25": "sub_D00640",
+  "size25": "0xAC",
+  "size26": "0xAB",
+  "ratio": 0.994,
+  "confiance": "haute"
+ },
+ "0x00da8790": {
+  "to": "0x00cb9270",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0AA8",
+   "0x0ADC"
+  ],
+  "nop": 2,
+  "name25": "sub_DA8790",
+  "size25": "0x3D",
+  "size26": "0x3F",
+  "ratio": 0.968,
+  "confiance": "haute"
+ },
+ "0x00d1bfb0": {
+  "to": "0x00589320",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0AB2"
+  ],
+  "nop": 1,
+  "name25": "sub_D1BFB0",
+  "size25": "0xA0",
+  "size26": "0xA0",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d0b240": {
+  "to": "0x00576b80",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0AB4"
+  ],
+  "nop": 1,
+  "name25": "sub_D0B240",
+  "size25": "0x44",
+  "size26": "0x54",
+  "ratio": 0.81,
+  "confiance": "haute"
+ },
+ "0x00cfcfb0": {
+  "to": "0x005694f0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0AB7"
+  ],
+  "nop": 1,
+  "name25": "sub_CFCFB0",
+  "size25": "0x51",
+  "size26": "0x51",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d0d0c0": {
+  "to": "0x00578940",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0AB8"
+  ],
+  "nop": 1,
+  "name25": "sub_D0D0C0",
+  "size25": "0x2E",
+  "size26": "0x42",
+  "ratio": 0.697,
+  "confiance": "moyenne"
+ },
+ "0x00cffe50": {
+  "to": "0x0056bdc0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0AB9"
+  ],
+  "nop": 1,
+  "name25": "sub_CFFE50",
+  "size25": "0x1B2",
+  "size26": "0x1BD",
+  "ratio": 0.975,
+  "confiance": "haute"
+ },
+ "0x00d1b570": {
+  "to": "0x00588eb0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0ABE"
+  ],
+  "nop": 1,
+  "name25": "sub_D1B570",
+  "size25": "0xA8",
+  "size26": "0xE5",
+  "ratio": 0.734,
+  "confiance": "moyenne"
+ },
+ "0x00d0bff0": {
+  "to": "0x00577510",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0ABF"
+  ],
+  "nop": 1,
+  "name25": "sub_D0BFF0",
+  "size25": "0x7F",
+  "size26": "0x8F",
+  "ratio": 0.888,
+  "confiance": "haute"
+ },
+ "0x00cfa6e0": {
+  "to": "0x00567690",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0AC2"
+  ],
+  "nop": 1,
+  "name25": "Recv_ZC_MailList_0x0AC2",
+  "size25": "0xA07",
+  "size26": "0x911",
+  "ratio": 0.904,
+  "confiance": "haute"
+ },
+ "0x00cfb8a0": {
+  "to": "0x005685c0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0AC3"
+  ],
+  "nop": 1,
+  "name25": "nullsub_29",
+  "size25": "0x3",
+  "size26": "0x3",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00c9d980": {
+  "to": "0x00509050",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0AC7"
+  ],
+  "nop": 1,
+  "name25": "sub_C9D980",
+  "size25": "0x235",
+  "size26": "0x235",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d1b960": {
+  "to": "0x00589300",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0AC8"
+  ],
+  "nop": 1,
+  "name25": "sub_D1B960",
+  "size25": "0x17",
+  "size26": "0x17",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d03300": {
+  "to": "0x0056ee00",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0ACB"
+  ],
+  "nop": 1,
+  "name25": "sub_D03300",
+  "size25": "0x1E6",
+  "size26": "0x1E8",
+  "ratio": 0.996,
+  "confiance": "haute"
+ },
+ "0x00d05f30": {
+  "to": "0x00571c40",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0ACC"
+  ],
+  "nop": 1,
+  "name25": "sub_D05F30",
+  "size25": "0x22D",
+  "size26": "0x22F",
+  "ratio": 0.996,
+  "confiance": "haute"
+ },
+ "0x00cff370": {
+  "to": "0x0056b3c0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0ADA"
+  ],
+  "nop": 1,
+  "name25": "sub_CFF370",
+  "size25": "0x3CF",
+  "size26": "0x3D1",
+  "ratio": 0.998,
+  "confiance": "haute"
+ },
+ "0x00d01a40": {
+  "to": "0x0056d4b0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0ADD"
+  ],
+  "nop": 1,
+  "name25": "sub_D01A40",
+  "size25": "0x1A4",
+  "size26": "0x1B2",
+  "ratio": 0.968,
+  "confiance": "haute"
+ },
+ "0x00d0b290": {
+  "to": "0x00576be0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0ADE"
+  ],
+  "nop": 1,
+  "name25": "sub_D0B290",
+  "size25": "0x1C",
+  "size26": "0x1C",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cb3aa0": {
+  "to": "0x0051ed40",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0ADF"
+  ],
+  "nop": 1,
+  "name25": "sub_CB3AA0",
+  "size25": "0x23D",
+  "size26": "0x249",
+  "ratio": 0.979,
+  "confiance": "haute"
+ },
+ "0x00cd48a0": {
+  "to": "0x0053ecb0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0AE1"
+  ],
+  "nop": 1,
+  "name25": "sub_CD48A0",
+  "size25": "0x22E",
+  "size26": "0x232",
+  "ratio": 0.993,
+  "confiance": "haute"
+ },
+ "0x00cf7900": {
+  "to": "0x00564be0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0AE4"
+  ],
+  "nop": 1,
+  "name25": "sub_CF7900",
+  "size25": "0x3D",
+  "size26": "0x3D",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cf82c0": {
+  "to": "0x00565320",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0AE5"
+  ],
+  "nop": 1,
+  "name25": "sub_CF82C0",
+  "size25": "0x13D",
+  "size26": "0x13D",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00785e70": {
+  "to": "0x007d6b50",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0AE7"
+  ],
+  "nop": 1,
+  "name25": "sub_785E70",
+  "size25": "0x152",
+  "size26": "0x15E",
+  "ratio": 0.966,
+  "confiance": "haute"
+ },
+ "0x00cfb390": {
+  "to": "0x00568160",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0AF0"
+  ],
+  "nop": 1,
+  "name25": "sub_CFB390",
+  "size25": "0x7E",
+  "size26": "0x90",
+  "ratio": 0.875,
+  "confiance": "haute"
+ },
+ "0x00d0be40": {
+  "to": "0x00577360",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0AF5"
+  ],
+  "nop": 1,
+  "name25": "sub_D0BE40",
+  "size25": "0xDA",
+  "size26": "0xDE",
+  "ratio": 0.982,
+  "confiance": "haute"
+ },
+ "0x00cb3220": {
+  "to": "0x0051e4c0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0AF7"
+  ],
+  "nop": 1,
+  "name25": "sub_CB3220",
+  "size25": "0x31E",
+  "size26": "0x31E",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cff0f0": {
+  "to": "0x0056b1a0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0AFB"
+  ],
+  "nop": 1,
+  "name25": "sub_CFF0F0",
+  "size25": "0x80",
+  "size26": "0x8B",
+  "ratio": 0.921,
+  "confiance": "haute"
+ },
+ "0x00cdbe50": {
+  "to": "0x00546180",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0AFE"
+  ],
+  "nop": 1,
+  "name25": "Net_ZC_HuntingQuestInfo",
+  "size25": "0x4B8",
+  "size26": "0x4EA",
+  "ratio": 0.96,
+  "confiance": "haute"
+ },
+ "0x00cfea40": {
+  "to": "0x0056abf0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0AFF"
+  ],
+  "nop": 1,
+  "name25": "sub_CFEA40",
+  "size25": "0x5AB",
+  "size26": "0x5AB",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cbd860": {
+  "to": "0x00528130",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B03"
+  ],
+  "nop": 1,
+  "name25": "Recv_ZC_EQUIPWIN_MICROSCOPE_0B03",
+  "size25": "0x554",
+  "size26": "0x554",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d0cef0": {
+  "to": "0x00578760",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B05"
+  ],
+  "nop": 1,
+  "name25": "sub_D0CEF0",
+  "size25": "0x1CA",
+  "size26": "0x1DA",
+  "ratio": 0.966,
+  "confiance": "haute"
+ },
+ "0x00cd8b00": {
+  "to": "0x00542d10",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B09"
+  ],
+  "nop": 1,
+  "name25": "GameMode_IngestItemList",
+  "size25": "0x177",
+  "size26": "0x174",
+  "ratio": 0.992,
+  "confiance": "haute"
+ },
+ "0x00cd76c0": {
+  "to": "0x005418d0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B0A"
+  ],
+  "nop": 1,
+  "name25": "sub_CD76C0",
+  "size25": "0x980",
+  "size26": "0x990",
+  "ratio": 0.993,
+  "confiance": "haute"
+ },
+ "0x00cd8c90": {
+  "to": "0x00542ea0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B0B"
+  ],
+  "nop": 1,
+  "name25": "sub_CD8C90",
+  "size25": "0x62",
+  "size26": "0x63",
+  "ratio": 0.99,
+  "confiance": "haute"
+ },
+ "0x00cb6280": {
+  "to": "0x005214d0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B0C"
+  ],
+  "nop": 1,
+  "name25": "sub_CB6280",
+  "size25": "0x2EC",
+  "size26": "0x2EF",
+  "ratio": 0.996,
+  "confiance": "haute"
+ },
+ "0x00d00090": {
+  "to": "0x0056c010",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B0D"
+  ],
+  "nop": 1,
+  "name25": "EffectRemove_EffectByIdFromActor",
+  "size25": "0xAC",
+  "size26": "0xBC",
+  "ratio": 0.915,
+  "confiance": "haute"
+ },
+ "0x00cff7b0": {
+  "to": "0x0056b820",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B13"
+  ],
+  "nop": 1,
+  "name25": "sub_CFF7B0",
+  "size25": "0x289",
+  "size26": "0x293",
+  "ratio": 0.985,
+  "confiance": "haute"
+ },
+ "0x00cfc990": {
+  "to": "0x005692f0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B15"
+  ],
+  "nop": 1,
+  "name25": "sub_CFC990",
+  "size25": "0x150",
+  "size26": "0x16B",
+  "ratio": 0.926,
+  "confiance": "haute"
+ },
+ "0x00cfb800": {
+  "to": "0x00568520",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B17"
+  ],
+  "nop": 1,
+  "name25": "sub_CFB800",
+  "size25": "0x7D",
+  "size26": "0x87",
+  "ratio": 0.926,
+  "confiance": "haute"
+ },
+ "0x00d00b00": {
+  "to": "0x0056c5d0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B18"
+  ],
+  "nop": 1,
+  "name25": "sub_D00B00",
+  "size25": "0x3C",
+  "size26": "0x4C",
+  "ratio": 0.789,
+  "confiance": "moyenne"
+ },
+ "0x00cf9970": {
+  "to": "0x005668a0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B1A"
+  ],
+  "nop": 1,
+  "name25": "SkillCast_ApplyVisualFromPacket",
+  "size25": "0x32",
+  "size26": "0x32",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d019e0": {
+  "to": "0x0056d440",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B27"
+  ],
+  "nop": 1,
+  "name25": "sub_D019E0",
+  "size25": "0x5F",
+  "size26": "0x5E",
+  "ratio": 0.989,
+  "confiance": "haute"
+ },
+ "0x00a82e00": {
+  "to": "0x00a7d980",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B27",
+   "0x0B2B"
+  ],
+  "nop": 2,
+  "name25": "sub_A82E00",
+  "size25": "0x51",
+  "size26": "0x51",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d0b960": {
+  "to": "0x00577000",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B2E"
+  ],
+  "nop": 1,
+  "name25": "sub_D0B960",
+  "size25": "0x46",
+  "size26": "0x49",
+  "ratio": 0.959,
+  "confiance": "haute"
+ },
+ "0x00cd20d0": {
+  "to": "0x0053c270",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B2F"
+  ],
+  "nop": 1,
+  "name25": "Recv_ZC_PROPERTY_HOMUN_0B2F",
+  "size25": "0x1C3",
+  "size26": "0x1D5",
+  "ratio": 0.962,
+  "confiance": "haute"
+ },
+ "0x00d0b3b0": {
+  "to": "0x00576c40",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B30"
+  ],
+  "nop": 1,
+  "name25": "sub_D0B3B0",
+  "size25": "0x6A",
+  "size26": "0x74",
+  "ratio": 0.914,
+  "confiance": "haute"
+ },
+ "0x00cbddc0": {
+  "to": "0x00528690",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B37"
+  ],
+  "nop": 1,
+  "name25": "Recv_ZC_EQUIPWIN_MICROSCOPE_0B37",
+  "size25": "0x564",
+  "size26": "0x564",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cd8050": {
+  "to": "0x00542270",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B39"
+  ],
+  "nop": 1,
+  "name25": "GameMode_OnRecv_UnifiedItemList",
+  "size25": "0xAA0",
+  "size26": "0xA90",
+  "ratio": 0.994,
+  "confiance": "haute"
+ },
+ "0x00cc1aa0": {
+  "to": "0x0052bd00",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B3C"
+  ],
+  "nop": 1,
+  "name25": "sub_CC1AA0",
+  "size25": "0x4DF",
+  "size26": "0x4DF",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cfa1d0": {
+  "to": "0x00567150",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B3F"
+  ],
+  "nop": 1,
+  "name25": "sub_CFA1D0",
+  "size25": "0x29B",
+  "size26": "0x2A2",
+  "ratio": 0.99,
+  "confiance": "haute"
+ },
+ "0x00cfe1b0": {
+  "to": "0x0056a290",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B42"
+  ],
+  "nop": 1,
+  "name25": "Recv_ZC_ADD_EXCHANGE_ITEM",
+  "size25": "0x1C1",
+  "size26": "0x1CF",
+  "ratio": 0.97,
+  "confiance": "haute"
+ },
+ "0x00cffa40": {
+  "to": "0x0056bac0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B43"
+  ],
+  "nop": 1,
+  "name25": "sub_CFFA40",
+  "size25": "0x2EB",
+  "size26": "0x2F5",
+  "ratio": 0.987,
+  "confiance": "haute"
+ },
+ "0x00cb5d40": {
+  "to": "0x00521020",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B44"
+  ],
+  "nop": 1,
+  "name25": "sub_CB5D40",
+  "size25": "0x223",
+  "size26": "0x223",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cb5800": {
+  "to": "0x00520ae0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B45"
+  ],
+  "nop": 1,
+  "name25": "sub_CB5800",
+  "size25": "0x221",
+  "size26": "0x221",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cfa6a0": {
+  "to": "0x00567640",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B47"
+  ],
+  "nop": 1,
+  "name25": "GuildNet_OnUpdateGdIdEmblem",
+  "size25": "0x40",
+  "size26": "0x50",
+  "ratio": 0.8,
+  "confiance": "moyenne"
+ },
+ "0x00cfdf10": {
+  "to": "0x00569fb0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B49"
+  ],
+  "nop": 1,
+  "name25": "sub_CFDF10",
+  "size25": "0xC9",
+  "size26": "0xFD",
+  "ratio": 0.794,
+  "confiance": "moyenne"
+ },
+ "0x00d00920": {
+  "to": "0x0056c390",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B4B"
+  ],
+  "nop": 1,
+  "name25": "sub_D00920",
+  "size25": "0x37",
+  "size26": "0x47",
+  "ratio": 0.775,
+  "confiance": "moyenne"
+ },
+ "0x00d09eb0": {
+  "to": "0x00575d80",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B50"
+  ],
+  "nop": 1,
+  "name25": "sub_D09EB0",
+  "size25": "0x23",
+  "size26": "0x23",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d003a0": {
+  "to": "0x0056c0d0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B52"
+  ],
+  "nop": 1,
+  "name25": "sub_D003A0",
+  "size25": "0x10",
+  "size26": "0x10",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d0bd00": {
+  "to": "0x005772e0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B54"
+  ],
+  "nop": 1,
+  "name25": "sub_D0BD00",
+  "size25": "0x64",
+  "size26": "0x75",
+  "ratio": 0.855,
+  "confiance": "haute"
+ },
+ "0x00cd41a0": {
+  "to": "0x0053e560",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B64"
+  ],
+  "nop": 1,
+  "name25": "sub_CD41A0",
+  "size25": "0x350",
+  "size26": "0x36A",
+  "ratio": 0.97,
+  "confiance": "haute"
+ },
+ "0x00d0b420": {
+  "to": "0x00576cc0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B65"
+  ],
+  "nop": 1,
+  "name25": "sub_D0B420",
+  "size25": "0xAE",
+  "size26": "0xC6",
+  "ratio": 0.879,
+  "confiance": "haute"
+ },
+ "0x00d01bf0": {
+  "to": "0x0056d670",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B67"
+  ],
+  "nop": 1,
+  "name25": "sub_D01BF0",
+  "size25": "0x1CC",
+  "size26": "0x1CE",
+  "ratio": 0.996,
+  "confiance": "haute"
+ },
+ "0x00cf8a30": {
+  "to": "0x005659d0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B69"
+  ],
+  "nop": 1,
+  "name25": "sub_CF8A30",
+  "size25": "0x1B",
+  "size26": "0x1B",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cf7670": {
+  "to": "0x00564990",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B6B"
+  ],
+  "nop": 1,
+  "name25": "sub_CF7670",
+  "size25": "0x9C",
+  "size26": "0xAF",
+  "ratio": 0.891,
+  "confiance": "haute"
+ },
+ "0x00ce9860": {
+  "to": "0x005566f0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B6B",
+   "0x0B6C"
+  ],
+  "nop": 2,
+  "name25": "sub_CE9860",
+  "size25": "0xFE",
+  "size26": "0xFE",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d0bc80": {
+  "to": "0x00577240",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B6E"
+  ],
+  "nop": 1,
+  "name25": "Recv_ZC_SE_CASHSHOP_OPEN",
+  "size25": "0x78",
+  "size26": "0x9F",
+  "ratio": 0.755,
+  "confiance": "moyenne"
+ },
+ "0x00d0c070": {
+  "to": "0x005775a0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B73"
+  ],
+  "nop": 1,
+  "name25": "EffectApply_SpecialJobAura",
+  "size25": "0xF0",
+  "size26": "0x114",
+  "ratio": 0.87,
+  "confiance": "haute"
+ },
+ "0x005e8410": {
+  "to": "0x0069ba40",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B8D",
+   "0x0B8E"
+  ],
+  "nop": 2,
+  "name25": "sub_5E8410",
+  "size25": "0xBA",
+  "size26": "0xBA",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d01dc0": {
+  "to": "0x0056d840",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B92"
+  ],
+  "nop": 1,
+  "name25": "sub_D01DC0",
+  "size25": "0x16D",
+  "size26": "0x17F",
+  "ratio": 0.953,
+  "confiance": "haute"
+ },
+ "0x00cf8290": {
+  "to": "0x005652f0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B95"
+  ],
+  "nop": 1,
+  "name25": "ZC_CONFIG_LIST_0B95_Handler",
+  "size25": "0x2D",
+  "size26": "0x2D",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cf8a60": {
+  "to": "0x00565a00",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B96"
+  ],
+  "nop": 1,
+  "name25": "sub_CF8A60",
+  "size25": "0xAC",
+  "size26": "0xAE",
+  "ratio": 0.989,
+  "confiance": "haute"
+ },
+ "0x0064eda0": {
+  "to": "0x006cab50",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0B9A",
+   "0x0B9F"
+  ],
+  "nop": 2,
+  "name25": "sub_64EDA0",
+  "size25": "0xA6",
+  "size26": "0xA6",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d00960": {
+  "to": "0x0056c3e0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0BA1"
+  ],
+  "nop": 1,
+  "name25": "NpcDialog_SetPrimaryTextAlign",
+  "size25": "0x23",
+  "size26": "0x23",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00d00a50": {
+  "to": "0x0056c500",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0BA2"
+  ],
+  "nop": 1,
+  "name25": "NpcDialog_SetPrimaryWindowSize",
+  "size25": "0x1F",
+  "size26": "0x34",
+  "ratio": 0.596,
+  "confiance": "A VERIFIER"
+ },
+ "0x00d00a30": {
+  "to": "0x0056c4c0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0BA3"
+  ],
+  "nop": 1,
+  "name25": "NpcDialog_SetPrimaryWindowPos",
+  "size25": "0x1F",
+  "size26": "0x34",
+  "ratio": 0.596,
+  "confiance": "A VERIFIER"
+ },
+ "0x00cf7940": {
+  "to": "0x00564c20",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0BAA"
+  ],
+  "nop": 1,
+  "name25": "sub_CF7940",
+  "size25": "0x6",
+  "size26": "0x6",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cf8a50": {
+  "to": "0x005659f0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0BAB"
+  ],
+  "nop": 1,
+  "name25": "nullsub_28",
+  "size25": "0x3",
+  "size26": "0x3",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cfdb40": {
+  "to": "0x00569c70",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0BAE"
+  ],
+  "nop": 1,
+  "name25": "sub_CFDB40",
+  "size25": "0x7A",
+  "size26": "0x98",
+  "ratio": 0.803,
+  "confiance": "haute"
+ },
+ "0x00d00990": {
+  "to": "0x0056c410",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0BB5"
+  ],
+  "nop": 1,
+  "name25": "NpcDialog_SetPrimaryWindowPosPercent",
+  "size25": "0x96",
+  "size26": "0xA4",
+  "ratio": 0.915,
+  "confiance": "haute"
+ },
+ "0x00cf9030": {
+  "to": "0x00565ff0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0BCC"
+  ],
+  "nop": 1,
+  "name25": "sub_CF9030",
+  "size25": "0xA1",
+  "size26": "0xAD",
+  "ratio": 0.931,
+  "confiance": "haute"
+ },
+ "0x00730cf0": {
+  "to": "0x0079f1f0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0BCC",
+   "0x0BCD",
+   "0x0BCF",
+   "0x0BD1",
+   "0x0BD3"
+  ],
+  "nop": 5,
+  "name25": "sub_730CF0",
+  "size25": "0x9E",
+  "size26": "0x73",
+  "ratio": 0.728,
+  "confiance": "moyenne"
+ },
+ "0x00cf90e0": {
+  "to": "0x005660a0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0BCD"
+  ],
+  "nop": 1,
+  "name25": "sub_CF90E0",
+  "size25": "0xAD",
+  "size26": "0xB9",
+  "ratio": 0.935,
+  "confiance": "haute"
+ },
+ "0x00730cb0": {
+  "to": "0x0079f1b0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0BCF",
+   "0x0BD1",
+   "0x0BD3",
+   "0x0BD9"
+  ],
+  "nop": 4,
+  "name25": "sub_730CB0",
+  "size25": "0xD",
+  "size26": "0xD",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cf8ce0": {
+  "to": "0x00565c90",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0BCF",
+   "0x0BD1",
+   "0x0BD3",
+   "0x0BD5",
+   "0x0BD7",
+   "0x0BF2"
+  ],
+  "nop": 6,
+  "name25": "sub_CF8CE0",
+  "size25": "0x30E",
+  "size26": "0x327",
+  "ratio": 0.969,
+  "confiance": "haute"
+ },
+ "0x00730b40": {
+  "to": "0x0079efd0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0BD5",
+   "0x0BD7",
+   "0x0BF2"
+  ],
+  "nop": 3,
+  "name25": "sub_730B40",
+  "size25": "0xEC",
+  "size26": "0x152",
+  "ratio": 0.698,
+  "confiance": "moyenne"
+ },
+ "0x00cf9520": {
+  "to": "0x00566370",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0BD7"
+  ],
+  "nop": 1,
+  "name25": "sub_CF9520",
+  "size25": "0x50",
+  "size26": "0x60",
+  "ratio": 0.833,
+  "confiance": "haute"
+ },
+ "0x00cf8490": {
+  "to": "0x005654f0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0BD9"
+  ],
+  "nop": 1,
+  "name25": "sub_CF8490",
+  "size25": "0x35C",
+  "size26": "0x3AF",
+  "ratio": 0.912,
+  "confiance": "haute"
+ },
+ "0x00cf9650": {
+  "to": "0x005664c0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0BDF"
+  ],
+  "nop": 1,
+  "name25": "sub_CF9650",
+  "size25": "0x48",
+  "size26": "0x48",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00cf95e0": {
+  "to": "0x00566450",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0BE1"
+  ],
+  "nop": 1,
+  "name25": "sub_CF95E0",
+  "size25": "0x69",
+  "size26": "0x6F",
+  "ratio": 0.946,
+  "confiance": "haute"
+ },
+ "0x007301f0": {
+  "to": "0x0079e7d0",
+  "kind": "fonction",
+  "opcodes": [
+   "0x0BF2"
+  ],
+  "nop": 1,
+  "name25": "sub_7301F0",
+  "size25": "0x8",
+  "size26": "0x8",
+  "ratio": 1.0,
+  "confiance": "haute"
+ },
+ "0x00fc1b68": {
+  "to": "0x00e7b8c0",
+  "kind": "globale",
+  "opcodes": [
+   "0x0073",
+   "0x0137",
+   "0x01C1",
+   "0x02EB",
+   "0x081B",
+   "0x09F0",
+   "0x0A7D",
+   "0x0AC2"
+  ],
+  "nop": 8,
+  "name25": "__imp__time32",
+  "confiance": "haute"
+ },
+ "0x015fb3b0": {
+  "to": "0x014b8368",
+  "kind": "globale",
+  "opcodes": [
+   "0x0078",
+   "0x0079",
+   "0x007B",
+   "0x0080",
+   "0x008A",
+   "0x0095",
+   "0x00B0",
+   "0x01A4",
+   "0x01D8",
+   "0x01D9",
+   "0x01DA",
+   "0x022A",
+   "0x022B",
+   "0x022C",
+   "0x02E1",
+   "0x02EC",
+   "0x02ED",
+   "0x02EE",
+   "0x07F7",
+   "0x07F8",
+   "0x07F9",
+   "0x0856",
+   "0x0857",
+   "0x0858",
+   "0x08C8",
+   "0x0ADF"
+  ],
+  "nop": 26,
+  "name25": "g_Own_PetAid",
+  "confiance": "haute",
+  "manifeste": "kAid, kOwnPetAid",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015fb3d8": {
+  "to": "0x014b8390",
+  "kind": "globale",
+  "opcodes": [
+   "0x0078",
+   "0x0079",
+   "0x007B",
+   "0x01A2",
+   "0x01A4",
+   "0x01D8",
+   "0x01D9",
+   "0x01DA",
+   "0x022A",
+   "0x022B",
+   "0x022C",
+   "0x02EC",
+   "0x02ED",
+   "0x02EE",
+   "0x07F7",
+   "0x07F8",
+   "0x07F9",
+   "0x0856",
+   "0x0857",
+   "0x0858",
+   "0x090F",
+   "0x0914",
+   "0x0915"
+  ],
+  "nop": 23,
+  "name25": "g_Own_PetAccessoryItid",
+  "confiance": "haute",
+  "manifeste": "kAccessory",
+  "comment": "ITID ; 0 = aucun",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015ff9b4": {
+  "to": "0x014bc54c",
+  "kind": "globale",
+  "opcodes": [
+   "0x0078",
+   "0x0079",
+   "0x007B",
+   "0x01D8",
+   "0x01D9",
+   "0x01DA",
+   "0x022A",
+   "0x022B",
+   "0x022C",
+   "0x0230",
+   "0x02EC",
+   "0x02ED",
+   "0x02EE",
+   "0x07F7",
+   "0x07F8",
+   "0x07F9",
+   "0x0856",
+   "0x0857",
+   "0x0858",
+   "0x090F",
+   "0x0914",
+   "0x0915"
+  ],
+  "nop": 22,
+  "name25": "g_Homun_Present",
+  "confiance": "haute",
+  "manifeste": "kPresent",
+  "comment": "!= 0 <=> un homoncule est invoqué",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015ffa50": {
+  "to": "0x014bc5e8",
+  "kind": "globale",
+  "opcodes": [
+   "0x0078",
+   "0x0079",
+   "0x007B",
+   "0x01D8",
+   "0x01D9",
+   "0x01DA",
+   "0x022A",
+   "0x022B",
+   "0x022C",
+   "0x029B",
+   "0x02A2",
+   "0x02EC",
+   "0x02ED",
+   "0x02EE",
+   "0x07F7",
+   "0x07F8",
+   "0x07F9",
+   "0x0856",
+   "0x0857",
+   "0x0858",
+   "0x090F",
+   "0x0914",
+   "0x0915"
+  ],
+  "nop": 23,
+  "name25": "dword_15FFA50",
+  "confiance": "haute"
+ },
+ "0x00fd3860": {
+  "to": "0x00ecbeb0",
+  "kind": "globale",
+  "opcodes": [
+   "0x007F",
+   "0x01A2",
+   "0x01CF",
+   "0x0BB5"
+  ],
+  "nop": 4,
+  "name25": "qword_FD3860",
+  "confiance": "haute"
+ },
+ "0x00fd6cd4": {
+  "to": "0x00ecbea8",
+  "kind": "globale",
+  "opcodes": [
+   "0x007F"
+  ],
+  "nop": 1,
+  "name25": "dword_FD6CD4",
+  "confiance": "moyenne"
+ },
+ "0x0131f7b0": {
+  "to": "0x011f1ba0",
+  "kind": "globale",
+  "opcodes": [
+   "0x0080",
+   "0x00B0",
+   "0x0106",
+   "0x0148",
+   "0x0206",
+   "0x020A",
+   "0x080E"
+  ],
+  "nop": 7,
+  "name25": "dword_131F7B0",
+  "confiance": "haute"
+ },
+ "0x015fb3dc": {
+  "to": "0x014b8394",
+  "kind": "globale",
+  "opcodes": [
+   "0x0080",
+   "0x008A",
+   "0x00B0",
+   "0x01A2",
+   "0x01A3",
+   "0x01A4",
+   "0x022F",
+   "0x02E1",
+   "0x07FA",
+   "0x08C8"
+  ],
+  "nop": 10,
+  "name25": "g_Own_PetClass",
+  "confiance": "haute",
+  "manifeste": "kClass",
+  "comment": "= id de mob",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015fb3e4": {
+  "to": "0x014b839c",
+  "kind": "globale",
+  "opcodes": [
+   "0x0080",
+   "0x008A",
+   "0x00B0",
+   "0x01A2",
+   "0x01A4",
+   "0x02E1",
+   "0x08C8"
+  ],
+  "nop": 7,
+  "name25": "g_Own_PetHungry",
+  "confiance": "haute",
+  "manifeste": "kHunger",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015fb3ec": {
+  "to": "0x014b83a4",
+  "kind": "globale",
+  "opcodes": [
+   "0x0080",
+   "0x008A",
+   "0x00B0",
+   "0x01A2",
+   "0x01A3",
+   "0x01A4",
+   "0x022F",
+   "0x02E1",
+   "0x08C8"
+  ],
+  "nop": 9,
+  "name25": "g_Own_PetIntimacy",
+  "confiance": "haute",
+  "manifeste": "kIntimacy",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015fff60": {
+  "to": "0x014bc8d4",
+  "kind": "globale",
+  "opcodes": [
+   "0x0080",
+   "0x081E"
+  ],
+  "nop": 2,
+  "name25": "dword_15FFF60",
+  "confiance": "moyenne"
+ },
+ "0x015e81b3": {
+  "to": "0x011117d3",
+  "kind": "globale",
+  "opcodes": [
+   "0x008A",
+   "0x01A2",
+   "0x08C8",
+   "0x0A89",
+   "0x0B05",
+   "0x0B76"
+  ],
+  "nop": 6,
+  "name25": "unk_15E81B3",
+  "confiance": "haute"
+ },
+ "0x0131f764": {
+  "to": "0x011f1b54",
+  "kind": "globale",
+  "opcodes": [
+   "0x008D",
+   "0x008E",
+   "0x00D8",
+   "0x012D",
+   "0x07DD",
+   "0x0810",
+   "0x0A7E",
+   "0x0A93"
+  ],
+  "nop": 8,
+  "name25": "g_UIChatRoomWnd_Slot",
+  "confiance": "haute",
+  "manifeste": "kNoPathFlag",
+  "comment": "!= 0 -> le natif passe en msg 0x10",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015ff8f4": {
+  "to": "0x014bc490",
+  "kind": "globale",
+  "opcodes": [
+   "0x008D",
+   "0x008E",
+   "0x0109",
+   "0x017F",
+   "0x02C1",
+   "0x02DC",
+   "0x07DD",
+   "0x09DF"
+  ],
+  "nop": 8,
+  "name25": "g_ChatAutoSaveOn",
+  "confiance": "haute"
+ },
+ "0x0136e56c": {
+  "to": "0x01240d74",
+  "kind": "globale",
+  "opcodes": [
+   "0x0091",
+   "0x02EB"
+  ],
+  "nop": 2,
+  "name25": "dword_136E56C",
+  "confiance": "moyenne"
+ },
+ "0x0131f874": {
+  "to": "0x011f1c64",
+  "kind": "globale",
+  "opcodes": [
+   "0x0095",
+   "0x01A2",
+   "0x01A4",
+   "0x0ADF"
+  ],
+  "nop": 4,
+  "name25": "g_PetInfoWnd_ptr",
+  "confiance": "haute"
+ },
+ "0x0131f6b0": {
+  "to": "0x011f1aa4",
+  "kind": "globale",
+  "opcodes": [
+   "0x009A",
+   "0x01C3"
+  ],
+  "nop": 2,
+  "name25": "g_pNewChatWnd",
+  "confiance": "moyenne",
+  "manifeste": "kNewChatWndPtr",
+  "comment": "g_pNewChatWnd",
+  "nouveau_pour_bourgeon": false
+ },
+ "0x015e81a9": {
+  "to": "0x011117c9",
+  "kind": "globale",
+  "opcodes": [
+   "0x009D",
+   "0x009E",
+   "0x084B",
+   "0x0A89",
+   "0x0A91",
+   "0x0B05"
+  ],
+  "nop": 6,
+  "name25": "unk_15E81A9",
+  "confiance": "haute"
+ },
+ "0x012550e0": {
+  "to": "0x011116f4",
+  "kind": "globale",
+  "opcodes": [
+   "0x00A4",
+   "0x00AA",
+   "0x00AC",
+   "0x00B0",
+   "0x010F",
+   "0x013C",
+   "0x0141",
+   "0x0235",
+   "0x029D",
+   "0x07E1",
+   "0x08D0",
+   "0x08D1",
+   "0x0992",
+   "0x0A0D",
+   "0x0A2D",
+   "0x0B03",
+   "0x0B0A",
+   "0x0B32",
+   "0x0B33",
+   "0x0B37",
+   "0x0B39",
+   "0x0B3C",
+   "0x0BBB"
+  ],
+  "nop": 23,
+  "name25": "g_EquipPreviewMgr",
+  "confiance": "haute"
+ },
+ "0x015fb3f0": {
+  "to": "0x014b83a8",
+  "kind": "globale",
+  "opcodes": [
+   "0x00A4",
+   "0x01A4",
+   "0x0295",
+   "0x02D0",
+   "0x07FA",
+   "0x0901",
+   "0x0992",
+   "0x0A0D",
+   "0x0A2D",
+   "0x0B03",
+   "0x0B0A",
+   "0x0B37",
+   "0x0B39",
+   "0x0B3C"
+  ],
+  "nop": 14,
+  "name25": "g_Own_PetEggInvIndex",
+  "confiance": "haute",
+  "manifeste": "kEggInvIndex",
+  "comment": "-1 = aucun",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x0131f714": {
+  "to": "0x011f1b04",
+  "kind": "globale",
+  "opcodes": [
+   "0x00AA",
+   "0x00AC",
+   "0x08D0",
+   "0x08D1"
+  ],
+  "nop": 4,
+  "name25": "dword_131F714",
+  "confiance": "haute"
+ },
+ "0x00fc1b30": {
+  "to": "0x00e7b884",
+  "kind": "globale",
+  "opcodes": [
+   "0x00AF",
+   "0x010A",
+   "0x02D3"
+  ],
+  "nop": 3,
+  "name25": "__imp_strnlen",
+  "confiance": "haute"
+ },
+ "0x0131f6ac": {
+  "to": "0x011f1aa0",
+  "kind": "globale",
+  "opcodes": [
+   "0x00B0",
+   "0x00BC",
+   "0x00BD",
+   "0x00BE",
+   "0x0B25"
+  ],
+  "nop": 5,
+  "name25": "dword_131F6AC",
+  "confiance": "haute"
+ },
+ "0x0131f6c4": {
+  "to": "0x011f1ab4",
+  "kind": "globale",
+  "opcodes": [
+   "0x00B0",
+   "0x00B1",
+   "0x0ACB"
+  ],
+  "nop": 3,
+  "name25": "g_UIBasicInfoWnd",
+  "confiance": "haute",
+  "manifeste": "kBasicInfoPtr",
+  "comment": "0x0131f4e8 + 0x1dc",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015fb9f4": {
+  "to": "0x014b89ac",
+  "kind": "globale",
+  "opcodes": [
+   "0x00B0",
+   "0x00BD"
+  ],
+  "nop": 2,
+  "name25": "g_Own_StatusPoint",
+  "confiance": "moyenne",
+  "manifeste": "kStatusPoint, kStatusPt",
+  "comment": "g_Own_StatusPoints",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015fb9f8": {
+  "to": "0x014b89b0",
+  "kind": "globale",
+  "opcodes": [
+   "0x00B0",
+   "0x00BC"
+  ],
+  "nop": 2,
+  "name25": "g_Own_JobLevel",
+  "confiance": "moyenne",
+  "manifeste": "kBaseLvl, kJobLevel, kJobLevelAddr, kOwnJobLevel",
+  "comment": "DAT_015fb9f8 (UIBasicInfoWnd \"Job Lv.\")",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x01602324": {
+  "to": "0x014be9c4",
+  "kind": "globale",
+  "opcodes": [
+   "0x00B0",
+   "0x0ADE"
+  ],
+  "nop": 2,
+  "name25": "dword_1602324",
+  "confiance": "moyenne",
+  "manifeste": "kOverweightPct",
+  "comment": "red-tint % threshold",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x0159c07c": {
+  "to": "0x0146e780",
+  "kind": "globale",
+  "opcodes": [
+   "0x00B3",
+   "0x0988",
+   "0x0989",
+   "0x098A"
+  ],
+  "nop": 4,
+  "name25": "dword_159C07C",
+  "confiance": "haute",
+  "manifeste": "kClanStatePtr",
+  "comment": "*(byte*)(*ptr + 0x5C) = clan",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x0131f6d8": {
+  "to": "0x011f1ac8",
+  "kind": "globale",
+  "opcodes": [
+   "0x00B6",
+   "0x00B7",
+   "0x0C08"
+  ],
+  "nop": 3,
+  "name25": "g_UISayDialogWnd_primary_0x10",
+  "confiance": "haute"
+ },
+ "0x0131f6dc": {
+  "to": "0x011f1acc",
+  "kind": "globale",
+  "opcodes": [
+   "0x00B6",
+   "0x0C08"
+  ],
+  "nop": 2,
+  "name25": "g_UISayDialogWnd_secondary_0xe2",
+  "confiance": "moyenne"
+ },
+ "0x015ff5b0": {
+  "to": "0x014bc0b4",
+  "kind": "globale",
+  "opcodes": [
+   "0x00EA"
+  ],
+  "nop": 1,
+  "name25": "dword_15FF5B0",
+  "confiance": "moyenne"
+ },
+ "0x015ff804": {
+  "to": "0x014bc3a0",
+  "kind": "globale",
+  "opcodes": [
+   "0x00FB",
+   "0x0104",
+   "0x0105",
+   "0x07FC",
+   "0x0AFA"
+  ],
+  "nop": 5,
+  "name25": "g_Own_InParty",
+  "confiance": "haute",
+  "manifeste": "kInPartyFlag",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015e8198": {
+  "to": "0x011117b8",
+  "kind": "globale",
+  "opcodes": [
+   "0x010F",
+   "0x0235",
+   "0x029D",
+   "0x0B32"
+  ],
+  "nop": 4,
+  "name25": "_Dst_015e8198",
+  "confiance": "haute"
+ },
+ "0x015ff808": {
+  "to": "0x014bc3a4",
+  "kind": "globale",
+  "opcodes": [
+   "0x0111",
+   "0x0B31"
+  ],
+  "nop": 2,
+  "name25": "dword_15FF808",
+  "confiance": "moyenne"
+ },
+ "0x00fc1760": {
+  "to": "0x00e7b514",
+  "kind": "globale",
+  "opcodes": [
+   "0x0120"
+  ],
+  "nop": 1,
+  "name25": "__imp_memmove",
+  "confiance": "moyenne"
+ },
+ "0x0131f75c": {
+  "to": "0x011f1b4c",
+  "kind": "globale",
+  "opcodes": [
+   "0x012D",
+   "0x0810",
+   "0x0A7E",
+   "0x0A93"
+  ],
+  "nop": 4,
+  "name25": "dword_131F75C",
+  "confiance": "haute"
+ },
+ "0x015fb2e4": {
+  "to": "0x014b82a4",
+  "kind": "globale",
+  "opcodes": [
+   "0x012D",
+   "0x0A7E"
+  ],
+  "nop": 2,
+  "name25": "g_VendingMaxSlots",
+  "confiance": "moyenne"
+ },
+ "0x015fb2ec": {
+  "to": "0x014b82ac",
+  "kind": "globale",
+  "opcodes": [
+   "0x0139",
+   "0x013A"
+  ],
+  "nop": 2,
+  "name25": "dword_15FB2EC",
+  "confiance": "moyenne"
+ },
+ "0x0136e6d0": {
+  "to": "0x01240e80",
+  "kind": "globale",
+  "opcodes": [
+   "0x013C",
+   "0x0196",
+   "0x0AF5"
+  ],
+  "nop": 3,
+  "name25": "dword_136E6D0",
+  "confiance": "haute"
+ },
+ "0x015fba8c": {
+  "to": "0x014b8a44",
+  "kind": "globale",
+  "opcodes": [
+   "0x013C",
+   "0x07E3"
+  ],
+  "nop": 2,
+  "name25": "g_AmmoEquippedInvIndex",
+  "confiance": "moyenne",
+  "manifeste": "kAmmoInvIndex",
+  "comment": "g_AmmoEquippedInvIndex (0 = aucune)",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015e81ab": {
+  "to": "0x011117cb",
+  "kind": "globale",
+  "opcodes": [
+   "0x0144",
+   "0x014B",
+   "0x084B"
+  ],
+  "nop": 3,
+  "name25": "unk_15E81AB",
+  "confiance": "haute"
+ },
+ "0x015ffd78": {
+  "to": "0x014bc6ec",
+  "kind": "globale",
+  "opcodes": [
+   "0x0147",
+   "0x0162",
+   "0x07E6",
+   "0x0A41",
+   "0x0B2D"
+  ],
+  "nop": 5,
+  "name25": "g_pLuaStateMgr",
+  "confiance": "haute",
+  "manifeste": "kStateHolderAddr",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x0159c22c": {
+  "to": "0x0146e934",
+  "kind": "globale",
+  "opcodes": [
+   "0x014E"
+  ],
+  "nop": 1,
+  "name25": "g_GuildWnd_TabPrivilegeMask",
+  "confiance": "moyenne"
+ },
+ "0x01254d70": {
+  "to": "0x01127350",
+  "kind": "globale",
+  "opcodes": [
+   "0x0150",
+   "0x0152",
+   "0x01B6",
+   "0x0A84",
+   "0x0B36",
+   "0x0B47"
+  ],
+  "nop": 6,
+  "name25": "g_CGuildMgr",
+  "confiance": "haute",
+  "manifeste": "kCGuildMgrPtr",
+  "comment": "*ptr = g_CGuildMgr (CGuildEmblemMgr)",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x0159c1ec": {
+  "to": "0x0146e8f4",
+  "kind": "globale",
+  "opcodes": [
+   "0x0150",
+   "0x0154",
+   "0x01B6",
+   "0x0A86"
+  ],
+  "nop": 4,
+  "name25": "g_GuildInfo_MemberCount",
+  "confiance": "haute"
+ },
+ "0x0159c230": {
+  "to": "0x0146e938",
+  "kind": "globale",
+  "opcodes": [
+   "0x0150",
+   "0x0152",
+   "0x016C",
+   "0x01B6",
+   "0x0A82",
+   "0x0A84"
+  ],
+  "nop": 6,
+  "name25": "g_Own_GuildId",
+  "confiance": "haute",
+  "manifeste": "kGuildIdAddr, kOwnGuildId",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x0159c23c": {
+  "to": "0x0146e944",
+  "kind": "globale",
+  "opcodes": [
+   "0x0150",
+   "0x016C",
+   "0x01B6",
+   "0x0A84"
+  ],
+  "nop": 4,
+  "name25": "g_GuildInfo_IsMaster",
+  "confiance": "haute",
+  "manifeste": "kGuildIsMaster",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x0131f808": {
+  "to": "0x011f1bf8",
+  "kind": "globale",
+  "opcodes": [
+   "0x0152",
+   "0x0B2B",
+   "0x0B2D"
+  ],
+  "nop": 3,
+  "name25": "dword_131F808",
+  "confiance": "haute"
+ },
+ "0x015fb9a8": {
+  "to": "0x014b8960",
+  "kind": "globale",
+  "opcodes": [
+   "0x0156",
+   "0x0A82",
+   "0x0A83",
+   "0x0A86"
+  ],
+  "nop": 4,
+  "name25": "g_Own_CharId",
+  "confiance": "haute",
+  "manifeste": "kOwnCharId, kOwnCharIdAddr, kOwnCid",
+  "comment": "g_Own_CharId (cf. project_own_session_globals)",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x0159c24c": {
+  "to": "0x0146e954",
+  "kind": "globale",
+  "opcodes": [
+   "0x0174"
+  ],
+  "nop": 1,
+  "name25": "dword_159C24C",
+  "confiance": "moyenne"
+ },
+ "0x0159c244": {
+  "to": "0x0146e94c",
+  "kind": "globale",
+  "opcodes": [
+   "0x0184",
+   "0x0185"
+  ],
+  "nop": 2,
+  "name25": "dword_159C244",
+  "confiance": "moyenne"
+ },
+ "0x015fab48": {
+  "to": "0x014b7b10",
+  "kind": "globale",
+  "opcodes": [
+   "0x019A"
+  ],
+  "nop": 1,
+  "name25": "dword_15FAB48",
+  "confiance": "moyenne"
+ },
+ "0x015ff7fc": {
+  "to": "0x014bc398",
+  "kind": "globale",
+  "opcodes": [
+   "0x019A",
+   "0x099B"
+  ],
+  "nop": 2,
+  "name25": "dword_15FF7FC",
+  "confiance": "moyenne"
+ },
+ "0x015fb304": {
+  "to": "0x014b82c4",
+  "kind": "globale",
+  "opcodes": [
+   "0x019B"
+  ],
+  "nop": 1,
+  "name25": "dword_15FB304",
+  "confiance": "moyenne"
+ },
+ "0x0131f87c": {
+  "to": "0x011f1c6c",
+  "kind": "globale",
+  "opcodes": [
+   "0x01A0"
+  ],
+  "nop": 1,
+  "name25": "dword_131F87C",
+  "confiance": "moyenne"
+ },
+ "0x0100c0ac": {
+  "to": "0x00ecd26c",
+  "kind": "globale",
+  "opcodes": [
+   "0x01A2",
+   "0x01DE"
+  ],
+  "nop": 2,
+  "name25": "dword_100C0AC",
+  "confiance": "moyenne"
+ },
+ "0x015e81b5": {
+  "to": "0x011117d5",
+  "kind": "globale",
+  "opcodes": [
+   "0x01A2",
+   "0x02E1",
+   "0x08C8",
+   "0x0990",
+   "0x0A89",
+   "0x0B05",
+   "0x0B76"
+  ],
+  "nop": 7,
+  "name25": "unk_15E81B5",
+  "confiance": "haute"
+ },
+ "0x015e81b7": {
+  "to": "0x011117d7",
+  "kind": "globale",
+  "opcodes": [
+   "0x01A2",
+   "0x0A89",
+   "0x0ADA",
+   "0x0B05",
+   "0x0B76"
+  ],
+  "nop": 5,
+  "name25": "unk_15E81B7",
+  "confiance": "haute"
+ },
+ "0x015fb3f4": {
+  "to": "0x014b83ac",
+  "kind": "globale",
+  "opcodes": [
+   "0x01A2",
+   "0x01A3",
+   "0x01A4",
+   "0x022F"
+  ],
+  "nop": 4,
+  "name25": "g_Own_PetHungryPrev",
+  "confiance": "haute",
+  "manifeste": "kPrevHunger",
+  "comment": "la faim sauvée avant écrasement",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015ff918": {
+  "to": "0x014bc4b4",
+  "kind": "globale",
+  "opcodes": [
+   "0x01A3",
+   "0x022F",
+   "0x0230"
+  ],
+  "nop": 3,
+  "name25": "g_Homun_Aid",
+  "confiance": "haute",
+  "manifeste": "kAid",
+  "comment": "GID de l'homoncule",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015ff9bc": {
+  "to": "0x014bc554",
+  "kind": "globale",
+  "opcodes": [
+   "0x01A3",
+   "0x022F"
+  ],
+  "nop": 2,
+  "name25": "dword_15FF9BC",
+  "confiance": "moyenne"
+ },
+ "0x015fab4c": {
+  "to": "0x014b7b14",
+  "kind": "globale",
+  "opcodes": [
+   "0x01B1"
+  ],
+  "nop": 1,
+  "name25": "g_HudTimer_Active",
+  "confiance": "moyenne"
+ },
+ "0x015e81da": {
+  "to": "0x011117fa",
+  "kind": "globale",
+  "opcodes": [
+   "0x01B3"
+  ],
+  "nop": 1,
+  "confiance": "moyenne"
+ },
+ "0x0159c1f0": {
+  "to": "0x0146e8f8",
+  "kind": "globale",
+  "opcodes": [
+   "0x01B6",
+   "0x0A84"
+  ],
+  "nop": 2,
+  "name25": "g_GuildInfo_MemberMax",
+  "confiance": "moyenne",
+  "manifeste": "kGuildOnlineNum",
+  "comment": "connect_member (membres en ligne)",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x00fc1b88": {
+  "to": "0x00e7b8c8",
+  "kind": "globale",
+  "opcodes": [
+   "0x01C1",
+   "0x09F8",
+   "0x09F9",
+   "0x0AFF",
+   "0x0B0C"
+  ],
+  "nop": 5,
+  "name25": "__imp__localtime32",
+  "confiance": "haute"
+ },
+ "0x015fa3c0": {
+  "to": "0x014b73b0",
+  "kind": "globale",
+  "opcodes": [
+   "0x01D6",
+   "0x099B"
+  ],
+  "nop": 2,
+  "name25": "g_UIWindowContextKey",
+  "confiance": "moyenne",
+  "manifeste": "kJobNameCtx, kOptionContextAddr, kSessionAddr, kUIWindowContextKey, kUiCtx",
+  "comment": "la session",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015ff978": {
+  "to": "0x014bc514",
+  "kind": "globale",
+  "opcodes": [
+   "0x022E",
+   "0x0230"
+  ],
+  "nop": 2,
+  "name25": "g_Homun_AccessoryItemId",
+  "confiance": "moyenne"
+ },
+ "0x0131f8a8": {
+  "to": "0x011f1c98",
+  "kind": "globale",
+  "opcodes": [
+   "0x0230",
+   "0x07DB",
+   "0x0B76",
+   "0x0BA4",
+   "0x0BA5"
+  ],
+  "nop": 5,
+  "name25": "g_UIHomunInfoWnd_ptr",
+  "confiance": "haute"
+ },
+ "0x015ff95c": {
+  "to": "0x014bc4f8",
+  "kind": "globale",
+  "opcodes": [
+   "0x0230"
+  ],
+  "nop": 1,
+  "name25": "g_Homun_Class",
+  "confiance": "moyenne",
+  "manifeste": "kClass",
+  "comment": "-1 = aucun homoncule connu",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x0131f738": {
+  "to": "0x011f1b28",
+  "kind": "globale",
+  "opcodes": [
+   "0x0289"
+  ],
+  "nop": 1,
+  "name25": "g_ShopSellMirrorWnd_ptr",
+  "confiance": "moyenne"
+ },
+ "0x0131f910": {
+  "to": "0x011f1cfc",
+  "kind": "globale",
+  "opcodes": [
+   "0x02B4",
+   "0x02B7",
+   "0x08FE",
+   "0x09FA",
+   "0x0AFE"
+  ],
+  "nop": 5,
+  "name25": "g_QuestTrackerWnd",
+  "confiance": "haute"
+ },
+ "0x00fc1300": {
+  "to": "0x00e7b1fc",
+  "kind": "globale",
+  "opcodes": [
+   "0x02C2"
+  ],
+  "nop": 1,
+  "name25": "__imp_IsDBCSLeadByte",
+  "confiance": "moyenne"
+ },
+ "0x015ffcd8": {
+  "to": "0x014bc64c",
+  "kind": "globale",
+  "opcodes": [
+   "0x02C9"
+  ],
+  "nop": 1,
+  "name25": "byte_15FFCD8",
+  "confiance": "moyenne"
+ },
+ "0x015ffce8": {
+  "to": "0x014bc65c",
+  "kind": "globale",
+  "opcodes": [
+   "0x02CB",
+   "0x02CC",
+   "0x02CD",
+   "0x02CE"
+  ],
+  "nop": 4,
+  "name25": "dword_15FFCE8",
+  "confiance": "haute"
+ },
+ "0x015ffd08": {
+  "to": "0x014bc67c",
+  "kind": "globale",
+  "opcodes": [
+   "0x02CB",
+   "0x02CC"
+  ],
+  "nop": 2,
+  "name25": "dword_15FFD08",
+  "confiance": "moyenne"
+ },
+ "0x015ffd10": {
+  "to": "0x014bc684",
+  "kind": "globale",
+  "opcodes": [
+   "0x02CD",
+   "0x02CE"
+  ],
+  "nop": 2,
+  "name25": "_Time_015ffd10",
+  "confiance": "moyenne"
+ },
+ "0x015fb2c4": {
+  "to": "0x014b8284",
+  "kind": "globale",
+  "opcodes": [
+   "0x02DD"
+  ],
+  "nop": 1,
+  "name25": "byte_15FB2C4",
+  "confiance": "moyenne"
+ },
+ "0x015e81b8": {
+  "to": "0x011117d8",
+  "kind": "globale",
+  "opcodes": [
+   "0x02DF",
+   "0x02E0"
+  ],
+  "nop": 2,
+  "name25": "unk_15E81B8",
+  "confiance": "moyenne"
+ },
+ "0x015fb2d0": {
+  "to": "0x014b8290",
+  "kind": "globale",
+  "opcodes": [
+   "0x02EB",
+   "0x02EF"
+  ],
+  "nop": 2,
+  "name25": "g_Own_ChatFontId",
+  "confiance": "moyenne"
+ },
+ "0x015ff906": {
+  "to": "0x014bc4a2",
+  "kind": "globale",
+  "opcodes": [
+   "0x02F0"
+  ],
+  "nop": 1,
+  "name25": "byte_15FF906",
+  "confiance": "moyenne"
+ },
+ "0x015ff7e0": {
+  "to": "0x014bc2e8",
+  "kind": "globale",
+  "opcodes": [
+   "0x043D",
+   "0x043E",
+   "0x0985",
+   "0x0A3A"
+  ],
+  "nop": 4,
+  "name25": "g_ShortCutCooldownList",
+  "confiance": "haute",
+  "manifeste": "kNativeList",
+  "comment": "g_ShortCutCooldownList (objet std::list)",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015ff7e4": {
+  "to": "0x014bc2ec",
+  "kind": "globale",
+  "opcodes": [
+   "0x043D",
+   "0x043E",
+   "0x0985"
+  ],
+  "nop": 3,
+  "name25": "g_ShortCutCooldownCount",
+  "confiance": "haute"
+ },
+ "0x0136e5d4": {
+  "to": "0x01240dd8",
+  "kind": "globale",
+  "opcodes": [
+   "0x0446"
+  ],
+  "nop": 1,
+  "name25": "g_MiniMapWnd",
+  "confiance": "moyenne"
+ },
+ "0x0131f940": {
+  "to": "0x011f1d24",
+  "kind": "globale",
+  "opcodes": [
+   "0x07FA",
+   "0x0A12",
+   "0x0A51"
+  ],
+  "nop": 3,
+  "name25": "g_MailWriteWnd",
+  "confiance": "haute",
+  "manifeste": "kMailWriteWnd, kWriteWndPtr",
+  "comment": "g_MailWriteWnd (filet : doit rester nul)",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x015fb2e8": {
+  "to": "0x014b82a8",
+  "kind": "globale",
+  "opcodes": [
+   "0x0810",
+   "0x0A93"
+  ],
+  "nop": 2,
+  "name25": "g_BuyingStoreMaxSlots",
+  "confiance": "moyenne"
+ },
+ "0x01088cec": {
+  "to": "0x00ecbe98",
+  "kind": "globale",
+  "opcodes": [
+   "0x0812"
+  ],
+  "nop": 1,
+  "name25": "dword_1088CEC",
+  "confiance": "moyenne"
+ },
+ "0x015fff80": {
+  "to": "0x014bc8f4",
+  "kind": "globale",
+  "opcodes": [
+   "0x0836",
+   "0x083A",
+   "0x0B64"
+  ],
+  "nop": 3,
+  "name25": "dword_15FFF80",
+  "confiance": "haute"
+ },
+ "0x015fff86": {
+  "to": "0x014bc8fa",
+  "kind": "globale",
+  "opcodes": [
+   "0x083A"
+  ],
+  "nop": 1,
+  "name25": "word_15FFF86",
+  "confiance": "moyenne"
+ },
+ "0x0136e57c": {
+  "to": "0x01240d80",
+  "kind": "globale",
+  "opcodes": [
+   "0x08AE"
+  ],
+  "nop": 1,
+  "name25": "dword_136E57C",
+  "confiance": "moyenne"
+ },
+ "0x015c43e4": {
+  "to": "0x01492834",
+  "kind": "globale",
+  "opcodes": [
+   "0x08D8",
+   "0x08D9",
+   "0x08DB",
+   "0x08DC",
+   "0x08DE",
+   "0x08DF",
+   "0x08E1",
+   "0x090E"
+  ],
+  "nop": 8,
+  "name25": "dword_15C43E4",
+  "confiance": "haute"
+ },
+ "0x015c43e8": {
+  "to": "0x01492838",
+  "kind": "globale",
+  "opcodes": [
+   "0x08D9"
+  ],
+  "nop": 1,
+  "name25": "dword_15C43E8",
+  "confiance": "moyenne"
+ },
+ "0x015c4310": {
+  "to": "0x01492760",
+  "kind": "globale",
+  "opcodes": [
+   "0x096B"
+  ],
+  "nop": 1,
+  "name25": "dword_15C4310",
+  "confiance": "moyenne"
+ },
+ "0x015e81bf": {
+  "to": "0x011117df",
+  "kind": "globale",
+  "opcodes": [
+   "0x0990",
+   "0x0B13",
+   "0x0B76"
+  ],
+  "nop": 3,
+  "confiance": "haute"
+ },
+ "0x01602a8d": {
+  "to": "0x014bf105",
+  "kind": "globale",
+  "opcodes": [
+   "0x09DF"
+  ],
+  "nop": 1,
+  "name25": "byte_1602A8D",
+  "confiance": "moyenne"
+ },
+ "0x0131f938": {
+  "to": "0x011f1d1c",
+  "kind": "globale",
+  "opcodes": [
+   "0x09E7"
+  ],
+  "nop": 1,
+  "name25": "dword_131F938",
+  "confiance": "moyenne"
+ },
+ "0x0131f93c": {
+  "to": "0x011f1d20",
+  "kind": "globale",
+  "opcodes": [
+   "0x09ED",
+   "0x09F0",
+   "0x09F4",
+   "0x09F6",
+   "0x0A7D",
+   "0x0B99"
+  ],
+  "nop": 6,
+  "name25": "g_RodexInboxWnd",
+  "confiance": "haute"
+ },
+ "0x0131ecdc": {
+  "to": "0x011f11bc",
+  "kind": "globale",
+  "opcodes": [
+   "0x09F0",
+   "0x09F2",
+   "0x09F4",
+   "0x09F6",
+   "0x0A7D",
+   "0x0AC2",
+   "0x0B63",
+   "0x0B99"
+  ],
+  "nop": 8,
+  "name25": "g_RodexMgr",
+  "confiance": "haute",
+  "manifeste": "kRodexMgrPtr",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x0131f944": {
+  "to": "0x011f1d28",
+  "kind": "globale",
+  "opcodes": [
+   "0x09F2",
+   "0x09F4",
+   "0x0B63",
+   "0x0B99"
+  ],
+  "nop": 4,
+  "name25": "g_RodexReadWnd",
+  "confiance": "haute"
+ },
+ "0x016004e0": {
+  "to": "0x014bcdec",
+  "kind": "globale",
+  "opcodes": [
+   "0x0A05",
+   "0x0A07",
+   "0x0B3F"
+  ],
+  "nop": 3,
+  "name25": "word_16004E0",
+  "confiance": "haute"
+ },
+ "0x015e81d5": {
+  "to": "0x011117f5",
+  "kind": "globale",
+  "opcodes": [
+   "0x0A24",
+   "0x0B05",
+   "0x0B76"
+  ],
+  "nop": 3,
+  "name25": "dword_15E81D5",
+  "confiance": "haute"
+ },
+ "0x015e81d9": {
+  "to": "0x011117f9",
+  "kind": "globale",
+  "opcodes": [
+   "0x0A24",
+   "0x0B76"
+  ],
+  "nop": 2,
+  "name25": "dword_15E81D9",
+  "confiance": "moyenne"
+ },
+ "0x016004fc": {
+  "to": "0x014bce08",
+  "kind": "globale",
+  "opcodes": [
+   "0x0A2F"
+  ],
+  "nop": 1,
+  "name25": "g_Own_TitleId",
+  "confiance": "moyenne",
+  "manifeste": "kOwnTitleId",
+  "comment": "g_Own_TitleId : titre ÉQUIPÉ (0 = aucun)",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x00fc1208": {
+  "to": "0x00e7b20c",
+  "kind": "globale",
+  "opcodes": [
+   "0x0A31"
+  ],
+  "nop": 1,
+  "name25": "__imp_GetLocalTime",
+  "confiance": "moyenne"
+ },
+ "0x0159c258": {
+  "to": "0x0146e960",
+  "kind": "globale",
+  "opcodes": [
+   "0x0A84"
+  ],
+  "nop": 1,
+  "name25": "g_GuildInfo_MasterGID",
+  "confiance": "moyenne"
+ },
+ "0x015e81ad": {
+  "to": "0x011117cd",
+  "kind": "globale",
+  "opcodes": [
+   "0x0A89",
+   "0x0A91",
+   "0x0B05"
+  ],
+  "nop": 3,
+  "name25": "unk_15E81AD",
+  "confiance": "haute"
+ },
+ "0x015e81b1": {
+  "to": "0x011117d1",
+  "kind": "globale",
+  "opcodes": [
+   "0x0A89",
+   "0x0B05"
+  ],
+  "nop": 2,
+  "name25": "unk_15E81B1",
+  "confiance": "moyenne"
+ },
+ "0x015e819d": {
+  "to": "0x011117bd",
+  "kind": "globale",
+  "opcodes": [
+   "0x0ADC",
+   "0x0B13",
+   "0x0B25",
+   "0x0BCF",
+   "0x0BD1",
+   "0x0BD3",
+   "0x0BD5",
+   "0x0BD7",
+   "0x0BF2"
+  ],
+  "nop": 9,
+  "confiance": "haute"
+ },
+ "0x01251750": {
+  "to": "0x01123d88",
+  "kind": "globale",
+  "opcodes": [
+   "0x0AFA"
+  ],
+  "nop": 1,
+  "name25": "dword_1251750",
+  "confiance": "moyenne"
+ },
+ "0x015ffd3c": {
+  "to": "0x014bc6b0",
+  "kind": "globale",
+  "opcodes": [
+   "0x0B03",
+   "0x0B37"
+  ],
+  "nop": 2,
+  "name25": "g_ViewEquip_Other_Body2",
+  "confiance": "moyenne"
+ },
+ "0x0125177c": {
+  "to": "0x01123db4",
+  "kind": "globale",
+  "opcodes": [
+   "0x0B0E"
+  ],
+  "nop": 1,
+  "name25": "dword_125177C",
+  "confiance": "moyenne"
+ },
+ "0x015e81af": {
+  "to": "0x011117cf",
+  "kind": "globale",
+  "opcodes": [
+   "0x0B13"
+  ],
+  "nop": 1,
+  "name25": "unk_15E81AF",
+  "confiance": "moyenne"
+ },
+ "0x015e81c7": {
+  "to": "0x011117e7",
+  "kind": "globale",
+  "opcodes": [
+   "0x0B13",
+   "0x0B76"
+  ],
+  "nop": 2,
+  "name25": "word_15E81C7",
+  "confiance": "moyenne"
+ },
+ "0x01602354": {
+  "to": "0x014be9e8",
+  "kind": "globale",
+  "opcodes": [
+   "0x0B15",
+   "0x0B18"
+  ],
+  "nop": 2,
+  "name25": "dword_1602354",
+  "confiance": "moyenne",
+  "manifeste": "kInvExpansion",
+  "comment": "server-sent inventory expansion (slots - 200)",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x0131f6bc": {
+  "to": "0x011f1aac",
+  "kind": "globale",
+  "opcodes": [
+   "0x0B18"
+  ],
+  "nop": 1,
+  "name25": "dword_131F6BC",
+  "confiance": "moyenne",
+  "manifeste": "kInventoryWndSlot",
+  "comment": "inventaire, id 8",
+  "nouveau_pour_bourgeon": true
+ },
+ "0x01251788": {
+  "to": "0x01123dc0",
+  "kind": "globale",
+  "opcodes": [
+   "0x0B56"
+  ],
+  "nop": 1,
+  "name25": "dword_1251788",
+  "confiance": "moyenne"
+ },
+ "0x01251814": {
+  "to": "0x01121810",
+  "kind": "globale",
+  "opcodes": [
+   "0x0B8D",
+   "0x0B8E"
+  ],
+  "nop": 2,
+  "name25": "dword_1251814",
+  "confiance": "moyenne"
+ },
+ "0x012517e4": {
+  "to": "0x01121814",
+  "kind": "globale",
+  "opcodes": [
+   "0x0B8F"
+  ],
+  "nop": 1,
+  "name25": "dword_12517E4",
+  "confiance": "moyenne"
+ },
+ "0x01602430": {
+  "to": "0x014beac8",
+  "kind": "globale",
+  "opcodes": [
+   "0x0B94",
+   "0x0B95"
+  ],
+  "nop": 2,
+  "name25": "g_RodexAcceptEveryone",
+  "confiance": "moyenne"
+ },
+ "0x012550d4": {
+  "to": "0x01121818",
+  "kind": "globale",
+  "opcodes": [
+   "0x0B9A",
+   "0x0B9F"
+  ],
+  "nop": 2,
+  "name25": "dword_12550D4",
+  "confiance": "moyenne"
+ },
+ "0x01318b30": {
+  "to": "0x011eb084",
+  "kind": "globale",
+  "opcodes": [
+   "0x0BBE"
+  ],
+  "nop": 1,
+  "name25": "dword_1318B30",
+  "confiance": "moyenne"
+ },
+ "0x01318a10": {
+  "to": "0x011eaf90",
+  "kind": "globale",
+  "opcodes": [
+   "0x0BCC",
+   "0x0BCD",
+   "0x0BCF",
+   "0x0BD1",
+   "0x0BD3",
+   "0x0BD5",
+   "0x0BD7",
+   "0x0BD9",
+   "0x0BF2"
+  ],
+  "nop": 9,
+  "name25": "dword_1318A10",
+  "confiance": "haute"
+ },
+ "0x015e81a1": {
+  "to": "0x011117c1",
+  "kind": "globale",
+  "opcodes": [
+   "0x0BD1",
+   "0x0BD3",
+   "0x0BF2"
+  ],
+  "nop": 3,
+  "confiance": "haute"
+ }
+}

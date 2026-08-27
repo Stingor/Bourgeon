@@ -1,0 +1,140 @@
+{
+ "0x005c5950": {
+  "to": "0x00cca703",
+  "via": "propagation",
+  "name25": "SkillMgr_SetOption",
+  "names": [
+   "kSetOption"
+  ],
+  "motifs": [
+   "collision : 2 sources 2025 pour cette cible",
+   "tailles 0xFA vs 0xE (ratio 0.06)"
+  ],
+  "propose": null
+ },
+ "0x008303f0": {
+  "to": "0x004da1f0",
+  "via": "rtti",
+  "name25": "CUIEdit_SetText",
+  "names": [
+   "kSetTextAddr"
+  ],
+  "motifs": [
+   "tailles 0x88 vs 0x3 (ratio 0.02)"
+  ],
+  "propose": null
+ },
+ "0x0083d840": {
+  "to": "0x00880180",
+  "via": "rtti",
+  "name25": "UISubChatWnd_AppendDrawnLine",
+  "names": [
+   "(littéral)"
+  ],
+  "motifs": [
+   "tailles 0x33F vs 0x6E (ratio 0.13)"
+  ],
+  "propose": null
+ },
+ "0x00a948d0": {
+  "to": "0x00a91460",
+  "via": "propagation",
+  "name25": "Cstr_FormatInt32Grouped",
+  "names": [
+   "kFmtComma",
+   "kFmtComma32"
+  ],
+  "motifs": [
+   "tailles 0x53 vs 0x4B9 (ratio 0.07)"
+  ],
+  "propose": null
+ },
+ "0x00c13fc0": {
+  "to": "0x00bdeca0",
+  "via": "rtti",
+  "name25": "NetConnection_Connect",
+  "names": [
+   "(littéral)"
+  ],
+  "motifs": [
+   "tailles 0x356 vs 0xF0 (ratio 0.28)"
+  ],
+  "propose": null
+ },
+ "0x00c6d9d0": {
+  "to": "0x00a3c3d0",
+  "via": "propagation",
+  "name25": "Arrow_SpawnProjectileToTarget",
+  "names": [
+   "kArrowSpawn"
+  ],
+  "motifs": [
+   "collision : 2 sources 2025 pour cette cible",
+   "tailles 0xB0 vs 0xD (ratio 0.07)"
+  ],
+  "propose": null
+ },
+ "0x00d5a980": {
+  "to": "0x00a3c3d0",
+  "via": "propagation",
+  "name25": "ItemSkillMgr_GetInfoByResId_UNIFIED",
+  "names": [
+   "kGetSkillInfo"
+  ],
+  "motifs": [
+   "collision : 2 sources 2025 pour cette cible",
+   "tailles 0xBE vs 0xD (ratio 0.07)"
+  ],
+  "propose": "0x00c6dae0"
+ },
+ "0x00d5e3c0": {
+  "to": "0x007d8810",
+  "via": "propagation",
+  "name25": "sub_D5E3C0",
+  "names": [
+   "kSkillGetUseLevel"
+  ],
+  "motifs": [
+   "tailles 0x68 vs 0x2A (ratio 0.40)"
+  ],
+  "propose": null
+ },
+ "0x00d7fa90": {
+  "to": "0x007a6b50",
+  "via": "propagation",
+  "name25": "ItemMgr_GetInvItemById",
+  "names": [
+   "kGetInvItemAddr",
+   "kSkillEntryFill"
+  ],
+  "motifs": [
+   "tailles 0xFE vs 0x4A (ratio 0.29)"
+  ],
+  "propose": null
+ },
+ "0x00d9cf80": {
+  "to": "0x00c10380",
+  "via": "propagation",
+  "name25": "Job_NeedsLuaItemPosOffset",
+  "names": [
+   "kJobIsDoram"
+  ],
+  "motifs": [
+   "tailles 0x2A vs 0x7E3 (ratio 0.02)"
+  ],
+  "propose": null
+ },
+ "0x00dbbc7f": {
+  "to": "0x00cca703",
+  "via": "propagation",
+  "name25": "operator_delete",
+  "names": [
+   "kClientOperatorDelete",
+   "kGameOperatorDeleteAddr"
+  ],
+  "motifs": [
+   "collision : 2 sources 2025 pour cette cible"
+  ],
+  "propose": null
+ }
+}
