@@ -17,7 +17,7 @@ ce portage a déjà produit 11 entrées fausses.
 | `UIWindowMgr` | `0x00a29ba0` | **`0x009f8ed0`** | écrit `??_7UIWindowMgr@@6B@` dans `[edi]` ; 2 écrivains des deux côtés, ratios de taille concordants (0,88 et 0,87) |
 | `ProcessPushButton` | `0x00a471e0` | **`0x00a15160`** | son appelant `sub_CC7240` contient `DefWindowProcA` et fait **exactement 3 appels**, comme `Game_MainWndProc` |
 | `SendMsg` | `0x00a4ad20` | `0x00a18a20` | même nom `UIWindowMgr_ChatAction`, ratio 1,03, 316 appelants — ⚠ voir réserves |
-| `CConnection` | `0x00c13fc0` | `0x00bdeca0` | déjà porté · `retn 4` — ⚠ ratio de taille 0,28 |
+| `CConnection` | `0x00c13fc0` | `0x00bdeca0` | `retn 4` · 3× `ResetCursors(0xA000)` sur +0x3C/+0x24/+0x54, motif dont la paire est prouvée à part |
 | `SendPacket` | `0x00c14920` | `0x00bdf440` | `retn 8` ; c'est la fonction qui ajoute l'octet de contrôle, analysée le même jour |
 | `RecvDispatchTable` | `0x00caa2e0` | **`0x0051610c`** | `get_switch_info` : `jumps`, `ncases` 3029, `lowcase` 115 |
 | `RecvOpcodeBase` | `0x73` | `0x73` | `lowcase` = 115 = 0x73, identique |
@@ -58,10 +58,15 @@ signature exacte — même patron que `ProcessInputArgs` dans `game_mode.cc`. Le
 champ est absent de l entrée 20250716, qui garde donc son hook membre.
 ⚠ Non testé en jeu : le build appartient à l utilisateur.
 
-**Le layout de `CSession` est celui du 2025**, seul implémenté, et n'a pas été
-validé sur ce build. Un offset de `CGameMode` a déjà bougé (`0x40C` → `0x3E4`
-dans `PostActorClickAction`), donc celui de `CSession` a probablement bougé
-aussi. Le démarrage ne le lit pas ; les lectures de session, si.
+**Le layout de `CSession` est celui du 2025** — RELEVÉ le 2026-08-27, voir
+[session_layout_2026.md](session_layout_2026.md). `g_session` 2026 vaut
+`0x014B73B0` et 13 champs sont mesurés (`aid_`, les six statistiques, HP/SP,
+`char_name_`), mais `mkcount_` et `talk_type_table_` restent indéterminés : les
+paliers ne sont pas linéaires (24 marches) et leurs bornes ne concordent pas.
+
+Aucun `20260707.h` n'a donc été écrit : un seul offset faux dans une structure à
+padding décale tout ce qui suit et se lit comme une valeur plausible. Le
+démarrage ne lit pas ce layout ; les lectures de session, si.
 
 ## La tête de boucle recv, identique des deux côtés
 

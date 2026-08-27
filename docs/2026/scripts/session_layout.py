@@ -1,46 +1,80 @@
 # -*- coding: utf-8 -*-
-"""Compare le layout de la zone 'session' entre 2025 et 2026.
+"""Les champs lointains de CSession, via les GLOBAUX derives de g_session.
 
-g_session est appariee ; on regarde si les membres suivent un decalage
-CONSTANT (bloc deplace tel quel) ou si la zone a ete REORGANISEE.
+Les accesseurs triviaux ne couvrent que 0x16xx-0x17xx : les champs lointains
+(talk_type_table_ +0x51F8, hp_ +0x5548, char_name_ +0x81A8) n'ont pas de getter,
+le client y accede directement.
+
+Mais g_session est un global a adresse FIXE : `g_session + offset` apparait donc
+en clair comme adresse absolue dans le code, et le portage a deja apparie des
+milliers de positions globales. Le layout confirme d'ailleurs aid_ par ce biais
+(« DAT_015fb9a4 used as AID »), ce qui valide le raisonnement sur un cas connu.
+
+g_session 2025 = 0x015FA3C0 (donne par l'en-tete du layout).
 """
-import io
 import json
 import os
 
-DOCS = r"d:/Mes documents/GitHub/Bourgeon/docs/2026"
-pairs = json.load(io.open(os.path.join(DOCS, 'port_opcode_pairs.json'), encoding='utf-8'))
+D = r"d:/Mes documents/GitHub/Bourgeon/docs/2026"
+G25 = 0x015FA3C0
 
-BASE25 = 0x015FA3C0
-base26 = int(pairs['0x015fa3c0']['to'], 16)
-print("g_session : 0x%08X -> 0x%08X   (delta %+#x)\n" % (BASE25, base26, base26 - BASE25))
+FIELDS = [
+    ("cur_map_type_",     0x0000),
+    ("mkcount_",          0x0AFC),
+    ("aid_",              0x15E4),
+    ("STR",               0x1664),
+    ("AGI",               0x1668),
+    ("VIT",               0x166C),
+    ("INT",               0x1670),
+    ("DEX",               0x1674),
+    ("LUK",               0x1678),
+    ("talk_type_table_",  0x51F8),
+    ("hp_",               0x5548),
+    ("max_hp_",           0x554C),
+    ("sp_",               0x5550),
+    ("max_sp_",           0x5554),
+    ("char_name_",        0x81A8),
+]
 
-rows = []
-for s, v in pairs.items():
-    if v['kind'] != 'globale':
+port = {}
+for c in ('all_pairs_final.json', 'merged_pairs.json', 'global_pos_pairs.json',
+          'port_2025_2026.json'):
+    p = os.path.join(D, c)
+    if not os.path.exists(p):
         continue
-    a = int(s, 16)
-    if not (BASE25 <= a < BASE25 + 0x9000):
+    try:
+        d = json.load(open(p))
+    except Exception:
         continue
-    t = int(v['to'], 16)
-    rows.append((a - BASE25, t - base26, a, t,
-                 v.get('manifeste', '') or v.get('name25', ''), v['nop']))
+    if not isinstance(d, dict):
+        continue
+    for k, v in d.items():
+        tgt = v.get('to') if isinstance(v, dict) else (v if isinstance(v, str) else None)
+        if tgt:
+            port.setdefault(k.lower(), (tgt, c))
 
-rows.sort()
-print("%-9s %-9s %-7s  %-4s %s" % ("off 2025", "off 2026", "ecart", "opc", "nom"))
-prev = None
-for o25, o26, a, t, nm, nop in rows:
-    ec = o26 - o25
-    mark = ""
-    if prev is not None and ec != prev:
-        mark = "   <-- l'ecart CHANGE"
-    prev = ec
-    print("+0x%-6X +0x%-6X %+-7d %-4d %s%s" % (o25, o26, ec, nop, nm[:44], mark))
+print("%d positions appariees chargees\n" % len(port))
 
-ecarts = {}
-for o25, o26, a, t, nm, nop in rows:
-    ecarts.setdefault(o26 - o25, []).append(o25)
-print("\n%d membres releves, %d ecart(s) distinct(s) :" % (len(rows), len(ecarts)))
-for e in sorted(ecarts):
-    v = ecarts[e]
-    print("   %+6d : %2d membres, de +0x%X a +0x%X" % (e, len(v), min(v), max(v)))
+# g_session lui-meme
+key = '0x%08x' % G25
+hit = port.get(key)
+print("g_session 2025 0x%08X  ->  %s" % (G25, hit[0] if hit else 'NON APPARIE'))
+g26 = int(hit[0], 16) if hit else None
+print()
+
+print("%-18s %-12s %-12s %-12s %s" % ("champ", "off 2025", "abs 2025", "abs 2026", "off 2026"))
+found = 0
+for name, off in FIELDS:
+    a25 = G25 + off
+    h = port.get('0x%08x' % a25)
+    if h:
+        a26 = int(h[0], 16)
+        o26 = ('0x%X' % (a26 - g26)) if g26 else '?'
+        shift = (a26 - g26 - off) if g26 else None
+        print("%-18s 0x%-10X 0x%-10X 0x%-10X %-8s  shift %s"
+              % (name, off, a25, a26, o26,
+                 ('%+d' % shift) if shift is not None else '?'))
+        found += 1
+    else:
+        print("%-18s 0x%-10X 0x%-10X %-12s %s" % (name, off, a25, 'non apparie', '-'))
+print("\n=> %d / %d champs retrouves" % (found, len(FIELDS)))
