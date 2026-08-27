@@ -159,10 +159,80 @@ Les plus utiles (⚓ = entrée d'annuaire, elle porte plusieurs déclinaisons) :
 Liste complète et exploitable : [port_opcode_pairs.json](port_opcode_pairs.json)
 (champ `confiance` : `haute` 489, `moyenne`, `A VERIFIER` 16).
 
+## ✅✅ Second identifiant stable : l'ID DE FENÊTRE — et la validation croisée
+
+La limite ci-dessus (« ne voit pas l'UI ») se lève avec un autre identifiant que
+le compilateur ne touche pas : **l'id passé à `MakeWindow`**.
+
+| | 2025 | 2026 |
+|---|---|---|
+| fabrique | `UIWindowMgr_MakeWindow` `0x00A39340` (0x9544) | `sub_A07BC0` `0x00A07BC0` (0x93B7) |
+| switch | `0x00A394CF` | `0x00A07C7E` |
+| ids | **0..362** (363) | **0..369** (370) |
+
+Retrouvée en 2026 (où elle n'est pas nommée) en listant les fonctions à gros
+switch : la paire ressort par (nombre de cases, taille).
+
+🔴 **Ces switches sont à table d'INDIRECTION** (363 valeurs → 233 cibles) :
+`si.lowcase` y est inexploitable (il rend une adresse). Il faut
+**`idaapi.calc_switch_cases(head, si)`**, qui rend les vraies valeurs de case
+quel que soit le type de switch.
+
+### 🔴🔴 Les ids sont-ils stables ? — le vérifier, pas le supposer
+
+7 ids de plus en 2026 : ajoutés à la fin (ids stables) ou insérés (tout
+décalé) ? Deux tests, dont un mauvais :
+
+- **Par la taille des cases : ne discrimine RIEN** (médiane 0,687 au décalage 0
+  contre ~0,67 partout). Pire, un seuil à 0,8 donnait 1,9 % au bon alignement
+  contre 20 % ailleurs — un « verdict » exactement à l'envers. La cause : le code
+  2026 est plus compact (médiane 131 instructions contre 187), donc le ratio
+  tombe sous le seuil pour **tous** les ids. ⚠ **Un seuil mal placé ne rend pas
+  un test muet, il le rend MENTEUR.**
+- **Par l'ordre des adresses de case : net.** Le compilateur émet les cases dans
+  l'ordre du source ; si les ids sont stables, le classement se conserve.
+  Corrélation de rang :
+
+| décalage | −5 | −1 | **0** | +1 | +5 |
+|---|---|---|---|---|---|
+| r | 0,48 | 0,61 | **0,90** | 0,59 | 0,48 |
+
+→ **ids stables**, les 7 nouveaux (363-369) sont bien ajoutés à la fin.
+
+### Résultat, et la meilleure validation du lot
+
+**198 paires**, et le test des tailles est le plus net de tous :
+
+| ratio de tailles | médiane | > 0,8 | > 0,6 |
+|---|---|---|---|
+| **paires par id de fenêtre** (182) | **1,000** | **95,6 %** | **100 %** |
+| témoin aléatoire (3 640) | 0,615 | 25,5 % | 51,8 % |
+
+🔴🔴 **Et surtout : les deux méthodes se croisent.** Opcodes de protocole et
+ids de fenêtre sont deux tables sans le moindre rapport :
+
+| | |
+|---|---|
+| recouvrement des deux jeux | **9** |
+| concordent | **9** |
+| divergent | **0** |
+
+C'est la validation indépendante qui manquait au début de ce document. Le
+recouvrement est petit, mais 9/9 sur des tables disjointes n'est pas un hasard.
+
+**Bilan consolidé : 812 paires, 44 adresses du manifeste → 157 → 201 / 784
+(25,6 %).** Les 9 confirmées deux fois sont marquées `opcode+fenetre` dans
+[merged_pairs.json](merged_pairs.json).
+
+⚠ **La fenêtre 275 (banque) tombe sur le `defjump` en 2026** alors qu'elle a un
+vrai case en 2025 : elle n'est peut-être plus construite par la fabrique. À
+vérifier avant de porter quoi que ce soit qui en dépende.
+
 ## Limites — ce que cette méthode ne peut PAS faire
 
-- Elle ne voit que ce qui est **atteignable depuis le dispatch de paquets**. Le
-  rendu, l'UI pure, l'audio, les fichiers en sont hors d'atteinte. C'est pourquoi
+- Chaque switch ne voit que ce qui lui est **atteignable** : le dispatch de
+  paquets ignore l'UI, la fabrique de fenêtres ignore le réseau. L'audio, le
+  rendu et les fichiers restent hors d'atteinte des deux. C'est pourquoi
   623 paires ne donnent que 43 adresses du manifeste : Bourgeon travaille
   surtout ailleurs.
 - Elle **se tait** sur les objets à signature ambiguë (200 fonctions, 81
