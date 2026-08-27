@@ -5,21 +5,25 @@ sur le client `2026-07-07` (BuildDate `20260707`). Rien ici ne décrit le client
 en production — celui-là reste le `2025-07-16`, documenté à la racine de `docs/`
 (dont `warp_patches.md`, qui n'a pas bougé).
 
-Relevés du **2026-08-26**.
+Relevés du **2026-08-26**, mis à jour le **2026-08-27**.
 
 ## Où en est le chantier
 
 | volet | état |
 |---|---|
+| **démarrage du client** | ✅ **il tourne** — login, Service Select, choix du serveur |
+| **EOS AntiCheat** | ✅ **levé** — patch `NoEOSAntiCheat` |
+| **nProtect GameGuard** | ✅ **levé** — patch `NoGGuardLoader` (2026-08-27) |
+| **`steam_api.dll`** | ✅ levé — patch `NoSteamAPI` |
+| **ASLR + CFG** | ✅ levé — `fix_aslr.py` sur l'exe SOURCE, une fois pour toutes |
 | **protocole** | ✅ **aucun obstacle** — 0 opcode utilisé par Moonlight ne change de longueur |
 | **patchs WARP** | 🟠 **65/116 passent tels quels** (56 %), 43 à réparer |
+| **adresses Bourgeon** | 🟠 **157/784 portées, 0 divergence** ; 632 restantes (370 en données) |
 | **layout `CSession`** | 🔴 offsets déplacés, à rescanner **en jeu** |
-| **adresses Bourgeon** | 🔴 407 à porter, 9/18 ancres résolues |
-| **EOS AntiCheat** | ❔ **inconnue bloquante, non levée** |
+| **connexion au login** | 🟠 en cours — voir `clientinfo_service_select_re.md` |
 
-➡ **Prochaine action : générer l'exe avec les 65 patchs qui passent et le
-lancer.** C'est le test qui dit si EOS AntiCheat autorise le démarrage hors kRO —
-tant qu'on l'ignore, réparer des patchs est un pari.
+➡ **Les quatre verrous de démarrage sont tombés.** Ce qui reste est du travail
+de portage, plus du pari sur l'inconnu.
 
 ## 🔴🔴 Deux obstacles levés, et un piège de fond
 
@@ -75,6 +79,10 @@ l'écriture (le script le dit clairement au lieu de planter).
 | `warp_patches_port.md` | comment porter : classement par risque, sens du transfert entre catalogues, la cause n°1 des échecs |
 | `warp_active.txt` | la liste brute des 116 patchs activés dans `save_exe.yml` |
 | `client_2026_address_map.md` | correspondances d'adresses 2025 ↔ 2026, et ce qui marche pour les trouver |
+| `address_port_2025_2026.md` | **le portage automatique** : 157 adresses portées, rendement par vecteur, gardes anti-faux-positifs |
+| `port_2025_2026.json` | le résultat brut de ce portage, exploitable par script |
+| `clientinfo_service_select_re.md` | **`clientinfo.xml`** : les DEUX listes de serveurs, où vont `address`/`port`, les défauts kRO en dur |
+| `fix_aslr.py` | efface `DYNAMIC_BASE`\|`GUARD_CF` de l'en-tête PE (WARP ne sait pas écrire là) |
 | `client_2026_opcodes.md` | les 1577 opcodes du client, nommés et croisés avec rAthena |
 | `packet_len_diff.md` | méthode d'extraction des longueurs de paquets + le diff entre les deux clients |
 | `packet_len_client_2025.json` | table extraite du client 2025-07-16 (1522 entrées) |

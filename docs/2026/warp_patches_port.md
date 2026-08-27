@@ -292,3 +292,67 @@ Le `.qjs` n'a pas été retrouvé automatiquement.
 | `NoLookalikeNameWarning` | — | 0 | 0 | 0 |
 | `PetTalkMarker` | — | 0 | 0 | 0 |
 | `RestoreGMWeaponTrail` | — | 0 | 0 | 0 |
+
+## 🔴🔴 GameGuard : le 2026 a CHANGE de mecanisme, et `NoGGuard` se TAIT
+
+Mesure du 2026-08-27, par recherche d'**octets bruts** dans les deux IDB (pas
+`idautils.Strings()`, qui rate des chaines) :
+
+| chaine | 2025-07-16 | 2026-07-07 |
+|---|---|---|
+| `GameGuard Error: %lu` | ✅ 2 occurrences | ❌ **absente** |
+| `nProtect GameGuard` | ✅ | ❌ **absente** |
+| `npkcrypt.dll` | ❌ **absente** | ✅ |
+
+`NoGGuard.validate()` s'ancre sur la premiere chaine. Sur le 2026 elle renvoie
+donc **faux**, et WARP retire le patch **sans un mot** — le piege de
+[[reference_warp0716]], vu en vrai.
+
+🔴 Et l'absence de patch ne donne pas « GameGuard tourne », elle donne
+**un crash**. Le client embarque le chargeur **DEUX FOIS**, et une seule copie
+est correcte :
+
+| fonction | quand `LoadLibraryA("npkcrypt.dll")` echoue |
+|---|---|
+| `sub_A840E0` | `GetLastError` → rapport → **`return 0`** ✅ |
+| `sub_A84B70` | `GetLastError` → rapport → **rien**, on continue ❌ |
+
+La seconde retombe dans le tronc commun et appelle les 11 pointeurs jamais
+resolus : `call esi` avec `esi = 0`, access violation a **`0x00A84D96`**.
+Mesure prise sur client vivant (x32dbg) **et** confirmee par le rapport de
+crash du client lui-meme (`esi 0`, `edx 5Ch`, retour `00A84D96` en tete de pile).
+
+✅ Les **quatre** consommateurs des pointeurs ont ete verifies un par un :
+`sub_A85B20` se garde par `if (hLibModule)`, `sub_A84E50` par
+`if (!dword_146EB7C) return 1;`, `sub_A840E0` sort proprement. **`sub_A84B70`
+est le seul site non garde** — donc le correctif est LOCAL, pas une
+neutralisation large.
+
+### Ou couper, et pourquoi la
+
+Le patch `NoGGuardLoader` (`Scripts/Patches/NoGGuardLoader.qjs`) coupe **la
+porte**, un thunk de 14 octets en queue d'appel :
+
+```
+A85B10  e8 eb e9 ff ff      call sub_A84500      ; GameGuard actif ?
+A85B15  84 c0               test al, al
+A85B17  0f 85 53 f0 ff ff   jnz  sub_A84B70      ; tail call vers le chargeur
+A85B1D  c3                  retn
+```
+→ remplace par `33 C0 C3` (`xor eax, eax` / `retn`).
+
+Trois raisons de couper **la** plutot que dans le chargeur :
+1. le thunk ne commande **que** GameGuard — `sub_A84500` est une table de
+   capacites generique (`matrix[14 * service + feature]`), la forcer aurait des
+   effets de bord ailleurs ;
+2. il n'a **qu'un** appelant ;
+3. 🔴 **ce appelant IGNORE la valeur de retour** — mesure : l'instruction
+   qui suit le `call` est `mov esi, [ebp-738h]`, pas un `test`. Donc renvoyer 0
+   ne coute rien et **aucune branche d'erreur n'est a simuler**.
+
+### Les deux patchs ne se marchent pas dessus
+
+Leurs `validate()` sont mutuellement exclusifs **par construction** : `NoGGuard`
+ne s'active que sur 2025, `NoGGuardLoader` que sur 2026. On peut laisser les
+deux coches sans risque pour le client de production.
+
