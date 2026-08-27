@@ -313,6 +313,25 @@ aucune n'est utilisée par Bourgeon.** Liste dans
 | noms des deux côtés | 0 contradiction réelle | — | tout le reste |
 | familles de tables disjointes | 42 paires, 0 divergence | — | tout le reste |
 
+## ⚠ Les trois listes d'objets : EXTRAPOLATION, pas mesure
+
+Bourgeon lit trois modeles dans la session, et **aucun des trois n'est mesure** :
+
+| | offset | 2025 | 2026 **suppose** |
+|---|---|---|---|
+| inventaire (`item_cell.h`) | +0x16F0 | `0x015FBAB0` | `0x014B8A68` ? |
+| storage (`storage_window.h`) | +0x1718 | `0x015FBAD8` | `0x014B8A90` ? |
+| cart (`cart_viewer.h`) | +0x1720 | `0x015FBAE0` | `0x014B8A98` ? |
+
+Ce calcul suppose que le palier **−56** se prolonge. Il est stable sur **11
+membres** de +0xFF0 a +0x16CC, et les trois cibles ne sont qu'a **0x24 a 0x54
+octets** du dernier membre mesure — c'est donc plausible.
+
+🔴 **Mais c'est une hypothese, pas un releve.** Le layout a change de palier
+14 fois ; rien n'interdit une insertion dans cet intervalle. Ces trois valeurs
+sont a **confirmer avant tout usage** — ce sont precisement les modeles dont
+dependent l'inventaire, le storage et le cart, donc une erreur y serait couteuse.
+
 ## Limites — ce que cette méthode ne peut PAS faire
 
 - Chaque switch ne voit que ce qui lui est **atteignable** : le dispatch de
