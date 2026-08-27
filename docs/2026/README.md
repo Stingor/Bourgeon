@@ -88,6 +88,7 @@ l'écriture (le script le dit clairement au lieu de planter).
 | `window_pairs.json` | les 198 paires trouvées par les **ids de fenêtre** (`MakeWindow`) |
 | `merged_pairs.json` | **l'union des trois passes, 1181 paires**, 0 conflit ; champ `tables` = par quels identifiants |
 | `port_suspects.json` | les **11 entrees fausses ou douteuses** trouvees dans `port_2025_2026.json` |
+| `apply_plan.md` | **le plan d'application** : les 277 sites du code a modifier, par fichier — rien n'est applique |
 | `scripts/` | les scripts rejouables du portage par opcodes |
 | `client_2026_opcodes.md` | les 1577 opcodes du client, nommés et croisés avec rAthena |
 | `packet_len_diff.md` | méthode d'extraction des longueurs de paquets + le diff entre les deux clients |
