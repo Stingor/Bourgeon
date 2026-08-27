@@ -353,6 +353,35 @@ probable, ce n'est pas prouve.
 En prime, `Cart_GetCount` `0x00d5ce50` (+0x1724) → **`0x00c6fea0`** (+0x16EC),
 par sa position dans la sequence. Details : [session_lists_confirmed.json](session_lists_confirmed.json).
 
+### La methode generalisee : l'EMPREINTE d'un bloc d'accesseurs
+
+Le procede vaut au-dela des trois listes. Les accesseurs etant emis **contigus et
+dans l'ordre de declaration**, la suite des **ecarts** entre deplacements
+successifs d'un bloc est une empreinte invariante au decalage.
+
+**141 accesseurs en 2025, 127 en 2026**, regroupes en 12 et 10 blocs.
+**8 blocs apparies** par empreinte, soit **41 accesseurs** appariee un a un.
+Controle avec `merged_pairs.json` : **1 concorde, 0 diverge**.
+
+| 2025 | 2026 | n | decalage de la structure |
+|---|---|---|---|
+| `0x0053a1e0` | `0x00610850` | 10 | **0 — inchangee** |
+| `0x00d5ce10` | `0x00c6fe60` | 9 | **−0x38** (session) |
+| `0x00b26d80` | `0x00b05480` | 5 | 0 |
+| `0x00d5cf50` | `0x00c6ffa0` | 5 | **−0x38** (session) |
+| `0x004eee50` | `0x005c6770` | 3 | 0 |
+| `0x0053a180` | `0x006107f0` | 3 | 0 |
+| `0x005a3a20` | `0x0066b240` | 3 | 0 |
+| `0x0072f4c0` | `0x0079db90` | 3 | 0 |
+
+✅ **Six structures sur huit n'ont PAS bouge** d'un build a l'autre : leurs
+offsets se portent tels quels. Seule la session est decalee.
+
+⚠ Apport direct au manifeste : **aucun** — Bourgeon n'appelle pas ces
+accesseurs (sauf `kPartyMemberCount`). Leur valeur est ailleurs : ils ont
+**mesure** ce que l'extrapolation supposait. Liste :
+[accessor_pairs.json](accessor_pairs.json).
+
 ### ❌ Ce qui n'a PAS marche, et pourquoi
 
 Avant d'en arriver la, j'ai essaye de comparer le **profil des deplacements**
