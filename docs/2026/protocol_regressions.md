@@ -82,3 +82,44 @@ fonctionnalités une fois en jeu.
 
 Liste complète : [login_regressions.json](login_regressions.json) et
 [game_regressions.json](game_regressions.json).
+
+## 🔴 EOS AntiCheat : QUINZE points d'entree, pas un
+
+L'entree en jeu plantait avec `EIP = 0`, retour `0x007A2FE9` — `sub_7A2FA0`,
+garde par :
+
+```c
+if ( *(BYTE *)(this + 9) != 1 ) {
+    p = GetProcAddress( hModule, "_EOS_AntiCheatClient_AddNotifyMessageToServer@16" );
+    p( ... );          // hModule NUL -> p NUL -> EIP = 0
+```
+
+Le zero-fill de `NoEOSAntiCheat` laissait **0** dans ce drapeau, donc la garde
+laissait passer. Y ecrire **1** dit « session deja demarree », la facon dont le
+client lui-meme saute ce bloc : la fonction devient inerte sans etre patchee.
+Corrige dans `WARP0716 c5c582f`.
+
+⚠ **Pourquoi ca a survecu a tous les tests precedents** : ce bloc n'est atteint
+qu'au moment ou le char-server passe la main au map-server. Login, liste des
+personnages et char-select s'executent tous avant.
+
+🔴 **Le client resout des points d'entree EOS depuis QUINZE fonctions
+differentes**, toutes sur un `hModule` NUL ([eos_sites.json](eos_sites.json)) :
+
+| fonction | retn | ce qu'elle resout |
+|---|---|---|
+| `sub_7A2270` | 0 | `EOS_Initialize`, `Platform_Create`, `Platform_Tick`… |
+| `sub_7A2170` | 8 | `Connect_Login` — **neutralisee** (`retn 8`) |
+| `sub_7A2FA0` | 0 | `AntiCheatClient_BeginSession` — **neutralisee** (drapeau) |
+| `sub_7A1A70` | 4 | `EndSession`, `Shutdown`, `Platform_Release` |
+| `sub_7A2AC0` | 0 | `Connect_Login` |
+| `sub_7A2840` | 4 | `Connect_CopyIdToken` |
+| `sub_7A2A60` | 8 | `ReceiveMessageFromServer` |
+| `sub_7A2CD0` | 0 | `EndSession` |
+| … et 7 autres | | |
+
+**Deux sont neutralisees, treize ne sont pas prouvees inatteignables.** Si un
+plantage apparait sur une action plus tardive, c'est le premier endroit ou
+regarder. Le releve donne pour chacune son prologue et sa taille de `retn`,
+c'est-a-dire de quoi la neutraliser : `scripts/eos_sites.py`.
+

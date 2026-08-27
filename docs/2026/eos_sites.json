@@ -1,0 +1,177 @@
+[
+ {
+  "ea": "0x007a1a70",
+  "name": "sub_7A1A70",
+  "size": 823,
+  "retn": 4,
+  "prologue": "55 8b ec 33 c9 5d e9 05",
+  "procs": [
+   "_EOS_AntiCheatClient_EndSession@8",
+   "_EOS_AntiCheatClient_RemoveNotifyMessageToServer@12",
+   "_EOS_Auth_RemoveNotifyLoginStatusChanged@12",
+   "_EOS_Connect_RemoveNotifyAuthExpiration@12",
+   "_EOS_Platform_Release@4",
+   "_EOS_Shutdown@0"
+  ]
+ },
+ {
+  "ea": "0x007a1db0",
+  "name": "sub_7A1DB0",
+  "size": 126,
+  "retn": 4,
+  "prologue": "55 8b ec 8b 4d 08 83 ec",
+  "procs": [
+   "_EOS_Connect_CreateUser@16"
+  ]
+ },
+ {
+  "ea": "0x007a1e30",
+  "name": "sub_7A1E30",
+  "size": 466,
+  "retn": 4,
+  "prologue": "55 8b ec 6a ff 68 50 e3",
+  "procs": [
+   "_EOS_AntiCheatClient_EndSession@8",
+   "_EOS_AntiCheatClient_RemoveNotifyMessageToServer@12",
+   "_EOS_Auth_RemoveNotifyLoginStatusChanged@12",
+   "_EOS_Connect_RemoveNotifyAuthExpiration@12",
+   "_EOS_Platform_Release@4",
+   "_EOS_Shutdown@0"
+  ]
+ },
+ {
+  "ea": "0x007a2010",
+  "name": "sub_7A2010",
+  "size": 81,
+  "retn": 0,
+  "prologue": "55 8b ec 51 57 8b f9 8b",
+  "procs": [
+   "_EOS_Connect_AddNotifyAuthExpiration@16"
+  ]
+ },
+ {
+  "ea": "0x007a2170",
+  "name": "sub_7A2170",
+  "size": 242,
+  "retn": 8,
+  "prologue": "55 8b ec 83 ec 1c 56 57",
+  "procs": [
+   "_EOS_Connect_AddNotifyAuthExpiration@16",
+   "_EOS_Connect_Login@16",
+   "_EOS_Connect_RemoveNotifyAuthExpiration@12"
+  ]
+ },
+ {
+  "ea": "0x007a2270",
+  "name": "sub_7A2270",
+  "size": 738,
+  "retn": 0,
+  "prologue": "55 8b ec 83 ec 78 57 68",
+  "procs": [
+   "_EOS_Auth_AddNotifyLoginStatusChanged@16",
+   "_EOS_Initialize@4",
+   "_EOS_Logging_SetCallback@4",
+   "_EOS_Logging_SetLogLevel@8",
+   "_EOS_Platform_Create@4",
+   "_EOS_Platform_GetAntiCheatClientInterface@4",
+   "_EOS_Platform_GetAuthInterface@4",
+   "_EOS_Platform_GetConnectInterface@4",
+   "_EOS_Platform_Tick@4"
+  ]
+ },
+ {
+  "ea": "0x007a2840",
+  "name": "sub_7A2840",
+  "size": 416,
+  "retn": 4,
+  "prologue": "55 8b ec 6a ff 68 b6 e4",
+  "procs": [
+   "_EOS_Connect_CopyIdToken@12",
+   "_EOS_Connect_IdToken_Release@4"
+  ]
+ },
+ {
+  "ea": "0x007a2a00",
+  "name": "sub_7A2A00",
+  "size": 96,
+  "retn": 0,
+  "prologue": "55 8b ec 51 83 3d a0 af",
+  "procs": [
+   "_EOS_ProductUserId_ToString@12"
+  ]
+ },
+ {
+  "ea": "0x007a2a60",
+  "name": "sub_7A2A60",
+  "size": 96,
+  "retn": 8,
+  "prologue": "55 8b ec 83 ec 0c 83 79",
+  "procs": [
+   "_EOS_AntiCheatClient_ReceiveMessageFromServer@8"
+  ]
+ },
+ {
+  "ea": "0x007a2ac0",
+  "name": "sub_7A2AC0",
+  "size": 299,
+  "retn": 0,
+  "prologue": "55 8b ec 83 ec 60 a1 40",
+  "procs": [
+   "_EOS_Connect_AddNotifyAuthExpiration@16",
+   "_EOS_Connect_Login@16",
+   "_EOS_Connect_RemoveNotifyAuthExpiration@12"
+  ]
+ },
+ {
+  "ea": "0x007a2c90",
+  "name": "sub_7A2C90",
+  "size": 56,
+  "retn": 0,
+  "prologue": "57 8b f9 8b 47 18 0b 47",
+  "procs": [
+   "_EOS_AntiCheatClient_RemoveNotifyMessageToServer@12"
+  ]
+ },
+ {
+  "ea": "0x007a2cd0",
+  "name": "sub_7A2CD0",
+  "size": 119,
+  "retn": 0,
+  "prologue": "55 8b ec 51 57 8b f9 80",
+  "procs": [
+   "_EOS_AntiCheatClient_EndSession@8",
+   "_EOS_AntiCheatClient_RemoveNotifyMessageToServer@12"
+  ]
+ },
+ {
+  "ea": "0x007a2d50",
+  "name": "sub_7A2D50",
+  "size": 387,
+  "retn": 0,
+  "prologue": "55 8b ec 6a ff 68 ed e4",
+  "procs": [
+   "_EOS_ProductUserId_ToString@12"
+  ]
+ },
+ {
+  "ea": "0x007a2ee0",
+  "name": "sub_7A2EE0",
+  "size": 164,
+  "retn": 0,
+  "prologue": "55 8b ec 81 ec 08 01 00",
+  "procs": [
+   "_EOS_EResult_ToString@4"
+  ]
+ },
+ {
+  "ea": "0x007a2fa0",
+  "name": "sub_7A2FA0",
+  "size": 210,
+  "retn": 0,
+  "prologue": "55 8b ec 83 ec 10 57 8b",
+  "procs": [
+   "_EOS_AntiCheatClient_AddNotifyMessageToServer@16",
+   "_EOS_AntiCheatClient_BeginSession@8"
+  ]
+ }
+]
