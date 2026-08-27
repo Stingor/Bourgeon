@@ -1,0 +1,306 @@
+{
+ "method": "propagation par appels, intersection des appelants des appeles portes",
+ "witness": {
+  "cases": 120,
+  "answers": 61,
+  "correct": 58,
+  "wrong": 3,
+  "precision": 0.951,
+  "after_size_filter": {
+   "kept_correct": 54,
+   "kept_wrong": 1,
+   "precision": 0.982
+  },
+  "note": "temoin constitue de paires issues de vtable/tables/position/portage/accesseur, JAMAIS de appel-i1/appel-i2 (meme famille que la methode testee)"
+ },
+ "size_filter": [
+  0.96,
+  1.13
+ ],
+ "pairs": [
+  {
+   "f25": "0x00c9df00",
+   "to": "0x005095a0",
+   "ratio": 1.04,
+   "size2025": 50141,
+   "size2026": 52074,
+   "anchors": 25,
+   "name": "RecvLoop_DispatchPackets",
+   "targets": [
+    "0x00ca0c5d"
+   ]
+  },
+  {
+   "f25": "0x00d8f2a0",
+   "to": "0x00ca2840",
+   "ratio": 1.02,
+   "size2025": 22154,
+   "size2026": 22658,
+   "anchors": 13,
+   "name": "SkillHit_SpawnEffectsBySkillId",
+   "targets": [
+    "0x00d92b2b"
+   ]
+  },
+  {
+   "f25": "0x00ad8c40",
+   "to": "0x00ab4cf0",
+   "ratio": 1.06,
+   "size2025": 2027,
+   "size2026": 2142,
+   "anchors": 12,
+   "name": "CActorSprite_SubmitStrQuad",
+   "targets": [
+    "0x00ad8d91",
+    "0x00ad9308",
+    "0x00ad93c5",
+    "0x00ad93d4",
+    "0x00ad93d9",
+    "0x00ad93e2"
+   ]
+  },
+  {
+   "f25": "0x00807d20",
+   "to": "0x008452d0",
+   "ratio": 0.98,
+   "size2025": 1562,
+   "size2026": 1533,
+   "anchors": 9,
+   "name": "UIRichTextCtrl_Relayout",
+   "targets": [
+    "0x00808080"
+   ]
+  },
+  {
+   "f25": "0x005a1460",
+   "to": "0x00668d70",
+   "ratio": 1.0,
+   "size2025": 470,
+   "size2026": 470,
+   "anchors": 6,
+   "name": "CNameDict_GetEntryOrRequest",
+   "targets": [
+    "0x005a1460"
+   ]
+  },
+  {
+   "f25": "0x00cf8b10",
+   "to": "0x00565ab0",
+   "ratio": 1.05,
+   "size2025": 456,
+   "size2026": 480,
+   "anchors": 6,
+   "name": "Recv_ZC_RodexDeleteResult",
+   "targets": [
+    "0x00cf8b10"
+   ]
+  },
+  {
+   "f25": "0x0059c760",
+   "to": "0x006645e0",
+   "ratio": 1.0,
+   "size2025": 443,
+   "size2026": 443,
+   "anchors": 5,
+   "name": "CAccountLinkedUserDataLoadAsyncWork_SetParam",
+   "targets": [
+    "0x0059c7f0"
+   ]
+  },
+  {
+   "f25": "0x006046e0",
+   "to": "0x006af910",
+   "ratio": 1.01,
+   "size2025": 946,
+   "size2026": 952,
+   "anchors": 5,
+   "name": "CActorSprite_DeferQuadSorted",
+   "targets": [
+    "0x006046e0",
+    "0x006049e4"
+   ]
+  },
+  {
+   "f25": "0x0083d3f0",
+   "to": "0x0087b1f0",
+   "ratio": 1.04,
+   "size2025": 544,
+   "size2026": 568,
+   "anchors": 5,
+   "name": "UISubChatWnd_WrapAndDispatch",
+   "targets": [
+    "0x0083d3f0"
+   ]
+  },
+  {
+   "f25": "0x00b2f080",
+   "to": "0x00b0d4f0",
+   "ratio": 1.0,
+   "size2025": 865,
+   "size2026": 865,
+   "anchors": 5,
+   "name": "CNavigation_ClearRoute",
+   "targets": [
+    "0x00b2f080"
+   ]
+  },
+  {
+   "f25": "0x00bd4230",
+   "to": "0x00b9f580",
+   "ratio": 1.0,
+   "size2025": 765,
+   "size2026": 768,
+   "anchors": 4,
+   "name": "Effect_Build_StatusIconBar",
+   "targets": [
+    "0x00bd4230"
+   ]
+  },
+  {
+   "f25": "0x00b90780",
+   "to": "0x00b6e4b0",
+   "ratio": 1.0,
+   "size2025": 577,
+   "size2026": 577,
+   "anchors": 3,
+   "name": "EffectInst_Ctor_StrNode",
+   "targets": [
+    "0x00b90780"
+   ]
+  },
+  {
+   "f25": "0x00d99860",
+   "to": "0x00cac190",
+   "ratio": 1.0,
+   "size2025": 308,
+   "size2026": 308,
+   "anchors": 3,
+   "name": "Adoption_IsEligible",
+   "targets": [
+    "0x00d99860"
+   ]
+  },
+  {
+   "f25": "0x00560fb0",
+   "to": "0x00636dd0",
+   "ratio": 1.0,
+   "size2025": 167,
+   "size2026": 167,
+   "anchors": 2,
+   "name": "Adapter_EnumerateList",
+   "targets": [
+    "0x00560fb0"
+   ]
+  },
+  {
+   "f25": "0x00c6aa80",
+   "to": "0x004c3c50",
+   "ratio": 1.0,
+   "size2025": 395,
+   "size2026": 395,
+   "anchors": 2,
+   "name": "MapCoord_WorldToTileAndSub",
+   "targets": [
+    "0x00c6aa80"
+   ]
+  },
+  {
+   "f25": "0x00d57c60",
+   "to": "0x00c6ad90",
+   "ratio": 1.07,
+   "size2025": 356,
+   "size2026": 380,
+   "anchors": 2,
+   "name": "VendingAvail_ConsumeItem",
+   "targets": [
+    "0x00d57c60"
+   ]
+  },
+  {
+   "f25": "0x00d9d220",
+   "to": "0x00caef60",
+   "ratio": 1.0,
+   "size2025": 62,
+   "size2026": 62,
+   "anchors": 2,
+   "name": "EntityName_IsHostileOrSpecialUnit",
+   "targets": [
+    "0x00d9d220"
+   ]
+  }
+ ],
+ "rejected": [
+  {
+   "f25": "0x00814a70",
+   "to": "0x00852d80",
+   "ratio": 0.95,
+   "size2025": 1315,
+   "size2026": 1254,
+   "anchors": 14,
+   "name": "UIMenuIconWnd_OnMsg",
+   "targets": [
+    "0x00814a70"
+   ]
+  },
+  {
+   "f25": "0x00ad87d0",
+   "to": "0x00ab4790",
+   "ratio": 1.2,
+   "size2025": 1132,
+   "size2026": 1364,
+   "anchors": 12,
+   "name": "sub_AD87D0",
+   "targets": [
+    "0x00ad8b7d"
+   ]
+  },
+  {
+   "f25": "0x00d43400",
+   "to": "0x00c55ee0",
+   "ratio": 0.96,
+   "size2025": 3114,
+   "size2026": 2988,
+   "anchors": 6,
+   "name": "Actor_ProcessPendingAction_Tick",
+   "targets": [
+    "0x00d43400"
+   ]
+  },
+  {
+   "f25": "0x0095dfb0",
+   "to": "0x0099a0b0",
+   "ratio": 1.35,
+   "size2025": 530,
+   "size2026": 716,
+   "anchors": 5,
+   "name": "UIBasicInfoWnd_LayoutChildren",
+   "targets": [
+    "0x0095dfb0"
+   ]
+  },
+  {
+   "f25": "0x00814150",
+   "to": "0x008523f0",
+   "ratio": 1.14,
+   "size2025": 980,
+   "size2026": 1121,
+   "anchors": 4,
+   "name": "UIMenuIconWnd_RebuildNodes",
+   "targets": [
+    "0x00814150"
+   ]
+  },
+  {
+   "f25": "0x00c756a0",
+   "to": "0x004cfe30",
+   "ratio": 0.93,
+   "size2025": 607,
+   "size2026": 564,
+   "anchors": 3,
+   "name": "GameMode_RouteHoverAndClick",
+   "targets": [
+    "0x00c756a0"
+   ]
+  }
+ ]
+}

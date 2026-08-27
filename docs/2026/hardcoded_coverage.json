@@ -1,0 +1,773 @@
+{
+ "known": [
+  "0x004e52a0",
+  "0x004e5330",
+  "0x004f1940",
+  "0x00519df0",
+  "0x0051a290",
+  "0x0051a4b0",
+  "0x0051aab0",
+  "0x0051abf0",
+  "0x0051aca0",
+  "0x0051ad20",
+  "0x0051b570",
+  "0x0053f140",
+  "0x0053faa0",
+  "0x005471a0",
+  "0x00550b10",
+  "0x00553e80",
+  "0x00554040",
+  "0x00554070",
+  "0x005541b0",
+  "0x0055c830",
+  "0x0055c8c0",
+  "0x00560d60",
+  "0x005610b0",
+  "0x005663d0",
+  "0x00566b70",
+  "0x00568760",
+  "0x0059e950",
+  "0x005a4300",
+  "0x005ab550",
+  "0x005c5950",
+  "0x00600770",
+  "0x0061d370",
+  "0x006a0d40",
+  "0x006a1b20",
+  "0x006a2b50",
+  "0x006a3f20",
+  "0x006a6570",
+  "0x0070f4b0",
+  "0x007110c0",
+  "0x00715be0",
+  "0x007289da",
+  "0x00738370",
+  "0x00738570",
+  "0x0073a1f0",
+  "0x0073adb0",
+  "0x0079d5e0",
+  "0x0079d610",
+  "0x007a6df0",
+  "0x007f9688",
+  "0x0080d1a0",
+  "0x008217f0",
+  "0x008263a0",
+  "0x008303f0",
+  "0x00831a50",
+  "0x0083d840",
+  "0x00857910",
+  "0x0085fca0",
+  "0x008642d0",
+  "0x00864690",
+  "0x00874af0",
+  "0x00880e7f",
+  "0x008848d0",
+  "0x00897df1",
+  "0x00897e05",
+  "0x00897ffb",
+  "0x00898040",
+  "0x00898bc0",
+  "0x00898cc5",
+  "0x00898cd2",
+  "0x00898cd5",
+  "0x00898cea",
+  "0x00898cef",
+  "0x008a0570",
+  "0x008b3427",
+  "0x008b66a0",
+  "0x008bf7d0",
+  "0x008c049c",
+  "0x008c18b0",
+  "0x008c5860",
+  "0x008cb7c0",
+  "0x008dc0d0",
+  "0x008e1d50",
+  "0x008f3498",
+  "0x008f5800",
+  "0x008f9840",
+  "0x008fc220",
+  "0x008fd12a",
+  "0x00901310",
+  "0x009030c0",
+  "0x00903160",
+  "0x009137a0",
+  "0x009386d0",
+  "0x0093f1f9",
+  "0x0093f278",
+  "0x00946da0",
+  "0x00947053",
+  "0x0094708b",
+  "0x00950400",
+  "0x00955530",
+  "0x00955980",
+  "0x0095598b",
+  "0x009559b9",
+  "0x009559c3",
+  "0x009559d7",
+  "0x00955a69",
+  "0x00977e80",
+  "0x009b9b9b",
+  "0x00a1cb30",
+  "0x00a1d260",
+  "0x00a1d460",
+  "0x00a21c90",
+  "0x00a25a70",
+  "0x00a27b50",
+  "0x00a2cc20",
+  "0x00a2e770",
+  "0x00a31a30",
+  "0x00a33005",
+  "0x00a39340",
+  "0x00a447d0",
+  "0x00a47b90",
+  "0x00a4ad20",
+  "0x00a4b760",
+  "0x00a69eb0",
+  "0x00a727f0",
+  "0x00a79610",
+  "0x00a892c0",
+  "0x00a8d4a0",
+  "0x00a8e800",
+  "0x00a8f910",
+  "0x00a90350",
+  "0x00a948d0",
+  "0x00a94930",
+  "0x00a9a7d0",
+  "0x00a9bc90",
+  "0x00a9ed30",
+  "0x00a9f030",
+  "0x00b1fac0",
+  "0x00b26cf0",
+  "0x00b2e700",
+  "0x00b314f0",
+  "0x00b35f80",
+  "0x00b39660",
+  "0x00b5ed20",
+  "0x00b666d0",
+  "0x00bb4170",
+  "0x00bb5d10",
+  "0x00bc2de1",
+  "0x00bced10",
+  "0x00bcfb10",
+  "0x00c14d60",
+  "0x00c3c3ff",
+  "0x00c4d0a7",
+  "0x00c55bf0",
+  "0x00c58d13",
+  "0x00c58e90",
+  "0x00c5dfc0",
+  "0x00c5e372",
+  "0x00c6d9d0",
+  "0x00c6e990",
+  "0x00c74fc2",
+  "0x00c74fc7",
+  "0x00c74fd6",
+  "0x00c74fdb",
+  "0x00c7a7eb",
+  "0x00c7a822",
+  "0x00c7a89a",
+  "0x00c93cb0",
+  "0x00d00010",
+  "0x00d3dc90",
+  "0x00d3ded0",
+  "0x00d403a0",
+  "0x00d41c5f",
+  "0x00d4245d",
+  "0x00d425ce",
+  "0x00d55f80",
+  "0x00d56300",
+  "0x00d57a30",
+  "0x00d5a720",
+  "0x00d5a980",
+  "0x00d5b580",
+  "0x00d5bb40",
+  "0x00d5bcf0",
+  "0x00d5cf50",
+  "0x00d5e1d0",
+  "0x00d5e240",
+  "0x00d5e3c0",
+  "0x00d5e590",
+  "0x00d71ec0",
+  "0x00d78970",
+  "0x00d7fa90",
+  "0x00d7fd30",
+  "0x00d7fe40",
+  "0x00d806a0",
+  "0x00d80950",
+  "0x00d84760",
+  "0x00d87380",
+  "0x00d89ed0",
+  "0x00d8a010",
+  "0x00d8a080",
+  "0x00d8a0f0",
+  "0x00d8a160",
+  "0x00d8a1d0",
+  "0x00d96c20",
+  "0x00d9a960",
+  "0x00d9aa70",
+  "0x00d9cf80",
+  "0x00dabb10",
+  "0x00db01b0",
+  "0x00dbbc4f",
+  "0x00dbbc7f"
+ ],
+ "unknown": {
+  "0x00404040": [
+   "features/windows/character_sheet.cc"
+  ],
+  "0x00420000": [
+   "ragnarok/ragnarok_client.cc"
+  ],
+  "0x004b0082": [
+   "features/windows/character_sheet.cc"
+  ],
+  "0x004f08f0": [
+   "ragnarok/globals.h"
+  ],
+  "0x005474a0": [
+   "features/patches/chat.cc"
+  ],
+  "0x0055d680": [
+   "features/fx/ground_paint.cc"
+  ],
+  "0x0055d850": [
+   "features/fx/ground_paint.cc"
+  ],
+  "0x00560f80": [
+   "ragnarok/game_settings.cc"
+  ],
+  "0x00560fb0": [
+   "ragnarok/game_settings.cc"
+  ],
+  "0x00561550": [
+   "ragnarok/game_settings.cc"
+  ],
+  "0x00566770": [
+   "features/fx/palette_inject.cc"
+  ],
+  "0x00568b30": [
+   "ragnarok/game_settings.cc"
+  ],
+  "0x00573fc0": [
+   "ui/spr_act.cc"
+  ],
+  "0x0059c7f0": [
+   "features/windows/character_sheet.cc"
+  ],
+  "0x005a1460": [
+   "ragnarok/game_scene.h"
+  ],
+  "0x005a18e0": [
+   "ragnarok/game_scene.h"
+  ],
+  "0x005a3a1a": [
+   "features/windows/character_sheet.cc"
+  ],
+  "0x005c8950": [
+   "features/windows/character_sheet.cc"
+  ],
+  "0x005d4c50": [
+   "ragnarok/user_hotkey.cc"
+  ],
+  "0x005d54c0": [
+   "ragnarok/user_hotkey.cc"
+  ],
+  "0x005d56d0": [
+   "ragnarok/user_hotkey.cc"
+  ],
+  "0x005ff990": [
+   "features/overlays/login_parade.cc"
+  ],
+  "0x00600430": [
+   "features/overlays/login_parade.cc"
+  ],
+  "0x00600a80": [
+   "ragnarok/game_settings.cc"
+  ],
+  "0x00600ab0": [
+   "ragnarok/game_settings.cc"
+  ],
+  "0x00600ae0": [
+   "ragnarok/game_settings.cc"
+  ],
+  "0x00600be0": [
+   "ragnarok/game_settings.cc"
+  ],
+  "0x006046e0": [
+   "features/fx/weapon_layer.cc"
+  ],
+  "0x006049e4": [
+   "features/fx/weapon_layer.cc"
+  ],
+  "0x006060ff": [
+   "features/windows/chat_window.cc"
+  ],
+  "0x0061d560": [
+   "features/windows/character_sheet.cc"
+  ],
+  "0x0068cdf0": [
+   "ragnarok/game_settings.cc"
+  ],
+  "0x0068dfd0": [
+   "ragnarok/game_settings.cc"
+  ],
+  "0x0068e160": [
+   "ragnarok/game_settings.cc"
+  ],
+  "0x0068ea70": [
+   "ragnarok/game_settings.h"
+  ],
+  "0x0068eaf0": [
+   "ragnarok/game_settings.cc"
+  ],
+  "0x0068f8e0": [
+   "ragnarok/game_settings.cc"
+  ],
+  "0x0068fc70": [
+   "ragnarok/game_settings.cc"
+  ],
+  "0x0068fd50": [
+   "ragnarok/game_settings.h"
+  ],
+  "0x0069f480": [
+   "features/windows/item_desc_window.cc"
+  ],
+  "0x006a06b0": [
+   "ragnarok/item_db.h"
+  ],
+  "0x006a2970": [
+   "features/windows/item_desc_window.cc"
+  ],
+  "0x006a2a70": [
+   "features/windows/item_desc_window.cc"
+  ],
+  "0x006a4bc0": [
+   "ragnarok/item_db.h"
+  ],
+  "0x006a4c10": [
+   "ragnarok/item_db.h"
+  ],
+  "0x006a5db0": [
+   "features/windows/item_desc_window.cc"
+  ],
+  "0x007103d0": [
+   "features/patches/chat.cc"
+  ],
+  "0x00715d30": [
+   "features/overlays/basic_info.cc"
+  ],
+  "0x00727444": [
+   "utils/hooking/detours.h"
+  ],
+  "0x00739cd0": [
+   "ragnarok/item_db.h"
+  ],
+  "0x0073a140": [
+   "ragnarok/lua.h"
+  ],
+  "0x007a6f10": [
+   "ragnarok/game_settings.cc"
+  ],
+  "0x007a7f70": [
+   "ragnarok/game_settings.cc"
+  ],
+  "0x007a7fa0": [
+   "features/windows/entity_context_menu.cc"
+  ],
+  "0x007c72e0": [
+   "features/windows/rodex_window.cc"
+  ],
+  "0x007f0000": [
+   "features/windows/character_sheet.cc"
+  ],
+  "0x007f8969": [
+   "features/patches/equip_tweaks.cc"
+  ],
+  "0x007f897d": [
+   "features/patches/equip_tweaks.cc"
+  ],
+  "0x007f89ef": [
+   "features/patches/equip_tweaks.cc"
+  ],
+  "0x007f8ab0": [
+   "features/patches/equip_tweaks.cc"
+  ],
+  "0x007f8c3d": [
+   "features/patches/equip_tweaks.cc"
+  ],
+  "0x007f8d5b": [
+   "features/patches/equip_tweaks.cc"
+  ],
+  "0x007fbfc0": [
+   "features/overlays/chat_balloon.cc"
+  ],
+  "0x007fe817": [
+   "features/windows/character_sheet.cc"
+  ],
+  "0x00808080": [
+   "features/windows/character_sheet.cc"
+  ],
+  "0x00812e60": [
+   "features/windows/inventory_viewer.cc"
+  ],
+  "0x00814064": [
+   "features/overlays/menu_icons.cc"
+  ],
+  "0x00814150": [
+   "features/overlays/menu_icons.cc"
+  ],
+  "0x00814a70": [
+   "features/overlays/menu_icons.cc"
+  ],
+  "0x00830240": [
+   "features/overlays/chat_balloon.cc"
+  ],
+  "0x0083d3f0": [
+   "features/patches/chat.cc"
+  ],
+  "0x0083f070": [
+   "features/patches/chat.cc"
+  ],
+  "0x00871276": [
+   "features/patches/inventory_tweaks.cc"
+  ],
+  "0x008712b4": [
+   "features/patches/inventory_tweaks.cc"
+  ],
+  "0x008712d3": [
+   "features/patches/inventory_tweaks.cc"
+  ],
+  "0x008712f5": [
+   "features/patches/inventory_tweaks.cc"
+  ],
+  "0x0088ccff": [
+   "features/windows/party_friend_window.cc"
+  ],
+  "0x0089e4c8": [
+   "features/patches/equip_tweaks.cc"
+  ],
+  "0x008b5a2b": [
+   "features/windows/character_sheet.cc"
+  ],
+  "0x008db420": [
+   "features/fx/screen_fx.cc"
+  ],
+  "0x008e1730": [
+   "features/windows/chat_window.cc"
+  ],
+  "0x0090243f": [
+   "features/patches/chat.cc"
+  ],
+  "0x0095dfb0": [
+   "features/overlays/basic_info.cc"
+  ],
+  "0x0096b72b": [
+   "features/patches/inventory_tweaks.cc"
+  ],
+  "0x00979f10": [
+   "features/patches/chat.cc"
+  ],
+  "0x009b30ff": [
+   "features/windows/character_sheet.cc"
+  ],
+  "0x009eb410": [
+   "features/fx/screen_fx.cc"
+  ],
+  "0x00a1cb70": [
+   "features/patches/chat.cc"
+  ],
+  "0x00a2c600": [
+   "ragnarok/social.h"
+  ],
+  "0x00a336d0": [
+   "features/gameplay/quick_cast.cc"
+  ],
+  "0x00a388f0": [
+   "features/windows/entity_context_menu.cc"
+  ],
+  "0x00a38c60": [
+   "features/windows/chat_room_window.cc"
+  ],
+  "0x00a3a2e4": [
+   "features/patches/equip_tweaks.cc"
+  ],
+  "0x00a3a48b": [
+   "features/patches/status_tweaks.cc"
+  ],
+  "0x00a3a490": [
+   "features/patches/status_tweaks.cc"
+  ],
+  "0x00a3f0f6": [
+   "features/patches/equip_tweaks.cc"
+  ],
+  "0x00a47400": [
+   "ragnarok/emotion_hotkey.cc"
+  ],
+  "0x00a74410": [
+   "ragnarok/ragnarok_client.cc"
+  ],
+  "0x00a75340": [
+   "ragnarok/globals.h"
+  ],
+  "0x00a797b0": [
+   "ragnarok/game_scene.h"
+  ],
+  "0x00a85be0": [
+   "ragnarok/globals.h"
+  ],
+  "0x00a88ab0": [
+   "ragnarok/file_mgr.h"
+  ],
+  "0x00a8d3e0": [
+   "features/fx/palette_inject.cc"
+  ],
+  "0x00a94870": [
+   "features/windows/bank_window.cc"
+  ],
+  "0x00a98400": [
+   "features/systems/native_login.cc"
+  ],
+  "0x00a98460": [
+   "features/systems/native_login.cc"
+  ],
+  "0x00a984c0": [
+   "features/systems/native_login.cc"
+  ],
+  "0x00ad8750": [
+   "features/fx/hat_effect_depth.cc"
+  ],
+  "0x00ad8b7d": [
+   "features/fx/hat_effect_depth.cc"
+  ],
+  "0x00ad8d91": [
+   "features/fx/hat_effect_depth.cc"
+  ],
+  "0x00ad9308": [
+   "features/fx/hat_effect_depth.cc"
+  ],
+  "0x00ad93c5": [
+   "features/fx/hat_effect_depth.cc"
+  ],
+  "0x00ad93d4": [
+   "features/fx/hat_effect_depth.cc"
+  ],
+  "0x00ad93d9": [
+   "features/fx/hat_effect_depth.cc"
+  ],
+  "0x00ad93e2": [
+   "features/fx/hat_effect_depth.cc"
+  ],
+  "0x00ada5a4": [
+   "features/fx/ez_effect_capture.cc"
+  ],
+  "0x00ae8480": [
+   "features/fx/ez_effect_capture.cc"
+  ],
+  "0x00afe41c": [
+   "features/fx/hat_effect_depth.cc"
+  ],
+  "0x00afe52b": [
+   "features/fx/hat_effect_depth.cc"
+  ],
+  "0x00b20ce0": [
+   "features/windows/navigation_window.cc"
+  ],
+  "0x00b26b00": [
+   "features/windows/navigation_window.cc"
+  ],
+  "0x00b2ee00": [
+   "features/windows/navigation_window.cc"
+  ],
+  "0x00b2f080": [
+   "features/windows/navigation_window.cc"
+  ],
+  "0x00b34970": [
+   "features/windows/navigation_window.cc"
+  ],
+  "0x00b34ae0": [
+   "features/windows/navigation_window.cc"
+  ],
+  "0x00b37d80": [
+   "features/windows/navigation_window.cc"
+  ],
+  "0x00b90780": [
+   "features/overlays/basic_info.cc"
+  ],
+  "0x00bc2e04": [
+   "features/fx/ez_effect_capture.cc",
+   "features/fx/spr_effect_lab.cc"
+  ],
+  "0x00bd4230": [
+   "features/overlays/status_icon_bar.cc"
+  ],
+  "0x00c0c0c0": [
+   "features/patches/inventory_tweaks.cc",
+   "features/windows/character_sheet.cc"
+  ],
+  "0x00c14320": [
+   "ragnarok/game_settings.cc"
+  ],
+  "0x00c43230": [
+   "features/windows/char_diagnostics.cc"
+  ],
+  "0x00c44940": [
+   "ragnarok/own_actor.h"
+  ],
+  "0x00c480fd": [
+   "features/patches/damage_name_fix.cc"
+  ],
+  "0x00c48122": [
+   "features/patches/damage_name_fix.cc"
+  ],
+  "0x00c4db71": [
+   "features/overlays/chat_balloon.cc"
+  ],
+  "0x00c68e50": [
+   "features/patches/damage_name_fix.cc"
+  ],
+  "0x00c69160": [
+   "features/gameplay/keyboard_move.cc"
+  ],
+  "0x00c69a40": [
+   "features/gameplay/quick_cast.cc"
+  ],
+  "0x00c69c6d": [
+   "features/windows/character_sheet.cc"
+  ],
+  "0x00c6aa80": [
+   "ragnarok/game_scene.h"
+  ],
+  "0x00c6b1e0": [
+   "features/windows/item_desc_window.cc"
+  ],
+  "0x00c6b290": [
+   "features/windows/game_menu.cc"
+  ],
+  "0x00c6cf80": [
+   "features/gameplay/keyboard_move.cc"
+  ],
+  "0x00c753a0": [
+   "ragnarok/game_scene.h"
+  ],
+  "0x00c756a0": [
+   "features/windows/entity_context_menu.cc"
+  ],
+  "0x00c82340": [
+   "ragnarok/camera.cc"
+  ],
+  "0x00c8c8c7": [
+   "features/overlays/entity_names.cc"
+  ],
+  "0x00ca0c5d": [
+   "bourgeon.cc"
+  ],
+  "0x00cb13c6": [
+   "bourgeon.cc"
+  ],
+  "0x00cf8b10": [
+   "features/windows/rodex_window.cc"
+  ],
+  "0x00cfd0c0": [
+   "features/windows/rodex_window.cc"
+  ],
+  "0x00d21210": [
+   "features/windows/char_select.cc"
+  ],
+  "0x00d36ee4": [
+   "features/fx/weapon_dual_sprites.cc"
+  ],
+  "0x00d43400": [
+   "features/windows/char_diagnostics.cc"
+  ],
+  "0x00d54c40": [
+   "features/windows/vending_window.cc"
+  ],
+  "0x00d54d80": [
+   "features/windows/vending_window.cc"
+  ],
+  "0x00d54ea0": [
+   "features/windows/vending_window.cc"
+  ],
+  "0x00d57ac0": [
+   "features/windows/vending_window.cc"
+  ],
+  "0x00d57c60": [
+   "features/windows/vending_window.cc"
+  ],
+  "0x00d57e40": [
+   "features/windows/vending_window.cc"
+  ],
+  "0x00d5bea0": [
+   "features/windows/vending_window.cc"
+  ],
+  "0x00d5bf40": [
+   "features/windows/vending_window.cc"
+  ],
+  "0x00d5c160": [
+   "features/windows/vending_window.cc"
+  ],
+  "0x00d5c200": [
+   "features/windows/vending_window.cc"
+  ],
+  "0x00d5c580": [
+   "features/windows/vending_window.cc"
+  ],
+  "0x00d715f0": [
+   "features/windows/chat_window.cc"
+  ],
+  "0x00d7f1a0": [
+   "features/windows/chat_window.cc"
+  ],
+  "0x00d7f380": [
+   "features/windows/rodex_window.cc"
+  ],
+  "0x00d7f480": [
+   "features/windows/rodex_window.cc"
+  ],
+  "0x00d80140": [
+   "features/windows/rodex_window.cc"
+  ],
+  "0x00d80810": [
+   "ragnarok/homunculus.cc"
+  ],
+  "0x00d81680": [
+   "ragnarok/user_hotkey.cc"
+  ],
+  "0x00d823f0": [
+   "ragnarok/pet.cc"
+  ],
+  "0x00d83b20": [
+   "ragnarok/user_hotkey.cc"
+  ],
+  "0x00d8e6c0": [
+   "features/patches/berserk_chat_unlock.cc"
+  ],
+  "0x00d8eba0": [
+   "features/windows/game_menu.cc"
+  ],
+  "0x00d92b2b": [
+   "features/windows/character_sheet.cc"
+  ],
+  "0x00d94bc0": [
+   "features/windows/character_sheet.cc"
+  ],
+  "0x00d99150": [
+   "ui/sprite_path.cc"
+  ],
+  "0x00d99860": [
+   "features/windows/entity_context_menu.cc"
+  ],
+  "0x00d99ca0": [
+   "features/overlays/basic_info.cc"
+  ],
+  "0x00d99d30": [
+   "features/overlays/basic_info.cc"
+  ],
+  "0x00d9d220": [
+   "features/windows/entity_context_menu.cc"
+  ],
+  "0x00da8f90": [
+   "features/overlays/skill_bar.cc"
+  ]
+ }
+}
