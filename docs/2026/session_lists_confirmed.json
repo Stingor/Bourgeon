@@ -1,0 +1,49 @@
+{
+ "methode": "accesseurs triviaux mov eax,[ecx+disp32] / retn, ecx = g_session",
+ "preuve": "14 accesseurs consecutifs, meme ordre des deux cotes, ecart -0x38 sur les 14",
+ "ancre_appariee": {
+  "2025": "0x00d5cf50",
+  "2026": "0x00c6ffa0",
+  "disp2025": "0x17C0",
+  "disp2026": "0x1788",
+  "nom": "kPartyMemberCount"
+ },
+ "plage_confirmee_2025": "0x16F4 .. 0x17C8",
+ "modeles": {
+  "storage": {
+   "offset": "0x1718",
+   "a2025": "0x015fbad8",
+   "a2026": "0x014b8a90",
+   "statut": "CONFIRME",
+   "encadre_par": [
+    "0x1714",
+    "0x171C"
+   ]
+  },
+  "cart": {
+   "offset": "0x1720",
+   "a2025": "0x015fbae0",
+   "a2026": "0x014b8a98",
+   "statut": "CONFIRME",
+   "encadre_par": [
+    "0x171C",
+    "0x1724"
+   ]
+  },
+  "inventaire": {
+   "offset": "0x16F0",
+   "a2025": "0x015fbab0",
+   "a2026": "0x014b8a68",
+   "statut": "TRES PROBABLE",
+   "reserve": "4 octets sous le plus petit deplacement mesure (0x16F4)"
+  }
+ },
+ "bonus": {
+  "Cart_GetCount": {
+   "2025": "0x00d5ce50",
+   "2026": "0x00c6fea0",
+   "disp2025": "0x1724",
+   "disp2026": "0x16EC"
+  }
+ }
+}

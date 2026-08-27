@@ -313,6 +313,91 @@ aucune n'est utilisée par Bourgeon.** Liste dans
 | noms des deux côtés | 0 contradiction réelle | — | tout le reste |
 | familles de tables disjointes | 42 paires, 0 divergence | — | tout le reste |
 
+## ✅✅ Les trois listes d'objets : CONFIRMEES par les accesseurs
+
+Bourgeon lit trois modeles dans la session. Leurs adresses 2026 etaient
+**extrapolees** ; elles sont maintenant **mesurees**.
+
+🔴 Ce qui a debloque : le client expose des **accesseurs triviaux** de 7
+octets, `mov eax, [ecx+disp32]` / `retn` avec `ecx = g_session`. Le deplacement
+y est **en clair**, et ils sont **contigus** — 66 en 2025, dont deux blocs dans
+la zone qui nous interesse.
+
+Une de ces fonctions etait deja appariee : `kPartyMemberCount`
+`0x00d5cf50` → `0x00c6ffa0`.
+
+```
+2025  d5cf50   8b 81 c0 17 00 00    mov eax, [ecx+17C0h]
+2026  c6ffa0   8b 81 88 17 00 00    mov eax, [ecx+1788h]      17C0 - 1788 = 0x38
+```
+
+Et toute la sequence se superpose, dans le meme ordre :
+
+| | deplacements |
+|---|---|
+| 2025 | 170C 17C8 16F4 174C 1724 1734 173C 1744 172C … 17C0 1704 1714 16FC 171C |
+| 2026 | 16D4 1790 16BC 1714 16EC 16FC 1704 170C 16F4 … 1788 16CC 16DC 16C4 16E4 |
+
+✅ **14 accesseurs sur 14, ecart −0x38 pour chacun.** Le palier est mesure, plus
+suppose, sur la plage **0x16F4..0x17C8** (2025).
+
+| modele | offset | 2025 | **2026** | statut |
+|---|---|---|---|---|
+| storage | +0x1718 | `0x015FBAD8` | **`0x014B8A90`** | ✅ encadre par 0x1714 et 0x171C |
+| cart | +0x1720 | `0x015FBAE0` | **`0x014B8A98`** | ✅ encadre par 0x171C et 0x1724 |
+| inventaire | +0x16F0 | `0x015FBAB0` | **`0x014B8A68`** | ⚠ **4 octets** sous le plus petit deplacement mesure |
+
+⚠ L'inventaire reste a 4 octets en dehors de la plage mesuree. C'est tres
+probable, ce n'est pas prouve.
+
+En prime, `Cart_GetCount` `0x00d5ce50` (+0x1724) → **`0x00c6fea0`** (+0x16EC),
+par sa position dans la sequence. Details : [session_lists_confirmed.json](session_lists_confirmed.json).
+
+### ❌ Ce qui n'a PAS marche, et pourquoi
+
+Avant d'en arriver la, j'ai essaye de comparer le **profil des deplacements**
+chez les 935 fonctions (2025) / 844 (2026) qui referencent `g_session` :
+
+| plage | meilleur decalage | second | attendu |
+|---|---|---|---|
+| 0x400..0x600 | −8 (0,671) | 0,477 | — |
+| 0x1000..0x1500 | −8 (1,000) | 0,536 | **−56** ❌ |
+| 0x1500..0x1800 | −0x38 (0,800) | 0,280 | **−56** ✅ |
+
+La plage des trois listes donnait la bonne reponse, mais 0x1000..0x1500 donnait
+−8 la ou les paliers mesurent −56. 🔴 **Un deplacement ne porte pas sa base** :
+ces fonctions manipulent plusieurs structures, celle de l'acteur etant decalee
+de −8. Le profil melangeait deux structures ; le « pic » pouvait n'etre qu'un
+artefact. Il a fallu passer par des fonctions dont on SAIT que `ecx` est la
+session — c'est ce que garantissent les accesseurs triviaux.
+
+Les adresses absolues, elles, n'apparaissent nulle part (0 occurrence, 0 xref).
+
+## ✅ Troisieme test independant : la MONOTONIE
+
+Ni les tailles, ni les noms, ni les recoupements n'y entrent. Le compilateur
+reordonne des fonctions d'un build a l'autre, mais pas au hasard : l'ordre est
+largement preserve. Une paire dont la cible casse l'ordre par rapport a ses
+voisines immediates est donc suspecte.
+
+| | paires proposées | témoin aléatoire |
+|---|---|---|
+| inversions d'ordre entre voisines consécutives | **4,1 %** | 50,2 % |
+
+Et en fenêtre glissante (4 voisines de chaque côté, enveloppe élargie d'une
+pleine amplitude) : **8 paires sur 1 181 sortent de l'enveloppe (0,7 %), et
+aucune n'est utilisée par Bourgeon.** Liste dans
+[monotonic_outliers.json](monotonic_outliers.json).
+
+➡ Récapitulatif des contrôles, tous avec témoin négatif :
+
+| test | paires | témoin | indépendant de |
+|---|---|---|---|
+| ratio de tailles | médiane 0,999 | 0,303 | l'ordre, les noms |
+| monotonie | 4,1 % d'inversions | 50,2 % | les tailles, les noms |
+| noms des deux côtés | 0 contradiction réelle | — | tout le reste |
+| familles de tables disjointes | 42 paires, 0 divergence | — | tout le reste |
+
 ## ⚠ Les trois listes d'objets : EXTRAPOLATION, pas mesure
 
 Bourgeon lit trois modeles dans la session, et **aucun des trois n'est mesure** :
