@@ -1,0 +1,3761 @@
+{
+ "0x00420000": {
+  "names": "kSyntheticKeyLParam",
+  "sites": [
+   "ragnarok\\ragnarok_client.cc:62"
+  ],
+  "comment": ""
+ },
+ "0x004e5330": {
+  "names": "kStdStringCtorCStr",
+  "sites": [
+   "features\\windows\\navigation_window.cc:73"
+  ],
+  "comment": "__thiscall(this, cstr)"
+ },
+ "0x004f08f0": {
+  "names": "kStdStringDtor, kStdStringDtorAddr, kStrDtor",
+  "sites": [
+   "features\\windows\\chat_window.cc:96",
+   "features\\windows\\navigation_window.cc:72",
+   "ragnarok\\globals.h:212",
+   "ragnarok\\held_sprites.cc:41"
+  ],
+  "comment": "__thiscall(this)"
+ },
+ "0x00519df0": {
+  "names": "kGetFieldAddr",
+  "sites": [
+   "ragnarok\\lua.h:46"
+  ],
+  "comment": "lua_getfield(L, idx, k)"
+ },
+ "0x0051a290": {
+  "names": "kPCallAddr",
+  "sites": [
+   "ragnarok\\lua.h:47"
+  ],
+  "comment": "lua_pcall(L, nargs, nres, errfunc)"
+ },
+ "0x0051a4b0": {
+  "names": "kPushNumberAddr",
+  "sites": [
+   "ragnarok\\lua.h:48"
+  ],
+  "comment": "lua_pushnumber(L, double)"
+ },
+ "0x0051aab0": {
+  "names": "kSetTopAddr",
+  "sites": [
+   "ragnarok\\lua.h:49"
+  ],
+  "comment": "lua_settop(L, idx)"
+ },
+ "0x0051abf0": {
+  "names": "kToBooleanAddr",
+  "sites": [
+   "ragnarok\\lua.h:50"
+  ],
+  "comment": "lua_toboolean(L, idx)"
+ },
+ "0x0051aca0": {
+  "names": "kToLStringAddr",
+  "sites": [
+   "ragnarok\\lua.h:51"
+  ],
+  "comment": "lua_tolstring(L, idx, &len)"
+ },
+ "0x0051ad20": {
+  "names": "kToNumberAddr",
+  "sites": [
+   "ragnarok\\lua.h:52"
+  ],
+  "comment": "lua_tonumber(L, idx)"
+ },
+ "0x0053faa0": {
+  "names": "kVecU32Resize",
+  "sites": [
+   "features\\patches\\chat.cc:745"
+  ],
+  "comment": "std::vector<uint32_t>::resize"
+ },
+ "0x005471a0": {
+  "names": "kEngTextOutLow",
+  "sites": [
+   "features\\patches\\chat.cc:293",
+   "features\\patches\\chat.cc:866",
+   "features\\patches\\chat.cc:869"
+  ],
+  "comment": "__thiscall(ctx, x, y, str, len)"
+ },
+ "0x005474a0": {
+  "names": "kEngTextMeasure",
+  "sites": [
+   "features\\patches\\chat.cc:294",
+   "features\\patches\\chat.cc:826"
+  ],
+  "comment": "__thiscall(ctx, SIZE*, str, len, font)"
+ },
+ "0x00554040": {
+  "names": "kWorldDepthConvertVa",
+  "sites": [
+   "features\\fx\\hat_effect_depth.cc:32"
+  ],
+  "comment": ""
+ },
+ "0x0055d680": {
+  "names": "kDX9DrawGround",
+  "sites": [
+   "features\\fx\\ground_paint.cc:50"
+  ],
+  "comment": "RendererDX9_DrawGroundTiles(this = renderer DX9)"
+ },
+ "0x0055d850": {
+  "names": "kDX9DrawTerrain",
+  "sites": [
+   "features\\fx\\ground_paint.cc:76"
+  ],
+  "comment": "RendererDX9_DrawTerrainSurfaces"
+ },
+ "0x00560d60": {
+  "names": "kAdapterEqualsAddr",
+  "sites": [
+   "ragnarok\\game_settings.cc:202"
+  ],
+  "comment": ""
+ },
+ "0x00560f80": {
+  "names": "kSpriteTexFactoryApplyAddr",
+  "sites": [
+   "ragnarok\\game_settings.cc:156"
+  ],
+  "comment": ""
+ },
+ "0x00560fb0": {
+  "names": "kEnumAdaptersAddr",
+  "sites": [
+   "ragnarok\\game_settings.cc:176"
+  ],
+  "comment": ""
+ },
+ "0x005610b0": {
+  "names": "kGetCurrentAdapterAddr",
+  "sites": [
+   "ragnarok\\game_settings.cc:194"
+  ],
+  "comment": ""
+ },
+ "0x00561550": {
+  "names": "kEnumModesAddr",
+  "sites": [
+   "ragnarok\\game_settings.cc:186"
+  ],
+  "comment": ""
+ },
+ "0x00566770": {
+  "names": "kConvertRgbaToArgb1555",
+  "sites": [
+   "features\\fx\\palette_inject.cc:66"
+  ],
+  "comment": ""
+ },
+ "0x00568b30": {
+  "names": "kSpriteTexCacheFlushAddr",
+  "sites": [
+   "ragnarok\\game_settings.cc:165"
+  ],
+  "comment": ""
+ },
+ "0x00573fc0": {
+  "names": "kZlibDecompress",
+  "sites": [
+   "ui\\spr_act.cc:36"
+  ],
+  "comment": "__cdecl"
+ },
+ "0x005a1460": {
+  "names": "kCNameDict_GetEntryOrRequest, kNameDictGetEntry, kNameDictGetEntryOrRequest",
+  "sites": [
+   "features\\overlays\\entity_names.cc:32",
+   "features\\overlays\\target_frame.cc:86",
+   "features\\windows\\chat_window.cc:1020",
+   "features\\windows\\entity_context_menu.cc:97",
+   "features\\windows\\entity_inspector.cc:41",
+   "features\\windows\\vending_window.cc:289"
+  ],
+  "comment": "__thiscall(dict, gid)"
+ },
+ "0x005a18e0": {
+  "names": "kNameDictContains",
+  "sites": [
+   "features\\windows\\entity_inspector.cc:40"
+  ],
+  "comment": "__thiscall(dict, gid)"
+ },
+ "0x005ab550": {
+  "names": "kFnShareToChat",
+  "sites": [
+   "features\\windows\\navigation_window.cc:65"
+  ],
+  "comment": "pose la balise dans le chat"
+ },
+ "0x005c8950": {
+  "names": "kEmblemRequestUpload",
+  "sites": [
+   "features\\windows\\character_sheet.cc:1556"
+  ],
+  "comment": "__thiscall(this, guildId, std::string)"
+ },
+ "0x005d4c50": {
+  "names": "kTabIndexToCategoryAddr",
+  "sites": [
+   "ragnarok\\user_hotkey.cc:18"
+  ],
+  "comment": ""
+ },
+ "0x005d54c0": {
+  "names": "kSaveUserKeysAddr",
+  "sites": [
+   "ragnarok\\user_hotkey.cc:50"
+  ],
+  "comment": ""
+ },
+ "0x005d56d0": {
+  "names": "kChangeHotKeyAddr",
+  "sites": [
+   "ragnarok\\user_hotkey.cc:48"
+  ],
+  "comment": ""
+ },
+ "0x005ff990": {
+  "names": "kSoundMgrGet",
+  "sites": [
+   "features\\overlays\\login_parade.cc:28"
+  ],
+  "comment": "getter/lazy-create du SoundMgr"
+ },
+ "0x00600430": {
+  "names": "kSoundPlay2D",
+  "sites": [
+   "features\\overlays\\login_parade.cc:34"
+  ],
+  "comment": "Sound_PlaySample2D(this,handle,&x,&y,&z,min,max,vol)"
+ },
+ "0x00600770": {
+  "names": "kSoundPlay3D",
+  "sites": [
+   "features\\minigames\\roggle.cc:237",
+   "features\\minigames\\rojeweled.cc:92",
+   "features\\windows\\monster_info_window.cc:170"
+  ],
+  "comment": ""
+ },
+ "0x00600a80": {
+  "names": "kSoundSetMaster2DAddr",
+  "sites": [
+   "ragnarok\\game_settings.cc:95"
+  ],
+  "comment": ""
+ },
+ "0x00600ab0": {
+  "names": "kSoundSet3DAddr",
+  "sites": [
+   "ragnarok\\game_settings.cc:96"
+  ],
+  "comment": ""
+ },
+ "0x00600ae0": {
+  "names": "kSoundSetEffectAddr",
+  "sites": [
+   "ragnarok\\game_settings.cc:94"
+  ],
+  "comment": ""
+ },
+ "0x00600be0": {
+  "names": "kSoundSetBgmAddr",
+  "sites": [
+   "ragnarok\\game_settings.cc:93"
+  ],
+  "comment": ""
+ },
+ "0x006046e0": {
+  "names": "kDeferEntry",
+  "sites": [
+   "features\\fx\\weapon_layer.cc:86"
+  ],
+  "comment": "CActorSprite_DeferQuadSorted"
+ },
+ "0x006049e4": {
+  "names": "kKeyWrite",
+  "sites": [
+   "features\\fx\\weapon_layer.cc:87"
+  ],
+  "comment": "branch-1 key write (MOV [EAX+0x10],EDI)"
+ },
+ "0x006060ff": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\windows\\chat_window.cc:7247"
+  ],
+  "comment": ""
+ },
+ "0x0060c820": {
+  "names": "(littéral)",
+  "sites": [
+   "ragnarok\\configuration.h:13"
+  ],
+  "comment": ""
+ },
+ "0x00613100": {
+  "names": "(littéral)",
+  "sites": [
+   "ragnarok\\configuration.h:14"
+  ],
+  "comment": ""
+ },
+ "0x0061d370": {
+  "names": "kGetEmblemPath",
+  "sites": [
+   "features\\windows\\character_sheet.cc:1233"
+  ],
+  "comment": "__thiscall(this, out_str, guildId)"
+ },
+ "0x0061d560": {
+  "names": "kGetEmblemVersion",
+  "sites": [
+   "features\\windows\\character_sheet.cc:1325"
+  ],
+  "comment": "__thiscall(this, guildId) -> version"
+ },
+ "0x00623e20": {
+  "names": "(littéral)",
+  "sites": [
+   "ragnarok\\configuration.h:15"
+  ],
+  "comment": ""
+ },
+ "0x0068cdf0": {
+  "names": "kMapGetOrInsertAddr",
+  "sites": [
+   "ragnarok\\game_settings.cc:57"
+  ],
+  "comment": ""
+ },
+ "0x0068dfd0": {
+  "names": "kMgrSetOptionAddr",
+  "sites": [
+   "ragnarok\\game_settings.cc:38"
+  ],
+  "comment": ""
+ },
+ "0x0068e160": {
+  "names": "kMgrExecOptionAddr",
+  "sites": [
+   "ragnarok\\game_settings.cc:66"
+  ],
+  "comment": ""
+ },
+ "0x0068ea70": {
+  "names": "kGetFlagAddr, kOptionInfoGetValue",
+  "sites": [
+   "features\\overlays\\menu_icons.cc:236",
+   "ragnarok\\game_settings.cc:22"
+  ],
+  "comment": "__cdecl(ttIndex) -> bool"
+ },
+ "0x0068eaf0": {
+  "names": "kIsInvertedAddr",
+  "sites": [
+   "ragnarok\\game_settings.cc:28"
+  ],
+  "comment": ""
+ },
+ "0x0068f8e0": {
+  "names": "kMgrResetAllAddr",
+  "sites": [
+   "ragnarok\\game_settings.cc:70"
+  ],
+  "comment": ""
+ },
+ "0x0068fc70": {
+  "names": "kSetFlagByCommandAddr",
+  "sites": [
+   "ragnarok\\game_settings.cc:44"
+  ],
+  "comment": ""
+ },
+ "0x0068fd50": {
+  "names": "kOptionInfoSetValue, kSetFlagRawAddr",
+  "sites": [
+   "features\\overlays\\menu_icons.cc:237",
+   "ragnarok\\game_settings.cc:33"
+  ],
+  "comment": "__cdecl(ttIndex, value)"
+ },
+ "0x0069f480": {
+  "names": "kProbFetch",
+  "sites": [
+   "features\\windows\\item_desc_window.cc:165"
+  ],
+  "comment": "ItemProbabilityDB_Fetch"
+ },
+ "0x006a06b0": {
+  "names": "kEnsureLoadedAddr",
+  "sites": [
+   "ragnarok\\item_db.h:32"
+  ],
+  "comment": ""
+ },
+ "0x006a0d40": {
+  "names": "kLookupAddr",
+  "sites": [
+   "ragnarok\\item_db.h:27"
+  ],
+  "comment": "__cdecl(id, &table) -> record"
+ },
+ "0x006a2970": {
+  "names": "kGetCardResName",
+  "sites": [
+   "features\\windows\\item_desc_window.cc:96"
+  ],
+  "comment": "__cdecl(id) -> record ; *record = resname"
+ },
+ "0x006a2a70": {
+  "names": "kGetDescLines",
+  "sites": [
+   "features\\windows\\item_desc_window.cc:79"
+  ],
+  "comment": "ItemSkillDB_GetDescLines(info) -> &vector<char*>"
+ },
+ "0x006a2b50": {
+  "names": "kBaseNameFallbackAddr",
+  "sites": [
+   "ragnarok\\item_db.h:48"
+  ],
+  "comment": ""
+ },
+ "0x006a3f20": {
+  "names": "kRecipeGetLines",
+  "sites": [
+   "features\\windows\\make_item_window.cc:611"
+  ],
+  "comment": ""
+ },
+ "0x006a4bc0": {
+  "names": "kGetResName",
+  "sites": [
+   "features\\windows\\item_desc_window.cc:80",
+   "ui\\icon_cache.cc:51"
+  ],
+  "comment": "ItemSkillDB_GetResName(info) -> resname C-str (icône)"
+ },
+ "0x006a4c10": {
+  "names": "kSlotCountAddr",
+  "sites": [
+   "ragnarok\\item_db.h:55"
+  ],
+  "comment": ""
+ },
+ "0x006a5db0": {
+  "names": "kBookDbContains",
+  "sites": [
+   "features\\windows\\item_desc_window.cc:177"
+  ],
+  "comment": "BookItemDB_Contains"
+ },
+ "0x006aa6e0": {
+  "names": "(littéral)",
+  "sites": [
+   "ragnarok\\configuration.h:35"
+  ],
+  "comment": ""
+ },
+ "0x006bcfc0": {
+  "names": "(littéral)",
+  "sites": [
+   "ragnarok\\configuration.h:36"
+  ],
+  "comment": ""
+ },
+ "0x007103d0": {
+  "names": "kVecStrResize",
+  "sites": [
+   "features\\patches\\chat.cc:744"
+  ],
+  "comment": "std::vector<std::string>::resize"
+ },
+ "0x00715be0": {
+  "names": "kStrLayerTex",
+  "sites": [
+   "features\\overlays\\basic_info.cc:304"
+  ],
+  "comment": "Str_GetLayerTexture(layer, idx)"
+ },
+ "0x00715d30": {
+  "names": "kStrLayerTexDir",
+  "sites": [
+   "features\\overlays\\basic_info.cc:336"
+  ],
+  "comment": "Str_GetLayerTextureWithDir(layer, idx, &dir)"
+ },
+ "0x007166b0": {
+  "names": "(littéral)",
+  "sites": [
+   "ragnarok\\configuration.h:55"
+  ],
+  "comment": ""
+ },
+ "0x0071df50": {
+  "names": "(littéral)",
+  "sites": [
+   "ragnarok\\configuration.h:56"
+  ],
+  "comment": ""
+ },
+ "0x00727444": {
+  "names": "(littéral)",
+  "sites": [
+   "utils\\hooking\\detours.h:73"
+  ],
+  "comment": "\"Dtr\\0\""
+ },
+ "0x00731350": {
+  "names": "(littéral)",
+  "sites": [
+   "ragnarok\\configuration.h:57"
+  ],
+  "comment": ""
+ },
+ "0x00739cd0": {
+  "names": "kSkillEntryDtor, kSkillInfoDtor",
+  "sites": [
+   "features\\overlays\\skill_bar.cc:673",
+   "features\\windows\\character_sheet.cc:139",
+   "ragnarok\\homunculus.cc:66"
+  ],
+  "comment": "= FUN_00739cd0 (cleanup de la struct)"
+ },
+ "0x0073a140": {
+  "names": "kGetSkillIdNameLua",
+  "sites": [
+   "features\\overlays\\skill_bar.cc:564",
+   "features\\windows\\character_sheet.cc:184"
+  ],
+  "comment": "char* GetSkillIdName(int) __cdecl"
+ },
+ "0x007a6f10": {
+  "names": "kSkinGetNameAddr",
+  "sites": [
+   "ragnarok\\game_settings.cc:239"
+  ],
+  "comment": ""
+ },
+ "0x007a7f70": {
+  "names": "kSkinSetAddr",
+  "sites": [
+   "ragnarok\\game_settings.cc:244"
+  ],
+  "comment": ""
+ },
+ "0x007a7fa0": {
+  "names": "kStdVectorIntPushBack",
+  "sites": [
+   "features\\windows\\entity_context_menu.cc:95"
+  ],
+  "comment": "__thiscall(vec*, int*)"
+ },
+ "0x007c72e0": {
+  "names": "kPurgeStaleMails",
+  "sites": [
+   "features\\windows\\rodex_window.cc:131"
+  ],
+  "comment": "__thiscall(CRodexSystemMgr*)"
+ },
+ "0x007f8969": {
+  "names": "kSwapRightIconImm",
+  "sites": [
+   "features\\patches\\equip_tweaks.cc:94"
+  ],
+  "comment": "mov [ebp-0x4d0],0xfa (right icon x=250)"
+ },
+ "0x007f897d": {
+  "names": "kSwapRightNameImm",
+  "sites": [
+   "features\\patches\\equip_tweaks.cc:95"
+  ],
+  "comment": "mov [ebp-0x4d8],0xad (right name x=173)"
+ },
+ "0x00812e60": {
+  "names": "kToggleWndById",
+  "sites": [
+   "features\\windows\\inventory_viewer.cc:89"
+  ],
+  "comment": "FUN_00812e60(id) __stdcall (RET 0x4, vérifié désasm) : bascule fenêtre (ferme si ouverte v"
+ },
+ "0x00814064": {
+  "names": "kVisTable",
+  "sites": [
+   "features\\overlays\\menu_icons.cc:79"
+  ],
+  "comment": "indexed by (cmdId - 0x178), 0..0xDF"
+ },
+ "0x00814150": {
+  "names": "kGridDrawOrig",
+  "sites": [
+   "features\\overlays\\menu_icons.cc:48"
+  ],
+  "comment": "UIMenuIconWnd_RebuildNodes"
+ },
+ "0x00814a70": {
+  "names": "kCmdHandler",
+  "sites": [
+   "features\\overlays\\menu_icons.cc:69"
+  ],
+  "comment": "UIMenuIconWnd command handler"
+ },
+ "0x00814bb0": {
+  "names": "(littéral)",
+  "sites": [
+   "ragnarok\\configuration.h:17"
+  ],
+  "comment": ""
+ },
+ "0x008217f0": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\windows\\inventory_viewer.cc:550"
+  ],
+  "comment": ""
+ },
+ "0x00830240": {
+  "names": "kSetTextWrapped",
+  "sites": [
+   "features\\overlays\\chat_balloon.cc:32"
+  ],
+  "comment": ""
+ },
+ "0x0083d3f0": {
+  "names": "kWrapAndDispatch",
+  "sites": [
+   "features\\patches\\chat.cc:264",
+   "features\\patches\\chat.cc:858"
+  ],
+  "comment": "UISubChatWnd_WrapAndDispatch"
+ },
+ "0x0083f070": {
+  "names": "kSubChatAddLine",
+  "sites": [
+   "features\\patches\\chat.cc:233",
+   "features\\patches\\chat.cc:847"
+  ],
+  "comment": "__thiscall(this,text,color,sender)"
+ },
+ "0x0085fca0": {
+  "names": "kTabRecompute",
+  "sites": [
+   "features\\patches\\inventory_tweaks.cc:150"
+  ],
+  "comment": "FUN_0085fca0(tabctrl): recompute strip size after a size[] change"
+ },
+ "0x0088d730": {
+  "names": "(littéral)",
+  "sites": [
+   "ragnarok\\configuration.h:24"
+  ],
+  "comment": ""
+ },
+ "0x0088e6d0": {
+  "names": "(littéral)",
+  "sites": [
+   "ragnarok\\configuration.h:25"
+  ],
+  "comment": ""
+ },
+ "0x0089e4c8": {
+  "names": "kDragRectImm",
+  "sites": [
+   "features\\patches\\equip_tweaks.cc:78"
+  ],
+  "comment": "lea eax,[edi-0xfb] disp32 (right grip-rect base)"
+ },
+ "0x008d4580": {
+  "names": "(littéral)",
+  "sites": [
+   "ragnarok\\configuration.h:59"
+  ],
+  "comment": ""
+ },
+ "0x008d5410": {
+  "names": "(littéral)",
+  "sites": [
+   "ragnarok\\configuration.h:60"
+  ],
+  "comment": ""
+ },
+ "0x008db420": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\fx\\screen_fx.cc:399"
+  ],
+  "comment": ""
+ },
+ "0x008e1730": {
+  "names": "kChatTagTransform",
+  "sites": [
+   "features\\windows\\chat_window.cc:459"
+  ],
+  "comment": "__thiscall(this, out, in), retn 8"
+ },
+ "0x008e1d50": {
+  "names": "kGetOption",
+  "sites": [
+   "features\\overlays\\skill_bar.cc:57"
+  ],
+  "comment": "SkillInfoMgr_GetOption(mgr,key) ; key10=onglet courant"
+ },
+ "0x0090243f": {
+  "names": "kDetachedWrapCaller",
+  "sites": [
+   "features\\patches\\chat.cc:265"
+  ],
+  "comment": "ret addr of the detached call site"
+ },
+ "0x0090ce90": {
+  "names": "(littéral)",
+  "sites": [
+   "ragnarok\\configuration.h:22"
+  ],
+  "comment": ""
+ },
+ "0x0091d470": {
+  "names": "(littéral)",
+  "sites": [
+   "ragnarok\\configuration.h:38"
+  ],
+  "comment": ""
+ },
+ "0x0095dfb0": {
+  "names": "kBILayoutChildren",
+  "sites": [
+   "features\\overlays\\basic_info.cc:2808"
+  ],
+  "comment": "__thiscall(wnd, height)"
+ },
+ "0x0096b72b": {
+  "names": "kLayoutTabBoundImm",
+  "sites": [
+   "features\\patches\\inventory_tweaks.cc:175"
+  ],
+  "comment": "the imm8 (0x03) of that CMP"
+ },
+ "0x00979f10": {
+  "names": "kCharWrap",
+  "sites": [
+   "features\\patches\\chat.cc:157",
+   "features\\patches\\chat.cc:902"
+  ],
+  "comment": "__cdecl(text, outlist, maxchars)"
+ },
+ "0x00996910": {
+  "names": "(littéral)",
+  "sites": [
+   "ragnarok\\configuration.h:45"
+  ],
+  "comment": ""
+ },
+ "0x00997b50": {
+  "names": "(littéral)",
+  "sites": [
+   "ragnarok\\configuration.h:46"
+  ],
+  "comment": ""
+ },
+ "0x009ded20": {
+  "names": "(littéral)",
+  "sites": [
+   "ragnarok\\configuration.h:64"
+  ],
+  "comment": ""
+ },
+ "0x009eb410": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\fx\\screen_fx.cc:401"
+  ],
+  "comment": ""
+ },
+ "0x00a145b0": {
+  "names": "(littéral)",
+  "sites": [
+   "ragnarok\\configuration.h:52"
+  ],
+  "comment": ""
+ },
+ "0x00a1cb70": {
+  "names": "kUISetSize",
+  "sites": [
+   "features\\patches\\chat.cc:534"
+  ],
+  "comment": "__thiscall(obj, w, h)"
+ },
+ "0x00a1f2a0": {
+  "names": "(littéral)",
+  "sites": [
+   "ragnarok\\configuration.h:43"
+  ],
+  "comment": ""
+ },
+ "0x00a226f0": {
+  "names": "(littéral)",
+  "sites": [
+   "ragnarok\\configuration.h:53"
+  ],
+  "comment": ""
+ },
+ "0x00a29ba0": {
+  "names": "(littéral)",
+  "sites": [
+   "ragnarok\\configuration.h:83"
+  ],
+  "comment": ""
+ },
+ "0x00a2c600": {
+  "names": "kFriendListAddByName",
+  "sites": [
+   "features\\windows\\chat_window.cc:212"
+  ],
+  "comment": ""
+ },
+ "0x00a336d0": {
+  "names": "kWndAtPointAddr",
+  "sites": [
+   "features\\gameplay\\quick_cast.cc:35"
+  ],
+  "comment": ""
+ },
+ "0x00a388f0": {
+  "names": "kFriendListContains",
+  "sites": [
+   "features\\windows\\entity_context_menu.cc:103"
+  ],
+  "comment": "__thiscall(mgr, name)"
+ },
+ "0x00a39340": {
+  "names": "kMakeWindowAddr",
+  "sites": [
+   "ragnarok\\uiwnd.h:57"
+  ],
+  "comment": "UIWindowMgr::MakeWindow(id)"
+ },
+ "0x00a3a2e4": {
+  "names": "kWidthOwnImm",
+  "sites": [
+   "features\\patches\\equip_tweaks.cc:61"
+  ],
+  "comment": "push 0x118 imm32 (own equip window)"
+ },
+ "0x00a3a48b": {
+  "names": "kHeightImm",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:49"
+  ],
+  "comment": "push 0x8d (h=141) imm in MakeWindow"
+ },
+ "0x00a3a490": {
+  "names": "kWidthImm",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:50"
+  ],
+  "comment": "push 0x118 (w=280) imm in MakeWindow"
+ },
+ "0x00a3f0f6": {
+  "names": "kWidthOtherImm",
+  "sites": [
+   "features\\patches\\equip_tweaks.cc:62"
+  ],
+  "comment": "push 0x118 imm32 (view-other-player)"
+ },
+ "0x00a447d0": {
+  "names": "kQueueDestroyWindow",
+  "sites": [
+   "features\\overlays\\chat_balloon.cc:45"
+  ],
+  "comment": ""
+ },
+ "0x00a471e0": {
+  "names": "(littéral)",
+  "sites": [
+   "ragnarok\\configuration.h:72",
+   "ragnarok\\configuration.h:84"
+  ],
+  "comment": ""
+ },
+ "0x00a47400": {
+  "names": "kSendMacroAddr",
+  "sites": [
+   "ragnarok\\emotion_hotkey.cc:49"
+  ],
+  "comment": ""
+ },
+ "0x00a50b70": {
+  "names": "(littéral)",
+  "sites": [
+   "ragnarok\\configuration.h:31"
+  ],
+  "comment": ""
+ },
+ "0x00a5e960": {
+  "names": "(littéral)",
+  "sites": [
+   "ragnarok\\configuration.h:32"
+  ],
+  "comment": ""
+ },
+ "0x00a74410": {
+  "names": "kCursorRenderFn",
+  "sites": [
+   "ragnarok\\ragnarok_client.cc:86"
+  ],
+  "comment": "CursorMgr_RenderSprite"
+ },
+ "0x00a75340": {
+  "names": "kGameModeGetActive, kModeMgrGetActiveAddr",
+  "sites": [
+   "features\\patches\\damage_name_fix.cc:17",
+   "ragnarok\\globals.h:138"
+  ],
+  "comment": ""
+ },
+ "0x00a756e0": {
+  "names": "(littéral)",
+  "sites": [
+   "ragnarok\\configuration.h:108"
+  ],
+  "comment": ""
+ },
+ "0x00a797b0": {
+  "names": "kQuadTreeQuery, kQuadTreeQueryPointAddr",
+  "sites": [
+   "features\\gameplay\\quick_cast.cc:27",
+   "features\\windows\\char_diagnostics.cc:463"
+  ],
+  "comment": ""
+ },
+ "0x00a7b0a0": {
+  "names": "(littéral)",
+  "sites": [
+   "ragnarok\\configuration.h:122"
+  ],
+  "comment": ""
+ },
+ "0x00a85be0": {
+  "names": "kBannedAddr",
+  "sites": [
+   "ragnarok\\pet.cc:105"
+  ],
+  "comment": ""
+ },
+ "0x00a88ab0": {
+  "names": "kLoadToMemory, kLoadToMemoryAddr",
+  "sites": [
+   "ragnarok\\msgstring_override.cc:143",
+   "ui\\spr_act.cc:30"
+  ],
+  "comment": "__thiscall(mgr, path, DWORD*, char)"
+ },
+ "0x00a892c0": {
+  "names": "kFreeBuffer, kFreeBufferAddr",
+  "sites": [
+   "ragnarok\\msgstring_override.cc:144",
+   "ui\\spr_act.cc:31"
+  ],
+  "comment": "__stdcall(void*)"
+ },
+ "0x00a8d3e0": {
+  "names": "kFindCachedRes",
+  "sites": [
+   "features\\fx\\palette_inject.cc:35"
+  ],
+  "comment": ""
+ },
+ "0x00a94870": {
+  "names": "kFmtComma64",
+  "sites": [
+   "features\\windows\\bank_window.cc:42"
+  ],
+  "comment": ""
+ },
+ "0x00a94930": {
+  "names": "kStdStringFromFmt",
+  "sites": [
+   "features\\windows\\character_sheet.cc:1557"
+  ],
+  "comment": "(dst, fmt, …) -> std::string du jeu"
+ },
+ "0x00a98400": {
+  "names": "kXmlFindChild",
+  "sites": [
+   "features\\systems\\native_login.cc:61"
+  ],
+  "comment": "__thiscall(node, name) -> node"
+ },
+ "0x00a98460": {
+  "names": "kXmlFindNextSibling",
+  "sites": [
+   "features\\systems\\native_login.cc:62"
+  ],
+  "comment": "__thiscall(node, name) -> node"
+ },
+ "0x00a984c0": {
+  "names": "kXmlGetText",
+  "sites": [
+   "features\\systems\\native_login.cc:63"
+  ],
+  "comment": "__fastcall(node) -> std::string*"
+ },
+ "0x00aa7b00": {
+  "names": "(littéral)",
+  "sites": [
+   "ragnarok\\configuration.h:105"
+  ],
+  "comment": ""
+ },
+ "0x00ad8750": {
+  "names": "kScreenLayerLoopVa",
+  "sites": [
+   "features\\fx\\hat_effect_depth.cc:26"
+  ],
+  "comment": ""
+ },
+ "0x00ad8b7d": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\fx\\hat_effect_depth.cc:282"
+  ],
+  "comment": ""
+ },
+ "0x00ad8d91": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\fx\\hat_effect_depth.cc:278"
+  ],
+  "comment": ""
+ },
+ "0x00ad9308": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\fx\\hat_effect_depth.cc:280"
+  ],
+  "comment": ""
+ },
+ "0x00ad93c5": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\fx\\hat_effect_depth.cc:279"
+  ],
+  "comment": ""
+ },
+ "0x00ad93d4": {
+  "names": "kDepthHookVa",
+  "sites": [
+   "features\\fx\\hat_effect_depth.cc:28"
+  ],
+  "comment": ""
+ },
+ "0x00ad93d9": {
+  "names": "kDepthStockContinueVa",
+  "sites": [
+   "features\\fx\\hat_effect_depth.cc:29"
+  ],
+  "comment": "path natif"
+ },
+ "0x00ad93e2": {
+  "names": "kDepthConvertedContinueVa",
+  "sites": [
+   "features\\fx\\hat_effect_depth.cc:30"
+  ],
+  "comment": "path converti"
+ },
+ "0x00ada5a4": {
+  "names": "kStrParticleRet",
+  "sites": [
+   "features\\fx\\ez_effect_capture.cc:62"
+  ],
+  "comment": ""
+ },
+ "0x00ae8480": {
+  "names": "kEffRenderFn",
+  "sites": [
+   "features\\fx\\ez_effect_capture.cc:42"
+  ],
+  "comment": "EffectInstance_RenderDraw (__fastcall, ECX = effet)"
+ },
+ "0x00afe41c": {
+  "names": "kRenderCallNoArgVa",
+  "sites": [
+   "features\\fx\\hat_effect_depth.cc:23"
+  ],
+  "comment": ""
+ },
+ "0x00afe52b": {
+  "names": "kRenderCallArgVa",
+  "sites": [
+   "features\\fx\\hat_effect_depth.cc:24"
+  ],
+  "comment": ""
+ },
+ "0x00b20ce0": {
+  "names": "kFnFindMapByName",
+  "sites": [
+   "features\\windows\\navigation_window.cc:95"
+  ],
+  "comment": "__thiscall(nav, name)"
+ },
+ "0x00b26b00": {
+  "names": "kFnMapDisplayName",
+  "sites": [
+   "features\\windows\\navigation_window.cc:70"
+  ],
+  "comment": "nom AFFICHÉ d'une carte"
+ },
+ "0x00b26cf0": {
+  "names": "kFnNodeName",
+  "sites": [
+   "features\\windows\\navigation_window.cc:64"
+  ],
+  "comment": "CNaviNode::GetName (interne)"
+ },
+ "0x00b2ee00": {
+  "names": "kFnGetStep",
+  "sites": [
+   "features\\windows\\navigation_window.cc:63"
+  ],
+  "comment": ""
+ },
+ "0x00b2f080": {
+  "names": "kFnClearRoute",
+  "sites": [
+   "features\\windows\\navigation_window.cc:171"
+  ],
+  "comment": "__thiscall(nav, bool full)"
+ },
+ "0x00b34970": {
+  "names": "kFnSearch",
+  "sites": [
+   "features\\windows\\navigation_window.cc:58"
+  ],
+  "comment": "CNavigation::Search"
+ },
+ "0x00b34ae0": {
+  "names": "kFnSetRouteIcon",
+  "sites": [
+   "features\\windows\\navigation_window.cc:126"
+  ],
+  "comment": "__thiscall(nav, n)"
+ },
+ "0x00b37d80": {
+  "names": "kFnRebuildRoutePaths",
+  "sites": [
+   "features\\windows\\navigation_window.cc:127"
+  ],
+  "comment": "__thiscall(nav)"
+ },
+ "0x00b90780": {
+  "names": "kEffCtor",
+  "sites": [
+   "features\\overlays\\basic_info.cc:796"
+  ],
+  "comment": "EffectInst_Ctor_StrNode(node)"
+ },
+ "0x00bc2e04": {
+  "names": "kEffectJumpTable",
+  "sites": [
+   "features\\fx\\ez_effect_capture.cc:86",
+   "features\\fx\\spr_effect_lab.cc:555"
+  ],
+  "comment": ""
+ },
+ "0x00bcfb10": {
+  "names": "kStrSubmitQuad",
+  "sites": [
+   "features\\overlays\\basic_info.cc:303"
+  ],
+  "comment": "Effect_SubmitStrQuad (hooké)"
+ },
+ "0x00bd4230": {
+  "names": "kBuildFn",
+  "sites": [
+   "features\\overlays\\status_icon_bar.cc:45"
+  ],
+  "comment": "status-bar build/layout (hooked)"
+ },
+ "0x00c0c0c0": {
+  "names": "kBarFill",
+  "sites": [
+   "features\\patches\\inventory_tweaks.cc:85"
+  ],
+  "comment": "grid-gap filler, matches the btnbar grey (palette idx 7)"
+ },
+ "0x00c14320": {
+  "names": "kConnDisconnectAddr",
+  "sites": [
+   "ragnarok\\game_settings.cc:217"
+  ],
+  "comment": ""
+ },
+ "0x00c144b0": {
+  "names": "(littéral)",
+  "sites": [
+   "ragnarok\\configuration.h:98"
+  ],
+  "comment": ""
+ },
+ "0x00c147d0": {
+  "names": "(littéral)",
+  "sites": [
+   "ragnarok\\configuration.h:104"
+  ],
+  "comment": ""
+ },
+ "0x00c148b0": {
+  "names": "(littéral)",
+  "sites": [
+   "ragnarok\\configuration.h:99"
+  ],
+  "comment": ""
+ },
+ "0x00c14920": {
+  "names": "(littéral)",
+  "sites": [
+   "ragnarok\\configuration.h:88"
+  ],
+  "comment": ""
+ },
+ "0x00c14d60": {
+  "names": "kConnGetInstanceAddr",
+  "sites": [
+   "ragnarok\\game_settings.cc:215"
+  ],
+  "comment": ""
+ },
+ "0x00c43230": {
+  "names": "kResolveDisplayJob",
+  "sites": [
+   "features\\windows\\char_diagnostics.cc:107"
+  ],
+  "comment": ""
+ },
+ "0x00c44940": {
+  "names": "kToggleEffectId",
+  "sites": [
+   "features\\fx\\spr_effect_lab.cc:29",
+   "features\\overlays\\basic_info.cc:531"
+  ],
+  "comment": "Actor_ToggleEffectId(actor, unifiedId, add) __thiscall"
+ },
+ "0x00c480fd": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\patches\\damage_name_fix.cc:29"
+  ],
+  "comment": "le nom de la CIBLE — celui qui manque dans « [%s] subit … »"
+ },
+ "0x00c48122": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\patches\\damage_name_fix.cc:30"
+  ],
+  "comment": "le nom de l'ATTAQUANT"
+ },
+ "0x00c68e50": {
+  "names": "kCopyEntityName",
+  "sites": [
+   "features\\patches\\damage_name_fix.cc:16"
+  ],
+  "comment": "GameMode_CopyEntityName"
+ },
+ "0x00c69160": {
+  "names": "kClampReach",
+  "sites": [
+   "features\\gameplay\\keyboard_move.cc:19"
+  ],
+  "comment": "Move_ClampToReachableCell"
+ },
+ "0x00c69a40": {
+  "names": "kPickGroundCellAddr",
+  "sites": [
+   "features\\gameplay\\quick_cast.cc:22"
+  ],
+  "comment": ""
+ },
+ "0x00c6aa80": {
+  "names": "kWorldToTile",
+  "sites": [
+   "features\\gameplay\\keyboard_move.cc:17",
+   "features\\windows\\entity_inspector.cc:50"
+  ],
+  "comment": "MapCoord_WorldToTileAndSub"
+ },
+ "0x00c6b1e0": {
+  "names": "kOwnsItemById",
+  "sites": [
+   "features\\windows\\item_desc_window.cc:178"
+  ],
+  "comment": "Inventory_OwnsItemById"
+ },
+ "0x00c6b290": {
+  "names": "kOwnHasResurrectionTokenAddr",
+  "sites": [
+   "features\\windows\\game_menu.cc:75"
+  ],
+  "comment": ""
+ },
+ "0x00c6cf80": {
+  "names": "kCellValid",
+  "sites": [
+   "features\\gameplay\\keyboard_move.cc:18"
+  ],
+  "comment": "Cell_IsMoveTargetValid"
+ },
+ "0x00c753a0": {
+  "names": "kPostActorClickAction",
+  "sites": [
+   "features\\overlays\\target_frame.cc:42",
+   "features\\windows\\entity_context_menu.cc:98",
+   "ragnarok\\configuration.h:120"
+  ],
+  "comment": "__thiscall(gm, aid, flag)"
+ },
+ "0x00c756a0": {
+  "names": "kRouteHoverAndClick",
+  "sites": [
+   "features\\windows\\entity_context_menu.cc:46"
+  ],
+  "comment": ""
+ },
+ "0x00c82340": {
+  "names": "kCamClamp",
+  "sites": [
+   "ragnarok\\camera.cc:11"
+  ],
+  "comment": "Camera_ApplyViewDistanceClamp"
+ },
+ "0x00c86740": {
+  "names": "(littéral)",
+  "sites": [
+   "ragnarok\\configuration.h:73",
+   "ragnarok\\configuration.h:113"
+  ],
+  "comment": ""
+ },
+ "0x00c8c8c7": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\overlays\\entity_names.cc:151"
+  ],
+  "comment": ""
+ },
+ "0x00c9df00": {
+  "names": "(littéral)",
+  "sites": [
+   "ragnarok\\configuration.h:92"
+  ],
+  "comment": ""
+ },
+ "0x00c9e1dd": {
+  "names": "(littéral)",
+  "sites": [
+   "ragnarok\\configuration.h:97"
+  ],
+  "comment": ""
+ },
+ "0x00ca0c5d": {
+  "names": "(littéral)",
+  "sites": [
+   "bourgeon.cc:184"
+  ],
+  "comment": ""
+ },
+ "0x00caa2e0": {
+  "names": "(littéral)",
+  "sites": [
+   "ragnarok\\configuration.h:89"
+  ],
+  "comment": ""
+ },
+ "0x00cb13c6": {
+  "names": "(littéral)",
+  "sites": [
+   "bourgeon.cc:184"
+  ],
+  "comment": ""
+ },
+ "0x00cf8b10": {
+  "names": "kRecvDeleteResult",
+  "sites": [
+   "features\\windows\\rodex_window.cc:291"
+  ],
+  "comment": ""
+ },
+ "0x00cfd0c0": {
+  "names": "kRecvAckReadRodex",
+  "sites": [
+   "features\\windows\\rodex_window.cc:235"
+  ],
+  "comment": "Recv_ZC_AckReadRodex_0x0B63"
+ },
+ "0x00d21210": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\windows\\char_select.cc:258",
+   "features\\windows\\char_select.cc:261"
+  ],
+  "comment": ""
+ },
+ "0x00d272e0": {
+  "names": "(littéral)",
+  "sites": [
+   "ragnarok\\configuration.h:110"
+  ],
+  "comment": ""
+ },
+ "0x00d36ee4": {
+  "names": "kActFrameCall",
+  "sites": [
+   "features\\fx\\weapon_dual_sprites.cc:20"
+  ],
+  "comment": "CALL Act_GetFrame (E8 rel32)"
+ },
+ "0x00d43400": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\windows\\char_diagnostics.cc:1241"
+  ],
+  "comment": ""
+ },
+ "0x00d54c40": {
+  "names": "kShopAddOrMerge",
+  "sites": [
+   "features\\windows\\vending_window.cc:373"
+  ],
+  "comment": ""
+ },
+ "0x00d54d80": {
+  "names": "kAvailAddOrMerge",
+  "sites": [
+   "features\\windows\\vending_window.cc:376"
+  ],
+  "comment": ""
+ },
+ "0x00d54ea0": {
+  "names": "kBasketAddOrMerge",
+  "sites": [
+   "features\\windows\\vending_window.cc:384"
+  ],
+  "comment": "(session, rec) — 2 args !"
+ },
+ "0x00d56300": {
+  "names": "kVendingBasketClear",
+  "sites": [
+   "features\\windows\\vending_window.cc:205"
+  ],
+  "comment": "__thiscall(&session)"
+ },
+ "0x00d57ac0": {
+  "names": "kShopConsume",
+  "sites": [
+   "features\\windows\\vending_window.cc:377"
+  ],
+  "comment": ""
+ },
+ "0x00d57c60": {
+  "names": "kAvailConsume",
+  "sites": [
+   "features\\windows\\vending_window.cc:374"
+  ],
+  "comment": ""
+ },
+ "0x00d57e40": {
+  "names": "kBasketRemove",
+  "sites": [
+   "features\\windows\\vending_window.cc:385"
+  ],
+  "comment": "(session, rec) — 2 args !"
+ },
+ "0x00d5a720": {
+  "names": "kBuildIconPath, kEngBuildPath",
+  "sites": [
+   "features\\minigames\\roggle.cc:208",
+   "features\\overlays\\skill_bar.cc:582",
+   "features\\patches\\chat.cc:102",
+   "ui\\icon_cache.cc:15"
+  ],
+  "comment": "__fastcall(session, 0, idstr, outbuf, 0)"
+ },
+ "0x00d5bcf0": {
+  "names": "kMapDisplayNameAddr",
+  "sites": [
+   "ragnarok\\globals.h:255"
+  ],
+  "comment": ""
+ },
+ "0x00d5bea0": {
+  "names": "kShopGetAt",
+  "sites": [
+   "features\\windows\\vending_window.cc:357"
+  ],
+  "comment": ""
+ },
+ "0x00d5bf40": {
+  "names": "kShopAmountBySrc",
+  "sites": [
+   "features\\windows\\vending_window.cc:403"
+  ],
+  "comment": ""
+ },
+ "0x00d5c160": {
+  "names": "kAvailGetAt",
+  "sites": [
+   "features\\windows\\vending_window.cc:356"
+  ],
+  "comment": ""
+ },
+ "0x00d5c200": {
+  "names": "kAvailAmountBySrc",
+  "sites": [
+   "features\\windows\\vending_window.cc:402"
+  ],
+  "comment": ""
+ },
+ "0x00d5c580": {
+  "names": "kBasketGetAt",
+  "sites": [
+   "features\\windows\\vending_window.cc:383"
+  ],
+  "comment": "(session, out_rec, i)"
+ },
+ "0x00d5e1d0": {
+  "names": "kShieldAct",
+  "sites": [
+   "ragnarok\\held_sprites.cc:34"
+  ],
+  "comment": ""
+ },
+ "0x00d5e240": {
+  "names": "kShieldSpr",
+  "sites": [
+   "ragnarok\\held_sprites.cc:35"
+  ],
+  "comment": ""
+ },
+ "0x00d715f0": {
+  "names": "kFriendListHasName",
+  "sites": [
+   "features\\windows\\chat_window.cc:196"
+  ],
+  "comment": ""
+ },
+ "0x00d7f1a0": {
+  "names": "kCmdHandlerMap",
+  "sites": [
+   "features\\windows\\chat_window.cc:118"
+  ],
+  "comment": "__thiscall(ctxKey, texte)"
+ },
+ "0x00d7f380": {
+  "names": "kMailReturnAttachments",
+  "sites": [
+   "features\\windows\\rodex_window.cc:65"
+  ],
+  "comment": ""
+ },
+ "0x00d7f480": {
+  "names": "kMailClearAttachSlots",
+  "sites": [
+   "features\\windows\\rodex_window.cc:66"
+  ],
+  "comment": ""
+ },
+ "0x00d80140": {
+  "names": "kMailAttachCountFn",
+  "sites": [
+   "features\\windows\\rodex_window.cc:80"
+  ],
+  "comment": "__thiscall(session) -> int"
+ },
+ "0x00d80810": {
+  "names": "kSkillGetAt",
+  "sites": [
+   "ragnarok\\homunculus.cc:65"
+  ],
+  "comment": ""
+ },
+ "0x00d81680": {
+  "names": "kGetOriginalListSizeAddr",
+  "sites": [
+   "ragnarok\\user_hotkey.cc:23"
+  ],
+  "comment": ""
+ },
+ "0x00d823f0": {
+  "names": "kEggToMobAddr",
+  "sites": [
+   "ragnarok\\pet.cc:103"
+  ],
+  "comment": ""
+ },
+ "0x00d83b20": {
+  "names": "kRowToCommandIndexAddr",
+  "sites": [
+   "ragnarok\\user_hotkey.cc:26"
+  ],
+  "comment": ""
+ },
+ "0x00d8a010": {
+  "names": "kWeaponSpr",
+  "sites": [
+   "ragnarok\\held_sprites.cc:25"
+  ],
+  "comment": ""
+ },
+ "0x00d8a080": {
+  "names": "kShieldGenSpr",
+  "sites": [
+   "ragnarok\\held_sprites.cc:38"
+  ],
+  "comment": ""
+ },
+ "0x00d8a0f0": {
+  "names": "kShieldGenAct",
+  "sites": [
+   "ragnarok\\held_sprites.cc:39"
+  ],
+  "comment": ""
+ },
+ "0x00d8a160": {
+  "names": "kWeaponAct",
+  "sites": [
+   "ragnarok\\held_sprites.cc:26"
+  ],
+  "comment": ""
+ },
+ "0x00d8e6c0": {
+  "names": "kIsBerserkActive",
+  "sites": [
+   "features\\patches\\berserk_chat_unlock.cc:19"
+  ],
+  "comment": ""
+ },
+ "0x00d8eba0": {
+  "names": "kStatusEffectListHasAddr",
+  "sites": [
+   "features\\windows\\game_menu.cc:78"
+  ],
+  "comment": ""
+ },
+ "0x00d96c20": {
+  "names": "kSetShortCut",
+  "sites": [
+   "features\\overlays\\skill_bar.cc:56"
+  ],
+  "comment": "SkillMgr_SetShortCutSlot"
+ },
+ "0x00d99150": {
+  "names": "kJobResolveBodyClass",
+  "sites": [
+   "ui\\sprite_path.cc:15"
+  ],
+  "comment": ""
+ },
+ "0x00d99860": {
+  "names": "kAdoptionEligible",
+  "sites": [
+   "features\\windows\\entity_context_menu.cc:132"
+  ],
+  "comment": "__stdcall(aid) -> bool"
+ },
+ "0x00d99ca0": {
+  "names": "kJobGetMaxBaseLevel",
+  "sites": [
+   "features\\overlays\\basic_info.cc:2770"
+  ],
+  "comment": "__stdcall(jobId)"
+ },
+ "0x00d99d30": {
+  "names": "kJobGetMaxJobLevel",
+  "sites": [
+   "features\\overlays\\basic_info.cc:2771"
+  ],
+  "comment": "__stdcall(jobId)"
+ },
+ "0x00d9a960": {
+  "names": "kCntCostume",
+  "sites": [
+   "features\\windows\\inventory_viewer.cc:55"
+  ],
+  "comment": "__fastcall(session) : nb items COSTUME distincts (10 slots @+0x2b34)"
+ },
+ "0x00d9aa70": {
+  "names": "kCntEquipped",
+  "sites": [
+   "features\\windows\\inventory_viewer.cc:54"
+  ],
+  "comment": "__fastcall(session) : nb items ÉQUIPÉS distincts (10 slots @+0x17d4)"
+ },
+ "0x00d9d220": {
+  "names": "kIsHostileOrSpecial",
+  "sites": [
+   "features\\windows\\entity_context_menu.cc:136"
+  ],
+  "comment": "__stdcall(aid, job) -> bool"
+ },
+ "0x00da8f90": {
+  "names": "kSetItemSlot",
+  "sites": [
+   "features\\overlays\\skill_bar.cc:256"
+  ],
+  "comment": ""
+ },
+ "0x00e8ddb6": {
+  "names": "kWhisperRecvRgb",
+  "sites": [
+   "features\\windows\\chat_window.cc:576"
+  ],
+  "comment": "reçu : bleu-gris pâle"
+ },
+ "0x00fd6ae4": {
+  "names": "kNativeDepthQuantumVa",
+  "sites": [
+   "features\\fx\\hat_effect_depth.cc:34"
+  ],
+  "comment": ""
+ },
+ "0x00ff0000": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\fx\\ez_effect_capture.cc:417",
+   "imgui\\imgui_impl_dx7.cc:34",
+   "imgui\\imgui_impl_dx7.cc:230",
+   "imgui\\imgui_impl_dx7.cc:330"
+  ],
+  "comment": ""
+ },
+ "0x00ff00ff": {
+  "names": "kEmblemClear",
+  "sites": [
+   "features\\minigames\\roggle.cc:269",
+   "features\\windows\\character_sheet.cc:1645"
+  ],
+  "comment": "magenta pur = transparent en jeu"
+ },
+ "0x00ffaa00": {
+  "names": "kOwnChatRgb",
+  "sites": [
+   "features\\overlays\\dps_meter.cc:194",
+   "features\\windows\\entity_context_menu.cc:59"
+  ],
+  "comment": ""
+ },
+ "0x00ffd070": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\windows\\chat_window.cc:1642"
+  ],
+  "comment": ""
+ },
+ "0x00ffe060": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\overlays\\quest_tracker.h:18"
+  ],
+  "comment": "hunt progress lines (\"mob ( x / y )\")"
+ },
+ "0x00ffff00": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\windows\\character_sheet.cc:1496"
+  ],
+  "comment": ""
+ },
+ "0x00ffffff": {
+  "names": "kDefaultRgb",
+  "sites": [
+   "features\\minigames\\roggle.cc:269",
+   "features\\minigames\\rojeweled.cc:402",
+   "features\\minigames\\rojeweled.cc:428",
+   "features\\overlays\\chat_balloon.cc:389",
+   "features\\overlays\\chat_balloon.h:142",
+   "features\\overlays\\entity_names.cc:150",
+   "… +10"
+  ],
+  "comment": "couleur de repli (ZC_NPC_CHAT, Talkie Box)"
+ },
+ "0x01011dbc": {
+  "names": "kPaletteResVtable",
+  "sites": [
+   "features\\fx\\palette_inject.cc:78"
+  ],
+  "comment": ""
+ },
+ "0x01013e88": {
+  "names": "kStrCanvasCy",
+  "sites": [
+   "features\\overlays\\basic_info.cc:461"
+  ],
+  "comment": "DAT_01013e88 (soustrait de workBuf[1])"
+ },
+ "0x0101ca18": {
+  "names": "kCashVTable",
+  "sites": [
+   "features\\windows\\cashshop_window.cc:35"
+  ],
+  "comment": ""
+ },
+ "0x0101d424": {
+  "names": "kCharSelWndVtbl",
+  "sites": [
+   "features\\windows\\char_select.cc:121"
+  ],
+  "comment": "garde anti-pointeur périmé"
+ },
+ "0x01021b30": {
+  "names": "kWriteVTable",
+  "sites": [
+   "features\\windows\\rodex_window.cc:49"
+  ],
+  "comment": ""
+ },
+ "0x01021e9e": {
+  "names": "kIcoZenyPath",
+  "sites": [
+   "features\\windows\\rodex_window.cc:392"
+  ],
+  "comment": "« \\…\\rodexsystem\\renewal\\icon_zeny.bmp »"
+ },
+ "0x01021fbc": {
+  "names": "kReadVTable",
+  "sites": [
+   "features\\windows\\rodex_window.cc:37"
+  ],
+  "comment": ""
+ },
+ "0x01022170": {
+  "names": "kInboxVTable",
+  "sites": [
+   "features\\windows\\rodex_window.cc:36"
+  ],
+  "comment": "vérifiée live (g_RodexInboxWnd+0)"
+ },
+ "0x01022a8e": {
+  "names": "kIcoBothPath",
+  "sites": [
+   "features\\windows\\rodex_window.cc:394"
+  ],
+  "comment": "« …\\icon_zeny_n_item.bmp »"
+ },
+ "0x01022ad6": {
+  "names": "kIcoItemPath",
+  "sites": [
+   "features\\windows\\rodex_window.cc:393"
+  ],
+  "comment": "« …\\icon_item.bmp »"
+ },
+ "0x01022f5c": {
+  "names": "kStrCanvasCx",
+  "sites": [
+   "features\\overlays\\basic_info.cc:460"
+  ],
+  "comment": "DAT_01022f5c (soustrait de workBuf[0])"
+ },
+ "0x010265e8": {
+  "names": "kStyleshopPath",
+  "sites": [
+   "features\\windows\\inventory_viewer.cc:674"
+  ],
+  "comment": "\"유저인터페이스\\styleshop\\btn_buy_out.bmp\""
+ },
+ "0x010277b8": {
+  "names": "kEmotionPathAddr",
+  "sites": [
+   "ui\\game_emotes.cc:26"
+  ],
+  "comment": ""
+ },
+ "0x01028200": {
+  "names": "kGridDrawSlot",
+  "sites": [
+   "features\\overlays\\menu_icons.cc:47"
+  ],
+  "comment": "UIMenuIconWnd vtbl +0x50"
+ },
+ "0x0102a260": {
+  "names": "kResizeBtnVtable",
+  "sites": [
+   "features\\patches\\chat.cc:536"
+  ],
+  "comment": "UIResizeButton vtable (PTR_FUN_0102a260)"
+ },
+ "0x0102bd78": {
+  "names": "kUIPlayerGageVtable",
+  "sites": [
+   "features\\overlays\\basic_info.cc:2650"
+  ],
+  "comment": ""
+ },
+ "0x0102dd94": {
+  "names": "kTabDrawSlot",
+  "sites": [
+   "features\\patches\\inventory_tweaks.cc:156"
+  ],
+  "comment": "tab control vtable +0x50 slot (static .rdata)"
+ },
+ "0x01030168": {
+  "names": "kVtblUILoginWnd",
+  "sites": [
+   "features\\systems\\native_login.cc:17"
+  ],
+  "comment": "garde de validité de la fenêtre"
+ },
+ "0x01030fd4": {
+  "names": "kBankVTable",
+  "sites": [
+   "features\\windows\\bank_window.cc:30"
+  ],
+  "comment": ""
+ },
+ "0x01031264": {
+  "names": "kAcctClassNormal",
+  "sites": [
+   "features\\systems\\native_login.cc:20"
+  ],
+  "comment": ""
+ },
+ "0x0103181c": {
+  "names": "kFmtSpr, kFmtSprMonster",
+  "sites": [
+   "features\\minigames\\rojeweled.cc:62",
+   "ui\\mob_sprite.cc:51"
+  ],
+  "comment": "\"몬스터\\\\%s.spr\" (CP949)"
+ },
+ "0x010322d0": {
+  "names": "kMsgSlot",
+  "sites": [
+   "features\\patches\\equip_tweaks.cc:109"
+  ],
+  "comment": "UIEquipWnd vtable +0x94 (message handler slot)"
+ },
+ "0x010323ec": {
+  "names": "kParamCompareVTable",
+  "sites": [
+   "features\\windows\\npc_shop_window.cc:67"
+  ],
+  "comment": "UIItemParamChangeDisplayWnd"
+ },
+ "0x0103274c": {
+  "names": "kVTable",
+  "sites": [
+   "features\\overlays\\item_obtain_toast.cc:36"
+  ],
+  "comment": "UINotifyItemObtainWnd"
+ },
+ "0x01032a24": {
+  "names": "kDrawSlot",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:51",
+   "features\\patches\\status_tweaks.cc:344"
+  ],
+  "comment": "UIStatusWnd vtable +0x50 (DrawContent)"
+ },
+ "0x01032a68": {
+  "names": "kMsgSlot",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:54"
+  ],
+  "comment": "UIStatusWnd vtable +0x94 (message handler slot)"
+ },
+ "0x01032aac": {
+  "names": "kItemVTable",
+  "sites": [
+   "features\\windows\\item_desc_window.cc:52"
+  ],
+  "comment": "classe 0xc"
+ },
+ "0x01032c5c": {
+  "names": "kCompareVTable",
+  "sites": [
+   "features\\windows\\item_desc_window.cc:64"
+  ],
+  "comment": "classe 0xea"
+ },
+ "0x01032e0c": {
+  "names": "kSkillVTable",
+  "sites": [
+   "features\\windows\\item_desc_window.cc:53"
+  ],
+  "comment": "classe 0x2e"
+ },
+ "0x01033754": {
+  "names": "kAcceptVTable",
+  "sites": [
+   "features\\windows\\trade_window.cc:43"
+  ],
+  "comment": "popup requête (best-effort)"
+ },
+ "0x010345ac": {
+  "names": "kVTableMakingArrow",
+  "sites": [
+   "features\\windows\\make_item_window.cc:45"
+  ],
+  "comment": ""
+ },
+ "0x0103517c": {
+  "names": "kBookVTable",
+  "sites": [
+   "features\\windows\\item_desc_window.cc:188"
+  ],
+  "comment": ""
+ },
+ "0x010357b8": {
+  "names": "kBtnbarPath, kUiPrefixPath",
+  "sites": [
+   "features\\patches\\inventory_tweaks.cc:51",
+   "features\\windows\\cart_viewer.cc:256",
+   "features\\windows\\inventory_viewer.cc:668",
+   "features\\windows\\rodex_window.cc:391",
+   "features\\windows\\storage_window.cc:228"
+  ],
+  "comment": "\"유저인터페이스\\basic_interface\\btnbar_left.bmp\" (bottom-frame height)"
+ },
+ "0x010361b4": {
+  "names": "kBgNormalPath",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:71"
+  ],
+  "comment": "\"...\\statuswnd\\w_statwin_bg.bmp\""
+ },
+ "0x01036648": {
+  "names": "kCardBmpPrefix",
+  "sites": [
+   "features\\windows\\item_desc_window.cc:97"
+  ],
+  "comment": "\"유저인터페이스\\cardBmp\\\" (CP949, null-term)"
+ },
+ "0x010371c0": {
+  "names": "kRectGuardAddr",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:136",
+   "features\\patches\\status_tweaks.cc:147",
+   "features\\patches\\status_tweaks.cc:357"
+  ],
+  "comment": "ATK  0xc2e  right r0 (full)"
+ },
+ "0x010371c4": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:136"
+  ],
+  "comment": "ATK  0xc2e  right r0 (full)"
+ },
+ "0x010371c8": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:137"
+  ],
+  "comment": "MATK 0xc34  right r3 (full)"
+ },
+ "0x010371cc": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:137"
+  ],
+  "comment": "MATK 0xc34  right r3 (full)"
+ },
+ "0x010371d0": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:142"
+  ],
+  "comment": "DEF  0xc2f  right r2 colA"
+ },
+ "0x010371d4": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:142"
+  ],
+  "comment": "DEF  0xc2f  right r2 colA"
+ },
+ "0x010371d8": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:143"
+  ],
+  "comment": "MDEF 0xc35  right r2 colB"
+ },
+ "0x010371dc": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:143"
+  ],
+  "comment": "MDEF 0xc35  right r2 colB"
+ },
+ "0x010371e0": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:130"
+  ],
+  "comment": "STR  0xc28  left r0"
+ },
+ "0x010371e4": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:130"
+  ],
+  "comment": "STR  0xc28  left r0"
+ },
+ "0x010371e8": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:131"
+  ],
+  "comment": "AGI  0xc29  left r1"
+ },
+ "0x010371ec": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:131"
+  ],
+  "comment": "AGI  0xc29  left r1"
+ },
+ "0x01037220": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:138"
+  ],
+  "comment": "HIT  0xc30  right r4 (full)"
+ },
+ "0x01037224": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:138"
+  ],
+  "comment": "HIT  0xc30  right r4 (full)"
+ },
+ "0x01037228": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:139"
+  ],
+  "comment": "CRI  0xc31  right r5 (full)"
+ },
+ "0x0103722c": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:139"
+  ],
+  "comment": "CRI  0xc31  right r5 (full)"
+ },
+ "0x01037230": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:144"
+  ],
+  "comment": "FLEE 0xc36  right r1 colB"
+ },
+ "0x01037234": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:144"
+  ],
+  "comment": "FLEE 0xc36  right r1 colB"
+ },
+ "0x01037238": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:145"
+  ],
+  "comment": "ASPD 0xc37  right r1 colA"
+ },
+ "0x0103723c": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:145"
+  ],
+  "comment": "ASPD 0xc37  right r1 colA"
+ },
+ "0x01037240": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:132"
+  ],
+  "comment": "VIT  0xc2a  left r2"
+ },
+ "0x01037244": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:132"
+  ],
+  "comment": "VIT  0xc2a  left r2"
+ },
+ "0x01037248": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:133"
+  ],
+  "comment": "INT  0xc2b  left r3"
+ },
+ "0x0103724c": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:133"
+  ],
+  "comment": "INT  0xc2b  left r3"
+ },
+ "0x010372a0": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:140"
+  ],
+  "comment": "POINT0xc33  left  r6 (Status Point)"
+ },
+ "0x010372a4": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:140"
+  ],
+  "comment": "POINT0xc33  left  r6 (Status Point)"
+ },
+ "0x010372a8": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:141"
+  ],
+  "comment": "GUILD0xc32  right r6"
+ },
+ "0x010372ac": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:141"
+  ],
+  "comment": "GUILD0xc32  right r6"
+ },
+ "0x010372b0": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:134"
+  ],
+  "comment": "DEX  0xc2c  left r4"
+ },
+ "0x010372b4": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:134"
+  ],
+  "comment": "DEX  0xc2c  left r4"
+ },
+ "0x010372b8": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:135"
+  ],
+  "comment": "LUK  0xc2d  left r5"
+ },
+ "0x010372bc": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:135"
+  ],
+  "comment": "LUK  0xc2d  left r5"
+ },
+ "0x01037ea8": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\patches\\chat_bg.cc:61"
+  ],
+  "comment": ""
+ },
+ "0x01037f80": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\patches\\chat_bg.cc:48"
+  ],
+  "comment": ""
+ },
+ "0x010384a0": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\fx\\screen_fx.cc:398",
+   "features\\fx\\screen_fx.cc:399",
+   "features\\fx\\screen_fx.cc:496"
+  ],
+  "comment": ""
+ },
+ "0x0103ca40": {
+  "names": "kStorageWndVTable",
+  "sites": [
+   "ragnarok\\uiwnd.h:102"
+  ],
+  "comment": ""
+ },
+ "0x0103d460": {
+  "names": "kInventoryWndVTable",
+  "sites": [
+   "ragnarok\\uiwnd.h:100"
+  ],
+  "comment": ""
+ },
+ "0x0103d4b0": {
+  "names": "kDrawSlot",
+  "sites": [
+   "features\\patches\\inventory_tweaks.cc:35",
+   "features\\patches\\inventory_tweaks.cc:706"
+  ],
+  "comment": "UIItemWnd vtable +0x50"
+ },
+ "0x0103d4f4": {
+  "names": "kMsgSlot",
+  "sites": [
+   "features\\patches\\inventory_tweaks.cc:166"
+  ],
+  "comment": "inventory vtable +0x94 (message handler slot)"
+ },
+ "0x0103d538": {
+  "names": "kCartVTable",
+  "sites": [
+   "features\\windows\\cart_viewer.cc:48",
+   "features\\windows\\inventory_viewer.cc:133",
+   "features\\windows\\storage_window.cc:165"
+  ],
+  "comment": ""
+ },
+ "0x0103dad4": {
+  "names": "kIconNumPath",
+  "sites": [
+   "features\\windows\\cart_viewer.cc:258",
+   "features\\windows\\inventory_viewer.cc:670"
+  ],
+  "comment": "…\\inventory\\icon_num.bmp"
+ },
+ "0x0103db00": {
+  "names": "kIconPath, kIconWeightPath",
+  "sites": [
+   "features\\patches\\inventory_tweaks.cc:50",
+   "features\\windows\\cart_viewer.cc:257",
+   "features\\windows\\inventory_viewer.cc:669"
+  ],
+  "comment": "\"유저인터페이스\\inventory\\icon_weight.bmp\""
+ },
+ "0x0103e35c": {
+  "names": "kBIMsgSlot",
+  "sites": [
+   "features\\overlays\\basic_info.cc:2692"
+  ],
+  "comment": "vtable+0x94 OnMsg slot"
+ },
+ "0x0103ec50": {
+  "names": "kVTableMakeTarget",
+  "sites": [
+   "features\\windows\\make_item_window.cc:47"
+  ],
+  "comment": ""
+ },
+ "0x0103ee00": {
+  "names": "kRefineVTable",
+  "sites": [
+   "features\\windows\\weapon_refine_window.cc:38"
+  ],
+  "comment": ""
+ },
+ "0x0103eed8": {
+  "names": "kVTableMakeProcess",
+  "sites": [
+   "features\\windows\\make_item_window.cc:53"
+  ],
+  "comment": "⏱ confirmé sur 2 instances"
+ },
+ "0x010457d8": {
+  "names": "kExchangeVTable",
+  "sites": [
+   "features\\windows\\trade_window.cc:41"
+  ],
+  "comment": "CUIExchangeUI (fenêtre d'échange)"
+ },
+ "0x01047d7c": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\fx\\screen_fx.cc:400",
+   "features\\fx\\screen_fx.cc:401"
+  ],
+  "comment": ""
+ },
+ "0x0104dee4": {
+  "names": "kCameraVtable",
+  "sites": [
+   "features\\gameplay\\keyboard_move.cc:21",
+   "ragnarok\\camera.cc:9"
+  ],
+  "comment": "g_CCamera_vtable (valide pCam)"
+ },
+ "0x010758d8": {
+  "names": "kCEZ2STRVtbl",
+  "sites": [
+   "features\\fx\\ez_effect_capture.cc:45"
+  ],
+  "comment": "CEZ2STREffect (.str name-based) -> à EXCLURE"
+ },
+ "0x01088a18": {
+  "names": "kFmtBodyTail",
+  "sites": [
+   "ui\\sprite_path.cc:21"
+  ],
+  "comment": ""
+ },
+ "0x01088a6c": {
+  "names": "kFmtHead",
+  "sites": [
+   "ui\\head_icon.cc:28"
+  ],
+  "comment": ""
+ },
+ "0x01088a80": {
+  "names": "kFmtHeadgearDoram",
+  "sites": [
+   "ui\\doll.cc:152"
+  ],
+  "comment": ""
+ },
+ "0x01088a9c": {
+  "names": "kFmtHeadgear",
+  "sites": [
+   "ui\\doll.cc:141"
+  ],
+  "comment": ""
+ },
+ "0x01088b88": {
+  "names": "kFmtGarmentFlat",
+  "sites": [
+   "ui\\doll.cc:198"
+  ],
+  "comment": "sprite\\로브\\%s\\%s.%s"
+ },
+ "0x01088bbc": {
+  "names": "kFmtGarmentJob",
+  "sites": [
+   "ui\\doll.cc:199"
+  ],
+  "comment": "sprite\\로브\\%s\\%s\\%s_%s.%s"
+ },
+ "0x01088c2c": {
+  "names": "kRaceDoramAddr",
+  "sites": [
+   "ui\\sprite_path.cc:42"
+  ],
+  "comment": "도람족"
+ },
+ "0x01088c34": {
+  "names": "kRaceHumanAddr",
+  "sites": [
+   "ui\\sprite_path.cc:43"
+  ],
+  "comment": "인간족"
+ },
+ "0x01088c48": {
+  "names": "kEzChildVtbl",
+  "sites": [
+   "features\\fx\\ez_effect_capture.cc:29"
+  ],
+  "comment": "vtable du nœud EZ enfant (celui que Draw dessine)"
+ },
+ "0x0108f960": {
+  "names": "kFmtSprNpc",
+  "sites": [
+   "ui\\mob_sprite.cc:52"
+  ],
+  "comment": "NPC\\%s.spr"
+ },
+ "0x010904b8": {
+  "names": "kGameModeVtable",
+  "sites": [
+   "features\\gameplay\\quick_cast.cc:47",
+   "ragnarok\\configuration.h:74"
+  ],
+  "comment": ""
+ },
+ "0x01091520": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\fx\\screen_fx.cc:437"
+  ],
+  "comment": ""
+ },
+ "0x01091528": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\fx\\screen_fx.cc:438"
+  ],
+  "comment": ""
+ },
+ "0x010932f0": {
+  "names": "kVtblCLoginMode",
+  "sites": [
+   "features\\systems\\native_login.cc:16"
+  ],
+  "comment": "garde de mode"
+ },
+ "0x010940d0": {
+  "names": "kFmtSprHuman",
+  "sites": [
+   "ui\\mob_sprite.cc:53"
+  ],
+  "comment": "인간족\\몸통\\%s.spr"
+ },
+ "0x010940f8": {
+  "names": "kFmtSprHomun",
+  "sites": [
+   "ui\\mob_sprite.cc:54"
+  ],
+  "comment": "homun\\%s.spr"
+ },
+ "0x0109c3e8": {
+  "names": "kArrowEffectVtable",
+  "sites": [
+   "features\\fx\\wand_bolt.cc:52"
+  ],
+  "comment": ""
+ },
+ "0x011e40d4": {
+  "names": "kMouseScreenX, kMouseScreenXAddr",
+  "sites": [
+   "features\\gameplay\\quick_cast.cc:38",
+   "features\\windows\\char_diagnostics.cc:464",
+   "ragnarok\\ragnarok_client.cc:180"
+  ],
+  "comment": ""
+ },
+ "0x011e40d8": {
+  "names": "kMouseScreenY, kMouseScreenYAddr",
+  "sites": [
+   "features\\gameplay\\quick_cast.cc:39",
+   "features\\windows\\char_diagnostics.cc:465",
+   "ragnarok\\ragnarok_client.cc:181"
+  ],
+  "comment": ""
+ },
+ "0x011e40e4": {
+  "names": "kMouseLButtonState",
+  "sites": [
+   "features\\windows\\entity_context_menu.cc:65"
+  ],
+  "comment": ""
+ },
+ "0x011e40e8": {
+  "names": "kMouseRButtonState",
+  "sites": [
+   "features\\windows\\entity_context_menu.cc:66"
+  ],
+  "comment": ""
+ },
+ "0x011fe3a8": {
+  "names": "kSkinMgrAddr",
+  "sites": [
+   "ragnarok\\game_settings.cc:230"
+  ],
+  "comment": ""
+ },
+ "0x011fe3c4": {
+  "names": "kSkinCurrentAddr",
+  "sites": [
+   "ragnarok\\game_settings.cc:231"
+  ],
+  "comment": "mgr+0x1C"
+ },
+ "0x011fe3d4": {
+  "names": "kSkinVecBeginAddr",
+  "sites": [
+   "ragnarok\\game_settings.cc:232"
+  ],
+  "comment": "mgr+0x2C"
+ },
+ "0x011fe3d8": {
+  "names": "kSkinVecEndAddr",
+  "sites": [
+   "ragnarok\\game_settings.cc:233"
+  ],
+  "comment": "mgr+0x30"
+ },
+ "0x0120451c": {
+  "names": "kForbidden1",
+  "sites": [
+   "ragnarok\\pet.cc:112"
+  ],
+  "comment": ""
+ },
+ "0x01204534": {
+  "names": "kForbidden2",
+  "sites": [
+   "ragnarok\\pet.cc:113"
+  ],
+  "comment": ""
+ },
+ "0x01213338": {
+  "names": "kModeMgr, kModeMgrAddr",
+  "sites": [
+   "features\\patches\\damage_name_fix.cc:18",
+   "ragnarok\\globals.h:49"
+  ],
+  "comment": ""
+ },
+ "0x0121333c": {
+  "names": "kActiveModePtr, kCurrentModePtr, kCurrentModePtrAddr",
+  "sites": [
+   "features\\windows\\chat_window.cc:126",
+   "ragnarok\\game_settings.cc:222",
+   "ragnarok\\globals.h:55"
+  ],
+  "comment": "CMode* courant"
+ },
+ "0x012135f0": {
+  "names": "kNameplateQuadTreeAddr, kPickQuadTree",
+  "sites": [
+   "features\\gameplay\\quick_cast.cc:28",
+   "features\\windows\\char_diagnostics.cc:462"
+  ],
+  "comment": ""
+ },
+ "0x01228f60": {
+  "names": "kMotionSpeedCap",
+  "sites": [
+   "features\\windows\\char_diagnostics.cc:81"
+  ],
+  "comment": "g_MotionSpeedCapMs"
+ },
+ "0x012291c0": {
+  "names": "kCamZoomMaxOutdoor",
+  "sites": [
+   "features\\fx\\screen_fx.cc:417",
+   "features\\gameplay\\afk_screen.cc:59"
+  ],
+  "comment": "g_cam_zoomMaxOutdoor"
+ },
+ "0x012291c4": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\fx\\screen_fx.cc:418"
+  ],
+  "comment": "g_cam_zoomMaxIndoor"
+ },
+ "0x0122b3d8": {
+  "names": "kTextureDownscaleAddr",
+  "sites": [
+   "ragnarok\\game_settings.cc:135"
+  ],
+  "comment": ""
+ },
+ "0x01234567": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\overlays\\login_parade.cc:136"
+  ],
+  "comment": ""
+ },
+ "0x012515f8": {
+  "names": "kContextPtr",
+  "sites": [
+   "ragnarok\\render.h:23"
+  ],
+  "comment": ""
+ },
+ "0x012515fc": {
+  "names": "kFlagMapAddr",
+  "sites": [
+   "ragnarok\\game_settings.cc:55"
+  ],
+  "comment": ""
+ },
+ "0x0125161c": {
+  "names": "kSpriteCache, kSpriteTexCacheAddr",
+  "sites": [
+   "features\\overlays\\status_icon_bar.cc:50",
+   "ragnarok\\game_settings.cc:166"
+  ],
+  "comment": "&DAT_0125161c (sprite-ref cache)"
+ },
+ "0x01251668": {
+  "names": "kSaveJsonSelf",
+  "sites": [
+   "ragnarok\\emotion_hotkey.cc:44"
+  ],
+  "comment": ""
+ },
+ "0x012517b8": {
+  "names": "kEmblemDataMgrPtr",
+  "sites": [
+   "features\\windows\\character_sheet.cc:1555"
+  ],
+  "comment": "*ptr = CEmblemDataMgr"
+ },
+ "0x01251824": {
+  "names": "kChatBlockListPtr",
+  "sites": [
+   "features\\windows\\entity_context_menu.cc:118"
+  ],
+  "comment": ""
+ },
+ "0x01253d0c": {
+  "names": "kSoundMgrAddr, kSoundMgrPtr",
+  "sites": [
+   "features\\minigames\\roggle.cc:235",
+   "features\\minigames\\rojeweled.cc:90",
+   "features\\overlays\\login_parade.cc:27",
+   "features\\windows\\monster_info_window.cc:169",
+   "ragnarok\\game_settings.cc:87"
+  ],
+  "comment": "*ptr = SoundMgr (déréf 1×)"
+ },
+ "0x01254d8c": {
+  "names": "kEvolutionMgrPtr",
+  "sites": [
+   "ragnarok\\pet.cc:49"
+  ],
+  "comment": ""
+ },
+ "0x01255108": {
+  "names": "kProbDbPtr",
+  "sites": [
+   "features\\windows\\item_desc_window.cc:164"
+  ],
+  "comment": "ptr vers le mgr (lazy-new)"
+ },
+ "0x0125510c": {
+  "names": "kEnsureCachePtr",
+  "sites": [
+   "ragnarok\\item_db.h:33"
+  ],
+  "comment": ""
+ },
+ "0x01255130": {
+  "names": "kTableAddr",
+  "sites": [
+   "ragnarok\\item_db.h:25"
+  ],
+  "comment": "la map"
+ },
+ "0x01255138": {
+  "names": "kNilAddr",
+  "sites": [
+   "ragnarok\\item_db.h:26"
+  ],
+  "comment": "sentinelle de l'arbre"
+ },
+ "0x01255180": {
+  "names": "kCardNilRecord",
+  "sites": [
+   "features\\windows\\item_desc_window.cc:103"
+  ],
+  "comment": ""
+ },
+ "0x0131ee7c": {
+  "names": "kMgrPtrAddr",
+  "sites": [
+   "ragnarok\\game_settings.cc:18"
+  ],
+  "comment": ""
+ },
+ "0x0131f4e8": {
+  "names": "kUIWindowMgr, kUIWindowMgrAddr, kUiWindowMgr",
+  "sites": [
+   "features\\overlays\\chat_balloon.cc:49",
+   "features\\windows\\entity_context_menu.cc:104",
+   "features\\windows\\navigation_window.cc:67",
+   "ragnarok\\uiwnd.h:25"
+  ],
+  "comment": "g_UIWindowMgr (l'OBJET, pas un pointeur vers lui)"
+ },
+ "0x0131f6b4": {
+  "names": "kPLoginWnd",
+  "sites": [
+   "features\\systems\\native_login.cc:18"
+  ],
+  "comment": "UILoginWnd* (== mgr+0x1cc, FindWindow id 3)"
+ },
+ "0x0131f700": {
+  "names": "kItemDescWndGlobalPtr, kItemWndSlot",
+  "sites": [
+   "features\\moonlight_ui\\moonlight_ui.h:345",
+   "features\\windows\\item_desc_window.cc:48"
+  ],
+  "comment": "mgr+0x218 : ITEM desc (classe 0xc)"
+ },
+ "0x0131f708": {
+  "names": "kCompareWndSlot",
+  "sites": [
+   "features\\windows\\item_desc_window.cc:63"
+  ],
+  "comment": "mgr+0x220 : COMPARE desc (id 0xea)"
+ },
+ "0x0131f718": {
+  "names": "kSkillWndSlot",
+  "sites": [
+   "features\\windows\\item_desc_window.cc:49"
+  ],
+  "comment": "mgr+0x230 : SKILL desc (classe 0x2e)"
+ },
+ "0x0131f770": {
+  "names": "kStorageWndPtr, kStorageWndSlot",
+  "sites": [
+   "features\\windows\\entity_context_menu.cc:75",
+   "ragnarok\\uiwnd.h:101"
+  ],
+  "comment": "storage NATIF ouvert"
+ },
+ "0x0131f9c4": {
+  "names": "kPendingSendText",
+  "sites": [
+   "features\\windows\\chat_window.cc:94"
+  ],
+  "comment": "std::string"
+ },
+ "0x0159b818": {
+  "names": "kClientCodePageAddr",
+  "sites": [
+   "ragnarok\\globals.h:188"
+  ],
+  "comment": ""
+ },
+ "0x0159b8a8": {
+  "names": "kClientInfoXmlDoc",
+  "sites": [
+   "features\\systems\\native_login.cc:60"
+  ],
+  "comment": "racine du document parsé"
+ },
+ "0x0159c08c": {
+  "names": "kTownInfoMgrPtr",
+  "sites": [
+   "features\\overlays\\minimap.cc:368"
+  ],
+  "comment": "CTownInfoMgr* — à DÉRÉFÉRENCER"
+ },
+ "0x0159c188": {
+  "names": "kGuildBuf, kGuildObj",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:117",
+   "features\\windows\\character_sheet.cc:421"
+  ],
+  "comment": "std::string buffer/ptr union"
+ },
+ "0x0159c198": {
+  "names": "kGuildLen",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:115"
+  ],
+  "comment": "std::string _Mysize (0 == no guild)"
+ },
+ "0x0159c19c": {
+  "names": "kGuildCap",
+  "sites": [
+   "features\\patches\\status_tweaks.cc:116"
+  ],
+  "comment": "std::string _Myres  (>=0x10 => heap ptr)"
+ },
+ "0x0159c1a0": {
+  "names": "kGuildMasterName",
+  "sites": [
+   "features\\windows\\character_sheet.cc:437"
+  ],
+  "comment": "std::string : nom du maître"
+ },
+ "0x0159c1b8": {
+  "names": "kGuildNoticeSubj",
+  "sites": [
+   "features\\windows\\character_sheet.cc:444"
+  ],
+  "comment": "std::string : sujet de l'annonce (ZC 0x016f)"
+ },
+ "0x0159c1d0": {
+  "names": "kGuildNoticeBody",
+  "sites": [
+   "features\\windows\\character_sheet.cc:445"
+  ],
+  "comment": "std::string : corps de l'annonce"
+ },
+ "0x0159c1e8": {
+  "names": "kGuildLevel",
+  "sites": [
+   "features\\windows\\character_sheet.cc:423"
+  ],
+  "comment": ""
+ },
+ "0x0159c1f4": {
+  "names": "kGuildMemberMax",
+  "sites": [
+   "features\\windows\\character_sheet.cc:439"
+  ],
+  "comment": "max_member"
+ },
+ "0x0159c1f8": {
+  "names": "kGuildAvgLevel",
+  "sites": [
+   "features\\windows\\character_sheet.cc:440"
+  ],
+  "comment": "niveau moyen"
+ },
+ "0x0159c1fc": {
+  "names": "kGuildManageLand",
+  "sites": [
+   "features\\windows\\character_sheet.cc:441"
+  ],
+  "comment": "std::string : territoire (nb de forts)"
+ },
+ "0x0159c214": {
+  "names": "kGuildExp",
+  "sites": [
+   "features\\windows\\character_sheet.cc:442"
+  ],
+  "comment": "exp courante"
+ },
+ "0x0159c218": {
+  "names": "kGuildNextExp",
+  "sites": [
+   "features\\windows\\character_sheet.cc:443"
+  ],
+  "comment": "exp du niveau suivant"
+ },
+ "0x0159d410": {
+  "names": "kFileMgr, kFileMgrAddr",
+  "sites": [
+   "ragnarok\\grf_index.cc:14",
+   "ragnarok\\msgstring_override.cc:142",
+   "ui\\spr_act.cc:29"
+  ],
+  "comment": "g_FileMgr (l'OBJET)"
+ },
+ "0x0159d68c": {
+  "names": "(littéral)",
+  "sites": [
+   "ragnarok\\configuration.h:106"
+  ],
+  "comment": ""
+ },
+ "0x015beecc": {
+  "names": "kReplayActive",
+  "sites": [
+   "features\\windows\\entity_context_menu.cc:74",
+   "ragnarok\\skill_cooldowns.cc:23"
+  ],
+  "comment": "lecture d'un replay"
+ },
+ "0x015c3090": {
+  "names": "kNaviMgr, kNavigation",
+  "sites": [
+   "features\\overlays\\minimap.cc:422",
+   "features\\windows\\item_desc_window.cc:118",
+   "features\\windows\\navigation_window.cc:30"
+  ],
+  "comment": "&DAT_015c3090 (nav manager)"
+ },
+ "0x015c5a24": {
+  "names": "kSocketFd",
+  "sites": [
+   "features\\systems\\native_login.cc:19"
+  ],
+  "comment": "g_RagConnection_SocketFd"
+ },
+ "0x015e5b40": {
+  "names": "kPickQuadMinSize",
+  "sites": [
+   "features\\patches\\pick_quad_tweaks.cc:39",
+   "features\\windows\\char_diagnostics.cc:475"
+  ],
+  "comment": "acteurs (joueurs, monstres, pets) — facteur 40"
+ },
+ "0x015f81d0": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\patches\\pick_quad_tweaks.cc:40"
+  ],
+  "comment": "PNJ de carte, portails — facteur 34"
+ },
+ "0x015fa3cc": {
+  "names": "kSkillBundle",
+  "sites": [
+   "features\\windows\\character_sheet.cc:1027",
+   "features\\windows\\weapon_refine_window.cc:180",
+   "ragnarok\\player_skills.cc:11"
+  ],
+  "comment": "CPlayerSkillBundle (session+0x0C)"
+ },
+ "0x015fa3e0": {
+  "names": "kSkillFlatList",
+  "sites": [
+   "features\\windows\\character_sheet.cc:1028",
+   "features\\windows\\weapon_refine_window.cc:181",
+   "ragnarok\\player_skills.cc:12"
+  ],
+  "comment": "bundle+0x14 : l'onglet « divers »"
+ },
+ "0x015fa424": {
+  "names": "kSkillHead",
+  "sites": [
+   "ragnarok\\homunculus.cc:41"
+  ],
+  "comment": ""
+ },
+ "0x015fa428": {
+  "names": "kSkillSize",
+  "sites": [
+   "ragnarok\\homunculus.cc:42"
+  ],
+  "comment": ""
+ },
+ "0x015fa850": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\overlays\\skill_bar.cc:179"
+  ],
+  "comment": ""
+ },
+ "0x015fa94c": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\overlays\\skill_bar.cc:180"
+  ],
+  "comment": ""
+ },
+ "0x015fb278": {
+  "names": "kHair",
+  "sites": [
+   "features\\overlays\\basic_info.cc:148",
+   "features\\windows\\palette_editor.cc:74"
+  ],
+  "comment": "style de coiffure"
+ },
+ "0x015fb28c": {
+  "names": "kClothesCol",
+  "sites": [
+   "features\\overlays\\basic_info.cc:149",
+   "features\\windows\\palette_editor.cc:75"
+  ],
+  "comment": "palette de vêtements"
+ },
+ "0x015fb290": {
+  "names": "kHairCol",
+  "sites": [
+   "features\\overlays\\basic_info.cc:150",
+   "features\\windows\\palette_editor.cc:76"
+  ],
+  "comment": "palette de cheveux"
+ },
+ "0x015fb294": {
+  "names": "kHeadLowView",
+  "sites": [
+   "features\\overlays\\basic_info.cc:155"
+  ],
+  "comment": "g_OwnLook_HeadBottomViewId"
+ },
+ "0x015fb298": {
+  "names": "kHeadTopView",
+  "sites": [
+   "features\\overlays\\basic_info.cc:156"
+  ],
+  "comment": "g_OwnLook_HeadTopViewId"
+ },
+ "0x015fb29c": {
+  "names": "kHeadMidView",
+  "sites": [
+   "features\\overlays\\basic_info.cc:157"
+  ],
+  "comment": "g_OwnLook_HeadMidViewId"
+ },
+ "0x015fb2a0": {
+  "names": "kGarmentView",
+  "sites": [
+   "features\\overlays\\basic_info.cc:151"
+  ],
+  "comment": "g_OwnLook_GarmentRobeViewId"
+ },
+ "0x015fb2a4": {
+  "names": "kGarmentUseNewDrawOnTop",
+  "sites": [
+   "ui\\doll.cc:202"
+  ],
+  "comment": ""
+ },
+ "0x015fb2ac": {
+  "names": "kBodyState",
+  "sites": [
+   "features\\windows\\char_diagnostics.cc:52"
+  ],
+  "comment": "g_OwnState_BodyState (opt1)"
+ },
+ "0x015fb2b0": {
+  "names": "kHealthState",
+  "sites": [
+   "features\\windows\\char_diagnostics.cc:53"
+  ],
+  "comment": "g_OwnState_HealthState (opt2)"
+ },
+ "0x015fb2b4": {
+  "names": "kEffectState",
+  "sites": [
+   "features\\windows\\char_diagnostics.cc:54"
+  ],
+  "comment": "g_OwnState_EffectState (option)"
+ },
+ "0x015fb2d4": {
+  "names": "kCartNumItems",
+  "sites": [
+   "features\\windows\\cart_viewer.cc:75"
+  ],
+  "comment": ""
+ },
+ "0x015fb2d8": {
+  "names": "kCartMaxItems",
+  "sites": [
+   "features\\windows\\cart_viewer.cc:76"
+  ],
+  "comment": ""
+ },
+ "0x015fb2dc": {
+  "names": "kCartWeight",
+  "sites": [
+   "features\\windows\\cart_viewer.cc:77"
+  ],
+  "comment": ""
+ },
+ "0x015fb2e0": {
+  "names": "kCartMaxWeight",
+  "sites": [
+   "features\\windows\\cart_viewer.cc:78"
+  ],
+  "comment": ""
+ },
+ "0x015fb2f8": {
+  "names": "kFriendOptOpenFromStranger",
+  "sites": [
+   "features\\windows\\chat_window.cc:189"
+  ],
+  "comment": ""
+ },
+ "0x015fb2fc": {
+  "names": "kFriendOptAlarm1on1",
+  "sites": [
+   "features\\windows\\chat_window.cc:190"
+  ],
+  "comment": ""
+ },
+ "0x015fb300": {
+  "names": "kFriendOptOpenFromFriend",
+  "sites": [
+   "features\\windows\\chat_window.cc:191"
+  ],
+  "comment": ""
+ },
+ "0x015fb30c": {
+  "names": "kHairNumMale",
+  "sites": [
+   "ui\\head_icon.cc:39"
+  ],
+  "comment": ""
+ },
+ "0x015fb318": {
+  "names": "kHairNumFemale",
+  "sites": [
+   "ui\\head_icon.cc:40"
+  ],
+  "comment": ""
+ },
+ "0x015fb348": {
+  "names": "kJobNameBeg",
+  "sites": [
+   "ragnarok\\homunculus.cc:47"
+  ],
+  "comment": ""
+ },
+ "0x015fb34c": {
+  "names": "kJobNameEnd",
+  "sites": [
+   "ragnarok\\homunculus.cc:48"
+  ],
+  "comment": ""
+ },
+ "0x015fb39c": {
+  "names": "kMacrosLast",
+  "sites": [
+   "ragnarok\\emotion_hotkey.cc:28"
+  ],
+  "comment": "_Mylast"
+ },
+ "0x015fb3b4": {
+  "names": "kRenameFlag",
+  "sites": [
+   "ragnarok\\pet.cc:20"
+  ],
+  "comment": "0 = renommable une fois"
+ },
+ "0x015fb3b8": {
+  "names": "kName",
+  "sites": [
+   "ragnarok\\pet.cc:21"
+  ],
+  "comment": "char[32] (le paquet n'en donne que 24)"
+ },
+ "0x015fb3e0": {
+  "names": "kLevel",
+  "sites": [
+   "ragnarok\\pet.cc:24"
+  ],
+  "comment": ""
+ },
+ "0x015fb99c": {
+  "names": "kAutoFeed",
+  "sites": [
+   "ragnarok\\pet.cc:29"
+  ],
+  "comment": "écrit par le handler de ZC 0x02D9"
+ },
+ "0x015fb9a4": {
+  "names": "kAccountAid, kOwnAccountAid, kOwnAccountId, kOwnAid, kOwnAidAddr, kOwnHandlePtr",
+  "sites": [
+   "features\\fx\\ez_effect_capture.cc:44",
+   "features\\fx\\style_sync.cc:24",
+   "features\\gameplay\\quick_cast.cc:42",
+   "features\\overlays\\basic_info.cc:162",
+   "features\\overlays\\target_frame.cc:274",
+   "features\\windows\\char_diagnostics.cc:35",
+   "… +6"
+  ],
+  "comment": "handle/AID du joueur"
+ },
+ "0x015fb9ac": {
+  "names": "kCurrentMapNameAddr",
+  "sites": [
+   "ragnarok\\globals.h:224"
+  ],
+  "comment": ""
+ },
+ "0x015fb9c8": {
+  "names": "kOwnJobId, kOwnJobIdAddr",
+  "sites": [
+   "features\\overlays\\basic_info.cc:160",
+   "features\\windows\\char_diagnostics.cc:38",
+   "features\\windows\\monster_info_window.cc:436",
+   "features\\windows\\palette_editor.cc:43"
+  ],
+  "comment": "g_Own_JobId — le job RÉEL"
+ },
+ "0x015fb9d0": {
+  "names": "kBaseExpLo",
+  "sites": [
+   "features\\overlays\\basic_info.cc:77",
+   "features\\windows\\char_diagnostics.cc:48"
+  ],
+  "comment": "+ Hi à +4, idem pour les trois autres"
+ },
+ "0x015fb9d8": {
+  "names": "kBaseExpNextLo, kOwnBaseExpNext",
+  "sites": [
+   "features\\overlays\\basic_info.cc:77",
+   "features\\overlays\\basic_info.cc:2772",
+   "features\\windows\\char_diagnostics.cc:49"
+  ],
+  "comment": "g_Own_BaseExpNext (INT64)"
+ },
+ "0x015fb9e0": {
+  "names": "kJobExpNextLo, kOwnJobExpNext",
+  "sites": [
+   "features\\overlays\\basic_info.cc:78",
+   "features\\overlays\\basic_info.cc:2773",
+   "features\\windows\\char_diagnostics.cc:50"
+  ],
+  "comment": "g_Own_JobExpNext  (INT64)"
+ },
+ "0x015fb9e8": {
+  "names": "kJobExpLo",
+  "sites": [
+   "features\\overlays\\basic_info.cc:78",
+   "features\\windows\\char_diagnostics.cc:51"
+  ],
+  "comment": ""
+ },
+ "0x015fb9f0": {
+  "names": "kBaseLevel, kBaseLevelAddr, kBaseLvl",
+  "sites": [
+   "features\\overlays\\basic_info.cc:122",
+   "features\\windows\\character_sheet.cc:103",
+   "ragnarok\\globals.h:171"
+  ],
+  "comment": "DAT_015fb9f0 (UIBasicInfoWnd \"Base Lv.\")"
+ },
+ "0x015fba04": {
+  "names": "kSkillPts",
+  "sites": [
+   "ragnarok\\homunculus.cc:37"
+  ],
+  "comment": ""
+ },
+ "0x015fba90": {
+  "names": "kZenyAddr",
+  "sites": [
+   "ragnarok\\globals.h:39"
+  ],
+  "comment": ""
+ },
+ "0x015fba9c": {
+  "names": "kWeightMax",
+  "sites": [
+   "features\\overlays\\basic_info.cc:82",
+   "features\\patches\\inventory_tweaks.cc:57",
+   "features\\windows\\char_diagnostics.cc:42",
+   "features\\windows\\inventory_viewer.cc:72"
+  ],
+  "comment": "max weight (raw)"
+ },
+ "0x015fbaa0": {
+  "names": "kWeight, kWeightCur",
+  "sites": [
+   "features\\overlays\\basic_info.cc:82",
+   "features\\patches\\inventory_tweaks.cc:56",
+   "features\\windows\\char_diagnostics.cc:43",
+   "features\\windows\\inventory_viewer.cc:71"
+  ],
+  "comment": "current weight (raw)"
+ },
+ "0x015fbab0": {
+  "names": "kInvListHead",
+  "sites": [
+   "features\\windows\\character_sheet.cc:89",
+   "features\\windows\\chat_window.cc:65",
+   "features\\windows\\craft_atlas.cc:32",
+   "features\\windows\\inventory_viewer.cc:52",
+   "features\\windows\\make_item_window.cc:218",
+   "features\\windows\\npc_shop_window.cc:76",
+   "… +3"
+  ],
+  "comment": "std::list<ItemSkillInfo> (session+0x16f0)"
+ },
+ "0x015fbab4": {
+  "names": "kInvCount",
+  "sites": [
+   "features\\windows\\character_sheet.cc:90",
+   "features\\windows\\inventory_viewer.cc:53"
+  ],
+  "comment": "_Mysize"
+ },
+ "0x015fbad8": {
+  "names": "kStorageListHead",
+  "sites": [
+   "features\\windows\\storage_window.cc:115",
+   "features\\windows\\storage_window.cc:835"
+  ],
+  "comment": ""
+ },
+ "0x015fbae0": {
+  "names": "kCartListHead",
+  "sites": [
+   "features\\windows\\cart_viewer.cc:60"
+  ],
+  "comment": "sentinelle std::list (head)"
+ },
+ "0x015ff634": {
+  "names": "kBodyResNamesBegin",
+  "sites": [
+   "ui\\sprite_path.cc:17"
+  ],
+  "comment": ""
+ },
+ "0x015ff638": {
+  "names": "kBodyResNamesEnd",
+  "sites": [
+   "ui\\sprite_path.cc:18"
+  ],
+  "comment": ""
+ },
+ "0x015ff658": {
+  "names": "kHeadgearNamesBegin",
+  "sites": [
+   "ui\\doll.cc:117"
+  ],
+  "comment": ""
+ },
+ "0x015ff65c": {
+  "names": "kHeadgearNamesEnd",
+  "sites": [
+   "ui\\doll.cc:118"
+  ],
+  "comment": ""
+ },
+ "0x015ff824": {
+  "names": "kBattleChatModeOn",
+  "sites": [
+   "features\\windows\\chat_window.cc:133"
+  ],
+  "comment": ""
+ },
+ "0x015ff91c": {
+  "names": "kName",
+  "sites": [
+   "ragnarok\\homunculus.cc:19"
+  ],
+  "comment": "char[24]"
+ },
+ "0x015ff93c": {
+  "names": "kAtk",
+  "sites": [
+   "ragnarok\\homunculus.cc:20"
+  ],
+  "comment": "puis MATK/HIT/CRI/DEF/MDEF/FLEE de 4 en 4"
+ },
+ "0x015ff958": {
+  "names": "kAmotion",
+  "sites": [
+   "ragnarok\\homunculus.cc:21"
+  ],
+  "comment": ""
+ },
+ "0x015ff960": {
+  "names": "kLevel",
+  "sites": [
+   "ragnarok\\homunculus.cc:23"
+  ],
+  "comment": ""
+ },
+ "0x015ff964": {
+  "names": "kHp",
+  "sites": [
+   "ragnarok\\homunculus.cc:24"
+  ],
+  "comment": ""
+ },
+ "0x015ff968": {
+  "names": "kMaxHp",
+  "sites": [
+   "ragnarok\\homunculus.cc:25"
+  ],
+  "comment": ""
+ },
+ "0x015ff96c": {
+  "names": "kSp",
+  "sites": [
+   "ragnarok\\homunculus.cc:26"
+  ],
+  "comment": ""
+ },
+ "0x015ff970": {
+  "names": "kMaxSp",
+  "sites": [
+   "ragnarok\\homunculus.cc:27"
+  ],
+  "comment": ""
+ },
+ "0x015ff974": {
+  "names": "kIntimacy",
+  "sites": [
+   "ragnarok\\homunculus.cc:28"
+  ],
+  "comment": ""
+ },
+ "0x015ff980": {
+  "names": "kExp",
+  "sites": [
+   "ragnarok\\homunculus.cc:29"
+  ],
+  "comment": "i64"
+ },
+ "0x015ff988": {
+  "names": "kExpNext",
+  "sites": [
+   "ragnarok\\homunculus.cc:30"
+  ],
+  "comment": "i64"
+ },
+ "0x015ff990": {
+  "names": "kHunger",
+  "sites": [
+   "ragnarok\\homunculus.cc:31"
+  ],
+  "comment": ""
+ },
+ "0x015ff998": {
+  "names": "kFlags",
+  "sites": [
+   "ragnarok\\homunculus.cc:32"
+  ],
+  "comment": ""
+ },
+ "0x015ff99c": {
+  "names": "kOrderBlk",
+  "sites": [
+   "ragnarok\\homunculus.cc:33"
+  ],
+  "comment": "ctx+0x55DC, six dwords (ordre à l'homoncule)"
+ },
+ "0x015ff9c4": {
+  "names": "kAtkRange",
+  "sites": [
+   "ragnarok\\homunculus.cc:36"
+  ],
+  "comment": ""
+ },
+ "0x015ffd14": {
+  "names": "kShowEquipFlag",
+  "sites": [
+   "features\\windows\\character_sheet.cc:144"
+  ],
+  "comment": "1 = équip visible des autres (validé live)"
+ },
+ "0x015ffd60": {
+  "names": "kNormalSlots",
+  "sites": [
+   "features\\windows\\char_select.cc:160"
+  ],
+  "comment": ""
+ },
+ "0x015ffd64": {
+  "names": "kPremiumSlots",
+  "sites": [
+   "features\\windows\\char_select.cc:161"
+  ],
+  "comment": ""
+ },
+ "0x015ffd68": {
+  "names": "kBillingSlots",
+  "sites": [
+   "features\\windows\\char_select.cc:162"
+  ],
+  "comment": ""
+ },
+ "0x015fffa0": {
+  "names": "kDropLockGlobal",
+  "sites": [
+   "features\\windows\\inventory_viewer.cc:373"
+  ],
+  "comment": ""
+ },
+ "0x015fffa1": {
+  "names": "kSafeCheckFlag",
+  "sites": [
+   "features\\windows\\vending_window.cc:430"
+  ],
+  "comment": "octet, persistant"
+ },
+ "0x015fffc0": {
+  "names": "kBankVault",
+  "sites": [
+   "features\\windows\\bank_window.cc:37"
+  ],
+  "comment": "s64"
+ },
+ "0x01600500": {
+  "names": "kOwnTitleBegin",
+  "sites": [
+   "features\\windows\\character_sheet.cc:2138"
+  ],
+  "comment": "std::vector<int> g_OwnTitleList : begin (possédés)"
+ },
+ "0x01600504": {
+  "names": "kOwnTitleEnd",
+  "sites": [
+   "features\\windows\\character_sheet.cc:2139"
+  ],
+  "comment": ".. end"
+ },
+ "0x0160052c": {
+  "names": "kHairNumDoramMale",
+  "sites": [
+   "ui\\head_icon.cc:41"
+  ],
+  "comment": ""
+ },
+ "0x01600538": {
+  "names": "kHairNumDoramFemale",
+  "sites": [
+   "ui\\head_icon.cc:42"
+  ],
+  "comment": ""
+ },
+ "0x01600553": {
+  "names": "kDealLockGlobal, kFavFlag",
+  "sites": [
+   "features\\patches\\inventory_tweaks.cc:105",
+   "features\\windows\\inventory_viewer.cc:374",
+   "features\\windows\\npc_shop_window.cc:95"
+  ],
+  "comment": "FAV-mode global (matches FUN_00946da0)"
+ },
+ "0x01602278": {
+  "names": "kLeftHandEquipOpt",
+  "sites": [
+   "features\\windows\\inventory_viewer.cc:108"
+  ],
+  "comment": "DAT_01602278 : option client \"équip main gauche\" active ?"
+ },
+ "0x0160231c": {
+  "names": "kAutoFeed",
+  "sites": [
+   "ragnarok\\homunculus.cc:38"
+  ],
+  "comment": "octet"
+ },
+ "0x0160232c": {
+  "names": "kPriorityClassAddr",
+  "sites": [
+   "ragnarok\\game_settings.cc:108"
+  ],
+  "comment": ""
+ },
+ "0x016023e4": {
+  "names": "kSnapName",
+  "sites": [
+   "features\\windows\\vending_window.cc:324"
+  ],
+  "comment": "std::string : nom de la boutique"
+ },
+ "0x01602400": {
+  "names": "kSnapBegin",
+  "sites": [
+   "features\\windows\\vending_window.cc:322"
+  ],
+  "comment": "vecteur d'ItemSkillInfo"
+ },
+ "0x01602404": {
+  "names": "kSnapEnd",
+  "sites": [
+   "features\\windows\\vending_window.cc:323"
+  ],
+  "comment": ""
+ },
+ "0x016024c0": {
+  "names": "kCostumeHideFlag",
+  "sites": [
+   "features\\windows\\character_sheet.cc:145"
+  ],
+  "comment": "0 = costumes affichés (validé live)"
+ },
+ "0x01602568": {
+  "names": "kOwnCharName",
+  "sites": [
+   "features\\windows\\char_diagnostics.cc:37"
+  ],
+  "comment": "g_Own_CharName_Plain (char[])"
+ },
+ "0x016025b8": {
+  "names": "(littéral)",
+  "sites": [
+   "features\\patches\\pick_quad_tweaks.cc:41"
+  ],
+  "comment": "unités de compétence — facteur 34"
+ },
+ "0x016025c8": {
+  "names": "kCfgDx7DeviceGuid",
+  "sites": [
+   "ragnarok\\game_settings.cc:124"
+  ],
+  "comment": "16 o."
+ },
+ "0x016025d8": {
+  "names": "kCfgDx7DriverGuid",
+  "sites": [
+   "ragnarok\\game_settings.cc:125"
+  ],
+  "comment": "16 o."
+ },
+ "0x016025e8": {
+  "names": "kCfgDx7AdapterName",
+  "sites": [
+   "ragnarok\\game_settings.cc:126"
+  ],
+  "comment": "40 o."
+ },
+ "0x01602610": {
+  "names": "kCfgFullscreenAddr",
+  "sites": [
+   "ragnarok\\game_settings.cc:114"
+  ],
+  "comment": ""
+ },
+ "0x01602614": {
+  "names": "kCfgWidthAddr",
+  "sites": [
+   "ragnarok\\game_settings.cc:115"
+  ],
+  "comment": ""
+ },
+ "0x01602618": {
+  "names": "kCfgHeightAddr",
+  "sites": [
+   "ragnarok\\game_settings.cc:116"
+  ],
+  "comment": ""
+ },
+ "0x0160261c": {
+  "names": "kCfgBppAddr",
+  "sites": [
+   "ragnarok\\game_settings.cc:117"
+  ],
+  "comment": ""
+ },
+ "0x01602630": {
+  "names": "kCfgSpriteDetailAddr",
+  "sites": [
+   "ragnarok\\game_settings.cc:118"
+  ],
+  "comment": ""
+ },
+ "0x01602634": {
+  "names": "kCfgTextureDetailAddr",
+  "sites": [
+   "ragnarok\\game_settings.cc:119"
+  ],
+  "comment": ""
+ },
+ "0x01602638": {
+  "names": "kCfgTrilinearAddr",
+  "sites": [
+   "ragnarok\\game_settings.cc:120"
+  ],
+  "comment": ""
+ },
+ "0x01602640": {
+  "names": "kCfgRenderSystemAddr",
+  "sites": [
+   "ragnarok\\game_settings.cc:121"
+  ],
+  "comment": ""
+ },
+ "0x01602644": {
+  "names": "kCfgDx9AdapterGuid",
+  "sites": [
+   "ragnarok\\game_settings.cc:122"
+  ],
+  "comment": "16 o."
+ },
+ "0x01602654": {
+  "names": "kCfgDx9DeviceName",
+  "sites": [
+   "ragnarok\\game_settings.cc:123"
+  ],
+  "comment": "32 o."
+ },
+ "0x01602674": {
+  "names": "kSoundModeVal",
+  "sites": [
+   "features\\overlays\\login_parade.cc:35"
+  ],
+  "comment": "SOUNDMODE (registre, boot) : 0 = son coupé au setup"
+ },
+ "0x01602b60": {
+  "names": "kSpriteDetailFlagA",
+  "sites": [
+   "ragnarok\\game_settings.cc:131"
+  ],
+  "comment": ""
+ },
+ "0x01602b64": {
+  "names": "kSpriteDetailFlagB",
+  "sites": [
+   "ragnarok\\game_settings.cc:132"
+  ],
+  "comment": ""
+ }
+}

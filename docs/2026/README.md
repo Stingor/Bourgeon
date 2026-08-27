@@ -89,6 +89,10 @@ l'écriture (le script le dit clairement au lieu de planter).
 | `merged_pairs.json` | **l'union des quatre passes, 1827 paires**, 0 conflit ; champ `tables` = par quels identifiants |
 | `port_suspects.json` | les **11 entrees fausses ou douteuses** trouvees dans `port_2025_2026.json` |
 | `apply_plan.md` | **le plan d'application** : les 398 sites du code a modifier, par fichier — rien n'est applique |
+| `vtable_port.md` | **porter par le RTTI (classe, slot)** : 4327 methodes, la validation slot↔nom, et pourquoi l'apport au portage est presque nul |
+| `vtable_pairs.json` | les 4327 methodes virtuelles appariees |
+| `vtable_names_2026.json` | les **561 noms propages dans l'IDB 2026** (reversibles) |
+| `reste_a_porter.json` | les 518 adresses restantes, par zone et par fichier |
 | `scripts/` | les scripts rejouables du portage par opcodes |
 | `client_2026_opcodes.md` | les 1577 opcodes du client, nommés et croisés avec rAthena |
 | `packet_len_diff.md` | méthode d'extraction des longueurs de paquets + le diff entre les deux clients |

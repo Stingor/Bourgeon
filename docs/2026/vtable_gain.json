@@ -1,0 +1,8 @@
+{
+ "0x00c86740": {
+  "to": "0x004e37a0",
+  "classe": "CGameMode",
+  "slot": 6,
+  "mode": "exact"
+ }
+}
