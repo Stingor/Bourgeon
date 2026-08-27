@@ -269,6 +269,37 @@ bool Bourgeon::Initialize() {
   //
   // Rien n'est perdu à attendre : entre les deux points c'est Bourgeon qui
   // travaille, le client ne tourne pas et ne peut donc demander aucun message.
+  // 🔴 TOUT CE QUI SUIT ECRIT DANS LE CLIENT A DES ADRESSES EN DUR.
+  //
+  // `client_.Initialize()` ne valide que les ~20 adresses de la configuration ;
+  // le reste du projet en appelle 395 autres, toutes propres au 20250716 (relevé
+  // dans docs/2026/hardcoded_propagation.md, 53 % portées à ce jour). Tant que
+  // ce portage n'est pas fini, les poser sur un autre client écrit au hasard
+  // dans son code.
+  //
+  // Mesuré le 2026-08-27 sur le 20260707, x32dbg en pause : le détour msgstring
+  // s'installe à `msgstr::kGetAddr` = 0x00A9ED30, qui sur ce build tombe au
+  // milieu d'une instruction — dans le voisinage du constructeur de la table de
+  // longueurs de paquets. Le client revient d'un `call` à 0x00A9ED34, soit EN
+  // PLEIN MILIEU du JMP de 5 octets, et saute à 0x9ABB691D.
+  //
+  // Le commentaire ci-dessus décrivait déjà ce scénario, mais il comptait sur
+  // `client_.Initialize()` pour refuser le client. Depuis que l'entrée 20260707
+  // existe, la garde passe : la protection est devenue explicite.
+  //
+  // Ce que le client 2026 conserve : l'overlay ImGui (ses hooks de rendu sont
+  // posés dans DllMain, hors de tout ceci) et les objets construits depuis la
+  // configuration. Ce qu'il n'a pas : les fonctionnalités.
+  constexpr uint32_t kNativePatchClient = 20250716;
+  if (client_.timestamp() != kNativePatchClient) {
+    LogError(
+        "Client {} : Bourgeon demarre, mais les fonctionnalites restent "
+        "desactivees -- elles ecrivent a des adresses propres au {}. "
+        "Cf. docs/2026/hardcoded_propagation.md",
+        client_.timestamp(), kNativePatchClient);
+    return true;
+  }
+
   msgoverride::Reload();
 
   PatchSilenceEmotePurchaseMsg();  // supprime le spam "purchased emotion" au login
