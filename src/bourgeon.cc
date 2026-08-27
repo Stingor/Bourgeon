@@ -300,6 +300,8 @@ bool Bourgeon::Initialize() {
     return true;
   }
 
+  native_features_ = true;
+
   msgoverride::Reload();
 
   PatchSilenceEmotePurchaseMsg();  // supprime le spam "purchased emotion" au login
@@ -312,6 +314,9 @@ bool Bourgeon::Initialize() {
 }
 
 void Bourgeon::OnTick() {
+  // Meme raison que RenderUI : appele en boucle par un hook installe tot.
+  if (!native_features_) return;
+
   // Only run once every 100ms (6 frames at 60fps)
   const auto current_tick_count = GetTickCount();
   if (current_tick_count >= last_tick_count_ &&
@@ -589,6 +594,12 @@ void Bourgeon::NotifyGameUpdate() {
 }
 
 bool Bourgeon::IsGameActive() const {
+  // Sans les adresses natives, le slot +0x508 du UIWindowMgr lu plus bas est
+  // une adresse 2025 : sur un autre client c'est une lecture au hasard.
+  // « Pas en jeu » est la reponse sure -- c'est ce que lisent les appelants
+  // quand le monde n'est pas la.
+  if (!native_features_) return false;
+
   const uint32_t last = last_game_update_ms_.load();
   if (last == 0) return false;  // CGameMode never updated (login / char-select)
   // Fresh within the last second = CGameMode is the actively-updating mode. A
@@ -618,6 +629,13 @@ bool IsNativeUiHidden() {
 }  // namespace
 
 void Bourgeon::RenderUI() {
+  // 🔴 Le hook de rendu est pose dans DllMain, avant toute verification de
+  // version : c'est ici que la garde doit se refaire. La toute premiere chose
+  // que fait cette fonction, `uiwnd::IsHudReplaced()`, appelle FindWindow a
+  // l'adresse 2025 0x00a47b90 -- mesure sur le client 2026, crash a 0x00a47b99
+  // avec DDRAW.dll dans la pile.
+  if (!native_features_) return;
+
   // Un changement d'échelle de l'interface demandé à la frame précédente se pose
   // ICI, et nulle part ailleurs : c'est le seul instant de la frame où le style
   // ImGui n'est sous aucun PushStyleVar. Avant le clamp, qui doit mesurer les

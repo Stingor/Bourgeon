@@ -164,6 +164,14 @@ class Bourgeon {
   CastBar* cast_bar();
 
   bool Initialize();
+
+  // Vrai seulement sur le client dont Bourgeon connait les adresses en dur.
+  // Le projet en appelle 395 hors configuration, toutes propres au 20250716 :
+  // sur un autre client elles designent autre chose, et les poser revient a
+  // ecrire au hasard dans son code. Interroge par les boucles de rendu et de
+  // tick, qui sont appelees par des hooks installes des DllMain -- donc hors de
+  // toute verification de version.
+  bool native_features() const { return native_features_; }
   void OnTick();
   void OnProcessInput();  // dispatch de commandes natives, sur ÉVÉNEMENT (cf. .cc)
 
@@ -410,6 +418,7 @@ class Bourgeon {
   // cette garde, le Drain imbriqué viderait les tampons de sortie que la boucle
   // appelante est en train de parcourir (usage après libération).
   bool draining_inboxes_ = false;
+  bool native_features_ = false;
   std::atomic<bool> map_loading_{false};
   std::atomic<uint32_t> map_loading_since_ms_{0};  // GetTickCount at load start
   std::atomic<uint32_t> map_load_epoch_{0};        // transitions de carte (fronts)
