@@ -332,6 +332,32 @@ octets** du dernier membre mesure — c'est donc plausible.
 sont a **confirmer avant tout usage** — ce sont precisement les modeles dont
 dependent l'inventaire, le storage et le cart, donc une erreur y serait couteuse.
 
+### ❌ La verification par les DEPLACEMENTS a ete tentee, elle ne tranche pas
+
+Les trois adresses absolues **n'existent nulle part** dans le binaire (recherche
+d'octets : 0 occurrence) : le natif accede a ces modeles par deplacement depuis
+`g_session`. On a donc releve le profil des deplacements chez les **935
+fonctions** (2025) / **844** (2026) qui referencent `g_session`, et cherche le
+decalage qui superpose le mieux les deux profils :
+
+| plage | meilleur decalage | second | attendu |
+|---|---|---|---|
+| 0x400..0x600 | **−8** (0,671) | 0,477 | — |
+| 0x1000..0x1500 | **−8** (1,000) | 0,536 | **−56** ❌ |
+| 0x1500..0x1800 | **−0x38** (0,800) | 0,280 | **−56** ✅ |
+
+La plage des trois listes donne bien −0x38, avec un pic net. **Mais
+0x1000..0x1500 donne −8 la ou les paliers mesurent −56** — une contradiction.
+
+🔴 **La methode est invalide, et il faut le dire** : un deplacement **ne porte
+pas sa base**. Ces fonctions manipulent plusieurs structures, et celle de
+l'acteur est decalee de −8. Le profil melange donc deux structures, et le
+« pic » a −0x38 peut n'etre qu'un artefact du melange.
+
+S'y ajoute que **`storage` (+0x1718) et `cart` (+0x1720) n'apparaissent pas du
+tout** comme deplacements en 2025 : meme valide, la mesure n'aurait rien dit sur
+eux. Les trois valeurs restent donc a confirmer **en jeu**.
+
 ## ✅✅ Passe finale : 217 TABLES appariees automatiquement
 
 Choisir les tables a la main ne passe pas a l'echelle. Une table s'identifie par
