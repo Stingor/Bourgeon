@@ -13,7 +13,7 @@ from collections import defaultdict
 DOCS = r"d:/Mes documents/GitHub/Bourgeon/docs/2026"
 MAN = r"d:/Mes documents/GitHub/Bourgeon/docs/address_manifest.md"
 
-merged = json.load(io.open(os.path.join(DOCS, 'merged_pairs.json'), encoding='utf-8'))
+merged = json.load(io.open(os.path.join(DOCS, 'all_pairs_final.json'), encoding='utf-8'))
 ref = json.load(open(os.path.join(DOCS, 'port_2025_2026.json')))
 suspects = set(json.load(io.open(os.path.join(DOCS, 'port_suspects.json'), encoding='utf-8')))
 
@@ -39,7 +39,7 @@ for s, r in merged.items():
     k = '0x%08x' % int(s, 16)
     if k in known:
         continue
-    known[k] = {"to": r['to'], "src": r.get('src', 'tables'), "suspect": False,
+    known[k] = {"to": r['to'], "src": r.get('via', '?'), "suspect": False,
                 "familles": len(r.get('tables', []))}
 
 # regroupe par FICHIER

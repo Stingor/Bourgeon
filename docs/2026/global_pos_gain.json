@@ -1,0 +1,227 @@
+{
+ "0x012515f8": {
+  "to": "0x01123c60",
+  "votes": 110,
+  "total": 110
+ },
+ "0x01602610": {
+  "to": "0x014bec88",
+  "votes": 1,
+  "total": 1
+ },
+ "0x01602614": {
+  "to": "0x014bec8c",
+  "votes": 1,
+  "total": 1
+ },
+ "0x01602618": {
+  "to": "0x014bec90",
+  "votes": 1,
+  "total": 1
+ },
+ "0x0160261c": {
+  "to": "0x014bec94",
+  "votes": 1,
+  "total": 1
+ },
+ "0x01251668": {
+  "to": "0x01123ca4",
+  "votes": 3,
+  "total": 3
+ },
+ "0x012517b8": {
+  "to": "0x01123dec",
+  "votes": 2,
+  "total": 2
+ },
+ "0x0121333c": {
+  "to": "0x010db79c",
+  "votes": 82,
+  "total": 83
+ },
+ "0x01602674": {
+  "to": "0x014becec",
+  "votes": 1,
+  "total": 1
+ },
+ "0x00fd6ae4": {
+  "to": "0x00ed6400",
+  "votes": 3,
+  "total": 3
+ },
+ "0x015fb2a0": {
+  "to": "0x014b8260",
+  "votes": 1,
+  "total": 1
+ },
+ "0x015fb278": {
+  "to": "0x014b823c",
+  "votes": 2,
+  "total": 2
+ },
+ "0x015fb290": {
+  "to": "0x014b8250",
+  "votes": 2,
+  "total": 2
+ },
+ "0x015fb28c": {
+  "to": "0x014b824c",
+  "votes": 2,
+  "total": 2
+ },
+ "0x015fb298": {
+  "to": "0x014b8258",
+  "votes": 1,
+  "total": 1
+ },
+ "0x015fb29c": {
+  "to": "0x014b825c",
+  "votes": 1,
+  "total": 1
+ },
+ "0x015fb294": {
+  "to": "0x014b8254",
+  "votes": 1,
+  "total": 1
+ },
+ "0x015fb9c8": {
+  "to": "0x014b8980",
+  "votes": 1,
+  "total": 1
+ },
+ "0x0131f708": {
+  "to": "0x011f1af8",
+  "votes": 3,
+  "total": 3
+ },
+ "0x0159c198": {
+  "to": "0x0146e8a0",
+  "votes": 1,
+  "total": 1
+ },
+ "0x0159c19c": {
+  "to": "0x0146e8a4",
+  "votes": 1,
+  "total": 1
+ },
+ "0x0159c188": {
+  "to": "0x0146e890",
+  "votes": 1,
+  "total": 1
+ },
+ "0x015beecc": {
+  "to": "0x01490524",
+  "votes": 22,
+  "total": 22
+ },
+ "0x015fb2d4": {
+  "to": "0x014b8294",
+  "votes": 2,
+  "total": 2
+ },
+ "0x015fb2d8": {
+  "to": "0x014b8298",
+  "votes": 2,
+  "total": 2
+ },
+ "0x015fb2dc": {
+  "to": "0x014b829c",
+  "votes": 2,
+  "total": 2
+ },
+ "0x015fb2e0": {
+  "to": "0x014b82a0",
+  "votes": 2,
+  "total": 2
+ },
+ "0x015fb9a4": {
+  "to": "0x014b895c",
+  "votes": 17,
+  "total": 17
+ },
+ "0x0159b818": {
+  "to": "0x0146dfa4",
+  "votes": 2,
+  "total": 2
+ },
+ "0x01213338": {
+  "to": "0x010db798",
+  "votes": 1,
+  "total": 1
+ },
+ "0x01228f60": {
+  "to": "0x010fc9a8",
+  "votes": 6,
+  "total": 6
+ },
+ "0x01254d8c": {
+  "to": "0x01127364",
+  "votes": 8,
+  "total": 8
+ },
+ "0x015fb99c": {
+  "to": "0x014b8954",
+  "votes": 9,
+  "total": 9
+ },
+ "0x015fba9c": {
+  "to": "0x014b8a54",
+  "votes": 1,
+  "total": 1
+ },
+ "0x015fbaa0": {
+  "to": "0x014b8a58",
+  "votes": 1,
+  "total": 1
+ },
+ "0x015fb9d0": {
+  "to": "0x014b8988",
+  "votes": 8,
+  "total": 8
+ },
+ "0x015fb9d8": {
+  "to": "0x014b8990",
+  "votes": 7,
+  "total": 7
+ },
+ "0x015fb9e8": {
+  "to": "0x014b89a0",
+  "votes": 4,
+  "total": 4
+ },
+ "0x015fb9e0": {
+  "to": "0x014b8998",
+  "votes": 4,
+  "total": 4
+ },
+ "0x0159c1e8": {
+  "to": "0x0146e8f0",
+  "votes": 1,
+  "total": 1
+ },
+ "0x0159c1f4": {
+  "to": "0x0146e8fc",
+  "votes": 1,
+  "total": 1
+ },
+ "0x0159c1f8": {
+  "to": "0x0146e900",
+  "votes": 1,
+  "total": 1
+ },
+ "0x0159c214": {
+  "to": "0x0146e91c",
+  "votes": 1,
+  "total": 1
+ },
+ "0x0159c218": {
+  "to": "0x0146e920",
+  "votes": 1,
+  "total": 1
+ },
+ "0x01602568": {
+  "to": "0x014bebd8",
+  "votes": 5,
+  "total": 5
+ }
+}
