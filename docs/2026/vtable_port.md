@@ -16,7 +16,9 @@ deux builds.
 | classes RTTI | **1 594** | 1 332 |
 | vtables | 1 601 | 1 341 |
 | slots au total | **36 834** | 35 717 |
-| classes **communes** | \multicolumn — | **964** |
+
+Classes **communes : 964**.
+
 
 630 classes n'existent qu'en 2025, 368 qu'en 2026.
 
