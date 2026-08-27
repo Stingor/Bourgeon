@@ -292,9 +292,17 @@ bool Bourgeon::Initialize() {
   // configuration. Ce qu'il n'a pas : les fonctionnalités.
   constexpr uint32_t kNativePatchClient = 20250716;
   if (client_.timestamp() != kNativePatchClient) {
+    // Le controle d'integrite, LUI, doit tourner : sans son handshake
+    // (CZ_BOURGEON_INTEGRITY), le serveur kicke le joueur au bout de 15 s pour
+    // « pas de DLL Bourgeon ». Il ne touche aucune adresse en dur -- il calcule
+    // le SHA-256 de la DLL et l'envoie par la connexion, qui est configuree
+    // correctement pour ce client. C'est le seul plugin chargé ici.
+    plugins_.emplace_back(std::make_unique<IntegrityCheck>());
+
     LogError(
         "Client {} : Bourgeon demarre, mais les fonctionnalites restent "
         "desactivees -- elles ecrivent a des adresses propres au {}. "
+        "Seul le controle d'integrite tourne. "
         "Cf. docs/2026/hardcoded_propagation.md",
         client_.timestamp(), kNativePatchClient);
     return true;
@@ -314,9 +322,11 @@ bool Bourgeon::Initialize() {
 }
 
 void Bourgeon::OnTick() {
-  // Meme raison que RenderUI : appele en boucle par un hook installe tot.
-  if (!native_features_) return;
-
+  // 🔴 PAS de garde `native_features_` ici, et c'est deliberé : cette fonction
+  // ne fait qu'`imgprev::Tick()` (des textures ImGui) et la boucle sur les
+  // plugins -- aucun acces natif. Une garde y avait ete posee par precaution,
+  // sans mesure ; elle empechait `IntegrityCheck` de reemettre son handshake,
+  // et le serveur kickait le joueur pour « pas de DLL Bourgeon ».
   // Only run once every 100ms (6 frames at 60fps)
   const auto current_tick_count = GetTickCount();
   if (current_tick_count >= last_tick_count_ &&
