@@ -116,3 +116,33 @@ seul candidat** dans toute l'image.
 ⚠ Un balayage de tout `.text` fait couper le pont MCP. Borner la plage — mais
 alors vérifier que la plage contient la réponse : ici la première recherche
 bornée rendait 0 pour une tout autre raison, et seul le témoin l'a montré.
+
+## 🔴 Démarrer n'est PAS fonctionner — 430 adresses restent en 2025
+
+Les 19 adresses ci-dessus décident seulement si Bourgeon **s'initialise**. La
+configuration YAML ne porte que 22 champs ; tout le reste du projet appelle des
+adresses **codées en dur**, toutes propres au 20250716.
+
+Recensement du 2026-08-27 (commentaires neutralisés, et seuls comptés les
+littéraux tombant dans le  du client 2025) :
+
+| | |
+|---|---|
+| occurrences | 452 |
+| **adresses distinctes** | **430** |
+| fichiers concernés | 84 |
+
+Réparties surtout dans les fonctionnalités :  98,
+ 94,  44,  39.
+
+⇒ Sur le client 2026, Bourgeon démarrera, mais **chaque fonctionnalité qui touche
+une de ces adresses lira du code 2025 dans un binaire 2026**. Il ne faut donc pas
+lire « Bourgeon démarre » comme « Bourgeon marche » : c'est la porte d'entrée du
+chantier, pas sa fin.
+
+Le relevé est rejouable : [scripts/hardcoded_census.py](scripts/hardcoded_census.py).
+
+⚠  /  est un **champ mort** de la configuration :
+personne ne lit cette clé du YAML. Son adresse 2026 (`0x00a41a00`) a été relevée
+et vérifiée, mais elle ne sert à rien pour le démarrage. La fonction est bien
+utilisée par le projet — par une adresse en dur, comme les 430 autres.
