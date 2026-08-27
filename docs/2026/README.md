@@ -101,8 +101,9 @@ l'écriture (le script le dit clairement au lieu de planter).
 | `scripts/` | les scripts rejouables du portage par opcodes |
 | `client_2026_opcodes.md` | les 1577 opcodes du client, nommés et croisés avec rAthena |
 | `packet_len_diff.md` | méthode d'extraction des longueurs de paquets + le diff entre les deux clients |
-| `packet_len_client_2025.json` | table extraite du client 2025-07-16 (1522 entrées) |
-| `packet_len_client_2026.json` | table extraite du client 2026-07-07 (1577 entrées) |
+| `packet_len_client_2025.json` | table extraite du client 2025-07-16 (**1553** entrées, les DEUX remplisseurs) |
+| `packet_len_client_2026.json` | table extraite du client 2026-07-07 (**1778** entrées, les DEUX remplisseurs) |
+| `protocol_entry_2026.md` | 🔴 **ce qui bloquait l'entrée en jeu** — l'octet de contrôle en queue de paquet, `CZ_ENTER 0x0C1F`, le crash `ZC_ACH_UPDATE` |
 | `packet_len_ra_packets.json` | ce que Moonlight déclare (`clif_packetdb.hpp`) |
 
 ## Les deux choses à retenir
@@ -111,6 +112,12 @@ l'écriture (le script le dit clairement au lieu de planter).
 Ce qui porte : les **chaînes référencées**. Un déplacement de saut codé en dur
 (`74 xx`) est la cause n°1 des échecs — il devient `0F 84 xx xx xx xx` dès que le
 bloc dépasse 127 octets.
+
+🔴 **Le client 2026 entre en jeu et se déplace** depuis le 2026-08-27.
+Quatre défauts empilés le bloquaient, dont un absent du client 2025 : il ajoute
+un **octet de contrôle en queue de chaque paquet envoyé**. Les trois premiers se
+manifestaient tous loin de leur cause. Voir
+[protocol_entry_2026.md](protocol_entry_2026.md).
 
 🔴 **Le gain de ce portage n'a pas encore été chiffré.** Bourgeon remplace déjà la
 plupart des fenêtres natives par de l'ImGui : un an de nouveautés UI côté Gravity
