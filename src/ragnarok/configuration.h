@@ -70,4 +70,82 @@ const std::string kYamlConfiguration = R"(
     PostActorClickAction: 0x00c753a0
   CScene:
     RenderCellsAndCursor: 0x00a7b0a0
+
+# Client 2026-07-07. Les 19 adresses ont ete retrouvees le 2026-08-27, chacune
+# verifiee par un critere INDEPENDANT de la methode qui l'a trouvee -- appelants,
+# slot de vtable, ratio de taille, convention d'appel. Detail et preuves dans
+# docs/2026/boot_addresses.md.
+#
+# 🔴 DEUX RESERVES CONNUES, a lever avant de compter sur ce client :
+#
+#   - SendMsg (UIWindowMgr_ChatAction) a gagne UN ARGUMENT : `retn 18h` en 2026
+#     contre `retn 14h` en 2025. La paire est bonne (meme fonction, meme nom,
+#     ratio de taille 1,03, 316 appelants) -- c'est l'API du client qui a change.
+#     Le hook `UIWindowMgr::SendMsgHook` prend 5 arguments et depilera 20 octets
+#     la ou le natif en depile 24 : la pile serait corrompue au premier appel.
+#     A adapter AVANT d'activer ce client.
+#
+#   - le layout de CSession est celui du 2025 : c'est le seul implemente, et il
+#     n'a PAS ete valide sur ce build. Un offset de CGameMode a deja bouge
+#     (0x40C -> 0x3E4 dans PostActorClickAction), donc il faut s'attendre a ce
+#     que celui de CSession ait bouge aussi. Le demarrage ne le lit pas ; les
+#     lectures de session, si.
+#
+20260707:
+  CSession:
+    layout: 20250716
+    CSession: 0x00c6a730
+    GetTalkType: 0x00c71310
+  UIWindowMgr:
+    # ctor : ecrit ??_7UIWindowMgr@@6B@ dans [edi], comme en 2025. Deux fonctions
+    # l'ecrivent des deux cotes ; on prend la plus grosse, et les deux ratios de
+    # taille concordent (1648/1871 = 0,88 et 1006/1157 = 0,87).
+    UIWindowMgr: 0x009f8ed0
+    # nom deja pose par un portage anterieur, VERIFIE ici : son appelant
+    # sub_CC7240 contient DefWindowProcA (c'est la WndProc) et fait exactement
+    # 3 appels, comme Game_MainWndProc en 2025.
+    ProcessPushButton: 0x00a15160
+    SendMsg: 0x00a18a20
+  CRagConnection:
+    CConnection: 0x00bdeca0
+    # C'est la fonction d'emission qui ajoute l'octet de controle en queue de
+    # paquet (cf. docs/2026/protocol_entry_2026.md) : 5071 octets contre 95 en
+    # 2025, tout le code de hachage etant dedans. `retn 8` des deux cotes.
+    SendPacket: 0x00bdf440
+    # Table de sauts du switch principal, lue par get_switch_info :
+    # jumps = 0x0051610C, ncases = 3029 (0xBD5), lowcase = 115 (0x73).
+    RecvDispatchTable: 0x0051610c
+    RecvOpcodeBase: 0x73
+    RecvDispatchTableSize: 0xBD5
+    # Tete de la boucle de depilage : cible convergente des `case`. Le code y est
+    # identique a celui de 2025, instruction par instruction (cmp <replay>, 0 /
+    # call GetInstance / push <buffer> / call RecvBuffer_ReadPacket).
+    RecvDispatchLoopHead: 0x005096f9
+    # 13 et 44 octets, signature d'octets exacte, et surtout LES MEMES DEUX
+    # appelants qu'en 2025 (la boucle map et la boucle login/char).
+    RecvOpcodeReader: 0x00bdee70
+    RecvBufferReset: 0x00bdf3d0
+    PacketLenLookup: 0x00aa4290
+    PacketLenTable: 0x0146edfc
+  CModeMgr:
+    # Meme sequence d'appels virtuels qu'en 2025 (vt+8, vt+4, vt+0Ch), appelee
+    # seulement depuis WinMain avec "login.rsw", `retn 8` des deux cotes.
+    Switch: 0x00a3c8c0
+  CLoginMode:
+    # Slot #4 de ??_7CLoginMode@@6B@. Temoin d'alignement des vtables : le slot
+    # #7 est la plus grosse fonction des DEUX cotes (10 017 o en 2025 ; en 2026
+    # c'est celle qui construit CZ_ENTER).
+    OnUpdate: 0x00c3a300
+  CGameMode:
+    OnUpdate: 0x004cef40
+    # `retn 14h` = 5 arguments, ce qui confirme ProcessInputArgs ci-dessous.
+    ProcessInput: 0x004e37a0
+    ProcessInputArgs: 5
+    # Retrouvee par ses reperes propres -- push 133h avec 2710h ET 9C40h a
+    # portee : UN seul site dans toute l'image. Structure identique a 2025.
+    PostActorClickAction: 0x004cfad0
+  CScene:
+    # Slot #3 de ??_7CView@@6B@. La table s'appelle « g_CCamera_vtable » cote
+    # 2025, mais son RTTI dit ??_R4CView@@6B@ : c'est CView, pas CCamera.
+    RenderCellsAndCursor: 0x00a41a00
 )";

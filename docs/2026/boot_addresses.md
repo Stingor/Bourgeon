@@ -1,0 +1,97 @@
+# Les 19 adresses qui font démarrer Bourgeon sur le client 2026
+
+Relevé du **2026-08-27**. `RagnarokClient::Initialize` ne construit que six
+objets : c'est le seul jeu d'adresses qui décide si Bourgeon s'initialise ou
+refuse le client. **8 étaient déjà portées, 11 manquaient** — pas 424.
+
+Chacune est vérifiée par un critère **indépendant de la méthode qui l'a
+trouvée**. Un nom déjà posé par un portage antérieur ne compte pas comme preuve :
+ce portage a déjà produit 11 entrées fausses.
+
+## Le tableau
+
+| champ | 2025-07-16 | 2026-07-07 | preuve indépendante |
+|---|---|---|---|
+| `CSession` | `0x00d57780` | `0x00c6a730` | déjà porté · `retn 0` des deux côtés |
+| `GetTalkType` | `0x00D5E590` | `0x00c71310` | déjà porté · `retn 0Ch` |
+| `UIWindowMgr` | `0x00a29ba0` | **`0x009f8ed0`** | écrit `??_7UIWindowMgr@@6B@` dans `[edi]` ; 2 écrivains des deux côtés, ratios de taille concordants (0,88 et 0,87) |
+| `ProcessPushButton` | `0x00a471e0` | **`0x00a15160`** | son appelant `sub_CC7240` contient `DefWindowProcA` et fait **exactement 3 appels**, comme `Game_MainWndProc` |
+| `SendMsg` | `0x00a4ad20` | `0x00a18a20` | même nom `UIWindowMgr_ChatAction`, ratio 1,03, 316 appelants — ⚠ voir réserves |
+| `CConnection` | `0x00c13fc0` | `0x00bdeca0` | déjà porté · `retn 4` — ⚠ ratio de taille 0,28 |
+| `SendPacket` | `0x00c14920` | `0x00bdf440` | `retn 8` ; c'est la fonction qui ajoute l'octet de contrôle, analysée le même jour |
+| `RecvDispatchTable` | `0x00caa2e0` | **`0x0051610c`** | `get_switch_info` : `jumps`, `ncases` 3029, `lowcase` 115 |
+| `RecvOpcodeBase` | `0x73` | `0x73` | `lowcase` = 115 = 0x73, identique |
+| `RecvDispatchTableSize` | `0xBC3` | **`0xBD5`** | `ncases` = 3029 |
+| `RecvDispatchLoopHead` | `0x00c9e1dd` | **`0x005096f9`** | code **identique instruction par instruction** (voir plus bas) |
+| `RecvOpcodeReader` | `0x00c144b0` | **`0x00bdee70`** | 13 o, signature exacte, **mêmes deux appelants** qu'en 2025 |
+| `RecvBufferReset` | `0x00c148b0` | **`0x00bdf3d0`** | 44 o, mêmes deux appelants |
+| `PacketLenLookup` | `0x00aa7b00` | `0x00aa4290` | déjà porté · **119 o des deux côtés**, `retn 8` |
+| `PacketLenTable` | `0x0159d68c` | **`0x0146edfc`** | `g_PacketLenTable`, seule valeur chargée dans `ecx` par les 4 appelants du lookup |
+| `CModeMgr::Switch` | `0x00a756e0` | **`0x00a3c8c0`** | même suite d'appels virtuels (vt+8, vt+4, vt+0Ch), seul appelant `WinMain` avec `"login.rsw"`, `retn 8` |
+| `CLoginMode::OnUpdate` | `0x00d272e0` | **`0x00c3a300`** | slot #4 de `??_7CLoginMode@@6B@` ; témoin d'alignement : le slot #7 est la plus grosse fonction des deux côtés |
+| `CGameMode::OnUpdate` | `0x00c74a80` | `0x004cef40` | déjà porté · `retn 0` |
+| `ProcessInput` | `0x00c86740` | `0x004e37a0` | déjà porté · `retn 14h` = 5 args, ce qui confirme `ProcessInputArgs: 5` |
+| `PostActorClickAction` | `0x00c753a0` | **`0x004cfad0`** | `push 133h` avec `2710h` **et** `9C40h` à portée : un seul site dans l'image |
+| `CScene::RenderCells…` | `0x00a7b0a0` | **`0x00a41a00`** | slot #3 de `??_7CView@@6B@` |
+
+## 🔴 Deux réserves, à lever avant de compter sur ce client
+
+**`SendMsg` a gagné un argument.** `retn 18h` en 2026 contre `retn 14h` en 2025.
+La paire est bonne — même fonction, même nom, ratio 1,03, 316 appelants — c'est
+**l'API du client qui a changé**. Le hook `UIWindowMgr::SendMsgHook` prend cinq
+arguments et dépilera 20 octets là où le natif en dépile 24 : pile corrompue au
+premier appel. C'est le prochain point à traiter.
+
+**Le layout de `CSession` est celui du 2025**, seul implémenté, et n'a pas été
+validé sur ce build. Un offset de `CGameMode` a déjà bougé (`0x40C` → `0x3E4`
+dans `PostActorClickAction`), donc celui de `CSession` a probablement bougé
+aussi. Le démarrage ne le lit pas ; les lectures de session, si.
+
+## La tête de boucle recv, identique des deux côtés
+
+C'est l'appariement le plus net du lot, et il en offre trois en prime :
+
+```
+2025 (0x00C9E1DD)                  2026 (0x005096F9)
+cmp  g_ReplayActive, 0             cmp  dword_1490524, 0
+jnz  <sortie>                      jnz  <sortie>
+call CRagConnection_GetInstance    call sub_BE1F70
+lea  ecx, [ebp+param_2]            lea  ecx, [ebp+var_4BCC]
+push ecx                           push ecx
+push offset _Dst_015e8198          push offset word_11117B8
+mov  ecx, eax                      mov  ecx, eax
+call RecvBuffer_ReadPacket         call RecvBuffer_ReadPacket
+test al, al / jz                   test al, al / jz
+```
+
+⇒ `CRagConnection_GetInstance` → `sub_BE1F70`, `g_ReplayActive` →
+`dword_1490524`, et le tampon de réception → `word_11117B8`. Ce dernier recoupe
+le crash `ZC_ACH_UPDATE` analysé le même jour, où le client indexait
+`word_11117B8 + 2`, c'est-à-dire le corps du paquet après l'opcode.
+
+## Ce qui a marché, ce qui a échoué
+
+**Le contrôle `retn N` est le plus rentable du lot.** Il ne coûte rien et il a
+attrapé la seule vraie anomalie (`SendMsg`), qu'aucun autre critère — nom,
+taille, appelants — ne trahissait.
+
+**Un ratio de taille aberrant n'est pas une preuve de faute.** `SendPacket` passe
+de 95 à 5071 octets, soit 53×. C'est pourtant la bonne paire : tout le code de
+hachage de l'octet de contrôle est dedans. À l'inverse `CConnection` tombe à
+0,28, sans explication trouvée — signalé, pas résolu.
+
+🔴 **Le nom d'une table de vtable peut mentir.** `CScene_RenderCellsAndCursor`
+était relevé comme slot #3 de `g_CCamera_vtable`. Le RTTI juste avant la table
+dit `??_R4CView@@6B@` : la classe est **CView**. Lire le RTTI, pas le nom posé.
+
+🔴 **Ne pas fonder une recherche sur un commentaire de configuration.** La
+première tentative pour `PostActorClickAction` cherchait « les fonctions qui
+écrivent `+0x500` et `+0x514` », déplacements lus dans un commentaire de
+`configuration.h`. Le **témoin 2025 a rendu 0** alors que la fonction y est : la
+fonction ne touche ni l'un ni l'autre. Lue pour de vrai, elle offre des repères
+bien plus discriminants (`push 133h`, seuils `2710h`/`9C40h`) qui donnent **un
+seul candidat** dans toute l'image.
+
+⚠ Un balayage de tout `.text` fait couper le pont MCP. Borner la plage — mais
+alors vérifier que la plage contient la réponse : ici la première recherche
+bornée rendait 0 pour une tout autre raison, et seul le témoin l'a montré.

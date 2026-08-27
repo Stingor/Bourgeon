@@ -103,6 +103,7 @@ l'écriture (le script le dit clairement au lieu de planter).
 | `packet_len_diff.md` | méthode d'extraction des longueurs de paquets + le diff entre les deux clients |
 | `packet_len_client_2025.json` | table extraite du client 2025-07-16 (**1553** entrées, les DEUX remplisseurs) |
 | `packet_len_client_2026.json` | table extraite du client 2026-07-07 (**1778** entrées, les DEUX remplisseurs) |
+| `boot_addresses.md` | 🔴 **les 19 adresses qui font DEMARRER Bourgeon** sur le client 2026 : 8 etaient portees, 11 manquaient |
 | `protocol_entry_2026.md` | 🔴 **ce qui bloquait l'entrée en jeu** — l'octet de contrôle en queue de paquet, `CZ_ENTER 0x0C1F`, le crash `ZC_ACH_UPDATE` |
 | `packet_len_ra_packets.json` | ce que Moonlight déclare (`clif_packetdb.hpp`) |
 
