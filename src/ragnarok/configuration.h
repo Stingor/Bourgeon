@@ -105,7 +105,11 @@ const std::string kYamlConfiguration = R"(
     # sub_CC7240 contient DefWindowProcA (c'est la WndProc) et fait exactement
     # 3 appels, comme Game_MainWndProc en 2025.
     ProcessPushButton: 0x00a15160
+    # 🔴 SIX arguments sur ce build (retn 18h contre 14h en 2025), le nouveau
+    # ajoute en FIN de liste. Ce champ fait installer un hook de signature exacte
+    # -- cf. ui_window_mgr.cc. Absent de l entree 20250716, qui garde le sien.
     SendMsg: 0x00a18a20
+    SendMsgArgs: 6
   CRagConnection:
     CConnection: 0x00bdeca0
     # C'est la fonction d'emission qui ajoute l'octet de controle en queue de

@@ -7,6 +7,41 @@
 // Pointer to the game's UIWindowMgr singleton instance
 std::atomic<UIWindowMgr*> UIWindowMgr::g_uiwindowmgr_ptr(nullptr);
 
+// 🔴 Le client 2026-07-07 a ajoute un 6e argument a UIWindowMgr_ChatAction :
+// `retn 18h` contre `retn 14h`. Mesure : le parametre s'ajoute EN FIN de liste.
+// Le meme appelant (PostActorClickAction, paire etablie) pousse `0,0,0,0,0,3` la
+// ou le 2025 pousse `0,0,0,0,3` ; et sur 150 sites d'appel, le pic des appels
+// complets passe de 5 a 6 push, avec un biais de mesure identique des deux cotes
+// (le pic parasite a 2 push vaut 57 % ici comme la-bas).
+//
+// Le hook membre a 5 arguments depilerait 20 octets la ou le natif en depile 24 :
+// pile corrompue des le premier appel. Quand la configuration annonce
+// `SendMsgArgs: 6`, on installe donc un hook de signature exacte.
+//
+// __fastcall avec ecx/edx en registres et TOUS les arguments sur la pile emule un
+// __thiscall : `this` arrive en ecx, edx n'est pas lu par le natif, et les six
+// parametres pile font bien RET 0x18. C'est le patron de ProcessInputArgs dans
+// game_mode.cc.
+using SendMsg6_t = size_t(__fastcall*)(void* ecx, void* edx, int message,
+                                       int val1, int val2, int val3, int val4,
+                                       int val5);
+static SendMsg6_t g_orig_send_msg6 = nullptr;
+
+static size_t __fastcall Hooked_SendMsg6(void* ecx, void* edx, int message,
+                                         int val1, int val2, int val3,
+                                         int val4, int val5) {
+  if (message != static_cast<int>(UIMessage::UIM_PUSHINTOCHATHISTORY))
+    return g_orig_send_msg6(ecx, edx, message, val1, val2, val3, val4, val5);
+
+  const char* text = reinterpret_cast<const char*>(val1);
+  Bourgeon::Instance().FireChatMessage(text);
+
+  if (Bourgeon::Instance().RouteChatLine(text, static_cast<uint32_t>(val2)))
+    return 0;  // prise par la chatbox ImGui : ne pas nourrir la file du natif
+
+  return g_orig_send_msg6(ecx, edx, message, val1, val2, val3, val4, val5);
+}
+
 UIWindowMgr::UIWindowMgr(const YAML::Node& uiwindowmgr_configuration) {
   using namespace hooking;
 
@@ -37,10 +72,21 @@ UIWindowMgr::UIWindowMgr(const YAML::Node& uiwindowmgr_configuration) {
   if (!sendmsg_addr.IsDefined()) {
     throw std::exception("Missing required field 'SendMsg' for UIWindowMgr");
   }
-  UIWindowMgr::SendMsgRef = HookManager::Instance().SetHook(
-      HookType::kJmpHook,
-      reinterpret_cast<uint8_t*>(sendmsg_addr.as<uint32_t>()),
-      reinterpret_cast<uint8_t*>(void_cast(&UIWindowMgr::SendMsgHook)));
+  // Signature a 6 arguments : client 2026 seulement (cf. le commentaire du hook
+  // ci-dessus). Absent de l'entree 20250716, qui prend donc la branche `else`.
+  const auto sendmsg_args = uiwindowmgr_configuration["SendMsgArgs"];
+  if (sendmsg_args.IsDefined() && sendmsg_args.as<int>() == 6) {
+    g_orig_send_msg6 =
+        reinterpret_cast<SendMsg6_t>(HookManager::Instance().SetHook(
+            HookType::kJmpHook,
+            reinterpret_cast<uint8_t*>(sendmsg_addr.as<uint32_t>()),
+            reinterpret_cast<uint8_t*>(Hooked_SendMsg6)));
+  } else {
+    UIWindowMgr::SendMsgRef = HookManager::Instance().SetHook(
+        HookType::kJmpHook,
+        reinterpret_cast<uint8_t*>(sendmsg_addr.as<uint32_t>()),
+        reinterpret_cast<uint8_t*>(void_cast(&UIWindowMgr::SendMsgHook)));
+  }
 }
 
 bool UIWindowMgr::ProcessPushButton(unsigned long vkey, int new_key,
@@ -63,6 +109,15 @@ size_t UIWindowMgr::SendMsg(UIMessage message, int val1, int val2, int val3,
                                          static_cast<uint32_t>(val2))) {
     return 0;  // prise par la chatbox ImGui
   }
+  // Sur le client 2026 le natif attend six arguments : passer par le trampoline
+  // a cinq laisserait 4 octets sur la pile a chaque ligne ecrite par un plugin.
+  // Le 6e vaut 0 sur tous les sites d'appel releves dans le client.
+  if (g_orig_send_msg6 != nullptr) {
+    return g_orig_send_msg6(g_uiwindowmgr_ptr.load(), nullptr,
+                            static_cast<int>(message), val1, val2, val3, val4,
+                            0);
+  }
+
   return SendMsgRef(g_uiwindowmgr_ptr.load(), static_cast<int>(message), val1,
                     val2, val3, val4);
 }

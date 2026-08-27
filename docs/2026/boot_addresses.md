@@ -34,13 +34,29 @@ ce portage a déjà produit 11 entrées fausses.
 | `PostActorClickAction` | `0x00c753a0` | **`0x004cfad0`** | `push 133h` avec `2710h` **et** `9C40h` à portée : un seul site dans l'image |
 | `CScene::RenderCells…` | `0x00a7b0a0` | **`0x00a41a00`** | slot #3 de `??_7CView@@6B@` |
 
-## 🔴 Deux réserves, à lever avant de compter sur ce client
+## 🔴 Réserves
 
-**`SendMsg` a gagné un argument.** `retn 18h` en 2026 contre `retn 14h` en 2025.
-La paire est bonne — même fonction, même nom, ratio 1,03, 316 appelants — c'est
-**l'API du client qui a changé**. Le hook `UIWindowMgr::SendMsgHook` prend cinq
-arguments et dépilera 20 octets là où le natif en dépile 24 : pile corrompue au
-premier appel. C'est le prochain point à traiter.
+**`SendMsg` a gagné un argument — TRAITÉ le 2026-08-27.** `retn 18h` en 2026
+contre `retn 14h` en 2025. La paire est bonne — même fonction, même nom, ratio
+1,03, 316 appelants — c'est **l'API du client qui a changé**.
+
+Le nouvel argument s'ajoute **en fin de liste**, deux mesures concordantes :
+
+- le même appelant (`PostActorClickAction`, paire établie) pousse `0,0,0,0,0,3`
+  là où le 2025 pousse `0,0,0,0,3`, et `0,0,0,0FFh,<texte>,1` contre
+  `0,0,0FFh,<texte>,1` — un `push 0` de plus **en tête**, donc un paramètre de
+  plus **en queue** (les push sont en ordre inverse) ;
+- sur 150 sites d'appel, le pic des appels complets passe de **5 à 6** push,
+  avec un biais de mesure identique des deux côtés (le pic parasite à 2 push
+  vaut 57 % ici comme là-bas), et le 2026 n'a plus aucun appel à 3 ou 4 push.
+
+⇒ `ChatAction(this, action, texte, couleur, TYPE, sender, <nouveau>)`. Le 6e
+vaut 0 sur tous les sites relevés, et Hex-Rays ne le lit jamais dans le corps.
+
+Corrigé par un champ `SendMsgArgs: 6` qui fait installer un hook `__fastcall` de
+signature exacte — même patron que `ProcessInputArgs` dans `game_mode.cc`. Le
+champ est absent de l entrée 20250716, qui garde donc son hook membre.
+⚠ Non testé en jeu : le build appartient à l utilisateur.
 
 **Le layout de `CSession` est celui du 2025**, seul implémenté, et n'a pas été
 validé sur ce build. Un offset de `CGameMode` a déjà bougé (`0x40C` → `0x3E4`
