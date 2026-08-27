@@ -288,6 +288,31 @@ C'est peu, mais c'est **la seule validation croisée qui vaille**, et elle est
 parfaite. Le gros de la confiance vient du **témoin aléatoire** (médiane 0,999
 contre 0,303), pas du recoupement.
 
+## ✅ Troisieme test independant : la MONOTONIE
+
+Ni les tailles, ni les noms, ni les recoupements n'y entrent. Le compilateur
+reordonne des fonctions d'un build a l'autre, mais pas au hasard : l'ordre est
+largement preserve. Une paire dont la cible casse l'ordre par rapport a ses
+voisines immediates est donc suspecte.
+
+| | paires proposées | témoin aléatoire |
+|---|---|---|
+| inversions d'ordre entre voisines consécutives | **4,1 %** | 50,2 % |
+
+Et en fenêtre glissante (4 voisines de chaque côté, enveloppe élargie d'une
+pleine amplitude) : **8 paires sur 1 181 sortent de l'enveloppe (0,7 %), et
+aucune n'est utilisée par Bourgeon.** Liste dans
+[monotonic_outliers.json](monotonic_outliers.json).
+
+➡ Récapitulatif des contrôles, tous avec témoin négatif :
+
+| test | paires | témoin | indépendant de |
+|---|---|---|---|
+| ratio de tailles | médiane 0,999 | 0,303 | l'ordre, les noms |
+| monotonie | 4,1 % d'inversions | 50,2 % | les tailles, les noms |
+| noms des deux côtés | 0 contradiction réelle | — | tout le reste |
+| familles de tables disjointes | 42 paires, 0 divergence | — | tout le reste |
+
 ## Limites — ce que cette méthode ne peut PAS faire
 
 - Chaque switch ne voit que ce qui lui est **atteignable** : le dispatch de
