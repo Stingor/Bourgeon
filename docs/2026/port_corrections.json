@@ -1,0 +1,34 @@
+{
+ "0x00d5a980": {
+  "portage_precedent": "0x00a3c3d0",
+  "taille_cible_precedente": "0xD",
+  "correction": "0x00c6dae0",
+  "taille_source": "0xBE",
+  "taille_correction": "0xBE",
+  "ratio": 1.0,
+  "name25": "ItemSkillMgr_GetInfoByResId_UNIFIED",
+  "motif": "collision + ratio 0,07 ; la correction est de taille IDENTIQUE",
+  "confiance": "haute"
+ },
+ "0x00d9cf80": {
+  "portage_precedent": "0x00c10380",
+  "taille_cible_precedente": "0x7E3",
+  "correction": "0x00caee60",
+  "taille_source": "0x2A",
+  "taille_correction": "0x2A",
+  "ratio": 1.0,
+  "name25": "Job_NeedsLuaItemPosOffset",
+  "motif": "ratio 0,02 ; la correction est de taille IDENTIQUE",
+  "confiance": "haute"
+ },
+ "0x00dbbc7f": {
+  "portage_precedent": "0x00cca703",
+  "taille_cible_precedente": "0xE",
+  "correction": null,
+  "taille_source": "0xE",
+  "ratio": 1.0,
+  "name25": "operator_delete",
+  "motif": "INNOCENTEE : impliquee dans une collision mais de taille identique ; c'est l'AUTRE source de la collision (0x005c5950 SkillMgr_SetOption, 0xFA) qui est fausse",
+  "confiance": "haute"
+ }
+}
