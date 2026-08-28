@@ -27,6 +27,7 @@
 #include "features/overlays/target_frame.h"
 #include "features/overlays/menu_icons.h"
 #include "features/overlays/status_icon_bar.h"
+#include "features/overlays/target_status_bar.h"
 #include "features/overlays/minimap.h"
 #include "features/overlays/quest_tracker.h"
 #include "features/overlays/item_obtain_toast.h"
@@ -699,6 +700,42 @@ const moonlight_ui::SettingDesc kPartyFramesSettings[] = {
      MLUI_LITERAL(int, 200)},
     {"partyframes_w", SType::kInt, MLUI_FIELD(party_frames, rect().w),
      MLUI_LITERAL(int, 190)},
+};
+
+
+// La barre d'etats de la CIBLE. Un cadre a elle, place et regle a part : suivre
+// les etats de sa cible et suivre ses points de vie ne se font pas au meme
+// endroit de l'ecran.
+const moonlight_ui::SettingDesc kTargetStatusSettings[] = {
+    {"tgtstatus_on", SType::kBool,
+     MLUI_FIELD(target_status_bar, enabled_), MLUI_LITERAL(bool, false)},
+    {"tgtstatus_lock", SType::kBool,
+     MLUI_FIELD(target_status_bar, locked_), MLUI_LITERAL(bool, true)},
+    {"tgtstatus_border", SType::kBool,
+     MLUI_FIELD(target_status_bar, border_), MLUI_LITERAL(bool, true)},
+    {"tgtstatus_icon_px", SType::kInt,
+     MLUI_FIELD(target_status_bar, icon_px()), MLUI_LITERAL(int, 24)},
+    {"tgtstatus_max", SType::kInt,
+     MLUI_FIELD(target_status_bar, max_icons()), MLUI_LITERAL(int, 12)},
+    {"tgtstatus_gap", SType::kInt,
+     MLUI_FIELD(target_status_bar, gap_px()), MLUI_LITERAL(int, 2)},
+    {"tgtstatus_sort", SType::kInt,
+     MLUI_FIELD(target_status_bar, sort()),
+     MLUI_LITERAL(int, TargetStatusBar::kSortShortest)},
+    {"tgtstatus_time", SType::kBool,
+     MLUI_FIELD(target_status_bar, show_time_), MLUI_LITERAL(bool, true)},
+    {"tgtstatus_time_px", SType::kInt,
+     MLUI_FIELD(target_status_bar, time_px()), MLUI_LITERAL(int, 11)},
+    {"tgtstatus_bg", SType::kColorHex,
+     MLUI_FIELD(target_status_bar, col_bg_), MLUI_LITERAL_ARGB(0x8C0D0D12)},
+    {"tgtstatus_x", SType::kInt,
+     MLUI_FIELD(target_status_bar, rect().x), MLUI_LITERAL(int, 40)},
+    {"tgtstatus_y", SType::kInt,
+     MLUI_FIELD(target_status_bar, rect().y), MLUI_LITERAL(int, 320)},
+    {"tgtstatus_w", SType::kInt,
+     MLUI_FIELD(target_status_bar, rect().w), MLUI_LITERAL(int, 240)},
+    {"tgtstatus_h", SType::kInt,
+     MLUI_FIELD(target_status_bar, rect().h), MLUI_LITERAL(int, 34)},
 };
 
 const moonlight_ui::SettingDesc kPartyFriendSettings[] = {
@@ -1902,6 +1939,7 @@ void MoonlightUi::LoadSettings() {
     moonlight_ui::ReadSettings(ui, kBankSettings);
     moonlight_ui::ReadSettings(ui, kPartyFriendSettings);
     moonlight_ui::ReadSettings(ui, kPartyFramesSettings);
+    moonlight_ui::ReadSettings(ui, kTargetStatusSettings);
     moonlight_ui::ReadSettings(ui, kChatRoomSettings);
     moonlight_ui::ReadSettings(ui, kGameMenuSettings);
     moonlight_ui::ReadSettings(ui, kHotkeySettings);
@@ -2096,6 +2134,7 @@ void MoonlightUi::WriteSettingsFile() {
   moonlight_ui::WriteSettings(out, kBankSettings);
   moonlight_ui::WriteSettings(out, kPartyFriendSettings);
   moonlight_ui::WriteSettings(out, kPartyFramesSettings);
+  moonlight_ui::WriteSettings(out, kTargetStatusSettings);
   moonlight_ui::WriteSettings(out, kChatRoomSettings);
   moonlight_ui::WriteSettings(out, kGameMenuSettings);
   moonlight_ui::WriteSettings(out, kHotkeySettings);

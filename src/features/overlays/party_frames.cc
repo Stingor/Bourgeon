@@ -275,9 +275,9 @@ void PartyFrames::DrawTooltip(const rag::social::Entry& m, bool is_me) {
     if (maxsp > 0) {
       ImGui::Text("%s %d/%d", i18n::Tr("SP"), sp, maxsp);
     } else if (!m.has_hp || m.max_hp <= 0) {
-      ImGui::TextDisabled("%s", i18n::Tr("SP inconnu : hors de portée"));
+      ImGui::TextDisabled("%s", i18n::Tr("SP inconnus : hors de portée"));
     } else {
-      ImGui::TextDisabled("%s", i18n::Tr("SP inconnu : réponse en attente"));
+      ImGui::TextDisabled("%s", i18n::Tr("SP inconnus : réponse en attente"));
     }
   }
 

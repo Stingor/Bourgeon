@@ -184,6 +184,8 @@ set(BOURGEON_FILES
 	"features/overlays/target_frame.cc"
 	"features/overlays/target_frame.h"
 	"features/overlays/status_icon_bar.cc"
+	"features/overlays/target_status_bar.cc"
+	"features/overlays/target_status_bar.h"
 	"features/overlays/status_icon_bar.h"
 
 	# gameplay/

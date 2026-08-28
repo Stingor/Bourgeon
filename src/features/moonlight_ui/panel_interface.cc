@@ -50,6 +50,7 @@
 #include "features/overlays/skill_bar.h"
 #include "features/overlays/status_icon_bar.h"
 #include "features/overlays/party_frames.h"
+#include "features/overlays/target_status_bar.h"
 #include "features/windows/party_friend_window.h"
 #include "features/overlays/target_frame.h"
 #include "features/windows/storage_window.h"
@@ -142,6 +143,7 @@ constexpr IfaceEntry kIfaceSections[] = {
     {MoonlightUi::kIfaceDesc,        "desc",         "Descriptions"},
     {MoonlightUi::kIfaceMakeItem,    "make_item",    "Fabrication"},
     {MoonlightUi::kIfaceTargetFrame, "target_frame", "Fenêtre de cible"},
+    {MoonlightUi::kIfaceTargetStatus, "target_status", "États de la cible"},
     {MoonlightUi::kIfacePartyFrames, "party_frames", "Groupe (grille)"},
     {MoonlightUi::kIfacePartyFriend, "party_friend", "Groupe / Amis"},
     {MoonlightUi::kIfaceNpc,         "npc",          "Fenêtre NPC"},
@@ -761,6 +763,82 @@ void MoonlightUi::DrawInterfacePanel() {
       // HORS du groupe « Interface moderne » : il ne remplace aucune fenêtre, il
       // ajoute ce que le client n'a pas sous cette forme, et il a du sens même en
       // interface native.
+      // ── États de la cible ────────────────────────────────────────────────
+      if (iface_nav_ == kIfaceTargetStatus) {
+        auto* tsb = Bourgeon::Instance().target_status_bar();
+        if (tsb == nullptr) {
+          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
+        } else {
+          bool changed = false;
+          changed |= ro::RoCheckbox(i18n::Tr("Afficher la barre"),
+                                    &tsb->enabled_);
+          SameLine(); HelpMarker(i18n::Tr(
+              "Une barre à elle, qu'on place et dimensionne où l'on veut : les "
+              "états de la cible ne se regardent pas au même endroit que ses "
+              "points de vie.\n\n"
+              "⚠ Ne montre RIEN sur un joueur qui n'est pas de votre groupe : "
+              "ses états sont une information de jeu, et le serveur ne les donne "
+              "pas. Les monstres, eux, sont lisibles."));
+          if (!tsb->enabled_) ImGui::BeginDisabled();
+
+          changed |= ro::RoCheckbox(i18n::Tr("Verrouiller la position"),
+                                    &tsb->locked_);
+          SameLine(); HelpMarker(i18n::Tr(
+              "Fige la barre et laisse passer les clics vers le jeu.\n\n"
+              "Maintenir MAJ, CURSEUR SUR LA BARRE, la déverrouille le temps "
+              "d'un déplacement. Ailleurs à l'écran, MAJ garde son rôle habituel "
+              "(attaque forcée).\n\n"
+              "⚠ Une barre VIDE est invisible : déverrouillez-la pour la placer "
+              "quand la cible n'a aucun état."));
+
+          // ── Icônes ────────────────────────────────────────────────────────
+          SeparatorText(i18n::Tr("Icônes"));
+          changed |= WheelSliderInt(i18n::Tr("Taille"), &tsb->icon_px(),
+                                    12, 48, "%d px");
+          changed |= WheelSliderInt(i18n::Tr("Écart"), &tsb->gap_px(),
+                                    0, 12, "%d px");
+          changed |= WheelSliderInt(i18n::Tr("Nombre au plus"),
+                                    &tsb->max_icons(), 1, 30, "%d");
+          SameLine(); HelpMarker(i18n::Tr(
+              "Au-delà, les états en trop sont écartés — ce sont les DERNIERS du "
+              "rangement ci-dessous, qui décide donc de ce qu'on perd."));
+          {
+            const char* kSorts[] = {i18n::Tr("Ordre d'arrivée"),
+                                    i18n::Tr("Bientôt fini d'abord"),
+                                    i18n::Tr("Plus long d'abord")};
+            changed |= ro::RoCombo(i18n::Tr("Rangement"), &tsb->sort(),
+                                   kSorts, IM_ARRAYSIZE(kSorts));
+          }
+          SameLine(); HelpMarker(i18n::Tr(
+              "« Bientôt fini d'abord » met en tête ce qu'il faudra relancer, ou "
+              "ce qu'il suffit d'attendre.\n\n"
+              "Un état SANS durée (permanent) n'a pas sa place dans un tri par "
+              "durée : il va en fin dans les deux sens, pour ne pas chasser de "
+              "l'écran ce qui presse."));
+
+          // ── Compte à rebours ──────────────────────────────────────────────
+          SeparatorText(i18n::Tr("Compte à rebours"));
+          changed |= ro::RoCheckbox(i18n::Tr("Afficher le temps restant"),
+                                    &tsb->show_time_);
+          SameLine(); HelpMarker(i18n::Tr(
+              "Sous chaque icône. Un état permanent n'en porte pas : un « 0 » "
+              "sous un buff qui ne finit jamais le ferait croire terminé."));
+          changed |= WheelSliderInt(i18n::Tr("Taille du texte"),
+                                    &tsb->time_px(), 7, 20, "%d px");
+
+          // ── Couleurs ──────────────────────────────────────────────────────
+          SeparatorText(i18n::Tr("Couleurs"));
+          changed |= ro::RoCheckbox(i18n::Tr("Liseré"), &tsb->border_);
+          changed |= RoColorSwatch(i18n::Tr("Fond"), tsb->col_bg_);
+          SameLine(); HelpMarker(i18n::Tr(
+              "Sans fond, des icônes sombres sur une carte sombre se confondent "
+              "avec le décor."));
+
+          if (!tsb->enabled_) ImGui::EndDisabled();
+          if (changed) SaveSettings();
+        }
+      }
+
       if (iface_nav_ == kIfacePartyFrames) {
         auto* pf = Bourgeon::Instance().party_frames();
         if (pf == nullptr) {
