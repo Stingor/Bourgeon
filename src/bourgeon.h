@@ -17,6 +17,7 @@ class TargetFrame;
 class BasicInfo;
 class MenuIcons;
 class StatusIconBar;
+class StatusEffects;
 class QuestTracker;
 class Minimap;
 class ItemObtainToast;
@@ -91,6 +92,7 @@ class Bourgeon {
   BasicInfo* basic_info();
   MenuIcons* menu_icons();
   StatusIconBar* status_icons();
+  StatusEffects* status_effects();
   QuestTracker* quest_tracker();
   Minimap* minimap();
   ItemObtainToast* item_obtain_toast();
@@ -356,6 +358,7 @@ class Bourgeon {
   BasicInfo* basic_info_ = nullptr;  // non-owning, lifetime tied to plugins_
   MenuIcons* menu_icons_  = nullptr;  // non-owning, lifetime tied to plugins_
   StatusIconBar* status_icons_ = nullptr;  // non-owning, lifetime tied to plugins_
+  StatusEffects* status_effects_ = nullptr;  // idem
   QuestTracker* quest_tracker_ = nullptr;  // non-owning, lifetime tied to plugins_
   Minimap* minimap_ = nullptr;  // non-owning, lifetime tied to plugins_
   ItemObtainToast* item_obtain_toast_ = nullptr;  // non-owning, lifetime tied to plugins_

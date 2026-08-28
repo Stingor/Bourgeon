@@ -187,6 +187,19 @@ class PartyFriendWindow : public Plugin {
   // Infobulle au survol d'une ligne : carte, position, classe, PV/SP chiffrés.
   bool show_tooltip_  = true;
 
+  // ── Buffs et debuffs ──────────────────────────────────────────────────────
+  //
+  // Les icones d'etat du membre, calees a gauche de sa pastille. La source est
+  // StatusEffects, qui ecoute le fil : le client recoit ces etats mais ne les
+  // garde pas.
+  //
+  // 🔴 Rien ne s'affiche pour un membre hors de la vue. Le serveur ne diffuse
+  // ces paquets qu'en AREA, donc une ligne sans icone veut dire « on ne sait
+  // pas », jamais « aucun buff » — la meme reserve que pour ses PV.
+  bool show_buffs_    = false;
+  int  buff_px_       = 16;  // cote d'une icone, en pixels d'interface
+  int  buff_max_      = 5;   // combien au plus sur une ligne
+
   // ── Cibler depuis la liste ────────────────────────────────────────────────
   //
   // Le clic gauche sur une ligne cible ce membre, comme une tuile du HUD en
@@ -227,6 +240,8 @@ class PartyFriendWindow : public Plugin {
 
   int& hp_text_mode() { return hp_text_mode_; }
   int& map_mode()     { return map_mode_; }
+  int& buff_px()      { return buff_px_; }
+  int& buff_max()     { return buff_max_; }
 
   // Onglet courant. Mêmes valeurs que le champ natif `+0x28C`, pour que le sens se
   // lise pareil des deux côtés : 0 = amis, 1 = groupe.
@@ -255,6 +270,8 @@ class PartyFriendWindow : public Plugin {
   // des actions irréversibles. Ni l'un ni l'autre n'agit : ils ARMENT `pending_`.
   // Décide ce que fait le clic droit : ouvrir NOTRE menu, ou armer directement
   // celui du client quand un sprite représente ce personnage.
+  // Dessine la rangee d'icones d'etat, de DROITE a gauche depuis `right`.
+  void DrawRowEffects(uint32_t gid, float right, float top);
   void OnRowRightClick(const rag::social::Entry& row);
   void DrawRowContextMenu(const rag::social::Entry& row, bool party);
   // L'infobulle d'une ligne : classe, carte complète, PV, et une MINI-CARTE

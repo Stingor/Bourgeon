@@ -45,6 +45,7 @@
 #include "features/patches/equip_tweaks.h"
 #include "features/patches/window_pos_tweaks.h"
 #include "features/overlays/status_icon_bar.h"
+#include "features/systems/status_effects.h"
 #include "features/overlays/minimap.h"
 #include "features/overlays/quest_tracker.h"
 #include "features/overlays/item_obtain_toast.h"
@@ -112,6 +113,7 @@ TargetFrame*  Bourgeon::target_frame()  { return target_frame_; }
 BasicInfo* Bourgeon::basic_info() { return basic_info_; }
 MenuIcons* Bourgeon::menu_icons()  { return menu_icons_; }
 StatusIconBar* Bourgeon::status_icons() { return status_icons_; }
+StatusEffects* Bourgeon::status_effects() { return status_effects_; }
 QuestTracker* Bourgeon::quest_tracker() { return quest_tracker_; }
 Minimap* Bourgeon::minimap() { return minimap_; }
 ItemObtainToast* Bourgeon::item_obtain_toast() { return item_obtain_toast_; }
@@ -1213,6 +1215,13 @@ void Bourgeon::LoadPlugins() {
     auto status_icons = std::make_unique<StatusIconBar>();
     status_icons_ = status_icons.get();
     plugins_.emplace_back(std::move(status_icons));
+  }
+  {
+    // Le registre des buffs des AUTRES entites. Aucune surface a lui : il
+    // ecoute et repond aux questions (grille de groupe, liste Groupe/Amis).
+    auto status_fx = std::make_unique<StatusEffects>();
+    status_effects_ = status_fx.get();
+    plugins_.emplace_back(std::move(status_fx));
   }
   {
     auto quest_tracker = std::make_unique<QuestTracker>();

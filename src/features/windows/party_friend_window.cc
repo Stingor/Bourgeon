@@ -13,6 +13,7 @@
 #include "features/moonlight_ui/moonlight_ui.h"  // OpenInterfaceSection (bullet)
 #include "features/overlays/party_frames.h"      // le cache de SP, partagé
 #include "features/overlays/target_frame.h"      // cibler par le chemin clavier
+#include "features/systems/status_effects.h"     // les buffs, lus au fil du réseau
 #include "features/windows/entity_context_menu.h"  // le menu du personnage
 #include "imgui.h"
 #include "ragnarok/actor.h"      // rag::actor::kJobId (le job vient de l'ACTEUR)
@@ -889,6 +890,15 @@ void PartyFriendWindow::DrawPartyRow(const rag::social::Entry& row) {
                   : is_me     ? i18n::Tr("Votre personnage")
                               : i18n::Tr("En ligne"));
 
+  // ── Les buffs, à gauche de la pastille ───────────────────────────────────
+  // Sa position se lit sur l'item qui vient d'être posé (`DrawStatusBadge` finit
+  // par un `Dummy`) : pas de largeur à supposer, donc rien à corriger le jour où
+  // le libellé de la pastille change.
+  if (show_buffs_ && !row.offline) {
+    DrawRowEffects(row.gid, ImGui::GetItemRectMin().x - ro::Px(4.0f),
+                   ImGui::GetItemRectMin().y);
+  }
+
   // Sépare les lignes comme le natif, qui peint une bande par entrée. La largeur
   // est celle capturée en HAUT de la ligne : ici, le curseur est en fin de ligne
   // et la place restante ne vaudrait plus rien.
@@ -1294,6 +1304,41 @@ void PartyFriendWindow::DrawRowTooltip(const rag::social::Entry& row) {
 // un menu dont l'unique rôle était d'en ouvrir un autre. Les gestes qui le
 // justifiaient encore (nommer chef, expulser, retirer un ami) ont rejoint le
 // menu d'entité, où ils sont à leur place : ce sont des actions sur un JOUEUR.
+// ── Les icônes d'état d'une ligne ───────────────────────────────────────────
+//
+// De droite à gauche, comme les tuiles de la grille : les états les plus
+// RÉCENTS restent au bord, à la même place d'une frame à l'autre.
+//
+// 🔴 Une ligne sans icône ne dit PAS « aucun buff ». Le serveur ne diffuse ces
+// paquets qu'aux joueurs qui VOIENT l'entité : un membre sur une autre carte
+// n'en émet aucun, exactement comme pour ses PV.
+void PartyFriendWindow::DrawRowEffects(uint32_t gid, float right, float top) {
+  auto* fx = Bourgeon::Instance().status_effects();
+  if (fx == nullptr) return;
+
+  std::vector<StatusEffects::Entry> list;
+  if (!fx->Effects(gid, &list) || list.empty()) return;
+
+  const float side = ro::Px(static_cast<float>(std::max(8, buff_px_)));
+  const float gap  = ro::Px(1.0f);
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+  float x = right;
+  int drawn = 0;
+
+  // À REBOURS : quand il y en a plus que la place, ce sont les plus récents
+  // qu'on garde — un buff qui vient de tomber est ce qu'on regarde.
+  for (size_t i = list.size(); i-- > 0 && drawn < std::max(1, buff_max_);) {
+    const char* path = StatusEffects::IconPath(list[i].efst);
+    if (path == nullptr) continue;
+    const ro::GameTexture icon = ro::CachedTextureFromGameFile(path);
+    if (!icon.tex) continue;
+    dl->AddImage(reinterpret_cast<ImTextureID>(icon.tex),
+                 ImVec2(x - side, top), ImVec2(x, top + side));
+    x -= side + gap;
+    ++drawn;
+  }
+}
+
 void PartyFriendWindow::OnRowRightClick(const rag::social::Entry& row) {
   // MOI excepté : mon acteur n'est pas dans la liste que parcourt
   // `FindActorByGid` (le natif le range en `actorMgr+0x2C`), et le menu

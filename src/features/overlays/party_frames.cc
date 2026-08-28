@@ -15,6 +15,7 @@
 #include "ragnarok/game_scene.h"  // gamescene::FindActorByGid (cible d'un sort)
 #include "ragnarok/globals.h"
 #include "ragnarok/uiwnd.h"
+#include "features/systems/status_effects.h"  // les buffs, lus au fil du réseau
 #include "ui/game_texture.h"  // ro::CachedTextureFromGameFile (icône de classe)
 #include "ui/ro_imgui.h"
 #include "utils/i18n.h"
@@ -588,6 +589,49 @@ void PartyFrames::OnRenderUI() {
   }
 }
 
+// ── Les icônes d'état d'un membre ───────────────────────────────────────────
+//
+// De droite à gauche : les buffs les plus RÉCENTS restent au bord, à la même
+// place d'une frame à l'autre. Empiler par la gauche aurait fait glisser toute
+// la rangée à chaque buff qui tombe.
+float PartyFrames::DrawTileEffects(uint32_t gid, float right, float top,
+                                   float bottom) {
+  auto* fx = Bourgeon::Instance().status_effects();
+  if (fx == nullptr) return right;
+
+  std::vector<StatusEffects::Entry> list;
+  if (!fx->Effects(gid, &list) || list.empty()) return right;
+
+  const float side = std::min(ro::Px(static_cast<float>(std::max(6, buff_px_))),
+                              bottom - top);
+  if (side < ro::Px(6.0f)) return right;  // tuile trop basse : rien à y mettre
+
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+  const float gap = ro::Px(1.0f);
+  float x = right;
+  int drawn = 0;
+
+  // 🔴 On parcourt À REBOURS : `Effects` rend les états dans l'ordre où ils sont
+  // arrivés, et quand il y en a plus que la place, ce sont les PLUS RÉCENTS
+  // qu'il faut garder — un buff qui vient de tomber sur un allié est ce qu'on
+  // regarde, pas celui qui dure depuis dix minutes.
+  for (size_t i = list.size(); i-- > 0 && drawn < std::max(1, buff_max_);) {
+    const char* path = StatusEffects::IconPath(list[i].efst);
+    if (path == nullptr) continue;
+    const ro::GameTexture icon = ro::CachedTextureFromGameFile(path);
+    if (!icon.tex) continue;
+
+    const ImVec2 i1(x, top);
+    const ImVec2 i0(x - side, top + side);
+    dl->AddImage(reinterpret_cast<ImTextureID>(icon.tex),
+                 ImVec2(i0.x, i1.y), ImVec2(i1.x, i0.y));
+    x -= side + gap;
+    ++drawn;
+  }
+
+  return (drawn > 0) ? (x - gap) : right;
+}
+
 void PartyFrames::DrawTile(const rag::social::Entry& m, ImVec2 p0, ImVec2 p1,
                            bool is_me) {
   ImDrawList* dl = ImGui::GetWindowDrawList();
@@ -705,6 +749,14 @@ void PartyFrames::DrawTile(const rag::social::Entry& m, ImVec2 p0, ImVec2 p1,
                 0, is_me ? 2.0f : 1.0f);
   }
 
+  // ── Les buffs, calés à droite ────────────────────────────────────────────
+  //
+  // Placés AVANT le texte pour lui rendre sa limite : le nom se découpe sur ce
+  // que les icônes laissent, au lieu de passer dessous.
+  float text_right = p1.x - pad;
+  if (show_buffs_ && !m.offline)
+    text_right = DrawTileEffects(m.gid, p1.x - pad, p0.y + pad, bottom - pad);
+
   // ── Le texte : nom, puis l'état ou les PV ────────────────────────────────
   //
   // Trois couleurs, parce qu'il y a trois situations et qu'en confondre deux
@@ -774,7 +826,7 @@ void PartyFrames::DrawTile(const rag::social::Entry& m, ImVec2 p0, ImVec2 p1,
   //
   // Ce qui dépasse est donc perdu : c'est à ça que sert l'infobulle, qui redonne
   // la ligne entière.
-  const ImVec4 clip(text_x, p0.y, p1.x - pad, bottom);
+  const ImVec4 clip(text_x, p0.y, text_right, bottom);
   dl->AddText(font, fsz, ImVec2(text_x, ty), text, first, nullptr, 0.0f, &clip);
   if (two_lines) {
     dl->AddText(font, fsz, ImVec2(text_x, ty + line), text, second, nullptr,

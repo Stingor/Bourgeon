@@ -248,6 +248,8 @@ set(BOURGEON_FILES
 	"features/systems/moonlight_auth.h"
 	"features/systems/native_login.cc"
 	"features/systems/native_login.h"
+	"features/systems/status_effects.cc"
+	"features/systems/status_effects.h"
 	"features/systems/ui_caps.cc"
 	"features/systems/ui_caps.h"
 

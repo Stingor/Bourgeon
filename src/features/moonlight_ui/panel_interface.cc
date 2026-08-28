@@ -675,6 +675,20 @@ void MoonlightUi::DrawInterfacePanel() {
               "sa position viennent de son sprite, et il n'y en a pas.\n\n"
               "Demande le mode Ciblage, qui a son propre panneau : c'est lui qui "
               "décide qu'une cible existe."));
+          changed |= ro::RoCheckbox(i18n::Tr("Buffs et debuffs"),
+                                    &pfw->show_buffs_);
+          SameLine(); HelpMarker(i18n::Tr(
+              "Les icônes d'état du membre, à gauche de sa pastille.\n\n"
+              "⚠ Une ligne SANS icône ne veut pas dire « aucun buff » : le "
+              "serveur ne diffuse ces états qu'aux joueurs qui VOIENT le "
+              "personnage. Un membre sur une autre carte n'en envoie aucun — "
+              "la même réserve que pour ses PV."));
+          if (pfw->show_buffs_) {
+            changed |= mui::WheelSliderInt(i18n::Tr("Taille des icônes"),
+                                           &pfw->buff_px(), 8, 32, "%d px");
+            changed |= mui::WheelSliderInt(i18n::Tr("Icônes au plus"),
+                                           &pfw->buff_max(), 1, 10, "%d");
+          }
 
           // ── Densité ───────────────────────────────────────────────────────
           SeparatorText(i18n::Tr("Densité"));
@@ -867,6 +881,22 @@ void MoonlightUi::DrawInterfacePanel() {
               "impossible de marcher ou de frapper en cliquant dessous. C'est "
               "le prix des gestes sur les tuiles — décoché, la grille se "
               "contente d'afficher et laisse tout passer."));
+
+          changed |= ro::RoCheckbox(i18n::Tr("Buffs et debuffs"),
+                                    &pf->show_buffs_);
+          SameLine(); HelpMarker(i18n::Tr(
+              "Les icônes d'état du membre, calées à droite de sa tuile. Le nom "
+              "se découpe sur ce qu'elles laissent.\n\n"
+              "⚠ Une tuile SANS icône ne veut pas dire « aucun buff » : le "
+              "serveur ne diffuse ces états qu'aux joueurs qui VOIENT le "
+              "personnage. Un membre sur une autre carte n'en envoie aucun — "
+              "la même réserve que pour ses PV."));
+          if (pf->show_buffs_) {
+            changed |= mui::WheelSliderInt(i18n::Tr("Taille des icônes"),
+                                           &pf->buff_px(), 6, 28, "%d px");
+            changed |= mui::WheelSliderInt(i18n::Tr("Icônes au plus"),
+                                           &pf->buff_max(), 1, 10, "%d");
+          }
 
           // ── Couleurs ──────────────────────────────────────────────────────
           SeparatorText(i18n::Tr("Couleurs"));

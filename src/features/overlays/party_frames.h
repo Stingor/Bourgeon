@@ -152,6 +152,19 @@ class PartyFrames : public Plugin {
   bool show_tooltip_  = false;
   int  sp_bar_h_      = 6;      // sa hauteur, en pixels d'interface
 
+  // ── Buffs et debuffs ──────────────────────────────────────────────────────
+  //
+  // Les icones d'etat du membre, calees a DROITE de la tuile. La source est
+  // StatusEffects, qui ecoute le fil : le client recoit ces etats mais ne les
+  // garde pas.
+  //
+  // 🔴 Rien ne s'affiche pour un membre hors de la vue. Le serveur ne diffuse
+  // ces paquets qu'en AREA, donc un membre sur une autre carte n'en emet aucun,
+  // et une tuile sans icone veut dire « on ne sait pas », jamais « aucun buff ».
+  bool show_buffs_    = true;
+  int  buff_px_       = 14;  // cote d'une icone, en pixels d'interface
+  int  buff_max_      = 6;   // combien au plus, avant de rogner la place du nom
+
   // ── Couleurs (RGBA 0..1, persistées en hex ARGB) ──────────────────────────
   //
   // 🔴 `col_frame_bg_` existe parce que sans lui la grille flottait SUR le jeu
@@ -189,12 +202,19 @@ class PartyFrames : public Plugin {
   int& tile_h()  { return tile_h_; }
   int& gap()     { return gap_; }
   int& sp_bar_h() { return sp_bar_h_; }
+  int& buff_px()  { return buff_px_; }
+  int& buff_max() { return buff_max_; }
   int& hp_text_mode() { return hp_text_mode_; }
   int& text_px()      { return text_px_; }
   int& hp_mid_pct() { return hp_mid_pct_; }
   int& hp_low_pct() { return hp_low_pct_; }
 
  private:
+  // Dessine la rangee d'icones d'etat, de DROITE a gauche depuis `right`.
+  // Rend l'abscisse la plus a gauche atteinte : c'est la limite que le texte du
+  // nom ne doit pas franchir, sinon il passerait sous les icones.
+  float DrawTileEffects(uint32_t gid, float right, float top, float bottom);
+
   void DrawTile(const rag::social::Entry& member, ImVec2 p0, ImVec2 p1,
                 bool is_me);
   void SyncNativeHud();
