@@ -207,6 +207,12 @@ class PartyFriendWindow : public Plugin {
   // ⚠ La taille du texte SUIT celle de l'icône (la moitié, sans descendre sous
   // 7 px) : un compte à rebours fixe débordait sur la ligne du dessous dès qu'on
   // réduisait les icônes.
+  // Sur combien de LIGNES étaler les icônes.
+  //
+  // Une rangée unique s'allonge jusqu'à manger la place du nom ; en deux lignes
+  // le même nombre d'états tient sur moitié moins de largeur. Le compte maximum
+  // se répartit entre elles — six icônes sur deux lignes font trois par ligne.
+  int  buff_rows_     = 1;
   bool buff_time_  = true;
   int  buff_sweep_ = statuscell::kSweepRadial;
 
@@ -253,6 +259,7 @@ class PartyFriendWindow : public Plugin {
   int& buff_px()      { return buff_px_; }
   int& buff_max()     { return buff_max_; }
   int& buff_sweep()   { return buff_sweep_; }
+  int& buff_rows()    { return buff_rows_; }
 
   // Onglet courant. Mêmes valeurs que le champ natif `+0x28C`, pour que le sens se
   // lise pareil des deux côtés : 0 = amis, 1 = groupe.

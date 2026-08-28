@@ -621,13 +621,21 @@ float PartyFrames::DrawTileEffects(uint32_t gid, float right, float top,
   std::vector<StatusEffects::Entry> list;
   if (!fx->Effects(gid, &list) || list.empty()) return right;
 
-  const float side = std::min(ro::Px(static_cast<float>(std::max(6, buff_px_))),
-                              bottom - top);
+  const int rows = std::max(1, buff_rows_);
+  const float gap = ro::Px(1.0f);
+  // ⚠ La hauteur se PARTAGE entre les lignes : sans cette division, deux rangées
+  // d'icônes pleine taille débordaient sous la tuile, par-dessus la suivante.
+  const float side =
+      std::min(ro::Px(static_cast<float>(std::max(6, buff_px_))),
+               (bottom - top - gap * (rows - 1)) / static_cast<float>(rows));
   if (side < ro::Px(6.0f)) return right;  // tuile trop basse : rien à y mettre
 
-  ImDrawList* dl = ImGui::GetWindowDrawList();
-  const float gap = ro::Px(1.0f);
+  // Le compte maximum se répartit sur les lignes — six icônes sur deux lignes
+  // font trois par ligne, et non six puis six.
+  const int per_row = (std::max(1, buff_max_) + rows - 1) / rows;
+
   float x = right;
+  float leftmost = right;
   int drawn = 0;
 
   // 🔴 On parcourt À REBOURS : `Effects` rend les états dans l'ordre où ils sont
@@ -643,14 +651,21 @@ float PartyFrames::DrawTileEffects(uint32_t gid, float right, float top,
     // La moitié de l'icône, plancher à 7 px : un texte de taille fixe débordait
     // sur la rangée du dessous dès qu'on réduisait les icônes.
     st.time_px     = buff_time_ ? std::max(ro::Px(7.0f), side * 0.5f) : 0.0f;
-    if (!statuscell::Draw(list[i], ImVec2(x - side, top), ImVec2(x, top + side),
-                          st, false))
+    const int row = drawn / per_row;
+    // Nouvelle ligne : on repart du bord droit, une rangée plus bas.
+    if (drawn > 0 && drawn % per_row == 0) x = right;
+    const float y = top + row * (side + gap);
+    if (!statuscell::Draw(list[i], ImVec2(x - side, y), ImVec2(x, y + side), st,
+                          false))
       continue;
     x -= side + gap;
+    if (x < leftmost) leftmost = x;
     ++drawn;
   }
 
-  return (drawn > 0) ? (x - gap) : right;
+  // La limite rendue est le point le plus à GAUCHE de TOUTES les lignes : le
+  // texte se découpe sur la plus longue, sinon il passerait sous la seconde.
+  return (drawn > 0) ? (leftmost - gap) : right;
 }
 
 void PartyFrames::DrawTile(const rag::social::Entry& m, ImVec2 p0, ImVec2 p1,

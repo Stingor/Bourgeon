@@ -142,12 +142,18 @@ void TargetStatusBar::OnRenderUI() {
 
     const float fsz = ro::Px(static_cast<float>(std::max(7, time_px_)));
 
+    // Deux causes de retour à la ligne, et il faut les deux : la largeur du
+    // cadre (on ne déborde jamais), et le nombre de lignes demandé (on peut
+    // vouloir une barre haute et étroite alors que la place ne l'impose pas).
+    const int rows = std::max(1, rows_);
+    const int per_row = (std::max(1, max_icons_) + rows - 1) / rows;
+
     float x = left;
     float y = win.y + pad;
+    int drawn = 0;
     for (const StatusEffects::Entry& e : list) {
-      // Repli à la ligne suivante quand la largeur est atteinte : la barre se
-      // règle en largeur, c'est donc elle qui décide du nombre par rangée.
-      if (x + side > right && x > left) {
+      const bool row_full = (drawn > 0 && drawn % per_row == 0);
+      if (row_full || (x + side > right && x > left)) {
         x = left;
         y += side + gap + (show_time_ ? fsz : 0.0f);
       }
@@ -161,6 +167,7 @@ void TargetStatusBar::OnRenderUI() {
                             true))
         continue;
       x += side + gap;
+      ++drawn;
     }
   }
   ro::EndHudFrame();

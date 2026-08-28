@@ -1325,6 +1325,10 @@ void PartyFriendWindow::DrawRowEffects(uint32_t gid, float right, float top) {
 
   const float side = ro::Px(static_cast<float>(std::max(8, buff_px_)));
   const float gap  = ro::Px(1.0f);
+  const int rows = std::max(1, buff_rows_);
+  // Le compte maximum se répartit sur les lignes — cinq icônes sur deux lignes
+  // font trois puis deux.
+  const int per_row = (std::max(1, buff_max_) + rows - 1) / rows;
   float x = right;
   int drawn = 0;
 
@@ -1337,8 +1341,11 @@ void PartyFriendWindow::DrawRowEffects(uint32_t gid, float right, float top) {
     st.sweep       = buff_sweep_;
     st.sweep_color = IM_COL32(0, 0, 0, 140);
     st.time_px     = buff_time_ ? std::max(ro::Px(7.0f), side * 0.5f) : 0.0f;
-    if (!statuscell::Draw(list[i], ImVec2(x - side, top), ImVec2(x, top + side),
-                          st, false))
+    const int row = drawn / per_row;
+    if (drawn > 0 && drawn % per_row == 0) x = right;
+    const float y = top + row * (side + gap);
+    if (!statuscell::Draw(list[i], ImVec2(x - side, y), ImVec2(x, y + side), st,
+                          false))
       continue;
     x -= side + gap;
     ++drawn;

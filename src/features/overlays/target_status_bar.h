@@ -54,6 +54,10 @@ class TargetStatusBar : public Plugin {
   int  icon_px_   = 24;  // côté d'une icône, en pixels d'interface
   int  max_icons_ = 12;  // au-delà, on tronque plutôt que de déborder
   int  gap_px_    = 2;   // écart entre deux icônes
+  // Sur combien de LIGNES étaler les icônes. La barre se replie DÉJÀ sur sa
+  // largeur ; ce réglage force en plus un nombre fixe par rangée, pour une
+  // barre qu'on veut haute et étroite plutôt que longue et plate.
+  int  rows_      = 1;
 
   // L'ordre de lecture. « Bientôt fini » d'abord est le tri utile : c'est ce
   // qu'on va devoir relancer, ou ce qu'il suffit d'attendre.
@@ -95,6 +99,7 @@ class TargetStatusBar : public Plugin {
   int& sort()      { return sort_; }
   int& time_px()   { return time_px_; }
   int& sweep()     { return sweep_; }
+  int& rows()      { return rows_; }
 
  private:
   // Les états à peindre cette frame, déjà triés et tronqués.

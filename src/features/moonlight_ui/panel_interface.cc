@@ -675,6 +675,12 @@ void MoonlightUi::DrawInterfacePanel() {
                                     0, 12, "%d px");
           changed |= WheelSliderInt(i18n::Tr("Nombre au plus"),
                                     &tsb->max_icons(), 1, 30, "%d");
+          changed |= WheelSliderInt(i18n::Tr("Lignes d'icônes"),
+                                    &tsb->rows(), 1, 6, "%d");
+          SameLine(); HelpMarker(i18n::Tr(
+              "La barre se replie déjà sur sa largeur : ce réglage force en plus "
+              "un nombre fixe par rangée, pour une barre haute et étroite plutôt "
+              "que longue et plate."));
           SameLine(); HelpMarker(i18n::Tr(
               "Au-delà, les états en trop sont écartés — ce sont les DERNIERS du "
               "rangement ci-dessous, qui décide donc de ce qu'on perd."));
@@ -798,6 +804,14 @@ void MoonlightUi::DrawInterfacePanel() {
                                            &pfw->buff_px(), 8, 32, "%d px");
             changed |= mui::WheelSliderInt(i18n::Tr("Icônes au plus"),
                                            &pfw->buff_max(), 1, 10, "%d");
+            changed |= mui::WheelSliderInt(i18n::Tr("Lignes d'icônes"),
+                                           &pfw->buff_rows(), 1, 4, "%d");
+            SameLine(); HelpMarker(i18n::Tr(
+                "Une rangée unique s'allonge jusqu'à manger la place du nom ; "
+                "en deux lignes, le même nombre d'états tient sur moitié moins "
+                "de largeur.\n\n"
+                "Le compte maximum se répartit entre les lignes — six icônes "
+                "sur deux lignes font trois par ligne."));
             changed |= ro::RoCheckbox(i18n::Tr("Temps restant sous l'icône"),
                                       &pfw->buff_time_);
             {
@@ -1023,6 +1037,14 @@ void MoonlightUi::DrawInterfacePanel() {
                                            &pf->buff_px(), 6, 28, "%d px");
             changed |= mui::WheelSliderInt(i18n::Tr("Icônes au plus"),
                                            &pf->buff_max(), 1, 10, "%d");
+            changed |= mui::WheelSliderInt(i18n::Tr("Lignes d'icônes"),
+                                           &pf->buff_rows(), 1, 4, "%d");
+            SameLine(); HelpMarker(i18n::Tr(
+                "Une rangée unique s'allonge jusqu'à manger la place du nom ; "
+                "en deux lignes, le même nombre d'états tient sur moitié moins "
+                "de largeur.\n\n"
+                "Le compte maximum se répartit entre les lignes — six icônes "
+                "sur deux lignes font trois par ligne."));
             changed |= ro::RoCheckbox(i18n::Tr("Temps restant sous l'icône"),
                                       &pf->buff_time_);
             {

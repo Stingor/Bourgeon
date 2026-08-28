@@ -172,6 +172,12 @@ class PartyFrames : public Plugin {
   // ⚠ La taille du texte SUIT celle de l'icône (la moitié, sans descendre sous
   // 7 px) : un compte à rebours fixe débordait sur la ligne du dessous dès qu'on
   // réduisait les icônes.
+  // Sur combien de LIGNES étaler les icônes.
+  //
+  // Une rangée unique s'allonge jusqu'à manger la place du nom ; en deux lignes
+  // le même nombre d'états tient sur moitié moins de largeur. Le compte maximum
+  // se répartit entre elles — six icônes sur deux lignes font trois par ligne.
+  int  buff_rows_     = 1;
   bool buff_time_  = true;
   int  buff_sweep_ = statuscell::kSweepRadial;
 
@@ -215,6 +221,7 @@ class PartyFrames : public Plugin {
   int& buff_px()  { return buff_px_; }
   int& buff_max() { return buff_max_; }
   int& buff_sweep() { return buff_sweep_; }
+  int& buff_rows()  { return buff_rows_; }
   int& hp_text_mode() { return hp_text_mode_; }
   int& text_px()      { return text_px_; }
   int& hp_mid_pct() { return hp_mid_pct_; }

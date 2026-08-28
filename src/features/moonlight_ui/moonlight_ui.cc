@@ -649,6 +649,8 @@ const moonlight_ui::SettingDesc kPartyFramesSettings[] = {
     {"partyframes_buff_sweep", SType::kInt,
      MLUI_FIELD(party_frames, buff_sweep()),
      MLUI_LITERAL(int, statuscell::kSweepRadial)},
+    {"partyframes_buff_rows", SType::kInt,
+     MLUI_FIELD(party_frames, buff_rows()), MLUI_LITERAL(int, 1)},
     {"partyframes_tile_w", SType::kInt, MLUI_FIELD(party_frames, tile_w()),
      MLUI_LITERAL(int, 180)},
     {"partyframes_gap", SType::kInt, MLUI_FIELD(party_frames, gap()),
@@ -732,6 +734,8 @@ const moonlight_ui::SettingDesc kTargetStatusSettings[] = {
      MLUI_FIELD(target_status_bar, show_time_), MLUI_LITERAL(bool, true)},
     {"tgtstatus_time_px", SType::kInt,
      MLUI_FIELD(target_status_bar, time_px()), MLUI_LITERAL(int, 11)},
+    {"tgtstatus_rows", SType::kInt,
+     MLUI_FIELD(target_status_bar, rows()), MLUI_LITERAL(int, 1)},
     {"tgtstatus_sweep", SType::kInt,
      MLUI_FIELD(target_status_bar, sweep()),
      MLUI_LITERAL(int, TargetStatusBar::kSweepRadial)},
@@ -786,6 +790,8 @@ const moonlight_ui::SettingDesc kPartyFriendSettings[] = {
     {"partyfriend_buff_sweep", SType::kInt,
      MLUI_FIELD(party_friend_window, buff_sweep()),
      MLUI_LITERAL(int, statuscell::kSweepRadial)},
+    {"partyfriend_buff_rows", SType::kInt,
+     MLUI_FIELD(party_friend_window, buff_rows()), MLUI_LITERAL(int, 1)},
     // Densité et forme des jauges. Défauts = ce que la fenêtre montrait avant
     // que ces réglages n'existent.
     {"partyfriend_icon_px", SType::kInt,
