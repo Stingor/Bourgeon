@@ -115,7 +115,12 @@ class PartyFriendWindow : public Plugin {
   void RequestMakeLeader(uint32_t gid);
   void RequestKick(uint32_t gid);
   // Suis-je le chef ? Décide des entrées réservées (nommer chef, expulser).
-  bool IsPartyLeader() const { return i_am_leader_; }
+  //
+  // 🔴 Relit la liste au lieu de rendre `i_am_leader_` : ce membre n'est calculé
+  // que pendant le RENDU de cette fenêtre, or l'appelant est le HUD en grille,
+  // qui sert justement quand elle est fermée. « Expulser » disparaissait alors
+  // du menu, sans que rien ne l'explique.
+  bool IsPartyLeader() const { return rag::social::AmIPartyLeader(); }
 
   // 🔴 LE point d'ouverture, appelé par le hook de MakeWindow (window_pos_tweaks)
   // au **`case 0x22`** — l'id de FABRIQUE, pas 0x45. Voir le commentaire de
@@ -168,6 +173,33 @@ class PartyFriendWindow : public Plugin {
   // Infobulle au survol d'une ligne : carte, position, classe, PV/SP chiffrés.
   bool show_tooltip_  = true;
 
+  // ── Densité et forme des jauges ───────────────────────────────────────────
+  //
+  // Une liste de groupe se regarde de deux façons : étalée quand on organise, la
+  // plus serrée possible quand on la garde dans un coin pendant qu'on joue. Ces
+  // réglages couvrent l'écart entre les deux.
+  int  icon_px_       = 40;   // côté de l'icône de classe
+  int  bar_w_         = 96;   // largeur des jauges
+  int  bar_h_         = 7;    // hauteur d'UNE jauge
+  int  row_spacing_   = 4;    // espace vertical entre deux lignes
+  int  text_px_       = 0;    // taille du texte des jauges ; 0 = celle de l'UI
+  // Jauges COLLÉES l'une sous l'autre (PV au-dessus, SP dessous), sans rien
+  // entre elles : c'est ce qui gagne le plus de hauteur, et l'œil lit les deux
+  // d'un seul coup.
+  bool bars_stacked_  = false;
+  // Le texte des PV/SP DANS la jauge plutôt qu'à côté. Dedans, la ligne ne
+  // s'allonge pas — mais il faut une jauge assez haute pour rester lisible.
+  bool text_in_bars_  = false;
+  // Le texte du SP, avec les mêmes choix que celui des PV.
+  int  sp_text_mode_  = kHpTextNumbers;
+
+  int& icon_px()      { return icon_px_; }
+  int& bar_w()        { return bar_w_; }
+  int& bar_h()        { return bar_h_; }
+  int& row_spacing()  { return row_spacing_; }
+  int& text_px()      { return text_px_; }
+  int& sp_text_mode() { return sp_text_mode_; }
+
   int& hp_text_mode() { return hp_text_mode_; }
   int& map_mode()     { return map_mode_; }
 
@@ -200,6 +232,9 @@ class PartyFriendWindow : public Plugin {
   // L'infobulle d'une ligne : classe, carte complète, PV, et une MINI-CARTE
   // avec la position du membre — la seule façon de situer un couple (x, y).
   void DrawRowTooltip(const rag::social::Entry& row);
+  // Une jauge de ligne (PV ou SP) : les deux partagent tous les réglages, donc
+  // le même code. `stacked_next` = une autre jauge vient se coller dessous.
+  void DrawRowBar(int cur, int max, ImU32 fill, int text_mode, bool stacked_next);
   void DrawConfirmPopup();
   // La demande reçue (groupe ou amitié), en remplacement des fenêtres natives
   // 35 (UIJoinPartyAcceptWnd) et 109 (UIJoinFriendAcceptWnd).

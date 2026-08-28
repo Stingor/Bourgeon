@@ -263,16 +263,17 @@ void PartyFriendWindow::ReadList(bool party, std::vector<rag::social::Entry>& ou
 // s'il n'y est plus, on n'arme rien : agir sur un membre qui vient de partir
 // n'aurait pas de sens.
 bool PartyFriendWindow::ArmForGid(uint32_t gid, Action action) {
-  if (gid == 0) return false;
-  for (const rag::social::Entry& r : party_) {
-    if (r.gid != gid) continue;
-    pending_      = action;
-    pending_gid_  = r.gid;
-    pending_id2_  = r.id2;
-    pending_name_ = r.name;
-    return true;
-  }
-  return false;
+  // 🔴 On RELIT la liste au lieu de consulter `party_` : ce membre-là n'est
+  // rempli que par le RENDU de cette fenêtre. L'appelant est le HUD en grille,
+  // qui sert précisément quand la fenêtre est FERMÉE — `party_` y serait vide,
+  // et l'action échouerait sans un mot.
+  rag::social::Entry row;
+  if (!rag::social::FindPartyMember(gid, &row)) return false;
+  pending_      = action;
+  pending_gid_  = row.gid;
+  pending_id2_  = row.id2;
+  pending_name_ = row.name;
+  return true;
 }
 
 void PartyFriendWindow::RequestWhisper(uint32_t gid) {
@@ -282,12 +283,14 @@ void PartyFriendWindow::RequestWhisper(uint32_t gid) {
 void PartyFriendWindow::RequestMakeLeader(uint32_t gid) {
   // Les mêmes droits que le menu de la fenêtre : le serveur refuserait de toute
   // façon, mais mieux vaut ne pas émettre une commande qu'on sait vaine.
-  if (!i_am_leader_) return;
+  // ⚠ `IsPartyLeader()` et non `i_am_leader_` : ce membre n'est à jour que
+  // pendant le rendu de la fenêtre, et l'appelant est le HUD en grille.
+  if (!IsPartyLeader()) return;
   ArmForGid(gid, Action::kMakeLeader);
 }
 
 void PartyFriendWindow::RequestKick(uint32_t gid) {
-  if (!i_am_leader_) return;
+  if (!IsPartyLeader()) return;
   ArmForGid(gid, Action::kKick);
 }
 
@@ -679,7 +682,7 @@ void PartyFriendWindow::DrawFriendTab() {
 // enfant, puis « %d/%d » juste à droite d'elle, et la pastille de statut à 80 %
 // de la largeur.
 void PartyFriendWindow::DrawPartyRow(const rag::social::Entry& row) {
-  const float icon = ro::Px(kJobIconSize);
+  const float icon = ro::Px(static_cast<float>(std::max(12, icon_px_)));
   char path[160];
 
   const ImVec2 origin = ImGui::GetCursorScreenPos();
@@ -777,62 +780,40 @@ void PartyFriendWindow::DrawPartyRow(const rag::social::Entry& row) {
       ImGui::SetTooltip(
           "%s", i18n::Tr("Le client ne connaît les PV que des membres visibles."));
   } else {
-    float frac = static_cast<float>(row.hp) / static_cast<float>(row.max_hp);
-    if (frac < 0.0f) frac = 0.0f;
-    if (frac > 1.0f) frac = 1.0f;
-
-    if (show_hp_bar_) {
-      const float bar_w = ro::Px(96.0f);
-      const float bar_h = ro::Px(7.0f);
-      const ImVec2 bar_pos = ImGui::GetCursorScreenPos();
-      const ImVec2 bar_end(bar_pos.x + bar_w, bar_pos.y + bar_h);
-      dl->AddRectFilled(bar_pos, bar_end, IM_COL32(24, 24, 24, 200));
-      dl->AddRectFilled(bar_pos, ImVec2(bar_pos.x + bar_w * frac, bar_end.y),
-                        IM_COL32(64, 200, 72, 255));
-      dl->AddRect(bar_pos, bar_end, IM_COL32(0, 0, 0, 180));
-      ImGui::Dummy(ImVec2(bar_w, bar_h));
-      if (hp_text_mode_ != kHpTextNone) ImGui::SameLine(0.0f, 6.0f);
-    }
-
-    // Le pourcentage est arrondi VERS LE HAUT tant qu'il reste un point de vie :
-    // afficher « 0 % » sur quelqu'un de vivant ferait renoncer à le soigner.
-    const int pct = (row.hp > 0) ? std::max(1, static_cast<int>(frac * 100.0f)) : 0;
-    switch (hp_text_mode_) {
-      case kHpTextNumbers: ImGui::Text("%d/%d", row.hp, row.max_hp); break;
-      case kHpTextPercent: ImGui::Text("%d %%", pct); break;
-      case kHpTextBoth:
-        ImGui::Text("%d/%d (%d %%)", row.hp, row.max_hp, pct);
-        break;
-      default: break;  // kHpTextNone : la barre parle d'elle-même
-    }
-
-    // ── La barre de SP ───────────────────────────────────────────────────────
+    // ── Le SP, résolu AVANT de dessiner : il décide si les jauges se collent ──
     // Elle vient du HUD en grille, seul module à interroger le serveur (CZ
     // 0x0F29) : le faire une deuxième fois d'ici doublerait le trafic pour la
     // même information. On lui DÉCLARE le besoin, il s'occupe du reste.
+    int sp = 0, maxsp = 0;
     if (show_sp_) {
-      int sp = 0, maxsp = 0;
-      auto* frames = Bourgeon::Instance().party_frames();
-      if (frames != nullptr) {
+      if (auto* frames = Bourgeon::Instance().party_frames()) {
         frames->RequestSpPolling();
-        if (frames->MemberSp(row.gid, &sp, &maxsp) && maxsp > 0) {
-          const float sfrac =
-              std::min(1.0f, static_cast<float>(sp) / static_cast<float>(maxsp));
-          const float bar_w = ro::Px(96.0f);
-          const float bar_h = ro::Px(4.0f);
-          const ImVec2 s0 = ImGui::GetCursorScreenPos();
-          const ImVec2 s1(s0.x + bar_w, s0.y + bar_h);
-          dl->AddRectFilled(s0, s1, IM_COL32(18, 18, 24, 200));
-          dl->AddRectFilled(s0, ImVec2(s0.x + bar_w * sfrac, s1.y),
-                            IM_COL32(70, 130, 220, 255));
-          dl->AddRect(s0, s1, IM_COL32(0, 0, 0, 160));
-          ImGui::Dummy(ImVec2(bar_w, bar_h));
-          ImGui::SameLine(0.0f, 6.0f);
-          ImGui::TextDisabled("%d/%d", sp, maxsp);
-        }
+        frames->MemberSp(row.gid, &sp, &maxsp);
       }
     }
+    const bool has_sp = (maxsp > 0);
+    // Collées : la jauge de PV ne doit pas pousser son texte à côté, sinon la
+    // suivante ne tomberait pas juste dessous.
+    const bool stack = bars_stacked_ && has_sp && show_hp_bar_;
+
+    if (show_hp_bar_) {
+      DrawRowBar(row.hp, row.max_hp, IM_COL32(64, 200, 72, 255), hp_text_mode_,
+                 stack);
+    } else if (hp_text_mode_ != kHpTextNone) {
+      // Sans jauge, le chiffre reste : c'est lui qu'on est venu lire.
+      const float f =
+          static_cast<float>(row.hp) / static_cast<float>(row.max_hp);
+      const int pct = (row.hp > 0) ? std::max(1, static_cast<int>(f * 100.0f)) : 0;
+      if (hp_text_mode_ == kHpTextPercent)      ImGui::Text("%d %%", pct);
+      else if (hp_text_mode_ == kHpTextBoth)    ImGui::Text("%d/%d (%d %%)", row.hp, row.max_hp, pct);
+      else                                      ImGui::Text("%d/%d", row.hp, row.max_hp);
+    }
+
+    if (has_sp) {
+      DrawRowBar(sp, maxsp, IM_COL32(70, 130, 220, 255), sp_text_mode_, false);
+    }
   }
+  (void)dl;
 
   ImGui::EndGroup();
 
@@ -866,13 +847,21 @@ void PartyFriendWindow::DrawPartyRow(const rag::social::Entry& row) {
     ImGui::OpenPopup("##rowmenu");
   }
   // ⚠ Pas d'infobulle tant qu'un popup est ouvert : elle passerait DEVANT le
-  // menu contextuel qu'on vient d'ouvrir sur cette même ligne.
-  if (show_tooltip_ && row_hovered && !ImGui::IsPopupOpen("##rowmenu")) {
+  // menu contextuel qu'on vient d'ouvrir sur cette même ligne. On teste
+  // N'IMPORTE QUEL popup et non le nôtre par son nom — les modales de
+  // confirmation méritent la même paix.
+  if (show_tooltip_ && row_hovered &&
+      !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId |
+                                       ImGuiPopupFlags_AnyPopupLevel)) {
     DrawRowTooltip(row);
   }
   DrawRowContextMenu(row, true);
 
-  ImGui::Spacing();
+  // L'espace entre deux lignes est un RÉGLAGE : à zéro, elles se touchent, ce
+  // qui est la façon la plus efficace de tenir un grand groupe à l'écran.
+  if (row_spacing_ > 0) {
+    ImGui::Dummy(ImVec2(1.0f, ro::Px(static_cast<float>(row_spacing_))));
+  }
 }
 
 // ── Les réglages du groupe ──────────────────────────────────────────────────
@@ -1005,6 +994,41 @@ constexpr int kGm_PartyMap = 0x1b4;
 constexpr int kPos_X = rag::treenode::kValue + 0x4;
 constexpr int kPos_Y = rag::treenode::kValue + 0x8;
 
+// 🔴 La taille de la carte en CELLULES, et non les pixels du bitmap.
+//
+// Une position de groupe est une CELLULE ; le bitmap de minimap est une image
+// dont la résolution n'a aucun rapport (pvp_n_5-5 : 128 cellules pour un bitmap
+// bien plus large). Diviser la cellule par la largeur en pixels mélange deux
+// unités — le point tombait alors n'importe où, en bas à gauche d'une position
+// qui se lisait pourtant juste en chiffres.
+//
+// Mêmes offsets que la minimap, qui fait exactement cette division.
+constexpr int kGm_World       = 0x0cc;
+constexpr int kWorld_MapInfo  = 0x30;
+constexpr int kMapInfo_Width  = 0x110;  // int, largeur en CELLULES
+constexpr int kMapInfo_Height = 0x114;  // int, hauteur en CELLULES
+
+bool CurrentMapCells(int* out_w, int* out_h) {
+  __try {
+    void* gm = rag::ActiveModeSafe();
+    if (!gm) return false;
+    void* world = *reinterpret_cast<void**>(
+        reinterpret_cast<uint8_t*>(gm) + kGm_World);
+    if (!world) return false;
+    void* info = *reinterpret_cast<void**>(
+        reinterpret_cast<uint8_t*>(world) + kWorld_MapInfo);
+    if (!info) return false;
+    const int w = *reinterpret_cast<int*>(
+        reinterpret_cast<uint8_t*>(info) + kMapInfo_Width);
+    const int h = *reinterpret_cast<int*>(
+        reinterpret_cast<uint8_t*>(info) + kMapInfo_Height);
+    if (w <= 0 || h <= 0) return false;
+    if (out_w) *out_w = w;
+    if (out_h) *out_h = h;
+    return true;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
 bool PartyMemberCell(uint32_t gid, int* out_x, int* out_y) {
   __try {
     void* gm = rag::ActiveModeSafe();
@@ -1035,6 +1059,70 @@ bool PartyMemberCell(uint32_t gid, int* out_x, int* out_y) {
 }
 
 }  // namespace
+
+// ── Une jauge de ligne (PV ou SP) ───────────────────────────────────────────
+//
+// Un seul endroit pour les deux : elles partagent tous les réglages (largeur,
+// hauteur, texte dedans ou dehors, taille de police), et deux copies auraient
+// divergé au premier ajustement.
+//
+// `stacked_next` dit qu'une autre jauge vient se COLLER dessous : on n'avance
+// alors pas le curseur d'ImGui de la hauteur d'une ligne de texte, sans quoi les
+// deux barres seraient séparées par un blanc.
+void PartyFriendWindow::DrawRowBar(int cur, int max, ImU32 fill, int text_mode,
+                                   bool stacked_next) {
+  if (max <= 0) return;
+  float frac = static_cast<float>(cur) / static_cast<float>(max);
+  frac = std::max(0.0f, std::min(1.0f, frac));
+
+  // Le pourcentage est arrondi VERS LE HAUT tant qu'il reste un point : afficher
+  // « 0 % » sur quelqu'un de vivant ferait renoncer à le soigner.
+  const int pct = (cur > 0) ? std::max(1, static_cast<int>(frac * 100.0f)) : 0;
+  char txt[64] = {0};
+  switch (text_mode) {
+    case kHpTextNumbers: std::snprintf(txt, sizeof(txt), "%d/%d", cur, max); break;
+    case kHpTextPercent: std::snprintf(txt, sizeof(txt), "%d %%", pct); break;
+    case kHpTextBoth:
+      std::snprintf(txt, sizeof(txt), "%d/%d (%d %%)", cur, max, pct);
+      break;
+    default: break;  // kHpTextNone : la jauge parle d'elle-même
+  }
+
+  const float bw = ro::Px(static_cast<float>(std::max(20, bar_w_)));
+  const float bh = ro::Px(static_cast<float>(std::max(3, bar_h_)));
+  const float fsz = (text_px_ > 0) ? ro::Px(static_cast<float>(text_px_))
+                                   : ImGui::GetFontSize();
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+  const ImVec2 p0 = ImGui::GetCursorScreenPos();
+  const ImVec2 p1(p0.x + bw, p0.y + bh);
+
+  dl->AddRectFilled(p0, p1, IM_COL32(24, 24, 24, 200));
+  if (frac > 0.0f) dl->AddRectFilled(p0, ImVec2(p0.x + bw * frac, p1.y), fill);
+  dl->AddRect(p0, p1, IM_COL32(0, 0, 0, 180));
+
+  // 🔴 Empilées, le texte passe DEDANS d'office. À côté, il pousse le curseur
+  // d'une hauteur de LIGNE DE TEXTE et non de jauge : la barre suivante ne
+  // tomberait pas collée mais séparée par un blanc, ce qui est exactement ce
+  // qu'on cherchait à supprimer.
+  const bool inside = text_in_bars_ || stacked_next;
+  if (txt[0] && inside) {
+    // Centré DANS la jauge, avec une ombre : le texte passe sur du vert clair
+    // comme sur du fond sombre, il lui faut ce détachement pour rester lisible.
+    ImFont* font = ImGui::GetFont();
+    const ImVec2 ts = font->CalcTextSizeA(fsz, FLT_MAX, 0.0f, txt);
+    const ImVec2 at(p0.x + (bw - ts.x) * 0.5f, p0.y + (bh - ts.y) * 0.5f);
+    const ImVec4 clip(p0.x, p0.y, p1.x, p1.y);
+    dl->AddText(font, fsz, ImVec2(at.x + 1.0f, at.y + 1.0f),
+                IM_COL32(0, 0, 0, 180), txt, nullptr, 0.0f, &clip);
+    dl->AddText(font, fsz, at, IM_COL32_WHITE, txt, nullptr, 0.0f, &clip);
+  }
+
+  ImGui::Dummy(ImVec2(bw, bh));
+  if (txt[0] && !inside) {
+    ImGui::SameLine(0.0f, ro::Px(6.0f));
+    ImGui::Text("%s", txt);
+  }
+}
 
 // ── L'infobulle d'une ligne ─────────────────────────────────────────────────
 //
@@ -1090,17 +1178,22 @@ void PartyFriendWindow::DrawRowTooltip(const rag::social::Entry& row) {
                               static_cast<float>(map_tex.w));
       const ImVec2 p0 = ImGui::GetCursorScreenPos();
       ImGui::Image(reinterpret_cast<ImTextureID>(map_tex.tex), ImVec2(w, h));
-      // Le bitmap couvre la carte entière : la cellule se ramène en fraction de
-      // ses dimensions. On borne — une position aberrante ne doit pas dessiner
-      // hors de l'image.
-      const float fx = std::min(1.0f, std::max(0.0f,
-          static_cast<float>(cx) / static_cast<float>(map_tex.w)));
-      const float fy = std::min(1.0f, std::max(0.0f,
-          static_cast<float>(cy) / static_cast<float>(map_tex.h)));
-      const ImVec2 at(p0.x + w * fx, p0.y + h * (1.0f - fy));
-      ImDrawList* dl = ImGui::GetWindowDrawList();
-      dl->AddCircleFilled(at, ro::Px(3.0f), IM_COL32(255, 255, 255, 230));
-      dl->AddCircleFilled(at, ro::Px(2.0f), IM_COL32(230, 90, 60, 255));
+      // Le bitmap couvre la carte entière : la cellule se ramène en fraction des
+      // dimensions en CELLULES — jamais en pixels du bitmap, qui n'ont aucun
+      // rapport avec elles. On borne : une position aberrante ne doit pas
+      // dessiner hors de l'image.
+      int cells_w = 0, cells_h = 0;
+      if (CurrentMapCells(&cells_w, &cells_h)) {
+        const float fx = std::min(1.0f, std::max(0.0f,
+            static_cast<float>(cx) / static_cast<float>(cells_w)));
+        // Y INVERSÉ : l'origine du monde RO est en bas, celle de l'image en haut.
+        const float fy = std::min(1.0f, std::max(0.0f,
+            static_cast<float>(cells_h - cy) / static_cast<float>(cells_h)));
+        const ImVec2 at(p0.x + w * fx, p0.y + h * fy);
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        dl->AddCircleFilled(at, ro::Px(3.0f), IM_COL32(255, 255, 255, 230));
+        dl->AddCircleFilled(at, ro::Px(2.0f), IM_COL32(230, 90, 60, 255));
+      }
     }
     ImGui::TextDisabled("%d, %d", cx, cy);
   }
@@ -1160,7 +1253,12 @@ void PartyFriendWindow::DrawRowContextMenu(const rag::social::Entry& row, bool p
   // Un membre de groupe n'est pas forcément un ami, et un ami n'est pas dans le
   // groupe : c'est précisément là qu'on a envie de faire le pont, et le natif
   // ne le proposait nulle part.
-  if (party && !is_me && ImGui::Selectable(i18n::Tr("Ajouter à mes amis"))) {
+  // ⚠ Pas proposé à quelqu'un qui est DÉJÀ dans la liste d'amis : la demande
+  // partirait, et le serveur la refuserait — le joueur, lui, aurait cru l'avoir
+  // ajouté. Le natif grise cette entrée pour la même raison
+  // (`FriendList_ContainsName` dans son propre menu).
+  if (party && !is_me && !rag::social::IsFriendByName(row.name.c_str()) &&
+      ImGui::Selectable(i18n::Tr("Ajouter à mes amis"))) {
     pending_      = Action::kAddFriend;
     pending_name_ = row.name;
   }

@@ -719,6 +719,25 @@ const moonlight_ui::SettingDesc kPartyFriendSettings[] = {
      MLUI_LITERAL(int, PartyFriendWindow::kMapFull)},
     {"partyfriend_tooltip", SType::kBool,
      MLUI_FIELD(party_friend_window, show_tooltip_), MLUI_LITERAL(bool, true)},
+    // Densité et forme des jauges. Défauts = ce que la fenêtre montrait avant
+    // que ces réglages n'existent.
+    {"partyfriend_icon_px", SType::kInt,
+     MLUI_FIELD(party_friend_window, icon_px()), MLUI_LITERAL(int, 40)},
+    {"partyfriend_bar_w", SType::kInt,
+     MLUI_FIELD(party_friend_window, bar_w()), MLUI_LITERAL(int, 96)},
+    {"partyfriend_bar_h", SType::kInt,
+     MLUI_FIELD(party_friend_window, bar_h()), MLUI_LITERAL(int, 7)},
+    {"partyfriend_row_gap", SType::kInt,
+     MLUI_FIELD(party_friend_window, row_spacing()), MLUI_LITERAL(int, 4)},
+    {"partyfriend_bar_text_px", SType::kInt,
+     MLUI_FIELD(party_friend_window, text_px()), MLUI_LITERAL(int, 0)},
+    {"partyfriend_bars_stacked", SType::kBool,
+     MLUI_FIELD(party_friend_window, bars_stacked_), MLUI_LITERAL(bool, false)},
+    {"partyfriend_text_in_bars", SType::kBool,
+     MLUI_FIELD(party_friend_window, text_in_bars_), MLUI_LITERAL(bool, false)},
+    {"partyfriend_sp_mode", SType::kInt,
+     MLUI_FIELD(party_friend_window, sp_text_mode()),
+     MLUI_LITERAL(int, PartyFriendWindow::kHpTextNumbers)},
 };
 
 // ── Le menu Échap et ses sous-fenêtres : ON PAR DÉFAUT, HORS du groupe ───────

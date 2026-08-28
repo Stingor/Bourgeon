@@ -50,6 +50,7 @@
 #include "features/overlays/skill_bar.h"
 #include "features/overlays/status_icon_bar.h"
 #include "features/overlays/party_frames.h"
+#include "features/windows/party_friend_window.h"
 #include "features/overlays/target_frame.h"
 #include "features/windows/storage_window.h"
 
@@ -678,6 +679,48 @@ void MoonlightUi::DrawInterfacePanel() {
           SameLine(); HelpMarker(i18n::Tr(
               "Au survol d'une ligne : la classe, la carte complète, la position "
               "et les PV/SP chiffrés — ce qui ne tient pas dans la ligne."));
+
+          // ── Densité ───────────────────────────────────────────────────────
+          SeparatorText(i18n::Tr("Densité"));
+          changed |= WheelSliderInt(i18n::Tr("Taille de l'icône"),
+                                    &pfw->icon_px_, 16, 56, "%d px");
+          changed |= WheelSliderInt(i18n::Tr("Espace entre les lignes"),
+                                    &pfw->row_spacing_, 0, 12, "%d px");
+          SameLine(); HelpMarker(i18n::Tr(
+              "À zéro, les lignes se touchent : c'est le réglage qui gagne le "
+              "plus de hauteur sur un groupe nombreux."));
+
+          // ── Jauges ────────────────────────────────────────────────────────
+          SeparatorText(i18n::Tr("Jauges"));
+          changed |= WheelSliderInt(i18n::Tr("Largeur des jauges"),
+                                    &pfw->bar_w_, 20, 260, "%d px");
+          changed |= WheelSliderInt(i18n::Tr("Hauteur d'une jauge"),
+                                    &pfw->bar_h_, 3, 20, "%d px");
+          changed |= ro::RoCheckbox(i18n::Tr("Jauges collées l'une sous l'autre"),
+                                    &pfw->bars_stacked_);
+          SameLine(); HelpMarker(i18n::Tr(
+              "PV au-dessus, SP juste dessous, sans rien entre les deux.\n\n"
+              "Le texte passe alors DANS les jauges : à côté, il pousserait la "
+              "seconde d'une hauteur de ligne et elles ne seraient plus collées."));
+          changed |= ro::RoCheckbox(i18n::Tr("Texte dans les jauges"),
+                                    &pfw->text_in_bars_);
+          SameLine(); HelpMarker(i18n::Tr(
+              "Centré sur la jauge, avec une ombre pour rester lisible sur le "
+              "vert comme sur le fond. La ligne ne s'allonge pas — mais il faut "
+              "une jauge assez haute."));
+          changed |= WheelSliderInt(i18n::Tr("Taille du texte des jauges"),
+                                    &pfw->text_px_, 0, 20, "%d px");
+          SameLine(); HelpMarker(i18n::Tr(
+              "À zéro, celle de l'interface."));
+          {
+            const char* kSpModes[] = {
+                i18n::Tr("Rien"), i18n::Tr("Chiffres"),
+                i18n::Tr("Pourcentage"), i18n::Tr("Chiffres et pourcentage")};
+            changed |= ImGui::Combo(i18n::Tr("Texte du SP"),
+                                    &pfw->sp_text_mode_, kSpModes,
+                                    IM_ARRAYSIZE(kSpModes));
+          }
+
           if (changed) SaveSettings();
         }
       }

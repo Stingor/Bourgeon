@@ -62,6 +62,30 @@ void ReadFriends(std::vector<Entry>& out);
 
 // Mon AID (`g_Account_Aid`), celui que le natif compare pour reconnaître ma ligne.
 uint32_t OwnAid();
+
+// Suis-je le CHEF du groupe ?
+//
+// 🔴 Relit la liste à chaque appel, et c'est voulu : l'information ne vit nulle
+// part ailleurs qu'en `+0x3C` de mon entrée (« 0 = chef »). La tenir dans un
+// membre d'une fenêtre revient à la lier au RENDU de cette fenêtre — et une
+// surface qui n'est pas affichée cesse alors de la mettre à jour, ce qui a fait
+// disparaître « Expulser » du menu de la grille tant que la fenêtre Amis/Groupe
+// restait fermée.
+bool AmIPartyLeader();
+
+// Ce nom est-il DÉJÀ dans ma liste d'amis ?
+//
+// Le client a sa propre fonction pour ça (`FriendList_HasNameByCtx`), mais la
+// liste est déjà lisible d'ici : on la parcourt, ce qui évite un appel natif et
+// reste vrai pour un nom qui n'est pas celui d'un membre présent.
+// ⚠ Comparaison EXACTE, dans la code-page du client — c'est ainsi que le
+// serveur identifie un personnage.
+bool IsFriendByName(const char* name);
+
+// L'entrée d'un membre du groupe, par GID. Rend false s'il n'y est plus.
+// Sert aux surfaces qui n'ont qu'un GID et ont besoin du NOM (les actions de
+// groupe voyagent par nom).
+bool FindPartyMember(uint32_t gid, Entry* out);
 // Nombre de membres, directement au manager (`Social_GetPartyMemberCount`).
 int PartyMemberCount();
 

@@ -103,6 +103,19 @@ void PartyFrames::SyncNativeHud() {
 }
 
 bool PartyFrames::MemberSp(uint32_t gid, int* sp, int* maxsp) const {
+  // 🔴 MOI D'ABORD, et ce n'est pas une optimisation : `PollVitals` SAUTE mon
+  // propre GID — mon SP est dans mes globales, on ne le demande pas au serveur.
+  // Le cache ne me contient donc JAMAIS, et sans ce cas ma ligne serait la seule
+  // sans barre de SP. C'est le pendant exact du piège des PV : le joueur n'est
+  // nulle part là où sont les autres.
+  if (gid != 0 && gid == rag::social::OwnAid()) {
+    const int s = rag::ReadInt(rag::kOwnSpAddr);
+    const int m = rag::ReadInt(rag::kOwnMaxSpAddr);
+    if (m <= 0) return false;
+    if (sp)    *sp    = s;
+    if (maxsp) *maxsp = m;
+    return true;
+  }
   auto it = vitals_.find(gid);
   if (it == vitals_.end()) return false;
   if ((GetTickCount() - it->second.stamp) > kVitalsStaleMs) return false;
@@ -541,7 +554,14 @@ void PartyFrames::OnRenderUI() {
 
   // L'infobulle et le menu vivent HORS du cadre : ouverts à l'intérieur, ils
   // seraient découpés par lui — il fait la taille d'une tuile.
-  if (show_tooltip_ && hovered_gid_ != 0) {
+  // ⚠ AUCUNE infobulle tant qu'un popup est ouvert. Elle se dessine par-dessus
+  // tout — y compris par-dessus le menu contextuel qu'on vient d'ouvrir sur
+  // cette même tuile, qu'elle rendait illisible. On teste N'IMPORTE QUEL popup
+  // plutôt que le nôtre par son nom : une modale de confirmation mérite la même
+  // paix.
+  const bool popup_open = ImGui::IsPopupOpen(
+      nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
+  if (show_tooltip_ && hovered_gid_ != 0 && !popup_open) {
     const uint32_t me_gid = rag::social::OwnAid();
     for (const rag::social::Entry& m : members_) {
       if (m.gid != hovered_gid_) continue;

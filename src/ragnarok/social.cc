@@ -167,6 +167,38 @@ void ReadFriends(std::vector<Entry>& out) { ReadList(false, out); }
 
 uint32_t OwnAid() { return rag::OwnAccountIdSafe(); }
 
+bool AmIPartyLeader() {
+  std::vector<Entry> party;
+  ReadList(true, party);
+  const uint32_t me = OwnAid();
+  for (const Entry& e : party) {
+    if (e.gid == me) return e.is_leader;
+  }
+  return false;
+}
+
+bool IsFriendByName(const char* name) {
+  if (name == nullptr || name[0] == '\0') return false;
+  std::vector<Entry> friends;
+  ReadList(false, friends);
+  for (const Entry& e : friends) {
+    if (e.name == name) return true;
+  }
+  return false;
+}
+
+bool FindPartyMember(uint32_t gid, Entry* out) {
+  if (gid == 0) return false;
+  std::vector<Entry> party;
+  ReadList(true, party);
+  for (const Entry& e : party) {
+    if (e.gid != gid) continue;
+    if (out) *out = e;
+    return true;
+  }
+  return false;
+}
+
 int PartyMemberCount() {
   __try {
     using Fn = int(__thiscall*)(void*);
