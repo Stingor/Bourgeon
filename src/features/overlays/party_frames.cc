@@ -308,18 +308,11 @@ void PartyFrames::DrawMemberMenu() {
   // laisserait le groupe sans chef présent. Proposer ces entrées serait promettre
   // des gestes qui échoueraient en silence côté serveur.
   if (!menu_offline_) {
-    // 🔴 On ne REPRODUIT pas le menu du client : quand l'acteur est là, il porte
-    // déjà chuchoter, échange, équipement, copier le nom — et bien plus. On s'y
-    // efface. Sans acteur (membre sur une autre carte), il n'existe pas : c'est
-    // alors à nous d'offrir le chuchotement, qui voyage PAR NOM et n'a besoin
-    // d'aucune entité.
-    const bool actor_here =
-        is_me || gamescene::FindActorByGid(menu_gid_) != nullptr;
-    if (!is_me && actor_here &&
-        ImGui::Selectable(i18n::Tr("Menu du personnage"))) {
-      pfw->RequestEntityMenu(menu_gid_);
-    }
-    if (!is_me && !actor_here && ImGui::Selectable(i18n::Tr("Chuchoter"))) {
+    // ⚠ On n'arrive ici QUE sans sprite (membre sur une autre carte) ou sur
+    // soi-même : avec un acteur, le clic droit a déjà ouvert le menu du client.
+    // Le chuchotement voyage PAR NOM et n'a besoin d'aucune entité — c'est
+    // précisément ce que ce menu-ci est le seul à pouvoir offrir.
+    if (!is_me && ImGui::Selectable(i18n::Tr("Chuchoter"))) {
       pfw->RequestWhisper(menu_gid_);
     }
     if (pfw->IsPartyLeader() && !is_me &&
@@ -382,6 +375,17 @@ void PartyFrames::FlushPending() {
         menu_offline_ = m.offline;
         break;
       }
+    }
+    // 🔴 Quand un sprite représente ce membre, on n'ouvre PAS de menu à nous :
+    // on arme celui du client. Le nôtre n'aurait plus porté qu'une entrée —
+    // « Menu du personnage » — soit un menu dont le seul rôle était d'en ouvrir
+    // un autre. Chef de groupe, expulsion et retrait d'ami y sont désormais.
+    auto* pfw = Bourgeon::Instance().party_friend_window();
+    const bool is_me = (menu == rag::social::OwnAid());
+    if (pfw != nullptr && !is_me && !menu_offline_ &&
+        gamescene::FindActorByGid(menu) != nullptr) {
+      pfw->RequestEntityMenu(menu);
+      return;
     }
     open_menu_ = true;
   }

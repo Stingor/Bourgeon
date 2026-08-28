@@ -295,6 +295,21 @@ void PartyFriendWindow::RequestKick(uint32_t gid) {
   ArmForGid(gid, Action::kKick);
 }
 
+void PartyFriendWindow::RequestRemoveFriend(uint32_t gid) {
+  // Même raison qu'`ArmForGid` de relire : `friends_` n'est rempli que par le
+  // rendu de cette fenêtre, et l'appelant est le menu contextuel du monde.
+  std::vector<rag::social::Entry> list;
+  rag::social::ReadFriends(list);
+  for (const rag::social::Entry& f : list) {
+    if (f.gid != gid) continue;
+    pending_      = Action::kRemoveFriend;
+    pending_gid_  = f.gid;
+    pending_id2_  = f.id2;
+    pending_name_ = f.name;
+    return;
+  }
+}
+
 void PartyFriendWindow::RequestEntityMenu(uint32_t gid) {
   // Pas d'`ArmForGid` ici : ce geste ne vise pas un membre de la LISTE mais une
   // entité du monde, et il n'a besoin d'aucun nom — `FlushPending` relit le job
@@ -887,7 +902,7 @@ void PartyFriendWindow::DrawPartyRow(const rag::social::Entry& row) {
   const bool row_hovered =
       ImGui::IsMouseHoveringRect(origin, ImVec2(origin.x + row_w, y));
   if (row_hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
-    ImGui::OpenPopup("##rowmenu");
+    OnRowRightClick(row);
   }
   // ⚠ Pas d'infobulle tant qu'un popup est ouvert : elle passerait DEVANT le
   // menu contextuel qu'on vient d'ouvrir sur cette même ligne. On teste
@@ -1240,6 +1255,30 @@ void PartyFriendWindow::DrawRowTooltip(const rag::social::Entry& row) {
   ImGui::EndTooltip();
 }
 
+// Le clic droit sur une ligne. Quand un sprite représente ce personnage, il
+// n'ouvre AUCUN menu à nous : il arme directement celui du client.
+//
+// 🔴 Le nôtre n'aurait porté qu'une entrée — « Menu du personnage » — c'est-à-dire
+// un menu dont l'unique rôle était d'en ouvrir un autre. Les gestes qui le
+// justifiaient encore (nommer chef, expulser, retirer un ami) ont rejoint le
+// menu d'entité, où ils sont à leur place : ce sont des actions sur un JOUEUR.
+void PartyFriendWindow::OnRowRightClick(const rag::social::Entry& row) {
+  // MOI excepté : mon acteur n'est pas dans la liste que parcourt
+  // `FindActorByGid` (le natif le range en `actorMgr+0x2C`), et le menu
+  // d'entité n'a de toute façon rien à proposer sur soi-même.
+  const bool is_me = (row.gid == rag::social::OwnAid());
+  if (!is_me && !row.offline && gamescene::FindActorByGid(row.gid) != nullptr) {
+    pending_      = Action::kEntityMenu;
+    pending_gid_  = row.gid;
+    pending_name_ = row.name;
+    return;
+  }
+  // Pas de sprite à cliquer — sur une autre carte, typiquement. C'est justement
+  // là que chuchoter ou inviter rend service : ces demandes voyagent PAR NOM et
+  // n'ont besoin d'aucune entité. On les propose alors nous-mêmes.
+  ImGui::OpenPopup("##rowmenu");
+}
+
 void PartyFriendWindow::DrawRowContextMenu(const rag::social::Entry& row, bool party) {
   if (!ImGui::BeginPopup("##rowmenu")) return;
 
@@ -1262,22 +1301,12 @@ void PartyFriendWindow::DrawRowContextMenu(const rag::social::Entry& row, bool p
   //
   // ⚠ MOI excepté pour le ciblage : mon acteur n'est pas dans la liste que
   // parcourt `FindActorByGid` (le natif le range en `actorMgr+0x2C`).
-  const bool actor_here =
-      !row.offline &&
-      (is_me || gamescene::FindActorByGid(row.gid) != nullptr);
-
-  if (actor_here) {
-    // Une seule entrée, qui ouvre LE menu du client — « Cibler » y a rejoint les
-    // autres gestes (cf. EntityContextMenu), donc il n'y a plus rien à doubler
-    // ici. Le clic droit sur une ligne mène désormais au même menu que le clic
-    // droit sur le sprite : un seul endroit à apprendre, un seul à maintenir.
-    if (!is_me && ImGui::Selectable(i18n::Tr("Menu du personnage"))) {
-      pending_      = Action::kEntityMenu;
-      pending_gid_  = row.gid;
-      pending_name_ = row.name;
-    }
+  // ⚠ Ce menu ne s'ouvre PLUS quand l'acteur est chargé : `OnRowRightClick`
+  // arme alors directement celui du client. On n'arrive donc ici que pour MOI,
+  // ou pour un membre qu'aucun sprite ne représente.
+  if (is_me) {
     // Sur MOI, le menu d'entité n'a pas de sens : on garde le seul geste utile.
-    if (is_me && ImGui::Selectable(i18n::Tr("Cibler"))) {
+    if (!row.offline && ImGui::Selectable(i18n::Tr("Cibler"))) {
       pending_     = Action::kTargetMember;
       pending_gid_ = row.gid;
     }
@@ -1485,7 +1514,7 @@ void PartyFriendWindow::DrawFriendRow(const rag::social::Entry& row) {
   const float y = ImGui::GetCursorScreenPos().y;
   if (ImGui::IsMouseHoveringRect(origin, ImVec2(origin.x + row_w, y)) &&
       ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
-    ImGui::OpenPopup("##rowmenu");
+    OnRowRightClick(row);
   }
   DrawRowContextMenu(row, false);
 }

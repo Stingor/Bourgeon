@@ -1529,6 +1529,12 @@ static int PushSkinColors() {
   return 24;
 }
 
+int PushPopupSkin() { return PushSkinColors(); }
+
+void PopPopupSkin(int count) {
+  if (count > 0) ImGui::PopStyleColor(count);
+}
+
 void SetNextWindowTitleBullet(const char* tooltip) {
   g_next_bullet = true;
   g_next_bullet_tip = tooltip;

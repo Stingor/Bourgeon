@@ -373,6 +373,19 @@ bool RoChatWindowIsResizing();
 void SetNextWindowTitleBullet(const char* tooltip = nullptr);
 bool TitleBulletClicked();
 
+// Applique le skin RO à un popup ouvert HORS de toute fenêtre skinnée (menu
+// contextuel du monde, par exemple). Un menu ouvert DANS une BeginRoWindow
+// hérite déjà de ces couleurs — c'est pourquoi le menu de l'inventaire est
+// clair sans rien demander ; celui du monde, lui, retombait sur le thème ImGui
+// par défaut, donc sombre. À encadrer autour du BeginPopup/EndPopup :
+//   const int n = ro::PushPopupSkin();
+//   if (ImGui::BeginPopup("x")) { ... ImGui::EndPopup(); }
+//   ro::PopPopupSkin(n);
+// Le dépilage doit avoir lieu même quand BeginPopup renvoie faux : les couleurs
+// sont poussées avant lui, pas par lui.
+int PushPopupSkin();
+void PopPopupSkin(int count);
+
 // Couleur de CORPS (ImGuiCol_WindowBg) de la PROCHAINE fenêtre RO, en ARGB ImU32,
 // à la place de la couleur configurée du skin. Pour une fenêtre qui doit rester
 // blanche quels que soient les réglages (liste d'items du storage, p. ex.) :

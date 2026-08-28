@@ -114,6 +114,10 @@ class PartyFriendWindow : public Plugin {
   void RequestWhisper(uint32_t gid);
   void RequestMakeLeader(uint32_t gid);
   void RequestKick(uint32_t gid);
+  // Retire un AMI. Ne passe pas par `ArmForGid`, qui cherche dans le groupe :
+  // le GID d'un ami n'y est pas, et le paquet réclame en plus l'id2 (CID), que
+  // seule l'entrée de la liste d'amis porte.
+  void RequestRemoveFriend(uint32_t gid);
   // Ouvre le menu contextuel du CLIENT sur ce personnage — celui de son sprite,
   // qui porte chuchoter, échange, équipement et bien plus. Sans effet si
   // l'acteur n'est pas chargé : il n'y a alors rien à ouvrir.
@@ -232,6 +236,9 @@ class PartyFriendWindow : public Plugin {
   void DrawFriendRow(const rag::social::Entry& row);
   // Le menu contextuel d'une ligne (clic droit), et la demande de confirmation
   // des actions irréversibles. Ni l'un ni l'autre n'agit : ils ARMENT `pending_`.
+  // Décide ce que fait le clic droit : ouvrir NOTRE menu, ou armer directement
+  // celui du client quand un sprite représente ce personnage.
+  void OnRowRightClick(const rag::social::Entry& row);
   void DrawRowContextMenu(const rag::social::Entry& row, bool party);
   // L'infobulle d'une ligne : classe, carte complète, PV, et une MINI-CARTE
   // avec la position du membre — la seule façon de situer un couple (x, y).

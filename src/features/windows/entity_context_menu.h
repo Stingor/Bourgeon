@@ -308,6 +308,16 @@ class EntityContextMenu : public Plugin {
     // groupe à la souris. C'est d'ailleurs pour ça que cette entrée existe : elle
     // comble un geste que le jeu ne sait pas faire.
     kTargetEntity,
+    // ── Les gestes de GROUPE et d'AMITIÉ ────────────────────────────────────
+    // Ils vivent ici et non dans la fenêtre Groupe/Amis : ce sont des actions
+    // sur un JOUEUR, elles ont leur place là où l'on clique un joueur. Les avoir
+    // laissées ailleurs obligeait la fenêtre à ouvrir son propre menu juste pour
+    // les proposer — une étape de plus pour arriver au même endroit.
+    // L'exécution est déléguée à PartyFriendWindow, qui possède déjà les
+    // commandes et leurs gardes.
+    kPartyMakeLeader,  // céder le commandement à ce membre
+    kPartyKick,        // l'expulser du groupe
+    kFriendRemove,     // le retirer de la liste d'amis
     kInspect,       // ouvre l'inspecteur de propriétés (staff)
     // Les deux gestes « chuchoter », séparés parce qu'ils n'ont pas la même
     // portée : le premier PRÉPARE l'envoi dans la barre de chat, le second ouvre

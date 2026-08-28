@@ -18,6 +18,8 @@
 #include "features/windows/chat_window.h"  // TargetWhisper / OpenWhisperWindowByAid
 #include "features/windows/entity_inspector.h"
 #include "features/windows/monster_info_window.h"
+#include "features/windows/party_friend_window.h"  // les gestes de groupe/amitié
+#include "ragnarok/social.h"  // AmIPartyLeader / PartyMemberCount
 #include "features/windows/view_equip_window.h"
 #include "ragnarok/globals.h"
 #include "ragnarok/game_scene.h"
@@ -1150,7 +1152,10 @@ void EntityContextMenu::BuildItems() {
       const uint32_t own_guild = static_cast<uint32_t>(rag::OwnGuildId());
       const bool in_guild  = own_guild != 0;
       const bool is_master = in_guild && ReadGlobalInt(rag::kGuildIsMasterAddr) != 0;
-      const bool in_party  = ReadGlobalInt(kInPartyFlag) != 0;
+      // 🔴 PAS `ReadGlobalInt(kInPartyFlag)` : cette globale ne passe à 1 que
+      // pour qui a CRÉÉ le groupe. Un membre qui l'a REJOINT la laisse à 0, et
+      // « Inviter dans le groupe » disparaissait alors de son menu.
+      const bool in_party  = rag::social::PartyMemberCount() > 0;
 
       add(i18n::Tr("Voir l'équipement"), kCodeViewEquip);
       add(i18n::Tr("Proposer un échange"), kCodeDeal);
@@ -1169,6 +1174,16 @@ void EntityContextMenu::BuildItems() {
               i18n::Tr("Ce joueur appartient déjà à un groupe : le serveur refuse "
               "l'invitation tant qu'il ne l'a pas quitté."));
         }
+      }
+      // ── Les gestes du CHEF, sur un membre de mon groupe ────────────────────
+      // Ils vivaient dans la fenêtre Groupe/Amis, qui devait donc ouvrir son
+      // propre menu contextuel — lequel ne servait qu'à proposer « Menu du
+      // personnage » pour arriver ICI. Un menu de moins, les mêmes gestes.
+      if (target_in_party_ && rag::social::AmIPartyLeader()) {
+        add(i18n::Tr("Nommer chef de groupe"), 0, Local::kPartyMakeLeader);
+        items_.back().confirm = true;
+        add(i18n::Tr("Expulser du groupe"), 0, Local::kPartyKick);
+        items_.back().confirm = true;
       }
       if (in_guild) {
         add(i18n::Tr("Inviter dans la guilde"), kCodeGuildInvite);
@@ -1208,8 +1223,14 @@ void EntityContextMenu::BuildItems() {
           false, false,
           i18n::Tr("Ouvre une conversation à part, avec son propre historique et sa "
                    "propre ligne de saisie."));
-      add(i18n::Tr("Ajouter en ami"), kCodeAddFriend);
-      if (target_is_friend_) disable_last(i18n::Tr("Déjà dans votre liste d'amis."));
+      // Une entrée OU l'autre : proposer « ajouter » grisé à côté de « retirer »
+      // n'apprendrait rien de plus, et allongerait le menu pour rien.
+      if (target_is_friend_) {
+        add(i18n::Tr("Retirer de mes amis"), 0, Local::kFriendRemove);
+        items_.back().confirm = true;
+      } else {
+        add(i18n::Tr("Ajouter en ami"), kCodeAddFriend);
+      }
       add(i18n::Tr("Envoyer un courrier"), kCodeSendMail);
       // Même condition que le natif : le dispatcher, lui, ne la rejoue pas, et
       // la demande partirait au serveur pour se faire refuser.
@@ -1573,6 +1594,10 @@ void EntityContextMenu::DrawPopup() {
   // Serré : un menu contextuel se lit d'un coup d'œil, il ne se contemple pas.
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(6.0f, 6.0f));
   ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(6.0f, 3.0f));
+  // Ce menu s'ouvre depuis le MONDE, hors de toute fenêtre RO : sans ça, il
+  // héritait du thème ImGui par défaut et sortait sombre, alors que le menu de
+  // l'inventaire — ouvert dans une fenêtre skinnée — était clair.
+  const int skin_colors = ro::PushPopupSkin();
   const bool visible = ImGui::BeginPopup(
       "##bourgeon_entity_ctx",
       ImGuiWindowFlags_NoMove | ImGuiWindowFlags_AlwaysAutoResize |
@@ -1634,6 +1659,7 @@ void EntityContextMenu::DrawPopup() {
     // ImGui a fermé le popup (clic hors, Échap) : on suit.
     open_ = false;
   }
+  ro::PopPopupSkin(skin_colors);
   ImGui::PopStyleVar(2);
 }
 
@@ -1741,6 +1767,12 @@ const char* EntityContextMenu::ConfirmModalId(Local which) {
       return i18n::Tr("Bannir ce compte###bourgeon_ctxmenu_confirm");
     case Local::kPlayerEventPoints:
       return i18n::Tr("Points d'event###bourgeon_ctxmenu_confirm");
+    case Local::kPartyMakeLeader:
+      return i18n::Tr("Chef de groupe###bourgeon_ctxmenu_confirm");
+    case Local::kPartyKick:
+      return i18n::Tr("Expulser###bourgeon_ctxmenu_confirm");
+    case Local::kFriendRemove:
+      return i18n::Tr("Retirer un ami###bourgeon_ctxmenu_confirm");
     default:
       return i18n::Tr("Décharger ce NPC###bourgeon_ctxmenu_confirm");
   }
@@ -1782,6 +1814,48 @@ void EntityContextMenu::DrawConfirmModal() {
         pending_aid_   = confirm_aid_;
         pending_code_  = 0;
         pending_local_ = Local::kNpcUnload;
+        ImGui::CloseCurrentPopup();
+      }
+      ImGui::SameLine();
+      if (ro::RoButton(i18n::Tr("Annuler"), 100.0f, 0.0f)) ImGui::CloseCurrentPopup();
+      break;
+    }
+    // ── Groupe et amitié ────────────────────────────────────────────────────
+    // Trois gestes, une seule branche : ils posent la même question — « celui-ci,
+    // sûr ? » — et ne diffèrent que par la phrase. Aucun n'est destructeur au
+    // sens de `kPlayerBlock`, mais aucun ne se défait d'un clic non plus : rendre
+    // le commandement suppose que l'autre le rende, réinviter suppose qu'il
+    // accepte. La fenêtre Groupe/Amis les confirmait déjà ; ce menu-ci s'ouvre
+    // sur un clic droit dans le monde, donc à plus forte raison.
+    case Local::kPartyMakeLeader:
+    case Local::kPartyKick:
+    case Local::kFriendRemove: {
+      const char* who = confirm_name_.empty() ? i18n::Tr("(nom inconnu)")
+                                              : confirm_name_.c_str();
+      const char* question = i18n::Tr("Retirer %s de votre liste d'amis ?");
+      // « Retirer » tout court existe déjà au catalogue — pour la BANQUE, où il
+      // se traduit « Withdraw ». Une clé à part, donc.
+      const char* button   = i18n::Tr("Retirer l'ami");
+      if (confirm_local_ == Local::kPartyMakeLeader) {
+        question = i18n::Tr("Céder le commandement du groupe à %s ?");
+        button   = i18n::Tr("Céder");
+      } else if (confirm_local_ == Local::kPartyKick) {
+        question = i18n::Tr("Expulser %s du groupe ?");
+        button   = i18n::Tr("Expulser");
+      }
+      ImGui::Text(question, ro::LocalToUtf8(who));
+      if (confirm_local_ == Local::kPartyMakeLeader) {
+        ImGui::Spacing();
+        // Dit avant le clic, parce que le serveur ne le redemandera pas : le
+        // commandement ne revient que si le nouveau chef le rend.
+        ImGui::TextDisabled("%s",
+            i18n::Tr("Vous ne pourrez plus expulser ni nommer de chef."));
+      }
+      ImGui::Spacing();
+      if (ro::RoButton(button, 110.0f, 0.0f)) {
+        pending_aid_   = confirm_aid_;
+        pending_code_  = 0;
+        pending_local_ = confirm_local_;
         ImGui::CloseCurrentPopup();
       }
       ImGui::SameLine();
@@ -1964,6 +2038,21 @@ void EntityContextMenu::FlushPending() {
       // du clic natif, donc rejouer un clic ne ciblerait rien du tout.
       if (auto* tf = Bourgeon::Instance().target_frame())
         tf->RequestTargetFromProxy(aid);
+      return;
+    // Les trois gestes de groupe/amitié sont ARMÉS dans la fenêtre Groupe/Amis :
+    // elle possède déjà les commandes, leurs gardes et le `FlushPending` qui les
+    // émet hors frame. Les rejouer ici, c'était deux chemins pour un paquet.
+    case Local::kPartyMakeLeader:
+      if (auto* pfw = Bourgeon::Instance().party_friend_window())
+        pfw->RequestMakeLeader(aid);
+      return;
+    case Local::kPartyKick:
+      if (auto* pfw = Bourgeon::Instance().party_friend_window())
+        pfw->RequestKick(aid);
+      return;
+    case Local::kFriendRemove:
+      if (auto* pfw = Bourgeon::Instance().party_friend_window())
+        pfw->RequestRemoveFriend(aid);
       return;
     case Local::kAttack:
       // 🔴 Ordre EXPLICITE : il doit frapper même si « le clic cible sans
