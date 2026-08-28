@@ -28,7 +28,11 @@ void TargetStatusBar::Collect(std::vector<StatusEffects::Entry>* out) const {
   auto* fx = Bourgeon::Instance().status_effects();
   if (fx == nullptr) return;
 
-  const uint32_t gid = TargetFrame::CurrentSelectionGid();
+  auto* tf = Bourgeon::Instance().target_frame();
+  // La cible AFFICHÉE par le HUD, pas la dernière cliquée : un sort lancé
+  // directement sur un monstre le cible sans passer par `CGameMode+0xF4`.
+  const uint32_t gid =
+      (tf != nullptr) ? tf->ActiveTargetGid() : TargetFrame::CurrentSelectionGid();
   if (gid == 0) return;
   // 🔴 JAMAIS SOI-MÊME. Se cibler — depuis une tuile de la grille, par exemple —
   // faisait apparaître ici ses PROPRES états, que la barre d'icônes du client

@@ -8,6 +8,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "features/systems/bourgeon_opcodes.h"  // la plage des altérations
 #include "ragnarok/lua.h"
 #include "ragnarok/msgstring.h"
 #include "ui/game_texture.h"
@@ -109,6 +110,49 @@ void FormatRemainLong(uint32_t ms, char* out, size_t cap) {
   std::snprintf(out, cap, "%s", tmp);
 }
 
+// ── Les alterations, faute d'icone ──────────────────────────────────────────
+//
+// 🔴 Le client n'a AUCUNE image pour elles : ni EFST, ni fichier. Il les rend
+// sur le sprite (les Z du sommeil, la bulle du silence), ce qu'une liste d'états
+// ne peut pas reproduire. On dessine donc une pastille : trois lettres sur un
+// fond coloré, lisible à toute taille et sans dépendre du moindre asset.
+//
+// La couleur groupe par FAMILLE — immobilisation en bleu, poison en vert,
+// aveuglement en gris — pour qu'on lise la nature d'un coup d'œil avant même de
+// déchiffrer les lettres.
+struct AilmentLook {
+  const char* abbrev;
+  const char* name;   // clé de traduction, développée par l'appelant
+  ImU32       color;
+};
+
+const AilmentLook* LookupAilment(uint16_t efst) {
+  // ⚠ Indexé par la valeur de `bopcodes::Ailment`, donc l'ORDRE compte : il
+  // suit celui de `e_bourgeon_ailment` côté serveur.
+  static const AilmentLook kLooks[] = {
+      {"", "", 0},                                                  // 0 inutilisé
+      {"PET", "Pétrifié",       IM_COL32(120, 120, 130, 235)},      // kAilStone
+      {"GEL", "Gelé",           IM_COL32( 70, 150, 210, 235)},      // kAilFreeze
+      {"ETD", "Étourdi",        IM_COL32(210, 175,  60, 235)},      // kAilStun
+      {"DOR", "Endormi",        IM_COL32( 90, 110, 190, 235)},      // kAilSleep
+      {"PET", "Pétrification",  IM_COL32(140, 130, 110, 235)},      // kAilStoneWait
+      {"FEU", "En feu",         IM_COL32(210,  90,  45, 235)},      // kAilBurning
+      {"EMP", "Emprisonné",     IM_COL32(100,  90, 140, 235)},      // kAilImprison
+      {"PSN", "Empoisonné",     IM_COL32( 95, 165,  80, 235)},      // kAilPoison
+      {"MAL", "Maudit",         IM_COL32(160,  70, 150, 235)},      // kAilCurse
+      {"SIL", "Silence",        IM_COL32(130, 130, 175, 235)},      // kAilSilence
+      {"CNF", "Confus",         IM_COL32(180, 120, 200, 235)},      // kAilConfusion
+      {"AVG", "Aveuglé",        IM_COL32( 80,  80,  90, 235)},      // kAilBlind
+      {"SNG", "Saignement",     IM_COL32(185,  55,  55, 235)},      // kAilBleeding
+      {"PSN", "Poison mortel",  IM_COL32( 60, 130,  60, 235)},      // kAilDeadlyPoison
+      {"PEU", "Terrifié",       IM_COL32(150, 100,  60, 235)},      // kAilFear
+  };
+  if (!bopcodes::IsAilment(efst)) return nullptr;
+  const uint16_t idx = efst - bopcodes::kAilmentBase;
+  if (idx == 0 || idx >= IM_ARRAYSIZE(kLooks)) return nullptr;
+  return &kLooks[idx];
+}
+
 // Cette ligne ne porte-t-elle QUE des marqueurs de format ?
 //
 // On retire les `%s`, `%d` et consorts, puis la ponctuation et les espaces : ce
@@ -186,9 +230,28 @@ const Text& Lookup(uint16_t efst) {
 
 }  // namespace
 
-const char* Name(uint16_t efst) { return Lookup(efst).name.c_str(); }
+const char* Name(uint16_t efst) {
+  if (const AilmentLook* look = LookupAilment(efst)) return i18n::Tr(look->name);
+  return Lookup(efst).name.c_str();
+}
 
 void Tooltip(const StatusEffects::Entry& e) {
+  // Une altération n'a pas de texte Lua : son nom est le nôtre.
+  if (const AilmentLook* look = LookupAilment(e.efst)) {
+    ImGui::BeginTooltip();
+    ImGui::TextUnformatted(i18n::Tr(look->name));
+    if (e.expires_ms != 0) {
+      char when[160];
+      const int32_t left =
+          static_cast<int32_t>(e.expires_ms - ::timeGetTime());
+      FormatRemainLong(left > 0 ? static_cast<uint32_t>(left) : 0u, when,
+                       sizeof(when));
+      ImGui::TextDisabled("%s", when);
+    }
+    ImGui::EndTooltip();
+    return;
+  }
+
   const Text& t = Lookup(e.efst);
   ImGui::BeginTooltip();
 
@@ -244,16 +307,35 @@ void Tooltip(const StatusEffects::Entry& e) {
 
 bool Draw(const StatusEffects::Entry& e, ImVec2 p0, ImVec2 p1,
           const Style& style, bool tooltip) {
-  const char* path = StatusEffects::IconPath(e.efst);
-  if (path == nullptr) return false;
-  const ro::GameTexture icon = ro::CachedTextureFromGameFile(path);
-  if (!icon.tex) return false;
-
   ImDrawList* dl = ImGui::GetWindowDrawList();
   const ImU32 tint =
       style.dim ? IM_COL32(140, 140, 140, 220) : IM_COL32_WHITE;
-  dl->AddImage(reinterpret_cast<ImTextureID>(icon.tex), p0, p1, ImVec2(0, 0),
-               ImVec2(1, 1), tint);
+
+  // Une ALTÉRATION n'a pas d'image : pastille. Tout le reste — grisage, compte à
+  // rebours, infobulle — s'applique ensuite à l'identique, c'est bien pour ça
+  // que ces deux rendus vivent dans la même fonction.
+  if (const AilmentLook* look = LookupAilment(e.efst)) {
+    const float rounding = (p1.x - p0.x) * 0.18f;
+    dl->AddRectFilled(p0, p1, look->color, rounding);
+    dl->AddRect(p0, p1, IM_COL32(0, 0, 0, 170), rounding);
+    ImFont* font = ImGui::GetFont();
+    // La police occupe 55 % de la case : trois lettres y tiennent en largeur
+    // sans qu'on ait à mesurer deux fois.
+    const float fsz = (p1.y - p0.y) * 0.55f;
+    const ImVec2 ts = font->CalcTextSizeA(fsz, FLT_MAX, 0.0f, look->abbrev);
+    const ImVec2 tp(p0.x + ((p1.x - p0.x) - ts.x) * 0.5f,
+                    p0.y + ((p1.y - p0.y) - ts.y) * 0.5f);
+    dl->AddText(font, fsz, ImVec2(tp.x + 1.0f, tp.y + 1.0f),
+                IM_COL32(0, 0, 0, 190), look->abbrev);
+    dl->AddText(font, fsz, tp, IM_COL32_WHITE, look->abbrev);
+  } else {
+    const char* path = StatusEffects::IconPath(e.efst);
+    if (path == nullptr) return false;
+    const ro::GameTexture icon = ro::CachedTextureFromGameFile(path);
+    if (!icon.tex) return false;
+    dl->AddImage(reinterpret_cast<ImTextureID>(icon.tex), p0, p1, ImVec2(0, 0),
+                 ImVec2(1, 1), tint);
+  }
 
   const uint32_t now = ::timeGetTime();
   const int32_t left_ms =

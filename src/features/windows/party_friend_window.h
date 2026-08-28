@@ -199,7 +199,7 @@ class PartyFriendWindow : public Plugin {
   // pas », jamais « aucun buff » — la meme reserve que pour ses PV.
   bool show_buffs_    = false;
   int  buff_px_       = 16;  // cote d'une icone, en pixels d'interface
-  int  buff_max_      = 5;   // combien au plus sur une ligne
+  int  buff_max_      = 8;   // combien au plus sur une ligne
   // Le temps restant sous l'icône, et le grisage de la part écoulée. Mêmes
   // notions que la barre d'états de la cible, réglées à part : une icône de
   // tuile fait la moitié de la sienne, et ce qui s'y lit n'est pas le même.

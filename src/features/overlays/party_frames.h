@@ -164,7 +164,7 @@ class PartyFrames : public Plugin {
   // et une tuile sans icone veut dire « on ne sait pas », jamais « aucun buff ».
   bool show_buffs_    = true;
   int  buff_px_       = 14;  // cote d'une icone, en pixels d'interface
-  int  buff_max_      = 6;   // combien au plus, avant de rogner la place du nom
+  int  buff_max_      = 8;   // combien au plus, avant de rogner la place du nom
   // Le temps restant sous l'icône, et le grisage de la part écoulée. Mêmes
   // notions que la barre d'états de la cible, réglées à part : une icône de
   // tuile fait la moitié de la sienne, et ce qui s'y lit n'est pas le même.

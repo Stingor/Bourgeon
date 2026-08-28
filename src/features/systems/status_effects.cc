@@ -284,7 +284,8 @@ void StatusEffects::HandlePacket(uint16_t opcode, const uint8_t* data,
         std::memcpy(&id, data + off, sizeof(id));
         std::memcpy(&remain_ms, data + off + 2, sizeof(remain_ms));
         std::memcpy(&total_ms, data + off + 6, sizeof(total_ms));
-        if (id == 0 || IconPath(id) == nullptr) continue;
+        if (id == 0) continue;
+        if (!bopcodes::IsAilment(id) && IconPath(id) == nullptr) continue;
         Entry e;
         e.efst = id;
         // 0 = pas d'échéance (état permanent) : surtout pas « expiré ».
@@ -349,8 +350,15 @@ void StatusEffects::Poll(bool party, bool target_too) {
   // sait mieux que nous ce qu'il a le droit de dire, et son refus nous fait
   // taire (`Refused`). Une heuristique cliente « est-ce un monstre ? » aurait
   // dupliqué sa règle, avec le risque de diverger.
-  const uint32_t target =
-      target_too ? TargetFrame::CurrentSelectionGid() : 0u;
+  // ⚠ La MÊME cible que celle qu'affiche la barre : sonder la dernière entité
+  // cliquée pendant qu'on montre celle du HUD demandait l'état d'une entité pour
+  // en dessiner une autre.
+  uint32_t target = 0u;
+  if (target_too) {
+    auto* tf = Bourgeon::Instance().target_frame();
+    target = (tf != nullptr) ? tf->ActiveTargetGid()
+                             : TargetFrame::CurrentSelectionGid();
+  }
   if (target != 0 && target != rag::social::OwnAid() && !Refused(target) &&
       (last_target_poll_ms_ == 0 || (now - last_target_poll_ms_) >= kTargetPollMs)) {
     RequestFor(target);
@@ -433,7 +441,11 @@ void StatusEffects::Apply(uint32_t gid, uint16_t efst, bool active,
 
   // Un état qu'on n'affichera jamais n'a pas à occuper la table : le client
   // lui-même n'a pas d'image pour lui, c'est SON arbitrage et on le suit.
-  if (IconPath(efst) == nullptr) return;
+  //
+  // ⚠ Les ALTÉRATIONS échappent à ce test : elles n'ont d'icône nulle part, et
+  // c'est précisément pour cela que le serveur nous les envoie sous un id à
+  // nous. Les filtrer ici les aurait rendues invisibles une seconde fois.
+  if (!bopcodes::IsAilment(efst) && IconPath(efst) == nullptr) return;
 
   if (it == by_gid_.end()) {
     if (by_gid_.size() >= kMaxTrackedEntities) return;

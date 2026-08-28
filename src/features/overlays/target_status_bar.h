@@ -52,7 +52,7 @@ class TargetStatusBar : public Plugin {
   bool border_  = true;
 
   int  icon_px_   = 24;  // côté d'une icône, en pixels d'interface
-  int  max_icons_ = 12;  // au-delà, on tronque plutôt que de déborder
+  int  max_icons_ = 20;  // au-delà, on tronque plutôt que de déborder
   int  gap_px_    = 2;   // écart entre deux icônes
   // Sur combien de LIGNES étaler les icônes. La barre se replie DÉJÀ sur sa
   // largeur ; ce réglage force en plus un nombre fixe par rangée, pour une

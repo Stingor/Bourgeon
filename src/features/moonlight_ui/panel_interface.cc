@@ -674,7 +674,7 @@ void MoonlightUi::DrawInterfacePanel() {
           changed |= WheelSliderInt(i18n::Tr("Écart"), &tsb->gap_px(),
                                     0, 12, "%d px");
           changed |= WheelSliderInt(i18n::Tr("Nombre au plus"),
-                                    &tsb->max_icons(), 1, 30, "%d");
+                                    &tsb->max_icons(), 1, 40, "%d");
           changed |= WheelSliderInt(i18n::Tr("Lignes d'icônes"),
                                     &tsb->rows(), 1, 6, "%d");
           SameLine(); HelpMarker(i18n::Tr(
@@ -803,7 +803,7 @@ void MoonlightUi::DrawInterfacePanel() {
             changed |= mui::WheelSliderInt(i18n::Tr("Taille des icônes"),
                                            &pfw->buff_px(), 8, 32, "%d px");
             changed |= mui::WheelSliderInt(i18n::Tr("Icônes au plus"),
-                                           &pfw->buff_max(), 1, 10, "%d");
+                                           &pfw->buff_max(), 1, 24, "%d");
             changed |= mui::WheelSliderInt(i18n::Tr("Lignes d'icônes"),
                                            &pfw->buff_rows(), 1, 4, "%d");
             SameLine(); HelpMarker(i18n::Tr(
@@ -1036,7 +1036,7 @@ void MoonlightUi::DrawInterfacePanel() {
             changed |= mui::WheelSliderInt(i18n::Tr("Taille des icônes"),
                                            &pf->buff_px(), 6, 28, "%d px");
             changed |= mui::WheelSliderInt(i18n::Tr("Icônes au plus"),
-                                           &pf->buff_max(), 1, 10, "%d");
+                                           &pf->buff_max(), 1, 24, "%d");
             changed |= mui::WheelSliderInt(i18n::Tr("Lignes d'icônes"),
                                            &pf->buff_rows(), 1, 4, "%d");
             SameLine(); HelpMarker(i18n::Tr(

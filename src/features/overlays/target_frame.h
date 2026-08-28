@@ -436,6 +436,20 @@ class TargetFrame : public Plugin {
   // `RequestTargetFromProxy`, jamais par une écriture d'ici.
   static uint32_t CurrentSelectionGid();
 
+  // La cible qui COMPTE pour les surfaces qui parlent de « la cible ».
+  //
+  // 🔴 PAS `CurrentSelectionGid`. Celle-là lit `CGameMode+0xF4`, la dernière
+  // entité CLIQUÉE — or on peut prendre une cible sans jamais la cliquer : un
+  // sort lancé directement sur un monstre allume ce HUD sans que le champ natif
+  // bouge. La barre d'états, qui lisait `+0xF4`, restait alors vide à côté d'une
+  // fenêtre de cible pleine.
+  //
+  // On rend donc la cible AFFICHÉE, et l'on ne retombe sur la sélection native
+  // que lorsque ce HUD n'en suit aucune (éteint, ou masqué à la main).
+  uint32_t ActiveTargetGid() const {
+    return (gid_ != 0) ? gid_ : CurrentSelectionGid();
+  }
+
   // ── Ce que le menu contextuel de l'entité appelle ─────────────────────────
   // Masque le HUD pour la cible COURANTE (il revient au prochain changement de
   // cible). `gid` sert de garde : masquer depuis le menu d'une entité qui n'est
