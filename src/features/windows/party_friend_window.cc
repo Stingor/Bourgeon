@@ -295,6 +295,15 @@ void PartyFriendWindow::RequestKick(uint32_t gid) {
   ArmForGid(gid, Action::kKick);
 }
 
+void PartyFriendWindow::RequestEntityMenu(uint32_t gid) {
+  // Pas d'`ArmForGid` ici : ce geste ne vise pas un membre de la LISTE mais une
+  // entité du monde, et il n'a besoin d'aucun nom — `FlushPending` relit le job
+  // sur l'acteur lui-même.
+  if (gid == 0 || gamescene::FindActorByGid(gid) == nullptr) return;
+  pending_     = Action::kEntityMenu;
+  pending_gid_ = gid;
+}
+
 void PartyFriendWindow::FlushPending() {
   // Les lignes de chat d'abord : elles rejouent du code natif, donc jamais depuis
   // la frame ImGui. L'aiguillage de Bourgeon les route vers la chatbox moderne.
@@ -1239,70 +1248,66 @@ void PartyFriendWindow::DrawRowContextMenu(const rag::social::Entry& row, bool p
   ImGui::TextDisabled("%s", ro::LocalToUtf8(row.name.c_str()));
   ImGui::Separator();
 
-  // Chuchoter : à quelqu'un d'autre, et seulement s'il est joignable.
-  if (!is_me && !row.offline &&
-      ImGui::Selectable(i18n::Tr("Chuchoter"))) {
-    pending_      = Action::kWhisper;
-    pending_gid_  = row.gid;
-    pending_name_ = row.name;
-  }
-
-  // ── Ce qui demande que l'ENTITÉ soit là ──────────────────────────────────
-  // Cibler et ouvrir le menu du personnage agissent sur un acteur : hors ligne
-  // ou hors de portée, il n'y en a aucun. On ne propose donc pas ces entrées —
-  // elles ne feraient rien, et une entrée qui ne fait rien use la confiance.
+  // ── Ce que le MENU DU PERSONNAGE fait déjà ───────────────────────────────
+  //
+  // 🔴 On ne REPRODUIT pas le menu du client : il porte déjà chuchoter, échange,
+  // guilde, équipement, copier le nom — et bien plus que ce qu'on écrirait ici.
+  // Quand l'acteur est là, on s'efface donc devant lui et l'on ne garde que ce
+  // qu'il n'a PAS : cibler, et les actions de groupe/amis plus bas.
+  //
+  // Mais il n'existe QUE si l'acteur est chargé. Hors de portée — sur une autre
+  // carte, typiquement — il n'y a pas de sprite à cliquer, et c'est justement là
+  // que chuchoter ou inviter rend service : ces demandes voyagent PAR NOM et
+  // n'ont besoin d'aucune entité. On les propose alors nous-mêmes.
   //
   // ⚠ MOI excepté pour le ciblage : mon acteur n'est pas dans la liste que
   // parcourt `FindActorByGid` (le natif le range en `actorMgr+0x2C`).
   const bool actor_here =
       !row.offline &&
       (is_me || gamescene::FindActorByGid(row.gid) != nullptr);
+
   if (actor_here) {
-    if (ImGui::Selectable(i18n::Tr("Cibler"))) {
+    // Une seule entrée, qui ouvre LE menu du client — « Cibler » y a rejoint les
+    // autres gestes (cf. EntityContextMenu), donc il n'y a plus rien à doubler
+    // ici. Le clic droit sur une ligne mène désormais au même menu que le clic
+    // droit sur le sprite : un seul endroit à apprendre, un seul à maintenir.
+    if (!is_me && ImGui::Selectable(i18n::Tr("Menu du personnage"))) {
+      pending_      = Action::kEntityMenu;
+      pending_gid_  = row.gid;
+      pending_name_ = row.name;
+    }
+    // Sur MOI, le menu d'entité n'a pas de sens : on garde le seul geste utile.
+    if (is_me && ImGui::Selectable(i18n::Tr("Cibler"))) {
       pending_     = Action::kTargetMember;
       pending_gid_ = row.gid;
     }
-    if (!is_me && ImGui::Selectable(i18n::Tr("Menu du personnage"))) {
-      // Le menu contextuel du client, celui de son sprite : échange, guilde,
-      // équipement… Tout ce qu'on ne va pas réimplémenter ici.
-      pending_      = Action::kEntityMenu;
+  } else {
+    // Pas d'acteur : le menu du client est hors d'atteinte, on comble.
+    if (!is_me && !row.offline && ImGui::Selectable(i18n::Tr("Chuchoter"))) {
+      pending_      = Action::kWhisper;
       pending_gid_  = row.gid;
-      pending_id2_  = row.job;
       pending_name_ = row.name;
     }
-  }
-
-  // Le nom, dans le presse-papiers : de quoi le coller dans une commande de
-  // chat, un message, un ticket. Immédiat — rien de natif là-dedans.
-  if (ImGui::Selectable(i18n::Tr("Copier le nom"))) {
-    ImGui::SetClipboardText(ro::LocalToUtf8(row.name.c_str()));
+    // Le pont entre les deux onglets : un membre de groupe n'est pas forcément
+    // un ami, un ami n'est pas dans le groupe. Mêmes gardes que partout — on ne
+    // propose pas une demande que le serveur refusera.
+    if (party && !is_me && !rag::social::IsFriendByName(row.name.c_str()) &&
+        ImGui::Selectable(i18n::Tr("Ajouter à mes amis"))) {
+      pending_      = Action::kAddFriend;
+      pending_name_ = row.name;
+    }
+    if (!party && !row.offline &&
+        !rag::social::IsPartyMemberByName(row.name.c_str()) &&
+        rag::social::PartyMemberCount() > 0 &&
+        ImGui::Selectable(i18n::Tr("Inviter dans le groupe"))) {
+      pending_      = Action::kInviteParty;
+      pending_name_ = row.name;
+    }
+    if (ImGui::Selectable(i18n::Tr("Copier le nom"))) {
+      ImGui::SetClipboardText(ro::LocalToUtf8(row.name.c_str()));
+    }
   }
   ImGui::Separator();
-
-  // ── Les gestes CROISÉS entre les deux onglets ────────────────────────────
-  // Un membre de groupe n'est pas forcément un ami, et un ami n'est pas dans le
-  // groupe : c'est précisément là qu'on a envie de faire le pont, et le natif
-  // ne le proposait nulle part.
-  // ⚠ Pas proposé à quelqu'un qui est DÉJÀ dans la liste d'amis : la demande
-  // partirait, et le serveur la refuserait — le joueur, lui, aurait cru l'avoir
-  // ajouté. Le natif grise cette entrée pour la même raison
-  // (`FriendList_ContainsName` dans son propre menu).
-  if (party && !is_me && !rag::social::IsFriendByName(row.name.c_str()) &&
-      ImGui::Selectable(i18n::Tr("Ajouter à mes amis"))) {
-    pending_      = Action::kAddFriend;
-    pending_name_ = row.name;
-  }
-  // ⚠ Deux gardes, pour la même raison que « Ajouter à mes amis » : la demande
-  // partirait, le serveur la refuserait, et le joueur croirait avoir invité.
-  //   · déjà DANS mon groupe — rien à inviter ;
-  //   · je n'ai AUCUN groupe — le serveur exige que l'invitant en ait un.
-  if (!party && !row.offline &&
-      !rag::social::IsPartyMemberByName(row.name.c_str()) &&
-      rag::social::PartyMemberCount() > 0 &&
-      ImGui::Selectable(i18n::Tr("Inviter dans le groupe"))) {
-    pending_      = Action::kInviteParty;
-    pending_name_ = row.name;
-  }
 
   if (party) {
     // Réservé au chef, et jamais sur soi-même — mêmes gardes que le natif.

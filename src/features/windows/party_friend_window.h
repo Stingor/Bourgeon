@@ -114,6 +114,10 @@ class PartyFriendWindow : public Plugin {
   void RequestWhisper(uint32_t gid);
   void RequestMakeLeader(uint32_t gid);
   void RequestKick(uint32_t gid);
+  // Ouvre le menu contextuel du CLIENT sur ce personnage — celui de son sprite,
+  // qui porte chuchoter, échange, équipement et bien plus. Sans effet si
+  // l'acteur n'est pas chargé : il n'y a alors rien à ouvrir.
+  void RequestEntityMenu(uint32_t gid);
   // Suis-je le chef ? Décide des entrées réservées (nommer chef, expulser).
   //
   // 🔴 Relit la liste au lieu de rendre `i_am_leader_` : ce membre n'est calculé

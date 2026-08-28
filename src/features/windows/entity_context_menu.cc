@@ -1125,6 +1125,19 @@ void EntityContextMenu::BuildItems() {
     if (tip) item.tip = tip;
     items_.push_back(std::move(item));
   };
+  // « Cibler » : à DEUX conditions, et les deux comptent.
+  //   · le mode Ciblage est allumé — c'est lui qui donne un sens à « la cible » ;
+  //     éteint, l'entrée ne ferait rien et le HUD ne montrerait rien ;
+  //   · l'entité est À PORTÉE, c'est-à-dire que son acteur est chargé. Le menu
+  //     peut être ouvert depuis une LISTE (groupe, amis) sur quelqu'un qui n'est
+  //     pas en vue : il n'y aurait alors rien à cibler.
+  auto add_target_entry = [&]() {
+    auto* tf = Bourgeon::Instance().target_frame();
+    if (tf == nullptr || !tf->TargetingEnabled()) return;
+    if (gamescene::FindActorByGid(target_aid_) == nullptr) return;
+    add(i18n::Tr("Cibler"), 0, Local::kTargetEntity);
+  };
+
   // Grise la dernière entrée ajoutée, avec la raison en infobulle.
   auto disable_last = [&](const char* why) {
     items_.back().disabled = true;
@@ -1133,6 +1146,7 @@ void EntityContextMenu::BuildItems() {
 
   switch (kind_) {
     case Kind::kPlayer: {
+      add_target_entry();
       const uint32_t own_guild = static_cast<uint32_t>(rag::OwnGuildId());
       const bool in_guild  = own_guild != 0;
       const bool is_master = in_guild && ReadGlobalInt(rag::kGuildIsMasterAddr) != 0;
@@ -1221,6 +1235,7 @@ void EntityContextMenu::BuildItems() {
       break;
     case Kind::kMonster:
       add(i18n::Tr("Attaquer"), 0, Local::kAttack);
+      add_target_entry();
       add(i18n::Tr("Fiche du monstre"), 0, Local::kMonsterInfo, true);
       // Le lien de chat n'est proposé que s'il y a une barre pour l'accueillir :
       // promettre un geste qui ne peut rien faire est pire que de se taire.
@@ -1944,6 +1959,12 @@ void EntityContextMenu::FlushPending() {
       Bourgeon::Instance().SendPacket(packet, sizeof(packet));
       return;
     }
+    case Local::kTargetEntity:
+      // Par le chemin CLAVIER : un allié n'est pas une cible « valide » au sens
+      // du clic natif, donc rejouer un clic ne ciblerait rien du tout.
+      if (auto* tf = Bourgeon::Instance().target_frame())
+        tf->RequestTargetFromProxy(aid);
+      return;
     case Local::kAttack:
       // 🔴 Ordre EXPLICITE : il doit frapper même si « le clic cible sans
       // attaquer » est coché. Sans cette dispense, l'entrée de menu emprunterait

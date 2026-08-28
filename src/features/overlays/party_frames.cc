@@ -308,7 +308,18 @@ void PartyFrames::DrawMemberMenu() {
   // laisserait le groupe sans chef présent. Proposer ces entrées serait promettre
   // des gestes qui échoueraient en silence côté serveur.
   if (!menu_offline_) {
-    if (!is_me && ImGui::Selectable(i18n::Tr("Chuchoter"))) {
+    // 🔴 On ne REPRODUIT pas le menu du client : quand l'acteur est là, il porte
+    // déjà chuchoter, échange, équipement, copier le nom — et bien plus. On s'y
+    // efface. Sans acteur (membre sur une autre carte), il n'existe pas : c'est
+    // alors à nous d'offrir le chuchotement, qui voyage PAR NOM et n'a besoin
+    // d'aucune entité.
+    const bool actor_here =
+        is_me || gamescene::FindActorByGid(menu_gid_) != nullptr;
+    if (!is_me && actor_here &&
+        ImGui::Selectable(i18n::Tr("Menu du personnage"))) {
+      pfw->RequestEntityMenu(menu_gid_);
+    }
+    if (!is_me && !actor_here && ImGui::Selectable(i18n::Tr("Chuchoter"))) {
       pfw->RequestWhisper(menu_gid_);
     }
     if (pfw->IsPartyLeader() && !is_me &&

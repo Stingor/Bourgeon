@@ -300,6 +300,14 @@ class EntityContextMenu : public Plugin {
     kCopyPickInfo,  // AID + job + catégorie de pick (staff)
     kTalkToNpc,     // CZ_CONTACTNPC 0x0090
     kAttack,        // GameMode_PostActorClickAction
+    // Faire de cette entité la CIBLE, sans l'attaquer.
+    //
+    // 🔴 Passe par le ciblage CLAVIER de TargetFrame et non par un clic rejoué :
+    // `CGameMode+0xF4` n'est écrite qu'au clic sur une cible « valide », et un
+    // ALLIÉ n'en est pas une — le client ne cible pas les membres de son propre
+    // groupe à la souris. C'est d'ailleurs pour ça que cette entrée existe : elle
+    // comble un geste que le jeu ne sait pas faire.
+    kTargetEntity,
     kInspect,       // ouvre l'inspecteur de propriétés (staff)
     // Les deux gestes « chuchoter », séparés parce qu'ils n'ont pas la même
     // portée : le premier PRÉPARE l'envoi dans la barre de chat, le second ouvre
