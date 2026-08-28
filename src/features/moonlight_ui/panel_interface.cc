@@ -707,7 +707,7 @@ void MoonlightUi::DrawInterfacePanel() {
           {
             const char* kSweeps[] = {i18n::Tr("Aucun"),
                                      i18n::Tr("Balayage horaire"),
-                                     i18n::Tr("Voile montant")};
+                                     i18n::Tr("Voile descendant")};
             changed |= ro::RoCombo(i18n::Tr("Grisage de la case"),
                                    &tsb->sweep(), kSweeps,
                                    IM_ARRAYSIZE(kSweeps));
@@ -803,7 +803,7 @@ void MoonlightUi::DrawInterfacePanel() {
             {
               const char* kSweeps[] = {i18n::Tr("Aucun"),
                                        i18n::Tr("Balayage horaire"),
-                                       i18n::Tr("Voile montant")};
+                                       i18n::Tr("Voile descendant")};
               changed |= ro::RoCombo(i18n::Tr("Grisage de la case"),
                                      &pfw->buff_sweep(), kSweeps,
                                      IM_ARRAYSIZE(kSweeps));
@@ -1028,7 +1028,7 @@ void MoonlightUi::DrawInterfacePanel() {
             {
               const char* kSweeps[] = {i18n::Tr("Aucun"),
                                        i18n::Tr("Balayage horaire"),
-                                       i18n::Tr("Voile montant")};
+                                       i18n::Tr("Voile descendant")};
               changed |= ro::RoCombo(i18n::Tr("Grisage de la case"),
                                      &pf->buff_sweep(), kSweeps,
                                      IM_ARRAYSIZE(kSweeps));

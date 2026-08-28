@@ -269,9 +269,10 @@ bool Draw(const StatusEffects::Entry& e, ImVec2 p0, ImVec2 p1,
     if (style.sweep == kSweepRadial) {
       RadialSweep(dl, p0, p1, spent, style.sweep_color);
     } else {
-      // Le voile MONTE : il occupe le haut, et le clair qui reste en bas est ce
-      // qu'il reste de temps. Descendre aurait fait grandir la part sombre par
-      // le bas, où l'œil cherche le niveau d'un réservoir.
+      // Le voile DESCEND : la part sombre coiffe la case et sa frontière glisse
+      // vers le bas, le clair qui subsiste étant ce qu'il reste de temps. Le
+      // commentaire disait « monte », ce qui décrivait l'inverse du code juste
+      // en dessous — et le libellé du réglage répétait l'erreur.
       dl->AddRectFilled(p0, ImVec2(p1.x, p0.y + (p1.y - p0.y) * spent),
                         style.sweep_color);
     }

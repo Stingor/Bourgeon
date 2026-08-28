@@ -29,7 +29,7 @@ namespace statuscell {
 enum Sweep {
   kSweepNone = 0,
   kSweepRadial,    // le balayage horaire des jeux de rôle, depuis midi
-  kSweepVertical,  // le voile monte par le bas, plus lisible en petit
+  kSweepVertical,  // le voile descend depuis le haut, plus lisible en petit
 };
 
 struct Style {

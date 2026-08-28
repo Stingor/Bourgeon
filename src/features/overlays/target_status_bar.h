@@ -77,7 +77,7 @@ class TargetStatusBar : public Plugin {
   // déchiffrer autant de nombres.
   //
   //   kSweepRadial   — le balayage horaire des jeux de rôle, depuis midi ;
-  //   kSweepVertical — le voile monte par le bas, plus lisible en petit ;
+  //   kSweepVertical — le voile descend depuis le haut, plus lisible petit ;
   //   kSweepNone     — rien, le nombre suffit.
   //
   // ⚠ Un état SANS échéance n'est jamais voilé : il n'a pas de part écoulée, et
