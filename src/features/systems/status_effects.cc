@@ -7,6 +7,7 @@
 
 #include "bourgeon.h"
 #include "features/overlays/target_frame.h"  // la cible courante, second sujet
+#include "features/status_cell.h"  // HasFallback : les états sans image
 #include "features/systems/bourgeon_opcodes.h"
 #include "ragnarok/game_scene.h"
 #include "ragnarok/globals.h"
@@ -285,7 +286,7 @@ void StatusEffects::HandlePacket(uint16_t opcode, const uint8_t* data,
         std::memcpy(&remain_ms, data + off + 2, sizeof(remain_ms));
         std::memcpy(&total_ms, data + off + 6, sizeof(total_ms));
         if (id == 0) continue;
-        if (!bopcodes::IsAilment(id) && IconPath(id) == nullptr) continue;
+        if (!statuscell::HasFallback(id) && IconPath(id) == nullptr) continue;
         Entry e;
         e.efst = id;
         // 0 = pas d'échéance (état permanent) : surtout pas « expiré ».
@@ -442,10 +443,11 @@ void StatusEffects::Apply(uint32_t gid, uint16_t efst, bool active,
   // Un état qu'on n'affichera jamais n'a pas à occuper la table : le client
   // lui-même n'a pas d'image pour lui, c'est SON arbitrage et on le suit.
   //
-  // ⚠ Les ALTÉRATIONS échappent à ce test : elles n'ont d'icône nulle part, et
-  // c'est précisément pour cela que le serveur nous les envoie sous un id à
-  // nous. Les filtrer ici les aurait rendues invisibles une seconde fois.
-  if (!bopcodes::IsAilment(efst) && IconPath(efst) == nullptr) return;
+  // ⚠ DEUX exceptions : `EFST_HEALTHSTATE_BLIND` et `..._BLOODING` existent dans
+  // l'énumération mais le Lua du client ne les déclare pas et n'a pas d'image
+  // pour eux. Les filtrer ici rendrait l'aveuglement et le saignement invisibles
+  // alors qu'on sait très bien les dessiner (cf. `statuscell`, la pastille).
+  if (!statuscell::HasFallback(efst) && IconPath(efst) == nullptr) return;
 
   if (it == by_gid_.end()) {
     if (by_gid_.size() >= kMaxTrackedEntities) return;

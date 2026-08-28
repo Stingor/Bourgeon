@@ -10,7 +10,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include "features/systems/bourgeon_opcodes.h"  // la plage des altérations
 #include "ragnarok/lua.h"
 #include "ragnarok/msgstring.h"
 #include "ui/game_texture.h"
@@ -112,111 +111,36 @@ void FormatRemainLong(uint32_t ms, char* out, size_t cap) {
   std::snprintf(out, cap, "%s", tmp);
 }
 
-// ── Les alterations, faute d'icone ──────────────────────────────────────────
+// ── Les DEUX états que le client ne sait pas dessiner ───────────────────────
 //
-// 🔴 Le client n'a AUCUNE image pour elles : ni EFST, ni fichier. Il les rend
-// sur le sprite (les Z du sommeil, la bulle du silence), ce qu'une liste d'états
-// ne peut pas reproduire. On dessine donc une pastille : trois lettres sur un
-// fond coloré, lisible à toute taille et sans dépendre du moindre asset.
+// Tout le reste des altérations a désormais sa VRAIE icône : le serveur envoie
+// `EFST_BODYSTATE_SLEEP`, `EFST_HEALTHSTATE_SILENCE`… — de vrais EFST, que le
+// client résout tout seul en `BD_Sleep.tga`, `HL_Silence.tga`, avec son nom et
+// son texte. Il n'y avait rien à inventer, juste à les nommer côté serveur.
 //
-// La couleur groupe par FAMILLE — immobilisation en bleu, poison en vert,
-// aveuglement en gris — pour qu'on lise la nature d'un coup d'œil avant même de
-// déchiffrer les lettres.
+// 🔴 Restent BLIND (887) et BLOODING (889) : ils existent dans l'énumération,
+// mais `efstids.lub` ne les déclare pas et `stateiconimginfo.lub` n'a pas
+// d'image pour eux. Sans ce repli, l'aveuglement et le saignement seraient
+// invisibles — deux altérations qu'on veut justement voir sur une cible.
+//
+// ⚠ Ces valeurs sont celles du CLIENT (efstids.lub), pas des constantes à nous.
+constexpr uint16_t kEfstBlind    = 887;
+constexpr uint16_t kEfstBleeding = 889;
+
 struct AilmentLook {
   const char* abbrev;
   const char* name;   // clé de traduction, développée par l'appelant
   ImU32       color;
 };
 
-// ── Retrouver la VRAIE icone d'une alteration ───────────────────────────────
-//
-// 🔴 Le client EN A UNE. `bd_sleep.tga`, `bd_stun.tga`, `bd_freezing.tga`… sont
-// dans le GRF, et son propre tooltip nomme l'etat (« Sleep — Disable action and
-// Flee »). Ce qui manque n'est donc pas l'image : c'est l'ID. Le serveur ne
-// l'envoie pas, parce que `db/pre-re/status.yml` ne donne aucune ligne `Icon:`
-// a ces statuts et que l'enumeration `efst_type` de rAthena ne les nomme pas.
-//
-// ⚠ ON NE DEVINE PAS CET ID. Les noms de fichiers sont ABSENTS de l'exe (verifie
-// : ils viennent du Lua du GRF), donc aucune table en dur ne les trahit, et un
-// numero suppose serait faux au premier client different.
-//
-// On demande donc au CLIENT lui-meme : un balayage des ids, `GetEFSTImgFileName`
-// pour chacun, et l'on retient celui dont le fichier porte le nom cherche. Une
-// seule fois — le resultat ne change pas d'une session a l'autre.
-//
-// Sans correspondance, on retombe sur la pastille. C'est le cas des alterations
-// qui n'ont vraiment aucune image (silence, poison, malediction…) : le repli
-// n'est pas un echec, c'est l'autre moitie du dispositif.
-uint16_t DiscoverEfstByFile(const char* stem) {
-  if (stem == nullptr || stem[0] == '\0') return 0;
-  // ⚠ Le balayage entier est fait au PREMIER appel, pas une fois par etat : il
-  // traverse le Lua ~1500 fois, ce qu'on ne veut payer qu'une seule fois pour
-  // toutes les alterations reunies.
-  static std::unordered_map<std::string, uint16_t> found;
-  static bool scanned = false;
-  if (!scanned) {
-    scanned = true;
-    // Au-dela, les ids ne sont plus servis : l'enumeration du serveur en compte
-    // moins de 1500, et on se garde une marge.
-    for (uint16_t id = 1; id < 2048; ++id) {
-      const char* path = StatusEffects::IconPath(id);
-      if (path == nullptr) continue;
-      // Le nom de fichier seul, sans son dossier ni son extension.
-      const char* slash = strrchr(path, '\\');
-      const char* base = slash ? slash + 1 : path;
-      std::string key(base);
-      const size_t dot = key.rfind('.');
-      if (dot != std::string::npos) key.resize(dot);
-      for (char& c : key) c = static_cast<char>(tolower(c));
-      // Le PREMIER id gagne : plusieurs couches partagent parfois une image, et
-      // c'est la couche de base qu'on veut.
-      if (found.find(key) == found.end()) found.emplace(key, id);
-    }
-  }
-  auto it = found.find(stem);
-  return (it != found.end()) ? it->second : 0;
-}
-
-// Le fichier que le client associe a chaque alteration, quand il en a un.
-// Vide = pas d'image connue, la pastille prendra le relais.
-const char* AilmentIconStem(uint16_t ail) {
-  switch (ail) {
-    case bopcodes::kAilSleep:     return "bd_sleep";
-    case bopcodes::kAilStun:      return "bd_stun";
-    case bopcodes::kAilFreeze:    return "bd_freezing";
-    case bopcodes::kAilStone:     return "bd_stonecurse";
-    case bopcodes::kAilStoneWait: return "bd_stonecurse";
-    case bopcodes::kAilBurning:   return "bd_burnning";  // sic : deux « n »
-    case bopcodes::kAilImprison:  return "bd_imprison";
-    default:                      return "";
-  }
-}
-
 const AilmentLook* LookupAilment(uint16_t efst) {
-  // ⚠ Indexé par la valeur de `bopcodes::Ailment`, donc l'ORDRE compte : il
-  // suit celui de `e_bourgeon_ailment` côté serveur.
-  static const AilmentLook kLooks[] = {
-      {"", "", 0},                                                  // 0 inutilisé
-      {"PET", "Pétrifié",       IM_COL32(120, 120, 130, 235)},      // kAilStone
-      {"GEL", "Gelé",           IM_COL32( 70, 150, 210, 235)},      // kAilFreeze
-      {"ETD", "Étourdi",        IM_COL32(210, 175,  60, 235)},      // kAilStun
-      {"DOR", "Endormi",        IM_COL32( 90, 110, 190, 235)},      // kAilSleep
-      {"PET", "Pétrification",  IM_COL32(140, 130, 110, 235)},      // kAilStoneWait
-      {"FEU", "En feu",         IM_COL32(210,  90,  45, 235)},      // kAilBurning
-      {"EMP", "Emprisonné",     IM_COL32(100,  90, 140, 235)},      // kAilImprison
-      {"PSN", "Empoisonné",     IM_COL32( 95, 165,  80, 235)},      // kAilPoison
-      {"MAL", "Maudit",         IM_COL32(160,  70, 150, 235)},      // kAilCurse
-      {"SIL", "Silence",        IM_COL32(130, 130, 175, 235)},      // kAilSilence
-      {"CNF", "Confus",         IM_COL32(180, 120, 200, 235)},      // kAilConfusion
-      {"AVG", "Aveuglé",        IM_COL32( 80,  80,  90, 235)},      // kAilBlind
-      {"SNG", "Saignement",     IM_COL32(185,  55,  55, 235)},      // kAilBleeding
-      {"PSN", "Poison mortel",  IM_COL32( 60, 130,  60, 235)},      // kAilDeadlyPoison
-      {"PEU", "Terrifié",       IM_COL32(150, 100,  60, 235)},      // kAilFear
-  };
-  if (!bopcodes::IsAilment(efst)) return nullptr;
-  const uint16_t idx = efst - bopcodes::kAilmentBase;
-  if (idx == 0 || idx >= IM_ARRAYSIZE(kLooks)) return nullptr;
-  return &kLooks[idx];
+  static const AilmentLook kBlind = {"AVG", "Aveuglé",
+                                     IM_COL32(80, 80, 90, 235)};
+  static const AilmentLook kBleed = {"SNG", "Saignement",
+                                     IM_COL32(185, 55, 55, 235)};
+  if (efst == kEfstBlind) return &kBlind;
+  if (efst == kEfstBleeding) return &kBleed;
+  return nullptr;
 }
 
 // Cette ligne ne porte-t-elle QUE des marqueurs de format ?
@@ -295,6 +219,8 @@ const Text& Lookup(uint16_t efst) {
 }
 
 }  // namespace
+
+bool HasFallback(uint16_t efst) { return LookupAilment(efst) != nullptr; }
 
 const char* Name(uint16_t efst) {
   if (const AilmentLook* look = LookupAilment(efst)) return i18n::Tr(look->name);
@@ -381,24 +307,6 @@ bool Draw(const StatusEffects::Entry& e, ImVec2 p0, ImVec2 p1,
   // rebours, infobulle — s'applique ensuite à l'identique, c'est bien pour ça
   // que ces deux rendus vivent dans la même fonction.
   if (const AilmentLook* look = LookupAilment(e.efst)) {
-    // L'IMAGE D'ABORD, quand le client en a une : une vraie icone vaut mieux
-    // que trois lettres, et c'est celle que le joueur voit deja dans sa propre
-    // barre d'etats. La pastille reste le REPLI, pour les alterations dont
-    // aucun fichier ne porte le nom.
-    bool painted = false;
-    const uint16_t real =
-        DiscoverEfstByFile(AilmentIconStem(e.efst - bopcodes::kAilmentBase));
-    if (real != 0) {
-      if (const char* p = StatusEffects::IconPath(real)) {
-        const ro::GameTexture tex = ro::CachedTextureFromGameFile(p);
-        if (tex.tex) {
-          dl->AddImage(reinterpret_cast<ImTextureID>(tex.tex), p0, p1,
-                       ImVec2(0, 0), ImVec2(1, 1), tint);
-          painted = true;
-        }
-      }
-    }
-    if (!painted) {
     const float rounding = (p1.x - p0.x) * 0.18f;
     dl->AddRectFilled(p0, p1, look->color, rounding);
     dl->AddRect(p0, p1, IM_COL32(0, 0, 0, 170), rounding);
@@ -412,7 +320,6 @@ bool Draw(const StatusEffects::Entry& e, ImVec2 p0, ImVec2 p1,
     dl->AddText(font, fsz, ImVec2(tp.x + 1.0f, tp.y + 1.0f),
                 IM_COL32(0, 0, 0, 190), look->abbrev);
     dl->AddText(font, fsz, tp, IM_COL32_WHITE, look->abbrev);
-    }
   } else {
     const char* path = StatusEffects::IconPath(e.efst);
     if (path == nullptr) return false;

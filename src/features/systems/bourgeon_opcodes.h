@@ -91,46 +91,4 @@ constexpr uint16_t kStatusList     = 0x0F2D;  // ZC_BOURGEON_STATUS_LIST (liste 
 // est hors de la table du client (garantie flag=-1 = variable). Champ libre.
 // (0x0F00/0x0F01 libérés — anciennes valeurs tech data avant regroupement.)
 constexpr uint16_t kNextFree    = 0x0F2E;
-
-// ── Les alterations SANS icone EFST ─────────────────────────────────────────
-//
-// 🔴 Sleep, Silence, Stun, Freeze, Stone, Poison, Curse, Blind, Confusion :
-// AUCUNE n'a d'icone dans le client, et l'enumeration efst_type n'en contient
-// aucune. Le client les rend sur le SPRITE (les Z du sommeil, la bulle du
-// silence), jamais en icone — elles etaient donc invisibles partout ou l'on
-// liste des etats.
-//
-// ZC_BOURGEON_STATUS_LIST leur substitue un id de CETTE plage, hors de portee
-// des vrais EFST (le plus haut tourne autour de 1500). Aucun changement de
-// structure de paquet : c'est le champ `efst` habituel, avec une valeur qu'on
-// sait reconnaitre.
-//
-// ⚠ DOIT rester synchronise avec `e_bourgeon_ailment` du serveur
-// (packets_struct.hpp) : meme base, meme ordre.
-constexpr uint16_t kAilmentBase = 0xF000;
-
-enum Ailment : uint16_t {
-  kAilStone = 1,
-  kAilFreeze,
-  kAilStun,
-  kAilSleep,
-  kAilStoneWait,
-  kAilBurning,
-  kAilImprison,
-  kAilPoison,
-  kAilCurse,
-  kAilSilence,
-  kAilConfusion,
-  kAilBlind,
-  kAilBleeding,
-  kAilDeadlyPoison,
-  kAilFear,
-  kAilMax,
-};
-
-// Cet id vient-il de chez nous plutot que de la table du client ?
-inline bool IsAilment(uint16_t efst) {
-  return efst > kAilmentBase && efst < kAilmentBase + kAilMax;
-}
-
 }  // namespace bopcodes

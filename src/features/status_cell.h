@@ -53,6 +53,14 @@ struct Style {
 bool Draw(const StatusEffects::Entry& e, ImVec2 p0, ImVec2 p1,
           const Style& style, bool tooltip);
 
+// Cet état a-t-il un rendu DE REPLI, faute d'image côté client ?
+//
+// Deux seulement : l'aveuglement et le saignement, que l'énumération connaît
+// mais dont le Lua du client ne déclare ni l'id ni le fichier. Le registre s'en
+// sert pour ne pas les écarter — il rejette normalement tout ce qui n'a pas
+// d'icône, et ces deux-là seraient invisibles alors qu'on sait les dessiner.
+bool HasFallback(uint16_t efst);
+
 // Le NOM de l'état, tel que le client l'écrit dans sa propre infobulle.
 // Chaîne vide s'il n'en a pas. Mémorisé — c'est un appel Lua.
 const char* Name(uint16_t efst);
