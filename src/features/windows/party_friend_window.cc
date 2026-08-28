@@ -15,6 +15,7 @@
 #include "features/overlays/target_frame.h"      // cibler par le chemin clavier
 #include "features/windows/entity_context_menu.h"  // le menu du personnage
 #include "imgui.h"
+#include "ragnarok/actor.h"      // rag::actor::kJobId (le job vient de l'ACTEUR)
 #include "ragnarok/game_scene.h"
 #include "ragnarok/globals.h"
 #include "ragnarok/stl_node.h"  // treenode:: (le std::map des positions de groupe)
@@ -410,10 +411,19 @@ void PartyFriendWindow::FlushPending() {
       // C'est `EntityContextMenu` qui décide de son contenu et de ce qu'il grise
       // — on ne lui donne que la cible.
       void* gm = rag::ActiveModeSafe();
-      if (gm != nullptr && gamescene::FindActorByGid(pending_gid_) != nullptr) {
+      void* actor = gamescene::FindActorByGid(pending_gid_);
+      if (gm != nullptr && actor != nullptr) {
+        // 🔴 Le job vient de l'ACTEUR, jamais de l'entrée sociale. Une entrée
+        // d'AMI n'en porte pas — le serveur n'envoie que nom, AID et CID pour
+        // cette liste — et un job à 0 fait conclure au menu qu'il s'agit d'un
+        // MONSTRE : il proposait « Attaquer », « Fiche du monstre »… sur un ami.
+        uint32_t job = 0;
+        __try {
+          job = static_cast<uint32_t>(*reinterpret_cast<const int32_t*>(
+              reinterpret_cast<const uint8_t*>(actor) + rag::actor::kJobId));
+        } __except (EXCEPTION_EXECUTE_HANDLER) { job = 0; }
         if (auto* ctx = Bourgeon::Instance().entity_context_menu()) {
-          ctx->OpenForEntity(gm, pending_gid_, pending_id2_,
-                             gamescene::kPickActor);
+          ctx->OpenForEntity(gm, pending_gid_, job, gamescene::kPickActor);
         }
       }
       break;
@@ -1282,7 +1292,13 @@ void PartyFriendWindow::DrawRowContextMenu(const rag::social::Entry& row, bool p
     pending_      = Action::kAddFriend;
     pending_name_ = row.name;
   }
+  // ⚠ Deux gardes, pour la même raison que « Ajouter à mes amis » : la demande
+  // partirait, le serveur la refuserait, et le joueur croirait avoir invité.
+  //   · déjà DANS mon groupe — rien à inviter ;
+  //   · je n'ai AUCUN groupe — le serveur exige que l'invitant en ait un.
   if (!party && !row.offline &&
+      !rag::social::IsPartyMemberByName(row.name.c_str()) &&
+      rag::social::PartyMemberCount() > 0 &&
       ImGui::Selectable(i18n::Tr("Inviter dans le groupe"))) {
     pending_      = Action::kInviteParty;
     pending_name_ = row.name;

@@ -82,6 +82,14 @@ bool AmIPartyLeader();
 // serveur identifie un personnage.
 bool IsFriendByName(const char* name);
 
+// Ce nom est-il DÉJÀ dans mon groupe ? Le pendant de `IsFriendByName`, pour les
+// surfaces qui proposent d'inviter : la demande partirait, le serveur la
+// refuserait, et le joueur croirait avoir invité quelqu'un.
+// ⚠ Comparaison par NOM et non par GID : c'est par le nom que l'invitation
+// voyage (CZ 0x02C4), et une entrée d'AMI ne porte pas les mêmes identifiants
+// qu'une entrée de groupe.
+bool IsPartyMemberByName(const char* name);
+
 // L'entrée d'un membre du groupe, par GID. Rend false s'il n'y est plus.
 // Sert aux surfaces qui n'ont qu'un GID et ont besoin du NOM (les actions de
 // groupe voyagent par nom).

@@ -187,6 +187,16 @@ bool IsFriendByName(const char* name) {
   return false;
 }
 
+bool IsPartyMemberByName(const char* name) {
+  if (name == nullptr || name[0] == '\0') return false;
+  std::vector<Entry> party;
+  ReadList(true, party);
+  for (const Entry& e : party) {
+    if (e.name == name) return true;
+  }
+  return false;
+}
+
 bool FindPartyMember(uint32_t gid, Entry* out) {
   if (gid == 0) return false;
   std::vector<Entry> party;

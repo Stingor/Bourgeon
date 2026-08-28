@@ -690,6 +690,14 @@ void MoonlightUi::DrawInterfacePanel() {
                                    IM_ARRAYSIZE(kHpModes));
           }
           changed |= ro::RoCheckbox(i18n::Tr("Barre de SP"), &pfw->show_sp_);
+          {
+            const char* kSpModes[] = {
+                i18n::Tr("Rien"), i18n::Tr("Chiffres"),
+                i18n::Tr("Pourcentage"), i18n::Tr("Chiffres et pourcentage")};
+            changed |= ro::RoCombo(i18n::Tr("Texte du SP"),
+                                    &pfw->sp_text_mode_, kSpModes,
+                                    IM_ARRAYSIZE(kSpModes));
+          }
           SameLine(); HelpMarker(i18n::Tr(
               "Le SP d'un autre joueur ne circule dans AUCUN paquet du jeu : il "
               "est demandé au serveur, membre par membre. Il n'apparaît donc que "
@@ -715,14 +723,6 @@ void MoonlightUi::DrawInterfacePanel() {
                                     &pfw->text_px_, 0, 20, "%d px");
           SameLine(); HelpMarker(i18n::Tr(
               "À zéro, celle de l'interface."));
-          {
-            const char* kSpModes[] = {
-                i18n::Tr("Rien"), i18n::Tr("Chiffres"),
-                i18n::Tr("Pourcentage"), i18n::Tr("Chiffres et pourcentage")};
-            changed |= ro::RoCombo(i18n::Tr("Texte du SP"),
-                                    &pfw->sp_text_mode_, kSpModes,
-                                    IM_ARRAYSIZE(kSpModes));
-          }
 
           if (changed) SaveSettings();
         }
