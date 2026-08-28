@@ -3563,6 +3563,8 @@
 "Infobulle au survol": "Información al pasar el cursor"
 "Clic gauche : cibler le membre": "Clic izquierdo: seleccionar al miembro"
 "Buffs et debuffs": "Buffs y debuffs"
+"Temps restant sous l'icône": "Tiempo restante bajo el icono"
+"La case s'assombrit à mesure que l'état s'écoule.\n\n⚠ La durée d'origine n'est portée par AUCUN paquet : elle est exacte quand on a vu l'état commencer, et repart de « plein » quand on le découvre en route.": "La casilla se oscurece a medida que el estado transcurre.\n\n⚠ La duración original NO la lleva ningún paquete: es exacta cuando se vio empezar el estado, y arranca de « lleno » cuando se descubre a mitad."
 "États de la cible": "Estados del objetivo"
 "Afficher la barre": "Mostrar la barra"
 "Écoulement": "Transcurso"

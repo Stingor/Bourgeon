@@ -3605,6 +3605,8 @@
 "Infobulle au survol": "Tooltip on hover"
 "Clic gauche : cibler le membre": "Left click: target the member"
 "Buffs et debuffs": "Buffs and debuffs"
+"Temps restant sous l'icône": "Time left under the icon"
+"La case s'assombrit à mesure que l'état s'écoule.\n\n⚠ La durée d'origine n'est portée par AUCUN paquet : elle est exacte quand on a vu l'état commencer, et repart de « plein » quand on le découvre en route.": "The cell darkens as the state elapses.\n\n⚠ The original duration is carried by NO packet: it is exact when the state was seen starting, and restarts from « full » when discovered midway."
 "États de la cible": "Target's states"
 "Afficher la barre": "Show the bar"
 "Écoulement": "Elapsing"

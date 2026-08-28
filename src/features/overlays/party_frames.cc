@@ -638,6 +638,11 @@ float PartyFrames::DrawTileEffects(uint32_t gid, float right, float top,
     // ⚠ Pas d'infobulle ici : la tuile a déjà la sienne, qui porte tout le
     // membre. Une seconde par-dessus se disputerait le même survol.
     statuscell::Style st;
+    st.sweep       = buff_sweep_;
+    st.sweep_color = IM_COL32(0, 0, 0, 140);
+    // La moitié de l'icône, plancher à 7 px : un texte de taille fixe débordait
+    // sur la rangée du dessous dès qu'on réduisait les icônes.
+    st.time_px     = buff_time_ ? std::max(ro::Px(7.0f), side * 0.5f) : 0.0f;
     if (!statuscell::Draw(list[i], ImVec2(x - side, top), ImVec2(x, top + side),
                           st, false))
       continue;

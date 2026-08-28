@@ -9,6 +9,7 @@
 #include "features/overlays/target_frame.h"  // la cible courante
 #include "features/status_cell.h"  // le rendu d'UNE case d'état
 #include "imgui.h"
+#include "ragnarok/social.h"  // OwnAid : ne jamais se montrer soi-même
 #include "ui/ro_imgui.h"
 
 namespace {
@@ -29,6 +30,14 @@ void TargetStatusBar::Collect(std::vector<StatusEffects::Entry>* out) const {
 
   const uint32_t gid = TargetFrame::CurrentSelectionGid();
   if (gid == 0) return;
+  // 🔴 JAMAIS SOI-MÊME. Se cibler — depuis une tuile de la grille, par exemple —
+  // faisait apparaître ici ses PROPRES états, que la barre d'icônes du client
+  // montre déjà en permanence. Deux affichages de la même chose, dont l'un
+  // surgit et disparaît au gré des clics.
+  //
+  // Le sondage saute déjà mon GID pour la même raison ; ce test-ci couvre
+  // l'affichage, que la diffusion AREA alimente de son côté.
+  if (gid == rag::social::OwnAid()) return;
   // Le registre applique déjà sa règle d'accès : un adversaire PVP n'y est
   // jamais entré, donc il n'y a rien à filtrer de plus ici.
   if (!fx->Effects(gid, out)) return;
@@ -81,24 +90,35 @@ void TargetStatusBar::OnRenderUI() {
   std::vector<StatusEffects::Entry> list;
   Collect(&list);
 
-  // 🔴 Rien à montrer, rien à l'écran. Sauf quand on la déverrouille : il faut
-  // bien pouvoir la placer, et un cadre invisible ne se saisit pas.
-  const bool placing = ImGui::GetIO().KeyShift || !locked_;
-  if (list.empty() && !placing) return;
-
-  ro::HudFrameOpts opts;
-  // Même geste que les autres cadres : MAJ libère, mais seulement quand le
-  // curseur est dessus — en RO, MAJ+clic est l'attaque forcée, et une barre qui
-  // reprendrait la souris partout rendrait ce geste muet.
+  // Le curseur est-il sur l'emplacement de la barre ? Le rectangle est connu
+  // même quand rien n'est dessiné : c'est ce qui permet de retrouver une barre
+  // vide pour la déplacer, sans la faire surgir partout ailleurs.
   const ImVec2 mouse = ImGui::GetIO().MousePos;
   const bool over =
       mouse.x >= static_cast<float>(rect_.x) &&
       mouse.y >= static_cast<float>(rect_.y) &&
       mouse.x <  static_cast<float>(rect_.x + rect_.w) &&
       mouse.y <  static_cast<float>(rect_.y + rect_.h);
-  const bool unlock_override =
+
+  // 🔴 MAJ SEULE NE SUFFIT PAS À LA FAIRE APPARAÎTRE. En RO, MAJ+clic est
+  // l'attaque forcée : une barre vide qui surgissait à chaque appui sur MAJ
+  // clignotait à l'écran pendant tout un combat. Il faut en plus que le curseur
+  // soit sur SON emplacement — ou qu'un déplacement soit déjà en cours, sinon
+  // tirer le cadre vers l'extérieur le ferait disparaître en pleine saisie.
+  //
+  // Déverrouillée pour de bon (`!locked_`), elle reste visible : on est alors
+  // explicitement en train de placer ses cadres, et les chercher un par un avec
+  // le curseur n'aurait aucun sens.
+  const bool grabbing =
       ImGui::GetIO().KeyShift && (over || ro::HudFrameDragging());
-  opts.locked   = locked_ && !unlock_override;
+  const bool placing = !locked_ || grabbing;
+
+  // Rien à montrer, rien à l'écran — et surtout pas un cadre vide qu'on
+  // prendrait pour une fonction en panne.
+  if (list.empty() && !placing) return;
+
+  ro::HudFrameOpts opts;
+  opts.locked   = locked_ && !grabbing;
   opts.border   = border_;
   opts.rounding = ro::Px(3.0f);
   opts.bg       = col_bg_;
@@ -120,8 +140,6 @@ void TargetStatusBar::OnRenderUI() {
     const float left = win.x + pad;
     const float right = win.x + static_cast<float>(rect_.w) - pad;
 
-    const uint32_t now = ::timeGetTime();
-    ImFont* font = ImGui::GetFont();
     const float fsz = ro::Px(static_cast<float>(std::max(7, time_px_)));
 
     float x = left;

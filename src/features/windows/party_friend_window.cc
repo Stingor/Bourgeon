@@ -1334,6 +1334,9 @@ void PartyFriendWindow::DrawRowEffects(uint32_t gid, float right, float top) {
     // ⚠ Pas d'infobulle : la LIGNE a déjà la sienne, et elle se déclenche sur
     // toute sa largeur — les deux se disputeraient le même survol.
     statuscell::Style st;
+    st.sweep       = buff_sweep_;
+    st.sweep_color = IM_COL32(0, 0, 0, 140);
+    st.time_px     = buff_time_ ? std::max(ro::Px(7.0f), side * 0.5f) : 0.0f;
     if (!statuscell::Draw(list[i], ImVec2(x - side, top), ImVec2(x, top + side),
                           st, false))
       continue;

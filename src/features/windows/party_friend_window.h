@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "features/plugin.h"
+#include "features/status_cell.h"  // les modes de grisage
 #include "ragnarok/social.h"  // rag::social::Entry — la ligne, lue une seule fois
 
 // ── PartyFriendWindow ────────────────────────────────────────────────────────
@@ -199,6 +200,15 @@ class PartyFriendWindow : public Plugin {
   bool show_buffs_    = false;
   int  buff_px_       = 16;  // cote d'une icone, en pixels d'interface
   int  buff_max_      = 5;   // combien au plus sur une ligne
+  // Le temps restant sous l'icône, et le grisage de la part écoulée. Mêmes
+  // notions que la barre d'états de la cible, réglées à part : une icône de
+  // tuile fait la moitié de la sienne, et ce qui s'y lit n'est pas le même.
+  //
+  // ⚠ La taille du texte SUIT celle de l'icône (la moitié, sans descendre sous
+  // 7 px) : un compte à rebours fixe débordait sur la ligne du dessous dès qu'on
+  // réduisait les icônes.
+  bool buff_time_  = true;
+  int  buff_sweep_ = statuscell::kSweepRadial;
 
   // ── Cibler depuis la liste ────────────────────────────────────────────────
   //
@@ -242,6 +252,7 @@ class PartyFriendWindow : public Plugin {
   int& map_mode()     { return map_mode_; }
   int& buff_px()      { return buff_px_; }
   int& buff_max()     { return buff_max_; }
+  int& buff_sweep()   { return buff_sweep_; }
 
   // Onglet courant. Mêmes valeurs que le champ natif `+0x28C`, pour que le sens se
   // lise pareil des deux côtés : 0 = amis, 1 = groupe.

@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "features/plugin.h"
+#include "features/status_cell.h"  // les modes de grisage
 #include "ragnarok/social.h"
 #include "ui/hud_frame.h"
 
@@ -164,6 +165,15 @@ class PartyFrames : public Plugin {
   bool show_buffs_    = true;
   int  buff_px_       = 14;  // cote d'une icone, en pixels d'interface
   int  buff_max_      = 6;   // combien au plus, avant de rogner la place du nom
+  // Le temps restant sous l'icône, et le grisage de la part écoulée. Mêmes
+  // notions que la barre d'états de la cible, réglées à part : une icône de
+  // tuile fait la moitié de la sienne, et ce qui s'y lit n'est pas le même.
+  //
+  // ⚠ La taille du texte SUIT celle de l'icône (la moitié, sans descendre sous
+  // 7 px) : un compte à rebours fixe débordait sur la ligne du dessous dès qu'on
+  // réduisait les icônes.
+  bool buff_time_  = true;
+  int  buff_sweep_ = statuscell::kSweepRadial;
 
   // ── Couleurs (RGBA 0..1, persistées en hex ARGB) ──────────────────────────
   //
@@ -204,6 +214,7 @@ class PartyFrames : public Plugin {
   int& sp_bar_h() { return sp_bar_h_; }
   int& buff_px()  { return buff_px_; }
   int& buff_max() { return buff_max_; }
+  int& buff_sweep() { return buff_sweep_; }
   int& hp_text_mode() { return hp_text_mode_; }
   int& text_px()      { return text_px_; }
   int& hp_mid_pct() { return hp_mid_pct_; }

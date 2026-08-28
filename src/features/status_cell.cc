@@ -6,8 +6,10 @@
 #include <cstdio>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "ragnarok/lua.h"
+#include "ragnarok/msgstring.h"
 #include "ui/game_texture.h"
 #include "ui/ro_imgui.h"
 #include "utils/i18n.h"
@@ -57,9 +59,8 @@ void RadialSweep(ImDrawList* dl, ImVec2 p0, ImVec2 p1, float spent, ImU32 col) {
   dl->Flags = saved;
 }
 
-// « 12 », « 1:05 », « 12:30 ». Une durée se lit d'un coup d'œil ou ne sert à
-// rien : sous la minute on donne les secondes seules, au-delà on passe en
-// minutes plutôt que d'afficher « 305 ».
+// « 12 », « 1:05 », « 12:30 ». Le format COMPACT, celui qui tient sous une
+// icône : une durée s'y lit d'un coup d'œil ou n'y sert à rien.
 void FormatRemain(uint32_t ms, char* out, size_t cap) {
   const unsigned total_s = ms / 1000u;
   if (total_s < 60u) {
@@ -67,6 +68,45 @@ void FormatRemain(uint32_t ms, char* out, size_t cap) {
     return;
   }
   std::snprintf(out, cap, "%u:%02u", total_s / 60u, total_s % 60u);
+}
+
+// Le format LONG, mot pour mot celui du client : « 2 minute(s) 53 seconde(s) ».
+//
+// 🔴 Les unités viennent de SES msgstring, pas de nous : 0x6A1 heure, 0x70F
+// minute, 0x710 seconde — les trois que `sub_C85A10` assemble pour son propre
+// tooltip d'état, chacune précédée du nombre et d'une espace (« %d %s »).
+//
+// Les prendre là plutôt que d'écrire « min » et « s » a deux effets : le texte
+// est exactement celui que le joueur lit déjà partout ailleurs dans le client,
+// et il suit la traduction — le catalogue msgstring de Bourgeon les traduit
+// comme le reste.
+//
+// ⚠ On ne peut PAS appeler `sub_C85A10` : elle cherche l'état dans
+// `g_StatusEffectList`, le vecteur global — c'est-à-dire MES états à moi. Sur
+// une cible tierce elle ne trouverait rien et rendrait une chaîne vide.
+void FormatRemainLong(uint32_t ms, char* out, size_t cap) {
+  if (!out || cap == 0) return;
+  out[0] = '\0';
+  const unsigned total_s = ms / 1000u;
+  const unsigned h = total_s / 3600u;
+  const unsigned m = (total_s % 3600u) / 60u;
+  const unsigned sec = total_s % 60u;
+
+  char tmp[128];
+  int n = 0;
+  if (h > 0)
+    n += std::snprintf(tmp + n, sizeof(tmp) - n, "%u %s", h,
+                       msgstr::Utf8Or(0x6A1, "h"));
+  if (m > 0)
+    n += std::snprintf(tmp + n, sizeof(tmp) - n, "%s%u %s", n ? " " : "", m,
+                       msgstr::Utf8Or(0x70F, "min"));
+  // Les secondes s'affichent aussi quand TOUT est à zéro : « 0 seconde(s) » se
+  // lit, une ligne vide non.
+  if (sec > 0 || n == 0)
+    std::snprintf(tmp + n, sizeof(tmp) - n, "%s%u %s", n ? " " : "", sec,
+                  msgstr::Utf8Or(0x710, "s"));
+
+  std::snprintf(out, cap, "%s", tmp);
 }
 
 // Cette ligne ne porte-t-elle QUE des marqueurs de format ?
@@ -108,7 +148,15 @@ bool OnlyFormatMarkers(const char* s) {
 // pour chacune, à chaque frame. Le résultat, lui, ne change jamais.
 struct Text {
   std::string name;
-  std::string desc;  // les lignes suivantes, recollées
+  std::vector<std::string> lines;  // la description, ligne par ligne
+  // 🔴 L'index où le CLIENT met la durée, ou -1 s'il n'en réserve pas.
+  //
+  // Une ligne qui n'est qu'un marqueur de format (« %s ») n'est pas du texte
+  // manquant : c'est l'emplacement que `StatusIcon_BuildTooltip` remplit avec le
+  // temps restant. On retient donc SA PLACE au lieu de la jeter — le texte se
+  // mémorise une fois, mais la durée change à chaque frame et ne peut pas être
+  // mise en cache avec lui.
+  int time_line = -1;
 };
 
 const Text& Lookup(uint16_t efst) {
@@ -125,23 +173,12 @@ const Text& Lookup(uint16_t efst) {
       break;
     if (line == 1) {
       t.name = buf;
+    } else if (OnlyFormatMarkers(buf)) {
+      // L'emplacement du temps. On garde sa PLACE (la première, s'il y en avait
+      // plusieurs) et on y mettra la durée au rendu.
+      if (t.time_line < 0) t.time_line = static_cast<int>(t.lines.size());
     } else {
-      // 🔴 Une ligne qui n'est QU'un marqueur de format ne s'affiche pas.
-      //
-      // Le client ne rend pas des phrases finies : certaines lignes de
-      // `GetStateIconDescript` sont des emplacements qu'il remplit lui-même —
-      // c'est là qu'il injecte le temps restant, obtenu par `GetTimeLimitInfo`
-      // juste avant (cf. `StatusIcon_BuildTooltip`). Recopiées telles quelles,
-      // elles s'affichaient en « %s » nu au milieu de la description.
-      //
-      // On ne les remplit pas : le temps est DÉJÀ sur sa propre ligne, deux
-      // lignes plus haut. Une ligne dont il ne reste rien une fois les marqueurs
-      // retirés est donc écartée — et « Increases DEF », qui n'en porte aucun,
-      // passe intacte.
-      if (!OnlyFormatMarkers(buf)) {
-        if (!t.desc.empty()) t.desc += '\n';
-        t.desc += buf;
-      }
+      t.lines.push_back(buf);
     }
   }
   return cache.emplace(efst, std::move(t)).first->second;
@@ -165,21 +202,42 @@ void Tooltip(const StatusEffects::Entry& e) {
     ImGui::Text("%s %u", i18n::Tr("État"), static_cast<unsigned>(e.efst));
   }
 
+  // La durée, au format long du client (« 2 minute(s) 53 seconde(s) »).
+  char when[160];
+  when[0] = '\0';
   if (e.expires_ms != 0) {
     const int32_t left_ms = static_cast<int32_t>(e.expires_ms - ::timeGetTime());
-    char txt[16];
-    FormatRemain(left_ms > 0 ? static_cast<uint32_t>(left_ms) : 0u, txt,
-                 sizeof(txt));
-    ImGui::TextDisabled("%s %s", i18n::Tr("Reste"), txt);
-  } else {
-    // ⚠ Pas « 0 » : un état sans échéance ne finit pas, et un zéro le ferait
-    // croire terminé.
-    ImGui::TextDisabled("%s", i18n::Tr("Sans durée"));
+    FormatRemainLong(left_ms > 0 ? static_cast<uint32_t>(left_ms) : 0u, when,
+                     sizeof(when));
   }
 
-  if (!t.desc.empty()) {
+  // 🔴 À LA PLACE QUE LE CLIENT LUI DONNE quand il en réserve une. Son propre
+  // tooltip la met au milieu de la description, pas en tête : suivre sa mise en
+  // page évite que deux infobulles du même jeu se lisent différemment.
+  //
+  // Sans emplacement réservé, la durée passe juste sous le nom — il faut bien
+  // qu'elle soit quelque part, et c'est là qu'on la cherche.
+  const bool has_slot = (t.time_line >= 0);
+  if (!has_slot) {
+    if (when[0]) {
+      ImGui::TextDisabled("%s", when);
+    } else {
+      // ⚠ Pas « 0 » : un état sans échéance ne finit pas, et un zéro le ferait
+      // croire terminé.
+      ImGui::TextDisabled("%s", i18n::Tr("Sans durée"));
+    }
+  }
+
+  if (!t.lines.empty() || (has_slot && when[0])) {
     ImGui::Separator();
-    ImGui::TextUnformatted(ro::LocalToUtf8(t.desc.c_str()));
+    for (size_t i = 0; i < t.lines.size(); ++i) {
+      if (has_slot && static_cast<int>(i) == t.time_line && when[0])
+        ImGui::TextDisabled("%s", when);
+      ImGui::TextUnformatted(ro::LocalToUtf8(t.lines[i].c_str()));
+    }
+    // L'emplacement était en DERNIÈRE position : la boucle ne l'a pas atteint.
+    if (has_slot && t.time_line >= static_cast<int>(t.lines.size()) && when[0])
+      ImGui::TextDisabled("%s", when);
   }
   ImGui::EndTooltip();
 }

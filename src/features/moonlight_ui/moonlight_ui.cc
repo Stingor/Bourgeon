@@ -28,6 +28,7 @@
 #include "features/overlays/menu_icons.h"
 #include "features/overlays/status_icon_bar.h"
 #include "features/overlays/target_status_bar.h"
+#include "features/status_cell.h"  // statuscell::kSweep* (defauts)
 #include "features/overlays/minimap.h"
 #include "features/overlays/quest_tracker.h"
 #include "features/overlays/item_obtain_toast.h"
@@ -643,6 +644,11 @@ const moonlight_ui::SettingDesc kPartyFramesSettings[] = {
      MLUI_LITERAL(int, 14)},
     {"partyframes_buff_max", SType::kInt, MLUI_FIELD(party_frames, buff_max()),
      MLUI_LITERAL(int, 6)},
+    {"partyframes_buff_time", SType::kBool,
+     MLUI_FIELD(party_frames, buff_time_), MLUI_LITERAL(bool, true)},
+    {"partyframes_buff_sweep", SType::kInt,
+     MLUI_FIELD(party_frames, buff_sweep()),
+     MLUI_LITERAL(int, statuscell::kSweepRadial)},
     {"partyframes_tile_w", SType::kInt, MLUI_FIELD(party_frames, tile_w()),
      MLUI_LITERAL(int, 180)},
     {"partyframes_gap", SType::kInt, MLUI_FIELD(party_frames, gap()),
@@ -775,6 +781,11 @@ const moonlight_ui::SettingDesc kPartyFriendSettings[] = {
      MLUI_FIELD(party_friend_window, buff_px()), MLUI_LITERAL(int, 16)},
     {"partyfriend_buff_max", SType::kInt,
      MLUI_FIELD(party_friend_window, buff_max()), MLUI_LITERAL(int, 5)},
+    {"partyfriend_buff_time", SType::kBool,
+     MLUI_FIELD(party_friend_window, buff_time_), MLUI_LITERAL(bool, true)},
+    {"partyfriend_buff_sweep", SType::kInt,
+     MLUI_FIELD(party_friend_window, buff_sweep()),
+     MLUI_LITERAL(int, statuscell::kSweepRadial)},
     // Densité et forme des jauges. Défauts = ce que la fenêtre montrait avant
     // que ces réglages n'existent.
     {"partyfriend_icon_px", SType::kInt,

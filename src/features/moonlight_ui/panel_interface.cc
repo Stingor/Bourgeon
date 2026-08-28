@@ -798,6 +798,21 @@ void MoonlightUi::DrawInterfacePanel() {
                                            &pfw->buff_px(), 8, 32, "%d px");
             changed |= mui::WheelSliderInt(i18n::Tr("Icônes au plus"),
                                            &pfw->buff_max(), 1, 10, "%d");
+            changed |= ro::RoCheckbox(i18n::Tr("Temps restant sous l'icône"),
+                                      &pfw->buff_time_);
+            {
+              const char* kSweeps[] = {i18n::Tr("Aucun"),
+                                       i18n::Tr("Balayage horaire"),
+                                       i18n::Tr("Voile montant")};
+              changed |= ro::RoCombo(i18n::Tr("Grisage de la case"),
+                                     &pfw->buff_sweep(), kSweeps,
+                                     IM_ARRAYSIZE(kSweeps));
+            }
+            SameLine(); HelpMarker(i18n::Tr(
+                "La case s'assombrit à mesure que l'état s'écoule.\n\n"
+                "⚠ La durée d'origine n'est portée par AUCUN paquet : elle est "
+                "exacte quand on a vu l'état commencer, et repart de « plein » "
+                "quand on le découvre en route."));
           }
 
           // ── Densité ───────────────────────────────────────────────────────
@@ -1008,6 +1023,21 @@ void MoonlightUi::DrawInterfacePanel() {
                                            &pf->buff_px(), 6, 28, "%d px");
             changed |= mui::WheelSliderInt(i18n::Tr("Icônes au plus"),
                                            &pf->buff_max(), 1, 10, "%d");
+            changed |= ro::RoCheckbox(i18n::Tr("Temps restant sous l'icône"),
+                                      &pf->buff_time_);
+            {
+              const char* kSweeps[] = {i18n::Tr("Aucun"),
+                                       i18n::Tr("Balayage horaire"),
+                                       i18n::Tr("Voile montant")};
+              changed |= ro::RoCombo(i18n::Tr("Grisage de la case"),
+                                     &pf->buff_sweep(), kSweeps,
+                                     IM_ARRAYSIZE(kSweeps));
+            }
+            SameLine(); HelpMarker(i18n::Tr(
+                "La case s'assombrit à mesure que l'état s'écoule.\n\n"
+                "⚠ La durée d'origine n'est portée par AUCUN paquet : elle est "
+                "exacte quand on a vu l'état commencer, et repart de « plein » "
+                "quand on le découvre en route."));
           }
 
           // ── Couleurs ──────────────────────────────────────────────────────
