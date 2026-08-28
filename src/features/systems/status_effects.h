@@ -14,14 +14,35 @@
 // `clif_status_change` (clif.cpp:11012) diffuse en **AREA** tout statut qui
 // porte une icône, à son début comme à sa fin. Le filtre `StatusRelevantBLTypes`
 // ne retire rien pour un joueur : `BL_SCEFFECT` contient `BL_PC`, donc les deux
-// branches passent. Et `clif_efst_status_change_sub` (clif.cpp:11075) REJOUE
-// tous les statuts actifs d'une entité quand elle entre dans la vue — on n'a
-// donc pas à attendre le prochain buff pour connaître qui vient d'apparaître.
+// branches passent. C'est LA source, et elle est large : 599 statuts en
+// pré-renewal.
 //
 // 🔴 AREA, et rien d'autre. Un membre du groupe sur une autre carte, ou à
 // l'autre bout de celle-ci, n'émet RIEN. C'est le même mur que pour le SP d'un
-// tiers, et il se franchit de la même façon : un paquet à nous. Ce module-ci ne
-// couvre que ce qui est à l'écran.
+// tiers, et il se franchit de la même façon : un paquet à nous.
+//
+// ── LE TROU : rien n'est rejoué à l'entrée dans la vue ──────────────────────
+//
+// 🔴🔴 On ne voit un état QUE s'il commence pendant qu'on regarde. Un joueur
+// déjà bénit qui entre à l'écran arrive VIERGE, et le restera jusqu'à ce qu'on
+// le rebénisse.
+//
+// Le chemin existe pourtant : `clif_insight` -> `clif_getareachar_unit`
+// (clif.cpp:9503) -> `clif_efst_status_change_sub` (clif.cpp:11075). Mais cette
+// dernière ne lit pas les status changes : elle lit `sd->sc_display`, que
+// `status_change_start` ne remplit que pour les statuts portant le drapeau
+// `DisplayPc` / `DisplayNpc` (status.cpp:13186).
+//
+// MESURÉ sur `db/pre-re/status.yml` : **57 sur 599**. Et pas les bons — ni
+// Blessing, ni Agi Up, ni Endure, ni Magnificat, ni Angelus, ni Impositio, ni
+// Kyrie, ni même Poison, Stone ou Freeze. Ce sont les statuts « de fond »
+// (monture, clan…) qui y sont, précisément ceux qu'on ne regarde pas.
+//
+// Conclusion : le paquet à nous n'est pas seulement nécessaire pour les membres
+// HORS de la vue, il l'est aussi pour l'état COMPLET d'un joueur à l'écran. Ce
+// module-ci reste utile — il montre les buffs au moment où ils tombent, ce qui
+// est le cas d'usage du soigneur — mais il ne prétend pas à l'exhaustivité, et
+// aucune surface ne doit lui en prêter.
 //
 // ── La durée ────────────────────────────────────────────────────────────────
 //

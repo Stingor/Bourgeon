@@ -679,10 +679,12 @@ void MoonlightUi::DrawInterfacePanel() {
                                     &pfw->show_buffs_);
           SameLine(); HelpMarker(i18n::Tr(
               "Les icônes d'état du membre, à gauche de sa pastille.\n\n"
-              "⚠ Une ligne SANS icône ne veut pas dire « aucun buff » : le "
-              "serveur ne diffuse ces états qu'aux joueurs qui VOIENT le "
-              "personnage. Un membre sur une autre carte n'en envoie aucun — "
-              "la même réserve que pour ses PV."));
+              "⚠ Une ligne SANS icône ne veut pas dire « aucun buff ». Le serveur "
+              "ne diffuse ces états qu'aux joueurs qui VOIENT le personnage, "
+              "et seulement au moment où ils COMMENCENT : un joueur déjà "
+              "béni quand il entre à l'écran arrive sans rien.\n\n"
+              "Ce qui s'affiche ici est donc ce qui est TOMBÉ sous vos yeux, "
+              "pas l'état complet du personnage."));
           if (pfw->show_buffs_) {
             changed |= mui::WheelSliderInt(i18n::Tr("Taille des icônes"),
                                            &pfw->buff_px(), 8, 32, "%d px");
@@ -887,10 +889,12 @@ void MoonlightUi::DrawInterfacePanel() {
           SameLine(); HelpMarker(i18n::Tr(
               "Les icônes d'état du membre, calées à droite de sa tuile. Le nom "
               "se découpe sur ce qu'elles laissent.\n\n"
-              "⚠ Une tuile SANS icône ne veut pas dire « aucun buff » : le "
-              "serveur ne diffuse ces états qu'aux joueurs qui VOIENT le "
-              "personnage. Un membre sur une autre carte n'en envoie aucun — "
-              "la même réserve que pour ses PV."));
+              "⚠ Une tuile SANS icône ne veut pas dire « aucun buff ». Le serveur "
+              "ne diffuse ces états qu'aux joueurs qui VOIENT le personnage, "
+              "et seulement au moment où ils COMMENCENT : un joueur déjà "
+              "béni quand il entre à l'écran arrive sans rien.\n\n"
+              "Ce qui s'affiche ici est donc ce qui est TOMBÉ sous vos yeux, "
+              "pas l'état complet du personnage."));
           if (pf->show_buffs_) {
             changed |= mui::WheelSliderInt(i18n::Tr("Taille des icônes"),
                                            &pf->buff_px(), 6, 28, "%d px");

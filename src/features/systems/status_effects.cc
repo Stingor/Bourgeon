@@ -13,10 +13,12 @@ namespace {
 
 // ── Les quatre paquets ──────────────────────────────────────────────────────
 //
-// DEUX familles, et il faut les deux. `clif_status_change` annonce un état qui
-// COMMENCE ou qui FINIT ; `clif_efst_status_change_sub` rejoue tout ce qui est
-// déjà actif sur une entité qui ENTRE dans la vue. Sans la seconde, un membre
-// qui apparaît à l'écran resterait vierge jusqu'à son prochain buff.
+// DEUX familles. `clif_status_change` annonce un état qui COMMENCE ou qui
+// FINIT — c'est la source utile, 599 statuts. `clif_efst_status_change_sub`
+// rejoue ce qui est actif sur une entité qui ENTRE dans la vue, mais seulement
+// ce que `sc_display` contient : 57 statuts sur 599, et aucun buff courant
+// (cf. l'en-tête). On l'écoute quand même — ces 57-là sont gratuits — sans en
+// attendre le rattrapage qu'elle semble promettre.
 //
 // Dans chaque famille, deux versions selon la conf du serveur : avec durée
 // (`display_status_timers`) ou sans. Moonlight est sur « avec » — les variantes
@@ -149,7 +151,8 @@ void StatusEffects::HandlePacket(uint16_t opcode, const uint8_t* data,
       std::memcpy(&remain, data + kEn_Duration, sizeof(remain));
       total = remain;
       // Cette famille n'annonce QUE des états actifs : elle sert à rattraper une
-      // entité qui entre dans la vue, jamais à en retirer un.
+      // entité qui entre dans la vue, jamais à en retirer un. Rattrapage très
+      // partiel — voir l'en-tête.
       active = true;
       break;
     }
