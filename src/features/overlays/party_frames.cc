@@ -44,24 +44,10 @@ constexpr unsigned kVitalsStaleMs = 3000;
 // sinon tirer le cadre produirait une valeur que le panneau refuse d'afficher.
 constexpr int kMaxColumns = 6;
 
-// La cible COURANTE du jeu : `CGameMode+0xF4`, l'AID de la dernière entité
-// sélectionnée. Lue à la source plutôt que demandée au HUD de cible — la grille
-// doit montrer la cible même quand ce HUD est éteint, et c'est ce champ que le
-// jeu consulte lui-même.
-//
-// ⚠ LECTURE SEULE. L'écrire est un chemin piégeux (gaté par `+0x28`, et `+0xF8`
-// ne doit JAMAIS être touchée) : quand la grille CIBLE, elle passe par
-// `TargetFrame::RequestTargetFromProxy`, jamais par une écriture d'ici.
-constexpr int kGm_Selection = 0x0f4;
-
-uint32_t CurrentTargetGid() {
-  __try {
-    void* gm = rag::ActiveModeSafe();
-    if (!gm) return 0u;
-    return *reinterpret_cast<const uint32_t*>(
-        reinterpret_cast<const char*>(gm) + kGm_Selection);
-  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0u; }
-}
+// La cible COURANTE du jeu. Lue par `TargetFrame::CurrentSelectionGid` plutôt
+// qu'ici : l'offset `CGameMode+0xF4` avait DEUX lecteurs, un par surface, et la
+// liste Groupe/Amis en aurait fait un troisième.
+uint32_t CurrentTargetGid() { return TargetFrame::CurrentSelectionGid(); }
 
 // Masque/rend une fenêtre native sans lever si elle n'existe pas.
 void SetNativeVisible(int window_id, bool visible) {

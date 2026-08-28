@@ -1453,6 +1453,10 @@ void TargetFrame::OnGameFramePulse() {
   if (skill_mode == 2 || skill_mode == 4) LeaveSkillTargeting(gm);
 }
 
+uint32_t TargetFrame::CurrentSelectionGid() {
+  return ReadSelection(rag::ActiveModeSafe());
+}
+
 uint32_t TargetFrame::SkillTargetGid(int targeting_mode) const {
   if (!enabled_ || !cast_on_target_) return 0u;
   if (gid_ == 0 || hidden_) return 0u;

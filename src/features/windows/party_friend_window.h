@@ -187,6 +187,17 @@ class PartyFriendWindow : public Plugin {
   // Infobulle au survol d'une ligne : carte, position, classe, PV/SP chiffrés.
   bool show_tooltip_  = true;
 
+  // ── Cibler depuis la liste ────────────────────────────────────────────────
+  //
+  // Le clic gauche sur une ligne cible ce membre, comme une tuile du HUD en
+  // grille. Défaut ÉTEINT : jusqu'ici ce clic ne faisait rien, et une liste
+  // qu'on parcourt pour LIRE ne doit pas changer de cible sous le curseur sans
+  // qu'on l'ait demandé.
+  //
+  // ⚠ Ne fait rien non plus si le mode Ciblage du joueur est éteint : c'est SON
+  // réglage qui décide qu'une cible existe (`RequestTargetFromProxy` rend faux).
+  bool click_targets_ = false;
+
   // ── Densité et forme des jauges ───────────────────────────────────────────
   //
   // Une liste de groupe se regarde de deux façons : étalée quand on organise, la

@@ -719,6 +719,8 @@ const moonlight_ui::SettingDesc kPartyFriendSettings[] = {
      MLUI_LITERAL(int, PartyFriendWindow::kMapFull)},
     {"partyfriend_tooltip", SType::kBool,
      MLUI_FIELD(party_friend_window, show_tooltip_), MLUI_LITERAL(bool, true)},
+    {"partyfriend_click_targets", SType::kBool,
+     MLUI_FIELD(party_friend_window, click_targets_), MLUI_LITERAL(bool, false)},
     // Densité et forme des jauges. Défauts = ce que la fenêtre montrait avant
     // que ces réglages n'existent.
     {"partyfriend_icon_px", SType::kInt,

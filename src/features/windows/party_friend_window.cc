@@ -906,6 +906,36 @@ void PartyFriendWindow::DrawPartyRow(const rag::social::Entry& row) {
   if (row_hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
     OnRowRightClick(row);
   }
+
+  // ── Clic GAUCHE : cibler ce membre ────────────────────────────────────────
+  //
+  // 🔴 Pas d'acteur, pas de ciblage. Les PV et la position viennent du `CPc` de
+  // l'ACTEUR : un membre hors ligne n'en a aucun, un membre hors de portée non
+  // plus. Le cibler quand même installait un HUD de cible VIDE — mieux vaut que
+  // le clic ne fasse rien que d'ouvrir une fenêtre creuse.
+  //
+  // ⚠ MOI excepté : mon acteur n'est pas dans la liste que parcourt
+  // `FindActorByGid` (le natif le range en `actorMgr+0x2C`). Sans cette
+  // exception, ma propre ligne serait la seule à ne pas pouvoir se cibler.
+  const bool targetable =
+      click_targets_ && !row.offline &&
+      (is_me || gamescene::FindActorByGid(row.gid) != nullptr);
+  if (targetable && row_hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+    pending_     = Action::kTargetMember;
+    pending_gid_ = row.gid;
+  }
+
+  // Le liseré, pour que le geste se voie : marqué sur la cible COURANTE du jeu,
+  // discret sous le curseur quand la ligne est ciblable. Sans lui, un clic qui
+  // ne change rien à l'écran ne se distingue pas d'un clic qui a échoué.
+  if (click_targets_) {
+    const ImVec2 a(origin.x, origin.y);
+    const ImVec2 b(origin.x + row_w, y);
+    if (row.gid != 0 && row.gid == TargetFrame::CurrentSelectionGid())
+      dl->AddRect(a, b, IM_COL32(255, 255, 255, 200), 0.0f, 0, 1.5f);
+    else if (targetable && row_hovered)
+      dl->AddRect(a, b, IM_COL32(255, 255, 255, 70));
+  }
   // ⚠ Pas d'infobulle tant qu'un popup est ouvert : elle passerait DEVANT le
   // menu contextuel qu'on vient d'ouvrir sur cette même ligne. On teste
   // N'IMPORTE QUEL popup et non le nôtre par son nom — les modales de

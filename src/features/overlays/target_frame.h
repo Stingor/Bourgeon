@@ -425,6 +425,17 @@ class TargetFrame : public Plugin {
   // jamais un joueur (PVP/GVG restent au clic manuel), jamais un cadavre.
   uint32_t SkillTargetGid(int targeting_mode) const;
 
+  // L'AID de la cible COURANTE du jeu (`CGameMode+0xF4`), lu à la source.
+  //
+  // Statique et sans état exprès : les surfaces qui montrent la cible — la
+  // grille de groupe, la liste Groupe/Amis — doivent la connaître même quand ce
+  // HUD-ci est ÉTEINT, et c'est ce champ que le jeu consulte lui-même.
+  //
+  // ⚠ LECTURE SEULE. L'écrire est un chemin piégeux (gaté par `+0x28`, et
+  // `+0xF8` ne doit JAMAIS être touchée) : pour CIBLER, on passe par
+  // `RequestTargetFromProxy`, jamais par une écriture d'ici.
+  static uint32_t CurrentSelectionGid();
+
   // ── Ce que le menu contextuel de l'entité appelle ─────────────────────────
   // Masque le HUD pour la cible COURANTE (il revient au prochain changement de
   // cible). `gid` sert de garde : masquer depuis le menu d'une entité qui n'est

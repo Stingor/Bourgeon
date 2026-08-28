@@ -666,6 +666,15 @@ void MoonlightUi::DrawInterfacePanel() {
           SameLine(); HelpMarker(i18n::Tr(
               "Au survol d'une ligne : la classe, la carte complète, la position "
               "et les PV/SP chiffrés — ce qui ne tient pas dans la ligne."));
+          changed |= ro::RoCheckbox(i18n::Tr("Clic gauche : cibler le membre"),
+                                    &pfw->click_targets_);
+          SameLine(); HelpMarker(i18n::Tr(
+              "Comme une tuile du HUD en grille : la ligne devient une cible "
+              "cliquable, et un liseré blanc marque la cible courante.\n\n"
+              "Sans effet sur un membre hors ligne ou hors de portée — ses PV et "
+              "sa position viennent de son sprite, et il n'y en a pas.\n\n"
+              "Demande le mode Ciblage, qui a son propre panneau : c'est lui qui "
+              "décide qu'une cible existe."));
 
           // ── Densité ───────────────────────────────────────────────────────
           SeparatorText(i18n::Tr("Densité"));
@@ -851,7 +860,9 @@ void MoonlightUi::DrawInterfacePanel() {
           SameLine(); HelpMarker(i18n::Tr(
               "Clic gauche : cibler le membre, comme un clic sur son "
               "personnage — sans effet si le mode Ciblage est éteint.\n"
-              "Clic droit : chuchoter, nommer chef, expulser.\n\n"
+              "Clic droit : le menu du personnage, celui de son sprite. Sur un "
+              "membre qu'aucun sprite ne représente, un menu de repli propose "
+              "ce qui voyage par nom : chuchoter, expulser.\n\n"
               "⚠ La grille PREND alors la souris sur toute sa surface : "
               "impossible de marcher ou de frapper en cliquant dessous. C'est "
               "le prix des gestes sur les tuiles — décoché, la grille se "
