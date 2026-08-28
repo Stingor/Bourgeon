@@ -12,6 +12,13 @@
 // (CZ 0x0F2C). Cette barre ne connaît aucun paquet : elle demande le sondage et
 // dessine ce qu'on lui rend.
 //
+// 🔴 ELLE SUIT LE CIBLAGE. Mode de ciblage éteint, pas de barre — au même titre
+// que la barre de vie de la cible. Ce n'est pas une contrainte technique (la
+// sélection vient du clic natif, `CGameMode+0xF4`, qui existe de toute façon)
+// mais une règle d'interface : tout ce qui parle de la cible s'éteint avec
+// elle, sinon il resterait à l'écran un morceau orphelin d'une fonction qu'on
+// vient de couper.
+//
 // 🔴 CE QU'ELLE NE MONTRERA JAMAIS. Le serveur ne répond que sur un membre de
 // mon groupe et sur les entités qui ne sont à personne (les monstres). Cibler un
 // adversaire PVP ne donne rien, et c'est voulu : ses états sont une information

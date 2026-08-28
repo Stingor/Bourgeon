@@ -99,10 +99,16 @@ class StatusEffects : public Plugin {
   // C'est le patron de `PartyFrames::RequestSpPolling`, et pour la même raison :
   // deux surfaces montrent les mêmes membres, et la première qui s'éteint ne
   // doit pas assécher la seconde.
-  // ⚠ DEUX sujets, et deux seulement : les membres du GROUPE, et l'entité que
-  // le joueur a en CIBLE. Rien d'autre n'est interrogé — ni les passants, ni les
-  // monstres alentour.
+  // ⚠ DEUX sujets, et deux DEMANDES SÉPARÉES : les membres du GROUPE, et
+  // l'entité que le joueur a en CIBLE. Rien d'autre n'est interrogé — ni les
+  // passants, ni les monstres alentour.
+  //
+  // 🔴 Séparées, parce que les surfaces ne se recouvrent pas : la grille de
+  // groupe ne montre AUCUN état de la cible, et la barre de cible aucun membre
+  // du groupe. Une demande commune faisait interroger vingt-quatre membres pour
+  // une barre qui n'en affiche pas un seul.
   void RequestPolling() { polling_wanted_ = true; }
+  void RequestTargetPolling() { target_polling_wanted_ = true; }
 
   // Demande l'état complet d'UNE entité, tout de suite. Pour les surfaces qui
   // visent une entité précise plutôt que le groupe entier.
@@ -130,9 +136,10 @@ class StatusEffects : public Plugin {
  private:
   void Apply(uint32_t gid, uint16_t efst, bool active, uint32_t remain_ms,
              uint32_t total_ms);
-  // Un membre du groupe par tick, en rotation. Interroger les 24 à chaque fois
-  // ferait des rafales pour une information qui bouge lentement.
-  void PollParty();
+  // Un sujet par tick. `party` autorise la rotation sur les membres, `target`
+  // la cible courante : une surface qui n'affiche que l'un ne fait pas
+  // interroger l'autre.
+  void Poll(bool party, bool target_too);
   // Le serveur a-t-il refusé ce GID récemment ? Un refus est une règle, pas un
   // incident : on se tait au lieu de redemander en boucle.
   bool Refused(uint32_t gid) const;
@@ -159,7 +166,8 @@ class StatusEffects : public Plugin {
   // GID -> instant du refus (statut 2 : pas de mon groupe).
   std::unordered_map<uint32_t, uint32_t> refused_ms_;
 
-  bool     polling_wanted_      = false;
+  bool     polling_wanted_        = false;
+  bool     target_polling_wanted_ = false;
   unsigned last_poll_ms_        = 0;
   unsigned last_target_poll_ms_ = 0;
   size_t   poll_cursor_         = 0;

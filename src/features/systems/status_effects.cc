@@ -105,7 +105,20 @@ const auto GetImg = reinterpret_cast<GetImg_t>(0x00d87380);
 
 uint32_t NowMs() { return ::timeGetTime(); }
 
-// ── La duree TOTALE, celle qui manque au protocole ──────────────────────────
+// Ce qu'il RESTE d'une entrée connue, sans déborder.
+//
+// 🔴 `expires - now` sur des `uint32_t` : un état qui vient d'échoir donne une
+// soustraction NÉGATIVE, donc un nombre colossal. Ce restant-là partait ensuite
+// dans la comparaison de `KeepLongest`, où il décidait n'importe quoi. Le même
+// calcul était écrit aux DEUX endroits qui appellent `KeepLongest`, avec le même
+// piège dans les deux.
+uint32_t RemainingOf(const StatusEffects::Entry& e, uint32_t now) {
+  if (e.expires_ms == 0) return 0u;
+  const int32_t left = static_cast<int32_t>(e.expires_ms - now);
+  return (left > 0) ? static_cast<uint32_t>(left) : 0u;
+}
+
+// ── La durée TOTALE, celle qui manque au protocole ──────────────────────────
 //
 // 🔴 AUCUN paquet ne la donne de façon fiable. ZC 0x0983 met `total` égal à
 // `remain` (« at this stage remain and total are the same value », clif.cpp), ce
@@ -129,8 +142,19 @@ uint32_t NowMs() { return ::timeGetTime(); }
 uint32_t KeepLongest(uint32_t announced, uint32_t previous_total,
                      uint32_t previous_left) {
   if (announced == 0) return previous_total;  // permanent : pas de durée à tenir
-  // Le restant a AUGMENTÉ : l'état vient d'être relancé, sa durée est celle-ci.
-  if (announced > previous_left) return announced;
+  // 🔴 UNE MARGE, et elle n'est pas cosmétique. Sans elle, ce test voyait un
+  // relancement à CHAQUE réponse : le sondage revient toutes les 700 ms, la
+  // réponse annonce un restant calculé côté serveur, et le moindre écart —
+  // latence, arrondi de tick — le rendait supérieur au restant que nous avions
+  // extrapolé de notre côté. La durée « totale » suivait alors le restant pas à
+  // pas, la fraction écoulée valait toujours zéro, et le grisage ne bougeait
+  // JAMAIS.
+  //
+  // Deux secondes : bien au-dessus de tout écart d'horloge, bien en dessous de
+  // ce qu'ajoute un vrai relancement (le plus court des buffs se compte en
+  // dizaines de secondes).
+  constexpr uint32_t kRefreshMarginMs = 2000;
+  if (announced > previous_left + kRefreshMarginMs) return announced;
   return (previous_total > announced) ? previous_total : announced;
 }
 
@@ -273,7 +297,7 @@ void StatusEffects::HandlePacket(uint16_t opcode, const uint8_t* data,
           for (const Entry& old : known->second) {
             if (old.efst != id) continue;
             prev_total = old.total_ms;
-            prev_left = (old.expires_ms == 0) ? 0u : (old.expires_ms - now);
+            prev_left = RemainingOf(old, now);
             break;
           }
         }
@@ -316,7 +340,7 @@ bool StatusEffects::Refused(uint32_t gid) const {
 // Deux sujets, et deux seulement : les membres du GROUPE, et l'entité que le
 // joueur a en CIBLE. Le reste du monde ne nous regarde pas — sonder tout ce qui
 // passe à l'écran serait du trafic pour des barres que personne n'affiche.
-void StatusEffects::PollParty() {
+void StatusEffects::Poll(bool party, bool target_too) {
   const unsigned now = GetTickCount();
 
   // ── La cible d'abord ─────────────────────────────────────────────────────
@@ -325,7 +349,8 @@ void StatusEffects::PollParty() {
   // sait mieux que nous ce qu'il a le droit de dire, et son refus nous fait
   // taire (`Refused`). Une heuristique cliente « est-ce un monstre ? » aurait
   // dupliqué sa règle, avec le risque de diverger.
-  const uint32_t target = TargetFrame::CurrentSelectionGid();
+  const uint32_t target =
+      target_too ? TargetFrame::CurrentSelectionGid() : 0u;
   if (target != 0 && target != rag::social::OwnAid() && !Refused(target) &&
       (last_target_poll_ms_ == 0 || (now - last_target_poll_ms_) >= kTargetPollMs)) {
     RequestFor(target);
@@ -333,6 +358,7 @@ void StatusEffects::PollParty() {
     return;
   }
 
+  if (!party) return;
   if (last_poll_ms_ != 0 && (now - last_poll_ms_) < kPollIntervalMs) return;
 
   std::vector<rag::social::Entry> members;
@@ -427,8 +453,7 @@ void StatusEffects::Apply(uint32_t gid, uint16_t efst, bool active,
   // relancé se voit à sa durée qui repart, pas à une deuxième icône.
   for (Entry& old : it->second) {
     if (old.efst != efst) continue;
-    const uint32_t prev_left = (old.expires_ms == 0) ? 0u
-                                                     : (old.expires_ms - now);
+    const uint32_t prev_left = RemainingOf(old, now);
     e.total_ms = KeepLongest(e.total_ms, old.total_ms, prev_left);
     old = e;
     return;
@@ -439,11 +464,14 @@ void StatusEffects::Apply(uint32_t gid, uint16_t efst, bool active,
 // ── Entretien ───────────────────────────────────────────────────────────────
 void StatusEffects::OnTick() {
   if (Bourgeon::Instance().IsMapLoading()) return;
-  // Demande VIVANTE : chaque surface la réarme à chaque frame où elle affiche
-  // des buffs, donc la baisser ici suffit à couper le trafic dès qu'on ferme.
-  const bool want = polling_wanted_;
-  polling_wanted_ = false;
-  if (want) PollParty();
+  // Demandes VIVANTES : chaque surface réarme la sienne à chaque frame où elle
+  // affiche des états, donc les baisser ici suffit à couper le trafic dès qu'on
+  // ferme. Les deux sont distinctes — voir l'en-tête.
+  const bool want_party  = polling_wanted_;
+  const bool want_target = target_polling_wanted_;
+  polling_wanted_        = false;
+  target_polling_wanted_ = false;
+  if (want_party || want_target) Poll(want_party, want_target);
 
   if (by_gid_.empty()) return;
   const uint32_t now = NowMs();

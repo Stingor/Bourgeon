@@ -635,9 +635,10 @@ void MoonlightUi::DrawInterfacePanel() {
         // même sujet — ce qu'on regarde d'une cible — et deux entrées auraient
         // fait chercher à deux endroits ce qui se décide en même temps.
         //
-        // ⚠ VOISINER N'EST PAS DÉPENDRE. La barre ne s'éteint pas avec ce
-        // HUD-ci : elle lit `CGameMode+0xF4` à la source, comme la grille de
-        // groupe, et sert donc aussi à qui joue sans fenêtre de cible.
+        // Elle SUIT le ciblage, comme la barre de vie juste au-dessus : les
+        // états d'une entité sont une information sur LA CIBLE, ils n'ont pas à
+        // survivre au mode qui décide qu'une cible existe. Éteindre le ciblage
+        // éteint tout ce qui en parle, sans avoir à décocher trois réglages.
         SeparatorText(i18n::Tr("États de la cible"));
         auto* tsb = Bourgeon::Instance().target_status_bar();
         if (tsb == nullptr) {
@@ -650,6 +651,7 @@ void MoonlightUi::DrawInterfacePanel() {
               "Une barre à elle, qu'on place et dimensionne où l'on veut : les "
               "états de la cible ne se regardent pas au même endroit que ses "
               "points de vie.\n\n"
+              "Elle suit le CIBLAGE : mode éteint, pas de barre.\n\n"
               "⚠ Ne montre RIEN sur un joueur qui n'est pas de votre groupe : "
               "ses états sont une information de jeu, et le serveur ne les donne "
               "pas. Les monstres, eux, sont lisibles."));

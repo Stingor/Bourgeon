@@ -61,10 +61,22 @@ void TargetStatusBar::OnRenderUI() {
   if (!enabled_) return;
   if (Bourgeon::Instance().IsMapLoading()) return;
 
+  // 🔴 SUIT LE CIBLAGE, comme la barre de vie de la cible. Les états d'une
+  // entité sont une information sur LA CIBLE : ils n'ont pas à survivre au mode
+  // qui décide qu'une cible existe. Un joueur qui éteint le ciblage éteint tout
+  // ce qui en parle, sans avoir à décocher trois réglages.
+  auto* tf = Bourgeon::Instance().target_frame();
+  if (tf == nullptr || !tf->TargetingEnabled()) return;
+
   // Le registre ne sonde que si quelqu'un affiche : demande VIVANTE, réarmée à
   // chaque frame. Elle part AVANT le test du contenu — sans elle, une barre
   // vide ne demanderait jamais rien et resterait vide pour toujours.
-  if (auto* fx = Bourgeon::Instance().status_effects()) fx->RequestPolling();
+  //
+  // ⚠ `RequestTargetPolling` et non `RequestPolling` : ce qui nous intéresse est
+  // la CIBLE, pas le groupe. Les confondre faisait interroger 24 membres pour
+  // une barre qui n'en montre aucun.
+  if (auto* fx = Bourgeon::Instance().status_effects())
+    fx->RequestTargetPolling();
 
   std::vector<StatusEffects::Entry> list;
   Collect(&list);
