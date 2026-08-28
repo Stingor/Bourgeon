@@ -6,8 +6,11 @@
 #include <cstring>
 
 #include "bourgeon.h"
+#include "features/overlays/target_frame.h"  // la cible courante, second sujet
+#include "features/systems/bourgeon_opcodes.h"
 #include "ragnarok/game_scene.h"
 #include "ragnarok/globals.h"
+#include "ragnarok/social.h"  // la liste du groupe, pour le sondage
 
 namespace {
 
@@ -51,6 +54,10 @@ constexpr int kEn_Gid      = 0x00;
 constexpr int kEn_Efst     = 0x04;
 constexpr int kEn_Duration = 0x06;
 
+// Une entrée de NOTRE réponse : [efst:2][remain:4][total:4].
+// ⚠ Doit suivre `BOURGEON_STATUS_ENTRY` du serveur, octet pour octet.
+constexpr size_t kStatusEntrySize = 10;
+
 // Le serveur envoie 9999 quand la durée est inconnue ou infinie (« this is
 // indeed what official servers do », clif.cpp). Ce n'est PAS neuf secondes : le
 // prendre au mot ferait disparaître les buffs permanents au bout de dix.
@@ -61,6 +68,34 @@ constexpr uint32_t kUnknownDurationMs = 9999;
 // dans la vie normale ; ceci ne couvre que le cas où l'acteur reste chargé alors
 // que le serveur ne dit plus rien de lui.
 constexpr size_t kMaxTrackedEntities = 256;
+
+// ── Le paquet à nous : l'état COMPLET, celui que le protocole ne donne pas ──
+//
+// Sans lui, on ne connaît d'une entité que ce qui lui est arrivé PENDANT qu'on
+// la regardait. Avec lui, on demande « où en est ce GID ? » et le serveur répond
+// par la liste entière — y compris pour un membre du groupe qu'aucun sprite ne
+// représente, ce que la diffusion AREA ne permettra jamais.
+constexpr uint16_t kOpReqStatusList = bopcodes::kReqStatusList;  // CZ, on demande
+constexpr uint16_t kOpStatusList    = bopcodes::kStatusList;     // ZC, il répond
+
+// Un membre par tick. Sur un groupe de 24, tout interroger à chaque passage
+// ferait des rafales pour une information qui bouge lentement.
+constexpr unsigned kPollIntervalMs = 300;
+
+// Passé ce délai sans réponse, un GID renseigné par le paquet redevient inconnu.
+// 🔴 Ce n'est pas une optimisation : sans péremption, un membre dont la réponse
+// cesse d'arriver garderait ses buffs à l'écran indéfiniment. Large, parce qu'un
+// tour de rotation sur 24 membres prend déjà sept secondes.
+constexpr unsigned kAnswerStaleMs = 20000;
+
+// La CIBLE a sa propre cadence, plus rapide que la rotation du groupe : elle
+// change à chaque clic, et c'est sur elle que se prend une décision immédiate.
+constexpr unsigned kTargetPollMs = 700;
+
+// Un GID que le serveur REFUSE (joueur hors de mon groupe) n'est pas redemandé
+// avant ce délai. Sans ce silence, viser un adversaire ferait partir une requête
+// toutes les 700 ms pour recevoir « non » à chaque fois.
+constexpr unsigned kRefusedQuietMs = 15000;
 
 // `GetEFSTImgFileName` du client : Lua d'abord, table en dur ensuite.
 // __thiscall émulé en __fastcall avec un edx factice — la convention du projet.
@@ -106,6 +141,9 @@ StatusEffects::StatusEffects() {
   b.RegisterObserveOpcode(kOpChangePlain, kLenChangePlain);
   b.RegisterObserveOpcode(kOpEnterTimed, kLenEnterTimed);
   b.RegisterObserveOpcode(kOpEnterPlain, kLenEnterPlain);
+  // Celui-ci est À NOUS : au-dessus de l'opcode max du client, donc hors de sa
+  // table de dispatch. C'est le reader-hook de RagConnection qui le livre.
+  b.RegisterRecvOpcode(kOpStatusList);
 }
 
 // ── Réseau ──────────────────────────────────────────────────────────────────
@@ -156,6 +194,59 @@ void StatusEffects::HandlePacket(uint16_t opcode, const uint8_t* data,
       active = true;
       break;
     }
+    // ── Notre paquet : la liste COMPLÈTE ──────────────────────────────────
+    //
+    // 🔴 Il REMPLACE ce qu'on savait de ce GID, il ne s'y ajoute pas. C'est un
+    // ÉTAT : ce qui n'y figure pas n'est plus actif. Fusionner l'aurait rendu
+    // inutile — les buffs disparus seraient restés.
+    case kOpStatusList: {
+      // `data` commence APRÈS [opcode:2][len:2] : convention de
+      // RegisterRecvOpcode. [gid:4][status:1][count:1] puis les entrées.
+      if (len < 6) return;
+      std::memcpy(&gid, data, sizeof(gid));
+      if (gid == 0) return;
+      const uint8_t reply  = data[4];
+      const uint8_t count  = data[5];
+
+      // status != 0 : entité introuvable, ou refusée (un joueur qui n'est ni de
+      // mon groupe ni de ma guilde). Dans les deux cas on OUBLIE — garder
+      // l'ancienne liste afficherait un passé pour un présent.
+      if (reply != 0) {
+        by_gid_.erase(gid);
+        answered_ms_.erase(gid);
+        // Refus (statut 2) : ce n'est pas un incident, c'est une règle qui ne
+        // changera pas tant que le groupe ne change pas. On se tait un moment
+        // plutôt que de redemander en boucle.
+        if (reply == 2) refused_ms_[gid] = NowMs();
+        return;
+      }
+
+      std::vector<Entry> fresh;
+      const uint32_t now = NowMs();
+      for (uint8_t k = 0; k < count; ++k) {
+        const size_t off = 6 + static_cast<size_t>(k) * kStatusEntrySize;
+        if (off + kStatusEntrySize > len) break;  // paquet tronqué : on garde ce qu'on a lu
+        uint16_t id = 0;
+        uint32_t remain_ms = 0, total_ms = 0;
+        std::memcpy(&id, data + off, sizeof(id));
+        std::memcpy(&remain_ms, data + off + 2, sizeof(remain_ms));
+        std::memcpy(&total_ms, data + off + 6, sizeof(total_ms));
+        if (id == 0 || IconPath(id) == nullptr) continue;
+        Entry e;
+        e.efst = id;
+        e.total_ms = total_ms;
+        // 0 = pas d'échéance (état permanent) : surtout pas « expiré ».
+        e.expires_ms = (remain_ms == 0) ? 0u : now + remain_ms;
+        fresh.push_back(e);
+      }
+
+      answered_ms_[gid] = now;
+      // Une liste VIDE est une réponse : « cette entité n'a aucun buff ». On
+      // efface donc l'entrée plutôt que d'y laisser l'ancienne.
+      if (fresh.empty()) by_gid_.erase(gid);
+      else               by_gid_[gid] = std::move(fresh);
+      return;
+    }
     default:
       return;
   }
@@ -164,8 +255,99 @@ void StatusEffects::HandlePacket(uint16_t opcode, const uint8_t* data,
   Apply(gid, efst, active, remain, total);
 }
 
+// ── Le sondage ──────────────────────────────────────────────────────────────
+void StatusEffects::RequestFor(uint32_t gid) {
+  if (gid == 0) return;
+  uint8_t packet[8];  // [op:2][len:2][gid:4]
+  *reinterpret_cast<uint16_t*>(packet + 0) = kOpReqStatusList;
+  *reinterpret_cast<uint16_t*>(packet + 2) = static_cast<uint16_t>(sizeof(packet));
+  *reinterpret_cast<uint32_t*>(packet + 4) = gid;
+  Bourgeon::Instance().SendPacket(packet, sizeof(packet));
+}
+
+bool StatusEffects::Refused(uint32_t gid) const {
+  auto it = refused_ms_.find(gid);
+  if (it == refused_ms_.end()) return false;
+  return (NowMs() - it->second) < kRefusedQuietMs;
+}
+
+// Deux sujets, et deux seulement : les membres du GROUPE, et l'entité que le
+// joueur a en CIBLE. Le reste du monde ne nous regarde pas — sonder tout ce qui
+// passe à l'écran serait du trafic pour des barres que personne n'affiche.
+void StatusEffects::PollParty() {
+  const unsigned now = GetTickCount();
+
+  // ── La cible d'abord ─────────────────────────────────────────────────────
+  // Sa cadence est plus rapide : elle change à chaque clic, et c'est sur elle
+  // qu'on décide d'attaquer ou de fuir. Aucun filtre de type ici — le serveur
+  // sait mieux que nous ce qu'il a le droit de dire, et son refus nous fait
+  // taire (`Refused`). Une heuristique cliente « est-ce un monstre ? » aurait
+  // dupliqué sa règle, avec le risque de diverger.
+  const uint32_t target = TargetFrame::CurrentSelectionGid();
+  if (target != 0 && target != rag::social::OwnAid() && !Refused(target) &&
+      (last_target_poll_ms_ == 0 || (now - last_target_poll_ms_) >= kTargetPollMs)) {
+    RequestFor(target);
+    last_target_poll_ms_ = now;
+    return;
+  }
+
+  if (last_poll_ms_ != 0 && (now - last_poll_ms_) < kPollIntervalMs) return;
+
+  std::vector<rag::social::Entry> members;
+  rag::social::ReadParty(members);
+  if (members.size() <= 1) return;
+
+  for (size_t tried = 0; tried < members.size(); ++tried) {
+    if (poll_cursor_ >= members.size()) poll_cursor_ = 0;
+    const rag::social::Entry& m = members[poll_cursor_++];
+    // Un hors-ligne n'a pas d'entité : le serveur répondrait « introuvable ».
+    // Moi non plus je ne m'interroge pas — mes propres états sont dans la barre
+    // d'icônes du client, qui les tient déjà à jour.
+    if (m.gid == 0 || m.offline || m.gid == rag::social::OwnAid()) continue;
+    if (Refused(m.gid)) continue;
+    RequestFor(m.gid);
+    last_poll_ms_ = now;
+    return;
+  }
+}
+
+// 🔴🔴 QUI A LE DROIT D'ENTRER DANS LA TABLE
+//
+// ZC 0x0983 est diffusé en **AREA** : il arrive pour tout joueur à l'écran, y
+// compris un ADVERSAIRE PVP. Le paquet custom, lui, est gaté côté serveur — mais
+// la diffusion native ne l'est pas, et sans ce filtre elle remplirait la table
+// d'états qu'on n'a pas le droit de lire. Il suffirait alors d'une surface qui
+// affiche un GID quelconque pour voir les buffs d'un adversaire.
+//
+// La règle ne s'invente PAS ici : elle est déléguée au serveur.
+//   · membre de mon groupe (ou moi)     -> accepté ;
+//   · GID que le serveur vient de nous  -> accepté (il a appliqué SA gate en
+//     RENSEIGNER (`answered_ms_`)          répondant : un monstre ciblé passe,
+//                                          un joueur hors groupe est refusé) ;
+//   · tout le reste                     -> ignoré.
+//
+// Écrire une heuristique cliente (« est-ce un monstre ? ») aurait dupliqué la
+// règle du serveur, avec la certitude qu'elles divergent un jour.
+bool StatusEffects::Allowed(uint32_t gid) const {
+  if (gid == 0) return false;
+  const uint32_t own = rag::OwnAccountIdSafe();
+  if (own != 0 && gid == own) return true;
+  // Le serveur nous a répondu pour ce GID, et récemment : il l'autorise.
+  auto ans = answered_ms_.find(gid);
+  if (ans != answered_ms_.end() &&
+      static_cast<int32_t>(NowMs() - ans->second) <
+          static_cast<int32_t>(kAnswerStaleMs))
+    return true;
+  return rag::social::FindPartyMember(gid, nullptr);
+}
+
 void StatusEffects::Apply(uint32_t gid, uint16_t efst, bool active,
                           uint32_t remain_ms, uint32_t total_ms) {
+  // ⚠ Y COMPRIS pour retirer un état : accepter un « ce buff est fini » sur un
+  // GID qu'on n'a pas le droit de suivre ne changerait rien à la table, mais
+  // laisser le test au seul cas « actif » invite à l'oublier en le déplaçant.
+  if (!Allowed(gid)) return;
+
   auto it = by_gid_.find(gid);
 
   if (!active) {
@@ -208,6 +390,13 @@ void StatusEffects::Apply(uint32_t gid, uint16_t efst, bool active,
 
 // ── Entretien ───────────────────────────────────────────────────────────────
 void StatusEffects::OnTick() {
+  if (Bourgeon::Instance().IsMapLoading()) return;
+  // Demande VIVANTE : chaque surface la réarme à chaque frame où elle affiche
+  // des buffs, donc la baisser ici suffit à couper le trafic dès qu'on ferme.
+  const bool want = polling_wanted_;
+  polling_wanted_ = false;
+  if (want) PollParty();
+
   if (by_gid_.empty()) return;
   const uint32_t now = NowMs();
   const uint32_t own = rag::OwnAccountIdSafe();
@@ -220,9 +409,19 @@ void StatusEffects::OnTick() {
     //
     // ⚠ MOI excepté : mon acteur n'est pas dans la liste que parcourt
     // `FindActorByGid` (le natif le range en `actorMgr+0x2C`).
-    const bool present = (own != 0 && it->first == own) ||
-                         gamescene::FindActorByGid(it->first) != nullptr;
+    // 🔴 Un GID que le PAQUET renseigne échappe à cette règle : c'est tout son
+    // intérêt — un membre sur une autre carte n'a pas d'acteur et reste pourtant
+    // connu. Ce qui le périme alors, c'est le silence, pas l'absence de sprite.
+    bool present = (own != 0 && it->first == own) ||
+                   gamescene::FindActorByGid(it->first) != nullptr;
     if (!present) {
+      auto ans = answered_ms_.find(it->first);
+      present = (ans != answered_ms_.end()) &&
+                (static_cast<int32_t>(now - ans->second) <
+                 static_cast<int32_t>(kAnswerStaleMs));
+    }
+    if (!present) {
+      answered_ms_.erase(it->first);
       it = by_gid_.erase(it);
       continue;
     }
@@ -241,8 +440,13 @@ void StatusEffects::OnTick() {
 
 void StatusEffects::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
   // Le monde repart : plus un seul de ces GID n'a de sens. On ne trie pas, on
-  // vide — au retour en jeu, les paquets d'entrée dans la vue rempliront.
+  // vide — au retour en jeu, le sondage repeuplera.
   by_gid_.clear();
+  answered_ms_.clear();
+  refused_ms_.clear();
+  last_poll_ms_        = 0;
+  last_target_poll_ms_ = 0;
+  poll_cursor_         = 0;
   if (mode_type != ModeMgr::ModeType::kGame) return;
 }
 

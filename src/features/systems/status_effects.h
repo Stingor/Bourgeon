@@ -84,6 +84,24 @@ class StatusEffects : public Plugin {
   void OnTick() override;
   void OnModeSwitch(ModeMgr::ModeType mode_type, const char* map_name) override;
 
+  // ── Le sondage ────────────────────────────────────────────────────────────
+  //
+  // Une surface qui affiche des buffs le DEMANDE, à chaque frame où elle en
+  // affiche. Sans demande vivante, aucun paquet ne part : une fonction qu'on
+  // n'ouvre jamais ne doit rien coûter au serveur.
+  //
+  // C'est le patron de `PartyFrames::RequestSpPolling`, et pour la même raison :
+  // deux surfaces montrent les mêmes membres, et la première qui s'éteint ne
+  // doit pas assécher la seconde.
+  // ⚠ DEUX sujets, et deux seulement : les membres du GROUPE, et l'entité que
+  // le joueur a en CIBLE. Rien d'autre n'est interrogé — ni les passants, ni les
+  // monstres alentour.
+  void RequestPolling() { polling_wanted_ = true; }
+
+  // Demande l'état complet d'UNE entité, tout de suite. Pour les surfaces qui
+  // visent une entité précise plutôt que le groupe entier.
+  void RequestFor(uint32_t gid);
+
   // Les états connus d'une entité, du plus récent au plus ancien.
   //
   // Rend FAUX quand on ne sait rien d'elle — ce qui ne veut pas dire « aucun
@@ -106,8 +124,36 @@ class StatusEffects : public Plugin {
  private:
   void Apply(uint32_t gid, uint16_t efst, bool active, uint32_t remain_ms,
              uint32_t total_ms);
+  // Un membre du groupe par tick, en rotation. Interroger les 24 à chaque fois
+  // ferait des rafales pour une information qui bouge lentement.
+  void PollParty();
+  // Le serveur a-t-il refusé ce GID récemment ? Un refus est une règle, pas un
+  // incident : on se tait au lieu de redemander en boucle.
+  bool Refused(uint32_t gid) const;
+  // 🔴 A-t-on le DROIT de retenir les états de ce GID ? ZC 0x0983 est diffusé en
+  // AREA — il arrive pour tout joueur à l'écran, adversaire PVP compris — alors
+  // que notre paquet, lui, est gaté côté serveur. Sans ce filtre, la diffusion
+  // native remplirait la table de ce que la gate refuse. La règle est déléguée
+  // au serveur : groupe, ou GID qu'il vient lui-même de renseigner.
+  bool Allowed(uint32_t gid) const;
 
   // GID -> ses états. Purgée par `OnTick` : les entrées échues, et les entités
-  // dont l'acteur a disparu de la scène.
+  // dont on n'a plus de nouvelles.
   std::unordered_map<uint32_t, std::vector<Entry>> by_gid_;
+
+  // 🔴 Les GID que le PAQUET a renseignés, avec l'instant de la réponse.
+  //
+  // Ils échappent à la purge par présence de l'acteur : c'est tout l'intérêt du
+  // paquet — un membre sur une autre carte n'a pas d'acteur et reste pourtant
+  // connu. Ce qui les périme, c'est le SILENCE : passé `kAnswerStaleMs` sans
+  // réponse, on oublie plutôt que d'afficher un état figé.
+  std::unordered_map<uint32_t, uint32_t> answered_ms_;
+
+  // GID -> instant du refus (statut 2 : pas de mon groupe).
+  std::unordered_map<uint32_t, uint32_t> refused_ms_;
+
+  bool     polling_wanted_      = false;
+  unsigned last_poll_ms_        = 0;
+  unsigned last_target_poll_ms_ = 0;
+  size_t   poll_cursor_         = 0;
 };

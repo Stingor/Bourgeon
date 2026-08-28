@@ -121,6 +121,13 @@ void PartyFrames::OnTick() {
   const bool want_sp = (enabled_ && show_sp_) || sp_wanted_by_other_;
   sp_wanted_by_other_ = false;  // demande VIVANTE : elle se redemande chaque frame
   if (want_sp) PollVitals();
+
+  // Les buffs ont leur propre registre et leur propre sondage : on ne fait que
+  // dire qu'on les affiche. Demande VIVANTE, redemandee a chaque tick — la
+  // couper suffit a arreter le trafic quand la grille s'eteint.
+  if (enabled_ && show_buffs_) {
+    if (auto* fx = Bourgeon::Instance().status_effects()) fx->RequestPolling();
+  }
 }
 
 // ── Le SP : une demande par tick, en rotation ───────────────────────────────

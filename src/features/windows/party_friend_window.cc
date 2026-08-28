@@ -895,6 +895,9 @@ void PartyFriendWindow::DrawPartyRow(const rag::social::Entry& row) {
   // par un `Dummy`) : pas de largeur à supposer, donc rien à corriger le jour où
   // le libellé de la pastille change.
   if (show_buffs_ && !row.offline) {
+    // Le registre ne sonde que si QUELQU'UN affiche : on redemande a chaque
+    // ligne dessinee, la demande etant vivante d'un tick a l'autre.
+    if (auto* fx = Bourgeon::Instance().status_effects()) fx->RequestPolling();
     DrawRowEffects(row.gid, ImGui::GetItemRectMin().x - ro::Px(4.0f),
                    ImGui::GetItemRectMin().y);
   }
