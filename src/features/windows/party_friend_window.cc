@@ -773,7 +773,9 @@ void PartyFriendWindow::DrawPartyRow(const rag::social::Entry& row) {
   // Le texte du client arrive dans SA code-page : LocalToUtf8, jamais Cp949ToUtf8.
   const char* name_utf8 = ro::LocalToUtf8(row.name.c_str());
   char pretty[64] = {0};
-  if (!row.map.empty()) {
+  // Carte masquée : on ne la résout même pas. L'infobulle, elle, la donne
+  // toujours en entier — ce réglage ne parle que de la LIGNE.
+  if (!row.map.empty() && map_mode_ != kMapNone) {
     char bare[64] = {0};
     StripMapExtension(row.map.c_str(), bare, sizeof(bare));
     if (!rag::MapDisplayName(bare, pretty, sizeof(pretty)) || !pretty[0])

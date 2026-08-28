@@ -1607,7 +1607,7 @@ void EntityContextMenu::DrawPopup() {
     // de ce qu'on avait cliqué.
     const char* kind_label = KindLabel(kind_);
     if (target_name_.empty()) {
-      ImGui::Text("%s (%u)", kind_label, target_aid_);
+      ImGui::Text("%s", kind_label);
     } else {
       ImGui::Text("%s", target_name_.c_str());
       ImGui::SameLine();

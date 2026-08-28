@@ -173,10 +173,16 @@ class PartyFriendWindow : public Plugin {
   // ÉTEINT — c'est du trafic réseau pour une information que tout le monde ne
   // regarde pas.
   bool show_sp_       = false;
-  // Nom de carte : complet (« Gonryun, the Hermit Land (Kunlun) ») ou court
-  // (ce qui précède la première virgule). Le complet est celui du client ; le
-  // court tient dans une fenêtre étroite.
-  enum MapMode { kMapFull = 0, kMapShort };
+  // Nom de carte : complet (« Gonryun, the Hermit Land (Kunlun) »), court (ce
+  // qui précède la première virgule) ou pas de carte du tout. Le complet est
+  // celui du client ; le court tient dans une fenêtre étroite ; masqué, il ne
+  // reste que le nom — la carte se lit alors dans l'infobulle, qui la donne
+  // entière quel que soit ce réglage.
+  //
+  // ⚠ `kMapNone` prend la valeur 2, en FIN d'énumération : ces constantes sont
+  // écrites telles quelles dans les réglages, et les intercaler changerait le
+  // sens des valeurs déjà enregistrées chez les joueurs.
+  enum MapMode { kMapFull = 0, kMapShort, kMapNone };
   int  map_mode_      = kMapFull;
   // Infobulle au survol d'une ligne : carte, position, classe, PV/SP chiffrés.
   bool show_tooltip_  = true;

@@ -650,14 +650,17 @@ void MoonlightUi::DrawInterfacePanel() {
                                     &pfw->show_level_);
           {
             const char* kMapModes[] = {i18n::Tr("Nom complet"),
-                                       i18n::Tr("Nom court")};
+                                       i18n::Tr("Nom court"),
+                                       i18n::Tr("Masquée")};
             changed |= ro::RoCombo(i18n::Tr("Carte"), &pfw->map_mode_,
                                     kMapModes, IM_ARRAYSIZE(kMapModes));
           }
           SameLine(); HelpMarker(i18n::Tr(
               "Le client écrit « Gonryun, the Hermit Land (Kunlun) » là où "
               "« Gonryun » suffit à se repérer — et le nom complet pousse le "
-              "reste de la ligne hors d'une fenêtre étroite."));
+              "reste de la ligne hors d'une fenêtre étroite.\n\n"
+              "Masquée, la ligne ne porte plus que le nom. L'infobulle au "
+              "survol continue de donner la carte entière."));
           changed |= ro::RoCheckbox(i18n::Tr("Infobulle au survol"),
                                     &pfw->show_tooltip_);
           SameLine(); HelpMarker(i18n::Tr(
