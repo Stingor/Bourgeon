@@ -651,6 +651,8 @@ const moonlight_ui::SettingDesc kPartyFramesSettings[] = {
      MLUI_LITERAL(int, PartyFrames::kHpTextNumbers)},
     {"partyframes_text_px", SType::kInt, MLUI_FIELD(party_frames, text_px()),
      MLUI_LITERAL(int, 13)},
+    {"partyframes_tooltip", SType::kBool,
+     MLUI_FIELD(party_frames, show_tooltip_), MLUI_LITERAL(bool, false)},
     {"partyframes_cast_on_tile", SType::kBool,
      MLUI_FIELD(party_frames, cast_on_tile_), MLUI_LITERAL(bool, true)},
     // Défaut FAUX : cliquable, la grille prend la souris au jeu sur toute sa
@@ -679,6 +681,12 @@ const moonlight_ui::SettingDesc kPartyFramesSettings[] = {
      MLUI_FIELD(party_frames, col_text_), MLUI_LITERAL_ARGB(0xFFF0F0F0)},
     {"partyframes_col_me", SType::kColorHex,
      MLUI_FIELD(party_frames, col_me_), MLUI_LITERAL_ARGB(0xDBFFD978)},
+    // Deux absences distinctes : hors ligne (gris terne) et hors de portée
+    // (bleu pâle — le membre est EN JEU, on ignore juste ses PV).
+    {"partyframes_col_offline", SType::kColorHex,
+     MLUI_FIELD(party_frames, col_offline_), MLUI_LITERAL_ARGB(0xFF73737A)},
+    {"partyframes_col_far", SType::kColorHex,
+     MLUI_FIELD(party_frames, col_far_), MLUI_LITERAL_ARGB(0xFF94B8E6)},
     {"partyframes_x", SType::kInt, MLUI_FIELD(party_frames, rect().x),
      MLUI_LITERAL(int, 40)},
     {"partyframes_y", SType::kInt, MLUI_FIELD(party_frames, rect().y),

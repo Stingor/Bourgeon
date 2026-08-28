@@ -131,6 +131,10 @@ class PartyFrames : public Plugin {
   // code natif, et ouvrir un menu lit le dictionnaire de noms.
   void FlushPending();
   bool show_sp_       = true;   // barre de SP en bas de tuile
+  // Infobulle au survol. Elle redonne ce que la tuile porte, mais ENTIER : le
+  // texte d'une case est découpé à ses bords, et sur une grille serrée il ne
+  // reste parfois que les premières lettres d'un nom.
+  bool show_tooltip_  = false;
   int  sp_bar_h_      = 6;      // sa hauteur, en pixels d'interface
 
   // ── Couleurs (RGBA 0..1, persistées en hex ARGB) ──────────────────────────
@@ -147,6 +151,17 @@ class PartyFrames : public Plugin {
   float col_sp_[4]       = {0.27f, 0.51f, 0.86f, 1.0f};
   float col_text_[4]     = {0.94f, 0.94f, 0.94f, 1.0f};
   float col_me_[4]       = {1.0f,  0.85f, 0.47f, 0.86f};  // liseré de MA tuile
+
+  // 🔴 DEUX absences, et elles ne se ressemblent pas :
+  //   · HORS LIGNE — le membre n'est pas connecté. Il n'y a rien à en attendre,
+  //     donc la tuile s'efface presque : un gris terne, très atténué.
+  //   · HORS DE PORTÉE — il est EN JEU, simplement trop loin pour que le client
+  //     connaisse ses PV. Il peut revenir à portée d'un instant à l'autre, et
+  //     c'est une information vivante pour qui soigne. Un bleu pâle, lisible.
+  // Les confondre dans le même gris faisait passer un allié présent pour un
+  // absent.
+  float col_offline_[4]  = {0.45f, 0.45f, 0.48f, 1.0f};
+  float col_far_[4]      = {0.58f, 0.72f, 0.90f, 1.0f};
 
   // Seuils de bascule de couleur, en pourcentage de PV.
   int hp_mid_pct_ = 55;
@@ -188,6 +203,9 @@ class PartyFrames : public Plugin {
   // Le membre sous le curseur, relevé au rendu (0 = aucun). C'est lui que la
   // grille propose à QuickCast, et c'est lui qu'on surligne.
   uint32_t hovered_gid_ = 0;
+  // La cible COURANTE du jeu, relevée au rendu. Sa tuile porte un liseré, comme
+  // le reste de l'interface la montre.
+  uint32_t target_gid_ = 0;
   // Clics en attente de rejeu (0 = rien). Un seul de chaque : deux appuis dans
   // la même frame, ça n'existe pas.
   uint32_t pending_target_gid_ = 0;  // clic gauche -> cibler
@@ -202,6 +220,9 @@ class PartyFrames : public Plugin {
   bool     open_menu_ = false;
 
   void DrawMemberMenu();
+  // L'infobulle du membre survolé : les mêmes informations que sa tuile, mais
+  // sans découpe, plus celles qui n'y tiennent pas (classe, carte).
+  void DrawTooltip(const rag::social::Entry& m, bool is_me);
   // Dernier état appliqué au HUD natif : évite de rejouer SetVisible à chaque
   // tick (appel natif) alors que rien n'a changé.
   int  native_hidden_ = -1;

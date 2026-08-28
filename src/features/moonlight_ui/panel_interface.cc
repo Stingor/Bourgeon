@@ -671,8 +671,10 @@ void MoonlightUi::DrawInterfacePanel() {
                                     "%d px");
           SameLine(); HelpMarker(i18n::Tr(
               "La taille du cadre se DÉDUIT de ces valeurs : c'est la tuile qui "
-              "commande. Le cadre reste déplaçable, mais le tirer par un coin ne "
-              "le redimensionne pas."));
+              "commande.\n\n"
+              "Tirer le cadre par sa poignée n'agit donc pas sur sa taille mais "
+              "sur le nombre de COLONNES : l'élargir en ajoute, le rétrécir en "
+              "retire. La hauteur, elle, suit le nombre de membres."));
 
           // ── Contenu d'une tuile ───────────────────────────────────────────
           SeparatorText(i18n::Tr("Contenu"));
@@ -703,6 +705,14 @@ void MoonlightUi::DrawInterfacePanel() {
           SameLine(); HelpMarker(i18n::Tr(
               "Indépendante de la police des fenêtres : une grille se lit en "
               "périphérie de l'écran, pas de face."));
+
+          changed |= ro::RoCheckbox(i18n::Tr("Infobulle au survol"),
+                                    &pf->show_tooltip_);
+          SameLine(); HelpMarker(i18n::Tr(
+              "Le texte d'une tuile est DÉCOUPÉ à ses bords : sur une grille "
+              "serrée, il ne reste parfois que les premières lettres d'un nom. "
+              "L'infobulle le redonne en entier, avec la classe, la carte et les "
+              "PV/SP chiffrés."));
           changed |= ro::RoCheckbox(i18n::Tr("Barre de SP"), &pf->show_sp_);
           SameLine(); HelpMarker(i18n::Tr(
               "Le SP d'un autre joueur ne circule dans AUCUN paquet du jeu : il "
@@ -755,6 +765,14 @@ void MoonlightUi::DrawInterfacePanel() {
           changed |= RoColorSwatch(i18n::Tr("Vie — basse"), pf->col_hp_low_);
           changed |= RoColorSwatch(i18n::Tr("SP"), pf->col_sp_);
           changed |= RoColorSwatch(i18n::Tr("Texte"), pf->col_text_);
+          changed |= RoColorSwatch(i18n::Tr("Texte — hors de portée"),
+                                   pf->col_far_);
+          SameLine(); HelpMarker(i18n::Tr(
+              "Le membre est EN JEU, simplement trop loin pour que le client "
+              "connaisse ses PV : il peut revenir à portée d'un instant à "
+              "l'autre. À ne pas confondre avec un membre déconnecté."));
+          changed |= RoColorSwatch(i18n::Tr("Texte — hors ligne"),
+                                   pf->col_offline_);
           changed |= RoColorSwatch(i18n::Tr("Liseré de ma tuile"), pf->col_me_);
 
           changed |= WheelSliderInt(i18n::Tr("Seuil « vie moyenne »"),

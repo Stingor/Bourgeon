@@ -39,6 +39,30 @@ constexpr unsigned kPollIntervalMs = 250;
 // figer une vieille valeur.
 constexpr unsigned kVitalsStaleMs = 3000;
 
+// Bornes du nombre de colonnes. La même valeur que le slider du panneau : le
+// grip de redimensionnement et le réglage doivent s'arrêter au même endroit,
+// sinon tirer le cadre produirait une valeur que le panneau refuse d'afficher.
+constexpr int kMaxColumns = 6;
+
+// La cible COURANTE du jeu : `CGameMode+0xF4`, l'AID de la dernière entité
+// sélectionnée. Lue à la source plutôt que demandée au HUD de cible — la grille
+// doit montrer la cible même quand ce HUD est éteint, et c'est ce champ que le
+// jeu consulte lui-même.
+//
+// ⚠ LECTURE SEULE. L'écrire est un chemin piégeux (gaté par `+0x28`, et `+0xF8`
+// ne doit JAMAIS être touchée) : quand la grille CIBLE, elle passe par
+// `TargetFrame::RequestTargetFromProxy`, jamais par une écriture d'ici.
+constexpr int kGm_Selection = 0x0f4;
+
+uint32_t CurrentTargetGid() {
+  __try {
+    void* gm = rag::ActiveModeSafe();
+    if (!gm) return 0u;
+    return *reinterpret_cast<const uint32_t*>(
+        reinterpret_cast<const char*>(gm) + kGm_Selection);
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0u; }
+}
+
 // Masque/rend une fenêtre native sans lever si elle n'existe pas.
 void SetNativeVisible(int window_id, bool visible) {
   __try {
@@ -156,6 +180,77 @@ void PartyFrames::HandlePacket(uint16_t opcode, const uint8_t* data,
   vitals_[gid] = v;
 }
 
+// ── L'infobulle d'une tuile ─────────────────────────────────────────────────
+//
+// Elle redonne ce que la tuile porte, mais ENTIER — le texte d'une case étant
+// découpé à ses bords — et y ajoute ce qui n'y tient jamais : la classe et la
+// carte. C'est aussi le seul endroit où l'on peut expliquer pourquoi une barre
+// manque.
+void PartyFrames::DrawTooltip(const rag::social::Entry& m, bool is_me) {
+  ImGui::BeginTooltip();
+
+  ImGui::TextUnformatted(ro::LocalToUtf8(m.name.c_str()));
+  ImGui::SameLine();
+  ImGui::TextDisabled("Lv.%u", m.level);
+  if (m.is_leader) {
+    ImGui::SameLine();
+    ImGui::TextDisabled("%s", i18n::Tr("(chef)"));
+  }
+  ImGui::Separator();
+
+  ImGui::TextDisabled("%s", ro::LocalToUtf8(rag::social::JobName(m.job)));
+
+  if (m.offline) {
+    ImGui::TextDisabled("%s", i18n::Tr("Hors ligne"));
+    ImGui::EndTooltip();
+    return;
+  }
+
+  // La carte, sous son nom lisible — le champ brut est un identifiant.
+  if (!m.map.empty()) {
+    char bare[64] = {0};
+    char pretty[64] = {0};
+    size_t i = 0;
+    for (; i + 1 < sizeof(bare) && m.map[i] && m.map[i] != '.'; ++i)
+      bare[i] = m.map[i];
+    bare[i] = '\0';
+    if (rag::MapDisplayName(bare, pretty, sizeof(pretty)) && pretty[0])
+      ImGui::TextDisabled("%s", ro::LocalToUtf8(pretty));
+    else
+      ImGui::TextDisabled("%s", ro::LocalToUtf8(m.map.c_str()));
+  }
+
+  if (m.has_hp && m.max_hp > 0) {
+    const int pct = (m.hp > 0)
+        ? std::max(1, static_cast<int>((static_cast<float>(m.hp) /
+                                        static_cast<float>(m.max_hp)) * 100.0f))
+        : 0;
+    ImGui::Text("%s %d/%d (%d %%)", i18n::Tr("PV"), m.hp, m.max_hp, pct);
+  } else {
+    // On DIT pourquoi il n'y a rien, plutôt que de laisser une ligne vide.
+    ImGui::TextDisabled("%s", i18n::Tr("PV inconnus : hors de portée"));
+  }
+
+  if (show_sp_) {
+    int sp = 0, maxsp = 0;
+    if (is_me) {
+      sp    = rag::ReadInt(rag::kOwnSpAddr);
+      maxsp = rag::ReadInt(rag::kOwnMaxSpAddr);
+    } else {
+      auto it = vitals_.find(m.gid);
+      if (it != vitals_.end() &&
+          (GetTickCount() - it->second.stamp) <= kVitalsStaleMs) {
+        sp    = it->second.sp;
+        maxsp = it->second.maxsp;
+      }
+    }
+    if (maxsp > 0) ImGui::Text("%s %d/%d", i18n::Tr("SP"), sp, maxsp);
+    else           ImGui::TextDisabled("%s", i18n::Tr("SP inconnu"));
+  }
+
+  ImGui::EndTooltip();
+}
+
 // ── Le menu d'une tuile ─────────────────────────────────────────────────────
 //
 // Les mêmes gestes que le menu contextuel de la fenêtre Amis/Groupe, et pour
@@ -215,10 +310,22 @@ void PartyFrames::FlushPending() {
   // Sans effet si le mode Ciblage du joueur est éteint : c'est SON réglage qui
   // décide qu'une cible existe.
   if (target != 0) {
-    if (auto* tf = Bourgeon::Instance().target_frame()) {
-      // Rend false quand le mode Ciblage est éteint — on ne le signale pas :
-      // le réglage du panneau dit déjà que le geste en dépend.
-      tf->RequestTargetFromProxy(target);
+    // 🔴 Pas d'acteur, pas de ciblage. Un membre HORS LIGNE n'en a évidemment
+    // aucun, un membre hors de portée non plus : le cibler quand même ouvrait un
+    // HUD de cible VIDE, puisqu'il n'y a rien à y montrer. Mieux vaut que le clic
+    // ne fasse rien que d'installer une fenêtre creuse.
+    //
+    // ⚠ MOI excepté : mon acteur n'est pas dans la liste que parcourt
+    // `FindActorByGid` (le natif le range en `actorMgr+0x2C`, cf.
+    // `SkillTargetGid`). Sans cette exception, ma propre tuile serait la seule à
+    // ne pas pouvoir se cibler.
+    const bool self = (target == rag::social::OwnAid());
+    if (self || gamescene::FindActorByGid(target) != nullptr) {
+      if (auto* tf = Bourgeon::Instance().target_frame()) {
+        // Rend false quand le mode Ciblage est éteint — on ne le signale pas :
+        // le réglage du panneau dit déjà que le geste en dépend.
+        tf->RequestTargetFromProxy(target);
+      }
     }
   }
 
@@ -311,11 +418,21 @@ void PartyFrames::OnRenderUI() {
   const float tile_h = ro::Px(static_cast<float>(std::max(18, tile_h_)));
   const float pad    = ro::Px(3.0f);
 
-  // 🔴 C'est la TUILE qui commande la taille du cadre, pas l'inverse : un raid
-  // frame se règle en « telle taille de case », pas en tirant un coin jusqu'à
-  // tomber juste. Le cadre reste déplaçable ; son redimensionnement à la souris
-  // est donc sans effet ici, et c'est voulu.
-  rect_.w = static_cast<int>(cols * tile_w + (cols - 1) * gap + pad * 2);
+  // ── La géométrie du cadre découle des tuiles… sauf pendant qu'on la tire ──
+  //
+  // La taille se DÉDUIT du nombre de colonnes et de la taille des cases : un raid
+  // frame se règle ainsi, pas en tirant un coin jusqu'à tomber juste. Mais le
+  // cadre porte une poignée de redimensionnement, et une poignée qui ne fait rien
+  // est une promesse non tenue — on lui donne donc un rôle : ÉLARGIR LE CADRE
+  // AJOUTE DES COLONNES.
+  //
+  // Pendant le tirage on laisse donc `rect_.w` suivre la souris ; à la frame
+  // suivante il reprend sa valeur canonique, calculée depuis le nombre de
+  // colonnes qu'on vient d'en déduire. La hauteur, elle, est toujours imposée :
+  // elle découle du nombre de rangées, qui découle des membres présents.
+  const int want_w =
+      static_cast<int>(cols * tile_w + (cols - 1) * gap + pad * 2);
+  if (!ro::HudFrameDragging()) rect_.w = want_w;
   rect_.h = static_cast<int>(rows * tile_h + (rows - 1) * gap + pad * 2);
 
   ro::HudFrameOpts opts;
@@ -332,7 +449,13 @@ void PartyFrames::OnRenderUI() {
       mouse.y >= static_cast<float>(rect_.y) &&
       mouse.x <  static_cast<float>(rect_.x + rect_.w) &&
       mouse.y <  static_cast<float>(rect_.y + rect_.h);
-  const bool unlock_override = ImGui::GetIO().KeyShift && over_frame;
+  // ⚠ `|| HudFrameDragging()` : un geste EN COURS garde la main même si le
+  // curseur sort du cadre. Sans cela, tirer un bord vers l'extérieur — ce qu'est
+  // un agrandissement — faisait sortir la souris du rectangle, donc reverrouiller
+  // le cadre, donc interrompre le geste : la poignée apparaissait et ne servait
+  // à rien.
+  const bool unlock_override =
+      ImGui::GetIO().KeyShift && (over_frame || ro::HudFrameDragging());
   opts.locked   = locked_ && !unlock_override;
   opts.border   = false;
   opts.rounding = ro::Px(3.0f);
@@ -356,6 +479,7 @@ void PartyFrames::OnRenderUI() {
   // Le membre survolé est relevé À CHAQUE frame, et remis à zéro d'abord : une
   // valeur qui survit à la frame ferait viser quelqu'un que le curseur a quitté.
   hovered_gid_ = 0;
+  target_gid_  = CurrentTargetGid();
 
   ro::HudFrameClicks clicks;
   if (ro::BeginHudFrame("##party_frames", &rect_, opts, &geometry_dirty_,
@@ -400,12 +524,30 @@ void PartyFrames::OnRenderUI() {
   }
   ro::EndHudFrame();
 
-  // Le menu vit HORS du cadre : une popup ouverte à l'intérieur serait clippée
-  // par lui, et il fait la taille d'une tuile.
+  // L'infobulle et le menu vivent HORS du cadre : ouverts à l'intérieur, ils
+  // seraient découpés par lui — il fait la taille d'une tuile.
+  if (show_tooltip_ && hovered_gid_ != 0) {
+    const uint32_t me_gid = rag::social::OwnAid();
+    for (const rag::social::Entry& m : members_) {
+      if (m.gid != hovered_gid_) continue;
+      DrawTooltip(m, m.gid == me_gid);
+      break;
+    }
+  }
   DrawMemberMenu();
 
   if (geometry_dirty_) {
     geometry_dirty_ = false;
+    // La largeur que le joueur vient de tirer se traduit en NOMBRE DE COLONNES.
+    // Un simple déplacement passe ici aussi, mais il ne change pas la largeur :
+    // le calcul retombe alors sur la valeur courante et rien ne bouge.
+    const float unit = tile_w + gap;
+    if (unit > 1.0f) {
+      int new_cols = static_cast<int>(
+          ((static_cast<float>(rect_.w) - pad * 2 + gap) / unit) + 0.5f);
+      new_cols = std::max(1, std::min(new_cols, kMaxColumns));
+      columns_ = new_cols;
+    }
     if (auto* ui = Bourgeon::Instance().moonlight_ui()) ui->SaveSettings();
   }
 }
@@ -508,20 +650,34 @@ void PartyFrames::DrawTile(const rag::social::Entry& m, ImVec2 p0, ImVec2 p1,
     }
   }
 
-  // Le liseré : ma tuile se repère à sa couleur, la tuile SURVOLÉE s'éclaire.
-  // Ce retour-là n'est pas cosmétique — c'est lui qui dit au joueur sur QUI son
-  // prochain sort partira, avant qu'il n'appuie.
-  const bool hovered = (hovered_gid_ != 0 && hovered_gid_ == m.gid);
+  // ── Le liseré, par ordre de priorité ─────────────────────────────────────
+  //
+  // Trois états peuvent l'allumer, et l'ordre traduit l'urgence de l'information :
+  //   1. SURVOLÉ — sur qui le prochain sort partira. C'est du présent immédiat,
+  //      donc ça prime sur tout le reste.
+  //   2. CIBLÉ — la cible courante du jeu, celle que le reste de l'interface
+  //      montre. Un blanc plus discret : c'est un état, pas une intention.
+  //   3. MOI — repère permanent, la couleur réglable.
+  const bool hovered  = (hovered_gid_ != 0 && hovered_gid_ == m.gid);
+  const bool targeted = (target_gid_ != 0 && target_gid_ == m.gid);
   if (hovered) {
     dl->AddRect(p0, p1, IM_COL32(255, 255, 255, 210), rounding, 0, 2.0f);
+  } else if (targeted) {
+    dl->AddRect(p0, p1, IM_COL32(255, 255, 255, 165), rounding, 0, 2.0f);
   } else {
     dl->AddRect(p0, p1, is_me ? Col(col_me_) : IM_COL32(0, 0, 0, 190), rounding,
                 0, is_me ? 2.0f : 1.0f);
   }
 
   // ── Le texte : nom, puis l'état ou les PV ────────────────────────────────
-  const bool dim = m.offline || !has_hp;
-  const ImU32 text = dim ? ColA(col_text_, col_text_[3] * 0.62f) : Col(col_text_);
+  //
+  // Trois couleurs, parce qu'il y a trois situations et qu'en confondre deux
+  // trompe le lecteur : présent (couleur normale), présent mais HORS DE PORTÉE
+  // (bleu pâle — il est là, on ne sait juste pas ses PV), et HORS LIGNE (gris
+  // terne — il n'y a rien à en attendre).
+  const ImU32 text = m.offline ? Col(col_offline_)
+                   : !has_hp   ? Col(col_far_)
+                               : Col(col_text_);
 
   char first[96];
   if (show_level_) {
@@ -574,8 +730,18 @@ void PartyFrames::DrawTile(const rag::social::Entry& m, ImVec2 p0, ImVec2 p1,
   float ty = p0.y + ((bottom - p0.y) - block_h) * 0.5f;
   if (ty < p0.y) ty = p0.y;
 
-  dl->AddText(font, fsz, ImVec2(text_x, ty), text, first);
+  // 🔴 Le texte est DÉCOUPÉ à la tuile. Un nom long débordait sur la tuile
+  // voisine — et sur une grille dense, un nom qui déborde se lit comme s'il
+  // appartenait à la case d'à côté : pire qu'un nom tronqué. `AddText` accepte un
+  // rectangle de découpe FIN (au pixel), ce qui évite d'avoir à mesurer et à
+  // couper la chaîne nous-mêmes.
+  //
+  // Ce qui dépasse est donc perdu : c'est à ça que sert l'infobulle, qui redonne
+  // la ligne entière.
+  const ImVec4 clip(text_x, p0.y, p1.x - pad, bottom);
+  dl->AddText(font, fsz, ImVec2(text_x, ty), text, first, nullptr, 0.0f, &clip);
   if (two_lines) {
-    dl->AddText(font, fsz, ImVec2(text_x, ty + line), text, second);
+    dl->AddText(font, fsz, ImVec2(text_x, ty + line), text, second, nullptr,
+                0.0f, &clip);
   }
 }
