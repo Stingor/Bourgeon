@@ -648,26 +648,10 @@ void MoonlightUi::DrawInterfacePanel() {
               "utile sur une fenêtre étroite."));
           changed |= ro::RoCheckbox(i18n::Tr("Niveau devant le nom"),
                                     &pfw->show_level_);
-          changed |= ro::RoCheckbox(i18n::Tr("Barre de vie"),
-                                    &pfw->show_hp_bar_);
-          {
-            const char* kHpModes[] = {
-                i18n::Tr("Rien"), i18n::Tr("Chiffres"),
-                i18n::Tr("Pourcentage"), i18n::Tr("Chiffres et pourcentage")};
-            changed |= ImGui::Combo(i18n::Tr("Points de vie"),
-                                    &pfw->hp_text_mode_, kHpModes,
-                                    IM_ARRAYSIZE(kHpModes));
-          }
-          changed |= ro::RoCheckbox(i18n::Tr("Barre de SP"), &pfw->show_sp_);
-          SameLine(); HelpMarker(i18n::Tr(
-              "Le SP d'un autre joueur ne circule dans AUCUN paquet du jeu : il "
-              "est demandé au serveur, membre par membre. Il n'apparaît donc que "
-              "pour ceux qui sont à portée de vue, et coûte un peu de réseau — "
-              "d'où le défaut éteint."));
           {
             const char* kMapModes[] = {i18n::Tr("Nom complet"),
                                        i18n::Tr("Nom court")};
-            changed |= ImGui::Combo(i18n::Tr("Carte"), &pfw->map_mode_,
+            changed |= ro::RoCombo(i18n::Tr("Carte"), &pfw->map_mode_,
                                     kMapModes, IM_ARRAYSIZE(kMapModes));
           }
           SameLine(); HelpMarker(i18n::Tr(
@@ -691,7 +675,26 @@ void MoonlightUi::DrawInterfacePanel() {
               "plus de hauteur sur un groupe nombreux."));
 
           // ── Jauges ────────────────────────────────────────────────────────
+          // PV et SP ensemble : ce sont deux jauges, elles partagent forme,
+          // taille et placement du texte. Les séparer obligeait à faire des
+          // allers-retours entre deux blocs pour un réglage commun.
           SeparatorText(i18n::Tr("Jauges"));
+          changed |= ro::RoCheckbox(i18n::Tr("Barre de vie"),
+                                    &pfw->show_hp_bar_);
+          {
+            const char* kHpModes[] = {
+                i18n::Tr("Rien"), i18n::Tr("Chiffres"),
+                i18n::Tr("Pourcentage"), i18n::Tr("Chiffres et pourcentage")};
+            changed |= ro::RoCombo(i18n::Tr("Texte des PV"),
+                                   &pfw->hp_text_mode_, kHpModes,
+                                   IM_ARRAYSIZE(kHpModes));
+          }
+          changed |= ro::RoCheckbox(i18n::Tr("Barre de SP"), &pfw->show_sp_);
+          SameLine(); HelpMarker(i18n::Tr(
+              "Le SP d'un autre joueur ne circule dans AUCUN paquet du jeu : il "
+              "est demandé au serveur, membre par membre. Il n'apparaît donc que "
+              "pour ceux qui sont à portée de vue, et coûte un peu de réseau — "
+              "d'où le défaut éteint."));
           changed |= WheelSliderInt(i18n::Tr("Largeur des jauges"),
                                     &pfw->bar_w_, 20, 260, "%d px");
           changed |= WheelSliderInt(i18n::Tr("Hauteur d'une jauge"),
@@ -716,7 +719,7 @@ void MoonlightUi::DrawInterfacePanel() {
             const char* kSpModes[] = {
                 i18n::Tr("Rien"), i18n::Tr("Chiffres"),
                 i18n::Tr("Pourcentage"), i18n::Tr("Chiffres et pourcentage")};
-            changed |= ImGui::Combo(i18n::Tr("Texte du SP"),
+            changed |= ro::RoCombo(i18n::Tr("Texte du SP"),
                                     &pfw->sp_text_mode_, kSpModes,
                                     IM_ARRAYSIZE(kSpModes));
           }
@@ -794,7 +797,7 @@ void MoonlightUi::DrawInterfacePanel() {
             const char* kHpModes[] = {
                 i18n::Tr("Rien"), i18n::Tr("Chiffres"),
                 i18n::Tr("Pourcentage"), i18n::Tr("Chiffres et pourcentage")};
-            changed |= ImGui::Combo(i18n::Tr("Points de vie"),
+            changed |= ro::RoCombo(i18n::Tr("Points de vie"),
                                     &pf->hp_text_mode_, kHpModes,
                                     IM_ARRAYSIZE(kHpModes));
           }

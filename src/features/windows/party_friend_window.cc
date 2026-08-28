@@ -620,11 +620,20 @@ void PartyFriendWindow::DrawPartyTab() {
   DrawPartyOptions();
   ImGui::Separator();
 
+  // 🔴 L'espace entre lignes est l'ESPACEMENT D'ImGui, pas un bloc ajouté après
+  // coup : un `Dummy` s'AJOUTAIT à `ItemSpacing.y`, si bien que le réglage à zéro
+  // laissait encore ~4 px — il ne faisait donc pas ce que son nom promet. En
+  // poussant le style, zéro veut vraiment dire « les lignes se touchent ».
+  ImGui::PushStyleVar(
+      ImGuiStyleVar_ItemSpacing,
+      ImVec2(ImGui::GetStyle().ItemSpacing.x,
+             ro::Px(static_cast<float>(std::max(0, row_spacing_)))));
   for (size_t i = 0; i < party_.size(); ++i) {
     ImGui::PushID(static_cast<int>(i));
     DrawPartyRow(party_[i]);
     ImGui::PopID();
   }
+  ImGui::PopStyleVar();
 
   // ── Le compteur du bas, comme le natif ────────────────────────────────────
   // `sprintf("%d/%d", PartyMemberCount(), 0x0C)` @0x00704820 : le maximum est
@@ -691,30 +700,23 @@ void PartyFriendWindow::DrawPartyRow(const rag::social::Entry& row) {
   const float row_w = ImGui::GetContentRegionAvail().x;
 
   // ── L'icône de classe ──────────────────────────────────────────────────────
+  //
+  // 🔴 Sa PLACE est reservée ici, mais elle est DESSINÉE en fin de ligne : on ne
+  // peut pas la centrer verticalement sur une hauteur qu'on ne connaît pas
+  // encore. Posée d'emblée, elle restait collée en haut — et l'écart sautait aux
+  // yeux dès qu'on changeait sa taille ou qu'on empilait les jauges.
   rag::social::JobIconPath(row.job, path, sizeof(path));
   const ro::GameTexture job_icon =
       show_job_icon_ ? ro::CachedTextureFromGameFile(path) : ro::GameTexture{};
-  if (!show_job_icon_) {
-    // Rien du tout, pas même la place : sans icône, la ligne se resserre. C'est
-    // tout l'intérêt de pouvoir l'éteindre sur une fenêtre étroite.
-  } else if (job_icon.tex) {
-    // Hors ligne : la même icône, assombrie — le natif grise toute la ligne.
-    const ImVec4 tint = row.offline ? ImVec4(0.55f, 0.55f, 0.55f, 1.0f)
-                                    : ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
-    // ⚠ `Image()` n'accepte plus de teinte depuis ImGui 1.91.9 : elle a déménagé
-    // dans `ImageWithBg` (fond transparent ici, on ne veut que la teinte).
-    ImGui::ImageWithBg(reinterpret_cast<ImTextureID>(job_icon.tex),
-                       ImVec2(icon, icon), ImVec2(0, 0), ImVec2(1, 1),
-                       ImVec4(0, 0, 0, 0), tint);
-  } else {
-    // Pas d'art (job inconnu du dossier, ou texture perdue au reset de device) :
-    // on garde la place pour que les lignes restent alignées.
+  if (show_job_icon_) {
     ImGui::Dummy(ImVec2(icon, icon));
   }
   // Le natif pose le nom de classe sur son bouton d'icône
   // (`UITextButton_SetName`, DrawContent) : on le rend en infobulle, seul endroit
   // où il tient sans encombrer la ligne.
-  if (show_job_icon_ && ImGui::IsItemHovered())
+  // ⚠ Seulement quand l'infobulle de LIGNE est éteinte : elle porte déjà la
+  // classe, et deux infobulles sur la même ligne se disputeraient l'affichage.
+  if (show_job_icon_ && !show_tooltip_ && ImGui::IsItemHovered())
     ImGui::SetTooltip("%s", ro::LocalToUtf8(rag::social::JobName(row.job)));
   if (show_job_icon_) ImGui::SameLine();
 
@@ -796,6 +798,13 @@ void PartyFriendWindow::DrawPartyRow(const rag::social::Entry& row) {
     // suivante ne tomberait pas juste dessous.
     const bool stack = bars_stacked_ && has_sp && show_hp_bar_;
 
+    // 🔴 « Collées » ne tient pas au seul `Dummy` : entre deux widgets, ImGui
+    // insère `ItemSpacing.y` (~4 px). Sans l'annuler, les jauges restaient
+    // séparées d'un blanc et le réglage ne semblait rien faire.
+    if (stack) {
+      ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
+                          ImVec2(ImGui::GetStyle().ItemSpacing.x, 0.0f));
+    }
     if (show_hp_bar_) {
       DrawRowBar(row.hp, row.max_hp, IM_COL32(64, 200, 72, 255), hp_text_mode_,
                  stack);
@@ -812,10 +821,25 @@ void PartyFriendWindow::DrawPartyRow(const rag::social::Entry& row) {
     if (has_sp) {
       DrawRowBar(sp, maxsp, IM_COL32(70, 130, 220, 255), sp_text_mode_, false);
     }
+    if (stack) ImGui::PopStyleVar();
   }
   (void)dl;
 
   ImGui::EndGroup();
+
+  // ── L'icône, CENTRÉE sur la hauteur réelle de la ligne ───────────────────
+  // Sa place a été réservée plus haut ; maintenant que le contenu est posé, on
+  // connaît la hauteur sur laquelle la centrer. La ligne fait au moins la
+  // hauteur de l'icône (le `Dummy` la garantit), d'où le `max`.
+  if (show_job_icon_ && job_icon.tex) {
+    const float content_h = std::max(icon, ImGui::GetItemRectSize().y);
+    const ImVec2 i0(origin.x, origin.y + (content_h - icon) * 0.5f);
+    // Hors ligne : la même icône, assombrie — le natif grise toute la ligne.
+    const ImU32 tint = row.offline ? IM_COL32(140, 140, 140, 220) : IM_COL32_WHITE;
+    ImGui::GetWindowDrawList()->AddImage(
+        reinterpret_cast<ImTextureID>(job_icon.tex), i0,
+        ImVec2(i0.x + icon, i0.y + icon), ImVec2(0, 0), ImVec2(1, 1), tint);
+  }
 
   // ── La pastille de statut, calée à droite de la ligne ─────────────────────
   // Même arbitrage que le natif : hors ligne -> OFF, moi -> ME (comparaison à
@@ -856,12 +880,8 @@ void PartyFriendWindow::DrawPartyRow(const rag::social::Entry& row) {
     DrawRowTooltip(row);
   }
   DrawRowContextMenu(row, true);
-
-  // L'espace entre deux lignes est un RÉGLAGE : à zéro, elles se touchent, ce
-  // qui est la façon la plus efficace de tenir un grand groupe à l'écran.
-  if (row_spacing_ > 0) {
-    ImGui::Dummy(ImVec2(1.0f, ro::Px(static_cast<float>(row_spacing_))));
-  }
+  // (Aucun espace ajouté ici : il vient du `ItemSpacing` que DrawPartyTab pousse
+  // autour de la boucle — sans quoi il s'AJOUTERAIT à celui d'ImGui.)
 }
 
 // ── Les réglages du groupe ──────────────────────────────────────────────────
