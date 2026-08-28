@@ -10,9 +10,14 @@
 #include <utility>
 
 #include "bourgeon.h"
+#include "features/moonlight_ui/moonlight_ui.h"  // OpenInterfaceSection (bullet)
+#include "features/overlays/party_frames.h"      // le cache de SP, partagé
+#include "features/overlays/target_frame.h"      // cibler par le chemin clavier
+#include "features/windows/entity_context_menu.h"  // le menu du personnage
 #include "imgui.h"
 #include "ragnarok/game_scene.h"
 #include "ragnarok/globals.h"
+#include "ragnarok/stl_node.h"  // treenode:: (le std::map des positions de groupe)
 #include "ragnarok/msgstring.h"      // msgstr::Utf8Or (libellés exacts du client)
 #include "ragnarok/ui_window_mgr.h"  // UIM_MAKE_WHISPER_WINDOW (ouverture d'un 1:1)
 #include "ragnarok/uiwnd.h"
@@ -391,6 +396,25 @@ void PartyFriendWindow::FlushPending() {
       // dans l'ordre exp / ramassage / partage.
       rag::SendToActiveMode(kCmdPartyOptions, opt_exp_, opt_pickup_, opt_share_);
       break;
+    case Action::kTargetMember:
+      // Par le chemin CLAVIER de TargetFrame : un allié n'est pas une cible
+      // « valide » au sens du clic natif, donc rejouer un clic ne ferait rien.
+      if (auto* tf = Bourgeon::Instance().target_frame())
+        tf->RequestTargetFromProxy(pending_gid_);
+      break;
+    case Action::kEntityMenu: {
+      // Le menu contextuel du CLIENT sur ce personnage, comme sur son sprite.
+      // C'est `EntityContextMenu` qui décide de son contenu et de ce qu'il grise
+      // — on ne lui donne que la cible.
+      void* gm = rag::ActiveModeSafe();
+      if (gm != nullptr && gamescene::FindActorByGid(pending_gid_) != nullptr) {
+        if (auto* ctx = Bourgeon::Instance().entity_context_menu()) {
+          ctx->OpenForEntity(gm, pending_gid_, pending_id2_,
+                             gamescene::kPickActor);
+        }
+      }
+      break;
+    }
     case Action::kNone:
       break;
   }
@@ -501,7 +525,14 @@ void PartyFriendWindow::OnRenderUI() {
   ImGui::SetNextWindowSizeConstraints(ImVec2(ro::Px(260.0f), ro::Px(150.0f)),
                                       ImVec2(FLT_MAX, FLT_MAX));
 
-  if (ro::BeginRoWindow(i18n::Tr("Groupe / Amis"), &open_)) {
+  // Bullet de la barre de titre = raccourci vers la config de CETTE fenêtre.
+  ro::SetNextWindowTitleBullet(i18n::Tr("Réglages Groupe / Amis"));
+  const bool begun = ro::BeginRoWindow(i18n::Tr("Groupe / Amis"), &open_);
+  if (ro::TitleBulletClicked()) {
+    if (auto* mu = Bourgeon::Instance().moonlight_ui())
+      mu->OpenInterfaceSection(MoonlightUi::kIfacePartyFriend);
+  }
+  if (begun) {
     // Les deux onglets du natif, dans le même ordre et avec le même sens de
     // `cur_tab_` que son champ +0x28C (0 = amis, 1 = groupe).
     if (ro::RoToggleButton(i18n::Tr("Groupe"), cur_tab_ == 1)) cur_tab_ = 1;
@@ -658,8 +689,12 @@ void PartyFriendWindow::DrawPartyRow(const rag::social::Entry& row) {
 
   // ── L'icône de classe ──────────────────────────────────────────────────────
   rag::social::JobIconPath(row.job, path, sizeof(path));
-  const ro::GameTexture job_icon = ro::CachedTextureFromGameFile(path);
-  if (job_icon.tex) {
+  const ro::GameTexture job_icon =
+      show_job_icon_ ? ro::CachedTextureFromGameFile(path) : ro::GameTexture{};
+  if (!show_job_icon_) {
+    // Rien du tout, pas même la place : sans icône, la ligne se resserre. C'est
+    // tout l'intérêt de pouvoir l'éteindre sur une fenêtre étroite.
+  } else if (job_icon.tex) {
     // Hors ligne : la même icône, assombrie — le natif grise toute la ligne.
     const ImVec4 tint = row.offline ? ImVec4(0.55f, 0.55f, 0.55f, 1.0f)
                                     : ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
@@ -676,9 +711,9 @@ void PartyFriendWindow::DrawPartyRow(const rag::social::Entry& row) {
   // Le natif pose le nom de classe sur son bouton d'icône
   // (`UITextButton_SetName`, DrawContent) : on le rend en infobulle, seul endroit
   // où il tient sans encombrer la ligne.
-  if (ImGui::IsItemHovered())
+  if (show_job_icon_ && ImGui::IsItemHovered())
     ImGui::SetTooltip("%s", ro::LocalToUtf8(rag::social::JobName(row.job)));
-  ImGui::SameLine();
+  if (show_job_icon_) ImGui::SameLine();
 
   ImGui::BeginGroup();
 
@@ -705,12 +740,22 @@ void PartyFriendWindow::DrawPartyRow(const rag::social::Entry& row) {
     if (!rag::MapDisplayName(bare, pretty, sizeof(pretty)) || !pretty[0])
       std::snprintf(pretty, sizeof(pretty), "%s", row.map.c_str());
   }
+  // Nom de carte COURT : ce qui précède la première virgule. Le client écrit
+  // « Gonryun, the Hermit Land (Kunlun) » là où « Gonryun » suffit à se repérer,
+  // et le complet pousse le reste de la ligne hors d'une fenêtre étroite.
+  if (map_mode_ == kMapShort) {
+    for (char* p = pretty; *p; ++p) {
+      if (*p == ',' || (*p == ' ' && p[1] == '(')) { *p = '\0'; break; }
+    }
+  }
   // Le natif n'affiche la carte que pour un membre EN LIGNE qui en a une.
+  char lvl[16] = {0};
+  if (show_level_) std::snprintf(lvl, sizeof(lvl), "Lv.%u ", row.level);
   if (pretty[0] && !row.offline)
-    std::snprintf(label, sizeof(label), "Lv.%u %s(%s)", row.level, name_utf8,
+    std::snprintf(label, sizeof(label), "%s%s(%s)", lvl, name_utf8,
                   ro::LocalToUtf8(pretty));
   else
-    std::snprintf(label, sizeof(label), "Lv.%u %s", row.level, name_utf8);
+    std::snprintf(label, sizeof(label), "%s%s", lvl, name_utf8);
 
   if (row.offline) ImGui::TextDisabled("%s", label);
   else             ImGui::TextUnformatted(label);
@@ -732,20 +777,61 @@ void PartyFriendWindow::DrawPartyRow(const rag::social::Entry& row) {
       ImGui::SetTooltip(
           "%s", i18n::Tr("Le client ne connaît les PV que des membres visibles."));
   } else {
-    const float bar_w = ro::Px(96.0f);
-    const float bar_h = ro::Px(7.0f);
-    const ImVec2 bar_pos = ImGui::GetCursorScreenPos();
-    const ImVec2 bar_end(bar_pos.x + bar_w, bar_pos.y + bar_h);
-    dl->AddRectFilled(bar_pos, bar_end, IM_COL32(24, 24, 24, 200));
     float frac = static_cast<float>(row.hp) / static_cast<float>(row.max_hp);
     if (frac < 0.0f) frac = 0.0f;
     if (frac > 1.0f) frac = 1.0f;
-    dl->AddRectFilled(bar_pos, ImVec2(bar_pos.x + bar_w * frac, bar_end.y),
-                      IM_COL32(64, 200, 72, 255));
-    dl->AddRect(bar_pos, bar_end, IM_COL32(0, 0, 0, 180));
-    ImGui::Dummy(ImVec2(bar_w, bar_h));
-    ImGui::SameLine(0.0f, 6.0f);
-    ImGui::Text("%d/%d", row.hp, row.max_hp);
+
+    if (show_hp_bar_) {
+      const float bar_w = ro::Px(96.0f);
+      const float bar_h = ro::Px(7.0f);
+      const ImVec2 bar_pos = ImGui::GetCursorScreenPos();
+      const ImVec2 bar_end(bar_pos.x + bar_w, bar_pos.y + bar_h);
+      dl->AddRectFilled(bar_pos, bar_end, IM_COL32(24, 24, 24, 200));
+      dl->AddRectFilled(bar_pos, ImVec2(bar_pos.x + bar_w * frac, bar_end.y),
+                        IM_COL32(64, 200, 72, 255));
+      dl->AddRect(bar_pos, bar_end, IM_COL32(0, 0, 0, 180));
+      ImGui::Dummy(ImVec2(bar_w, bar_h));
+      if (hp_text_mode_ != kHpTextNone) ImGui::SameLine(0.0f, 6.0f);
+    }
+
+    // Le pourcentage est arrondi VERS LE HAUT tant qu'il reste un point de vie :
+    // afficher « 0 % » sur quelqu'un de vivant ferait renoncer à le soigner.
+    const int pct = (row.hp > 0) ? std::max(1, static_cast<int>(frac * 100.0f)) : 0;
+    switch (hp_text_mode_) {
+      case kHpTextNumbers: ImGui::Text("%d/%d", row.hp, row.max_hp); break;
+      case kHpTextPercent: ImGui::Text("%d %%", pct); break;
+      case kHpTextBoth:
+        ImGui::Text("%d/%d (%d %%)", row.hp, row.max_hp, pct);
+        break;
+      default: break;  // kHpTextNone : la barre parle d'elle-même
+    }
+
+    // ── La barre de SP ───────────────────────────────────────────────────────
+    // Elle vient du HUD en grille, seul module à interroger le serveur (CZ
+    // 0x0F29) : le faire une deuxième fois d'ici doublerait le trafic pour la
+    // même information. On lui DÉCLARE le besoin, il s'occupe du reste.
+    if (show_sp_) {
+      int sp = 0, maxsp = 0;
+      auto* frames = Bourgeon::Instance().party_frames();
+      if (frames != nullptr) {
+        frames->RequestSpPolling();
+        if (frames->MemberSp(row.gid, &sp, &maxsp) && maxsp > 0) {
+          const float sfrac =
+              std::min(1.0f, static_cast<float>(sp) / static_cast<float>(maxsp));
+          const float bar_w = ro::Px(96.0f);
+          const float bar_h = ro::Px(4.0f);
+          const ImVec2 s0 = ImGui::GetCursorScreenPos();
+          const ImVec2 s1(s0.x + bar_w, s0.y + bar_h);
+          dl->AddRectFilled(s0, s1, IM_COL32(18, 18, 24, 200));
+          dl->AddRectFilled(s0, ImVec2(s0.x + bar_w * sfrac, s1.y),
+                            IM_COL32(70, 130, 220, 255));
+          dl->AddRect(s0, s1, IM_COL32(0, 0, 0, 160));
+          ImGui::Dummy(ImVec2(bar_w, bar_h));
+          ImGui::SameLine(0.0f, 6.0f);
+          ImGui::TextDisabled("%d/%d", sp, maxsp);
+        }
+      }
+    }
   }
 
   ImGui::EndGroup();
@@ -774,9 +860,15 @@ void PartyFriendWindow::DrawPartyRow(const rag::social::Entry& row) {
   // un bouton couvrant volerait le survol de l'icône et des PV, qui portent
   // chacun leur infobulle. Le natif ouvre son menu sur le même geste
   // (`_OnRButtonDown` 0x007057a0 -> OnMsg 0x31).
-  if (ImGui::IsMouseHoveringRect(origin, ImVec2(origin.x + row_w, y)) &&
-      ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+  const bool row_hovered =
+      ImGui::IsMouseHoveringRect(origin, ImVec2(origin.x + row_w, y));
+  if (row_hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
     ImGui::OpenPopup("##rowmenu");
+  }
+  // ⚠ Pas d'infobulle tant qu'un popup est ouvert : elle passerait DEVANT le
+  // menu contextuel qu'on vient d'ouvrir sur cette même ligne.
+  if (show_tooltip_ && row_hovered && !ImGui::IsPopupOpen("##rowmenu")) {
+    DrawRowTooltip(row);
   }
   DrawRowContextMenu(row, true);
 
@@ -899,6 +991,123 @@ void PartyFriendWindow::DrawPartyOptions() {
 //
 // Rien n'agit ici : chaque entrée ARME `pending_` (ou demande une confirmation).
 // Cf. FlushPending pour le pourquoi.
+namespace {
+
+// ── La position d'un membre, pour la mini-carte de l'infobulle ──────────────
+//
+// Le client tient un `std::map<GID, {int x, int y, D3DCOLOR}>` en `CGameMode+0x1B4`
+// — c'est LUI qui alimente les carrés de groupe de la minimap, et c'est la seule
+// source : l'entrée sociale porte le nom de carte, jamais les coordonnées.
+//
+// On cherche par CLÉ plutôt que de tout collecter comme le fait la minimap : on
+// ne veut qu'un membre, et la clé est en tête de la paire.
+constexpr int kGm_PartyMap = 0x1b4;
+constexpr int kPos_X = rag::treenode::kValue + 0x4;
+constexpr int kPos_Y = rag::treenode::kValue + 0x8;
+
+bool PartyMemberCell(uint32_t gid, int* out_x, int* out_y) {
+  __try {
+    void* gm = rag::ActiveModeSafe();
+    if (!gm || gid == 0) return false;
+    uint8_t* head = *reinterpret_cast<uint8_t**>(
+        reinterpret_cast<uint8_t*>(gm) + kGm_PartyMap);
+    if (!head) return false;
+    uint8_t* stack[64];
+    int sp = 0;
+    uint8_t* root =
+        *reinterpret_cast<uint8_t**>(head + rag::treenode::kParent);
+    if (root && root != head) stack[sp++] = root;
+    while (sp > 0) {
+      uint8_t* node = stack[--sp];
+      if (!node || *(node + rag::treenode::kIsNil) != 0) continue;
+      if (*reinterpret_cast<uint32_t*>(node + rag::treenode::kValue) == gid) {
+        if (out_x) *out_x = *reinterpret_cast<int*>(node + kPos_X);
+        if (out_y) *out_y = *reinterpret_cast<int*>(node + kPos_Y);
+        return true;
+      }
+      if (sp + 2 < 64) {
+        stack[sp++] = *reinterpret_cast<uint8_t**>(node + rag::treenode::kLeft);
+        stack[sp++] = *reinterpret_cast<uint8_t**>(node + rag::treenode::kRight);
+      }
+    }
+    return false;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
+}  // namespace
+
+// ── L'infobulle d'une ligne ─────────────────────────────────────────────────
+//
+// Ce que la ligne ne peut pas porter : la classe, la carte ENTIÈRE (même en mode
+// court), et surtout OÙ se trouve le membre — une mini-carte vaut mieux qu'un
+// couple de coordonnées que personne ne sait situer.
+void PartyFriendWindow::DrawRowTooltip(const rag::social::Entry& row) {
+  ImGui::BeginTooltip();
+
+  ImGui::TextUnformatted(ro::LocalToUtf8(row.name.c_str()));
+  ImGui::SameLine();
+  ImGui::TextDisabled("Lv.%u", row.level);
+  ImGui::Separator();
+  ImGui::TextDisabled("%s", ro::LocalToUtf8(rag::social::JobName(row.job)));
+
+  if (row.offline) {
+    ImGui::TextDisabled("%s", i18n::Tr("Hors ligne"));
+    ImGui::EndTooltip();
+    return;
+  }
+
+  // La carte, en NOM COMPLET ici : l'infobulle a la place que la ligne n'a pas.
+  char bare[64] = {0};
+  char pretty[64] = {0};
+  if (!row.map.empty()) {
+    StripMapExtension(row.map.c_str(), bare, sizeof(bare));
+    if (!rag::MapDisplayName(bare, pretty, sizeof(pretty)) || !pretty[0])
+      std::snprintf(pretty, sizeof(pretty), "%s", bare);
+    ImGui::TextDisabled("%s", ro::LocalToUtf8(pretty));
+  }
+
+  if (row.has_hp && row.max_hp > 0) {
+    ImGui::Text("%s %d/%d", i18n::Tr("PV"), row.hp, row.max_hp);
+  } else {
+    ImGui::TextDisabled("%s", i18n::Tr("PV inconnus : hors de portée"));
+  }
+
+  // ── La mini-carte ────────────────────────────────────────────────────────
+  // Le même bitmap que la minimap du jeu, avec un point sur la position du
+  // membre. Rien à calculer de savant : les cartes de RO se dessinent en
+  // proportion, la cellule (x, y) tombant sur la fraction correspondante de
+  // l'image — y INVERSÉ, l'origine du monde étant en bas.
+  int cx = 0, cy = 0;
+  if (bare[0] && PartyMemberCell(row.gid, &cx, &cy)) {
+    char path[160];
+    std::snprintf(path, sizeof(path), "%s\\map\\%s.bmp", ro::uipath::kUiRoot,
+                  bare);
+    const ro::GameTexture map_tex = ro::CachedTextureFromGameFile(path);
+    if (map_tex.tex && map_tex.w > 0 && map_tex.h > 0) {
+      const float side = ro::Px(128.0f);
+      const float w = side;
+      const float h = side * (static_cast<float>(map_tex.h) /
+                              static_cast<float>(map_tex.w));
+      const ImVec2 p0 = ImGui::GetCursorScreenPos();
+      ImGui::Image(reinterpret_cast<ImTextureID>(map_tex.tex), ImVec2(w, h));
+      // Le bitmap couvre la carte entière : la cellule se ramène en fraction de
+      // ses dimensions. On borne — une position aberrante ne doit pas dessiner
+      // hors de l'image.
+      const float fx = std::min(1.0f, std::max(0.0f,
+          static_cast<float>(cx) / static_cast<float>(map_tex.w)));
+      const float fy = std::min(1.0f, std::max(0.0f,
+          static_cast<float>(cy) / static_cast<float>(map_tex.h)));
+      const ImVec2 at(p0.x + w * fx, p0.y + h * (1.0f - fy));
+      ImDrawList* dl = ImGui::GetWindowDrawList();
+      dl->AddCircleFilled(at, ro::Px(3.0f), IM_COL32(255, 255, 255, 230));
+      dl->AddCircleFilled(at, ro::Px(2.0f), IM_COL32(230, 90, 60, 255));
+    }
+    ImGui::TextDisabled("%d, %d", cx, cy);
+  }
+
+  ImGui::EndTooltip();
+}
+
 void PartyFriendWindow::DrawRowContextMenu(const rag::social::Entry& row, bool party) {
   if (!ImGui::BeginPopup("##rowmenu")) return;
 
@@ -912,6 +1121,52 @@ void PartyFriendWindow::DrawRowContextMenu(const rag::social::Entry& row, bool p
       ImGui::Selectable(i18n::Tr("Chuchoter"))) {
     pending_      = Action::kWhisper;
     pending_gid_  = row.gid;
+    pending_name_ = row.name;
+  }
+
+  // ── Ce qui demande que l'ENTITÉ soit là ──────────────────────────────────
+  // Cibler et ouvrir le menu du personnage agissent sur un acteur : hors ligne
+  // ou hors de portée, il n'y en a aucun. On ne propose donc pas ces entrées —
+  // elles ne feraient rien, et une entrée qui ne fait rien use la confiance.
+  //
+  // ⚠ MOI excepté pour le ciblage : mon acteur n'est pas dans la liste que
+  // parcourt `FindActorByGid` (le natif le range en `actorMgr+0x2C`).
+  const bool actor_here =
+      !row.offline &&
+      (is_me || gamescene::FindActorByGid(row.gid) != nullptr);
+  if (actor_here) {
+    if (ImGui::Selectable(i18n::Tr("Cibler"))) {
+      pending_     = Action::kTargetMember;
+      pending_gid_ = row.gid;
+    }
+    if (!is_me && ImGui::Selectable(i18n::Tr("Menu du personnage"))) {
+      // Le menu contextuel du client, celui de son sprite : échange, guilde,
+      // équipement… Tout ce qu'on ne va pas réimplémenter ici.
+      pending_      = Action::kEntityMenu;
+      pending_gid_  = row.gid;
+      pending_id2_  = row.job;
+      pending_name_ = row.name;
+    }
+  }
+
+  // Le nom, dans le presse-papiers : de quoi le coller dans une commande de
+  // chat, un message, un ticket. Immédiat — rien de natif là-dedans.
+  if (ImGui::Selectable(i18n::Tr("Copier le nom"))) {
+    ImGui::SetClipboardText(ro::LocalToUtf8(row.name.c_str()));
+  }
+  ImGui::Separator();
+
+  // ── Les gestes CROISÉS entre les deux onglets ────────────────────────────
+  // Un membre de groupe n'est pas forcément un ami, et un ami n'est pas dans le
+  // groupe : c'est précisément là qu'on a envie de faire le pont, et le natif
+  // ne le proposait nulle part.
+  if (party && !is_me && ImGui::Selectable(i18n::Tr("Ajouter à mes amis"))) {
+    pending_      = Action::kAddFriend;
+    pending_name_ = row.name;
+  }
+  if (!party && !row.offline &&
+      ImGui::Selectable(i18n::Tr("Inviter dans le groupe"))) {
+    pending_      = Action::kInviteParty;
     pending_name_ = row.name;
   }
 

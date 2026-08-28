@@ -181,6 +181,7 @@ class MoonlightUi : public Plugin {
     kIfaceMinimap,
     kIfaceTargetFrame,
     kIfacePartyFrames,
+    kIfacePartyFriend,
     kIfaceCount,
   };
   // Ouvre le panneau Moonlight directement sur `section` : déplie la fenêtre,

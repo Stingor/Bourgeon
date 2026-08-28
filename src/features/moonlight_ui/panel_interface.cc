@@ -142,6 +142,7 @@ constexpr IfaceEntry kIfaceSections[] = {
     {MoonlightUi::kIfaceMakeItem,    "make_item",    "Fabrication"},
     {MoonlightUi::kIfaceTargetFrame, "target_frame", "Fenêtre de cible"},
     {MoonlightUi::kIfacePartyFrames, "party_frames", "Groupe (grille)"},
+    {MoonlightUi::kIfacePartyFriend, "party_friend", "Groupe / Amis"},
     {MoonlightUi::kIfaceNpc,         "npc",          "Fenêtre NPC"},
     {MoonlightUi::kIfaceMonsterInfo, "monster_info", "Fiche de monstre"},
     {MoonlightUi::kIfacePet,         "pet",          "Fiche de pet"},
@@ -624,6 +625,60 @@ void MoonlightUi::DrawInterfacePanel() {
           if (target_frame->DrawSettings()) SaveSettings();
         } else {
           ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
+        }
+      }
+
+      // ── Groupe / Amis : la FENÊTRE (PartyFriendWindow) ───────────────────
+      // À distinguer de la grille juste en dessous : celle-ci REMPLACE la fenêtre
+      // native 0x45, l'autre est un HUD. Elles lisent la même source mais ne se
+      // règlent pas ensemble — on ne consulte pas une liste comme on surveille
+      // des barres de vie.
+      if (iface_nav_ == kIfacePartyFriend) {
+        auto* pfw = Bourgeon::Instance().party_friend_window();
+        if (pfw == nullptr) {
+          ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
+        } else {
+          bool changed = false;
+          SeparatorText(i18n::Tr("Contenu d'une ligne"));
+          changed |= ro::RoCheckbox(i18n::Tr("Icône de classe"),
+                                    &pfw->show_job_icon_);
+          SameLine(); HelpMarker(i18n::Tr(
+              "L'art du client, à gauche du nom. Éteinte, la ligne se resserre — "
+              "utile sur une fenêtre étroite."));
+          changed |= ro::RoCheckbox(i18n::Tr("Niveau devant le nom"),
+                                    &pfw->show_level_);
+          changed |= ro::RoCheckbox(i18n::Tr("Barre de vie"),
+                                    &pfw->show_hp_bar_);
+          {
+            const char* kHpModes[] = {
+                i18n::Tr("Rien"), i18n::Tr("Chiffres"),
+                i18n::Tr("Pourcentage"), i18n::Tr("Chiffres et pourcentage")};
+            changed |= ImGui::Combo(i18n::Tr("Points de vie"),
+                                    &pfw->hp_text_mode_, kHpModes,
+                                    IM_ARRAYSIZE(kHpModes));
+          }
+          changed |= ro::RoCheckbox(i18n::Tr("Barre de SP"), &pfw->show_sp_);
+          SameLine(); HelpMarker(i18n::Tr(
+              "Le SP d'un autre joueur ne circule dans AUCUN paquet du jeu : il "
+              "est demandé au serveur, membre par membre. Il n'apparaît donc que "
+              "pour ceux qui sont à portée de vue, et coûte un peu de réseau — "
+              "d'où le défaut éteint."));
+          {
+            const char* kMapModes[] = {i18n::Tr("Nom complet"),
+                                       i18n::Tr("Nom court")};
+            changed |= ImGui::Combo(i18n::Tr("Carte"), &pfw->map_mode_,
+                                    kMapModes, IM_ARRAYSIZE(kMapModes));
+          }
+          SameLine(); HelpMarker(i18n::Tr(
+              "Le client écrit « Gonryun, the Hermit Land (Kunlun) » là où "
+              "« Gonryun » suffit à se repérer — et le nom complet pousse le "
+              "reste de la ligne hors d'une fenêtre étroite."));
+          changed |= ro::RoCheckbox(i18n::Tr("Infobulle au survol"),
+                                    &pfw->show_tooltip_);
+          SameLine(); HelpMarker(i18n::Tr(
+              "Au survol d'une ligne : la classe, la carte complète, la position "
+              "et les PV/SP chiffrés — ce qui ne tient pas dans la ligne."));
+          if (changed) SaveSettings();
         }
       }
 

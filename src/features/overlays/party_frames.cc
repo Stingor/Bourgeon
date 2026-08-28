@@ -102,10 +102,25 @@ void PartyFrames::SyncNativeHud() {
   native_hidden_ = want_hidden;
 }
 
+bool PartyFrames::MemberSp(uint32_t gid, int* sp, int* maxsp) const {
+  auto it = vitals_.find(gid);
+  if (it == vitals_.end()) return false;
+  if ((GetTickCount() - it->second.stamp) > kVitalsStaleMs) return false;
+  if (it->second.maxsp <= 0) return false;
+  if (sp)    *sp    = it->second.sp;
+  if (maxsp) *maxsp = it->second.maxsp;
+  return true;
+}
+
 void PartyFrames::OnTick() {
   if (Bourgeon::Instance().IsMapLoading()) return;
   SyncNativeHud();
-  if (enabled_ && show_sp_) PollVitals();
+  // On interroge dès que QUELQU'UN affiche du SP : le HUD lui-même, ou une autre
+  // surface qui vient de le demander. Sans cette seconde condition, la barre de
+  // SP de la fenêtre Amis/Groupe resterait vide dès que la grille est éteinte.
+  const bool want_sp = (enabled_ && show_sp_) || sp_wanted_by_other_;
+  sp_wanted_by_other_ = false;  // demande VIVANTE : elle se redemande chaque frame
+  if (want_sp) PollVitals();
 }
 
 // ── Le SP : une demande par tick, en rotation ───────────────────────────────

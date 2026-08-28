@@ -142,6 +142,35 @@ class PartyFriendWindow : public Plugin {
   // isolément. Défaut OFF, comme tout le groupe.
   bool imgui_enabled_ = false;
 
+  // ── Apparence des lignes (réglages persistés, section « Groupe / Amis ») ───
+  //
+  // Le natif n'offrait aucun de ces choix : sa ligne est figée. On les ouvre
+  // parce que cette fenêtre se lit dans deux situations opposées — posée à côté
+  // de soi pour organiser un groupe, ou consultée d'un coup d'œil en plein
+  // combat — et qu'elles n'appellent pas la même densité.
+  bool show_job_icon_ = true;   // l'icône de classe du client, à gauche du nom
+  bool show_level_    = true;   // « Lv.N » devant le nom, comme le natif
+  bool show_hp_bar_   = true;   // la jauge de vie
+  // Comment les PV s'écrivent. Mêmes valeurs que le HUD en grille, pour que les
+  // deux surfaces se règlent avec le même vocabulaire.
+  enum HpText { kHpTextNone = 0, kHpTextNumbers, kHpTextPercent, kHpTextBoth };
+  int  hp_text_mode_  = kHpTextNumbers;
+  // Barre de SP. 🔴 Le SP d'un tiers ne circule dans AUCUN paquet du jeu : il
+  // faut le DEMANDER (CZ 0x0F29), ce que fait déjà le HUD en grille. Défaut
+  // ÉTEINT — c'est du trafic réseau pour une information que tout le monde ne
+  // regarde pas.
+  bool show_sp_       = false;
+  // Nom de carte : complet (« Gonryun, the Hermit Land (Kunlun) ») ou court
+  // (ce qui précède la première virgule). Le complet est celui du client ; le
+  // court tient dans une fenêtre étroite.
+  enum MapMode { kMapFull = 0, kMapShort };
+  int  map_mode_      = kMapFull;
+  // Infobulle au survol d'une ligne : carte, position, classe, PV/SP chiffrés.
+  bool show_tooltip_  = true;
+
+  int& hp_text_mode() { return hp_text_mode_; }
+  int& map_mode()     { return map_mode_; }
+
   // Onglet courant. Mêmes valeurs que le champ natif `+0x28C`, pour que le sens se
   // lise pareil des deux côtés : 0 = amis, 1 = groupe.
   int& cur_tab() { return cur_tab_; }
@@ -168,6 +197,9 @@ class PartyFriendWindow : public Plugin {
   // Le menu contextuel d'une ligne (clic droit), et la demande de confirmation
   // des actions irréversibles. Ni l'un ni l'autre n'agit : ils ARMENT `pending_`.
   void DrawRowContextMenu(const rag::social::Entry& row, bool party);
+  // L'infobulle d'une ligne : classe, carte complète, PV, et une MINI-CARTE
+  // avec la position du membre — la seule façon de situer un couple (x, y).
+  void DrawRowTooltip(const rag::social::Entry& row);
   void DrawConfirmPopup();
   // La demande reçue (groupe ou amitié), en remplacement des fenêtres natives
   // 35 (UIJoinPartyAcceptWnd) et 109 (UIJoinFriendAcceptWnd).
@@ -205,6 +237,8 @@ class PartyFriendWindow : public Plugin {
     kAnswerParty,   // CMode::SendMsg 0x3C -> CZ 0x02C7 (partyid, oui/non)
     kAnswerFriend,  // CMode::SendMsg 0xAF -> CZ 0x0208 (AID, CID, oui/non)
     kPartyOptions,  // CMode::SendMsg 0x103 -> CZ 0x07D7 (exp, ramassage, partage)
+    kTargetMember,  // cibler, par le chemin clavier de TargetFrame
+    kEntityMenu,    // ouvrir le menu contextuel du client sur ce personnage
   };
 
   // Arme `action` sur ce GID en retrouvant son nom dans la liste courante (les

@@ -108,6 +108,21 @@ class PartyFrames : public Plugin {
   // Le GID à viser pour ce mode de ciblage, ou 0 si la grille n'a rien à
   // proposer. Contrat identique à `TargetFrame::SkillTargetGid`.
   uint32_t SkillTargetGid(int targeting_mode) const;
+
+  // ── Le SP des membres, partagé ────────────────────────────────────────────
+  //
+  // Ce module est le seul à interroger le serveur pour le SP (CZ 0x0F29), et il
+  // n'y a aucune raison qu'une deuxième surface refasse les mêmes requêtes : le
+  // trafic doublerait pour la même information. La fenêtre Amis/Groupe lit donc
+  // CE cache — et déclare son besoin par `RequestSpPolling`, sans quoi le HUD
+  // éteint cesserait d'interroger et sa barre de SP resterait vide.
+  //
+  // Rend false quand le SP est inconnu (membre hors de portée, réponse périmée,
+  // ou serveur qui n'a rien voulu dire).
+  bool MemberSp(uint32_t gid, int* sp, int* maxsp) const;
+  // À appeler à chaque frame par qui affiche du SP. Le drapeau retombe seul :
+  // une surface qui cesse d'en demander cesse d'être servie.
+  void RequestSpPolling() { sp_wanted_by_other_ = true; }
   // Opt-in, pour que QuickCast sache s'il doit s'autoriser à travailler.
   bool CastsOnTile() const { return enabled_ && cast_on_tile_; }
 
@@ -197,6 +212,9 @@ class PartyFrames : public Plugin {
   std::unordered_map<uint32_t, Vitals> vitals_;
   size_t   poll_cursor_  = 0;  // interrogation en rotation
   unsigned last_poll_ms_ = 0;
+  // Une AUTRE surface affiche du SP cette frame (la fenêtre Amis/Groupe). Remis
+  // à faux à chaque tick : c'est une demande vivante, pas un réglage.
+  bool     sp_wanted_by_other_ = false;
 
   ro::HudRect rect_{40, 200, 190, 120};
   std::vector<rag::social::Entry> members_;
