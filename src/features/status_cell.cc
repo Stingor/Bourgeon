@@ -69,6 +69,38 @@ void FormatRemain(uint32_t ms, char* out, size_t cap) {
   std::snprintf(out, cap, "%u:%02u", total_s / 60u, total_s % 60u);
 }
 
+// Cette ligne ne porte-t-elle QUE des marqueurs de format ?
+//
+// On retire les `%s`, `%d` et consorts, puis la ponctuation et les espaces : ce
+// qui reste est le texte véritable. Vide, la ligne était un emplacement destiné
+// au client, pas une phrase à lire.
+//
+// ⚠ Une ligne qui contient un marqueur ET du texte est GARDÉE, marqueur compris.
+// La supprimer perdrait l'information (« Réduit le temps de %s »), et nous n'avons
+// pas de quoi la remplir : le client tire ces valeurs d'un contexte qu'il est
+// seul à avoir.
+bool OnlyFormatMarkers(const char* s) {
+  if (s == nullptr) return true;
+  for (const char* p = s; *p; ++p) {
+    if (*p == '%') {
+      // Sauter le marqueur : `%` suivi d'éventuels chiffres puis d'une lettre.
+      ++p;
+      while (*p && (*p >= '0' && *p <= '9')) ++p;
+      if (*p == '\0') break;   // un `%` final, seul : rien de plus à sauter
+      continue;                // la lettre du marqueur est consommée par la boucle
+    }
+    const unsigned char c = static_cast<unsigned char>(*p);
+    // Tout ce qui n'est ni espace ni ponctuation compte comme du texte. Le test
+    // porte sur les octets >= 0x80 aussi : une description en coréen ou en
+    // français accentué ne doit pas passer pour vide.
+    if (c >= 0x80) return false;
+    if (c != ' ' && c != '\t' && c != ':' && c != '-' && c != ',' && c != '.' &&
+        c != '/' && c != '(' && c != ')' && c != '[' && c != ']')
+      return false;
+  }
+  return true;
+}
+
 // Le texte du client pour cet état, ligne par ligne, mémorisé.
 //
 // 🔴 Mémorisé PARCE QUE c'est du Lua : `GetStateIconDescript` traverse
@@ -94,8 +126,22 @@ const Text& Lookup(uint16_t efst) {
     if (line == 1) {
       t.name = buf;
     } else {
-      if (!t.desc.empty()) t.desc += '\n';
-      t.desc += buf;
+      // 🔴 Une ligne qui n'est QU'un marqueur de format ne s'affiche pas.
+      //
+      // Le client ne rend pas des phrases finies : certaines lignes de
+      // `GetStateIconDescript` sont des emplacements qu'il remplit lui-même —
+      // c'est là qu'il injecte le temps restant, obtenu par `GetTimeLimitInfo`
+      // juste avant (cf. `StatusIcon_BuildTooltip`). Recopiées telles quelles,
+      // elles s'affichaient en « %s » nu au milieu de la description.
+      //
+      // On ne les remplit pas : le temps est DÉJÀ sur sa propre ligne, deux
+      // lignes plus haut. Une ligne dont il ne reste rien une fois les marqueurs
+      // retirés est donc écartée — et « Increases DEF », qui n'en porte aucun,
+      // passe intacte.
+      if (!OnlyFormatMarkers(buf)) {
+        if (!t.desc.empty()) t.desc += '\n';
+        t.desc += buf;
+      }
     }
   }
   return cache.emplace(efst, std::move(t)).first->second;
