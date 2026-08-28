@@ -1074,6 +1074,17 @@ void TargetFrame::DrawElements(void* game_mode, void* actor) {
       proxy_click_ && actor != nullptr && locked_ && gid_ != 0 &&
       (skill_mode == 0 || skill_mode == 2 || skill_mode == 4);
 
+  // ── ALLIÉ ou ADVERSAIRE ? ────────────────────────────────────────────────
+  //
+  // 🔴 On ne le décide PAS ici : le serveur l'a déjà tranché. Il ne pose le bit
+  // `kKnownSp` que pour soi-même, sa party et sa guilde (cf.
+  // `clif_parse_bourgeon_target_info`) — ce bit EST donc la preuve qu'il nous
+  // autorise à en dire plus. Rejouer la règle côté client aurait fait deux
+  // sources de vérité pour une question de confidentialité, et c'est exactement
+  // le genre de duo qui finit par diverger.
+  const bool ally_known =
+      srv_valid_ && (srv_known_ & bopcodes::kKnownSp) != 0;
+
   for (int i = 0; i < kElemCount; ++i) {
     Elem& elem = elems_[i];
     if (!elem.show) continue;
@@ -1082,13 +1093,14 @@ void TargetFrame::DrawElements(void* game_mode, void* actor) {
     // qu'il n'y a rien à mesurer. On les tait — mais seulement quand le serveur
     // a CONFIRMÉ le type, jamais sur une supposition de classe.
     if (is_npc && (i == kElemHp || i == kElemSp)) continue;
-    // Sur un JOUEUR, deux cadres ne disent rien et se ferment :
-    //   · race / élément / taille valent « Neutral 1 · Medium » pour TOUT le
-    //     monde -- un cadre qui ne distingue personne vaut mieux fermé ;
-    //   · le SP, que le serveur ne transmet qu'à la party et à la guilde : il
-    //     serait « inconnus » devant presque tout le monde, et un chiffre exact
-    //     sur un adversaire n'a de toute façon pas à s'afficher.
-    if (is_player_ && (i == kElemKind || i == kElemSp)) continue;
+    // Sur un JOUEUR, race / élément / taille valent « Neutral 1 · Medium » pour
+    // TOUT le monde : un cadre qui ne distingue personne vaut mieux fermé.
+    if (is_player_ && i == kElemKind) continue;
+    // Le SP d'un joueur ne se ferme que devant un INCONNU. Sur un membre de sa
+    // party, le serveur l'envoie — le cadre restait pourtant clos, et l'on
+    // voyait le SP d'un coéquipier dans la liste Groupe/Amis mais pas dans le
+    // HUD qui le visait.
+    if (is_player_ && i == kElemSp && !ally_known) continue;
 
     ro::HudFrameOpts opts;
     opts.locked   = locked_;
@@ -1281,10 +1293,15 @@ void TargetFrame::DrawElements(void* game_mode, void* actor) {
             }
           }
 
-          // 🔴 Les PV d'un JOUEUR ne se chiffrent pas. Connaître au point de vie
-          // près ce qui reste à un adversaire est un avantage que le jeu ne donne
-          // pas : la jauge se remplit, et c'est tout — ni valeurs, ni pourcentage.
-          const bool numbers_forbidden = is_hp && is_player_ && known;
+          // 🔴 Les PV d'un ADVERSAIRE ne se chiffrent pas : connaître au point
+          // de vie près ce qui lui reste est un avantage que le jeu ne donne
+          // pas, et la jauge suffit à voir qu'il faiblit.
+          //
+          // Un ALLIÉ, lui, se chiffre — c'est même l'essentiel quand on soigne.
+          // La règle vaut ce que vaut la gate du serveur, et pas autre chose :
+          // il n'envoie le bit SP qu'à la party et à la guilde.
+          const bool numbers_forbidden =
+              is_hp && is_player_ && known && !ally_known;
 
           if (text_mode_ != 0 && !numbers_forbidden) {
             char text[96];

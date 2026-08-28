@@ -75,15 +75,24 @@
 // 🔴 Aucun abonnement côté serveur : c'est nous qui redemandons, lentement, tant
 // que le HUD est allumé. Rien à nettoyer quand le joueur se déconnecte.
 //
-// 🔴 GATE PVP, décidé côté serveur, et il ne porte plus sur les PV :
-//   · les PV partent TOUJOURS — le HUD n'en montre qu'une JAUGE quand la cible
-//     est un joueur, sans valeurs ni pourcentage. Sans cet envoi la jauge d'un
-//     adversaire restait vide jusqu'au premier coup porté : le client ne sait
-//     RIEN des PV d'un tiers, il ne les déduit que des dégâts qu'il voit passer,
-//     et un Cloaking ou un @hide recrée l'acteur et remet ce compteur à zéro ;
-//   · le SP et le NIVEAU, qui s'affichent EN CLAIR, restent réservés à la party
-//     et à la guilde. Les barres restent alors vides — et le disent, plutôt que
-//     d'afficher un zéro qui se lirait « il est mort ».
+// 🔴 GATE PVP, décidée côté serveur — et le HUD ne la rejoue pas, il la LIT :
+//   · les PV partent TOUJOURS. Sans cet envoi la jauge d'un adversaire restait
+//     vide jusqu'au premier coup porté : le client ne sait RIEN des PV d'un
+//     tiers, il ne les déduit que des dégâts qu'il voit passer, et un Cloaking
+//     ou un @hide recrée l'acteur et remet ce compteur à zéro ;
+//   · le SP et le NIVEAU restent réservés à la party et à la guilde.
+//
+// 🔴 D'où le HUD tire « ALLIÉ ou ADVERSAIRE ». Il ne refait aucun test : le bit
+// `kKnownSp` de la réponse EST la preuve que le serveur nous autorise, puisqu'il
+// ne le pose que pour soi, sa party et sa guilde. Deux sources de vérité pour
+// une question de confidentialité finissent toujours par diverger.
+//
+//   · ADVERSAIRE — jauge seule, ni valeurs ni pourcentage. Connaître au point de
+//     vie près ce qui lui reste est un avantage que le jeu ne donne pas, et son
+//     cadre SP se ferme au lieu d'afficher « inconnus » devant tout le monde ;
+//   · ALLIÉ — PV chiffrés et cadre SP ouvert. C'est même l'essentiel quand on
+//     soigne : le SP d'un coéquipier s'affichait dans la liste Groupe/Amis mais
+//     pas dans le HUD qui le visait.
 //
 // OPT-IN, et INTERRUPTEUR MAÎTRE : « Activer le mode Ciblage + HUD ». Éteint,
 // tout s'arrête — le HUD, la flèche, les raccourcis de ciblage, le clic sans
