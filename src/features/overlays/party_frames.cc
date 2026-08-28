@@ -15,6 +15,7 @@
 #include "ragnarok/game_scene.h"  // gamescene::FindActorByGid (cible d'un sort)
 #include "ragnarok/globals.h"
 #include "ragnarok/uiwnd.h"
+#include "features/status_cell.h"  // le rendu d'UNE case d'état
 #include "features/systems/status_effects.h"  // les buffs, lus au fil du réseau
 #include "ui/game_texture.h"  // ro::CachedTextureFromGameFile (icône de classe)
 #include "ui/ro_imgui.h"
@@ -634,15 +635,12 @@ float PartyFrames::DrawTileEffects(uint32_t gid, float right, float top,
   // qu'il faut garder — un buff qui vient de tomber sur un allié est ce qu'on
   // regarde, pas celui qui dure depuis dix minutes.
   for (size_t i = list.size(); i-- > 0 && drawn < std::max(1, buff_max_);) {
-    const char* path = StatusEffects::IconPath(list[i].efst);
-    if (path == nullptr) continue;
-    const ro::GameTexture icon = ro::CachedTextureFromGameFile(path);
-    if (!icon.tex) continue;
-
-    const ImVec2 i1(x, top);
-    const ImVec2 i0(x - side, top + side);
-    dl->AddImage(reinterpret_cast<ImTextureID>(icon.tex),
-                 ImVec2(i0.x, i1.y), ImVec2(i1.x, i0.y));
+    // ⚠ Pas d'infobulle ici : la tuile a déjà la sienne, qui porte tout le
+    // membre. Une seconde par-dessus se disputerait le même survol.
+    statuscell::Style st;
+    if (!statuscell::Draw(list[i], ImVec2(x - side, top), ImVec2(x, top + side),
+                          st, false))
+      continue;
     x -= side + gap;
     ++drawn;
   }

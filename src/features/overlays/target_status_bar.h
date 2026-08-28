@@ -63,6 +63,22 @@ class TargetStatusBar : public Plugin {
   bool show_time_   = true;
   int  time_px_     = 11;
 
+  // ── Le grisage de la case ─────────────────────────────────────────────────
+  //
+  // Un voile qui recouvre la part ÉCOULÉE de l'état. Il se lit sans lire : on
+  // voit d'un coup d'œil lesquels sont près de tomber, là où il faudrait
+  // déchiffrer autant de nombres.
+  //
+  //   kSweepRadial   — le balayage horaire des jeux de rôle, depuis midi ;
+  //   kSweepVertical — le voile monte par le bas, plus lisible en petit ;
+  //   kSweepNone     — rien, le nombre suffit.
+  //
+  // ⚠ Un état SANS échéance n'est jamais voilé : il n'a pas de part écoulée, et
+  // le griser à moitié le ferait croire à mi-course.
+  enum Sweep { kSweepNone = 0, kSweepRadial, kSweepVertical };
+  int   sweep_ = kSweepRadial;
+  float col_sweep_[4] = {0.0f, 0.0f, 0.0f, 0.55f};
+
   float col_bg_[4]  = {0.05f, 0.05f, 0.07f, 0.55f};
 
   ro::HudRect& rect() { return rect_; }
@@ -71,6 +87,7 @@ class TargetStatusBar : public Plugin {
   int& gap_px()    { return gap_px_; }
   int& sort()      { return sort_; }
   int& time_px()   { return time_px_; }
+  int& sweep()     { return sweep_; }
 
  private:
   // Les états à peindre cette frame, déjà triés et tronqués.

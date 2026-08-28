@@ -13,6 +13,7 @@
 #include "features/moonlight_ui/moonlight_ui.h"  // OpenInterfaceSection (bullet)
 #include "features/overlays/party_frames.h"      // le cache de SP, partagé
 #include "features/overlays/target_frame.h"      // cibler par le chemin clavier
+#include "features/status_cell.h"                // le rendu d'UNE case d'état
 #include "features/systems/status_effects.h"     // les buffs, lus au fil du réseau
 #include "features/windows/entity_context_menu.h"  // le menu du personnage
 #include "imgui.h"
@@ -1324,19 +1325,18 @@ void PartyFriendWindow::DrawRowEffects(uint32_t gid, float right, float top) {
 
   const float side = ro::Px(static_cast<float>(std::max(8, buff_px_)));
   const float gap  = ro::Px(1.0f);
-  ImDrawList* dl = ImGui::GetWindowDrawList();
   float x = right;
   int drawn = 0;
 
   // À REBOURS : quand il y en a plus que la place, ce sont les plus récents
   // qu'on garde — un buff qui vient de tomber est ce qu'on regarde.
   for (size_t i = list.size(); i-- > 0 && drawn < std::max(1, buff_max_);) {
-    const char* path = StatusEffects::IconPath(list[i].efst);
-    if (path == nullptr) continue;
-    const ro::GameTexture icon = ro::CachedTextureFromGameFile(path);
-    if (!icon.tex) continue;
-    dl->AddImage(reinterpret_cast<ImTextureID>(icon.tex),
-                 ImVec2(x - side, top), ImVec2(x, top + side));
+    // ⚠ Pas d'infobulle : la LIGNE a déjà la sienne, et elle se déclenche sur
+    // toute sa largeur — les deux se disputeraient le même survol.
+    statuscell::Style st;
+    if (!statuscell::Draw(list[i], ImVec2(x - side, top), ImVec2(x, top + side),
+                          st, false))
+      continue;
     x -= side + gap;
     ++drawn;
   }

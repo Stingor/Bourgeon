@@ -3,13 +3,12 @@
 #include <windows.h>
 
 #include <algorithm>
-#include <cstdio>
 
 #include "bourgeon.h"
 #include "features/moonlight_ui/moonlight_ui.h"
 #include "features/overlays/target_frame.h"  // la cible courante
+#include "features/status_cell.h"  // le rendu d'UNE case d'état
 #include "imgui.h"
-#include "ui/game_texture.h"
 #include "ui/ro_imgui.h"
 
 namespace {
@@ -19,17 +18,6 @@ ImU32 Col(const float rgba[4]) {
       ImVec4(rgba[0], rgba[1], rgba[2], rgba[3]));
 }
 
-// « 12 », « 1:05 », « 12:30 ». Une durée se lit d'un coup d'œil ou ne sert à
-// rien : sous la minute on donne les secondes seules, au-delà on passe en
-// minutes plutôt que d'afficher « 305 ».
-void FormatRemain(uint32_t ms, char* out, size_t cap) {
-  const unsigned total_s = ms / 1000u;
-  if (total_s < 60u) {
-    std::snprintf(out, cap, "%u", total_s);
-    return;
-  }
-  std::snprintf(out, cap, "%u:%02u", total_s / 60u, total_s % 60u);
-}
 
 }  // namespace
 
@@ -133,29 +121,15 @@ void TargetStatusBar::OnRenderUI() {
         x = left;
         y += side + gap + (show_time_ ? fsz : 0.0f);
       }
-      const char* path = StatusEffects::IconPath(e.efst);
-      if (path == nullptr) continue;
-      const ro::GameTexture icon = ro::CachedTextureFromGameFile(path);
-      if (!icon.tex) continue;
-
-      dl->AddImage(reinterpret_cast<ImTextureID>(icon.tex), ImVec2(x, y),
-                   ImVec2(x + side, y + side));
-
-      // Le compte à rebours, sous l'icône. Un état SANS échéance n'en porte
-      // pas : « 0 » sous un buff permanent le ferait croire fini.
-      if (show_time_ && e.expires_ms != 0) {
-        const int32_t left_ms = static_cast<int32_t>(e.expires_ms - now);
-        if (left_ms > 0) {
-          char txt[16];
-          FormatRemain(static_cast<uint32_t>(left_ms), txt, sizeof(txt));
-          const ImVec2 ts = font->CalcTextSizeA(fsz, FLT_MAX, 0.0f, txt);
-          const ImVec2 tp(x + (side - ts.x) * 0.5f, y + side);
-          // Ombre portée : ces chiffres se lisent sur n'importe quel décor.
-          dl->AddText(font, fsz, ImVec2(tp.x + 1.0f, tp.y + 1.0f),
-                      IM_COL32(0, 0, 0, 200), txt);
-          dl->AddText(font, fsz, tp, IM_COL32_WHITE, txt);
-        }
-      }
+      statuscell::Style st;
+      st.sweep       = sweep_;
+      st.sweep_color = Col(col_sweep_);
+      st.time_px     = show_time_ ? fsz : 0.0f;
+      // Une case qui ne se dessine pas ne prend pas de place : sans ce test, un
+      // état sans icône laissait un trou dans la rangée.
+      if (!statuscell::Draw(e, ImVec2(x, y), ImVec2(x + side, y + side), st,
+                            true))
+        continue;
       x += side + gap;
     }
   }

@@ -206,4 +206,47 @@ inline void HatEffectResName(int ordinal, char* out, int cap) {
   } __except (EXCEPTION_EXECUTE_HANDLER) { out[0] = '\0'; }
 }
 
+// ── `GetStateIconDescript(efst, ligne)` : le texte d'un état, ligne par ligne ──
+//
+// C'est ce que le client appelle lui-même pour bâtir l'infobulle de sa barre
+// d'états : `StatusIcon_BuildTooltip` (0x00c93cb0) boucle sur cette globale,
+// index de ligne croissant, jusqu'à ce qu'elle ne rende plus rien. La LIGNE 1
+// est le nom de l'état, les suivantes sa description.
+//
+// ⚠ DEUX arguments, d'où une fonction à part : `CallGlobal1Arg` n'en pousse
+// qu'un, et lui en passer deux laisserait la pile Lua désalignée — le genre de
+// dégât qui ne se voit pas tout de suite.
+//
+// Rend faux quand cette ligne n'existe pas (fin de la description), ou quand Lua
+// n'est pas prêt. Une ligne VIDE compte comme absente : le client lui-même
+// traite « une espace » comme un texte vide (cf. son test sur `' '`).
+inline bool StateIconLine(int efst, int line, char* out, int cap) {
+  if (!out || cap <= 0) return false;
+  out[0] = '\0';
+  bool ok = false;
+  __try {
+    void* L = State();
+    if (!L) return false;
+    CheckStack(L, 4);
+    GetField(L, kGlobalsIndex, "GetStateIconDescript");
+    PushNumber(L, static_cast<double>(efst));
+    PushNumber(L, static_cast<double>(line));
+    if (PCall(L, 2, 1, 0) == 0) {
+      const char* s = ToLString(L, -1, nullptr);
+      if (s && s[0] && !(s[0] == ' ' && s[1] == '\0')) {
+        int n = 0;
+        while (n < cap - 1 && s[n]) { out[n] = s[n]; ++n; }
+        out[n] = '\0';
+        ok = true;
+      }
+    }
+    // ⚠ Hors du `if` : quand l'appel échoue, c'est l'objet d'erreur qu'on retire.
+    Pop(L, 1);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    out[0] = '\0';
+    ok = false;
+  }
+  return ok;
+}
+
 }  // namespace lua

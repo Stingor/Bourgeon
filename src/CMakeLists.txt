@@ -24,6 +24,10 @@ set(BOURGEON_FILES
 	"features/staff_gate.h"
 	"features/item_cell.cc"
 	"features/item_cell.h"
+	# La case d'un ETAT (buff/debuff) : le pendant d'item_cell pour les EFST.
+	# Trois surfaces la dessinaient chacune de leur cote.
+	"features/status_cell.cc"
+	"features/status_cell.h"
 	# Gestes d'un LIEN (objet, monstre, adresse) : clic gauche = description,
 	# clic droit = menu, Maj+clic = lien dans le chat. Partagé par le chat, les
 	# tables de drops et toute surface qui affiche une référence.

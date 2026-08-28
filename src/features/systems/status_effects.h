@@ -72,7 +72,13 @@ class StatusEffects : public Plugin {
   struct Entry {
     uint16_t efst = 0;         // index EFST (celui du serveur, cf. db/status.yml)
     uint32_t expires_ms = 0;   // horloge `timeGetTime` ; 0 = pas d'échéance connue
-    uint32_t total_ms = 0;     // durée annoncée, pour une jauge d'écoulement
+    // La durée de référence, pour une jauge d'écoulement. 0 = état permanent.
+    //
+    // ⚠ Ce n'est PAS une valeur annoncée par le serveur : aucun paquet ne porte
+    // la durée d'origine d'un état en cours. C'est le plus grand restant jamais
+    // observé (cf. `KeepLongest`) — exact quand on a vu l'état commencer, et
+    // seulement une borne basse quand on l'a découvert en route.
+    uint32_t total_ms = 0;
   };
 
   StatusEffects();

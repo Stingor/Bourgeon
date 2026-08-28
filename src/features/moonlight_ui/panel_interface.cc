@@ -826,6 +826,28 @@ void MoonlightUi::DrawInterfacePanel() {
           changed |= WheelSliderInt(i18n::Tr("Taille du texte"),
                                     &tsb->time_px(), 7, 20, "%d px");
 
+          // ── Écoulement ────────────────────────────────────────────────────
+          SeparatorText(i18n::Tr("Écoulement"));
+          {
+            const char* kSweeps[] = {i18n::Tr("Aucun"),
+                                     i18n::Tr("Balayage horaire"),
+                                     i18n::Tr("Voile montant")};
+            changed |= ro::RoCombo(i18n::Tr("Grisage de la case"),
+                                   &tsb->sweep(), kSweeps,
+                                   IM_ARRAYSIZE(kSweeps));
+          }
+          SameLine(); HelpMarker(i18n::Tr(
+              "La case s'assombrit à mesure que l'état s'écoule : on voit "
+              "lesquels vont tomber sans lire un seul nombre.\n\n"
+              "⚠ La durée d'origine n'est PORTÉE PAR AUCUN paquet. Elle est "
+              "exacte quand on a vu l'état commencer ; découvert en route, il "
+              "repart de « plein » et décroît ensuite au bon rythme.\n\n"
+              "Un état permanent n'est jamais grisé : il n'a pas de part "
+              "écoulée."));
+          if (tsb->sweep_ != TargetStatusBar::kSweepNone) {
+            changed |= RoColorSwatch(i18n::Tr("Voile"), tsb->col_sweep_);
+          }
+
           // ── Couleurs ──────────────────────────────────────────────────────
           SeparatorText(i18n::Tr("Couleurs"));
           changed |= ro::RoCheckbox(i18n::Tr("Liseré"), &tsb->border_);

@@ -105,6 +105,35 @@ const auto GetImg = reinterpret_cast<GetImg_t>(0x00d87380);
 
 uint32_t NowMs() { return ::timeGetTime(); }
 
+// ── La duree TOTALE, celle qui manque au protocole ──────────────────────────
+//
+// 🔴 AUCUN paquet ne la donne de façon fiable. ZC 0x0983 met `total` égal à
+// `remain` (« at this stage remain and total are the same value », clif.cpp), ce
+// qui est JUSTE au démarrage d'un état — c'est alors la durée pleine — et faux
+// partout ailleurs. Notre propre paquet ne fait pas mieux : le serveur lit un
+// timer, il ne sait pas de quelle durée il est parti.
+//
+// D'où cette règle : on retient le PLUS GRAND restant jamais vu pour cet état.
+//   · état capté à son DÉBUT (0x0983)   -> la durée pleine, exacte ;
+//   · état découvert EN COURS (sondage) -> ce qu'il en restait à la découverte.
+//
+// Le second cas donne un grisage qui part de « plein » au lieu de partir du
+// milieu. C'est faux dans l'absolu, mais jamais absurde : la jauge ne remonte
+// pas, ne saute pas, et décroît au bon rythme. L'alternative — pas de grisage du
+// tout tant qu'on n'a pas vu le début — aurait laissé la moitié des icônes sans
+// aucune indication de temps.
+//
+// ⚠ Un état RELANCÉ repart de sa nouvelle durée. Sans ce test, un Blessing rendu
+// à un niveau inférieur aurait gardé la durée de l'ancien, et son grisage serait
+// parti d'à moitié écoulé.
+uint32_t KeepLongest(uint32_t announced, uint32_t previous_total,
+                     uint32_t previous_left) {
+  if (announced == 0) return previous_total;  // permanent : pas de durée à tenir
+  // Le restant a AUGMENTÉ : l'état vient d'être relancé, sa durée est celle-ci.
+  if (announced > previous_left) return announced;
+  return (previous_total > announced) ? previous_total : announced;
+}
+
 // Interroge le client pour le fichier d'icône d'un EFST, et le COPIE.
 //
 // Isolée dans sa propre fonction à cause du `__try` : MSVC refuse un
@@ -234,9 +263,22 @@ void StatusEffects::HandlePacket(uint16_t opcode, const uint8_t* data,
         if (id == 0 || IconPath(id) == nullptr) continue;
         Entry e;
         e.efst = id;
-        e.total_ms = total_ms;
         // 0 = pas d'échéance (état permanent) : surtout pas « expiré ».
         e.expires_ms = (remain_ms == 0) ? 0u : now + remain_ms;
+        // La réponse ne porte pas la durée d'origine (le serveur lit un timer) :
+        // on garde donc ce qu'on savait déjà de cet état, s'il était connu.
+        uint32_t prev_total = 0, prev_left = 0;
+        auto known = by_gid_.find(gid);
+        if (known != by_gid_.end()) {
+          for (const Entry& old : known->second) {
+            if (old.efst != id) continue;
+            prev_total = old.total_ms;
+            prev_left = (old.expires_ms == 0) ? 0u : (old.expires_ms - now);
+            break;
+          }
+        }
+        e.total_ms = KeepLongest(std::max(remain_ms, total_ms), prev_total,
+                                 prev_left);
         fresh.push_back(e);
       }
 
@@ -372,19 +414,22 @@ void StatusEffects::Apply(uint32_t gid, uint16_t efst, bool active,
     it = by_gid_.emplace(gid, std::vector<Entry>()).first;
   }
 
+  const uint32_t now = NowMs();
   Entry e;
   e.efst = efst;
-  e.total_ms = total_ms;
   // 🔴 « 9999 » n'est pas une durée, c'est l'aveu qu'il n'y en a pas. Échéance
   // laissée à 0 : l'état reste jusqu'à ce que le serveur annonce sa fin.
-  e.expires_ms = (remain_ms == 0 || remain_ms == kUnknownDurationMs)
-                     ? 0u
-                     : NowMs() + remain_ms;
+  const bool timed = (remain_ms != 0 && remain_ms != kUnknownDurationMs);
+  e.expires_ms = timed ? (now + remain_ms) : 0u;
+  e.total_ms   = timed ? std::max(remain_ms, total_ms) : 0u;
 
   // Le même EFST qui revient RENOUVELLE le sien, il ne s'ajoute pas : un buff
   // relancé se voit à sa durée qui repart, pas à une deuxième icône.
   for (Entry& old : it->second) {
     if (old.efst != efst) continue;
+    const uint32_t prev_left = (old.expires_ms == 0) ? 0u
+                                                     : (old.expires_ms - now);
+    e.total_ms = KeepLongest(e.total_ms, old.total_ms, prev_left);
     old = e;
     return;
   }
