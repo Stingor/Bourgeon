@@ -138,15 +138,16 @@ class StatusEffects : public Plugin {
   bool Allowed(uint32_t gid) const;
 
   // GID -> ses états. Purgée par `OnTick` : les entrées échues, et les entités
-  // dont on n'a plus de nouvelles.
+  // dont l'acteur a quitté la scène — un membre hors de portée n'affiche rien,
+  // sa tuile avouant déjà ignorer ses PV.
   std::unordered_map<uint32_t, std::vector<Entry>> by_gid_;
 
   // 🔴 Les GID que le PAQUET a renseignés, avec l'instant de la réponse.
   //
-  // Ils échappent à la purge par présence de l'acteur : c'est tout l'intérêt du
-  // paquet — un membre sur une autre carte n'a pas d'acteur et reste pourtant
-  // connu. Ce qui les périme, c'est le SILENCE : passé `kAnswerStaleMs` sans
-  // réponse, on oublie plutôt que d'afficher un état figé.
+  // Sert au DROIT D'ENTRÉE (`Allowed`), pas à la fraîcheur : un GID que le
+  // serveur vient de nous décrire est un GID qu'il nous autorise à suivre, donc
+  // ses transitions AREA sont recevables. La présence de l'acteur, elle, reste
+  // seule juge de ce qu'on GARDE.
   std::unordered_map<uint32_t, uint32_t> answered_ms_;
 
   // GID -> instant du refus (statut 2 : pas de mon groupe).

@@ -305,6 +305,9 @@ void StatusEffects::PollParty() {
     // d'icônes du client, qui les tient déjà à jour.
     if (m.gid == 0 || m.offline || m.gid == rag::social::OwnAid()) continue;
     if (Refused(m.gid)) continue;
+    // Hors de portée : ses états ne seraient pas affichés (cf. la purge), donc
+    // la question ne se pose pas. Un paquet qu'on jetterait en arrivant.
+    if (gamescene::FindActorByGid(m.gid) == nullptr) continue;
     RequestFor(m.gid);
     last_poll_ms_ = now;
     return;
@@ -409,17 +412,17 @@ void StatusEffects::OnTick() {
     //
     // ⚠ MOI excepté : mon acteur n'est pas dans la liste que parcourt
     // `FindActorByGid` (le natif le range en `actorMgr+0x2C`).
-    // 🔴 Un GID que le PAQUET renseigne échappe à cette règle : c'est tout son
-    // intérêt — un membre sur une autre carte n'a pas d'acteur et reste pourtant
-    // connu. Ce qui le périme alors, c'est le silence, pas l'absence de sprite.
-    bool present = (own != 0 && it->first == own) ||
-                   gamescene::FindActorByGid(it->first) != nullptr;
-    if (!present) {
-      auto ans = answered_ms_.find(it->first);
-      present = (ans != answered_ms_.end()) &&
-                (static_cast<int32_t>(now - ans->second) <
-                 static_cast<int32_t>(kAnswerStaleMs));
-    }
+    // 🔴 PAS D'ACTEUR, PAS D'ÉTATS — y compris pour un GID que le paquet vient
+    // de renseigner. Le serveur sait répondre sur un membre hors de portée, mais
+    // AFFICHER ses buffs à côté d'un « Hors de portée » et de PV inconnus se
+    // contredit à l'écran : le lecteur voit une tuile qui prétend tout savoir de
+    // quelqu'un dont elle avoue ignorer les points de vie.
+    //
+    // Le paquet garde tout son intérêt sans ça : il donne l'état COMPLET d'un
+    // membre VISIBLE, là où la diffusion AREA n'annonce que les transitions et
+    // où le rattrapage à l'entrée dans la vue ne couvre que 57 statuts sur 599.
+    const bool present = (own != 0 && it->first == own) ||
+                         gamescene::FindActorByGid(it->first) != nullptr;
     if (!present) {
       answered_ms_.erase(it->first);
       it = by_gid_.erase(it);

@@ -266,8 +266,19 @@ void PartyFrames::DrawTooltip(const rag::social::Entry& m, bool is_me) {
         maxsp = it->second.maxsp;
       }
     }
-    if (maxsp > 0) ImGui::Text("%s %d/%d", i18n::Tr("SP"), sp, maxsp);
-    else           ImGui::TextDisabled("%s", i18n::Tr("SP inconnu"));
+    // On DIT pourquoi, comme pour les PV — et les DEUX causes ne sont pas la
+    // même. Hors de portée, le serveur refuse de répondre ; à portée, c'est que
+    // la rotation des demandes n'est pas encore passée par ce membre (elle
+    // n'interroge qu'un membre à la fois, pour ne pas partir en rafale).
+    // Afficher « hors de portée » dans le second cas serait un mensonge, et
+    // ferait chercher un problème là où il n'y a qu'une attente.
+    if (maxsp > 0) {
+      ImGui::Text("%s %d/%d", i18n::Tr("SP"), sp, maxsp);
+    } else if (!m.has_hp || m.max_hp <= 0) {
+      ImGui::TextDisabled("%s", i18n::Tr("SP inconnu : hors de portée"));
+    } else {
+      ImGui::TextDisabled("%s", i18n::Tr("SP inconnu : réponse en attente"));
+    }
   }
 
   ImGui::EndTooltip();
