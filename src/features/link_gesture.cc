@@ -758,14 +758,18 @@ void HoverPreview(const Target& target) {
     // Une section est d'un étage plus bas qu'un en-tête, et le chemin le dit.
     const char* name = iface::DestLabel(target.setting_key.c_str());
     if (name == nullptr) return;  // la cible s'en assure, mais elle a pu vieillir
-    const bool is_section = iface::SectionByKey(target.setting_key.c_str()) >= 0;
+    // L'en-tête d'accueil, DEMANDÉ et non écrit ici : « Interface de jeu » était
+    // en dur, et les sections de « Gameplay » — qui a désormais sa propre nav —
+    // s'y seraient annoncées sous le mauvais en-tête. nullptr = la clé désigne un
+    // en-tête, qui n'a pas de parent à afficher.
+    const char* parent = iface::DestParentLabel(target.setting_key.c_str());
 
     ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
     ImGui::BeginTooltip();
     ImGui::TextUnformatted(i18n::Tr("Réglages Bourgeon"));
     ImGui::Separator();
-    if (is_section)
-      DimText("%s  >  %s", i18n::Tr("Interface de jeu"), i18n::Tr(name));
+    if (parent != nullptr)
+      DimText("%s  >  %s", i18n::Tr(parent), i18n::Tr(name));
     else
       DimText("%s", i18n::Tr(name));
     ImGui::Spacing();

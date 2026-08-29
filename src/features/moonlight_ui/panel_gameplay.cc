@@ -3,6 +3,14 @@
 // changent la MANIÈRE DE JOUER, pas l'habillage — précision du ciblage, quick
 // cast, enregistreur GIF, écran de veille. Nés dans Staff Tools, ouverts aux joueurs le
 // 2026-08-18 ; le staff garde ses propres vues dans sa fenêtre.
+//
+// Ces réglages se sont empilés sous quatre `SeparatorText` d'une seule colonne :
+// l'écran de veille en fait vingt à lui seul, et la précision du ciblage porte un
+// aperçu animé — de quoi enterrer le quick cast au milieu d'un déroulé qu'il
+// fallait parcourir en entier. L'en-tête a donc la NAV LATÉRALE d'« Interface de
+// jeu » : une liste à gauche, une seule fonctionnalité à droite. La mécanique est
+// partagée (panel_nav.cc), la table ci-dessous est tout ce qui appartient à
+// « Gameplay ».
 
 #include <algorithm>  // std::max (rectangle = max(dessin, minimum))
 #include <cfloat>     // FLT_MAX (bbox du sprite d'aperçu)
@@ -31,6 +39,35 @@ using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 extern bool g_imgui_dx7_active;
 
 namespace {
+
+// Les entrées de la nav de « Gameplay ».
+//
+// 🔴 LA CLÉ NE SE RENOMME JAMAIS (« afk_screen ») : elle voyage dans le chat sous
+// forme de lien de réglage, vers des clients d'autres versions. Elle partage
+// l'espace de clés des sections d'« Interface de jeu » — c'est ce qui permettrait
+// à l'une d'entre elles de déménager ici sans casser un lien déjà posté.
+// L'identifiant, lui, n'a de sens que dans ce fichier, et le libellé est traduit à
+// l'affichage.
+enum GameplaySection {
+  kGpTargeting = 0,
+  kGpQuickCast,
+  kGpZoneRecorder,
+  kGpAfkScreen,
+  kGpCount,
+};
+
+// Ordre alphabétique du libellé FRANÇAIS, comme la nav d'« Interface de jeu » :
+// c'est un ordre figé et non un tri, et il vaut dans toutes les langues (cf. le
+// récit dans panel_interface.cc).
+constexpr iface::NavEntry kGameplaySections[] = {
+    {kGpAfkScreen,    "afk_screen",    "Écran de veille"},
+    {kGpZoneRecorder, "zone_recorder", "Enregistrer une zone (GIF)"},
+    {kGpTargeting,    "targeting",     "Précision du ciblage"},
+    {kGpQuickCast,    "quick_cast",    "Quick cast"},
+};
+// Message de static_assert : un LITTÉRAL, lu à la compilation — jamais i18n::Tr.
+static_assert(IM_ARRAYSIZE(kGameplaySections) == kGpCount,
+              "kGameplaySections doit couvrir exactement l'enum GameplaySection");
 
 // L'aperçu emprunte un monstre RÉEL et PETIT — l'œuf (classe 2408) — pour que
 // la démonstration soit celle du problème : un sprite de 25 px qui se défend
@@ -113,13 +150,51 @@ void DrawEggPreview() {
 
 }  // namespace
 
+namespace iface {
+
+const NavGroup& GameplayGroup() {
+  static constexpr NavGroup kGroup{kNavGameplay, "gameplay", kGameplaySections,
+                                   IM_ARRAYSIZE(kGameplaySections)};
+  return kGroup;
+}
+
+}  // namespace iface
+
 void MoonlightUi::DrawGameplayPanel() {
   if (!iface::LinkableHeader("gameplay")) return;
   PushStyleCompact();
 
-  // ── Précision du ciblage ────────────────────────────────────────────────────
-  SeparatorText(i18n::Tr("Précision du ciblage"));
+  // Référence, et non copie : les tests ci-dessous lisent la section que
+  // BeginNavPanel vient d'écrire, dans la MÊME frame que le clic.
+  int& gameplay_nav = nav_[iface::kNavGameplay];
+  iface::BeginNavPanel(iface::GameplayGroup(), &gameplay_nav);
+  PushItemWidth(160.0f);
 
+  if (gameplay_nav == kGpTargeting) DrawTargetingSettings();
+  if (gameplay_nav == kGpQuickCast) {
+    if (auto* quick_cast = Bourgeon::Instance().quick_cast())
+      quick_cast->DrawSettings();
+    else
+      ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
+  }
+  if (gameplay_nav == kGpZoneRecorder) {
+    if (auto* zone_recorder = Bourgeon::Instance().zone_recorder())
+      zone_recorder->DrawSettings(/*player_view=*/true);
+    else
+      ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
+  }
+  if (gameplay_nav == kGpAfkScreen) DrawAfkScreenSettings();
+
+  PopItemWidth();
+  iface::EndNavPanel();
+  PopStyleCompact();
+}
+
+// Précision du ciblage : de combien le client ÉLARGIT la surface qui répond au
+// clic de chaque entité. Le seul réglage de cette nav qui ne pilote pas un plugin
+// — il écrit directement dans pick_quad — d'où sa fonction plutôt qu'un
+// DrawSettings() ailleurs.
+void MoonlightUi::DrawTargetingSettings() {
   const int def_actor = pick_quad::MinAreaDefault(pick_quad::kFamilyActors);
   const int def_npc   = pick_quad::MinAreaDefault(pick_quad::kFamilyNpc);
 
@@ -200,26 +275,6 @@ void MoonlightUi::DrawGameplayPanel() {
     ImGui::TextDisabled(
         "%s", i18n::Tr("En jaune : la surface qui répond au clic avec ton "
                        "réglage. En gris : celle d'origine."));
-
-  // ── Quick cast ──────────────────────────────────────────────────────────────
-  SeparatorText(i18n::Tr("Quick cast"));
-  if (auto* quick_cast = Bourgeon::Instance().quick_cast())
-    quick_cast->DrawSettings();
-  else
-    ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
-
-  // ── Enregistreur GIF ────────────────────────────────────────────────────────
-  SeparatorText(i18n::Tr("Enregistrer une zone (GIF)"));
-  if (auto* zone_recorder = Bourgeon::Instance().zone_recorder())
-    zone_recorder->DrawSettings(/*player_view=*/true);
-  else
-    ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
-
-  // ── Écran de veille ─────────────────────────────────────────────────────────
-  SeparatorText(i18n::Tr("Écran de veille"));
-  DrawAfkScreenSettings();
-
-  PopStyleCompact();
 }
 
 // Réglages de l'écran de veille. Tout est vivant : chaque valeur touchée pendant

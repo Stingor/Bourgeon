@@ -29,9 +29,8 @@
 #include <string>
 #include <vector>
 
+#include "features/moonlight_ui/moonlight_ui.h"  // iface::NavGroup (tables de nav)
 #include "ui/ro_imgui.h"  // ro::RoSkinConfig
-
-class MoonlightUi;
 
 // Texte affiché quand le plugin propriétaire d'une section n'est pas enregistré.
 // Deux libellés concurrents cohabitaient — « Indisponible. » (6 fois) et
@@ -54,6 +53,20 @@ namespace moonlight_ui {
 void DrawRules();
 
 }  // namespace moonlight_ui
+
+namespace iface {
+
+// Les deux tables de nav, chacune définie dans le panel qui la dessine. Elles ne
+// sortent pas du dossier : `iface::Group()` (panel_nav.cc) est ce que le reste du
+// projet consulte, et il passe par ces deux-ci.
+//
+// Pourquoi une fonction plutôt qu'une table `extern` : le tableau d'entrées est un
+// `constexpr` interne à son .cc, au plus près du contenu qu'il indexe. Une
+// déclaration `extern` obligerait à le rendre visible — et à le déplacer.
+const NavGroup& InterfaceGroup();  // panel_interface.cc
+const NavGroup& GameplayGroup();   // panel_gameplay.cc
+
+}  // namespace iface
 
 // Méthodes membres définies dans ce dossier (déclarées dans moonlight_ui.h) :
 //   MoonlightUi::DrawCommandsPanel()      -> panel_commands.cc

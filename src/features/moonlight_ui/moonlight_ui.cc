@@ -2713,10 +2713,19 @@ void MoonlightUi::OpenInterfaceSection(int section) {
   // Borne sur kIfaceCount plutôt que sur la dernière section nommée : ajouter une
   // entrée à l'enum suffit, il n'y a plus rien à penser ici.
   if (section < 0 || section >= kIfaceCount) return;
-  iface_nav_ = section;
-  // La nav vit DANS l'en-tête « Interface de jeu » : sans le déplier, sélectionner
-  // une entrée ne montrerait rien.
-  pending_header_key_ = "interface";
+  OpenNavSection(iface::InterfaceGroup(), section);
+}
+
+// Le corps commun aux DEUX navs (« Interface de jeu » et « Gameplay ») : poser
+// l'entrée choisie, déplier l'en-tête qui la contient, rouvrir la fenêtre. Rien
+// n'est dessiné ici — l'état est consommé par le prochain OnRenderUI, ce qui rend
+// l'appel sûr depuis le rendu d'une AUTRE fenêtre.
+void MoonlightUi::OpenNavSection(const iface::NavGroup& group, int section) {
+  nav_[group.group] = section;
+  // La nav vit DANS son en-tête : sans le déplier, sélectionner une entrée ne
+  // montrerait rien. La clé vient du groupe — l'écrire ici aurait fait ouvrir
+  // « Interface de jeu » pour une section de « Gameplay ».
+  pending_header_key_ = group.header_key;
   // Fenêtre repliée : la déplier, sinon le saut serait invisible. Même chemin que
   // la restauration au login (pending_collapse_restore_ -> SetNextWindowCollapsed).
   // Fenêtre FERMÉE ou repliée : la rouvrir, sinon le saut serait invisible et le
@@ -2725,13 +2734,13 @@ void MoonlightUi::OpenInterfaceSection(int section) {
 }
 
 // Le point d'entrée des LIENS de réglage : une clé, qui désigne indifféremment un
-// en-tête du panneau ou une section de la nav. Les sections repassent par
-// OpenInterfaceSection — elles ont, en plus de l'en-tête à déplier, une entrée de
+// en-tête du panneau ou une section de l'une des deux navs. Les sections repassent
+// par OpenNavSection — elles ont, en plus de l'en-tête à déplier, une entrée de
 // nav à sélectionner.
 void MoonlightUi::OpenSettingTarget(const char* key) {
-  const int section = iface::SectionByKey(key);
-  if (section >= 0) {
-    OpenInterfaceSection(section);
+  int section = 0;
+  if (const iface::NavGroup* group = iface::GroupByKey(key, &section)) {
+    OpenNavSection(*group, section);
     return;
   }
   // Une destination peut vivre dans une AUTRE fenêtre que celle-ci : les onglets

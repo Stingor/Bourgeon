@@ -56,6 +56,7 @@ set(BOURGEON_FILES
 	"features/moonlight_ui/panel_gameplay.cc"
 	"features/moonlight_ui/item_desc_probe.cc"
 	"features/moonlight_ui/panel_interface.cc"
+	"features/moonlight_ui/panel_nav.cc"
 	"features/moonlight_ui/settings_table.cc"
 	"features/moonlight_ui/settings_table.h"
 	"features/moonlight_ui/settings_containers.cc"

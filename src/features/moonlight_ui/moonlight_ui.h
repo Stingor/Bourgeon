@@ -59,33 +59,79 @@ bool ModernInterfaceEnabled();
 // de cette fonction.
 bool DrawModernInterfaceCheckbox(bool* enabled, const char* window_help);
 
-// ── Les sections d'« Interface de jeu », vues de l'extérieur ─────────────────
-// La table (identifiant + clé + libellé) vit dans panel_interface.cc, au plus près
-// de la nav qu'elle dessine. Ces trois fonctions sont ce qu'en voit le reste du
-// projet : un LIEN DE RÉGLAGE posté dans le chat doit savoir nommer sa cible chez
-// l'expéditeur et la retrouver chez le lecteur.
+// ── Les sections à navigation latérale, vues de l'extérieur ──────────────────
+// DEUX en-têtes du panneau possèdent une nav latérale — « Interface de jeu » et
+// « Gameplay » — et le mécanisme est le même pour les deux : une table
+// (identifiant + clé + libellé), une liste à gauche, le contenu de l'entrée
+// choisie à droite. Chaque table vit dans SON panel_*.cc, au plus près de la nav
+// qu'elle dessine ; ce qu'en voit le reste du projet tient dans ce namespace.
+//
+// Un LIEN DE RÉGLAGE posté dans le chat doit savoir nommer sa cible chez
+// l'expéditeur et la retrouver chez le lecteur — c'est à ça que sert la clé.
 //
 // 🔴 LA CLÉ (« item_toast ») N'EST PAS LE NUMÉRO DE SECTION, et c'est ce qui rend
 // le lien transportable : le numéro décrit l'ordre d'une version de Bourgeon, la
 // clé désigne la section elle-même. Un lecteur dont la version ignore la clé ne
 // résout rien — bien mieux que d'ouvrir en silence le réglage d'à côté.
+// ⚠ Les clés des DEUX tables partagent le même espace : une clé désigne une
+// destination sans dire de quel en-tête elle vient. C'est justement ce qui permet
+// à une section de déménager d'un en-tête à l'autre sans casser les liens déjà
+// posés dans le chat.
 //
 // Le LIBELLÉ n'est pas traduit (il l'est à l'affichage, chez celui qui lit) : un
 // lien posé par un joueur anglophone s'écrit en français chez son lecteur français,
 // comme les liens de recette.
 namespace iface {
-const char* SectionLabel(int section);  // NON traduit — passer par i18n::Tr
-int         SectionByKey(const char* key);  // -1 si la clé n'est pas une section
+
+// Une entrée de nav : son identifiant (valeur d'enum, propre à SON groupe), sa
+// clé de lien et son libellé NON traduit.
+struct NavEntry {
+  int         id;
+  const char* key;
+  const char* label;
+};
+
+// Les en-têtes qui possèdent une nav. L'ordre sert d'index (MoonlightUi::nav_) :
+// on AJOUTE en fin, on ne réordonne pas.
+enum NavGroupId { kNavInterface = 0, kNavGameplay, kNavGroupCount };
+
+// Une nav complète : son en-tête d'accueil et sa table de sections.
+struct NavGroup {
+  NavGroupId      group;
+  const char*     header_key;  // l'en-tête qui la contient (« interface »)
+  const NavEntry* entries;
+  int             count;
+};
+
+const NavGroup& Group(NavGroupId group);
+
+// La section que désigne cette clé : le groupe qui la porte, et son identifiant
+// dans `*id` (qui peut être nullptr). nullptr si la clé n'est pas une section.
+const NavGroup* GroupByKey(const char* key, int* id);
+
 // Le libellé de N'IMPORTE QUELLE destination — en-tête du panneau ou section de
 // la nav, un seul espace de clés. nullptr si la clé est inconnue, ou si sa
 // destination ne s'affiche pas chez ce joueur (« Staff Tools » hors staff) : dans
 // les deux cas il n'y a pas de lien à former.
 const char* DestLabel(const char* key);
+// Le libellé de l'en-tête qui CONTIENT cette destination, pour écrire le chemin
+// complet (« Gameplay > Écran de veille ») dans l'infobulle d'un lien. nullptr si
+// la clé désigne un en-tête — il n'a pas de parent — ou si elle est inconnue.
+const char* DestParentLabel(const char* key);
 // L'en-tête du panneau qui sait se lier : Maj + clic pose son lien dans le chat
 // au lieu de le plier, et un lien reçu le déplie et scrolle dessus. Remplace
-// `CollapsingHeader(i18n::Tr("…"))` aux sept en-têtes — le libellé vient de la
+// `CollapsingHeader(i18n::Tr("…"))` aux six en-têtes — le libellé vient de la
 // table, l'appelant ne donne que la clé.
 bool LinkableHeader(const char* key);
+
+// La nav latérale elle-même : liste des sections à gauche, cadre du contenu à
+// droite. L'appelant dessine le contenu de la section `*current` entre les deux
+// appels, et referme par EndNavPanel — TOUJOURS, même s'il ne dessine rien.
+// (Pas de valeur de retour à tester : un `if` autour d'un Begin/End apparié est
+// exactement le piège dont ce dossier garde la trace, cf. EndTabBar.)
+void BeginNavPanel(const NavGroup& group, int* current);
+void EndNavPanel();
+
 }  // namespace iface
 
 // Moonlight-Destiny settings panel — manages client/server settings sync.
@@ -173,7 +219,7 @@ class MoonlightUi : public Plugin {
     kIfaceStorage, kIfaceInventory, kIfaceCart, kIfaceRefine,
     kIfaceMakeItem, kIfaceMonsterInfo, kIfaceContextMenu, kIfaceCraftAtlas,
     // ⚠ Les entrées s'AJOUTENT EN FIN d'énumération, jamais au milieu : la
-    // section ouverte est persistée par son numéro (`iface_nav_`), qu'une
+    // section ouverte se retient par son numéro (`nav_[kNavInterface]`), qu'une
     // insertion décalerait. L'ordre AFFICHÉ, lui, vient de kIfaceSections, dont
     // chaque ligne porte son identifiant — il est libre.
     kIfaceCastBar,
@@ -204,6 +250,11 @@ class MoonlightUi : public Plugin {
   bool ConsumeHeaderJump(const char* key);
 
  private:
+  // Ouvre le panneau sur une section de n'importe quelle nav : sélectionne
+  // l'entrée, déplie l'en-tête qui la contient et rouvre la fenêtre. C'est le
+  // corps commun d'OpenInterfaceSection et du chemin « lien de réglage ».
+  void OpenNavSection(const iface::NavGroup& group, int section);
+
   // Fil réseau -> fil principal : OnRecvPacket ne fait que copier les octets,
   // HandlePacket décode à chaque frame. `alootid_presets_` (vecteur de
   // std::string) était reconstruit depuis le fil réseau pendant que le panneau
@@ -413,9 +464,10 @@ class MoonlightUi : public Plugin {
   // ProcessEscapeStack via RegisterEscapeMinimizeWindow, consommé au rendu suivant.
   bool pending_collapse_request_ = false;
 
-  // Section sélectionnée dans « Interface de jeu » (membre, et non statique local,
-  // pour qu'OpenInterfaceSection puisse la piloter depuis une autre fenêtre).
-  int  iface_nav_ = 0;
+  // Section sélectionnée dans chaque nav latérale, indexée par iface::NavGroupId
+  // (membre, et non statique local, pour qu'OpenInterfaceSection puisse la piloter
+  // depuis une autre fenêtre).
+  int  nav_[iface::kNavGroupCount] = {0, 0};
   // Saut demandé (bullet de barre de titre, lien de réglage du chat) : la CLÉ de
   // l'en-tête à déplier et à scroller au prochain rendu. Vidée par le premier
   // LinkableHeader qui la reconnaît — d'où la clé plutôt qu'un simple booléen :
@@ -451,10 +503,12 @@ class MoonlightUi : public Plugin {
   void DrawFunPanels();
   // Section « Gameplay » (panel_gameplay.cc) : precision du ciblage,
   // Quick cast, enregistreur GIF et écran de veille — les QOL qui touchent au
-  // JEU, entre l'interface et les commandes serveur.
+  // JEU, entre l'interface et les commandes serveur. Nav latérale, comme
+  // « Interface de jeu » : une seule fonctionnalité affichée à la fois.
   void DrawGameplayPanel();
-  // Sous-section « Écran de veille » de la précédente, sortie à part parce
-  // qu'elle porte à elle seule une douzaine de réglages.
+  // Les deux sections de cette nav qui ne délèguent pas à un plugin, sorties de
+  // DrawGameplayPanel pour qu'il reste l'aiguillage qu'il est.
+  void DrawTargetingSettings();
   void DrawAfkScreenSettings();
   void DrawAlootOverlay();
   // Affichages pilotés par ce panneau mais dessinés HORS de lui : ils survivent à
