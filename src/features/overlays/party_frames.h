@@ -232,6 +232,11 @@ class PartyFrames : public Plugin {
   // Rend l'abscisse la plus a gauche atteinte : c'est la limite que le texte du
   // nom ne doit pas franchir, sinon il passerait sous les icones.
   float DrawTileEffects(uint32_t gid, float right, float top, float bottom);
+  // 🔴 Vrai quand le curseur est sur une ICÔNE d'état : la tuile tait alors son
+  // infobulle, celle de l'état étant plus précise. Remis à zéro à chaque frame,
+  // comme `hovered_gid_` — une valeur qui survit ferait taire l'infobulle de la
+  // tuile alors que le curseur l'a quittée depuis longtemps.
+  bool state_hovered_ = false;
 
   void DrawTile(const rag::social::Entry& member, ImVec2 p0, ImVec2 p1,
                 bool is_me);

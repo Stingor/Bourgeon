@@ -289,7 +289,9 @@ class PartyFriendWindow : public Plugin {
   // Décide ce que fait le clic droit : ouvrir NOTRE menu, ou armer directement
   // celui du client quand un sprite représente ce personnage.
   // Dessine la rangee d'icones d'etat, de DROITE a gauche depuis `right`.
-  void DrawRowEffects(uint32_t gid, float right, float top);
+  // Rend true si le curseur était sur l'une des icônes : la ligne doit alors
+  // taire SON infobulle, celle de l'état est plus précise.
+  bool DrawRowEffects(uint32_t gid, float right, float top);
   void OnRowRightClick(const rag::social::Entry& row);
   void DrawRowContextMenu(const rag::social::Entry& row, bool party);
   // L'infobulle d'une ligne : classe, carte complète, PV, et une MINI-CARTE

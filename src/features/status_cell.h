@@ -50,8 +50,13 @@ struct Style {
 // ⚠ `tooltip` ouvre une infobulle ImGui : à n'activer que sur une surface qui a
 // le droit d'en poser une. Une tuile de grille dont l'infobulle porte déjà tout
 // le membre n'en veut pas une seconde par-dessus.
+// `took_hover`, s'il est fourni, est mis à true quand le curseur était sur
+// cette case — que l'infobulle ait été posée ou non. L'appelant s'en sert pour
+// TAIRE la sienne : une ligne de liste et une tuile de grille ont la leur, qui
+// couvre toute leur surface, et deux infobulles superposées se disputeraient le
+// même survol. La plus PRÉCISE gagne.
 bool Draw(const StatusEffects::Entry& e, ImVec2 p0, ImVec2 p1,
-          const Style& style, bool tooltip);
+          const Style& style, bool tooltip, bool* took_hover = nullptr);
 
 // Cet état a-t-il un rendu DE REPLI, faute d'image côté client ?
 //

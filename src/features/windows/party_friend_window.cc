@@ -895,12 +895,14 @@ void PartyFriendWindow::DrawPartyRow(const rag::social::Entry& row) {
   // Sa position se lit sur l'item qui vient d'être posé (`DrawStatusBadge` finit
   // par un `Dummy`) : pas de largeur à supposer, donc rien à corriger le jour où
   // le libellé de la pastille change.
+  bool state_hovered = false;
   if (show_buffs_ && !row.offline) {
     // Le registre ne sonde que si QUELQU'UN affiche : on redemande a chaque
     // ligne dessinee, la demande etant vivante d'un tick a l'autre.
     if (auto* fx = Bourgeon::Instance().status_effects()) fx->RequestPolling();
-    DrawRowEffects(row.gid, ImGui::GetItemRectMin().x - ro::Px(4.0f),
-                   ImGui::GetItemRectMin().y);
+    state_hovered =
+        DrawRowEffects(row.gid, ImGui::GetItemRectMin().x - ro::Px(4.0f),
+                       ImGui::GetItemRectMin().y);
   }
 
   // Sépare les lignes comme le natif, qui peint une bande par entrée. La largeur
@@ -954,7 +956,9 @@ void PartyFriendWindow::DrawPartyRow(const rag::social::Entry& row) {
   // menu contextuel qu'on vient d'ouvrir sur cette même ligne. On teste
   // N'IMPORTE QUEL popup et non le nôtre par son nom — les modales de
   // confirmation méritent la même paix.
-  if (show_tooltip_ && row_hovered &&
+  // ⚠ `!state_hovered` : sur une icône d'état, c'est SON infobulle qui parle.
+  // Les deux se déclencheraient sinon au même endroit, l'une par-dessus l'autre.
+  if (show_tooltip_ && row_hovered && !state_hovered &&
       !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId |
                                        ImGuiPopupFlags_AnyPopupLevel)) {
     DrawRowTooltip(row);
@@ -1316,12 +1320,13 @@ void PartyFriendWindow::DrawRowTooltip(const rag::social::Entry& row) {
 // 🔴 Une ligne sans icône ne dit PAS « aucun buff ». Le serveur ne diffuse ces
 // paquets qu'aux joueurs qui VOIENT l'entité : un membre sur une autre carte
 // n'en émet aucun, exactement comme pour ses PV.
-void PartyFriendWindow::DrawRowEffects(uint32_t gid, float right, float top) {
+bool PartyFriendWindow::DrawRowEffects(uint32_t gid, float right, float top) {
   auto* fx = Bourgeon::Instance().status_effects();
-  if (fx == nullptr) return;
+  if (fx == nullptr) return false;
 
   std::vector<StatusEffects::Entry> list;
-  if (!fx->Effects(gid, &list) || list.empty()) return;
+  if (!fx->Effects(gid, &list) || list.empty()) return false;
+  bool took_hover = false;
 
   const float side = ro::Px(static_cast<float>(std::max(8, buff_px_)));
   const float gap  = ro::Px(1.0f);
@@ -1335,8 +1340,8 @@ void PartyFriendWindow::DrawRowEffects(uint32_t gid, float right, float top) {
   // À REBOURS : quand il y en a plus que la place, ce sont les plus récents
   // qu'on garde — un buff qui vient de tomber est ce qu'on regarde.
   for (size_t i = list.size(); i-- > 0 && drawn < std::max(1, buff_max_);) {
-    // ⚠ Pas d'infobulle : la LIGNE a déjà la sienne, et elle se déclenche sur
-    // toute sa largeur — les deux se disputeraient le même survol.
+    // L'infobulle de l'ÉTAT prime sur celle de la ligne quand le curseur est
+    // sur l'icône : elle est plus précise, et la ligne se tait (`took_hover`).
     statuscell::Style st;
     st.sweep       = buff_sweep_;
     st.sweep_color = IM_COL32(0, 0, 0, 140);
@@ -1345,11 +1350,12 @@ void PartyFriendWindow::DrawRowEffects(uint32_t gid, float right, float top) {
     if (drawn > 0 && drawn % per_row == 0) x = right;
     const float y = top + row * (side + gap);
     if (!statuscell::Draw(list[i], ImVec2(x - side, y), ImVec2(x, y + side), st,
-                          false))
+                          true, &took_hover))
       continue;
     x -= side + gap;
     ++drawn;
   }
+  return took_hover;
 }
 
 void PartyFriendWindow::OnRowRightClick(const rag::social::Entry& row) {

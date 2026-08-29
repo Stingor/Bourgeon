@@ -507,6 +507,10 @@ void PartyFrames::OnRenderUI() {
       ImGui::GetIO().KeyShift && (over_frame || ro::HudFrameDragging());
   opts.locked   = locked_ && !unlock_override;
   opts.border   = false;
+  // Le repère de centre, le temps de la pose : la grille d'alignement aimante
+  // les BORDS, alors qu'on cherche souvent à poser le CENTRE du HUD sur une de
+  // ses lignes. Il s'efface dès que le cadre est reverrouillé.
+  opts.center_mark = true;
   opts.rounding = ro::Px(3.0f);
   // Le fond du cadre : sans lui, des tuiles sombres sur une carte sombre ne se
   // distinguent plus du décor.
@@ -528,6 +532,7 @@ void PartyFrames::OnRenderUI() {
   // Le membre survolé est relevé À CHAQUE frame, et remis à zéro d'abord : une
   // valeur qui survit à la frame ferait viser quelqu'un que le curseur a quitté.
   hovered_gid_ = 0;
+  state_hovered_ = false;
   target_gid_  = CurrentTargetGid();
 
   ro::HudFrameClicks clicks;
@@ -582,7 +587,8 @@ void PartyFrames::OnRenderUI() {
   // paix.
   const bool popup_open = ImGui::IsPopupOpen(
       nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
-  if (show_tooltip_ && hovered_gid_ != 0 && !popup_open) {
+  // ⚠ `!state_hovered_` : sur une icône d'état, c'est SON infobulle qui parle.
+  if (show_tooltip_ && hovered_gid_ != 0 && !state_hovered_ && !popup_open) {
     const uint32_t me_gid = rag::social::OwnAid();
     for (const rag::social::Entry& m : members_) {
       if (m.gid != hovered_gid_) continue;
@@ -643,8 +649,8 @@ float PartyFrames::DrawTileEffects(uint32_t gid, float right, float top,
   // qu'il faut garder — un buff qui vient de tomber sur un allié est ce qu'on
   // regarde, pas celui qui dure depuis dix minutes.
   for (size_t i = list.size(); i-- > 0 && drawn < std::max(1, buff_max_);) {
-    // ⚠ Pas d'infobulle ici : la tuile a déjà la sienne, qui porte tout le
-    // membre. Une seconde par-dessus se disputerait le même survol.
+    // L'infobulle de l'ÉTAT prime sur celle de la tuile quand le curseur est
+    // sur l'icône : elle est plus précise, et la tuile se tait.
     statuscell::Style st;
     st.sweep       = buff_sweep_;
     st.sweep_color = IM_COL32(0, 0, 0, 140);
@@ -656,7 +662,7 @@ float PartyFrames::DrawTileEffects(uint32_t gid, float right, float top,
     if (drawn > 0 && drawn % per_row == 0) x = right;
     const float y = top + row * (side + gap);
     if (!statuscell::Draw(list[i], ImVec2(x - side, y), ImVec2(x, y + side), st,
-                          false))
+                          true, &state_hovered_))
       continue;
     x -= side + gap;
     if (x < leftmost) leftmost = x;

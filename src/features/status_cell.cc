@@ -298,7 +298,7 @@ void Tooltip(const StatusEffects::Entry& e) {
 }
 
 bool Draw(const StatusEffects::Entry& e, ImVec2 p0, ImVec2 p1,
-          const Style& style, bool tooltip) {
+          const Style& style, bool tooltip, bool* took_hover) {
   ImDrawList* dl = ImGui::GetWindowDrawList();
   const ImU32 tint =
       style.dim ? IM_COL32(140, 140, 140, 220) : IM_COL32_WHITE;
@@ -380,7 +380,9 @@ bool Draw(const StatusEffects::Entry& e, ImVec2 p0, ImVec2 p1,
 
   // ⚠ `IsMouseHoveringRect` et non `IsItemHovered` : on n'a posé AUCUN item
   // ImGui, seulement des primitives de dessin. Il n'y a donc rien à interroger.
-  if (tooltip && ImGui::IsMouseHoveringRect(p0, p1)) Tooltip(e);
+  const bool over = ImGui::IsMouseHoveringRect(p0, p1);
+  if (took_hover != nullptr && over) *took_hover = true;
+  if (tooltip && over) Tooltip(e);
   return true;
 }
 
