@@ -378,9 +378,14 @@ void StatusEffects::Poll(bool party, bool target_too) {
     if (poll_cursor_ >= members.size()) poll_cursor_ = 0;
     const rag::social::Entry& m = members[poll_cursor_++];
     // Un hors-ligne n'a pas d'entité : le serveur répondrait « introuvable ».
-    // Moi non plus je ne m'interroge pas — mes propres états sont dans la barre
-    // d'icônes du client, qui les tient déjà à jour.
-    if (m.gid == 0 || m.offline || m.gid == rag::social::OwnAid()) continue;
+    //
+    // 🔴 MOI COMPRIS, contrairement au SP. Mes propres états sont bien dans la
+    // barre d'icônes du client — mais la LISTE et la GRILLE ne lisent pas cette
+    // barre, elles lisent ce registre. Et les altérations (sommeil, silence…)
+    // n'arrivent JAMAIS par la diffusion AREA : la db ne leur donne pas d'`Icon:`,
+    // donc `clif_status_change` ne part pas pour elles. Sans cette demande, ma
+    // propre ligne était la seule à ne jamais montrer un debuff.
+    if (m.gid == 0 || m.offline) continue;
     if (Refused(m.gid)) continue;
     // Hors de portée : ses états ne seraient pas affichés (cf. la purge), donc
     // la question ne se pose pas. Un paquet qu'on jetterait en arrivant.

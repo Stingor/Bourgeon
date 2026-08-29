@@ -800,6 +800,17 @@ void MoonlightUi::DrawInterfacePanel() {
               "Ce qui s'affiche ici est donc ce qui est TOMBÉ sous vos yeux, "
               "pas l'état complet du personnage."));
           if (pfw->show_buffs_) {
+            // 🔴 PushID : l'identifiant ImGui d'un widget est son LIBELLÉ,
+            // donc sa TRADUCTION. « Taille des icônes » (états) et « Taille
+            // de l'icône » (classe) sont distincts en français et deviennent
+            // tous deux « Icon size » en anglais : deux widgets, un seul
+            // identifiant, et ImGui lève une erreur en plein jeu.
+            //
+            // ⚠ Le code relu en français ne montre RIEN — c'est le catalogue
+            // qui crée la collision, et il peut la recréer demain sur un
+            // autre couple. D'où une isolation par BLOC, pas un libellé
+            // rebaptisé qui ne protégerait que ce cas-ci.
+            ImGui::PushID("status_icons");
             changed |= mui::WheelSliderInt(i18n::Tr("Taille des icônes"),
                                            &pfw->buff_px(), 8, 32, "%d px");
             changed |= mui::WheelSliderInt(i18n::Tr("Icônes au plus"),
@@ -827,6 +838,7 @@ void MoonlightUi::DrawInterfacePanel() {
                 "⚠ La durée d'origine n'est portée par AUCUN paquet : elle est "
                 "exacte quand on a vu l'état commencer, et repart de « plein » "
                 "quand on le découvre en route."));
+            ImGui::PopID();
           }
 
           // ── Densité ───────────────────────────────────────────────────────
@@ -1033,6 +1045,17 @@ void MoonlightUi::DrawInterfacePanel() {
               "Ce qui s'affiche ici est donc ce qui est TOMBÉ sous vos yeux, "
               "pas l'état complet du personnage."));
           if (pf->show_buffs_) {
+            // 🔴 PushID : l'identifiant ImGui d'un widget est son LIBELLÉ,
+            // donc sa TRADUCTION. « Taille des icônes » (états) et « Taille
+            // de l'icône » (classe) sont distincts en français et deviennent
+            // tous deux « Icon size » en anglais : deux widgets, un seul
+            // identifiant, et ImGui lève une erreur en plein jeu.
+            //
+            // ⚠ Le code relu en français ne montre RIEN — c'est le catalogue
+            // qui crée la collision, et il peut la recréer demain sur un
+            // autre couple. D'où une isolation par BLOC, pas un libellé
+            // rebaptisé qui ne protégerait que ce cas-ci.
+            ImGui::PushID("status_icons");
             changed |= mui::WheelSliderInt(i18n::Tr("Taille des icônes"),
                                            &pf->buff_px(), 6, 28, "%d px");
             changed |= mui::WheelSliderInt(i18n::Tr("Icônes au plus"),
@@ -1060,6 +1083,7 @@ void MoonlightUi::DrawInterfacePanel() {
                 "⚠ La durée d'origine n'est portée par AUCUN paquet : elle est "
                 "exacte quand on a vu l'état commencer, et repart de « plein » "
                 "quand on le découvre en route."));
+            ImGui::PopID();
           }
 
           // ── Couleurs ──────────────────────────────────────────────────────
