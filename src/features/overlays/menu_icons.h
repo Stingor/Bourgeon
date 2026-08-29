@@ -32,6 +32,18 @@ class MenuIcons : public Plugin {
   // Set after a drag-end or show/hide change; MoonlightUi drains it -> saves YAML.
   bool geometry_dirty_ = false;
 
+  // Un bitmap d'icône et sa taille MESURÉE. Les quatre états d'une icône
+  // (normal / enfoncé / signalé / signalé-enfoncé) sont QUATRE fichiers .bmp
+  // distincts chez le natif, pas un atlas ni une teinte : ils ont donc chacun
+  // leur taille propre — le bitmap « _new » déborde vers le haut — et chacun son
+  // compteur d'échecs, parce que la plupart des icônes n'ont ni « _new » ni,
+  // pour les boutons hors grille, de « _press ».
+  struct Bitmap {
+    void* tex = nullptr;  // IDirect3DTexture9* (chargé à la demande)
+    int   w = 0, h = 0;
+    int   fail = 0;       // échecs de chargement : 3 et on renonce
+  };
+
   struct Icon {
     const char* name;   // bitmap base name -> \<dir><name>.bmp
     // Dossier + préfixe du bitmap sous 유저인터페이스\. Les 25 icônes de la
@@ -48,18 +60,39 @@ class MenuIcons : public Plugin {
     int         wnd_id = 0;
     int         cmd_id; // UI command id (routed on click)
     int         msg_id; // tooltip message id
-    void*       tex = nullptr;  // IDirect3DTexture9* (lazily loaded)
-    int         w = 0, h = 0;
+    // Action du catalogue de Bourgeon (`hotkey_actions`) que ce bouton déclenche,
+    // pour les icônes qui n'ont AUCUNE contrepartie dans le client — l'Atlas des
+    // recettes, par exemple. nullptr = icône du jeu, le clic part au natif.
+    // C'est l'identifiant du catalogue et pas un pointeur de fenêtre : le bouton
+    // hérite ainsi du même point d'entrée que le raccourci clavier, et son
+    // infobulle sait retrouver la touche qui lui est liée.
+    const char* action_id = nullptr;
+    // Libellé (clé i18n française) des icônes de Bourgeon, qui n'ont pas de
+    // ligne dans la table de messages du client. Ignoré quand `msg_id` != 0.
+    const char* label_fr = nullptr;
+    // Index de commande de la catégorie Interface (`userhotkey::kInterface`)
+    // dont la touche ouvre CETTE fenêtre, -1 si le client n'en propose pas.
+    // C'est ce qui met le raccourci dans l'infobulle, sans le recopier : le nom
+    // de touche est relu chez le jeu à chaque survol, donc layout-aware et à
+    // jour du remappage.
+    int         hk_cmd = -1;
     int         x = 0, y = 0;   // screen position
     bool        hidden = false; // user-hidden via the MoonlightUi list
+    // Les quatre bitmaps. `normal` porte AUSSI la taille de référence de l'icône
+    // (position, aimantage, clamp) : les trois autres ne sont que des états.
+    Bitmap      normal;
+    // État enfoncé : \menu_icon\bt_<name>_press.bmp, ce que le natif montre tant
+    // que le bouton de la souris reste appuyé sur l'icône. Sans lui, un clic ne
+    // renvoyait AUCUN retour visuel — c'est ce qui manquait à cette copie ImGui.
+    Bitmap      pressed;
     // Signalement « nouveau » (courrier non lu, succès débloqué…) : le natif ne
     // pose pas de pastille par-dessus, il affiche une SECONDE icône complète
     // \menu_icon\bt_<name>_new.bmp à la place de la normale. Elle est plus haute
-    // (le badge déborde vers le haut), d'où sa taille propre.
+    // (le badge déborde vers le haut), d'où sa taille propre — et elle a elle
+    // aussi son état enfoncé, `bt_<name>_new_press.bmp`.
     bool        badge = false;      // le natif signale cette commande
-    void*       tex_new = nullptr;  // bitmap « _new », chargé à la demande
-    int         nw = 0, nh = 0;
-    int         new_fail = 0;       // échecs de chargement (icônes sans bitmap _new)
+    Bitmap      badge_normal;
+    Bitmap      badge_pressed;
   };
 
   // Persisted per-icon position/visibility, keyed by icon name. MoonlightUi loads
@@ -81,6 +114,10 @@ class MenuIcons : public Plugin {
   // fenêtres, et une frame plus tard le pointeur serait libéré.
   int  pending_wnd_ = 0;
   int  pending_cmd_ = 0;
+  // Action de catalogue mise en file à la place de la commande native, pour les
+  // boutons de Bourgeon. Pointeur vers un littéral du catalogue : rien à libérer,
+  // et rien qui puisse mourir sous nous.
+  const char* pending_action_ = nullptr;
   int  dragging_    = -1;  // index of the icon being dragged in edit mode, else -1
   float drag_off_x_ = 0.0f, drag_off_y_ = 0.0f;  // mouse-to-origin offset at grab
   std::vector<Icon> icons_;
@@ -91,7 +128,9 @@ class MenuIcons : public Plugin {
   // Accorde le bouton natif du cash shop et notre copie ImGui : un seul endroit
   // décide qui des deux se voit (cf. le pavé de commentaire dans le .cc).
   void SyncCashShopButton();
-  void DispatchCommand(int wnd_id, int cmd_id);
+  // `action_id` non nul court-circuite le couple (fenêtre, commande) : le clic
+  // part au catalogue de raccourcis de Bourgeon au lieu du client.
+  void DispatchCommand(int wnd_id, int cmd_id, const char* action_id);
   // Magnetic snap of value v (extent ext) on one axis to other icons' edges.
   float SnapIcon(float v, float ext, int self, bool y_axis) const;
 };

@@ -5,6 +5,9 @@
 
 #include "ragnarok/msgstring.h"  // msgstr:: (libellés natifs du client)
 #include "ragnarok/uiwnd.h"
+#include "ragnarok/user_hotkey.h"    // raccourcis du CLIENT (infobulles)
+#include "features/hotkey_actions.h"  // raccourcis de BOURGEON (idem + dispatch)
+#include "features/hotkey_util.h"     // hotkeys::Label (mise en forme d'un combo)
 
 #include <Windows.h>
 #include <cstdint>
@@ -141,19 +144,104 @@ void* LoadIconTexture(const char* dir, const char* name, int* out_w, int* out_h)
 // Dossier + préfixe de nom des bitmaps de la grille, sous 유저인터페이스\.
 constexpr char kGridIconDir[] = "menu_icon\\bt_";
 
-// name, cmd_id, tooltip msg_id (from UIMenuIcon_SetHelpTextByCmdId @0x00814550).
-struct IconDef { const char* name; int cmd_id; int msg_id; };
+// Charge un état d'icône À LA DEMANDE, et renonce après trois échecs. Le suffixe
+// est celui du natif : "" (normal), "_press", "_new", "_new_press".
+//
+// 🔴 Le renoncement n'est pas une optimisation de confort : la plupart des
+// icônes n'ont ni bitmap « _new » ni bitmap « _press », et une recherche GRF par
+// FRAME pour un fichier absent se paierait cher. Le compteur est remis à zéro
+// quand le device change d'epoch (les textures sont mortes, il faut retenter) et,
+// pour le badge, quand le natif l'éteint puis le rallume.
+void EnsureBitmap(MenuIcons::Bitmap& bmp, const char* dir, const char* name,
+                  const char* suffix) {
+  if (bmp.tex || bmp.fail >= 3) return;
+  char file[64];
+  std::snprintf(file, sizeof(file), "%s%s", name, suffix);
+  bmp.tex = LoadIconTexture(dir, file, &bmp.w, &bmp.h);
+  if (!bmp.tex) ++bmp.fail;
+}
+
+// name, cmd_id, tooltip msg_id (from UIMenuIcon_SetHelpTextByCmdId @0x00814550),
+// puis l'index de commande de la catégorie Interface dont la TOUCHE ouvre la
+// même fenêtre (-1 = le client n'en propose pas).
+//
+// ── D'où vient cette dernière colonne ────────────────────────────────────────
+// De `data\luafiles514\lua files\hotkey.lub`, table `HOTKEY_2` : le client y
+// range les commandes de la catégorie Interface DANS L'ORDRE, et c'est ce rang
+// (0-based) que `GetHotKey(catégorie+1, index)` attend. Recoupé sur le
+// `SaveData\UserKeys.lua` d'un compte réel, qui n'écrit que les écarts et les
+// désigne par ce même rang : `[3] = { EXE = "Quest Log" }` tombe bien sur
+// `MSI_HK_QUESTWND_ONOFF`, `[4]` sur `MSI_HK_FRIENDWND_ONOFF`, `[21]` sur
+// `MSI_HK_SNAPSHOT` — et `USERKEY_1[9] = "Hotkey 2-1"` sur `MSI_HK_SKILLBAR2_1`.
+//
+// ⚠ TÉMOIN NÉGATIF : le GRF porte AUSSI un `hotkey_v2.lub` où l'ordre des tables
+// diffère (`HOTKEY_2` y est la seconde barre de compétences, l'Interface passe en
+// `HOTKEY_3`). Ce n'est PAS celui que ce client suit — le `UserKeys.lua` écrit
+// par le jeu le prouve, il range l'Interface en `USERKEY_2`. Prendre la mauvaise
+// table décalerait chaque raccourci d'une fenêtre à l'autre, en silence.
+//
+// 🔴 On ne recopie ici que le RANG. Le nom de touche, lui, est relu chez le jeu à
+// chaque survol : il est layout-aware (« A » sur AZERTY, « Q » sur QWERTY) et
+// suit le remappage du joueur, ce qu'une table écrite à la main ne ferait pas.
+struct IconDef { const char* name; int cmd_id; int msg_id; int hk_cmd; };
 const IconDef kIconTable[] = {
-    {"status", 0xC0, 0x69},   {"option", 0xC1, 0x109},  {"item", 0xC2, 0x6A},
-    {"equip", 0xC3, 0x68},    {"skill", 0xC4, 0x11B},   {"party", 0xC7, 0x67},
-    {"map", 0xDB, 0xB2B},     {"quest", 0x169, 0x525},  {"keyboard", 0x172, 0xC38},
-    {"guild", 0x175, 0xC3E},  {"battle", 0x178, 0x7D3}, {"booking", 0x17B, 0x1103},
-    {"rec", 0x18F, 0x92E},    {"navigation", 0x1AE, 0x931}, {"bank", 0x1CD, 0xC3F},
-    {"achievement", 0x1D9, 0xA56}, {"mail", 0x1DC, 0xC40}, {"tip", 0x1FF, 0xCA7},
-    {"shop", 0x200, 0xC41},   {"sns", 0x206, 0xB1D},    {"attendance", 0x21C, 0xD91},
-    {"adventurerAgency", 0x220, 0xDBA}, {"repute", 0x237, 0xEF3},
-    {"adventureguide", 0x245, 0xFD5},   {"probability", 0x24B, 0x1017},
+    {"status", 0xC0, 0x69, 47},   {"option", 0xC1, 0x109, -1}, {"item", 0xC2, 0x6A, 9},
+    {"equip", 0xC3, 0x68, 1},     {"skill", 0xC4, 0x11B, 2},   {"party", 0xC7, 0x67, 5},
+    {"map", 0xDB, 0xB2B, 8},      {"quest", 0x169, 0x525, 3},  {"keyboard", 0x172, 0xC38, -1},
+    {"guild", 0x175, 0xC3E, 10},  {"battle", 0x178, 0x7D3, 30}, {"booking", 0x17B, 0x1103, 34},
+    {"rec", 0x18F, 0x92E, 38},    {"navigation", 0x1AE, 0x931, 42}, {"bank", 0x1CD, 0xC3F, 46},
+    {"achievement", 0x1D9, 0xA56, 49}, {"mail", 0x1DC, 0xC40, 51}, {"tip", 0x1FF, 0xCA7, 54},
+    {"shop", 0x200, 0xC41, 37},   {"sns", 0x206, 0xB1D, 53},   {"attendance", 0x21C, 0xD91, -1},
+    {"adventurerAgency", 0x220, 0xDBA, -1}, {"repute", 0x237, 0xEF3, 60},
+    {"adventureguide", 0x245, 0xFD5, -1},   {"probability", 0x24B, 0x1017, -1},
 };
+
+// ── Les icônes de BOURGEON ────────────────────────────────────────────────────
+// Des boutons que le client ne connaît pas, posés dans la même grille pour
+// hériter d'un coup du mode édition, de l'aimantage, du clamp et de la
+// persistance par nom. Deux choses seulement les distinguent d'une icône du jeu,
+// et elles tiennent dans les champs d'`Icon` : `wnd_id == 0` (le clic ne part
+// chez aucune fenêtre native) et `action_id` (il part au catalogue de raccourcis,
+// exactement là où va la touche du joueur — un seul point d'entrée, donc jamais
+// deux comportements à tenir d'accord).
+//
+// L'art vit dans `menu_icon\` comme celui du jeu, aux mêmes conventions de nom
+// (`bt_atlas.bmp`, `bt_atlas_press.bmp`) : il est livré dans le dossier `data\`
+// du client, que son VFS lit AVANT les GRF.
+struct BourgeonIconDef {
+  const char* name;
+  const char* action_id;
+  const char* label_fr;
+};
+const BourgeonIconDef kBourgeonIcons[] = {
+    {"atlas", "tool_craft_atlas", "Atlas des recettes"},
+};
+
+// Le raccourci qui ouvre CETTE icône, prêt à afficher — chaîne vide s'il n'y en
+// a pas. Les deux systèmes de raccourcis du projet y répondent chacun pour les
+// siens (cf. le pavé de `hotkey_actions.h` sur le partage) : le catalogue de
+// Bourgeon pour ses propres boutons, les tables du client pour ses fenêtres.
+//
+// 🔴 RELU À CHAQUE SURVOL, jamais mis en cache : le joueur peut remapper sans
+// quitter la carte, et le nom rendu par le jeu est layout-aware.
+void HotkeyLabel(const MenuIcons::Icon& ic, char* out, int cap) {
+  if (cap <= 0) return;
+  out[0] = '\0';
+  if (ic.action_id) {
+    const int index = hotkeys::IndexOf(ic.action_id);
+    if (index < 0) return;
+    const hotkeys::Binding& b = hotkeys::BindingAt(index);
+    if (b.vk == 0) return;  // aucune touche : l'infobulle n'en parle pas
+    hotkeys::Label(b.vk, b.ctrl, b.alt, b.shift, out, cap);
+    return;
+  }
+  if (ic.hk_cmd < 0) return;
+  userhotkey::Binding b;
+  if (!userhotkey::ReadBindingForCommand(userhotkey::kInterface, ic.hk_cmd, &b))
+    return;
+  if (!b.assigned) return;
+  std::snprintf(out, cap, "%s", b.key_name);
+}
 
 // ── Le bouton « cash shop » posé près de la minimap ────────────────────────
 // Ce n'est PAS une icône de la grille : c'est une fenêtre native à elle seule,
@@ -213,6 +301,9 @@ constexpr int  kCashShopCmdId = 192;    // commande du bouton enfant (0xC0)
 // et la ligne du serveur n'a jamais été remplie — elle vaut « Title », comme sa
 // voisine 3580 vaut « Material ».
 constexpr int  kCashShopMsgId = 0xC41;  // MSI_CASHSHOP
+// Sa touche : `MSI_HK_CASHSHOPWND`, rang 37 de la catégorie Interface — la même
+// que l'icône « shop » de la grille, les deux ouvrant la même boutique.
+constexpr int  kCashShopHotkeyCmd = 37;
 // Position par défaut du natif, recopiée de MakeWindow case 190 : elle ne sert
 // que le tout premier lancement, et seulement si la fenêtre n'est pas encore née
 // au moment où on construit la liste — sinon on lit la vraie, sur l'objet vivant.
@@ -282,7 +373,27 @@ void MenuIcons::BuildIconList() {
     ic.wnd_id = uiwnd::kMenuIconWndId;
     ic.cmd_id = d.cmd_id;
     ic.msg_id = d.msg_id;
+    ic.hk_cmd = d.hk_cmd;
     ic.x = 24 + (shown % 6) * 40;   // default grid
+    ic.y = 160 + (shown / 6) * 40;
+    apply_saved(ic, true);
+    icons_.push_back(ic);
+    ++shown;
+  }
+
+  // Les boutons de Bourgeon, à la suite de la grille et sur le même pas : ils
+  // sont déplaçables comme les autres, et le joueur les retrouve donc là où il
+  // s'attend à trouver une icône de menu.
+  for (const auto& d : kBourgeonIcons) {
+    Icon ic;
+    ic.name = d.name;
+    ic.dir = kGridIconDir;
+    ic.wnd_id = 0;            // aucune fenêtre native : le clic va au catalogue
+    ic.cmd_id = 0;
+    ic.msg_id = 0;            // pas de ligne dans la table de messages du client
+    ic.action_id = d.action_id;
+    ic.label_fr = d.label_fr;
+    ic.x = 24 + (shown % 6) * 40;
     ic.y = 160 + (shown / 6) * 40;
     apply_saved(ic, true);
     icons_.push_back(ic);
@@ -301,6 +412,7 @@ void MenuIcons::BuildIconList() {
     ic.wnd_id = uiwnd::kUInCash_CallWnd;
     ic.cmd_id = kCashShopCmdId;
     ic.msg_id = kCashShopMsgId;
+    ic.hk_cmd = kCashShopHotkeyCmd;
     ic.x = static_cast<int>(ImGui::GetIO().DisplaySize.x) -
            kCashShopDefaultRightMargin;
     ic.y = kCashShopDefaultY;
@@ -332,7 +444,10 @@ void MenuIcons::RefreshBadges() {
     if (ic.wnd_id != uiwnd::kMenuIconWndId) { ic.badge = false; continue; }
     bool on = false;
     for (int i = 0; i < n && !on; ++i) on = (flagged[i] == ic.cmd_id);
-    if (!on) ic.new_fail = 0;  // réarme le chargement pour le prochain allumage
+    if (!on) {  // réarme le chargement pour le prochain allumage
+      ic.badge_normal.fail = 0;
+      ic.badge_pressed.fail = 0;
+    }
     ic.badge = on;
   }
 }
@@ -349,7 +464,7 @@ void MenuIcons::SyncCashShopButton() {
   for (Icon& ic : icons_) {
     if (ic.wnd_id != uiwnd::kUInCash_CallWnd) continue;
     ic.hidden = !on;
-    replaced = enabled_ && ic.tex != nullptr;
+    replaced = enabled_ && ic.normal.tex != nullptr;
   }
   uiwnd::SafeSetVisible(uiwnd::SafeFindWindow(uiwnd::kUInCash_CallWnd), on && !replaced);
 }
@@ -361,8 +476,8 @@ float MenuIcons::SnapIcon(float v, float ext, int self, bool y_axis) const {
     if (j == self || icons_[j].hidden) continue;
     const float opos = y_axis ? static_cast<float>(icons_[j].y)
                               : static_cast<float>(icons_[j].x);
-    const float oext = y_axis ? static_cast<float>(icons_[j].h)
-                              : static_cast<float>(icons_[j].w);
+    const float oext = y_axis ? static_cast<float>(icons_[j].normal.h)
+                              : static_cast<float>(icons_[j].normal.w);
     const float cands[4] = {opos, opos + oext - ext, opos + oext, opos - ext};
     for (float c : cands) {
       float d = c - v;
@@ -396,7 +511,15 @@ void MenuIcons::HideNativeGrid(bool hide) {
   }
 }
 
-void MenuIcons::DispatchCommand(int wnd_id, int cmd_id) {
+void MenuIcons::DispatchCommand(int wnd_id, int cmd_id, const char* action_id) {
+  // Bouton de Bourgeon : il n'y a aucune fenêtre native à saisir, et surtout
+  // aucune raison d'en inventer une. On passe par le catalogue de raccourcis,
+  // c'est-à-dire par le MÊME point d'entrée que la touche du joueur — clic et
+  // clavier ne peuvent donc pas diverger.
+  if (action_id) {
+    hotkeys::Invoke(action_id);
+    return;
+  }
   void* wnd = uiwnd::SafeFindWindow(wnd_id);
   if (!wnd) {
     LogDiag("[MenuIcons] window 0x{:X} not found for cmd 0x{:X}", wnd_id, cmd_id);
@@ -415,14 +538,20 @@ void MenuIcons::DispatchCommand(int wnd_id, int cmd_id) {
 }
 
 void MenuIcons::FlushPending() {
-  if (pending_cmd_ == 0) return;
+  // `pending_action_` et non `pending_cmd_` seul : un bouton de Bourgeon n'a pas
+  // de commande native, sa commande VAUT 0, et le test d'origine l'aurait
+  // silencieusement jeté.
+  if (pending_cmd_ == 0 && !pending_action_) return;
   const int wnd = pending_wnd_, cmd = pending_cmd_;
-  pending_wnd_ = 0;
-  pending_cmd_ = 0;
+  const char* action = pending_action_;
+  pending_wnd_    = 0;
+  pending_cmd_    = 0;
+  pending_action_ = nullptr;
   // Driven from the game's input phase (ProcessInput, every frame) so the
   // command runs with native click timing/context — never from the Present hook,
   // and never while the HUD is replaced (world map, etc.).
-  if (enabled_ && in_game_ && !uiwnd::IsHudReplaced()) DispatchCommand(wnd, cmd);
+  if (enabled_ && in_game_ && !uiwnd::IsHudReplaced())
+    DispatchCommand(wnd, cmd, action);
 }
 
 // Fallback only: OnTick is throttled to ~100ms, so ProcessInput (which runs
@@ -472,11 +601,18 @@ bool MenuIcons::DrawSettings() {
       // Le bouton du cash shop est bien dans la liste (il se déplace comme les
       // autres) mais PAS ici : sa visibilité a déjà sa case plus bas, celle qui
       // écrit l'option du client. Deux cases pour le même réglage, ce serait
-      // une de trop — et son `cmd_id` 0xC0 doublonnerait le PushID de « status ».
-      if (ic.wnd_id != uiwnd::kMenuIconWndId) continue;
+      // une de trop. Les boutons de Bourgeon, eux, restent : leur visibilité
+      // n'appartient qu'à nous, et c'est ici qu'on la règle.
+      if (ic.wnd_id == uiwnd::kUInCash_CallWnd) continue;
       bool shown = !ic.hidden;
-      ImGui::PushID(ic.cmd_id);
-      if (ro::RoCheckbox(ic.name, &shown)) {
+      // Le NOM et non la commande : celle des boutons de Bourgeon vaut 0, ils
+      // partageraient donc tous le même identifiant ImGui.
+      ImGui::PushID(ic.name);
+      // Les icônes du client gardent leur nom de bitmap, celui que le joueur
+      // reconnaît dans le dossier ; les nôtres portent leur libellé traduit,
+      // qui est le seul nom sous lequel elles existent.
+      const char* label = ic.label_fr ? i18n::Tr(ic.label_fr) : ic.name;
+      if (ro::RoCheckbox(label, &shown)) {
         ic.hidden = !shown;
         saved_[ic.name] = {ic.x, ic.y, ic.hidden, true};
         changed = true;
@@ -528,7 +664,12 @@ void MenuIcons::OnRenderUI() {
     static unsigned s_epoch = 0;
     const unsigned e = Overlay_DeviceEpoch();
     if (e != s_epoch) {
-      for (Icon& ic : icons_) { ic.tex = nullptr; ic.tex_new = nullptr; ic.new_fail = 0; }
+      for (Icon& ic : icons_) {
+        ic.normal = Bitmap();
+        ic.pressed = Bitmap();
+        ic.badge_normal = Bitmap();
+        ic.badge_pressed = Bitmap();
+      }
       s_epoch = e;
     }
   }
@@ -536,35 +677,38 @@ void MenuIcons::OnRenderUI() {
   for (int i = 0; i < static_cast<int>(icons_.size()); ++i) {
     Icon& ic = icons_[i];
     if (ic.hidden) continue;  // user-hidden via the MoonlightUi list
-    if (!ic.tex) ic.tex = LoadIconTexture(ic.dir, ic.name, &ic.w, &ic.h);  // lazy/retry
-    if (!ic.tex) continue;
+    EnsureBitmap(ic.normal, ic.dir, ic.name, "");  // lazy/retry
+    if (!ic.normal.tex) continue;
 
+    // L'état ENFONCÉ, chargé une fois pour toutes dès la première frame : à la
+    // différence du badge, il ne dépend d'aucun événement, et l'attendre du
+    // premier clic ferait manquer le retour visuel de ce clic-là.
+    EnsureBitmap(ic.pressed, ic.dir, ic.name, "_press");
     // Icône signalée : on charge son bitmap « _new » (celui qui porte le N) à la
-    // première frame où le natif l'allume. Trois échecs et on renonce jusqu'au
-    // prochain allumage : la plupart des icônes n'ont PAS de bt_<name>_new.bmp,
-    // et une recherche GRF par frame pour un fichier absent se paierait cher.
-    if (ic.badge && !ic.tex_new && ic.new_fail < 3) {
-      char new_name[64];
-      std::snprintf(new_name, sizeof(new_name), "%s_new", ic.name);
-      ic.tex_new = LoadIconTexture(ic.dir, new_name, &ic.nw, &ic.nh);
-      if (!ic.tex_new) ++ic.new_fail;
+    // première frame où le natif l'allume — et son état enfoncé avec, pour la
+    // même raison que ci-dessus.
+    if (ic.badge) {
+      EnsureBitmap(ic.badge_normal, ic.dir, ic.name, "_new");
+      EnsureBitmap(ic.badge_pressed, ic.dir, ic.name, "_new_press");
     }
     // Le bitmap « _new » déborde vers le haut (le natif le pose 6 px plus haut
     // que l'icône normale, même x). On aligne les BAS sur la hauteur MESURÉE
     // plutôt que de recopier ce 6 : la fenêtre grandit d'autant, sinon ImGui
     // rognerait le badge à son bord. (ic.x, ic.y) reste l'ancre de l'icône
     // normale, donc la position enregistrée ne bouge pas quand le badge s'allume.
-    const bool  badge  = ic.badge && ic.tex_new != nullptr;
-    const int   draw_w = badge ? ic.nw : ic.w;
-    const int   draw_h = badge ? ic.nh : ic.h;
-    const float over_y = static_cast<float>(draw_h - ic.h);  // débordement vers le haut
+    const bool  badge  = ic.badge && ic.badge_normal.tex != nullptr;
+    const int   draw_w = badge ? ic.badge_normal.w : ic.normal.w;
+    const int   draw_h = badge ? ic.badge_normal.h : ic.normal.h;
+    const float over_y = static_cast<float>(draw_h - ic.normal.h);  // débordement vers le haut
 
-    // 🔴 La fenêtre porteuse est identifiée par le COUPLE (fenêtre, commande) :
-    // le bouton du cash shop et l'icône « status » ont tous deux la commande
-    // 0xC0, et deux fenêtres ImGui du même nom n'en font qu'UNE — la seconde
-    // s'attribuerait la position et la zone cliquable de la première.
-    char id[40];
-    std::snprintf(id, sizeof(id), "##micon_%X_%X", ic.wnd_id, ic.cmd_id);
+    // 🔴 La fenêtre porteuse est identifiée par le NOM du bitmap, qui est déjà la
+    // clé de persistance de l'icône et le seul champ unique à coup sûr : la
+    // commande ne l'est PAS (le bouton du cash shop et l'icône « status » ont
+    // toutes deux 0xC0) et les boutons de Bourgeon n'en ont aucune. Deux fenêtres
+    // ImGui du même nom n'en font qu'UNE — la seconde s'attribuerait la position
+    // et la zone cliquable de la première.
+    char id[64];
+    std::snprintf(id, sizeof(id), "##micon_%s", ic.name);
     // Pin the window to the stored position every frame (NoMove) and drive any
     // drag ourselves, so the drawn icon and its hit-rect never desync.
     ImGui::SetNextWindowPos(ImVec2(static_cast<float>(ic.x),
@@ -594,8 +738,20 @@ void MenuIcons::OnRenderUI() {
     const bool clicked = ImGui::InvisibleButton(
         "b", ImVec2(static_cast<float>(draw_w), static_cast<float>(draw_h)));
     const bool hovered = ImGui::IsItemHovered();
+    // Enfoncé = le bouton de la souris tenu SUR l'icône, ce qu'ImGui appelle
+    // « actif ». En mode édition, l'icône est active pendant tout le glisser :
+    // l'état enfoncé y serait un mensonge (rien ne s'ouvrira), et le surlignage
+    // jaune dit déjà ce qui se passe.
+    const bool held = !edit_mode_ && ImGui::IsItemActive();
+    // Le bitmap à peindre. 🔴 Chaque état a un REPLI vers l'état voisin qui
+    // existe, jamais rien : une icône sans « _press » (le bouton du cash shop, à
+    // qui un seul bitmap sert les trois états) doit rester dessinée quand on
+    // appuie dessus, pas disparaître.
+    const MenuIcons::Bitmap& drawn =
+        badge ? (held && ic.badge_pressed.tex ? ic.badge_pressed : ic.badge_normal)
+              : (held && ic.pressed.tex ? ic.pressed : ic.normal);
     ImDrawList* dl = ImGui::GetWindowDrawList();
-    dl->AddImage((ImTextureID)(uintptr_t)(badge ? ic.tex_new : ic.tex), p0, p1);
+    dl->AddImage((ImTextureID)(uintptr_t)drawn.tex, p0, p1);
 
     if (edit_mode_) {
       const ImVec2 mp = ImGui::GetIO().MousePos;
@@ -606,8 +762,8 @@ void MenuIcons::OnRenderUI() {
       }
       if (dragging_ == i && ImGui::IsItemActive()) {
         float nx = mp.x - drag_off_x_, ny = mp.y - drag_off_y_;
-        nx = SnapIcon(nx, static_cast<float>(ic.w), i, false);  // magnetic to icons
-        ny = SnapIcon(ny, static_cast<float>(ic.h), i, true);
+        nx = SnapIcon(nx, static_cast<float>(ic.normal.w), i, false);  // magnetic to icons
+        ny = SnapIcon(ny, static_cast<float>(ic.normal.h), i, true);
         if (auto* mui = Bourgeon::Instance().moonlight_ui()) {  // shared grid snap
           const ImVec2 ds = ImGui::GetIO().DisplaySize;
           nx = mui->grid_.SnapAxis(nx, ds.x);
@@ -619,7 +775,7 @@ void MenuIcons::OnRenderUI() {
         // (ic.x,ic.y) en Cond_Always chaque frame.
         const ImVec2 in_screen = ro::ClampWindowPosToScreen(
             ImVec2(nx, ny),
-            ImVec2(static_cast<float>(ic.w), static_cast<float>(ic.h)));
+            ImVec2(static_cast<float>(ic.normal.w), static_cast<float>(ic.normal.h)));
         nx = in_screen.x;
         ny = in_screen.y;
         ic.x = static_cast<int>(nx + 0.5f);
@@ -635,14 +791,24 @@ void MenuIcons::OnRenderUI() {
       dl->AddRect(p0, p1, IM_COL32(255, 220, 80, 220));
     } else {
       if (clicked) {  // dispatched from OnTick/input phase
-        pending_wnd_ = ic.wnd_id;
-        pending_cmd_ = ic.cmd_id;
+        pending_wnd_    = ic.wnd_id;
+        pending_cmd_    = ic.cmd_id;
+        pending_action_ = ic.action_id;
       }
       if (hovered) {
         // Utf8 et non Cp949 : cette infobulle est dessinee par ImGui, pas par
-        // le moteur de texte natif.
-        const char* tip = msgstr::Utf8(ic.msg_id);
-        if (*tip) ImGui::SetTooltip("%s", tip);
+        // le moteur de texte natif. Les boutons de Bourgeon n'ont pas de ligne
+        // dans la table du client : c'est notre catalogue i18n qui les nomme.
+        const char* tip = ic.msg_id ? msgstr::Utf8(ic.msg_id)
+                                    : (ic.label_fr ? i18n::Tr(ic.label_fr) : "");
+        char key[80] = {0};
+        HotkeyLabel(ic, key, sizeof(key));
+        if (tip && *tip) {
+          if (key[0]) ImGui::SetTooltip("%s  (%s)", tip, key);
+          else        ImGui::SetTooltip("%s", tip);
+        } else if (key[0]) {
+          ImGui::SetTooltip("(%s)", key);
+        }
       }
     }
     ImGui::End();

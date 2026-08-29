@@ -90,11 +90,18 @@ int CommandIndexAt(int category, int row) {
 }
 
 bool ReadBinding(int category, int row, Binding* out) {
+  const int cmd = CommandIndexAt(category, row);
+  if (cmd < 0) {
+    if (out) *out = Binding();
+    return false;
+  }
+  return ReadBindingForCommand(category, cmd, out);
+}
+
+bool ReadBindingForCommand(int category, int cmd, Binding* out) {
   if (!out) return false;
   *out = Binding();
-
-  const int cmd = CommandIndexAt(category, row);
-  if (cmd < 0) return false;
+  if (category < 0 || category >= kCategoryCount || cmd < 0) return false;
   out->command_index = cmd;
 
   // Tampons LOCAUX et POD only : le SEH de MSVC interdit de dérouler des objets

@@ -1150,6 +1150,56 @@ index 30, 33, 34, 36, 43, 45, 53, 58, 62, 64, 65, 66 (`0x1E, 0x21, 0x22, 0x24,
 non remappables. Puis il compare à `GetOriginalHotKeyListSize(catégorie+1)` et
 renvoie −1 au-delà.
 
+#### 4.4 bis — Les 62 commandes de la catégorie Interface, par index
+
+Relevé le **2026-08-29** dans `data\luafiles514\lua files\hotkey.lub` du
+`moonlight.grf` (table `HOTKEY_2`, ordre du pool de constantes du bytecode).
+C'est ce rang **0-based** que `GetHotKey(catégorie+1, index)` attend, et c'est lui
+que `SaveData\UserKeys.lua` emploie comme clé.
+
+| | | | | | |
+|---|---|---|---|---|---|
+| 0 `BASICINFOWND_MINI` | 1 `EQUIPWND_ONOFF` | 2 `SKILLWND_ONOFF` | 3 `QUESTWND_ONOFF` | 4 `FRIENDWND_ONOFF` | 5 `PARTYWND_ONOFF` |
+| 6 `CHATWND_MAKE` | 7 `CARTWND_ONOFF` | 8 `MAPWND_ONOFF` | 9 `ITEMWND_ONOFF` | 10 `GUILDWND_ONOFF` | 11 `EMOTIONWND_ONOFF` |
+| 12 `SITORSTAND` | 13 `MINIMAP_ONOFF` | 14 `MACROWND_ONOFF` | 15 `EXEWND_ONOFF` | 16 `ALLWND_OFF` | 17 `SKILLBAR_ONOFF` |
+| 18 `CHATWND_ONOFF` | 19 `CHATWND_ZOOM` | 20 `GAGE_ONOFF` | 21 `SNAPSHOT` | 22 `MEMORIALWND_ONOFF` | 23 `PETWND_ONOFF` |
+| 24 `HOMUNWND_ONOFF` | 25 `MERWND_ONOFF` | 26 `HOMUN_FOLLOW` | 27 `MER_FOLLOW` | 28 `FRIEND_OPTIONWND` | 29 `PARTY_OPTIONWND` |
+| **30** `BATTLEFIELDWND` | 31 `CHATMODE_ONOFF` | 32 `BASICINFOWND_BTN_ONOFF` | **33** `PARTY_RECRUIT` | **34** `PARTY_BOOKING_LIST` | 35 `GROUND_CURSOR_ONOFF` |
+| **36** `EXMACRO_SETUPWND` | 37 `CASHSHOPWND` | 38 `REPLAY_ONOFF` | 39 `REPLAY_STARTSTOP` | 40 `REPLAY_SPEEDP` | 41 `REPLAY_SPEEDN` |
+| 42 `NAVIGATION_ONOFF` | **43** `BUTTONS_RELOCATE` | 44 `CLANWND_ONOFF` | **45** `MENUICON_HIDE` | 46 `BANK` | 47 `STATUSWND_ONOFF` |
+| 48 `SHORTCUTWND_ROTATE` | 49 `ACHIEVEMENT` | 50 `SINGLEMAP_ONOFF` | 51 `MAIL_ONOFF` | 52 `SWAP_EQUIPMENT` | **53** `TWITTERWND` |
+| 54 `TIPBOXWND_ONOFF` | 55 `CHANGE_SKILLBAR` | 56 `COSEQUIPWND_ONOFF` | 57 `PARTYBOARDWND_ONOFF` | **58** `HUNTINGQUEST_INFO_ONOFF` | 59 `HIDE_PLAYER` |
+| 60 `REPUTE` | 61 `EQUIPMENT_PROPERTIES` | | | | |
+
+(noms abrégés : le préfixe réel est `MSI_HK_`. **En gras** : les index que
+`UserHotkey_RowToCommandIndex` saute, donc absents de la fenêtre native — ils
+gardent pourtant une touche par défaut, que `ReadBindingForCommand` sait lire.)
+
+**Preuve, et non plausibilité.** Le fichier ne se lit pas tout seul : il fallait
+montrer que le rang du pool est bien le rang de la table. Quatre recoupements
+indépendants sur le `UserKeys.lua` d'un compte réel, qui n'écrit que les écarts et
+les désigne par ce rang :
+
+| écrit dans `UserKeys.lua` | tombe sur | |
+|---|---|---|
+| `USERKEY_2[3] = { EXE = "Quest Log" }` | 3 `QUESTWND_ONOFF` | ✓ |
+| `USERKEY_2[4] = { EXE = "Friends List" }` | 4 `FRIENDWND_ONOFF` | ✓ |
+| `USERKEY_2[21] = { EXE = "Screenshot" }` | 21 `SNAPSHOT` | ✓ |
+| `USERKEY_1[9] = { EXE = "Hotkey 2-1" }` | `HOTKEY_1[9]` = `SKILLBAR2_1` | ✓ |
+
+🔴 **Témoin négatif — le GRF porte DEUX tables et une seule est la bonne.** À côté
+de `hotkey.lub`, `hotkey_v2.lub` range les mêmes commandes dans un ordre de
+**tables** différent : `HOTKEY_2` y est la seconde barre de compétences et
+l'Interface passe en `HOTKEY_3`. Ce n'est pas celle que ce client suit — le
+`UserKeys.lua` qu'il écrit lui-même le prouve, il range l'Interface en
+`USERKEY_2`. S'être trompé de fichier aurait décalé chaque raccourci d'une
+fenêtre à l'autre, **sans rien pour le signaler**.
+
+Premier consommateur : `menu_icons.cc`, dont la table d'icônes porte une colonne
+`hk_cmd` pour mettre la touche dans l'infobulle. On n'y recopie que le **rang** —
+le nom de touche est relu chez le jeu à chaque survol, donc layout-aware et à jour
+du remappage.
+
 ### 4.5 Le modèle de ligne
 
 `UIHotKeyWnd_GetRowBinding` (**0x008E2650**) `(out, catégorie, ligne)` remplit une

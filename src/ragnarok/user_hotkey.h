@@ -66,6 +66,17 @@ struct Binding {
 // natif). Les deux `std::string` allouées par le pont sont détruites ici.
 bool ReadBinding(int category, int row, Binding* out);
 
+// Même chose, mais par INDEX DE COMMANDE au lieu de numéro de ligne — c'est ce
+// que le pont natif attend réellement ; `ReadBinding` ne fait que traduire la
+// ligne en commande avant d'appeler celle-ci.
+//
+// 🔴 Elle atteint aussi les commandes que la fenêtre native REFUSE d'afficher :
+// `CommandIndexAt` saute les douze non-remappables de la catégorie Interface
+// (§4.4), qui gardent pourtant une touche par défaut bien vivante — celle du
+// champ de bataille, de la liste de recrutement, du bouton Twitter… Les afficher
+// dans une infobulle est légitime là où les proposer au remappage ne l'est pas.
+bool ReadBindingForCommand(int category, int command_index, Binding* out);
+
 // Raccourci PAR DÉFAUT d'une commande — ce que le client lui donnerait sur une
 // installation neuve. Renvoie false si la commande n'existe pas.
 //
