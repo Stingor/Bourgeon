@@ -28,6 +28,7 @@ class ScreenFx : public Plugin {
   // Les couleurs sont des ImU32 (ABGR empaqueté, l'ordre d'`IM_COL32`) : la
   // table de réglages ne connaît pas `ImVec4`, et un entier se relit à
   // l'identique d'une version à l'autre.
+  bool&     fps_locked()   { return fps_locked_; }
   bool&     fps_graph()    { return fps_graph_; }
   bool&     fps_shadow()   { return fps_shadow_; }
   bool&     fps_show_ping(){ return fps_show_ping_; }
@@ -81,6 +82,9 @@ class ScreenFx : public Plugin {
   // 45 % — c'est ce que l'overlay affichait en dur — plus l'ombrage, qui ne
   // coûte qu'un second `AddText` et sauve le texte quand le fond est mis à zéro
   // au-dessus d'une carte claire.
+  // Déverrouillé par défaut : c'est ce que l'overlay a toujours fait, et une
+  // fenêtre qu'on ne peut plus déplacer sans savoir pourquoi est un piège.
+  bool     fps_locked_    = false;
   bool     fps_graph_     = true;
   bool     fps_shadow_    = true;
   bool     fps_show_ping_ = true;

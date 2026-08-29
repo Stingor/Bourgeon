@@ -2837,6 +2837,7 @@
 "Les 120 dernières images, de 0 à 33 ms. Un pic visible est un à-coup — c'est ce qu'un compteur moyenné cache.": "Los últimos 120 fotogramas, de 0 a 33 ms. Un pico visible es un tirón — justo lo que oculta un contador promediado."
 "Ping serveur": "Ping del servidor"
 "Mesuré sur l'échange d'heure que le client entretient déjà avec le serveur, toutes les quelques secondes : rien n'est envoyé en plus.\n« -- » tant qu'aucun échange n'a eu lieu.": "Medido sobre el intercambio de hora que el cliente ya mantiene con el servidor cada pocos segundos: no se envía nada adicional.\n« -- » mientras no haya habido intercambio."
+"Verrouillé : l'overlay ne se déplace plus et laisse passer les clics au jeu en dessous.\nDéverrouillez-le pour le glisser ailleurs.": "Bloqueado: la superposición ya no se mueve y deja pasar los clics al juego de debajo.\nDesbloquéalo para arrastrarlo a otro sitio."
 "Ombrage du texte": "Sombra del texto"
 "Une ombre d'un pixel sous le texte. C'est elle qui le garde lisible si vous rendez le fond transparent.": "Una sombra de un píxel bajo el texto. Es lo que lo mantiene legible si dejas el fondo transparente."
 "Fond": "Fondo"

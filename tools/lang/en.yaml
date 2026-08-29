@@ -2881,6 +2881,7 @@
 "Les 120 dernières images, de 0 à 33 ms. Un pic visible est un à-coup — c'est ce qu'un compteur moyenné cache.": "The last 120 frames, 0 to 33 ms. A visible spike is a stutter — exactly what an averaged counter hides."
 "Ping serveur": "Server ping"
 "Mesuré sur l'échange d'heure que le client entretient déjà avec le serveur, toutes les quelques secondes : rien n'est envoyé en plus.\n« -- » tant qu'aucun échange n'a eu lieu.": "Measured on the time exchange the client already keeps with the server every few seconds: nothing extra is sent.\n« -- » until an exchange has happened."
+"Verrouillé : l'overlay ne se déplace plus et laisse passer les clics au jeu en dessous.\nDéverrouillez-le pour le glisser ailleurs.": "Locked: the overlay no longer moves and lets clicks through to the game underneath.\nUnlock it to drag it elsewhere."
 "Ombrage du texte": "Text shadow"
 "Une ombre d'un pixel sous le texte. C'est elle qui le garde lisible si vous rendez le fond transparent.": "A one-pixel shadow under the text. It is what keeps it readable if you make the background transparent."
 "Fond": "Background"

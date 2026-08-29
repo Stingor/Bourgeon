@@ -136,6 +136,15 @@ void ScreenFx::DrawSettings() {
   if (ro::RoCheckbox(i18n::Tr("Overlay FPS"), &fps_overlay_)) save = true;
   if (fps_overlay_) {
     ImGui::Indent();
+    // Le verrou EN PREMIER : c'est le seul réglage qui change ce que la fenêtre
+    // fait à la souris, les autres ne touchent qu'à son apparence.
+    if (ro::RoCheckbox(i18n::Tr("Verrouiller (fige + clic-traversant)"), &fps_locked_))
+      save = true;
+    ImGui::SameLine();
+    HelpMarker(i18n::Tr("Verrouillé : l'overlay ne se déplace plus et laisse "
+                        "passer les clics au jeu en dessous.\n"
+                        "Déverrouillez-le pour le glisser ailleurs."));
+
     if (ro::RoCheckbox(i18n::Tr("Courbe des temps d'image"), &fps_graph_)) save = true;
     ImGui::SameLine();
     HelpMarker(i18n::Tr("Les 120 dernières images, de 0 à 33 ms. Un pic visible "
@@ -310,6 +319,13 @@ void ScreenFx::OnRenderUI() {
   ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration |
                            ImGuiWindowFlags_AlwaysAutoResize |
                            ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoFocusOnAppearing;
+  // 🔴 UN SEUL réglage pour les deux : figer la fenêtre et la rendre traversante
+  // sont la même intention côté joueur (« il est posé, oublie-le »), et deux
+  // cases séparées permettraient l'état absurde d'un overlay qui avale les clics
+  // sans qu'on puisse le déplacer. `NoInputs` porte le clic-traversant :
+  // `IsMouseOverAnyImGuiWindow` (ragnarok_client.cc) saute les fenêtres
+  // `NoMouseInputs`, donc le jeu reçoit le clic dessous.
+  if (fps_locked_) flags |= ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoInputs;
   if (ImGui::Begin("##fps_overlay", nullptr, flags)) {
     // ⚠ `SetWindowFontScale` et pas une police de plus : l'overlay n'affiche que
     // des chiffres, et charger un second atlas pour ça coûterait de la mémoire

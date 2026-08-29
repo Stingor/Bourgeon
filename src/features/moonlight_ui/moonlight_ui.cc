@@ -364,6 +364,8 @@ const moonlight_ui::SettingDesc kGraphicsSettings[] = {
      MLUI_LITERAL(bool, false)},
     // Habillage de l'overlay FPS. Les couleurs sont des `ImU32` empaquetés :
     // la table ne connaît pas `ImVec4`, et un entier se relit à l'identique.
+    {"fps_locked",        SType::kBool,  MLUI_FIELD(screen_fx, fps_locked()),
+     MLUI_LITERAL(bool, false)},
     {"fps_graph",         SType::kBool,  MLUI_FIELD(screen_fx, fps_graph()),
      MLUI_LITERAL(bool, true)},
     {"fps_shadow",        SType::kBool,  MLUI_FIELD(screen_fx, fps_shadow()),
