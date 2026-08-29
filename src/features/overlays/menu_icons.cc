@@ -796,6 +796,12 @@ void MenuIcons::OnRenderUI() {
         pending_action_ = ic.action_id;
       }
       if (hovered) {
+        // La main du jeu, comme sur tout ce qui s'ouvre d'un clic. ⚠ Il FAUT
+        // passer par `ro::SetHoverCursor` : `ImGui::SetMouseCursor` est un no-op
+        // dans ce client (`io.ConfigFlags` porte `NoMouseCursorChange`).
+        // Seulement hors mode édition, comme l'infobulle : là-bas on ne clique
+        // pas, on déplace.
+        ro::SetHoverCursor(ro::kCursorHand);
         // Utf8 et non Cp949 : cette infobulle est dessinee par ImGui, pas par
         // le moteur de texte natif. Les boutons de Bourgeon n'ont pas de ligne
         // dans la table du client : c'est notre catalogue i18n qui les nomme.
