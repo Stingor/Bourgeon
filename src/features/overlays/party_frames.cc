@@ -498,7 +498,11 @@ void PartyFrames::OnRenderUI() {
   // elle découle du nombre de rangées, qui découle des membres présents.
   const int want_w =
       static_cast<int>(cols * tile_w + (cols - 1) * gap + pad * 2);
-  if (!ro::HudFrameDragging()) rect_.w = want_w;
+  // ⚠ SON cadre, pas n'importe lequel : reprendre la largeur canonique pendant
+  // qu'on tire une AUTRE barre serait sans effet visible, mais tester le
+  // prédicat global laissait la grille suspendue à un geste qui ne la concerne
+  // pas.
+  if (!ro::HudFrameDraggingIs("##party_frames")) rect_.w = want_w;
   rect_.h = static_cast<int>(rows * tile_h + (rows - 1) * gap + pad * 2);
 
   ro::HudFrameOpts opts;
@@ -515,13 +519,13 @@ void PartyFrames::OnRenderUI() {
       mouse.y >= static_cast<float>(rect_.y) &&
       mouse.x <  static_cast<float>(rect_.x + rect_.w) &&
       mouse.y <  static_cast<float>(rect_.y + rect_.h);
-  // ⚠ `|| HudFrameDragging()` : un geste EN COURS garde la main même si le
+  // ⚠ `|| HudFrameDraggingIs(...)` : un geste EN COURS garde la main même si le
   // curseur sort du cadre. Sans cela, tirer un bord vers l'extérieur — ce qu'est
   // un agrandissement — faisait sortir la souris du rectangle, donc reverrouiller
   // le cadre, donc interrompre le geste : la poignée apparaissait et ne servait
   // à rien.
   const bool unlock_override =
-      ImGui::GetIO().KeyShift && (over_frame || ro::HudFrameDragging());
+      ImGui::GetIO().KeyShift && (over_frame || ro::HudFrameDraggingIs("##party_frames"));
   opts.locked   = locked_ && !unlock_override;
   opts.border   = false;
   // Le repère de centre, le temps de la pose : la grille d'alignement aimante
@@ -642,7 +646,12 @@ float PartyFrames::DrawTileEffects(uint32_t gid, float right, float top,
   if (fx == nullptr) return right;
 
   std::vector<StatusEffects::Entry> list;
-  if (!fx->Effects(gid, &list) || list.empty()) return right;
+  // ⚠ L'aperçu passe OUTRE le refus du registre : « on ne sait rien de ce
+  // membre » est la réponse normale hors de portée, et c'est justement là qu'on
+  // règle ses tuiles — au calme, sans groupe sous la main.
+  const bool known = fx->Effects(gid, &list);
+  if (buff_preview_) statuscell::AppendPreview(&list, buff_max_);
+  if ((!known && !buff_preview_) || list.empty()) return right;
 
   const int rows = std::max(1, buff_rows_);
   const float gap = ro::Px(1.0f);
@@ -653,42 +662,37 @@ float PartyFrames::DrawTileEffects(uint32_t gid, float right, float top,
                (bottom - top - gap * (rows - 1)) / static_cast<float>(rows));
   if (side < ro::Px(6.0f)) return right;  // tuile trop basse : rien à y mettre
 
-  // Le compte maximum se répartit sur les lignes — six icônes sur deux lignes
-  // font trois par ligne, et non six puis six.
-  const int per_row = (std::max(1, buff_max_) + rows - 1) / rows;
+  // L'infobulle de l'ÉTAT prime sur celle de la tuile quand le curseur est sur
+  // l'icône : elle est plus précise, et la tuile se tait (`state_hovered_`).
+  statuscell::Style st;
+  st.sweep       = buff_sweep_;
+  st.sweep_color = IM_COL32(0, 0, 0, 140);
+  // La moitié de l'icône, plancher à 7 px : un texte de taille fixe débordait
+  // sur la rangée du dessous dès qu'on réduisait les icônes.
+  st.time_px     = buff_time_ ? std::max(ro::Px(7.0f), side * 0.5f) : 0.0f;
 
-  float x = right;
-  float leftmost = right;
-  int drawn = 0;
+  statuscell::RowOpts row;
+  row.side = side;
+  row.gap  = gap;
+  row.max  = buff_max_;
+  row.rows = rows;
+  // De droite à gauche depuis le bord de la tuile, et les PLUS RÉCENTS gardés
+  // quand il y en a trop : un buff qui vient de tomber sur un allié est ce
+  // qu'on regarde, pas celui qui dure depuis dix minutes.
+  row.rtl          = true;
+  row.newest_first = true;
 
-  // 🔴 On parcourt À REBOURS : `Effects` rend les états dans l'ordre où ils sont
-  // arrivés, et quand il y en a plus que la place, ce sont les PLUS RÉCENTS
-  // qu'il faut garder — un buff qui vient de tomber sur un allié est ce qu'on
-  // regarde, pas celui qui dure depuis dix minutes.
-  for (size_t i = list.size(); i-- > 0 && drawn < std::max(1, buff_max_);) {
-    // L'infobulle de l'ÉTAT prime sur celle de la tuile quand le curseur est
-    // sur l'icône : elle est plus précise, et la tuile se tait.
-    statuscell::Style st;
-    st.sweep       = buff_sweep_;
-    st.sweep_color = IM_COL32(0, 0, 0, 140);
-    // La moitié de l'icône, plancher à 7 px : un texte de taille fixe débordait
-    // sur la rangée du dessous dès qu'on réduisait les icônes.
-    st.time_px     = buff_time_ ? std::max(ro::Px(7.0f), side * 0.5f) : 0.0f;
-    const int row = drawn / per_row;
-    // Nouvelle ligne : on repart du bord droit, une rangée plus bas.
-    if (drawn > 0 && drawn % per_row == 0) x = right;
-    const float y = top + row * (side + gap);
-    if (!statuscell::Draw(list[i], ImVec2(x - side, y), ImVec2(x, y + side), st,
-                          true, &state_hovered_))
-      continue;
-    x -= side + gap;
-    if (x < leftmost) leftmost = x;
-    ++drawn;
-  }
+  const statuscell::RowResult r =
+      statuscell::DrawRow(list, ImVec2(right, top), row, st, true,
+                          &state_hovered_);
 
-  // La limite rendue est le point le plus à GAUCHE de TOUTES les lignes : le
-  // texte se découpe sur la plus longue, sinon il passerait sous la seconde.
-  return (drawn > 0) ? (leftmost - gap) : right;
+  // La limite rendue est le bord le plus à GAUCHE de TOUTES les lignes : le
+  // texte se découpe dessus, sinon il passerait sous la seconde rangée.
+  //
+  // ⚠ Une marge d'un `gap` est ajoutée ICI et non par la rangée : celle-ci rend
+  // le bord EXACT de la dernière case, et c'est à l'appelant de décider de
+  // l'air qu'il veut laisser entre l'icône et son texte.
+  return (r.drawn > 0) ? (r.edge - gap) : right;
 }
 
 void PartyFrames::DrawTile(const rag::social::Entry& m, ImVec2 p0, ImVec2 p1,

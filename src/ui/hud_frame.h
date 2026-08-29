@@ -149,10 +149,33 @@ void HudCenteredText(ImDrawList* draw_list, ImVec2 p0, ImVec2 p1,
 // HudCenteredText, celui des barres de Basic Info.
 void HudBarText(ImDrawList* draw_list, ImVec2 p0, ImVec2 p1, const char* text);
 
-// Un cadre est-il en cours de déplacement/redimensionnement ? Sert à garder
-// visible un élément dont le contenu aurait disparu (une cible qui s'en va
-// pendant qu'on place son HUD) : on ne retire pas sous les doigts du joueur ce
-// qu'il est en train de poser.
+// Un cadre — N'IMPORTE LEQUEL — est-il en cours de déplacement ?
+//
+// 🔴 GLOBAL, ET C'EST UN PIÈGE. Il sert à garder visible un élément dont le
+// contenu aurait disparu (une cible qui s'en va pendant qu'on place son HUD) :
+// on ne retire pas sous les doigts du joueur ce qu'il est en train de poser.
+// Mais une surface qui le teste apparaît dès qu'on saisit N'IMPORTE quel autre
+// cadre — saisir la barre d'états faisait surgir les cinq cadres vides de la
+// fenêtre de cible.
+//
+// ⚠ Préférer `HudFrameDraggingIs` (un cadre) ou `HudFrameDraggingId` (une
+// famille, par préfixe). Plus aucun appelant n'utilise cette forme-ci.
 bool HudFrameDragging();
+
+// L'identifiant du cadre actuellement SAISI, ou nullptr si aucun.
+//
+// 🔴 POURQUOI CE PENDANT EXISTE. `HudFrameDragging()` est GLOBAL : il dit qu'un
+// cadre est tenu, pas lequel. Les surfaces qui apparaissent sur MAJ le testaient
+// pour ne pas se dérober sous les doigts du joueur — et se montraient donc
+// toutes dès qu'on en déplaçait UNE. Saisir la barre d'états faisait surgir les
+// cadres vides de la fenêtre de cible.
+//
+// Une surface doit donc comparer : `== son id` pour un cadre unique, ou par
+// PRÉFIXE pour une famille de cadres frères (la fenêtre de cible en a cinq).
+const char* HudFrameDraggingId();
+
+// Ce cadre-CI est-il celui qu'on déplace ? La forme courante du test ci-dessus,
+// pour une surface qui n'a qu'un cadre.
+bool HudFrameDraggingIs(const char* id);
 
 }  // namespace ro

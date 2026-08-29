@@ -17,6 +17,7 @@
 // façon dont une durée se dessine.
 
 #include <cstdint>
+#include <vector>
 
 #include "features/systems/status_effects.h"
 #include "imgui.h"
@@ -39,6 +40,16 @@ struct Style {
   float time_px = 0.0f;
   // Grisée quand l'entité est hors ligne, comme les icônes de classe.
   bool  dim = false;
+  // Opacité de TOUT ce que la case dessine — image, pastille, voile, compte à
+  // rebours. 1 = opaque.
+  //
+  // 🔴 UN CHAMP, ET NON `ImGuiStyleVar_Alpha`. Le style d'ImGui n'est appliqué
+  // que par les widgets qui le LISENT (`GetColorU32` le multiplie) ; les
+  // primitives d'un `ImDrawList` — `AddImage`, `AddRectFilled`, `AddText` —
+  // l'ignorent totalement. Or cette case ne dessine QUE des primitives : un
+  // `PushStyleVar(Alpha)` autour d'elle n'a aucun effet, et ça ne se voit qu'à
+  // l'écran, sans le moindre avertissement.
+  float alpha = 1.0f;
 };
 
 // Peint UNE case dans `p0..p1`, et rend son infobulle si le curseur est dessus.
@@ -57,6 +68,80 @@ struct Style {
 // même survol. La plus PRÉCISE gagne.
 bool Draw(const StatusEffects::Entry& e, ImVec2 p0, ImVec2 p1,
           const Style& style, bool tooltip, bool* took_hover = nullptr);
+
+// ── La RANGÉE de cases ──────────────────────────────────────────────────────
+//
+// 🔴 POURQUOI CE SECOND FOYER. `Draw` a réuni la CASE ; sa disposition, elle,
+// était encore recopiée quatre fois — grille de groupe, liste Groupe/Amis, barre
+// de la cible, barre de mes propres états. Les quatre portaient le même
+// squelette : le plafond réparti sur les lignes (`(max + rows - 1) / rows`), le
+// retour à la ligne, et le `continue` qui empêche une case invisible de prendre
+// la place d'une autre. Elles ne différaient que par le SENS et l'écrêtage.
+//
+// Une cinquième copie serait arrivée avec la barre de mes états. Le réglage
+// « lignes » avait déjà dû être écrit trois fois ; le suivant l'aurait été
+// quatre.
+
+// Le rangement, quand il y a plus d'états que de place. Les valeurs partent
+// dans les réglages : ne PAS les intercaler.
+enum Sort {
+  kSortArrival = 0,  // l'ordre où ils sont tombés
+  kSortEndingSoon,   // bientôt fini d'abord — ce qu'il faut relancer
+  kSortLongest,      // plus long d'abord — le fond stable
+};
+
+struct RowOpts {
+  float side = 16.0f;   // côté d'une case
+  float gap  = 1.0f;    // écart entre deux cases
+  int   max  = 8;       // plafond TOTAL, toutes lignes confondues
+  int   rows = 1;       // nombre de lignes
+  int   sort = kSortArrival;
+  // De droite à gauche : `origin` est alors le coin haut-DROIT.
+  //
+  // 🔴 Le sens n'est pas cosmétique. Une rangée qui grandit vers la gauche garde
+  // ses icônes à la même place quand une nouvelle tombe ; empiler par la gauche
+  // fait glisser toute la rangée à chaque changement, et l'œil perd ce qu'il
+  // suivait.
+  bool  rtl = false;
+  // Vers le HAUT : `origin` est alors le coin BAS. Même raison que `rtl`, sur
+  // l'autre axe — une barre posée en bas de l'écran doit garder sa première
+  // ligne collée au bord, et faire monter les suivantes.
+  bool  up = false;
+  // Garder les états les plus RÉCENTS quand il y en a trop. Sur un allié, un
+  // buff qui vient de tomber est ce qu'on regarde — pas celui qui dure depuis
+  // dix minutes. Sans effet quand `sort` impose déjà un ordre.
+  bool  newest_first = false;
+  // Le bord à ne pas franchir (0 = aucune contrainte). Sert aux barres, dont la
+  // largeur est celle d'un cadre que le joueur tire.
+  float limit = 0.0f;
+};
+
+struct RowResult {
+  int    drawn  = 0;
+  // Le bord ATTEINT : le plus à gauche en `rtl`, le plus à droite sinon. Un
+  // appelant qui écrit du texte à côté s'y découpe.
+  float  edge   = 0.0f;
+  ImVec2 size{};  // encombrement total, lignes comprises
+};
+
+// Pose une rangée de cases à partir de `origin`, et rend ce qu'elle a occupé.
+//
+// ⚠ Le `Style` vaut pour TOUTE la rangée : les quatre appelants le construisent
+// déjà hors de leur boucle, avec des valeurs constantes.
+RowResult DrawRow(const std::vector<StatusEffects::Entry>& list, ImVec2 origin,
+                  const RowOpts& opts, const Style& style, bool tooltip,
+                  bool* took_hover = nullptr);
+
+// Complète `out` de faux états jusqu'à `want`, pour RÉGLER un affichage sans
+// attendre d'en avoir de vrais.
+//
+// 🔴 Aucun réglage d'aperçu n'est PERSISTÉ, où qu'il soit branché : c'est un
+// outil de pose, pas un mode de jeu. Le retrouver allumé à la session suivante
+// ferait croire à des buffs qu'on n'a pas, et le premier réflexe serait d'en
+// chercher la cause.
+//
+// ⚠ Ne touche pas aux états déjà présents, et n'en double aucun.
+void AppendPreview(std::vector<StatusEffects::Entry>* out, int want);
 
 // Cet état a-t-il un rendu DE REPLI, faute d'image côté client ?
 //

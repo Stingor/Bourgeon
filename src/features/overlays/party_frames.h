@@ -177,6 +177,12 @@ class PartyFrames : public Plugin {
   // Une rangée unique s'allonge jusqu'à manger la place du nom ; en deux lignes
   // le même nombre d'états tient sur moitié moins de largeur. Le compte maximum
   // se répartit entre elles — six icônes sur deux lignes font trois par ligne.
+  // L'aperçu : de faux états, le temps de régler l'affichage.
+  //
+  // ⚠ NON persisté, comme partout ailleurs : c'est un outil de pose, pas un mode
+  // de jeu. Le retrouver allumé à la session suivante ferait croire à des buffs
+  // qu'on n'a pas.
+  bool buff_preview_ = false;
   int  buff_rows_     = 1;
   bool buff_time_  = true;
   int  buff_sweep_ = statuscell::kSweepRadial;

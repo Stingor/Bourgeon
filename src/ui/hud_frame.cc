@@ -110,6 +110,15 @@ int TouchGroup(const HudFrameOpts& opts, int seed) {
 
 bool HudFrameDragging() { return g_drag_mode != 0; }
 
+const char* HudFrameDraggingId() {
+  return (g_drag_mode != 0 && g_drag_id[0] != '\0') ? g_drag_id : nullptr;
+}
+
+bool HudFrameDraggingIs(const char* id) {
+  const char* d = HudFrameDraggingId();
+  return d != nullptr && id != nullptr && std::strcmp(d, id) == 0;
+}
+
 void HudCenteredText(ImDrawList* draw_list, ImVec2 p0, ImVec2 p1,
                      const char* text, ImU32 color, float px) {
   if (!draw_list || !text || !*text) return;

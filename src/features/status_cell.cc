@@ -218,7 +218,217 @@ const Text& Lookup(uint16_t efst) {
   return cache.emplace(efst, std::move(t)).first->second;
 }
 
+// ── L'aperçu ────────────────────────────────────────────────────────────────
+//
+// Régler un affichage d'états suppose d'en AVOIR : sans buff, il n'y a rien à
+// dimensionner, et attendre d'être en combat pour choisir une taille d'icône
+// n'est pas un réglage, c'est une devinette.
+//
+// 🔴 On ne fabrique pas d'ids au hasard : un EFST sans image ne dessine RIEN
+// (`Draw` rend faux), et l'aperçu montrerait un affichage à moitié vide en
+// prétendant qu'il est plein. On balaie donc l'énumération et on ne garde que
+// ceux dont le client sait sortir une icône.
+//
+// ⚠ Le balayage passe par le Lua du client : il est fait UNE FOIS et gardé. Le
+// refaire à chaque frame coûterait un millier d'appels Lua par image.
+const std::vector<uint16_t>& PreviewIds() {
+  static std::vector<uint16_t> ids;
+  static bool scanned = false;
+  if (!scanned) {
+    scanned = true;
+    // La borne couvre l'énumération du client avec de la marge ; au-delà il n'y
+    // a plus d'EFST déclaré.
+    for (uint16_t id = 1; id < 1200 && ids.size() < 100; ++id) {
+      if (StatusEffects::IconPath(id) != nullptr) ids.push_back(id);
+    }
+  }
+  return ids;
+}
+
 }  // namespace
+
+// ── La rangée ───────────────────────────────────────────────────────────────
+RowResult DrawRow(const std::vector<StatusEffects::Entry>& list, ImVec2 origin,
+                  const RowOpts& opts, const Style& style, bool tooltip,
+                  bool* took_hover) {
+  RowResult out;
+  out.edge = origin.x;
+  if (list.empty()) return out;
+
+  const float side = (opts.side > 1.0f) ? opts.side : 1.0f;
+  const float gap  = (opts.gap  > 0.0f) ? opts.gap  : 0.0f;
+  const int   rows = (opts.rows > 1) ? opts.rows : 1;
+  const int   max  = (opts.max  > 1) ? opts.max  : 1;
+  // Le plafond se RÉPARTIT sur les lignes : six icônes sur deux lignes font
+  // trois par ligne, et non six puis six.
+  const int per_row = (max + rows - 1) / rows;
+
+  // Le pas vertical embarque le texte : sans lui, un compte à rebours débordait
+  // sur la rangée du dessous dès qu'on ajoutait une ligne.
+  const float line_h = side + gap + style.time_px;
+
+  // ── L'ordre ───────────────────────────────────────────────────────────────
+  //
+  // On trie des INDEX, pas la liste : elle appartient à l'appelant, et deux
+  // surfaces peuvent la présenter différemment sans se marcher dessus.
+  std::vector<size_t> order;
+  order.reserve(list.size());
+  for (size_t i = 0; i < list.size(); ++i) order.push_back(i);
+
+  if (opts.sort == kSortEndingSoon || opts.sort == kSortLongest) {
+    const uint32_t now = ::timeGetTime();
+    const bool soon = (opts.sort == kSortEndingSoon);
+    std::stable_sort(
+        order.begin(), order.end(), [&](size_t ia, size_t ib) {
+          const StatusEffects::Entry& a = list[ia];
+          const StatusEffects::Entry& b = list[ib];
+          // 🔴 Un état SANS échéance n'a pas de durée à comparer, et il va en
+          // FIN dans les DEUX sens. Le traiter comme « très long » le mettrait
+          // en tête du tri décroissant, chassant de l'écran ce qui presse —
+          // c'est la règle que la barre de cible avait déjà apprise, et elle
+          // gagne ici pour les quatre surfaces.
+          const bool a_inf = (a.expires_ms == 0);
+          const bool b_inf = (b.expires_ms == 0);
+          if (a_inf != b_inf) return b_inf;
+          if (a_inf) return false;  // deux permanents : l'ordre d'arrivée tient
+          const uint32_t la = a.expires_ms - now;
+          const uint32_t lb = b.expires_ms - now;
+          return soon ? (la < lb) : (la > lb);
+        });
+  } else if (opts.newest_first) {
+    // Pas un tri : l'ordre d'arrivée, pris par la fin. `Effects` rend les états
+    // du plus ancien au plus récent, et quand il y en a plus que la place, ce
+    // sont les derniers tombés qu'il faut garder.
+    std::reverse(order.begin(), order.end());
+  }
+
+  // ── La pose ───────────────────────────────────────────────────────────────
+  const float step = opts.rtl ? -(side + gap) : (side + gap);
+  float x = origin.x;
+  // ⚠ Ancrée en BAS, la rangée doit remonter de la hauteur du compte à
+  // rebours : celui-ci se dessine SOUS l'icône, et la première ligne collée au
+  // bord l'aurait poussé hors du cadre.
+  float y = origin.y - (opts.up ? style.time_px : 0.0f);
+  float far_edge = origin.x;
+  int   line = 0;        // ligne COURANTE, comptée à part
+  int   on_line = 0;     // cases posées sur cette ligne
+
+  for (size_t k = 0; k < order.size() && out.drawn < max; ++k) {
+    const StatusEffects::Entry& e = list[order[k]];
+
+    // Deux causes de retour à la ligne, et il faut les deux : le nombre par
+    // ligne (on peut vouloir une rangée haute et étroite alors que la place ne
+    // l'impose pas), et le bord du cadre (on ne déborde jamais).
+    //
+    // ⚠ La ligne se compte À PART, et non par `drawn / per_row` : quand c'est
+    // la LARGEUR qui force le retour, une ligne se termine avant son quota et
+    // la division sous-estime alors le nombre de lignes réellement occupées —
+    // la rangée débordait du cadre par le bas.
+    bool past_limit = false;
+    if (opts.limit != 0.0f && on_line > 0) {
+      past_limit = opts.rtl ? (x - side < opts.limit) : (x + side > opts.limit);
+    }
+    if ((on_line >= per_row) || past_limit) {
+      if (line + 1 >= rows) break;  // plus de ligne disponible
+      ++line;
+      on_line = 0;
+      x = origin.x;
+      y += opts.up ? -line_h : line_h;
+    }
+
+    const float x0 = opts.rtl ? (x - side) : x;
+    const float y0 = opts.up  ? (y - side) : y;
+    // ⚠ Une case qui ne se dessine pas ne prend PAS sa place : sans ce test, un
+    // état sans icône laissait un trou dans la rangée.
+    if (!Draw(e, ImVec2(x0, y0), ImVec2(x0 + side, y0 + side), style, tooltip,
+              took_hover))
+      continue;
+
+    x += step;
+    if (opts.rtl ? (x < far_edge) : (x > far_edge)) far_edge = x;
+    ++on_line;
+    ++out.drawn;
+  }
+
+  if (out.drawn > 0) {
+    // `far_edge` est le curseur APRÈS le dernier pas, donc un `gap` au-delà de
+    // la case. Le retirer rend le bord de la case elle-même, dans les deux sens.
+    out.edge = opts.rtl ? (far_edge + gap) : (far_edge - gap);
+    const int widest = (out.drawn < per_row) ? out.drawn : per_row;
+    out.size.x = static_cast<float>(widest) * (side + gap) - gap;
+    out.size.y = static_cast<float>(line + 1) * line_h - gap;
+  }
+  return out;
+}
+
+// Les durées de l'aperçu.
+//
+// 🔴 CHOISIES POUR CE QU'ELLES FONT VOIR, pas tirées d'une formule. La première
+// version étageait mécaniquement les totaux, et tous les restants tombaient
+// entre quinze et vingt-six secondes : le compte à rebours ne montrait qu'une
+// seule largeur de texte, et le voile qu'un seul taux de remplissage. On ne
+// réglait donc rien qu'on pût vérifier.
+//
+// Chaque ligne couvre un cas d'affichage distinct — et les ordres de grandeur
+// sont ceux du jeu : une altération dure quelques secondes, un buff de soutien
+// quelques minutes, une bénédiction de guilde une heure.
+struct Fake {
+  uint32_t total_s;  // 0 = permanent
+  uint32_t left_s;
+};
+const Fake kFakes[] = {
+    {  240,  183},  // buff frais : voile à peine entamé, « 3m » à deux chiffres
+    {   30,    7},  // altération courte, voile aux trois quarts
+    { 1800, 1324},  // 22 min — la plus grande largeur de texte courante
+    {    5,    2},  // le chiffre qui change à vue d'œil, voile presque plein
+    {   60,   28},  // à mi-course, le cas le plus lisible du grisage
+    { 3600, 3011},  // ~50 min : le passage aux dizaines de minutes
+    {    0,    0},  // permanent : ni voile ni compte à rebours
+    {  240,   45},  // même total que la première, en FIN de course
+    {  600,  512},  // long et presque plein
+    {  120,    1},  // sur le point de tomber — le cas limite du voile
+};
+
+void AppendPreview(std::vector<StatusEffects::Entry>* out, int want) {
+  if (out == nullptr) return;
+  const std::vector<uint16_t>& ids = PreviewIds();
+  if (ids.empty()) return;
+  const uint32_t now = ::timeGetTime();
+  const size_t target = static_cast<size_t>(want > 1 ? want : 1);
+
+  for (size_t k = 0; out->size() < target && k < ids.size(); ++k) {
+    const uint16_t id = ids[k];
+    // Ne pas doubler un état réellement actif : l'affichage montrerait deux fois
+    // la même icône, et le tri semblerait cassé.
+    bool already = false;
+    for (const StatusEffects::Entry& e : *out)
+      if (e.efst == id) { already = true; break; }
+    if (already) continue;
+
+    StatusEffects::Entry e;
+    e.efst = id;
+    const Fake& f = kFakes[k % (sizeof(kFakes) / sizeof(kFakes[0]))];
+    if (f.total_s == 0) {
+      e.expires_ms = 0;  // permanent : ni voile ni compte à rebours
+      e.total_ms   = 0;
+    } else {
+      // 🔴 CYCLIQUE, et c'est tout l'intérêt. Recalculer `now + restant` à
+      // chaque frame FIGERAIT le compte à rebours sur sa valeur de départ : ni
+      // le texte ni le voile ne bougeraient, et on réglerait un affichage
+      // immobile qui ne ressemble pas à celui qu'on aura. À l'inverse, une
+      // échéance posée une fois pour toutes viderait l'aperçu en quelques
+      // secondes — les entrées courtes sont justement celles qu'on veut voir.
+      //
+      // On dérive donc l'écoulé d'une horloge MODULO la durée : l'état s'écoule
+      // vraiment, et se relance tout seul quand il tombe.
+      const uint32_t period  = f.total_s * 1000u;
+      const uint32_t elapsed = (now + (period - f.left_s * 1000u)) % period;
+      e.expires_ms = now + (period - elapsed);
+      e.total_ms   = period;
+    }
+    out->push_back(e);
+  }
+}
 
 bool HasFallback(uint16_t efst) { return LookupAilment(efst) != nullptr; }
 
@@ -300,16 +510,25 @@ void Tooltip(const StatusEffects::Entry& e) {
 bool Draw(const StatusEffects::Entry& e, ImVec2 p0, ImVec2 p1,
           const Style& style, bool tooltip, bool* took_hover) {
   ImDrawList* dl = ImGui::GetWindowDrawList();
+  // L'opacité s'applique en multipliant l'alpha de CHAQUE couleur : c'est le
+  // seul chemin qui atteigne des primitives (cf. `Style::alpha`).
+  const float ca = (style.alpha < 0.0f) ? 0.0f
+                 : (style.alpha > 1.0f) ? 1.0f : style.alpha;
+  auto fade = [ca](ImU32 c) -> ImU32 {
+    const unsigned a = (c >> IM_COL32_A_SHIFT) & 0xFFu;
+    const unsigned na = static_cast<unsigned>(static_cast<float>(a) * ca + 0.5f);
+    return (c & ~(0xFFu << IM_COL32_A_SHIFT)) | (na << IM_COL32_A_SHIFT);
+  };
   const ImU32 tint =
-      style.dim ? IM_COL32(140, 140, 140, 220) : IM_COL32_WHITE;
+      fade(style.dim ? IM_COL32(140, 140, 140, 220) : IM_COL32_WHITE);
 
   // Une ALTÉRATION n'a pas d'image : pastille. Tout le reste — grisage, compte à
   // rebours, infobulle — s'applique ensuite à l'identique, c'est bien pour ça
   // que ces deux rendus vivent dans la même fonction.
   if (const AilmentLook* look = LookupAilment(e.efst)) {
     const float rounding = (p1.x - p0.x) * 0.18f;
-    dl->AddRectFilled(p0, p1, look->color, rounding);
-    dl->AddRect(p0, p1, IM_COL32(0, 0, 0, 170), rounding);
+    dl->AddRectFilled(p0, p1, fade(look->color), rounding);
+    dl->AddRect(p0, p1, fade(IM_COL32(0, 0, 0, 170)), rounding);
     ImFont* font = ImGui::GetFont();
     // La police occupe 55 % de la case : trois lettres y tiennent en largeur
     // sans qu'on ait à mesurer deux fois.
@@ -318,8 +537,8 @@ bool Draw(const StatusEffects::Entry& e, ImVec2 p0, ImVec2 p1,
     const ImVec2 tp(p0.x + ((p1.x - p0.x) - ts.x) * 0.5f,
                     p0.y + ((p1.y - p0.y) - ts.y) * 0.5f);
     dl->AddText(font, fsz, ImVec2(tp.x + 1.0f, tp.y + 1.0f),
-                IM_COL32(0, 0, 0, 190), look->abbrev);
-    dl->AddText(font, fsz, tp, IM_COL32_WHITE, look->abbrev);
+                fade(IM_COL32(0, 0, 0, 190)), look->abbrev);
+    dl->AddText(font, fsz, tp, fade(IM_COL32_WHITE), look->abbrev);
   } else {
     const char* path = StatusEffects::IconPath(e.efst);
     if (path == nullptr) return false;
@@ -354,14 +573,14 @@ bool Draw(const StatusEffects::Entry& e, ImVec2 p0, ImVec2 p1,
     float spent = 1.0f - left / static_cast<float>(e.total_ms);
     spent = std::max(0.0f, std::min(1.0f, spent));
     if (style.sweep == kSweepRadial) {
-      RadialSweep(dl, p0, p1, spent, style.sweep_color);
+      RadialSweep(dl, p0, p1, spent, fade(style.sweep_color));
     } else {
       // Le voile DESCEND : la part sombre coiffe la case et sa frontière glisse
       // vers le bas, le clair qui subsiste étant ce qu'il reste de temps. Le
       // commentaire disait « monte », ce qui décrivait l'inverse du code juste
       // en dessous — et le libellé du réglage répétait l'erreur.
       dl->AddRectFilled(p0, ImVec2(p1.x, p0.y + (p1.y - p0.y) * spent),
-                        style.sweep_color);
+                        fade(style.sweep_color));
     }
   }
 
@@ -374,8 +593,8 @@ bool Draw(const StatusEffects::Entry& e, ImVec2 p0, ImVec2 p1,
     const ImVec2 tp(p0.x + ((p1.x - p0.x) - ts.x) * 0.5f, p1.y);
     // Ombre portée : ces chiffres se lisent sur n'importe quel décor.
     dl->AddText(font, style.time_px, ImVec2(tp.x + 1.0f, tp.y + 1.0f),
-                IM_COL32(0, 0, 0, 200), txt);
-    dl->AddText(font, style.time_px, tp, IM_COL32_WHITE, txt);
+                fade(IM_COL32(0, 0, 0, 200)), txt);
+    dl->AddText(font, style.time_px, tp, fade(IM_COL32_WHITE), txt);
   }
 
   // ⚠ `IsMouseHoveringRect` et non `IsItemHovered` : on n'a posé AUCUN item

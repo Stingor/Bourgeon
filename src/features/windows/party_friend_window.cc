@@ -1450,36 +1450,35 @@ bool PartyFriendWindow::DrawRowEffects(uint32_t gid, float right, float top) {
   if (fx == nullptr) return false;
 
   std::vector<StatusEffects::Entry> list;
-  if (!fx->Effects(gid, &list) || list.empty()) return false;
+  // ⚠ L'aperçu passe OUTRE le refus du registre, pour la même raison que dans la
+  // grille : hors de portée, il n'a rien à dire, et c'est là qu'on règle.
+  const bool known = fx->Effects(gid, &list);
+  if (buff_preview_) statuscell::AppendPreview(&list, buff_max_);
+  if ((!known && !buff_preview_) || list.empty()) return false;
   bool took_hover = false;
 
   const float side = ro::Px(static_cast<float>(std::max(8, buff_px_)));
   const float gap  = ro::Px(1.0f);
-  const int rows = std::max(1, buff_rows_);
-  // Le compte maximum se répartit sur les lignes — cinq icônes sur deux lignes
-  // font trois puis deux.
-  const int per_row = (std::max(1, buff_max_) + rows - 1) / rows;
-  float x = right;
-  int drawn = 0;
 
-  // À REBOURS : quand il y en a plus que la place, ce sont les plus récents
-  // qu'on garde — un buff qui vient de tomber est ce qu'on regarde.
-  for (size_t i = list.size(); i-- > 0 && drawn < std::max(1, buff_max_);) {
-    // L'infobulle de l'ÉTAT prime sur celle de la ligne quand le curseur est
-    // sur l'icône : elle est plus précise, et la ligne se tait (`took_hover`).
-    statuscell::Style st;
-    st.sweep       = buff_sweep_;
-    st.sweep_color = IM_COL32(0, 0, 0, 140);
-    st.time_px     = buff_time_ ? std::max(ro::Px(7.0f), side * 0.5f) : 0.0f;
-    const int row = drawn / per_row;
-    if (drawn > 0 && drawn % per_row == 0) x = right;
-    const float y = top + row * (side + gap);
-    if (!statuscell::Draw(list[i], ImVec2(x - side, y), ImVec2(x, y + side), st,
-                          true, &took_hover))
-      continue;
-    x -= side + gap;
-    ++drawn;
-  }
+  // L'infobulle de l'ÉTAT prime sur celle de la ligne quand le curseur est sur
+  // l'icône : elle est plus précise, et la ligne se tait (`took_hover`).
+  statuscell::Style st;
+  st.sweep       = buff_sweep_;
+  st.sweep_color = IM_COL32(0, 0, 0, 140);
+  st.time_px     = buff_time_ ? std::max(ro::Px(7.0f), side * 0.5f) : 0.0f;
+
+  statuscell::RowOpts row;
+  row.side = side;
+  row.gap  = gap;
+  row.max  = buff_max_;
+  row.rows = buff_rows_;
+  // Mêmes règles que la tuile de la grille : de droite à gauche pour que les
+  // icônes ne glissent pas sous le curseur, et les plus RÉCENTES gardées quand
+  // il y en a trop.
+  row.rtl          = true;
+  row.newest_first = true;
+
+  statuscell::DrawRow(list, ImVec2(right, top), row, st, true, &took_hover);
   return took_hover;
 }
 
