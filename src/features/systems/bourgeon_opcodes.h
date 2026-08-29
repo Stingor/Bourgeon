@@ -57,6 +57,7 @@ constexpr uint8_t kKnownLevel = 4;
 constexpr uint8_t kKnownKind  = 8;
 constexpr uint16_t kReqStatusList = 0x0F2C;  // CZ_BOURGEON_REQ_STATUS_LIST (etats actifs d'une entite ; le protocole n'annonce que les transitions)
 constexpr uint16_t kPlayerAdmin = 0x0F2B;  // CZ_BOURGEON_PLAYER_ADMIN (outillage staff sur un joueur : venir, mute, jail, ban, points d'event)
+constexpr uint16_t kReqLooks    = 0x0F2E;  // CZ_BOURGEON_REQ_LOOKS (apparence des membres du groupe / des amis EN LIGNE ; leurs paquets ne la portent pas, contrairement a ceux de la guilde)
 
 // --- ZC : serveur -> client (livrés par le reader-hook) ---------------------
 constexpr uint16_t kKickNotice  = 0x0F03;  // ex-0x0BFA  ZC_BOURGEON_KICK_NOTICE
@@ -83,6 +84,7 @@ constexpr uint16_t kStyles         = 0x0F27;  // ZC_BOURGEON_STYLES (styles des 
 constexpr uint16_t kStyleOpen      = 0x0F28;  // ZC_BOURGEON_STYLE_OPEN (un NPC ouvre/ferme l'éditeur de style)
 constexpr uint16_t kTargetInfo     = 0x0F2A;  // ZC_BOURGEON_TARGET_INFO (PV/SP/niveau/race/élément de la cible ; SP introuvable autrement)
 constexpr uint16_t kStatusList     = 0x0F2D;  // ZC_BOURGEON_STATUS_LIST (liste COMPLETE des buffs/debuffs ; remplace ce qu'on savait du GID)
+constexpr uint16_t kLooks          = 0x0F2F;  // ZC_BOURGEON_LOOKS (aid + job + coiffure + couleur + sexe, pour composer une tete hors de portee)
 
 // --- PROCHAIN OPCODE LIBRE : la valeur de kNextFree ci-dessous ---------------
 // Pour ajouter un opcode custom : prendre la valeur ci-dessous, l'incrémenter,
@@ -90,5 +92,5 @@ constexpr uint16_t kStatusList     = 0x0F2D;  // ZC_BOURGEON_STATUS_LIST (liste 
 // Aucune vérification de collision nécessaire : toute la plage 0x0F00..0x0FFF
 // est hors de la table du client (garantie flag=-1 = variable). Champ libre.
 // (0x0F00/0x0F01 libérés — anciennes valeurs tech data avant regroupement.)
-constexpr uint16_t kNextFree    = 0x0F2E;
+constexpr uint16_t kNextFree    = 0x0F30;
 }  // namespace bopcodes

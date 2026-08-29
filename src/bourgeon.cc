@@ -46,6 +46,7 @@
 #include "features/patches/window_pos_tweaks.h"
 #include "features/overlays/status_icon_bar.h"
 #include "features/overlays/target_status_bar.h"
+#include "features/systems/entity_looks.h"
 #include "features/systems/status_effects.h"
 #include "features/overlays/minimap.h"
 #include "features/overlays/quest_tracker.h"
@@ -115,6 +116,7 @@ BasicInfo* Bourgeon::basic_info() { return basic_info_; }
 MenuIcons* Bourgeon::menu_icons()  { return menu_icons_; }
 StatusIconBar* Bourgeon::status_icons() { return status_icons_; }
 StatusEffects* Bourgeon::status_effects() { return status_effects_; }
+EntityLooks* Bourgeon::entity_looks() { return entity_looks_; }
 TargetStatusBar* Bourgeon::target_status_bar() { return target_status_bar_; }
 QuestTracker* Bourgeon::quest_tracker() { return quest_tracker_; }
 Minimap* Bourgeon::minimap() { return minimap_; }
@@ -1224,6 +1226,13 @@ void Bourgeon::LoadPlugins() {
     auto status_fx = std::make_unique<StatusEffects>();
     status_effects_ = status_fx.get();
     plugins_.emplace_back(std::move(status_fx));
+  }
+  {
+    // L'apparence des membres du groupe et des amis EN LIGNE. Aucune surface a
+    // lui non plus : il repond aux questions de la fenetre Groupe / Amis.
+    auto looks = std::make_unique<EntityLooks>();
+    entity_looks_ = looks.get();
+    plugins_.emplace_back(std::move(looks));
   }
   {
     auto tsb = std::make_unique<TargetStatusBar>();

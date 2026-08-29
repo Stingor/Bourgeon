@@ -18,6 +18,7 @@ class BasicInfo;
 class MenuIcons;
 class StatusIconBar;
 class StatusEffects;
+class EntityLooks;
 class TargetStatusBar;
 class QuestTracker;
 class Minimap;
@@ -94,6 +95,7 @@ class Bourgeon {
   MenuIcons* menu_icons();
   StatusIconBar* status_icons();
   StatusEffects* status_effects();
+  EntityLooks* entity_looks();
   TargetStatusBar* target_status_bar();
   QuestTracker* quest_tracker();
   Minimap* minimap();
@@ -361,6 +363,7 @@ class Bourgeon {
   MenuIcons* menu_icons_  = nullptr;  // non-owning, lifetime tied to plugins_
   StatusIconBar* status_icons_ = nullptr;  // non-owning, lifetime tied to plugins_
   StatusEffects* status_effects_ = nullptr;  // idem
+  EntityLooks*   entity_looks_   = nullptr;  // idem
   TargetStatusBar* target_status_bar_ = nullptr;  // idem
   QuestTracker* quest_tracker_ = nullptr;  // non-owning, lifetime tied to plugins_
   Minimap* minimap_ = nullptr;  // non-owning, lifetime tied to plugins_
