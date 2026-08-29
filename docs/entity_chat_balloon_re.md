@@ -528,7 +528,7 @@ et sa bulle est correcte.
 
 | Fonction | Rôle |
 |---|---|
-| `UIBalloonText_SetTextWrapped 0x00830240` | **observateur** : seul point commun aux DEUX créateurs (acteur et unité de sol), texte encore brut. On copie, on relaie. |
+| `UIBalloonText_SetTextWrapped 0x00830240` | **observateur** : seul point commun aux DEUX créateurs (acteur et unité de sol), texte encore brut. On copie, on relaie — et on retient l'**adresse de retour** (cf. ci-dessous). |
 | `UITransBalloonText_Paint 0x008263a0` | **silence** de la frame de naissance, le temps que la destruction parte. |
 | `CTagMgr::Transform 0x007fbfc0` | **observateur** du texte d'AVANT transformation, pour le seul `<NAVIL>` (cf. §3). |
 
@@ -540,6 +540,40 @@ sache rendre. Tout le reste doit continuer d'arriver **transformé** (`<MSG>MSI_
 `<NR>`, `<NAMELESS>`), sans quoi on remplacerait un défaut par un autre. La
 capture est **consommée en un coup** par le tout prochain `SetTextWrapped` : les
 deux appels se suivent dans le même handler, sur le même fil.
+
+🔴 **Le PREMIER détour se filtre lui aussi sur l'adresse de retour, mais pour une
+autre raison : reconnaître une bulle SANS interroger le monde.** Le silence du
+détour 2 demandait « quel acteur porte cette fenêtre à son `+0x264` ? », donc un
+parcours qui part de `ActiveModeIfReady()` → ActorMgr → liste d'acteurs. Ce
+chemin a **trois façons de rester muet pendant un changement de carte** : le
+getter natif est gaté par `modeMgr+0x58 == 1` et rend 0 le temps de la
+transition, l'ActorMgr est reconstruit, et la liste est vide un moment. Le
+créateur de la bulle, lui, ne connaît aucune de ces gardes — il part du pointeur
+brut `*(*(GameMode+0xCC)+0x2C)`. Résultat mesuré en jeu : **au warp, la bulle
+native s'affichait une frame au milieu de l'écran** avant d'être repositionnée ou
+détruite. Le `call SetTextWrapped` du cas msg 7 est à `0x00c4dc8e`, donc
+**retour `0x00c4dc93`** : toute fenêtre qui passe par là EST une bulle d'acteur,
+et le détour 2 se tait sur ce seul fait. La connaissance est **volontairement
+périssable** — purgée dès que `SyncWithActors` a pu regarder (il ne garde que ce
+qu'un acteur porte encore), et de toute façon périmée au bout des 5 000 ms de vie
+native, au-delà desquelles l'adresse peut avoir été recyclée par une infobulle,
+qui doit rester visible. ⚠ Le site de la **Talkie Box** (`CSkill::OnMsg`, unité
+de sol) reste hors du filtre : sa bulle n'étant ni adoptée ni remplacée, la faire
+taire reviendrait à la supprimer.
+
+🔴🔴 **Et le silence du détour 2 ne suffit PAS : il faut MASQUER, dès la
+naissance.** Deux mécanismes distincts laissaient un **rectangle** à l'écran une
+frame à chaque changement de carte : `UIWindow_Render 0x00a1ce10` **blitte la
+surface quoi qu'il arrive** (l'effacer à la couleur-clé n'efface pas le
+rectangle), et `QueueDestroyWindow` est une destruction **MISE EN FILE** — entre
+l'appel et la disparition, une frame native passe encore. Le geste correct est
+celui que prescrivait déjà `uiwnd::SafeCloseWindow` : **masquer d'abord, fermer
+ensuite**. Le masquage se fait donc dans le détour 1, à l'instant où la fenêtre
+naît : `uiwnd::SetVisible(w, false)`, soit `w+0x28 = 0`, le drapeau que
+`UIWindow_Render` exige à `1` pour dessiner. ✔ `CActorSprite_UpdateOverheadWidgets`
+**ne le réaffirme jamais** pour la bulle (il ne fait que la `Move`) : une seule
+écriture de DWORD tient jusqu'à la destruction, sans appel natif, sans allocation
+et sans rien demander au monde. Le cycle de vie natif continue intact.
 
 **La fenêtre native est DÉTRUITE dès que son texte est adopté**, via
 `UIWindowMgr::QueueDestroyWindow 0x00a447d0` — la fonction que le natif

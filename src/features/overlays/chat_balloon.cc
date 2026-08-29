@@ -35,6 +35,31 @@ namespace {
 // UIBalloonText::SetText(texte, 35 caractères) __thiscall, `retn 8`. Le point de
 // passage COMMUN aux deux créateurs de bulle (acteur et unité de sol).
 constexpr uintptr_t kSetTextWrapped = 0x00830240;
+// L'adresse de RETOUR du site qui pose la bulle d'un ACTEUR — `call
+// SetTextWrapped` à `0x00c4dc8e`, dans le cas msg 7 d'`Actor_OnMsg_AppearanceEffects`,
+// juste après `mov ecx, [eax+264h]` (la fenêtre que l'acteur vient de créer) et
+// l'écriture de son index de police en `bulle+0x9A`.
+//
+// 🔴 C'est notre SEUL moyen de savoir « cette fenêtre est une bulle d'acteur »
+// sans rien demander au monde. Le reste du plugin le déduit en remontant
+// `ActiveModeIfReady()` → ActorMgr → acteur — un chemin qui a trois façons de ne
+// pas répondre pendant un CHANGEMENT DE CARTE : le getter natif est GATÉ
+// (`modeMgr+0x58 == 1`, cf. globals.h) et rend 0 le temps de la transition,
+// l'ActorMgr est reconstruit, et la liste d'acteurs est vide un moment. Le
+// créateur de la bulle, lui, ne connaît aucune de ces gardes : il part du
+// pointeur brut (`*(*(GameMode+0xCC)+0x2C)`). La fenêtre naissait donc pendant
+// que nous étions aveugles, et le natif la peignait une frame — le texte au
+// milieu de l'écran, juste avant que le repositionnement natif ou notre
+// destruction ne l'emporte. Reconnaître le SITE ferme les trois cas d'un coup.
+//
+// ⚠ Le site de la Talkie Box (`CSkill::OnMsg`, unité de SOL) est délibérément
+// hors de ce filtre : sa bulle n'est ni adoptée ni remplacée, la faire taire
+// reviendrait à la supprimer.
+constexpr uintptr_t kSetTextRetFromActorBalloon = 0x00c4dc93;
+// Durée de vie d'une bulle NATIVE, en dur dans `CActorSprite_UpdateOverheadWidgets`.
+// C'est aussi la borne exacte au-delà de laquelle une fenêtre ne peut plus
+// exister : elle plafonne la connaissance qu'on garde d'elle.
+constexpr uint32_t kNativeLifeMs = 5000;
 // UITransBalloonText::Paint __thiscall sans argument, `retn`.
 constexpr uintptr_t kBalloonPaint = 0x008263a0;
 // CTagMgr::Transform(this, &sortie, entrée PAR VALEUR) __thiscall — le
@@ -95,8 +120,8 @@ void* g_tramp_paint   = nullptr;
 void* g_tramp_tagxform = nullptr;
 
 // ── Handlers appelés depuis les stubs ────────────────────────────────────────
-void __cdecl BalloonCapture(void* window, const char* text) {
-  ChatBalloon::OnNativeSetText(window, text);
+void __cdecl BalloonCapture(void* window, const char* text, uintptr_t ret_addr) {
+  ChatBalloon::OnNativeSetText(window, text, ret_addr);
 }
 
 void __cdecl TagTransformCapture(const void* in_string) {
@@ -111,14 +136,20 @@ int __cdecl BalloonSilence(void* window) {
 // OBSERVATEUR : on copie le texte encore brut (avant la coupure à 35) puis on
 // relaie tel quel. `pushad` empile 0x20 octets ; +0x20 = adresse de retour,
 // +0x24 = premier argument pile (le texte).
+//
+// L'adresse de retour part avec : elle dit QUI crée la bulle, et c'est la seule
+// information dont on dispose ici (cf. `kSetTextRetFromActorBalloon`). La
+// comparaison se fait en C++ — l'asm ne fait que la transmettre.
 __declspec(naked) void SetTextStub() {
   __asm {
     pushad
+    mov  eax, [esp + 0x20]   // adresse de retour de l'appelant
     mov  edx, [esp + 0x24]   // char* texte
+    push eax
     push edx
     push ecx                 // this = la fenêtre bulle
     call BalloonCapture
-    add  esp, 8
+    add  esp, 12
     popad
     jmp  [g_tramp_settext]
   }
@@ -180,6 +211,7 @@ __declspec(naked) void PaintStub() {
 std::mutex                       ChatBalloon::s_mutex;
 std::vector<ChatBalloon::Pending> ChatBalloon::s_pending;
 std::unordered_set<void*>        ChatBalloon::s_claimed;
+std::unordered_map<void*, uint32_t> ChatBalloon::s_born_from_actor;
 std::string                      ChatBalloon::s_pending_raw;
 
 ChatBalloon::ChatBalloon() {
@@ -198,16 +230,51 @@ ChatBalloon::ChatBalloon() {
 ChatBalloon::~ChatBalloon() = default;
 
 // ── Détours ──────────────────────────────────────────────────────────────────
-void ChatBalloon::OnNativeSetText(void* window, const char* wire) {
+void ChatBalloon::OnNativeSetText(void* window, const char* wire, uintptr_t ret_addr) {
   if (window == nullptr || wire == nullptr || *wire == '\0') return;
   // Même garde que `IsActorBalloon` : overlay éteint, on ne capte rien. Sans
   // cela la file se remplirait de messages que personne ne draine — OnRenderUI
   // rend la main avant.
   ChatBalloon* self = Bourgeon::Instance().chat_balloon();
   if (self == nullptr || !self->Active()) return;
+
+  // 🔴🔴 LE MASQUAGE EST LE PREMIER GESTE, ici, à la NAISSANCE de la fenêtre.
+  //
+  // Ni le silence du détour de Paint ni la destruction du battement de frame ne
+  // suffisent, et pour deux raisons distinctes :
+  //  · `UIWindow_Render 0x00a1ce10` blitte la surface quoi qu'il arrive —
+  //    l'effacer à la couleur-clé laisse un RECTANGLE ;
+  //  · `QueueDestroyWindow` est une destruction MISE EN FILE : entre l'appel et
+  //    la disparition, une frame native peut encore passer (le savoir est déjà
+  //    écrit sur `uiwnd::SafeCloseWindow`, qui prescrit exactement ce geste :
+  //    masquer d'abord, fermer ensuite).
+  // Le rectangle restait donc visible une frame à chaque changement de carte.
+  //
+  // `+0x28 == 1` est ce que `UIWindow_Render` exige pour dessiner, et
+  // `CActorSprite_UpdateOverheadWidgets` ne le réaffirme JAMAIS pour la bulle —
+  // il ne fait que la déplacer. Une écriture d'un DWORD, donc : pas d'appel
+  // natif, pas d'allocation, et rien à demander au monde (c'est tout l'intérêt,
+  // cf. `kSetTextRetFromActorBalloon`). Le cycle de vie natif, lui, continue
+  // intact jusqu'à l'adoption.
+  if (ret_addr == kSetTextRetFromActorBalloon) uiwnd::SafeSetVisible(window, false);
+
   // Rien de coûteux ici : ni parcours d'acteurs, ni conversion, ni parseur. On
   // ne sait même pas encore si cette fenêtre est une bulle ou une infobulle.
   std::lock_guard<std::mutex> lock(s_mutex);
+  // 🔴 AVANT tout le reste, y compris le garde-fou de file : le SILENCE prime
+  // sur la capture. Une fenêtre née du site d'acteur est une bulle, point — plus
+  // besoin de retrouver son propriétaire pour oser la faire taire, et c'est ce
+  // qui manquait pendant un changement de carte.
+  if (ret_addr == kSetTextRetFromActorBalloon) {
+    const uint32_t now = GetTickCount();
+    // Purge par ANCIENNETÉ : au-delà de la vie native la fenêtre n'existe plus,
+    // et son adresse peut avoir été recyclée par une infobulle — qu'on ne veut
+    // surtout pas faire taire. Le cas normal, lui, est purgé bien plus tôt, par
+    // `SyncWithActors` (intersection avec les fenêtres réellement portées).
+    for (auto it = s_born_from_actor.begin(); it != s_born_from_actor.end();)
+      it = (now - it->second >= kNativeLifeMs) ? s_born_from_actor.erase(it) : std::next(it);
+    s_born_from_actor[window] = now;
+  }
   // 🔴 CONSOMMATION EN UN COUP, quoi qu'il arrive ensuite : la capture d'avant
   // transformation n'est valable que pour l'appel qui vient, et la laisser armée
   // la ferait ressortir sur la prochaine infobulle venue (le détour de
@@ -276,6 +343,14 @@ bool ChatBalloon::IsActorBalloon(void* window) {
   {
     std::lock_guard<std::mutex> lock(s_mutex);
     if (s_claimed.count(window) != 0) return true;
+    // Née du site d'acteur, et pas encore rapprochée d'un acteur : c'est le cas
+    // du CHANGEMENT DE CARTE, où le parcours ci-dessous ne peut PAS répondre —
+    // `ActiveModeIfReady()` rend 0 tant que la transition dure. Sans cette
+    // ligne le natif peignait sa bulle au milieu de l'écran, une frame.
+    auto born = s_born_from_actor.find(window);
+    if (born != s_born_from_actor.end() &&
+        (GetTickCount() - born->second) < kNativeLifeMs)
+      return true;
   }
   // Raté de cache : une bulle qui vient de naître, avant notre prochaine frame.
   // On tranche tout de suite en parcourant la liste d'acteurs, sinon le natif la
@@ -320,6 +395,7 @@ void ChatBalloon::ResetWhenDisabled() {
   std::lock_guard<std::mutex> lock(s_mutex);
   s_pending.clear();
   s_claimed.clear();
+  s_born_from_actor.clear();
   s_pending_raw.clear();
 }
 
@@ -394,6 +470,12 @@ void ChatBalloon::DestroyAdopted(const std::vector<Doomed>& doomed) {
       // adoptée à son tour.
       if (Read<void*>(d.actor, rag::actor::kBalloon) != d.window) continue;
       *reinterpret_cast<void**>(reinterpret_cast<uint8_t*>(d.actor) + rag::actor::kBalloon) = nullptr;
+      // Masquer AVANT de mettre en file, dans cet ordre : la destruction est
+      // DIFFÉRÉE, et une frame native peut encore passer entre les deux — c'est
+      // le geste que prescrit `uiwnd::SafeCloseWindow`. Le détour de naissance
+      // l'a normalement déjà fait ; ici c'est le filet des fenêtres adoptées par
+      // le parcours d'acteurs. Écriture nue : on est déjà sous garde.
+      uiwnd::SetVisible(d.window, false);
       queue_destroy(mgr, d.window);
     } __except (EXCEPTION_EXECUTE_HANDLER) {
       // Acteur déjà libéré : le natif a détruit la fenêtre avec lui
@@ -476,7 +558,7 @@ void ChatBalloon::SyncWithActors() {
       // natif — le plafond ne s'applique qu'à notre durée proportionnelle, sans
       // quoi un plafond bas trahirait l'option.
       b.life_ms = follow_native_life_
-                      ? 5000u
+                      ? kNativeLifeMs
                       : static_cast<uint32_t>(
                             std::min(base_life_ms_ + per_char_ms_ * len, max_life_ms_));
     }
@@ -517,6 +599,13 @@ void ChatBalloon::SyncWithActors() {
 
   {
     std::lock_guard<std::mutex> lock(s_mutex);
+    // Ce qu'un acteur porte VRAIMENT fait foi dès qu'on a pu regarder : le filet
+    // tendu au détour (naissance reconnue à l'adresse de retour) ne doit pas
+    // survivre à la fenêtre qu'il désigne, sinon une infobulle qui hériterait de
+    // l'adresse resterait muette. Il ne garde donc que les fenêtres encore
+    // portées — et celles-là partent à la destruction juste après.
+    for (auto it = s_born_from_actor.begin(); it != s_born_from_actor.end();)
+      it = (claimed.count(it->first) == 0) ? s_born_from_actor.erase(it) : std::next(it);
     s_claimed.swap(claimed);
   }
 

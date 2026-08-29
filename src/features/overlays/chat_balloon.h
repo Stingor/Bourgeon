@@ -135,7 +135,9 @@ class ChatBalloon : public Plugin {
   // Copie le texte brut annoncé pour cette fenêtre native. Pas de décodage ici :
   // on ne sait pas encore à quel acteur elle appartient, et on ne veut pas
   // parcourir la liste d'acteurs sous le détour.
-  static void OnNativeSetText(void* window, const char* wire);
+  // `ret_addr` = l'adresse de retour de l'appelant, transmise telle quelle par le
+  // stub : c'est elle, et rien d'autre, qui dit si la bulle vient d'un ACTEUR.
+  static void OnNativeSetText(void* window, const char* wire, uintptr_t ret_addr);
   // Copie le texte du msg 7 AVANT le transformateur de balises global
   // (`CTagMgr::Transform`), et SEULEMENT s'il porte un `<NAVIL>` : c'est la
   // seule balise que ce transformateur aplatit alors que notre parseur, lui,
@@ -224,4 +226,13 @@ class ChatBalloon : public Plugin {
   // Fenêtres natives dont on sait déjà qu'elles appartiennent à un acteur :
   // évite de reparcourir la liste d'acteurs à chaque repeinte.
   static std::unordered_set<void*> s_claimed;
+  // 🔴 Les fenêtres nées du site d'appel de la bulle d'ACTEUR, avec l'instant de
+  // leur naissance. Le filet qui couvre l'intervalle « la fenêtre existe, mais on
+  // ne peut pas encore dire à qui elle est » — celui d'un CHANGEMENT DE CARTE,
+  // pendant lequel `ActiveModeIfReady()` rend 0 et où le natif peignait donc sa
+  // bulle une frame, au milieu de l'écran. Vidé dès que `SyncWithActors` a pu
+  // regarder (il ne garde que ce qu'un acteur porte encore), et de toute façon
+  // périmé au bout de la vie native : au-delà, l'adresse peut être celle d'une
+  // infobulle, qui doit rester visible.
+  static std::unordered_map<void*, uint32_t> s_born_from_actor;
 };
