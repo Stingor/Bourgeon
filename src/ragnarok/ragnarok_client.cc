@@ -557,6 +557,10 @@ static HWND WINAPI CreateWindowExAHook(DWORD dwExStyle, LPCSTR lpClassName,
   // et surtout, l'échelle lue au chargement de la DLL ne s'appliquerait jamais,
   // faute de contexte ImGui à ce moment-là.
   ro::ApplyUiScale();
+  // 🔴 AVANT la première frame : ImGui lit imgui.ini au premier NewFrame et jette
+  // toute section dont le handler n'est pas encore là. Posé plus tard, on ne
+  // relirait aucune épingle — et la première écriture effacerait celles du joueur.
+  ro::RegisterPinSettingsHandler();
   ImGui_ImplWin32_Init(hwnd);
   ImGuiIO& io = ImGui::GetIO();
   io.MouseDrawCursor = false;

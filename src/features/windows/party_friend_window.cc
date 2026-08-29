@@ -585,6 +585,7 @@ void PartyFriendWindow::OnRenderUI() {
 
   // Bullet de la barre de titre = raccourci vers la config de CETTE fenêtre.
   ro::SetNextWindowTitleBullet(i18n::Tr("Réglages Groupe / Amis"));
+  ro::SetNextWindowPinnable();  // épingle : Échap ne referme plus la liste
   // ⚠ `NoResize` SEUL : le verrou porte sur la taille, jamais sur la position.
   // Le plancher de taille ci-dessus reste actif — il ne sert plus à rien tant
   // que le verrou tient, mais il reprend la main dès qu'on le lève.

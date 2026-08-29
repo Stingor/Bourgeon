@@ -47,7 +47,6 @@
 #include "features/moonlight_ui/moonlight_ui.h"      // SaveSettings (persistance des presets)
 #include "features/staff_gate.h"        // IsStaff : le volet staff du mannequin
 #include "features/hotkey_util.h"       // capture/libellé/conflit d'un raccourci
-#include "ui/imgui_escape.h"
 #include "ui/ro_imgui.h"
 #include "ui/ro_widgets.h"  // mui::LastItemWheel (verrou molette anti-défilement)
 #include "utils/tinf_inflate.h"  // inflate zlib pour les emblèmes de guilde (.ebm)
@@ -8922,10 +8921,15 @@ void CharacterSheet::OnRenderUI() {
 
   // Pas de NoCollapse -> le skin RO affiche le bouton minimiser (repli barre de titre),
   // comme l'inventaire/le natif ; le repli est géré par le `if (!begun)` ci-dessous.
+  ro::SetNextWindowPinnable();  // épingle : Échap ne referme plus la fiche
   const bool begun =
       ro::BeginRoWindow(i18n::Tr("Personnage###bourgeon_charsheet"), &show_,
                         ImGuiWindowFlags_None);
-  bourgeon::CloseWindowOnEscape(show_);
+  // 🔴 PAS de CloseWindowOnEscape ici : BeginRoWindow inscrit déjà la fenêtre
+  // (cf. ui/imgui_escape.h). Le doublon était inoffensif tant que les deux
+  // inscriptions disaient la même chose — il ne l'est plus depuis l'épingle, qui
+  // RETIRE la fenêtre de la pile : la seconde inscription l'y remettait, et
+  // Échap refermait une fiche épinglée.
   if (!begun) { ro::EndRoWindow(); ImGui::PopStyleVar(5); return; }
 
   // Onglets Equipement / Costume / Presets / Titres / Guilde / Grimoire (+ Homoncule).

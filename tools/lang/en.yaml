@@ -3721,3 +3721,5 @@
 "À zéro, celle de l'interface.": "At zero, the interface's own."
 "Texte du SP": "SP text"
 "Texte des PV": "HP text"
+"Détacher : Échap referme la fenêtre": "Unpin: Escape closes the window again"
+"Épingler : Échap ne ferme plus": "Pin: Escape no longer closes it"

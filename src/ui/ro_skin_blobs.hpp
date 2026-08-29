@@ -13,6 +13,11 @@ static const Blob kSysMiniOff = { 11, 11 };
 static const Blob kSysMiniOn = { 11, 11 };
 static const Blob kSysBaseOff = { 11, 11 };
 static const Blob kSysBaseOn = { 11, 11 };
+// Epingle de la barre de titre. 🔴 Contrairement aux paires ci-dessus, off/on ne
+// sont PAS normal/survol mais les deux ETATS du reglage (couchee = libre,
+// plantee = epinglee) -- cf. SysToggleButton dans ro_imgui.cc.
+static const Blob kSysPinOff = { 11, 11 };
+static const Blob kSysPinOn = { 11, 11 };
 static const Blob kBtnOutLeft = { 6, 20 };
 static const Blob kBtnOutMid = { 6, 20 };
 static const Blob kBtnOutRight = { 6, 20 };

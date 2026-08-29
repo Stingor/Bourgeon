@@ -4,6 +4,7 @@
 #include <Windows.h>
 
 #include <cfloat>
+#include <cstdint>  // uintptr_t (handle d'entrée du settings handler ImGui)
 #include <cstdio>
 #include <cstring>  // std::strlen (validation UTF-8 du texte venu du fil)
 #include <fstream>  // lecture directe du yaml (glyphes coréens, cf. plus bas)
@@ -1068,6 +1069,12 @@ struct SkinTex {
 };
 SkinTex g_tl, g_tm, g_tr, g_close, g_close_on, g_mini, g_mini_on;
 SkinTex g_base, g_base_on;  // bullet sys_base devant le titre (décoratif ou bouton)
+// Épingle de la barre de titre. ⚠ Ces deux pièces sont les deux ÉTATS du réglage
+// (couchée = libre, plantée = épinglée), PAS un couple normal/survol comme les
+// trois paires ci-dessus — d'où SysToggleButton plutôt que SysButton.
+SkinTex g_pin_off, g_pin_on;
+// Épingle demandée pour la PROCHAINE fenêtre RO (SetNextWindowPinnable).
+bool g_next_pinnable = false;
 // Bullet cliquable demandé pour la PROCHAINE fenêtre RO (SetNextWindowTitleBullet),
 // puis résultat du clic pour la fenêtre courante (TitleBulletClicked).
 bool g_next_bullet = false;
@@ -1230,6 +1237,26 @@ bool SysButton(ImDrawList* dl, const SkinTex& off, const SkinTex& on, ImVec2 tl)
   const bool hovered = ImGui::IsMouseHoveringRect(tl, br, false);
   const SkinTex& t = (hovered && on.tex) ? on : off;
   BlitStretch(dl, t, tl, br);
+  return hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+}
+
+// Bouton système à DEUX ÉTATS (l'épingle). Même géométrie que SysButton, mais
+// `off`/`on` y désignent l'ÉTAT du réglage, pas normal/survol : l'art ne change
+// donc PAS au survol — le faire montrerait l'épingle plantée sur une fenêtre
+// libre, c'est-à-dire exactement le contraire de ce que dit le bouton. Le survol
+// se signale par le curseur main et l'infobulle, que l'appelant pose (elle doit
+// sortir APRÈS le PopClipRect de la barre de titre : SetTooltip ouvre une autre
+// fenêtre, donc une autre draw list).
+bool SysToggleButton(ImDrawList* dl, const SkinTex& off, const SkinTex& on,
+                     bool state, ImVec2 tl, bool* out_hovered) {
+  tl.x = ImFloor(tl.x);
+  tl.y = ImFloor(tl.y);
+  const ImVec2 br(tl.x + Px((float)off.w), tl.y + Px((float)off.h));
+  const bool hovered = ImGui::IsMouseHoveringRect(tl, br, false);
+  const SkinTex& t = (state && on.tex) ? on : off;
+  BlitStretch(dl, t, tl, br);
+  if (out_hovered) *out_hovered = hovered;
+  if (hovered) SetHoverCursor(kCursorHand);
   return hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
 }
 
@@ -1434,6 +1461,82 @@ void ProcessEscapeStack() {
 
 bool AnyEscapeWindowOpen() { return g_esc_any; }
 
+// ── Épingles de barre de titre ──
+// Une épingle dit « Échap ne me ferme pas » : la fenêtre sort de la pile ci-dessus
+// par le même chemin que SkipNextEscapeWindow, donc elle n'avale pas la touche non
+// plus — le jeu la reçoit et son menu s'ouvre, ce qui est bien ce que veut un
+// joueur qui a délibérément cloué une fenêtre à l'écran.
+//
+// L'état est rangé PAR FENÊTRE dans imgui.ini, à côté de sa position et de sa
+// taille. La clé stockée est le nom complet passé à Begin (donc TRADUIT), mais
+// l'identité est le hachage : `ImHashStr` repart après le dernier « ### », si bien
+// qu'un titre relu dans une autre langue retombe sur la même épingle.
+namespace {
+struct PinEntry {
+  ImGuiID id;        // == ImGuiWindow::ID (ImHashStr du nom complet)
+  std::string name;  // nom tel que passé à Begin, réécrit dans l'ini
+  bool pinned;
+};
+std::vector<PinEntry> g_pins;
+const char* const kPinIniType = "RoWindowPin";
+
+// Rend l'INDEX de l'entrée (créée au besoin), jamais une référence : le vecteur
+// grossit sous les pieds de l'appelant à la première insertion.
+size_t PinSlot(ImGuiID id, const char* name) {
+  for (size_t i = 0; i < g_pins.size(); ++i)
+    if (g_pins[i].id == id) {
+      if (name) g_pins[i].name = name;  // suit la langue courante
+      return i;
+    }
+  g_pins.push_back(PinEntry{id, name ? name : "", false});
+  return g_pins.size() - 1;
+}
+
+void PinSettingsClearAll(ImGuiContext*, ImGuiSettingsHandler*) { g_pins.clear(); }
+
+void* PinSettingsReadOpen(ImGuiContext*, ImGuiSettingsHandler*, const char* name) {
+  // Handle = index + 1, pas un pointeur : `g_pins` peut se réallouer entre deux
+  // entrées de l'ini, et ImGui garde ce handle le temps des ReadLine.
+  return (void*)(uintptr_t)(PinSlot(ImHashStr(name), name) + 1);
+}
+
+void PinSettingsReadLine(ImGuiContext*, ImGuiSettingsHandler*, void* entry,
+                         const char* line) {
+  const size_t idx = (size_t)(uintptr_t)entry;
+  if (idx == 0 || idx > g_pins.size()) return;
+  static const char kKey[] = "Pinned=";
+  const size_t klen = sizeof(kKey) - 1;
+  if (std::strncmp(line, kKey, klen) == 0)
+    g_pins[idx - 1].pinned = (line[klen] != '0');
+}
+
+void PinSettingsWriteAll(ImGuiContext*, ImGuiSettingsHandler* handler,
+                         ImGuiTextBuffer* buf) {
+  // Seules les fenêtres ÉPINGLÉES sont écrites : l'ini ne se met pas à collecter
+  // une ligne par fenêtre jamais épinglée, et dépingler efface l'entrée.
+  for (const PinEntry& e : g_pins) {
+    if (!e.pinned || e.name.empty()) continue;
+    buf->appendf("[%s][%s]\n", handler->TypeName, e.name.c_str());
+    buf->appendf("Pinned=1\n\n");
+  }
+}
+}  // namespace
+
+void RegisterPinSettingsHandler() {
+  if (!ImGui::GetCurrentContext()) return;
+  if (ImGui::FindSettingsHandler(kPinIniType)) return;  // idempotent
+  ImGuiSettingsHandler h;
+  h.TypeName = kPinIniType;
+  h.TypeHash = ImHashStr(kPinIniType);
+  h.ClearAllFn = PinSettingsClearAll;
+  h.ReadOpenFn = PinSettingsReadOpen;
+  h.ReadLineFn = PinSettingsReadLine;
+  h.WriteAllFn = PinSettingsWriteAll;
+  ImGui::AddSettingsHandler(&h);
+}
+
+void SetNextWindowPinnable() { g_next_pinnable = true; }
+
 float SkinImageBrightness() {
   float b = g_cfg.title_brightness;
   if (b < 0.0f) b = 0.0f;
@@ -1612,6 +1715,10 @@ bool BeginRoWindow(const char* title, bool* p_open, int imgui_window_flags) {
   const bool body_set = g_next_body_set;
   const unsigned int body_col = g_next_body_col;
   g_next_body_set = false;
+  // Épingle : même règle de consommation. Sans `p_open` il n'y a ni croix ni
+  // fermeture par Échap — le bouton n'aurait rien à protéger.
+  const bool pinnable = g_next_pinnable && p_open != nullptr;
+  g_next_pinnable = false;
 
   // Hors du monde de jeu (login, char-select) : aucune fenêtre ne se replie. Le
   // flag NoCollapse fait tout — il retire le bouton sys_mini (test `show_mini`
@@ -1668,11 +1775,20 @@ bool BeginRoWindow(const char* title, bool* p_open, int imgui_window_flags) {
   ConstrainNextWindowToScreen();
   const bool open = ImGui::Begin(title, nullptr, imgui_window_flags);
   ImGui::GetStyle().WindowMenuButtonPosition = menu_btn_backup;
+
+  ImGuiWindow* w = ImGui::GetCurrentWindow();
+
+  // Épinglée -> hors de la pile Échap, par le même chemin que l'établi du staff :
+  // ni fermeture, ni avalage de la touche. 🔴 Il faut le décider AVANT
+  // RegisterEscapeWindow, donc bien avant de peindre le bouton — l'état vient du
+  // registre, pas du clic de cette frame (qui prendra effet à la suivante).
+  const size_t pin_idx = (pinnable && w) ? PinSlot(w->ID, title) : 0;
+  const bool pinned = pinnable && w && g_pins[pin_idx].pinned;
+  if (pinned) SkipNextEscapeWindow();
   RegisterEscapeWindow(p_open);
 
   // On dessine la barre de titre RO même quand la fenêtre est repliée (Begin
   // renvoie false dans ce cas) — sinon le titre replié garde le chrome ImGui.
-  ImGuiWindow* w = ImGui::GetCurrentWindow();
   if (w && !w->Hidden) {
     EnsureTex("basic_interface\\titlebar_left.bmp", skin::kTitlebarLeft, g_tl);
     EnsureTex("basic_interface\\titlebar_mid.bmp", skin::kTitlebarMid, g_tm);
@@ -1748,7 +1864,8 @@ bool BeginRoWindow(const char* title, bool* p_open, int imgui_window_flags) {
                 title_tx, nbuf);
 
     // Boutons système à droite : close (seulement si la fenêtre est fermable,
-    // p_open != null) collé au bord droit ; mini à sa gauche, masqué si NoCollapse.
+    // p_open != null) collé au bord droit ; puis l'épingle si la fenêtre est
+    // épinglable ; mini en dernier, masqué si NoCollapse. Soit [mini][pin][close].
     const bool show_mini = !(imgui_window_flags & ImGuiWindowFlags_NoCollapse);
     const float by = y0 + (tb.GetHeight() - Px((float)g_close.h)) * 0.5f;
     float bx = tb.Max.x - Px(4.0f);  // curseur depuis le bord droit
@@ -1758,6 +1875,15 @@ bool BeginRoWindow(const char* title, bool* p_open, int imgui_window_flags) {
       close_clicked = SysButton(dl, g_close, g_close_on, close_tl);
       bx = close_tl.x - Px(2.0f);
     }
+    bool pin_clicked = false, pin_hovered = false;
+    if (pinnable) {
+      EnsureTex("basic_interface\\sys_pin_off.bmp", skin::kSysPinOff, g_pin_off);
+      EnsureTex("basic_interface\\sys_pin_on.bmp", skin::kSysPinOn, g_pin_on);
+      ImVec2 pin_tl(bx - Px((float)g_pin_off.w), by);
+      pin_clicked =
+          SysToggleButton(dl, g_pin_off, g_pin_on, pinned, pin_tl, &pin_hovered);
+      bx = pin_tl.x - Px(2.0f);
+    }
     bool mini_clicked = false;
     if (show_mini) {
       ImVec2 mini_tl(bx - Px((float)g_mini.w), by);
@@ -1766,13 +1892,21 @@ bool BeginRoWindow(const char* title, bool* p_open, int imgui_window_flags) {
     dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
     dl->PopClipRect();
 
-    // Tooltip du bullet APRÈS le PopClipRect : ImGui::SetTooltip ouvre une autre
-    // fenêtre (donc une autre draw list) — la peinture du titre doit être finie.
+    // Tooltips APRÈS le PopClipRect : ImGui::SetTooltip ouvre une autre fenêtre
+    // (donc une autre draw list) — la peinture du titre doit être finie.
     if (bullet_hovered && bullet_tip && bullet_tip[0])
       ImGui::SetTooltip("%s", bullet_tip);
+    else if (pin_hovered)
+      ImGui::SetTooltip("%s", pinned
+                                  ? i18n::Tr("Détacher : Échap referme la fenêtre")
+                                  : i18n::Tr("Épingler : Échap ne ferme plus"));
 
     if (close_clicked && p_open) *p_open = false;
     if (mini_clicked) ImGui::SetWindowCollapsed(w, !w->Collapsed);
+    if (pin_clicked) {
+      g_pins[pin_idx].pinned = !g_pins[pin_idx].pinned;
+      ImGui::MarkIniSettingsDirty();  // sinon l'état meurt avec la session
+    }
 
     // Grip de resize RO en bas-à-droite (si redimensionnable). Le grip natif
     // ImGui reste actif pour le drag (juste rendu transparent) ; on peint l'image.

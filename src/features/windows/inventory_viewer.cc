@@ -1347,6 +1347,7 @@ void InventoryViewer::OnRenderUI() {
   // Bullet de la barre de titre = raccourci vers la config de CETTE fenêtre
   // (panneau Moonlight > Interface de jeu > Inventaire), comme le storage.
   ro::SetNextWindowTitleBullet(i18n::Tr("Options de l'inventaire"));
+  ro::SetNextWindowPinnable();  // épingle : Échap ne referme plus l'inventaire
   // Pas de NoCollapse -> le skin RO affiche le bouton minimiser (repli barre de titre),
   // comme le natif ; clic dessus = SetWindowCollapsed (géré par BeginRoWindow).
   const bool begun = ro::BeginRoWindow(

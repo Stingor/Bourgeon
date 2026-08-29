@@ -373,6 +373,28 @@ bool RoChatWindowIsResizing();
 void SetNextWindowTitleBullet(const char* tooltip = nullptr);
 bool TitleBulletClicked();
 
+// ── Épingle de la barre de titre (« Échap ne me ferme pas ») ─────────────────
+// Ajoute un 3e bouton système, JUSTE À GAUCHE de la croix : [mini][pin][close].
+// Épinglée, la fenêtre sort de la pile Échap — elle ne se ferme plus sur Échap,
+// et n'avale plus la touche non plus (le jeu la reçoit, cf. SkipNextEscapeWindow).
+// La croix, elle, ferme toujours : l'épingle protège du geste RÉFLEXE, pas de la
+// fermeture voulue.
+//
+// Opt-in, à appeler JUSTE AVANT BeginRoWindow ; la demande est CONSOMMÉE par lui
+// (pas de fuite sur la fenêtre suivante), comme le bullet ci-dessus. Sans effet
+// sur une fenêtre non fermable (`p_open` nul) : Échap ne la fermait déjà pas.
+//
+// L'état est PAR FENÊTRE et persisté dans imgui.ini, à côté de sa position et de
+// sa taille, sous la même identité (le hachage repart après le dernier « ### »,
+// donc un titre traduit garde son épingle d'une langue à l'autre).
+void SetNextWindowPinnable();
+
+// Branche la lecture/écriture des épingles sur imgui.ini. 🔴 À appeler entre
+// ImGui::CreateContext() et la PREMIÈRE frame : ImGui charge son ini au premier
+// NewFrame et IGNORE toute entrée dont le handler n'est pas encore enregistré —
+// posé plus tard, on ne lirait rien et l'état déjà écrit serait perdu.
+void RegisterPinSettingsHandler();
+
 // Applique le skin RO à un popup ouvert HORS de toute fenêtre skinnée (menu
 // contextuel du monde, par exemple). Un menu ouvert DANS une BeginRoWindow
 // hérite déjà de ces couleurs — c'est pourquoi le menu de l'inventaire est

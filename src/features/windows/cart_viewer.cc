@@ -346,6 +346,7 @@ void CartViewer::OnRenderUI() {
 
   // Bullet de la barre de titre = raccourci vers la config de CETTE fenêtre.
   ro::SetNextWindowTitleBullet(i18n::Tr("Options du cart"));
+  ro::SetNextWindowPinnable();  // épingle : Échap ne referme plus le cart
   const bool begun = ro::BeginRoWindow(
       i18n::Tr("Cart###bourgeon_cart"), &show_panel_,
       lock_size_ ? ImGuiWindowFlags_NoResize : 0);
