@@ -166,6 +166,22 @@ class StatusEffects : public Plugin {
   // GID -> instant du refus (statut 2 : pas de mon groupe).
   std::unordered_map<uint32_t, uint32_t> refused_ms_;
 
+  // 🔴 La durée de référence de MES états, faute de mieux.
+  //
+  // La liste du client ne porte QUE l'échéance : aucune trace de la durée
+  // d'origine. Sans mémoire, le « total » vaudrait le restant courant à chaque
+  // frame, la fraction écoulée serait donc toujours nulle et le grisage ne
+  // bougerait JAMAIS.
+  //
+  // ⚠ `mutable` : `Effects()` est const — c'est un accesseur — mais il est le
+  // seul endroit qui voie passer ces restants. Le rendre non-const aurait
+  // contaminé tous ses appelants pour une mémoire de rendu.
+  struct OwnDuration {
+    uint32_t total = 0;      // le plus grand restant observé
+    uint32_t last_left = 0;  // le précédent, pour reconnaître un relancement
+  };
+  mutable std::unordered_map<uint16_t, OwnDuration> own_duration_;
+
   bool     polling_wanted_        = false;
   bool     target_polling_wanted_ = false;
   unsigned last_poll_ms_        = 0;

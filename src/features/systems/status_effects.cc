@@ -540,6 +540,7 @@ void StatusEffects::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
   by_gid_.clear();
   answered_ms_.clear();
   refused_ms_.clear();
+  own_duration_.clear();
   last_poll_ms_        = 0;
   last_target_poll_ms_ = 0;
   poll_cursor_         = 0;
@@ -564,6 +565,16 @@ bool StatusEffects::Effects(uint32_t gid, std::vector<Entry>* out) const {
     if (!statusicons::ReadOwn(&mine) || mine.empty()) return false;
     if (out == nullptr) return true;
     const uint32_t now = NowMs();
+    // 🔴 DEUX HORLOGES. L'échéance de cette liste se compare à `GetTickCount`
+    // (c'est ce que fait la barre du client), alors que tout le reste d'ici
+    // travaille en `timeGetTime`. Les deux comptent des millisecondes depuis le
+    // démarrage, mais ce sont des compteurs SÉPARÉS : ranger l'une dans un champ
+    // lu par l'autre donne un restant faux, et l'affichage de la durée
+    // disparaissait — un écart négatif se lit « déjà expiré ».
+    //
+    // On convertit donc à la lecture : le RESTANT dans la base d'origine, puis
+    // une échéance neuve dans la nôtre. Aucun champ ne porte plus deux sens.
+    const uint32_t src_now = ::GetTickCount();
     for (const statusicons::Active& a : mine) {
       Entry e;
       e.efst = a.id;
@@ -572,9 +583,24 @@ bool StatusEffects::Effects(uint32_t gid, std::vector<Entry>* out) const {
         e.expires_ms = 0;
         e.total_ms = 0;
       } else {
-        e.expires_ms = a.end_tick;
-        const int32_t left = static_cast<int32_t>(a.end_tick - now);
-        e.total_ms = (left > 0) ? static_cast<uint32_t>(left) : 0u;
+        const int32_t left = static_cast<int32_t>(a.end_tick - src_now);
+        if (left > 0) {
+          e.expires_ms = now + static_cast<uint32_t>(left);
+          // ⚠ Le total ne peut PAS venir d'ici : cette liste ne porte que
+          // l'échéance. On garde le plus grand restant VU, exactement comme
+          // pour les états du réseau (`KeepLongest`) — sinon le total vaudrait
+          // le restant à chaque frame et le grisage resterait figé à zéro.
+          OwnDuration& d = own_duration_[a.id];
+          d.total = KeepLongest(static_cast<uint32_t>(left), d.total,
+                                d.last_left);
+          d.last_left = static_cast<uint32_t>(left);
+          e.total_ms = d.total;
+        } else {
+          // Échu mais encore listé : le client ne l'a pas encore retiré. On le
+          // montre sans durée plutôt que de mentir sur un temps négatif.
+          e.expires_ms = 0;
+          e.total_ms = 0;
+        }
       }
       out->push_back(e);
     }
