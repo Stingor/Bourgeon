@@ -7,6 +7,7 @@
 
 #include "bourgeon.h"
 #include "features/overlays/target_frame.h"  // la cible courante, second sujet
+#include "features/overlays/status_icon_bar.h"  // statusicons::ReadOwn
 #include "features/status_cell.h"  // HasFallback : les états sans image
 #include "features/systems/bourgeon_opcodes.h"
 #include "ragnarok/game_scene.h"
@@ -549,6 +550,36 @@ void StatusEffects::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
 bool StatusEffects::Effects(uint32_t gid, std::vector<Entry>* out) const {
   if (out != nullptr) out->clear();
   if (gid == 0) return false;
+
+  // 🔴 MOI : LE CLIENT SAIT, ET IL SAIT MIEUX. Sa liste d'icônes contient le
+  // sommeil, le silence, le gel — que le réseau ne transporte JAMAIS en état :
+  // le serveur les met dans `opt1`/`opt2`, et c'est le client qui les convertit
+  // en entrées de cette liste. Attendre ces états du fil, c'était attendre ce
+  // que le fil ne porte pas.
+  //
+  // ⚠ Vaut pour MOI seul : cette liste est la mienne, pas celle du monde.
+  const uint32_t own = rag::OwnAccountIdSafe();
+  if (own != 0 && gid == own) {
+    std::vector<statusicons::Active> mine;
+    if (!statusicons::ReadOwn(&mine) || mine.empty()) return false;
+    if (out == nullptr) return true;
+    const uint32_t now = NowMs();
+    for (const statusicons::Active& a : mine) {
+      Entry e;
+      e.efst = a.id;
+      // La sentinelle du client vaut « permanent », pas « échu dans 999 s ».
+      if (a.end_tick == statusicons::kInfinite || a.end_tick == 0) {
+        e.expires_ms = 0;
+        e.total_ms = 0;
+      } else {
+        e.expires_ms = a.end_tick;
+        const int32_t left = static_cast<int32_t>(a.end_tick - now);
+        e.total_ms = (left > 0) ? static_cast<uint32_t>(left) : 0u;
+      }
+      out->push_back(e);
+    }
+    return true;
+  }
   auto it = by_gid_.find(gid);
   if (it == by_gid_.end()) return false;
   if (out != nullptr) *out = it->second;

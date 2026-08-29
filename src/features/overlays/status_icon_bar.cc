@@ -287,6 +287,40 @@ void AppendFakes(void* session, Pending* list, int* n, uint32_t now) {
   }
 }
 
+}  // namespace
+
+namespace statusicons {
+
+// 🔴 Les MÊMES adresses que `BuildCustom` juste en dessous, et c'est voulu :
+// elles vivent dans ce fichier parce que c'est lui qui a trouvé cette liste.
+// La lire ailleurs aurait recopié trois constantes de plus.
+bool ReadOwn(std::vector<Active>* out) {
+  if (out == nullptr) return false;
+  out->clear();
+  __try {
+    uint8_t* begin = *reinterpret_cast<uint8_t**>(kVecBegin);
+    uint8_t* end   = *reinterpret_cast<uint8_t**>(kVecEnd);
+    if (begin == nullptr || end == nullptr || end < begin) return false;
+    // Une borne de sûreté : un vecteur incohérent (device perdu, mode en cours
+    // de bascule) ne doit pas nous faire parcourir la moitié du processus.
+    if (static_cast<size_t>(end - begin) > kElemStride * 256u) return false;
+    for (uint8_t* e = begin; e != end; e += kElemStride) {
+      Active a;
+      a.id = static_cast<uint16_t>(*reinterpret_cast<int*>(e));
+      a.end_tick = *reinterpret_cast<uint32_t*>(e + kElemEndTick);
+      if (a.id != 0) out->push_back(a);
+    }
+    return true;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    out->clear();
+    return false;
+  }
+}
+
+}  // namespace statusicons
+
+namespace {
+
 void BuildCustom(void* scene, void* vp) {
   const int vpW = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(vp) + kVpW);
   const int vpH = *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(vp) + kVpH);

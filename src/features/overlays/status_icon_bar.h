@@ -1,5 +1,8 @@
 #pragma once
 
+#include <cstdint>
+#include <vector>
+
 #include "features/plugin.h"
 
 // Persisted status-icon-bar configuration (plain ints so moonlight_ui can
@@ -51,6 +54,36 @@ struct StatusIconConfig {
 // KNOWN LIMITATION (v1): the mouseover tooltip hit-test (FUN_00c93cb0) keeps its
 // own copy of the stock right-anchored layout constants, so when the bar is
 // moved the icon tooltips will be offset.  Syncing the hit-test is a follow-up.
+// ── Ce que le CLIENT sait de MES états ──────────────────────────────────────
+//
+// 🔴 Sa liste est PLUS COMPLÈTE que tout ce qui passe par le réseau. Le sommeil,
+// le silence, le gel n'arrivent pas en EFST : le serveur les transmet dans
+// `opt1`/`opt2` (ZC_STATE_CHANGE), et c'est le CLIENT qui les convertit en
+// entrées de cette liste — c'est pour cela que sa barre les affiche alors
+// qu'aucun paquet d'état ne les nomme.
+//
+// Les surfaces qui listent MES états doivent donc lire ICI, et non attendre du
+// réseau ce qu'il ne porte pas. Pour les AUTRES entités, la question ne se pose
+// pas : cette liste n'est que la mienne.
+//
+// `end_tick` est l'horloge `timeGetTime` d'expiration ; 999999 = permanent, rendu
+// tel quel — c'est la sentinelle du client, à l'appelant de la reconnaître.
+namespace statusicons {
+
+struct Active {
+  uint16_t id = 0;
+  uint32_t end_tick = 0;
+};
+
+// Sentinelle « pas d'échéance » du client.
+inline constexpr uint32_t kInfinite = 999999;
+
+// Remplit `out` avec MES états actifs. Faux si la liste n'est pas lisible
+// (hors jeu, ou pointeurs pas encore posés).
+bool ReadOwn(std::vector<Active>* out);
+
+}  // namespace statusicons
+
 class StatusIconBar : public Plugin {
  public:
   StatusIconBar();

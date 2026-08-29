@@ -323,7 +323,20 @@ bool Draw(const StatusEffects::Entry& e, ImVec2 p0, ImVec2 p1,
   } else {
     const char* path = StatusEffects::IconPath(e.efst);
     if (path == nullptr) return false;
-    const ro::GameTexture icon = ro::CachedTextureFromGameFile(path);
+    ro::GameTexture icon = ro::CachedTextureFromGameFile(path);
+
+    // 🔴 LE LUA REND UN NOM NU. `stateiconimginfo.lub` associe
+    // `EFST_BODYSTATE_SLEEP` à « BD_Sleep.tga » — sans dossier — alors que la
+    // table EN DUR du client rend des chemins complets (« effect\\XXX.TGA »).
+    // Le client s'en sort parce qu'il passe par son cache de SPRITES, qui
+    // résout les noms nus ; notre chargeur, lui, parle au TexMgr et veut le
+    // chemin. Sans ce repli, toutes les icônes venues du Lua échouaient en
+    // silence — et c'est le cas de TOUTES les altérations.
+    if (!icon.tex && strchr(path, '\\') == nullptr) {
+      char full[192];
+      std::snprintf(full, sizeof(full), "effect\\%s", path);
+      icon = ro::CachedTextureFromGameFile(full);
+    }
     if (!icon.tex) return false;
     dl->AddImage(reinterpret_cast<ImTextureID>(icon.tex), p0, p1, ImVec2(0, 0),
                  ImVec2(1, 1), tint);
