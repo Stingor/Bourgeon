@@ -52,6 +52,24 @@ struct Entry {
   bool has_hp = false;
   int  hp     = 0;
   int  max_hp = 0;
+
+  // ── L'APPARENCE, pour une vignette de tête ────────────────────────────────
+  //
+  // 🔴 `has_look` FAUX veut dire « hors de portée », comme `has_hp` : ces trois
+  // valeurs sont lues sur l'ACTEUR, et un membre sur une autre carte n'en a pas.
+  //
+  // 🔴🔴 C'ÉTAIT LA DIFFÉRENCE AVEC LA GUILDE. Sa fenêtre montre la tête de
+  // tous ses membres en ligne parce que ZC_MEMBERMGR_INFO PORTE la coiffure, sa
+  // couleur et le sexe ; les paquets de groupe et d'amis ne portent rien de tel.
+  //
+  // ⚠ Le repli existe maintenant — `EntityLooks` (CZ 0x0F2E) demande au serveur
+  // l'apparence des membres et des amis EN LIGNE — mais il vit ailleurs, et
+  // c'est voulu : ce champ-ci ne raconte QUE ce que l'acteur sait, et il le sait
+  // tout de suite. Une surface lit l'acteur d'abord, le registre ensuite.
+  bool has_look    = false;
+  int  hair        = 0;   // id de coiffure BRUT (le remap .spr est dans head_icon)
+  int  hair_color  = 0;
+  int  sex         = 1;   // 0 = femme
 };
 
 // Relit la liste des membres du groupe (avec leurs PV) ou celle des amis.
@@ -62,6 +80,18 @@ void ReadFriends(std::vector<Entry>& out);
 
 // Mon AID (`g_Account_Aid`), celui que le natif compare pour reconnaître ma ligne.
 uint32_t OwnAid();
+
+// MON entrée, fabriquée depuis mes globales.
+//
+// 🔴 Hors groupe, la liste du client est VIDE — je n'y figure pas, et il n'y a
+// donc rien à lire pour moi. Un affichage qui veut montrer ma tuile en solo ne
+// peut que la construire, et il vaut mieux le faire ici qu'à côté de chaque
+// rendu : ce sont les mêmes globales, avec les mêmes pièges (le nom est un
+// `char[]` NU, et le job est le job RÉEL, pas l'apparence).
+//
+// ⚠ Ce n'est PAS un membre de groupe : `is_leader` reste faux et `map` porte la
+// carte courante. Rend faux tant qu'aucun personnage n'est en jeu.
+bool ReadSelfEntry(Entry* out);
 
 // Suis-je le CHEF du groupe ?
 //

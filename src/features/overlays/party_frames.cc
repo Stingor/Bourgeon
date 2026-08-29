@@ -444,10 +444,27 @@ void PartyFrames::OnRenderUI() {
   if (!enabled_) return;
 
   rag::social::ReadParty(members_);
-  // Un groupe d'une seule personne, c'est le joueur seul : aucun HUD à montrer.
-  if (members_.size() <= 1) return;
 
   const uint32_t me = rag::social::OwnAid();
+
+  // 🔴 MA TUILE, même quand la liste ne me contient pas.
+  //
+  // Hors groupe cette liste est VIDE, et la grille disparaissait — alors qu'elle
+  // sert autant à se lire soi-même : c'est le HUD de vitals du joueur, pas
+  // seulement un tableau de bord de raid. On fabrique donc l'entrée depuis les
+  // globales quand elle manque.
+  //
+  // ⚠ C'est `show_self_` qui décide, pas la présence d'un groupe : éteint, le
+  // filtre plus bas retire cette tuile et la grille redevient invisible en solo.
+  // Le réglage garde exactement le sens qu'il avait.
+  bool self_listed = false;
+  for (const rag::social::Entry& m : members_)
+    if (m.gid == me) { self_listed = true; break; }
+  if (!self_listed) {
+    rag::social::Entry self;
+    if (rag::social::ReadSelfEntry(&self))
+      members_.insert(members_.begin(), std::move(self));
+  }
 
   // Les membres à afficher. On filtre AVANT de calculer la grille : une tuile
   // vide au milieu casserait la lecture.

@@ -128,6 +128,39 @@ bool ReadHpSEH(uint32_t gid, int* hp, int* max_hp) {
 }
 
 
+// L'apparence d'une entité, lue sur son acteur. Rend false hors de portée —
+// l'état NORMAL d'un membre qui n'est pas sur l'écran.
+//
+// ⚠ MOI, à part : `FindActorByGid` ne rend pas mon propre acteur (c'est déjà ce
+// qui fait sauter mon GID dans la rotation de sondage du HUD de groupe). Mon
+// apparence vient donc de mes globales, et le sexe d'un appel natif — la
+// globale équivalente n'est pas exposée.
+bool ReadLookSEH(uint32_t gid, int* hair, int* color, int* sex) {
+  __try {
+    if (gid && gid == rag::OwnAccountId()) {
+      *hair  = *reinterpret_cast<const int*>(rag::kOwnHairStyleAddr);
+      *color = *reinterpret_cast<const int*>(rag::kOwnHairColorAddr);
+      // 🔴 `Session_GetSex` est un __thiscall SUR LA SESSION, pas une
+      // fonction libre : ecx porte `g_session`. La même convention que
+      // palette_editor et basic_info, qui l'appellent déjà ainsi.
+      using GetSexFn = int(__fastcall*)(void*, void*);
+      *sex = reinterpret_cast<GetSexFn>(rag::kOwnSexAddr)(
+          reinterpret_cast<void*>(rag::kSessionAddr), nullptr);
+      return true;
+    }
+    using FindActorFn = void* (__stdcall*)(uint32_t);
+    void* actor = reinterpret_cast<FindActorFn>(gamescene::kFindActorByGidAddr)(gid);
+    if (!actor) return false;
+    const uint8_t* a = reinterpret_cast<const uint8_t*>(actor);
+    *hair  = *reinterpret_cast<const int*>(a + rag::actor::kHairStyle);
+    *color = *reinterpret_cast<const int*>(a + rag::actor::kHairColor);
+    // Normalise, comme le fait la fenêtre de cible : le champ n'est pas
+    // garanti à 0/1, et head_icon choisit une TABLE de coiffures dessus.
+    *sex   = (*reinterpret_cast<const int*>(a + rag::actor::kSex) != 0) ? 1 : 0;
+    return true;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
 void ReadList(bool party, std::vector<Entry>& out) {
   out.clear();
   const void* nodes[kMaxRows] = {nullptr};
@@ -156,8 +189,47 @@ void ReadList(bool party, std::vector<Entry>& out) {
       e.hp = hp;
       e.max_hp = max_hp;
     }
+    // ⚠ Les DEUX listes, pas seulement le groupe : un ami présent sur la carte
+    // a un acteur comme n'importe qui. C'est la portée qui décide, pas l'onglet.
+    if (!e.offline) {
+      int hair = 0, color = 0, sex = 1;
+      e.has_look = ReadLookSEH(e.gid, &hair, &color, &sex);
+      e.hair = hair;
+      e.hair_color = color;
+      e.sex = sex;
+    }
     out.push_back(std::move(e));
   }
+}
+
+// Mes propres scalaires, sous SEH.
+//
+// 🔴 Un POD, et pas directement une `Entry` : le `__try` ne peut pas coexister
+// avec un objet à destructeur dans la même fonction (C2712), et `Entry` porte
+// deux std::string. C'est le patron de `ReadNodeSEH` ci-dessus, pour la même
+// raison.
+struct SelfRaw {
+  char     name[64];
+  uint16_t job;
+  uint16_t level;
+  int      hp;
+  int      max_hp;
+};
+
+bool ReadSelfRawSEH(SelfRaw& r) {
+  __try {
+    // Le nom est un `char[]` NU dans les globales — pas la std::string du
+    // client, donc pas de `clientstr` ici.
+    const char* p = reinterpret_cast<const char*>(rag::kOwnCharNameAddr);
+    size_t i = 0;
+    for (; i + 1 < sizeof(r.name) && p[i] != '\0'; ++i) r.name[i] = p[i];
+    r.name[i] = '\0';
+    r.job    = static_cast<uint16_t>(rag::OwnJobId());
+    r.level  = static_cast<uint16_t>(rag::BaseLevel());
+    r.hp     = rag::OwnHp();
+    r.max_hp = rag::OwnMaxHp();
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+  return true;
 }
 
 }  // namespace
@@ -166,6 +238,37 @@ void ReadParty(std::vector<Entry>& out)   { ReadList(true, out); }
 void ReadFriends(std::vector<Entry>& out) { ReadList(false, out); }
 
 uint32_t OwnAid() { return rag::OwnAccountIdSafe(); }
+
+bool ReadSelfEntry(Entry* out) {
+  if (out == nullptr) return false;
+  const uint32_t aid = rag::OwnAccountIdSafe();
+  if (aid == 0) return false;
+
+  SelfRaw raw = {};
+  if (!ReadSelfRawSEH(raw)) return false;
+  // ⚠ Sans personnage en jeu, ces globales portent encore celles du précédent.
+  // Un maximum de PV nul est le signe le plus fiable qu'il n'y a personne — le
+  // même que `ReadHpSEH` applique aux autres.
+  if (raw.max_hp <= 0) return false;
+
+  Entry e;
+  e.gid    = aid;
+  e.name   = raw.name;
+  e.job    = raw.job;
+  e.level  = raw.level;
+  e.has_hp = true;
+  e.hp     = raw.hp;
+  e.max_hp = raw.max_hp;
+  char map[64] = {0};
+  if (rag::CurrentMapName(map, sizeof(map))) e.map = map;
+  int hair = 0, color = 0, sex = 1;
+  e.has_look = ReadLookSEH(aid, &hair, &color, &sex);
+  e.hair = hair;
+  e.hair_color = color;
+  e.sex = sex;
+  *out = std::move(e);
+  return true;
+}
 
 bool AmIPartyLeader() {
   std::vector<Entry> party;
