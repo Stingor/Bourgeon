@@ -355,6 +355,33 @@ bool BeginHudFrame(const char* id, HudRect* rect, const HudFrameOpts& opts,
   }
   if (opts.border) dl->AddRect(p0, p1, IM_COL32(0, 0, 0, 160), opts.rounding);
 
+  // ── Le repère de centre ──────────────────────────────────────────────────
+  //
+  // Deux traits courts qui se croisent, pas une croix pleine largeur : le but
+  // est de désigner un POINT, et des lignes traversant tout le cadre se
+  // confondraient avec son contenu.
+  //
+  // ⚠ Peint AVANT le contenu, comme le fond : dessiné après, il barrerait les
+  // tuiles au lieu de les sous-tendre.
+  if (opts.center_mark && !opts.locked) {
+    const ImVec2 c((p0.x + p1.x) * 0.5f, (p0.y + p1.y) * 0.5f);
+    // Un bras proportionnel au cadre, borné : sur un cadre minuscule une croix
+    // fixe déborderait, sur un grand elle serait invisible.
+    const float half = (std::min)(8.0f, (std::min)(p1.x - p0.x, p1.y - p0.y) * 0.25f);
+    if (half >= 2.0f) {
+      // Un liseré sombre sous le trait clair : le repère doit se lire aussi
+      // bien sur un fond pâle que sur une carte sombre.
+      dl->AddLine(ImVec2(c.x - half, c.y), ImVec2(c.x + half, c.y),
+                  IM_COL32(0, 0, 0, 170), 3.0f);
+      dl->AddLine(ImVec2(c.x, c.y - half), ImVec2(c.x, c.y + half),
+                  IM_COL32(0, 0, 0, 170), 3.0f);
+      dl->AddLine(ImVec2(c.x - half, c.y), ImVec2(c.x + half, c.y),
+                  IM_COL32(255, 255, 255, 230), 1.0f);
+      dl->AddLine(ImVec2(c.x, c.y - half), ImVec2(c.x, c.y + half),
+                  IM_COL32(255, 255, 255, 230), 1.0f);
+    }
+  }
+
   // La poignée et les bords allumés se peignent à la FIN (cf. g_cur_*) : ici, le
   // contenu n'est pas encore dessiné et les recouvrirait.
   g_cur_visible = true;

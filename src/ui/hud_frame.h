@@ -100,6 +100,16 @@ struct HudFrameOpts {
   // clic-traversante est sous le curseur). Un cadre cliquable est donc à
   // n'allumer que quand il sert vraiment — l'appelant décide à chaque frame.
   bool  clickable = false;
+  // Repère de CENTRE, dessiné seulement quand le cadre est déverrouillé.
+  //
+  // 🔴 Centrer un HUD à l'œil est faux d'une poignée de pixels, et l'erreur ne
+  // se voit qu'une fois le cadre reverrouillé — trop tard pour la corriger sans
+  // tout rouvrir. La grille d'alignement aimante les BORDS ; ce repère donne le
+  // point que l'on veut réellement poser sur une de ses lignes.
+  //
+  // Il disparaît avec le déverrouillage : c'est un outil de pose, pas une
+  // décoration.
+  bool  center_mark = false;
 };
 
 // Ce qu'un cadre CLIQUABLE (`opts.clickable`) a reçu cette frame. Rempli par
