@@ -42,6 +42,12 @@ class EntityLooks : public Plugin {
 
   const char* name() const override { return "EntityLooks"; }
 
+  // 🔴 LES DEUX, et ce n'est pas facultatif. `HandlePacket` n'est appelé que
+  // par `DrainNetInbox`, qui vide la file que `OnRecvPacket` remplit : sans ce
+  // premier, le paquet arrive, personne ne le range, et le décodeur ne tourne
+  // JAMAIS. Rien ne le signale — ni erreur, ni avertissement, juste une table
+  // qui reste vide.
+  void OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
   void HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
   void OnTick() override;
   void OnModeSwitch(ModeMgr::ModeType mode_type, const char* map_name) override;

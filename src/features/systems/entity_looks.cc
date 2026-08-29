@@ -36,6 +36,12 @@ EntityLooks::EntityLooks() {
   Bourgeon::Instance().RegisterRecvOpcode(kOpLooks);
 }
 
+// ⚠ FIL RÉSEAU. On ne fait que COPIER : le décodage attend le fil principal.
+void EntityLooks::OnRecvPacket(uint16_t opcode, const uint8_t* data,
+                               uint16_t len) {
+  net_inbox_.Push(opcode, data, len);
+}
+
 void EntityLooks::HandlePacket(uint16_t opcode, const uint8_t* data,
                                uint16_t len) {
   if (opcode != kOpLooks) return;
