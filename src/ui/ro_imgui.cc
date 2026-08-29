@@ -2586,6 +2586,14 @@ float SmallButtonWidth(const char* label) {
             static_cast<float>(skin::ksBtnOutRight.w));
 }
 
+// La MÊME formule que RoCheckbox : case carrée, gouttière, libellé. Les
+// dimensions de la case sont statiques (blob du skin), donc mesurable sans
+// qu'aucune texture soit chargée — comme ButtonWidth.
+float CheckboxWidth(const char* label) {
+  return Px(static_cast<float>(skin::kCheckbox0.w)) + Px(4.0f) +
+         ImGui::CalcTextSize(label, nullptr, true).x;
+}
+
 float MaxButtonWidth(std::initializer_list<const char*> labels) {
   float w = 0.0f;
   for (const char* l : labels) w = ImMax(w, ButtonWidth(l));
@@ -2597,6 +2605,13 @@ float MaxButtonWidth(std::initializer_list<const char*> labels) {
 bool RoToggleButton(const char* label, bool active, float w, float h) {
   g_force_button_active = active;
   const bool clicked = RoButton(label, w, h);
+  g_force_button_active = false;
+  return clicked;
+}
+
+bool RoSmallToggleButton(const char* label, bool active, float w, float h) {
+  g_force_button_active = active;
+  const bool clicked = RoSmallButton(label, w, h);
   g_force_button_active = false;
   return clicked;
 }

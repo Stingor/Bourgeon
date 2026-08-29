@@ -424,6 +424,11 @@ float MaxButtonWidth(std::initializer_list<const char*> labels);
 // tenir l'état. Le gras est un faux-gras (re-dessin décalé d'un pixel) : ImGui n'a
 // qu'une seule graisse chargée.
 bool RoToggleButton(const char* label, bool active, float w = 0.0f, float h = 0.0f);
+// Le même bouton d'état, en PETIT (art sbtn_*). Pour une barre d'onglets qui
+// doit partager sa ligne avec autre chose : deux boutons pleine taille mangent
+// une largeur que la fenêtre n'a pas toujours.
+bool RoSmallToggleButton(const char* label, bool active, float w = 0.0f,
+                         float h = 0.0f);
 
 // Slider habillé en SCROLLBAR HORIZONTALE RO (pièces natives scroll1left|mid|right
 // pour la piste/les flèches, scroll1bar_left|mid|right pour le curseur) : c'est le
@@ -443,6 +448,11 @@ bool RoSliderInt(const char* label, int* v, int lo, int hi,
 // Case à cocher habillée avec les pièces checkbox_0/1 du client. Comme
 // ImGui::Checkbox : renvoie true si l'état a changé.
 bool RoCheckbox(const char* label, bool* v);
+
+// Largeur qu'occupe cette case DANS LA LANGUE COURANTE — le pendant de
+// ButtonWidth, et pour la même raison : une contrainte de taille de fenêtre
+// calée sur le français laisse sortir un libellé anglais ou espagnol du cadre.
+float CheckboxWidth(const char* label);
 
 // Bouton radio habillé avec le skin natif du client (radiobtn_on/off.bmp sous
 // 유저인터페이스\). Dessine l'image on/off + label cliquable ; renvoie true si cliqué
