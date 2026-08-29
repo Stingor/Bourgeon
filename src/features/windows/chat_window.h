@@ -1453,6 +1453,19 @@ class ChatWindow : public Plugin {
   std::string pending_name_;
   NameAction  pending_name_action_ = NameAction::kNone;
   void FlushNameAction();
+
+  // ── Une commande de Bourgeon en attente (features/systems/chat_commands) ────
+  // Armée par QueueSend quand la ligne tapée est une de nos commandes, jouée par
+  // FlushPending. 🔴 DIFFÉRÉE pour la raison habituelle : l'action ouvre une
+  // fenêtre, et une ouverture pendant une frame ImGui gèle le client.
+  std::string pending_cmd_action_;
+  std::string pending_cmd_argument_;
+  void FlushCommandAction();
+
+  // Pose une ligne écrite par NOUS dans le journal courant : ni le serveur ni le
+  // client ne l'a produite (refus d'envoi, réponse à une commande de Bourgeon).
+  // `rgb` est un COLORREF, comme toute couleur de ligne ici (0xBBGGRR).
+  void AddLocalLine(const char* utf8, uint32_t rgb);
 };
 
 namespace chatwnd {

@@ -27,6 +27,7 @@
 #include "features/moonlight_ui/moonlight_ui.h"   // iface:: (sections de <SETL>)
 #include "features/staff_gate.h" // IsStaff (export des emotes)
 #include "features/systems/bourgeon_opcodes.h"   // kChannelList (ZC 0x0F21)
+#include "features/systems/chat_commands.h"      // /atlas, /warp… (commandes Bourgeon)
 #include "features/systems/image_preview.h"      // hôtes autorisés par le joueur
 #include "imgui.h"
 #include "imgui_internal.h"      // GetInputTextState (défilement interne du champ)
@@ -7215,9 +7216,63 @@ bool ChatWindow::AppendMobLink(uint32_t mob_id, int rank, const char* name_utf8)
   return PostPendingLink(std::move(pending));
 }
 
+// Une ligne que NOUS écrivons : refus d'envoi, réponse à une commande de
+// Bourgeon. Elle n'a ni expéditeur ni type de canal — c'est le journal courant
+// qui la reçoit, à l'instant où elle est produite.
+//
+// ⚠ Le verrou est pris ICI, comme partout où `lines_` bouge : le fil recv y
+// écrit aussi.
+void ChatWindow::AddLocalLine(const char* utf8, uint32_t rgb) {
+  if (utf8 == nullptr || utf8[0] == '\0') return;
+  Line line;
+  line.rgb = rgb & 0xFFFFFF;
+  Run run;
+  run.text = utf8;
+  line.runs.push_back(run);
+  line.plain = run.text;
+  SYSTEMTIME now;
+  GetLocalTime(&now);
+  line.hour   = static_cast<uint8_t>(now.wHour);
+  line.minute = static_cast<uint8_t>(now.wMinute);
+  line.second = static_cast<uint8_t>(now.wSecond);
+  std::lock_guard<std::mutex> lock(lines_mutex_);
+  lines_.push_back(std::move(line));
+  TrimLines();
+}
+
+// COLORREF 0x00BBGGRR, comme toute couleur de ligne ici. 0x6060FF = rouge clair
+// (R=255, G=96, B=96) pour un refus ; 0x60D0FF = doré (R=255, G=208, B=96) pour
+// une réponse de Bourgeon — ni le vert d'un message serveur, ni le rouge d'une
+// panne : ce que dit cette ligne-là n'est ni l'un ni l'autre.
+constexpr uint32_t kSendErrorRgb  = 0x6060FF;
+constexpr uint32_t kLocalReplyRgb = 0x60D0FF;
+
 void ChatWindow::QueueSend() {
   if (input_[0] == '\0') return;
   PushInputHistory(input_);
+
+  // ── Les commandes de Bourgeon, AVANT tout le reste ──────────────────────────
+  // 🔴 Avant l'historique des destinataires, et avant la résolution des liens :
+  // ce qui est intercepté ne part pas sur le fil, et ne doit donc RIEN laisser
+  // derrière — ni un nom dans la liste des chuchotements, ni un lien consommé.
+  // L'historique de SAISIE, lui, garde la ligne : le joueur qui s'est trompé de
+  // nom veut la retrouver à la flèche du haut.
+  const chatcmd::Outcome command = chatcmd::Try(input_);
+  if (command.handled) {
+    if (command.message != nullptr) AddLocalLine(command.message, kLocalReplyRgb);
+    // L'action ouvre une fenêtre : différée jusqu'à FlushPending, hors frame.
+    if (command.action != nullptr) {
+      pending_cmd_action_   = command.action;
+      pending_cmd_argument_ = command.argument;
+    }
+    // Une réécriture repart par le chemin ORDINAIRE d'une commande de menu
+    // (`@commands`), donc le pipeline complet du client.
+    if (command.rewrite != nullptr) QueueCommand(command.rewrite);
+    item_links_.clear();
+    input_[0] = '\0';
+    return;
+  }
+
   // Même condition que le chemin d'envoi : une ligne qui commence par `/` est une
   // commande, la box destinataire n'est PAS consultée — enregistrer le nom alors
   // qu'on n'a chuchoté à personne salirait la liste.
@@ -7360,6 +7415,10 @@ void ChatWindow::FlushPending() {
   // ÉMETTRE une requête au client (cf. ResolveWhisperGuilds).
   ResolveWhisperGuilds();
   FlushNameAction();
+  // AVANT l'envoi, et sans rapport avec lui : une commande de Bourgeon peut
+  // n'avoir rien à envoyer du tout (`/atlas`), auquel cas le `return` ci-dessous
+  // la laisserait en attente pour toujours.
+  FlushCommandAction();
   if (!has_pending_) return;
   has_pending_ = false;
   const SendToggles toggles = pending_toggles_;
@@ -7374,24 +7433,20 @@ void ChatWindow::FlushPending() {
   pending_whisper_.clear();
   // Un refus (mot interdit) s'affiche dans NOTRE chat : le natif ouvrirait une
   // modale bloquante, qui relance le rendu du mode courant — proscrit ici.
-  if (error != nullptr) {
-    Line line;
-    // COLORREF, comme toute couleur de ligne ici : 0x6060FF = rouge clair
-    // (R=255, G=96, B=96), pas l'inverse.
-    line.rgb = 0x6060FF;
-    Run run;
-    run.text = error;
-    line.runs.push_back(run);
-    line.plain = run.text;
-    SYSTEMTIME now;
-    GetLocalTime(&now);
-    line.hour   = static_cast<uint8_t>(now.wHour);
-    line.minute = static_cast<uint8_t>(now.wMinute);
-    line.second = static_cast<uint8_t>(now.wSecond);
-    std::lock_guard<std::mutex> lock(lines_mutex_);
-    lines_.push_back(std::move(line));
-    TrimLines();
-  }
+  if (error != nullptr) AddLocalLine(error, kSendErrorRgb);
+}
+
+// Joue la commande de Bourgeon armée par QueueSend. Appelée par FlushPending,
+// donc hors frame ImGui — c'est toute la raison d'être du report.
+void ChatWindow::FlushCommandAction() {
+  if (pending_cmd_action_.empty()) return;
+  const std::string action   = pending_cmd_action_;
+  const std::string argument = pending_cmd_argument_;
+  // Désarmé AVANT d'exécuter : une action qui lèverait ne doit pas se rejouer à
+  // chaque tick jusqu'à la fin de la session.
+  pending_cmd_action_.clear();
+  pending_cmd_argument_.clear();
+  chatcmd::RunAction(action.c_str(), argument.c_str());
 }
 
 // ── Réglages ─────────────────────────────────────────────────────────────────

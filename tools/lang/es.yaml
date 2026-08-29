@@ -3681,3 +3681,10 @@
 "Texte des PV": "Texto de los PV"
 "Détacher : Échap referme la fenêtre": "Soltar: Escape vuelve a cerrar la ventana"
 "Épingler : Échap ne ferme plus": "Fijar: Escape ya no la cierra"
+
+# Commandes de chat interceptees (features/systems/chat_commands.cc) :
+# la reponse donnee au joueur qui tape une commande qui n'existe pas ici.
+"Pas d'auto-attaque sur ce serveur, ici il faut jouer soi-même.": "En este servidor no hay auto-ataque: aquí se juega en persona."
+"La Warp Agent est là pour vous servir.": "La Warp Agent está aquí para servirte."
+"Recherche de PNJ, de monstre ou de carte : c'est la fenêtre Navigation.": "Buscar un NPC, un monstruo o un mapa: esa es la ventana Navegación."
+"Ramassage automatique : @autoloot, @autolootitem <objet>, @autoloottype <type>. Pour savoir qui lâche quoi : @whodrops <objet>, ou la fiche du monstre.": "Recogida automática: @autoloot, @autolootitem <objeto>, @autoloottype <tipo>. Para saber quién suelta qué: @whodrops <objeto>, o la ficha del monstruo."
