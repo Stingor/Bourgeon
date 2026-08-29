@@ -2313,6 +2313,46 @@ bool SetPlayerGageVisible(bool visible) {
   return touched;
 }
 
+// ── 🔴 La faire NAÎTRE invisible : détour du ctor ────────────────────────────
+//
+// Le battement par frame ne peut pas tout couvrir, et c'est structurel. Il passe
+// en TÊTE de frame, avant que le jeu ne dessine ; la jauge, elle, naît AU
+// MILIEU — son ctor est appelé depuis la mise à jour du mode, donc après notre
+// battement et avant le dessin. La frame de sa naissance la montre TOUJOURS. À
+// l'entrée sur une carte c'est précisément là que les frames sont les plus
+// longues (textures à charger) : une seule suffit à bien la voir, et c'est le
+// clignotement qu'on nous rapportait à chaque changement de carte.
+//
+// D'où ce détour, sur le ctor lui-même : la fenêtre naît avec son `visible` à 0,
+// il n'y a plus de première frame à rattraper. Le battement RESTE, pour ce que
+// le détour ne peut pas faire — la jauge déjà créée quand on coche l'option, et
+// le cas où le détour n'a pas pu être posé.
+//
+// Deux sites de création dans le client, tous deux couverts puisqu'on détourne
+// la FONCTION et non ses appels : le handler de msg 0x22 de l'acteur du joueur
+// (0x00d33136, rangée en acteur+0x424) et la bascule `CGameMode::SendMsg`
+// case 41 (0x00c86e35, rangée en CGameMode+0x2b4).
+constexpr uintptr_t kUIPlayerGageCtor = 0x00836530;
+// `push ebp ; mov ebp, esp ; push -1` — les cinq octets exacts que le détour
+// recouvre (trois instructions entières, aucune relative à relocaliser).
+// Vérifiés avant de l'y poser : l'exe livré porte des correctifs WARP que l'IDB
+// ne montre pas, et écrire un JMP par-dessus autre chose ne pardonnerait pas.
+constexpr uint8_t kUIPlayerGageCtorBytes[5] = {0x55, 0x8b, 0xec, 0x6a, 0xff};
+
+using UIPlayerGageCtor_t = void*(__fastcall*)(void*, void*);  // __thiscall, rend `this`
+UIPlayerGageCtor_t g_orig_player_gage_ctor = nullptr;
+// L'option, vue depuis le contexte natif : écrite par le battement, lue par le
+// détour. Même patron que `g_bi_hide` plus bas.
+bool g_hide_player_gage = false;
+
+void* __fastcall PlayerGageCtorStub(void* self, void* edx) {
+  void* wnd = g_orig_player_gage_ctor(self, edx);
+  // Après le ctor, jamais avant : c'est `UIWindow_base_ctor` qui pose le
+  // `visible` à 1, et l'écraser d'abord ne servirait à rien.
+  if (wnd && g_hide_player_gage) uiwnd::SetVisible(wnd, false);
+  return wnd;
+}
+
 // ── Hide native Basic Info PRE-RENDER via its msg-0x22 handler ───────────────
 // UIBasicInfoWnd (id 0) vtable 0x0103e35c. Its OnMsg is vtable+0x94; MakeWindow's
 // id-0 case calls it with msg 0x22 (layout-restore) DURING creation, before the
@@ -2458,6 +2498,26 @@ BasicInfo::BasicInfo() {
         hm.SetHook(hooking::HookType::kJmpHook, reinterpret_cast<uint8_t*>(kJobGetMaxJobLevel),
                    reinterpret_cast<uint8_t*>(&BIMaxJobLevelHook)));
   }
+  // Jauge HP/SP sous le personnage : la faire naître invisible plutôt que la
+  // masquer après coup (le récit est sur `kUIPlayerGageCtor`). Posé ici, au
+  // chargement de la DLL, pour la même raison que les détours ci-dessus : aucune
+  // jauge n'existe encore, la toute première création est donc déjà prise.
+  {
+    const uint8_t* site = reinterpret_cast<const uint8_t*>(kUIPlayerGageCtor);
+    if (memcmp(site, kUIPlayerGageCtorBytes, sizeof(kUIPlayerGageCtorBytes)) == 0) {
+      g_orig_player_gage_ctor = reinterpret_cast<UIPlayerGageCtor_t>(
+          hooking::HookManager::Instance().SetHook(
+              hooking::HookType::kJmpHook,
+              reinterpret_cast<uint8_t*>(kUIPlayerGageCtor),
+              reinterpret_cast<uint8_t*>(&PlayerGageCtorStub)));
+    } else {
+      LogError(
+          "BasicInfo : 0x{:x} ne porte pas le prologue attendu de UIPlayerGage_ctor "
+          "— détour NON posé, la jauge HP/SP native clignotera une frame à chaque "
+          "changement de carte.",
+          kUIPlayerGageCtor);
+    }
+  }
   // ZC_EQUIPMENT_EFFECT 0x0A3B (VAR) : [len:2][aid:4][status:1]{effectId:2}. On
   // OBSERVE (paquet natif intact) pour suivre les hat effects actifs du joueur ;
   // `data` pointe dans le buffer recv live -> on lit toute la liste via `len`
@@ -2539,6 +2599,10 @@ void BasicInfo::HandlePacket(uint16_t opcode, const uint8_t* data,
 // reprendrait au client ses propres raisons de la cacher.
 void BasicInfo::OnGameFramePulse() {
   if (Bourgeon::Instance().client().timestamp() != 20250716) return;
+  // L'option, portée au détour du ctor : il tourne dans la mise à jour du mode,
+  // donc APRÈS ce battement dans la même frame — la jauge qui naîtra tout à
+  // l'heure verra donc bien la valeur d'aujourd'hui.
+  g_hide_player_gage = hide_own_pc_gage_;
   if (hide_own_pc_gage_) {
     if (SetPlayerGageVisible(false)) own_gage_hidden_ = true;
   } else if (own_gage_hidden_) {
