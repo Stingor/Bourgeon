@@ -18,6 +18,7 @@
 #include "ragnarok/game_scene.h"
 #include "ragnarok/game_settings.h"  // gamesettings::IsOn (le drapeau /nc)
 #include "ragnarok/globals.h"
+#include "ragnarok/social.h"  // rag::social::OwnAid
 #include "ui/doll.h"        // portrait d'un JOUEUR (pantin composé)
 #include "ui/hud_frame.h"   // le cadre libre, commun aux HUD
 #include "ui/mob_sprite.h"  // portrait d'un MONSTRE
@@ -163,7 +164,7 @@ const char* const kEleNames[] = {"Neutral", "Water", "Earth",  "Fire",  "Wind",
                                  "Poison",  "Holy",  "Shadow", "Ghost", "Undead"};
 const char* const kSizeNames[] = {"Small", "Medium", "Large"};
 
-// Disposition d'origine des cinq cadres — la même que l'initialisation du
+// Disposition d'origine des cadres — la même que l'initialisation du
 // header, mais ATTEIGNABLE : « Réinitialiser » ne peut pas construire un
 // TargetFrame pour la relire (son constructeur enregistre un opcode, et un
 // plugin fantôme s'inscrirait au passage).
@@ -174,6 +175,7 @@ constexpr DefaultRect kDefaultRects[TargetFrame::kElemCount] = {
     {96, 56, 190, 16},   // PV
     {96, 74, 190, 16},   // SP
     {20, 96, 266, 18},   // race / élément
+    {20, 118, 266, 30},  // états
 };
 
 const char* NameFromTable(const char* const* table, size_t count, unsigned idx) {
@@ -932,6 +934,25 @@ void TargetFrame::PollServer() {
 
 // ── Rendu ───────────────────────────────────────────────────────────────────
 
+void TargetFrame::CollectTargetStates(
+    std::vector<StatusEffects::Entry>* out) const {
+  out->clear();
+  // 🔴 L'APERÇU COURT-CIRCUITE TOUT LE RESTE, et il le faut : les refus qui
+  // suivent sont ceux d'un cadre SANS cible, et c'est exactement l'état dans
+  // lequel on le place. L'aperçu existe pour ne pas avoir à tenir une cible
+  // d'une main en réglant de l'autre.
+  if (st_preview_) {
+    statuscell::AppendPreview(out, st_max_icons_);
+    return;
+  }
+  auto* fx = Bourgeon::Instance().status_effects();
+  if (fx == nullptr || gid_ == 0) return;
+  if (gid_ == rag::social::OwnAid()) return;
+  // Le registre applique déjà sa règle d'accès : un adversaire PVP n'y est
+  // jamais entré, donc il n'y a rien à filtrer de plus ici.
+  fx->Effects(gid_, out);
+}
+
 void TargetFrame::OnRenderUI() {
   if (!enabled_) return;
   // Les offsets ci-dessus sont ceux de CE build. Sur un autre client, on ne
@@ -997,7 +1018,16 @@ void TargetFrame::DrawHud() {
   // Sans cible, les cadres ne s'affichent qu'en mode placement — ou tant qu'un
   // cadre est SAISI : on ne retire pas sous les doigts du joueur ce qu'il est en
   // train de poser.
-  if (!actor && !layout_mode_ && !ro::HudFrameDragging()) return;
+  //
+  // ⚠ Le test porte sur NOS cadres, par leur préfixe commun : `HudFrameDragging()`
+  // seul est global, et faisait apparaître ces cinq cadres vides dès qu'on
+  // saisissait la barre d'états.
+  {
+    const char* drag = ro::HudFrameDraggingId();
+    const bool ours = (drag != nullptr) &&
+                      std::strncmp(drag, "##bourgeon_target_", 18) == 0;
+    if (!actor && !layout_mode_ && !ours) return;
+  }
 
   if (actor) {
     // Ce que le client sait tout seul. Une seule interrogation du dictionnaire,
@@ -1030,6 +1060,18 @@ void TargetFrame::DrawHud() {
 void TargetFrame::DrawElements(void* game_mode, void* actor) {
   const AlignGrid* grid = nullptr;
   if (auto* mui = Bourgeon::Instance().moonlight_ui()) grid = &mui->grid_;
+
+  // Le registre ne sonde que si QUELQU'UN affiche : demande VIVANTE, réarmée à
+  // chaque frame. Elle part AVANT le rendu — sans elle, un cadre vide ne
+  // demanderait jamais rien et resterait vide pour toujours.
+  //
+  // ⚠ `RequestTargetPolling` et non `RequestPolling` : ce qui nous intéresse est
+  // la CIBLE, pas le groupe. Les confondre faisait interroger vingt-quatre
+  // membres pour un cadre qui n'en montre aucun.
+  if (elems_[kElemStatus].show) {
+    if (auto* fx = Bourgeon::Instance().status_effects())
+      fx->RequestTargetPolling();
+  }
 
   // La plaque d'un monstre porte le niveau et les PV en clair. Repli seulement :
   // dès que ZC 0x0F2A répond, ses chiffres l'emportent.
@@ -1335,6 +1377,44 @@ void TargetFrame::DrawElements(void* game_mode, void* actor) {
         // Le serveur les donne en indices (fiables, indépendants des options
         // d'affichage) ; la plaque de nom d'un monstre porte les mêmes notions en
         // toutes lettres — race dans le champ guilde, élément dans le rang.
+        // ── Les ÉTATS de la cible ───────────────────────────────────────────
+        //
+        // 🔴 UN CADRE COMME LES AUTRES, et c'est tout l'objet de sa reprise. Il
+        // avait sa propre fenêtre, son propre verrou et sa propre position —
+        // deux cases « Verrouiller » dans le même panneau, et un cadre qui
+        // ignorait l'aimantation de ses frères alors qu'il décrit la MÊME cible.
+        //
+        // ⚠ Il se dessine même SANS acteur quand l'aperçu est allumé : c'est la
+        // situation dans laquelle on le place.
+        case kElemStatus: {
+          std::vector<StatusEffects::Entry> list;
+          CollectTargetStates(&list);
+          if (list.empty()) break;
+
+          const float pad  = 3.0f;
+          const float side = ro::Px(static_cast<float>(std::max(8, st_icon_px_)));
+          const float gap  = ro::Px(static_cast<float>(std::max(0, st_gap_px_)));
+          const float fsz  = ro::Px(static_cast<float>(std::max(7, st_time_px_)));
+
+          statuscell::Style st;
+          st.sweep       = st_sweep_;
+          st.sweep_color = ImGui::ColorConvertFloat4ToU32(
+              ImVec4(st_col_sweep_[0], st_col_sweep_[1], st_col_sweep_[2],
+                     st_col_sweep_[3]));
+          st.time_px     = st_show_time_ ? fsz : 0.0f;
+
+          statuscell::RowOpts row;
+          row.side  = side;
+          row.gap   = gap;
+          row.max   = st_max_icons_;
+          row.rows  = st_rows_;
+          row.sort  = st_sort_;
+          row.limit = p1.x - pad;
+
+          statuscell::DrawRow(list, ImVec2(p0.x + pad, p0.y + pad), row, st,
+                              true);
+          break;
+        }
         case kElemKind: {
           if (!actor) break;
           char kind[192];

@@ -27,7 +27,6 @@
 #include "features/overlays/target_frame.h"
 #include "features/overlays/menu_icons.h"
 #include "features/overlays/status_icon_bar.h"
-#include "features/overlays/target_status_bar.h"
 #include "features/status_cell.h"  // statuscell::kSweep* (defauts)
 #include "features/overlays/minimap.h"
 #include "features/overlays/quest_tracker.h"
@@ -113,32 +112,59 @@ using moonlight_ui::WriteArgbKey;
 // garde les fichiers des joueurs diff-identiques après le refactor.
 using SType = moonlight_ui::SettingType;
 
-// Barre d'icônes de statut (buffs/debuffs). Les deux dernières couleurs sont
-// persistées en ImU32 DÉCIMAL, pas en hex ARGB — héritage figé.
-#define SICON(member) \
-  MLUI_FIELD(status_icons, config().member), MLUI_DEFAULT(StatusIconConfig, member)
+// La barre de MES états.
+//
+// 🔴 LES CLÉS SONT NEUVES (`statusbar_*`), et les anciennes (`statusicon_*`)
+// sont ABANDONNÉES sans reprise. Elles décrivaient un ancrage à un coin de
+// l'écran avec un sens d'empilement et un pas — un modèle qui n'existe plus
+// depuis que la barre est un cadre qu'on pose comme les autres. Les recharger
+// dans les nouveaux champs aurait donné une barre placée n'importe où, sans que
+// rien ne l'explique : mieux vaut repartir des défauts, qui sont bons.
+//
+// ⚠ Une seule survit par son SENS et non par son nom : l'opacité, qui vaut
+// toujours pour les deux barres.
 const moonlight_ui::SettingDesc kStatusIconSettings[] = {
-    {"statusicon_enabled",        SType::kBool,     SICON(enabled)},
-    {"statusicon_corner",         SType::kInt,      SICON(corner)},
-    {"statusicon_margin_x",       SType::kInt,      SICON(margin_x)},
-    {"statusicon_margin_y",       SType::kInt,      SICON(margin_y)},
-    {"statusicon_step_dir",       SType::kInt,      SICON(step_dir)},
-    {"statusicon_wrap_dir",       SType::kInt,      SICON(wrap_dir)},
-    {"statusicon_per_line",       SType::kInt,      SICON(per_line)},
-    {"statusicon_icon_pitch",     SType::kInt,      SICON(icon_pitch)},
-    {"statusicon_line_pitch",     SType::kInt,      SICON(line_pitch)},
-    {"statusicon_sort_mode",      SType::kInt,      SICON(sort_mode)},
-    {"statusicon_show_remaining", SType::kBool,     SICON(show_remaining)},
-    {"statusicon_time_bg",        SType::kBool,     SICON(time_bg)},
-    {"statusicon_icon_alpha",     SType::kInt,      SICON(icon_alpha)},
-    {"statusicon_icon_size",      SType::kInt,      SICON(icon_size)},
-    {"statusicon_time_place",     SType::kInt,      SICON(time_place)},
-    {"statusicon_time_anchor",    SType::kInt,      SICON(time_anchor)},
-    {"statusicon_time_bold",      SType::kBool,     SICON(time_bold)},
-    {"statusicon_time_text",      SType::kColorU32, SICON(col_time_text)},
-    {"statusicon_time_shadow",    SType::kColorU32, SICON(col_time_shadow)},
+    {"statusbar_on", SType::kBool,
+     MLUI_FIELD(status_icons, enabled_), MLUI_LITERAL(bool, false)},
+    {"statusbar_lock", SType::kBool,
+     MLUI_FIELD(status_icons, locked_), MLUI_LITERAL(bool, true)},
+    {"statusbar_border", SType::kBool,
+     MLUI_FIELD(status_icons, border_), MLUI_LITERAL(bool, true)},
+    {"statusbar_x", SType::kInt,
+     MLUI_FIELD(status_icons, rect().x), MLUI_LITERAL(int, 40)},
+    {"statusbar_y", SType::kInt,
+     MLUI_FIELD(status_icons, rect().y), MLUI_LITERAL(int, 120)},
+    {"statusbar_w", SType::kInt,
+     MLUI_FIELD(status_icons, rect().w), MLUI_LITERAL(int, 240)},
+    {"statusbar_h", SType::kInt,
+     MLUI_FIELD(status_icons, rect().h), MLUI_LITERAL(int, 34)},
+    {"statusbar_icon_px", SType::kInt,
+     MLUI_FIELD(status_icons, icon_px()), MLUI_LITERAL(int, 24)},
+    {"statusbar_gap", SType::kInt,
+     MLUI_FIELD(status_icons, gap_px()), MLUI_LITERAL(int, 2)},
+    {"statusbar_max", SType::kInt,
+     MLUI_FIELD(status_icons, max_icons()), MLUI_LITERAL(int, 40)},
+    {"statusbar_anchor", SType::kInt,
+     MLUI_FIELD(status_icons, anchor()), MLUI_LITERAL(int, 0)},
+    {"statusbar_rows", SType::kInt,
+     MLUI_FIELD(status_icons, rows()), MLUI_LITERAL(int, 1)},
+    {"statusbar_sort", SType::kInt,
+     MLUI_FIELD(status_icons, sort()),
+     MLUI_LITERAL(int, statuscell::kSortArrival)},
+    {"statusbar_time", SType::kBool,
+     MLUI_FIELD(status_icons, show_time_), MLUI_LITERAL(bool, true)},
+    {"statusbar_time_px", SType::kInt,
+     MLUI_FIELD(status_icons, time_px()), MLUI_LITERAL(int, 11)},
+    {"statusbar_sweep", SType::kInt,
+     MLUI_FIELD(status_icons, sweep()),
+     MLUI_LITERAL(int, statuscell::kSweepVertical)},
+    {"statusbar_sweep_col", SType::kColorHex,
+     MLUI_FIELD(status_icons, col_sweep_), MLUI_LITERAL_ARGB(0x8C000000)},
+    {"statusbar_bg", SType::kColorHex,
+     MLUI_FIELD(status_icons, col_bg_), MLUI_LITERAL_ARGB(0x8C0D0D12)},
+    {"statusbar_alpha", SType::kInt,
+     MLUI_FIELD(status_icons, alpha()), MLUI_LITERAL(int, 100)},
 };
-#undef SICON
 
 // Suivi de quête (overlay ImGui).
 #define QTRACK(member) \
@@ -714,44 +740,40 @@ const moonlight_ui::SettingDesc kPartyFramesSettings[] = {
 // La barre d'etats de la CIBLE. Un cadre a elle, place et regle a part : suivre
 // les etats de sa cible et suivre ses points de vie ne se font pas au meme
 // endroit de l'ecran.
+// Le CONTENU du cadre d'états de la cible.
+//
+// 🔴 Sa géométrie n'est plus ici. Le cadre a rejoint `TargetFrame::elems_`, dont
+// les réglages de position, de taille, de fond et de visibilité sont GÉNÉRÉS en
+// boucle sur `kElemKeys` (settings_containers) — sous `target_status_*`. Les
+// anciennes clés `tgtstatus_x/y/w/h`, `_lock`, `_border`, `_bg` et `_on` sont
+// donc abandonnées : elles décrivaient un cadre autonome, avec son propre
+// verrou, qui n'existe plus.
+//
+// ⚠ Les clés de CONTENU gardent leur nom : leur sens n'a pas changé, seul leur
+// propriétaire. Un joueur qui avait réglé la taille de ses icônes la retrouve.
 const moonlight_ui::SettingDesc kTargetStatusSettings[] = {
-    {"tgtstatus_on", SType::kBool,
-     MLUI_FIELD(target_status_bar, enabled_), MLUI_LITERAL(bool, false)},
-    {"tgtstatus_lock", SType::kBool,
-     MLUI_FIELD(target_status_bar, locked_), MLUI_LITERAL(bool, true)},
-    {"tgtstatus_border", SType::kBool,
-     MLUI_FIELD(target_status_bar, border_), MLUI_LITERAL(bool, true)},
     {"tgtstatus_icon_px", SType::kInt,
-     MLUI_FIELD(target_status_bar, icon_px()), MLUI_LITERAL(int, 24)},
+     MLUI_FIELD(target_frame, st_icon_px()), MLUI_LITERAL(int, 24)},
     {"tgtstatus_max", SType::kInt,
-     MLUI_FIELD(target_status_bar, max_icons()), MLUI_LITERAL(int, 20)},
+     MLUI_FIELD(target_frame, st_max_icons()), MLUI_LITERAL(int, 20)},
     {"tgtstatus_gap", SType::kInt,
-     MLUI_FIELD(target_status_bar, gap_px()), MLUI_LITERAL(int, 2)},
-    {"tgtstatus_sort", SType::kInt,
-     MLUI_FIELD(target_status_bar, sort()),
-     MLUI_LITERAL(int, TargetStatusBar::kSortShortest)},
-    {"tgtstatus_time", SType::kBool,
-     MLUI_FIELD(target_status_bar, show_time_), MLUI_LITERAL(bool, true)},
-    {"tgtstatus_time_px", SType::kInt,
-     MLUI_FIELD(target_status_bar, time_px()), MLUI_LITERAL(int, 11)},
+     MLUI_FIELD(target_frame, st_gap_px()), MLUI_LITERAL(int, 2)},
     {"tgtstatus_rows", SType::kInt,
-     MLUI_FIELD(target_status_bar, rows()), MLUI_LITERAL(int, 1)},
+     MLUI_FIELD(target_frame, st_rows()), MLUI_LITERAL(int, 1)},
+    {"tgtstatus_sort", SType::kInt,
+     MLUI_FIELD(target_frame, st_sort()),
+     MLUI_LITERAL(int, statuscell::kSortEndingSoon)},
+    {"tgtstatus_time", SType::kBool,
+     MLUI_FIELD(target_frame, st_show_time_), MLUI_LITERAL(bool, true)},
+    {"tgtstatus_time_px", SType::kInt,
+     MLUI_FIELD(target_frame, st_time_px()), MLUI_LITERAL(int, 11)},
     {"tgtstatus_sweep", SType::kInt,
-     MLUI_FIELD(target_status_bar, sweep()),
-     MLUI_LITERAL(int, TargetStatusBar::kSweepRadial)},
+     MLUI_FIELD(target_frame, st_sweep()),
+     MLUI_LITERAL(int, statuscell::kSweepRadial)},
     {"tgtstatus_sweep_col", SType::kColorHex,
-     MLUI_FIELD(target_status_bar, col_sweep_), MLUI_LITERAL_ARGB(0x8C000000)},
-    {"tgtstatus_bg", SType::kColorHex,
-     MLUI_FIELD(target_status_bar, col_bg_), MLUI_LITERAL_ARGB(0x8C0D0D12)},
-    {"tgtstatus_x", SType::kInt,
-     MLUI_FIELD(target_status_bar, rect().x), MLUI_LITERAL(int, 40)},
-    {"tgtstatus_y", SType::kInt,
-     MLUI_FIELD(target_status_bar, rect().y), MLUI_LITERAL(int, 320)},
-    {"tgtstatus_w", SType::kInt,
-     MLUI_FIELD(target_status_bar, rect().w), MLUI_LITERAL(int, 240)},
-    {"tgtstatus_h", SType::kInt,
-     MLUI_FIELD(target_status_bar, rect().h), MLUI_LITERAL(int, 34)},
+     MLUI_FIELD(target_frame, st_col_sweep_), MLUI_LITERAL_ARGB(0x8C000000)},
 };
+
 
 const moonlight_ui::SettingDesc kPartyFriendSettings[] = {
     {"partyfriend_imgui", SType::kBool,
@@ -2089,7 +2111,6 @@ void MoonlightUi::PostLoadApply() {
 
   if (target_frame) target_frame->enabled_ = target_frame_choisi;
 
-  if (auto* status_icons = Bourgeon::Instance().status_icons()) status_icons->MarkDirty();
   if (auto* screen_fx = Bourgeon::Instance().screen_fx())
     screen_fx->Apply();  // pousse le post-traitement vers la couche d3d9
 

@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include "features/plugin.h"
+#include "features/status_cell.h"  // la case et la rangée d'états
 #include "ui/hud_frame.h"  // ro::HudRect — la géométrie est celle du cadre
 
 // ── TargetFrame ──────────────────────────────────────────────────────────────
@@ -117,23 +118,33 @@ class TargetFrame : public Plugin {
   // message (surcharge de poids) et relancer le tick du mode.
   void OnGameFramePulse();
 
-  // ── Les cinq cadres ───────────────────────────────────────────────────────
+  // ── Les six cadres ────────────────────────────────────────────────────────
   // Chacun est indépendant : position, taille, couleurs, interrupteur. Comme les
   // barres de Basic Info, dont ils partagent la mécanique et l'esprit.
+  //
+  // 🔴 LES ÉTATS EN FONT PARTIE, et ce n'était pas le cas au départ. Ils avaient
+  // leur propre cadre, avec leur propre verrou et leur propre position — donc
+  // une seconde case « Verrouiller » dans le même panneau, et un cadre qui ne
+  // s'aimantait pas sur les autres alors qu'il décrit la MÊME cible. Tout ce qui
+  // parle de la cible se place ensemble et se verrouille ensemble.
   enum ElemId {
     kElemPortrait = 0,
     kElemName,
     kElemHp,
     kElemSp,
     kElemKind,
+    kElemStatus,
     kElemCount
   };
 
   // Suffixe de persistance + libellé, indexés par ElemId.
-  static constexpr const char* kElemKeys[kElemCount] = {"portrait", "name", "hp",
-                                                        "sp", "kind"};
+  //
+  // ⚠ La persistance est GÉNÉRÉE en boucle sur ces clés (settings_containers) :
+  // ajouter un élément crée ses réglages de géométrie sans rien écrire de plus.
+  static constexpr const char* kElemKeys[kElemCount] = {
+      "portrait", "name", "hp", "sp", "kind", "status"};
   static constexpr const char* kElemLabels[kElemCount] = {
-      "Portrait", "Nom", "PV", "SP", "Race / élément"};
+      "Portrait", "Nom", "PV", "SP", "Race / élément", "États"};
 
   struct Elem {
     bool        show;
@@ -262,6 +273,35 @@ class TargetFrame : public Plugin {
   bool  cast_on_target_ = false;
 
   // Portrait : mêmes leviers que le portrait du joueur.
+  // ── Le contenu du cadre d'ÉTATS ───────────────────────────────────────────
+  //
+  // Ces réglages viennent de `TargetStatusBar`, qui était un plugin à part. Sa
+  // géométrie et son verrou ont rejoint `elems_[kElemStatus]` ; seul reste ici
+  // ce qui décrit son CONTENU, et qui n'a d'équivalent dans aucun autre cadre.
+  //
+  // ⚠ Les clés persistées gardent leur nom (`tgtstatus_*`) : leur SENS n'a pas
+  // changé, seul leur propriétaire. Ce sont celles de la géométrie et du verrou
+  // qui disparaissent, remplacées par les `target_status_*` générées.
+  int   st_icon_px_   = 24;
+  int   st_max_icons_ = 20;
+  int   st_gap_px_    = 2;
+  int   st_rows_      = 1;
+  int   st_sort_      = statuscell::kSortEndingSoon;
+  bool  st_show_time_ = true;
+  int   st_time_px_   = 11;
+  int   st_sweep_     = statuscell::kSweepRadial;
+  float st_col_sweep_[4] = {0.0f, 0.0f, 0.0f, 0.55f};
+  // L'aperçu : de faux états, le temps de régler le cadre. NON persisté.
+  bool  st_preview_   = false;
+
+  int& st_icon_px()   { return st_icon_px_; }
+  int& st_max_icons() { return st_max_icons_; }
+  int& st_gap_px()    { return st_gap_px_; }
+  int& st_rows()      { return st_rows_; }
+  int& st_sort()      { return st_sort_; }
+  int& st_time_px()   { return st_time_px_; }
+  int& st_sweep()     { return st_sweep_; }
+
   int   portrait_dir_     = 0;     // orientation 0..7 (0 = de face)
   int   portrait_anim_    = 0;     // type d'action (0 = repos)
   bool  portrait_animate_ = true;  // jouer les images de l'action
@@ -277,10 +317,24 @@ class TargetFrame : public Plugin {
                       {0.30f, 0.62f, 0.95f, 1.00f}},
       /* race/ele */ {true, {20, 96, 266, 18}, {0.05f, 0.05f, 0.07f, 0.78f},
                       {0.78f, 0.78f, 0.85f, 1.00f}},
+      /* états    */ {false, {20, 118, 266, 30}, {0.05f, 0.05f, 0.07f, 0.55f},
+                      {1.00f, 1.00f, 1.00f, 1.00f}},
   };
 
   // Posé quand un cadre a bougé ; MoonlightUi le draine pour n'écrire le YAML
   // qu'une fois, au lieu d'à chaque frame de glissement.
+  // Les états de la cible à peindre cette frame.
+  //
+  // 🔴 JAMAIS LES MIENS. Se cibler — depuis une tuile de la grille, par exemple
+  // — ferait apparaître ici ses PROPRES états, que la barre d'états montre déjà
+  // en permanence : deux affichages de la même chose, dont l'un surgit et
+  // disparaît au gré des clics.
+  //
+  // 🔴 CE QU'ELLE NE MONTRERA JAMAIS : le serveur ne répond que sur un membre de
+  // mon groupe et sur les entités qui ne sont à personne. Cibler un adversaire
+  // PVP ne donne rien, et c'est voulu — ses états sont une information de jeu.
+  void CollectTargetStates(std::vector<StatusEffects::Entry>* out) const;
+
   bool geometry_dirty_ = false;
 
   // Section « Fenêtre de cible » du panneau Moonlight. Renvoie true si un

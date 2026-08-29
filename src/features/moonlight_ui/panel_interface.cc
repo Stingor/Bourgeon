@@ -50,7 +50,6 @@
 #include "features/overlays/skill_bar.h"
 #include "features/overlays/status_icon_bar.h"
 #include "features/overlays/party_frames.h"
-#include "features/overlays/target_status_bar.h"
 #include "features/windows/party_friend_window.h"
 #include "features/overlays/target_frame.h"
 #include "features/windows/storage_window.h"
@@ -631,70 +630,55 @@ void MoonlightUi::DrawInterfacePanel() {
 
         // ── Les ÉTATS de la cible ──────────────────────────────────────────
         //
-        // Réglés ICI, et non dans une entrée de navigation à eux : c'est le
-        // même sujet — ce qu'on regarde d'une cible — et deux entrées auraient
-        // fait chercher à deux endroits ce qui se décide en même temps.
+        // 🔴 LE CADRE EST RANGÉ AVEC LES AUTRES. Sa case, sa position, son fond
+        // et son liseré sont dans « Cadres » ci-dessus, et il obéit au verrou de
+        // la fenêtre — comme le portrait, le nom ou les jauges. Il avait sa
+        // propre géométrie et son propre verrou : deux cases « Verrouiller »
+        // dans le même panneau, et un cadre qui ignorait l'aimantation de ses
+        // frères alors qu'il décrit la MÊME cible.
         //
-        // Elle SUIT le ciblage, comme la barre de vie juste au-dessus : les
-        // états d'une entité sont une information sur LA CIBLE, ils n'ont pas à
-        // survivre au mode qui décide qu'une cible existe. Éteindre le ciblage
-        // éteint tout ce qui en parle, sans avoir à décocher trois réglages.
-        SeparatorText(i18n::Tr("États de la cible"));
-        auto* tsb = Bourgeon::Instance().target_status_bar();
-        if (tsb == nullptr) {
-          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
-        } else {
+        // Ne reste donc ici que ce qui décrit son CONTENU, et n'a d'équivalent
+        // dans aucun autre cadre.
+        if (auto* tf = Bourgeon::Instance().target_frame()) {
           bool changed = false;
-          changed |= ro::RoCheckbox(i18n::Tr("Afficher la barre"),
-                                    &tsb->enabled_);
-          SameLine(); HelpMarker(i18n::Tr(
-              "Une barre à elle, qu'on place et dimensionne où l'on veut : les "
-              "états de la cible ne se regardent pas au même endroit que ses "
-              "points de vie.\n\n"
-              "Elle suit le CIBLAGE : mode éteint, pas de barre.\n\n"
-              "⚠ Ne montre RIEN sur un joueur qui n'est pas de votre groupe : "
-              "ses états sont une information de jeu, et le serveur ne les donne "
-              "pas. Les monstres, eux, sont lisibles."));
-          if (!tsb->enabled_) ImGui::BeginDisabled();
+          SeparatorText(i18n::Tr("États de la cible"));
 
-          changed |= ro::RoCheckbox(i18n::Tr("Verrouiller la position"),
-                                    &tsb->locked_);
+          // ⚠ PAS dans `changed` : l'aperçu ne se persiste pas.
+          ro::RoCheckbox(i18n::Tr("Aperçu (faux statuts)"), &tf->st_preview_);
           SameLine(); HelpMarker(i18n::Tr(
-              "Fige la barre et laisse passer les clics vers le jeu.\n\n"
-              "Maintenir MAJ, CURSEUR SUR LA BARRE, la déverrouille le temps "
-              "d'un déplacement. Ailleurs à l'écran, MAJ garde son rôle habituel "
-              "(attaque forcée).\n\n"
-              "⚠ Une barre VIDE est invisible : déverrouillez-la pour la placer "
-              "quand la cible n'a aucun état."));
+              "Remplit l'affichage de faux états, aux durées étagées, le "
+              "temps de le régler — sans attendre d'en avoir de "
+              "vrais.\n\nNe se garde pas d'une session à l'autre."));
+
+          const bool on = tf->elems_[TargetFrame::kElemStatus].show;
+          if (!on) {
+            ImGui::TextDisabled("%s", i18n::Tr(
+                "Le cadre « États » est décoché dans Cadres, ci-dessus."));
+          }
+          ImGui::BeginDisabled(!on);
 
           // ── Icônes ────────────────────────────────────────────────────────
           SeparatorText(i18n::Tr("Icônes"));
-          changed |= WheelSliderInt(i18n::Tr("Taille"), &tsb->icon_px(),
+          changed |= WheelSliderInt(i18n::Tr("Taille"), &tf->st_icon_px(),
                                     12, 48, "%d px");
-          changed |= WheelSliderInt(i18n::Tr("Écart"), &tsb->gap_px(),
+          changed |= WheelSliderInt(i18n::Tr("Écart"), &tf->st_gap_px(),
                                     0, 12, "%d px");
           changed |= WheelSliderInt(i18n::Tr("Nombre au plus"),
-                                    &tsb->max_icons(), 1, 40, "%d");
-          changed |= WheelSliderInt(i18n::Tr("Lignes d'icônes"),
-                                    &tsb->rows(), 1, 6, "%d");
-          SameLine(); HelpMarker(i18n::Tr(
-              "La barre se replie déjà sur sa largeur : ce réglage force en plus "
-              "un nombre fixe par rangée, pour une barre haute et étroite plutôt "
-              "que longue et plate."));
+                                    &tf->st_max_icons(), 1, 40, "%d");
           SameLine(); HelpMarker(i18n::Tr(
               "Au-delà, les états en trop sont écartés — ce sont les DERNIERS du "
               "rangement ci-dessous, qui décide donc de ce qu'on perd."));
+          changed |= WheelSliderInt(i18n::Tr("Lignes d'icônes"),
+                                    &tf->st_rows(), 1, 6, "%d");
+          SameLine(); HelpMarker(i18n::Tr(
+              "Le cadre se replie déjà sur sa largeur : ce réglage force en plus "
+              "un nombre fixe par rangée, pour un cadre haut et étroit plutôt "
+              "que long et plat."));
           {
-            // 🔴 ITEMS NUS, PAS DE `i18n::Tr` ICI. RoCombo traduit ses items a
-            // la LECTURE (ro_imgui.cc) : envelopper la table les fait passer
-            // DEUX fois par Tr, et le second appel cherche la traduction
-            // anglaise comme si elle etait une cle francaise. Il ne trouve
-            // rien, garde le texte tel quel — et la panne est INVISIBLE en
-            // francais, ou Tr rend l'identite. Elle ne se voit qu'en EN/ES.
-            const char* kSorts[] = {"Ordre d'arrivée",
-                                    "Bientôt fini d'abord",
+            // ⚠ Items NUS : RoCombo traduit à la lecture.
+            const char* kSorts[] = {"Ordre d'arrivée", "Bientôt fini d'abord",
                                     "Plus long d'abord"};
-            changed |= ro::RoCombo(i18n::Tr("Rangement"), &tsb->sort(),
+            changed |= ro::RoCombo(i18n::Tr("Rangement"), &tf->st_sort(),
                                    kSorts, IM_ARRAYSIZE(kSorts));
           }
           SameLine(); HelpMarker(i18n::Tr(
@@ -707,44 +691,38 @@ void MoonlightUi::DrawInterfacePanel() {
           // ── Compte à rebours ──────────────────────────────────────────────
           SeparatorText(i18n::Tr("Compte à rebours"));
           changed |= ro::RoCheckbox(i18n::Tr("Afficher le temps restant"),
-                                    &tsb->show_time_);
+                                    &tf->st_show_time_);
           SameLine(); HelpMarker(i18n::Tr(
               "Sous chaque icône. Un état permanent n'en porte pas : un « 0 » "
               "sous un buff qui ne finit jamais le ferait croire terminé."));
-          changed |= WheelSliderInt(i18n::Tr("Taille du texte"),
-                                    &tsb->time_px(), 7, 20, "%d px");
+          ImGui::BeginDisabled(!tf->st_show_time_);
+          Indent();
+            changed |= WheelSliderInt(i18n::Tr("Taille du texte"),
+                                      &tf->st_time_px(), 7, 20, "%d px");
+          Unindent();
+          ImGui::EndDisabled();
 
           // ── Écoulement ────────────────────────────────────────────────────
           SeparatorText(i18n::Tr("Écoulement"));
           {
-            const char* kSweeps[] = {"Aucun",
-                                     "Balayage horaire",
+            const char* kSweeps[] = {"Aucun", "Balayage horaire",
                                      "Voile descendant"};
             changed |= ro::RoCombo(i18n::Tr("Grisage de la case"),
-                                   &tsb->sweep(), kSweeps,
+                                   &tf->st_sweep(), kSweeps,
                                    IM_ARRAYSIZE(kSweeps));
           }
           SameLine(); HelpMarker(i18n::Tr(
               "La case s'assombrit à mesure que l'état s'écoule : on voit "
-              "lesquels vont tomber sans lire un seul nombre.\n\n"
-              "⚠ La durée d'origine n'est PORTÉE PAR AUCUN paquet. Elle est "
-              "exacte quand on a vu l'état commencer ; découvert en route, il "
-              "repart de « plein » et décroît ensuite au bon rythme.\n\n"
-              "Un état permanent n'est jamais grisé : il n'a pas de part "
-              "écoulée."));
-          if (tsb->sweep_ != TargetStatusBar::kSweepNone) {
-            changed |= RoColorSwatch(i18n::Tr("Voile"), tsb->col_sweep_);
-          }
+              "d'un coup d'œil lesquels sont près de tomber.\n\n"
+              "⚠ Un état sans échéance n'est jamais voilé : il n'a pas de part "
+              "écoulée, et le griser à moitié le ferait croire à mi-course."));
+          ImGui::BeginDisabled(tf->st_sweep() == statuscell::kSweepNone);
+          Indent();
+            changed |= RoColorSwatch(i18n::Tr("Voile"), tf->st_col_sweep_);
+          Unindent();
+          ImGui::EndDisabled();
 
-          // ── Couleurs ──────────────────────────────────────────────────────
-          SeparatorText(i18n::Tr("Couleurs"));
-          changed |= ro::RoCheckbox(i18n::Tr("Liseré"), &tsb->border_);
-          changed |= RoColorSwatch(i18n::Tr("Fond"), tsb->col_bg_);
-          SameLine(); HelpMarker(i18n::Tr(
-              "Sans fond, des icônes sombres sur une carte sombre se confondent "
-              "avec le décor."));
-
-          if (!tsb->enabled_) ImGui::EndDisabled();
+          ImGui::EndDisabled();
           if (changed) SaveSettings();
         }
       }
@@ -828,6 +806,13 @@ void MoonlightUi::DrawInterfacePanel() {
               "Ce qui s'affiche ici est donc ce qui est TOMBÉ sous vos yeux, "
               "pas l'état complet du personnage."));
           if (pfw->show_buffs_) {
+            // ⚠ PAS dans `changed` : l'aperçu ne se persiste pas, et le
+            // marquer réécrirait le fichier de réglages à chaque clic.
+            ro::RoCheckbox(i18n::Tr("Aperçu (faux statuts)"), &pfw->buff_preview_);
+            SameLine(); HelpMarker(i18n::Tr(
+                "Remplit l'affichage de faux états, aux durées étagées, le "
+                "temps de le régler — sans attendre d'en avoir de "
+                "vrais.\n\nNe se garde pas d'une session à l'autre."));
             // 🔴 PushID : l'identifiant ImGui d'un widget est son LIBELLÉ,
             // donc sa TRADUCTION. « Taille des icônes » (états) et « Taille
             // de l'icône » (classe) sont distincts en français et deviennent
@@ -1073,6 +1058,13 @@ void MoonlightUi::DrawInterfacePanel() {
               "Ce qui s'affiche ici est donc ce qui est TOMBÉ sous vos yeux, "
               "pas l'état complet du personnage."));
           if (pf->show_buffs_) {
+            // ⚠ PAS dans `changed` : l'aperçu ne se persiste pas.
+            ro::RoCheckbox(i18n::Tr("Aperçu (faux statuts)"), &pf->buff_preview_);
+            SameLine(); HelpMarker(i18n::Tr(
+                "Remplit l'affichage de faux états, aux durées étagées, le "
+                "temps de le régler — sans attendre d'en avoir de "
+                "vrais.\n\nNe se garde pas d'une session à l'autre."));
+
             // 🔴 PushID : l'identifiant ImGui d'un widget est son LIBELLÉ,
             // donc sa TRADUCTION. « Taille des icônes » (états) et « Taille
             // de l'icône » (classe) sont distincts en français et deviennent

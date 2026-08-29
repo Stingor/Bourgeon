@@ -45,7 +45,6 @@
 #include "features/patches/equip_tweaks.h"
 #include "features/patches/window_pos_tweaks.h"
 #include "features/overlays/status_icon_bar.h"
-#include "features/overlays/target_status_bar.h"
 #include "features/systems/entity_looks.h"
 #include "features/systems/status_effects.h"
 #include "features/overlays/minimap.h"
@@ -117,7 +116,6 @@ MenuIcons* Bourgeon::menu_icons()  { return menu_icons_; }
 StatusIconBar* Bourgeon::status_icons() { return status_icons_; }
 StatusEffects* Bourgeon::status_effects() { return status_effects_; }
 EntityLooks* Bourgeon::entity_looks() { return entity_looks_; }
-TargetStatusBar* Bourgeon::target_status_bar() { return target_status_bar_; }
 QuestTracker* Bourgeon::quest_tracker() { return quest_tracker_; }
 Minimap* Bourgeon::minimap() { return minimap_; }
 ItemObtainToast* Bourgeon::item_obtain_toast() { return item_obtain_toast_; }
@@ -1233,11 +1231,6 @@ void Bourgeon::LoadPlugins() {
     auto looks = std::make_unique<EntityLooks>();
     entity_looks_ = looks.get();
     plugins_.emplace_back(std::move(looks));
-  }
-  {
-    auto tsb = std::make_unique<TargetStatusBar>();
-    target_status_bar_ = tsb.get();
-    plugins_.emplace_back(std::move(tsb));
   }
   {
     auto quest_tracker = std::make_unique<QuestTracker>();
