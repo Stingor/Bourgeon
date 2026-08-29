@@ -450,7 +450,7 @@ un chemin natif qui marche.
 | pantin composé (job, sexe, coiffure, couleurs, coiffes, cape) | `src/ui/doll.h` — `ro::DollLook` a **exactement** les champs de l'en-tête |
 | gestes ET menu contextuel d'un objet | 🔴 `links::Hit` + `links::DrawMenu` + `links::HoverPreview` (`features/link_gesture.h`) |
 | habillage RO des fenêtres | `ro_imgui` (`ro::BeginRoWindow`, `ro::RoCheckbox`…) |
-| couleurs composées par la cible | `fx::style_sync::RemoteRecipe` + `palette_base` + `ro::ApplyRecipe` |
+| couleurs composées par la cible | 🔴 `fx::palette_inject::InjectedPalette` (repli : `style_sync::RemoteRecipe` + `palette_base` + `ro::ApplyRecipe`) |
 | MES pièces portées, par emplacement | `rag::equip::ReadWorn` (`ragnarok/equip_slots.h`) |
 | corps réel de la cible (3e/4e classes) | `fx::palette_inject::ActorBodySpritePath` |
 | position persistée | `window_position_persistence` |
@@ -503,11 +503,37 @@ monde dans SES couleurs : le serveur diffuse sa **recette** (`ZC 0x0F27`) et
 chaque client recalcule la palette. Un pantin qui l'ignorerait afficherait
 l'apparence native d'un personnage qui est, à trois mètres, d'une autre couleur.
 
+🔴🔴 **La source est la palette POSÉE SUR L'ACTEUR, pas un recalcul** —
+`fx::palette_inject::InjectedPalette(gid, …)`, exactement ce que
+`palette_inject.h` prescrit aux pantins de l'interface et ce que
+`FillOwnDollPalette` fait déjà pour notre propre pantin. Ce sont les octets que
+le rendu applique au personnage d'en face : le pantin ne peut pas en diverger.
+
+La première version recalculait (recette + `palette_base` + `ro::ApplyRecipe`),
+ce qui ouvrait un chemin PARALLÈLE : il faut y redeviner le `.pal` de vêtement
+que le natif avait choisi pour cet acteur, et deux chemins finissent toujours
+par ne plus dire la même chose. Corrigé le **2026-08-29** ; le recalcul reste,
+mais en **repli**, pour le joueur dont l'acteur ne porte encore rien (hors de
+portée d'affichage, ou style reçu avant que la boucle de `StyleSync` n'ait eu
+son tour).
+
+⚠ La palette vivante couvre en outre deux cas que la recette seule ne voit pas :
+
+- la **réparation automatique**, qui pose une recette NEUTRE sur les corps dont
+  le `.pal` de serveur laisse des index vides. Sans elle, un corps de **4e
+  classe** s'affichait ici en **silhouette noire** alors que son acteur était
+  correct à l'écran — et le joueur n'avait aucun style pour l'expliquer. Le
+  repli le corrige à son tour : même sans recette, il rend la base FUSIONNÉE
+  (`.spr` + `.pal`) au lieu du `.pal` de serveur seul ;
+- une recette posée sur une base qu'on ne saurait pas rebâtir à l'identique
+  (palette capturée sur le natif, cf. `palette_base::BuildFromSpritePath`).
+
 Le registre des recettes des joueurs en vue existait déjà (`style_sync.cc`,
 `g_remote`, indexé par GID) mais n'était pas lisible de l'extérieur : il est
-désormais exposé par **`fx::style_sync::RemoteRecipe(gid, body_key, out)`**, qui
-choisit la variante exactement comme le fait l'application sur l'acteur — une
-vue qui trancherait autrement montrerait d'autres couleurs que celles à l'écran.
+exposé par **`fx::style_sync::RemoteRecipe(gid, body_key, out)`**, qui choisit
+la variante exactement comme le fait l'application sur l'acteur. Il sert encore
+à deux choses : la **couleur de cheveux** (le bloc de 1024 octets ne concerne
+que le corps, et `SetHairPalette` n'a pas de lecteur) et le repli ci-dessus.
 
 Deux points qui ne s'improvisent pas :
 

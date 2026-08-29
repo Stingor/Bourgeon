@@ -168,6 +168,15 @@ uint32_t ReadU32(const uint8_t* p) {
 // personnage que le joueur a justement sous les yeux, autrement coloré — le
 // pantin et la personne ne seraient pas la même.
 //
+// 🔴🔴 LA SOURCE EST LA PALETTE POSÉE SUR L'ACTEUR, pas un recalcul. C'est ce
+// que `palette_inject.h` prescrit aux pantins de l'interface (« feuille de
+// perso, portrait, aperçu d'équipement, enregistreur GIF »), et c'est ce que
+// fait déjà `FillOwnDollPalette` pour notre propre pantin. Refaire le calcul
+// ouvre un chemin PARALLÈLE — il faut redeviner le `.pal` de vêtement que le
+// natif avait choisi pour cet acteur — et deux chemins finissent toujours par
+// ne plus dire la même chose. Le recalcul reste ici, mais en REPLI : il ne sert
+// qu'au joueur dont l'acteur ne porte encore rien.
+//
 // 🔴 Le CHEMIN DU SPRITE vient de l'ACTEUR quand il est là, pas d'une déduction.
 // La cible est forcément sur notre carte (garde serveur), donc son acteur porte
 // le corps que le client a RÉELLEMENT résolu — ce que la déduction rate sur les
@@ -175,10 +184,10 @@ uint32_t ReadU32(const uint8_t* p) {
 // chemin désigne AUSSI la variante de recette : se tromper de corps, c'est
 // appliquer les couleurs d'un autre.
 //
-// 🔴 Le résultat est CACHÉ. Le construire coûte l'analyse complète d'un `.spr` ;
+// 🔴 Le REPLI est caché. Le construire coûte l'analyse complète d'un `.spr` ;
 // ce panneau, lui, se redessine à chaque frame.
 struct DollPalette {
-  const uint8_t* rgba = nullptr;  // 1024 o RGBA, nullptr = pas de recette
+  const uint8_t* rgba = nullptr;  // 1024 o RGBA, nullptr = palette du fichier
   const char*    key  = nullptr;  // clé de cache de teinte du composeur
   const char*    spr  = nullptr;  // corps résolu, nullptr = laisser déduire
   int            hair = -1;       // couleur de cheveux imposée, -1 = celle du perso
@@ -210,6 +219,31 @@ DollPalette ResolveDollPalette(uint32_t gid, int job, int body, int sex,
   ro::PaletteRecipe recipe;
   const bool has_recipe = fx::style_sync::RemoteRecipe(gid, body_key, &recipe);
 
+  // ── Ce que l'acteur PORTE, octet pour octet ────────────────────────────────
+  // Ces 1024 octets sont exactement ceux que le rendu applique au personnage à
+  // trois mètres : le pantin ne peut donc pas en diverger.
+  //
+  // 🔴 Ils couvrent en outre deux cas que la recette seule ne voit pas :
+  //   • la RÉPARATION automatique, qui pose une recette NEUTRE sur les corps
+  //     dont le `.pal` de serveur laisse des index vides — sans elle, un corps
+  //     de 4e classe s'affiche ici en SILHOUETTE NOIRE alors que son acteur est
+  //     correct à l'écran, et le joueur n'a aucun style pour l'expliquer ;
+  //   • une recette posée à partir d'une base que nous ne saurions pas rebâtir
+  //     à l'identique (palette de vêtement capturée sur le natif, cf.
+  //     `palette_base::BuildFromSpritePath`).
+  //
+  // Statiques : `DollLook` ne garde que des POINTEURS, et le dessin a lieu plus
+  // loin dans la frame — même contrat que `FillOwnDollPalette`. Un seul pantin
+  // est composé par frame dans cette fenêtre.
+  static uint8_t vivante[1024];
+  static std::string vivante_key;
+  const bool posee =
+      fx::palette_inject::InjectedPalette(gid, vivante, sizeof(vivante));
+  // 🔴 La clé identifie le CONTENU : le composeur partage ses textures entre
+  // appels de même clé, donc une clé figée ferait ressortir les couleurs
+  // d'avant à chaque retouche du joueur inspecté.
+  if (posee) vivante_key = fx::palette_cache::DollKey(gid, vivante);
+
   struct Cached {
     uint64_t sig = ~0ull;
     std::vector<uint8_t> rgba;
@@ -239,6 +273,10 @@ DollPalette ResolveDollPalette(uint32_t gid, int job, int body, int sex,
   sig = HashBytes(&sex, sizeof(sex), sig);
   sig = HashBytes(&clothes_color, sizeof(clothes_color), sig);
   sig = HashBytes(&has_recipe, sizeof(has_recipe), sig);
+  // L'acteur qui SORT de vue (ou qui n'était pas encore monté) fait basculer la
+  // fiche d'un régime à l'autre : sans ce champ, le repli ne serait jamais
+  // construit pour un joueur dont la palette vivante vient de disparaître.
+  sig = HashBytes(&posee, sizeof(posee), sig);
   if (has_recipe) {
     sig = HashBytes(&recipe.palette_id, sizeof(recipe.palette_id), sig);
     sig = HashBytes(&recipe.hair_palette_id, sizeof(recipe.hair_palette_id), sig);
@@ -259,39 +297,72 @@ DollPalette ResolveDollPalette(uint32_t gid, int job, int body, int sex,
     c.hair = -1;
     c.spr  = spr;
 
-    if (has_recipe) {
-      // La couleur de CHEVEUX ne demande aucun calcul : le composeur sait teindre
-      // une tête à partir d'un numéro de palette officielle.
-      c.hair = recipe.hair_palette_id > 0 ? recipe.hair_palette_id : -1;
+    // La couleur de CHEVEUX ne demande aucun calcul : le composeur sait teindre
+    // une tête à partir d'un numéro de palette officielle. Elle vient de la
+    // recette même quand le CORPS, lui, sort de l'injection — le bloc de 1024
+    // octets ne concerne que le corps, et l'injection de cheveux ne se relit
+    // pas (`SetHairPalette` n'a pas de lecteur).
+    if (has_recipe && recipe.hair_palette_id > 0)
+      c.hair = recipe.hair_palette_id;
 
+    // ── Le REPLI : reconstruire ce que l'acteur ne porte pas ────────────────
+    // Il ne sert qu'au joueur dont l'acteur n'a rien de posé : hors de portée
+    // d'affichage, ou style reçu avant que la boucle d'application de
+    // `StyleSync` n'ait eu son tour. Quand la palette vivante est là, elle est
+    // meilleure par construction — et ce calcul-ci coûte l'analyse complète
+    // d'un `.spr`.
+    if (!posee) {
       // 🔴 La teinte de BASE de la recette prime sur la couleur de vêtement du
       // personnage : c'est elle qui a servi de base au joueur, et fusionner une
       // autre palette ferait détecter d'autres rampes — donc des réglages posés
       // à côté.
       char pal[160] = {0};
-      const int couleur =
-          recipe.palette_id > 0 ? recipe.palette_id : clothes_color;
-      if (couleur >= 0) ro::BodyPalettePath(couleur, job, pal, sizeof(pal));
+      const int couleur = (has_recipe && recipe.palette_id > 0)
+                              ? recipe.palette_id
+                              : clothes_color;
+      // 🔴 La RACE se lit dans le CHEMIN DU SPRITE, pas dans la classe du
+      // paquet : c'est le corps d'autrui, déjà résolu par le client, monture et
+      // costume compris — et les palettes des deux races n'ont aucun fichier
+      // commun. La déduction par la classe ne reste qu'en dernier recours, pour
+      // un chemin qui ne suivrait pas le gabarit.
+      if (couleur >= 0 &&
+          !ro::BodyPalettePathForSprite(spr, couleur, pal, sizeof(pal)))
+        ro::BodyPalettePath(couleur, job, pal, sizeof(pal));
 
       fx::palette_base::Body base;
-      if (fx::palette_base::BuildFromPaths(spr, pal[0] ? pal : nullptr, &base) ==
-          fx::palette_base::kOk) {
+      const fx::palette_base::Status st =
+          fx::palette_base::BuildFromPaths(spr, pal[0] ? pal : nullptr, &base);
+      // `kNoRamp` n'est pas un échec ICI : aucune rampe détectée interdit
+      // d'appliquer une recette, pas d'afficher la base fusionnée.
+      if (base.base.size() >= 1024 &&
+          (st == fx::palette_base::kOk || st == fx::palette_base::kNoRamp)) {
         c.rgba.assign(1024, 0);
-        if (ro::ApplyRecipe(base.base.data(), base.base.size(), base.ramps,
-                            base.ramp_count, recipe, c.rgba.data(),
-                            c.rgba.size()))
+        if (has_recipe && st == fx::palette_base::kOk) {
+          if (!ro::ApplyRecipe(base.base.data(), base.base.size(), base.ramps,
+                               base.ramp_count, recipe, c.rgba.data(),
+                               c.rgba.size()))
+            c.rgba.clear();
+        } else {
+          // 🔴 Même SANS recette, la base FUSIONNÉE vaut mieux que le `.pal` de
+          // serveur seul, qui est tout ce que le composeur trouverait sinon :
+          // celui-ci laisse la moitié de ses index vides, et les corps de 4e
+          // classe s'affichent alors en silhouette noire.
+          std::memcpy(c.rgba.data(), base.base.data(), 1024);
+        }
+        if (!c.rgba.empty())
           c.key = fx::palette_cache::DollKey(gid, c.rgba.data());
-        else
-          c.rgba.clear();
       }
     }
   }
 
-  // Le chemin de corps est rendu MÊME sans recette : c'est lui qui corrige la
+  // Le chemin de corps est rendu MÊME sans palette : c'est lui qui corrige la
   // déduction sur les 3e et 4e classes, recolorées ou non.
   out.spr  = c.spr.empty() ? nullptr : c.spr.c_str();
   out.hair = c.hair;
-  if (!c.rgba.empty() && !c.key.empty()) {
+  if (posee) {
+    out.rgba = vivante;
+    out.key  = vivante_key.c_str();
+  } else if (!c.rgba.empty() && !c.key.empty()) {
     out.rgba = c.rgba.data();
     out.key  = c.key.c_str();
   }
@@ -515,10 +586,10 @@ void ViewEquipWindow::DrawDollPanel(float width, float height) {
   look.head_top      = target_.head_top;
   look.garment       = target_.robe;
 
-  // Couleurs composées par le joueur inspecté : elles priment sur la palette de
-  // vêtement officielle. Sans ça, un personnage recoloré s'afficherait ici dans
-  // son apparence native alors qu'il est, à trois mètres, de la couleur qu'il a
-  // choisie.
+  // Couleurs de l'acteur inspecté : elles priment sur la palette de vêtement
+  // officielle. Sans ça, un personnage recoloré s'afficherait ici dans son
+  // apparence native alors qu'il est, à trois mètres, de la couleur qu'il a
+  // choisie — et un corps de 4e classe en silhouette noire.
   const DollPalette pal = ResolveDollPalette(target_.aid, target_.job,
                                              look.body, target_.sex,
                                              target_.clothes_color);

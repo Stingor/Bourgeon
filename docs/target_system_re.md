@@ -711,6 +711,28 @@ Le chemin de corps part de `fx::palette_inject::ActorBodySpritePath` plutôt que
 redéduit : sur une 3e ou 4e classe, rejouer `Job_ResolveBodyClass` diverge et
 affiche une tenue de base.
 
+🔴🔴 **Les COULEURS aussi viennent de l'acteur**, par
+`fx::palette_inject::InjectedPalette(gid, …)` : les 1024 octets que le rendu
+applique au personnage en scène, jamais un recalcul (c'est ce que
+`palette_inject.h` prescrit aux pantins de l'interface). Corrigé le
+**2026-08-29** — le portrait n'en posait aucune, avec deux conséquences :
+
+- un joueur **recoloré** (éditeur de style, `ZC 0x0F27`) s'affichait dans son
+  apparence NATIVE alors qu'il est d'une autre couleur à trois mètres ;
+- un corps de **4e classe** sortait en **silhouette noire**, parce que le `.pal`
+  de serveur seul laisse la moitié de ses index vides. C'est la réparation
+  automatique de `StyleSync` qui corrige ça, et elle vit dans le bloc injecté —
+  nulle part dans les fichiers, donc hors de portée de toute reconstruction.
+
+⚠ La **couleur de cheveux**, elle, ne s'y trouve pas : le bloc ne teint que le
+corps, et l'injection de cheveux pose un chemin de palette que rien ne relit.
+Elle se lit dans `fx::style_sync::RemoteRecipe(gid, BodySpriteKey(corps), …)` —
+sur la variante du corps PORTÉ, une monture pouvant avoir sa propre teinte. Le
+champ `+0x43C` de l'acteur, lui, porte la couleur du serveur.
+
+La même règle vaut pour l'autre pantin d'autrui, la fiche « Voir l'équipement »
+(`docs/view_equip_re.md` §9.5).
+
 ### Les données, et leurs deux sources
 
 | Champ | Source |

@@ -7,11 +7,14 @@
 #include <cstdio>
 #include <cfloat>
 #include <cstring>
+#include <string>
 
 #include "imgui.h"
 
 #include "bourgeon.h"
-#include "features/fx/palette_inject.h"     // ActorBodySpritePath (3e/4e classes)
+#include "features/fx/palette_cache.h"      // DollKey : la clé de teinte du composeur
+#include "features/fx/palette_inject.h"     // ActorBodySpritePath + palette injectée
+#include "features/fx/style_sync.h"         // RemoteRecipe : la couleur de cheveux
 #include "features/moonlight_ui/moonlight_ui.h"  // grille d'alignement partagée
 #include "features/systems/bourgeon_opcodes.h"
 #include "features/windows/entity_context_menu.h"  // clic droit sur un cadre
@@ -22,6 +25,7 @@
 #include "ui/doll.h"        // portrait d'un JOUEUR (pantin composé)
 #include "ui/hud_frame.h"   // le cadre libre, commun aux HUD
 #include "ui/mob_sprite.h"  // portrait d'un MONSTRE
+#include "ui/sprite_path.h"  // BodySpriteKey : la variante de style du corps porté
 #include "ui/ro_imgui.h"    // WireToUtf8
 #include "ui/ro_widgets.h"
 #include "utils/i18n.h"
@@ -1236,6 +1240,45 @@ void TargetFrame::DrawElements(void* game_mode, void* actor) {
             if (fx::palette_inject::ActorBodySpritePath(gid_, body_path,
                                                         sizeof(body_path)))
               look.body_spr_override = body_path;
+
+            // ── Les couleurs que l'acteur PORTE ─────────────────────────────
+            // 🔴🔴 LUES SUR L'INJECTION, jamais recalculées : ce sont les octets
+            // que le rendu applique au personnage en scène (c'est ce que
+            // `palette_inject.h` prescrit aux pantins de l'interface). Sans
+            // elles, le portrait montrait l'apparence NATIVE d'un joueur
+            // recoloré — et un corps de 4e classe en silhouette noire, parce
+            // que le `.pal` de serveur seul laisse la moitié de ses index
+            // vides. C'est la réparation automatique de `StyleSync` qui corrige
+            // ça sur l'acteur, donc dans le bloc injecté et nulle part dans les
+            // fichiers.
+            //
+            // Statiques : `DollLook` ne garde que des POINTEURS. Le dessin suit
+            // immédiatement, donc un autre cadre ne peut pas les écraser
+            // entre-temps.
+            static uint8_t body_palette[1024];
+            static std::string body_palette_key;
+            if (fx::palette_inject::InjectedPalette(gid_, body_palette,
+                                                    sizeof(body_palette))) {
+              // 🔴 La clé identifie le CONTENU : le composeur partage ses
+              // textures entre deux appels de même clé, donc une clé figée
+              // ferait ressortir les couleurs d'avant à chaque retouche.
+              body_palette_key = fx::palette_cache::DollKey(gid_, body_palette);
+              look.body_palette     = body_palette;
+              look.body_palette_key = body_palette_key.c_str();
+            }
+
+            // Les CHEVEUX ne sont pas dans ce bloc — il ne teint que le corps —
+            // et l'injection leur pose un chemin de palette que rien ne relit.
+            // Leur numéro vient donc de la recette du joueur, prise sur la
+            // variante du corps qu'il porte MAINTENANT : le style se range par
+            // corps, et il peut avoir choisi une autre teinte pour sa monture.
+            ro::PaletteRecipe recette;
+            if (look.body_spr_override != nullptr &&
+                fx::style_sync::RemoteRecipe(
+                    gid_, ro::BodySpriteKey(look.body_spr_override), &recette) &&
+                recette.hair_palette_id > 0)
+              look.hair_color = recette.hair_palette_id;
+
             ro::DrawDoll(dl, look, q0.x, q0.y, q1.x - q0.x, q1.y - q0.y,
                          portrait_dir_, portrait_anim_, clock);
           } else {
