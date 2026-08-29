@@ -56,6 +56,7 @@
 #include "features/fx/wand_bolt.h"
 #include "features/fx/weapon_dual_sprites.h"
 #include "features/fx/hat_effect_depth.h"
+#include "features/fx/item_drop_arc.h"
 #include "features/patches/skill_tree_tweaks.h"
 #include "features/gameplay/afk_screen.h"
 #include "features/gameplay/fps_view.h"
@@ -123,6 +124,7 @@ ScreenFx* Bourgeon::screen_fx() { return screen_fx_; }
 ZoneRecorder* Bourgeon::zone_recorder() { return zone_recorder_; }
 FpsView* Bourgeon::fps_view() { return fps_view_; }
 AfkScreen* Bourgeon::afk_screen() { return afk_screen_; }
+ItemDropArc* Bourgeon::item_drop_arc() { return item_drop_arc_; }
 PlayerJump* Bourgeon::player_jump() { return player_jump_; }
 KeyboardMove* Bourgeon::keyboard_move() { return keyboard_move_; }
 QuickCast* Bourgeon::quick_cast() { return quick_cast_; }
@@ -1085,6 +1087,11 @@ void Bourgeon::LoadPlugins() {
     plugins_.emplace_back(std::move(weapon_dual));
   }
   plugins_.emplace_back(std::make_unique<HatEffectDepth>());
+  {
+    auto item_drop_arc = std::make_unique<ItemDropArc>();
+    item_drop_arc_ = item_drop_arc.get();
+    plugins_.emplace_back(std::move(item_drop_arc));
+  }
   plugins_.emplace_back(std::make_unique<SkillTreeTweaks>());
   {
     auto fps_view = std::make_unique<FpsView>();

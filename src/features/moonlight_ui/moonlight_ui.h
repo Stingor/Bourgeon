@@ -510,6 +510,12 @@ class MoonlightUi : public Plugin {
   // DrawGameplayPanel pour qu'il reste l'aiguillage qu'il est.
   void DrawTargetingSettings();
   void DrawAfkScreenSettings();
+  // Venues de « Mini-jeux » : le saut et la marche au clavier sont des ENTRÉES,
+  // le jaillissement du butin un effet du monde — aucun des trois n'était un
+  // mini-jeu.
+  void DrawItemDropArcSettings();
+  void DrawJumpSettings();
+  void DrawKeyboardMoveSettings();
   void DrawAlootOverlay();
   // Affichages pilotés par ce panneau mais dessinés HORS de lui : ils survivent à
   // sa fermeture, et sont donc appelés sur les DEUX chemins de rendu.

@@ -18,7 +18,6 @@
 // ── Adresses (client 20250716, no-ASLR : addr Ghidra == live) ────────────────
 namespace {
 constexpr uintptr_t kTerrainHeight = 0x007110c0;  // Terrain_GetHeightAt(world,x,z)->float
-constexpr int kOffWorld     = 0x30;   // actorMgr -> objet monde/terrain (.gnd)
 constexpr int kOffPosZ      = 0x18;   // acteur -> position monde Z (float)
 constexpr int kOffHeightOff = 0x3f4;  // acteur -> offset hauteur (float ; vec3 +0x3f0/f4/f8)
 
@@ -41,8 +40,8 @@ WorldRefs GetWorldRefs() {
           *reinterpret_cast<void**>(reinterpret_cast<char*>(gm) + gamescene::kGmActorMgr);
       if (mgr) {
         refs.actor_mgr = mgr;
-        refs.world =
-            *reinterpret_cast<void**>(reinterpret_cast<char*>(mgr) + kOffWorld);
+        refs.world = *reinterpret_cast<void**>(reinterpret_cast<char*>(mgr) +
+                                              gamescene::kAmTerrain);
       }
     }
   } __except (EXCEPTION_EXECUTE_HANDLER) {

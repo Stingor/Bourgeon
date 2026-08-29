@@ -82,6 +82,7 @@
 #include "features/windows/char_diagnostics.h"
 #include "features/fx/spr_effect_lab.h"
 #include "features/fx/ground_paint.h"
+#include "features/fx/item_drop_arc.h"
 #include "ragnarok/ui_window_mgr.h"
 #include "ragnarok/uiwnd.h"
 #include "utils/game_paths.h"
@@ -1245,6 +1246,15 @@ const moonlight_ui::SettingDesc kOptInWindowSettings[] = {
      MLUI_LITERAL(bool, true)},
 };
 
+// Jaillissement des objets lâchés (ItemDropArc) : l'activation seule. La crête
+// de l'arc, l'écart de repli et la durée restent vifs et non persistés
+// (réglages staff, cf. panel_gameplay), comme pour le saut.
+// ON par défaut : embellissement pur, sans touche à soi ni paquet réseau.
+const moonlight_ui::SettingDesc kItemDropArcSettings[] = {
+    {"item_drop_arc", SType::kBool, MLUI_FIELD(item_drop_arc, enabled()),
+     MLUI_LITERAL(bool, true)},
+};
+
 // Saut (PlayerJump) : activation + touche. Seuls la hauteur et la durée
 // de l'arc restent vives et non persistées (réglages staff, cf. panel_fun).
 // Opt-in, OFF par défaut (le saut prend une touche et se voit sur le réseau).
@@ -2012,6 +2022,7 @@ void MoonlightUi::LoadSettings() {
     moonlight_ui::ReadStorageFavorites(ui);
     moonlight_ui::ReadStorageTabCustom(ui);
     moonlight_ui::ReadSettings(ui, kOptInWindowSettings);
+    moonlight_ui::ReadSettings(ui, kItemDropArcSettings);
     moonlight_ui::ReadSettings(ui, kJumpKeySettings);
     moonlight_ui::ReadSettings(ui, kKeyboardMoveSettings);
     moonlight_ui::ReadSettings(ui, kQuickCastSettings);
@@ -2206,6 +2217,7 @@ void MoonlightUi::WriteSettingsFile() {
   moonlight_ui::WriteStorageFavorites(out);
   moonlight_ui::WriteStorageTabCustom(out);
   moonlight_ui::WriteSettings(out, kOptInWindowSettings);
+  moonlight_ui::WriteSettings(out, kItemDropArcSettings);
   moonlight_ui::WriteSettings(out, kJumpKeySettings);
   moonlight_ui::WriteSettings(out, kKeyboardMoveSettings);
   moonlight_ui::WriteSettings(out, kQuickCastSettings);

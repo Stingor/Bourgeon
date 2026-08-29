@@ -50,4 +50,27 @@ void PatchValue(uintptr_t addr, T value) {
   WriteCode(addr, &value, sizeof(T));
 }
 
+// ── Détourner une méthode virtuelle ─────────────────────────────────────────
+// Remplace un pointeur de vtable APRÈS avoir vérifié qu'il contient bien ce
+// qu'on croit : sur un exe patché autrement — par WARP, ou par un autre module
+// arrivé le premier — mieux vaut ne rien détourner que détourner à l'aveugle.
+//
+// Rend l'ancien pointeur, à garder pour rappeler le natif, ou 0 si rien n'a été
+// écrit. `actuel`, s'il est fourni, reçoit ce que le slot contenait vraiment :
+// c'est ce qui permet à l'appelant de distinguer les deux refus (slot inattendu
+// contre page non ouvrable) dans son propre journal — la fonction n'écrit rien
+// elle-même, chaque module gardant son préfixe.
+//
+// Ce geste était écrit deux fois à l'identique (wand_bolt, item_drop_arc), et
+// c'est ainsi que les copies se mettent à diverger : la seule différence entre
+// les deux était le nom du module dans le message.
+inline uintptr_t SwapVtableSlot(uintptr_t slot, uintptr_t attendu,
+                                uintptr_t detour, uintptr_t* actuel = nullptr) {
+  const uintptr_t present = *reinterpret_cast<const uintptr_t*>(slot);
+  if (actuel) *actuel = present;
+  if (present != attendu) return 0;
+  if (!WriteCode(slot, &detour, sizeof(detour))) return 0;
+  return present;
+}
+
 }  // namespace mem

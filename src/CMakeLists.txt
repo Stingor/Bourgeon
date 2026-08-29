@@ -210,6 +210,8 @@ set(BOURGEON_FILES
 	"features/fx/ground_paint.h"
 	"features/fx/hat_effect_depth.cc"
 	"features/fx/hat_effect_depth.h"
+	"features/fx/item_drop_arc.cc"
+	"features/fx/item_drop_arc.h"
 	"features/fx/palette_base.cc"
 	"features/fx/palette_base.h"
 	"features/fx/palette_cache.cc"

@@ -61,6 +61,7 @@ class EntityContextMenu;
 class EntityInspector;
 class FpsView;
 class AfkScreen;
+class ItemDropArc;
 class PlayerJump;
 class KeyboardMove;
 class QuickCast;
@@ -156,6 +157,8 @@ class Bourgeon {
   EntityContextMenu* entity_context_menu();
   EntityInspector* entity_inspector();
   FpsView* fps_view();
+  // Jaillissement des objets lâchés au sol. Exposé pour ses réglages.
+  ItemDropArc* item_drop_arc();
   PlayerJump* player_jump();
   KeyboardMove* keyboard_move();
   QuickCast* quick_cast();
@@ -398,6 +401,7 @@ class Bourgeon {
   LoginParade* login_parade_ = nullptr;        // non-owning, lifetime tied to plugins_
   FpsView* fps_view_ = nullptr;         // non-owning, lifetime tied to plugins_
   AfkScreen* afk_screen_ = nullptr;     // non-owning, lifetime tied to plugins_
+  ItemDropArc* item_drop_arc_ = nullptr;  // non-owning, lifetime tied to plugins_
   PlayerJump* player_jump_ = nullptr;   // non-owning, lifetime tied to plugins_
   KeyboardMove* keyboard_move_ = nullptr;  // non-owning, lifetime tied to plugins_
   QuickCast* quick_cast_ = nullptr;     // non-owning, lifetime tied to plugins_

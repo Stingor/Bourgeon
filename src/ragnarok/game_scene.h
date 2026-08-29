@@ -45,6 +45,26 @@ constexpr int kGmNameDict = 0x160;  //  gm+0x160  = dictionnaire, objet EMBARQU�
 // traiter.
 constexpr int kAmListHead  = 0x10;  // *(mgr+0x10) = sentinelle std::list<Actor*>
 constexpr int kAmOwnPlayer = 0x2c;  // *(mgr+0x2c) = acteur du joueur local
+// Le TERRAIN (.gnd) : c'est lui que `Terrain_GetHeightAt` (0x007110c0) attend en
+// `this`. Le natif l'écrit `*(*(gm+0xCC)+0x30)` — 0x30 y est un « 48 » décimal
+// dans le pseudo-code, ce qui l'a longtemps fait lire comme un offset inconnu.
+// Il était déclaré à part sous le nom `kOffWorld` dans player_jump.
+constexpr int kAmTerrain   = 0x30;
+
+// ── Le terrain lui-même ──────────────────────────────────────────────────────
+// Relevés dans `World_TileToPosition` (0x00c69000), la fonction qui donne à un
+// objet au sol sa position monde depuis sa case et ses sous-coordonnées :
+//
+//   monde_x = (case_x - largeur/2) * taille + (subX * taille) / 16
+//   monde_z = (case_y - hauteur/2) * taille + (subY * taille) / 16
+//
+// ⚠ Les trois sont des `int` que le natif convertit en float à la lecture.
+// `kTerrainCellSize` est LA passerelle entre les deux unités du monde : tout ce
+// qui veut raisonner en CASES alors que les positions sont en unités de monde
+// doit passer par lui plutôt que par une constante devinée.
+constexpr int kTerrainWidth    = 0x110;  // largeur de la carte, en cases
+constexpr int kTerrainHeight   = 0x114;  // hauteur de la carte, en cases
+constexpr int kTerrainCellSize = 0x118;  // côté d'une case, en unités de monde
 
 // ── CNameInfo : ce que rend le dictionnaire ──────────────────────────────────
 // Trois std::string MSVC côte à côte. Les offsets ci-dessous sont relatifs au

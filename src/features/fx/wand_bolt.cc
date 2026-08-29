@@ -424,23 +424,20 @@ int __fastcall UpdateDetour(void* self, void* edx) {
   return resultat;
 }
 
-// Remplace un pointeur de vtable après avoir vérifié qu'il contient bien ce
-// qu'on croit. Rend l'ancien, ou 0 si le slot n'était pas celui attendu — sur
-// un exe patché autrement, mieux vaut ne rien détourner que détourner à
-// l'aveugle.
+// Le geste lui-même — vérifier ce que contient le slot, puis l'écrire — vit
+// dans `mem::SwapVtableSlot` (utils/memory_patch.h) depuis qu'ItemDropArc en a
+// eu besoin à son tour. Ne reste ici que le journal, qui porte le nom du module.
 uintptr_t PoserSlot(uintptr_t slot, uintptr_t attendu, uintptr_t detour) {
-  const uintptr_t actuel = *reinterpret_cast<const uintptr_t*>(slot);
-  if (actuel != attendu) {
-    LogDiag("[WandBolt] slot 0x{:08X} : contient 0x{:08X} au lieu de 0x{:08X}, NON crochete",
-            slot, actuel, attendu);
-    return 0;
+  uintptr_t trouve = 0;
+  const uintptr_t ancien = mem::SwapVtableSlot(slot, attendu, detour, &trouve);
+  if (!ancien) {
+    if (trouve != attendu)
+      LogDiag("[WandBolt] slot 0x{:08X} : contient 0x{:08X} au lieu de 0x{:08X}, NON crochete",
+              slot, trouve, attendu);
+    else
+      LogDiag("[WandBolt] slot 0x{:08X} : page non ouvrable, NON crochete", slot);
   }
-  const uintptr_t valeur = detour;
-  if (!mem::WriteCode(slot, reinterpret_cast<const uint8_t*>(&valeur), sizeof(valeur))) {
-    LogDiag("[WandBolt] slot 0x{:08X} : page non ouvrable, NON crochete", slot);
-    return 0;
-  }
-  return actuel;
+  return ancien;
 }
 
 }  // namespace
