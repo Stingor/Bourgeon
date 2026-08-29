@@ -404,6 +404,11 @@ class ChatWindow : public Plugin {
   // l'affichage, c'est le libellé LOCAL (donc traduit) qui gagne.
   bool AppendSettingLink(const char* key);
 
+  // Poser le lien d'un ETAT (buff / alteration) par son index EFST. Rend faux si
+  // le client ne sait ni le nommer ni le dessiner : un lien qui n'apprendrait
+  // rien vaut moins que pas de lien.
+  bool AppendStatusLink(uint16_t efst);
+
   // Poser le lien d'un STYLE : « [Style: Étiquette] ». Balise
   // `<STYL>étiquette:code`.
   //
@@ -513,9 +518,14 @@ class ChatWindow : public Plugin {
     // « [PNJ: Kari] ») : balise à nous, libellé composé chez le lecteur, et le
     // clic ouvre le panneau dessus. C'est le seul lien capable de désigner un
     // PNJ ou un monstre par son LIEU — ni l'un ni l'autre n'a de position unique.
+    // `kStatus` est un ÉTAT (buff / altération), par son index EFST. C'est le
+    // seul lien qui n'OUVRE rien : aucune fenêtre de description d'état
+    // n'existe côté client, et tout ce qu'on a à en dire — nom, effet, icône —
+    // tient dans l'infobulle que `statuscell` compose déjà. Il PORTE son
+    // information au lieu d'en promettre une ailleurs.
     enum LinkKind : uint8_t {
       kNone = 0, kItem, kMob, kUrl, kPlayer, kRecipe, kSetting, kStyle, kNavi,
-      kNaviSearch
+      kNaviSearch, kStatus
     };
     std::string text;      // UTF-8, prêt pour ImGui
     uint32_t    color = 0; // 0 = couleur par défaut de la ligne
@@ -543,6 +553,9 @@ class ChatWindow : public Plugin {
     // posée QUE si cette version la reconnaît — sinon le fragment n'est pas un
     // lien du tout (le texte reste lisible, il ne mène simplement nulle part).
     std::string setting_key;
+    // kStatus : l'index EFST, la seule identité stable d'un état. Le nom, lui,
+    // se recompose chez le LECTEUR — chaque client le tire de son propre Lua.
+    uint16_t    status_efst = 0;
     // kNavi : le nom INTERNE de la carte et la position, telles que la balise les
     // porte. `(0, 0)` = la carte entière — c'est ce que le partage écrit quand la
     // destination est un lieu et non un point.
@@ -1158,6 +1171,7 @@ class ChatWindow : public Plugin {
     uint8_t     mob_rank = 0;
     std::string mob_name;
     std::string setting_key;  // kSetting
+    uint16_t    status_efst = 0;  // kStatus
     std::string style_code;   // kStyle : le code, tel qu'il partira
     std::string style_owner;  // kStyle : le pseudo affiché
     std::string navi_term;    // kNaviSearch : le terme, tel qu'il partira

@@ -3550,6 +3550,7 @@
 "Oublier ce corps###bourgeon_style_forget_body": "Forget this body###bourgeon_style_forget_body"
 "Groupe / Amis": "Party / Friends"
 "Groupe (grille)": "Party (grid)"
+"[État: %s]": "[Status: %s]"
 "La case s'assombrit à mesure que l'état s'écoule : on voit d'un coup d'œil lesquels sont près de tomber.\n\n⚠ Un état sans échéance n'est jamais voilé : il n'a pas de part écoulée, et le griser à moitié le ferait croire à mi-course.": "The cell darkens as the state elapses: you see at a glance which ones are about to drop.\n\n⚠ A state with no expiry is never shaded: it has no elapsed part, and shading it halfway would make it look half spent."
 "Le cadre « États » est décoché dans Cadres, ci-dessus.": "The “States” frame is unchecked in Frames, above."
 "Le cadre se replie déjà sur sa largeur : ce réglage force en plus un nombre fixe par rangée, pour un cadre haut et étroit plutôt que long et plat.": "The frame already wraps on its width; this setting additionally forces a fixed number per row, for a tall narrow frame rather than a long flat one."

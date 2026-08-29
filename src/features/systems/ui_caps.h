@@ -48,10 +48,10 @@ class UiCaps : public Plugin {
   // l'inverse une capacité que personne n'annonce.
   enum Cap : uint32_t {
     // Le dialogue NPC est rendu par l'overlay moderne : il connaît `<MOBL>`,
-    // `<ITMR>`, `<CRAF>`, `<SETL>`, `<IMG>`, `<MOBS>` et `<MOBP>`.
+    // `<ITMR>`, `<CRAF>`, `<SETL>`, `<STAL>`, `<IMG>`, `<MOBS>` et `<MOBP>`.
     kNpcDialog = 1u << 0,
-    // La chatbox est la nôtre : mêmes balises de LIEN (pas les médias, qui
-    // n'auraient pas de place dans une ligne de log).
+    // La chatbox est la nôtre : mêmes balises de LIEN, `<STAL>` compris (pas
+    // les médias, qui n'auraient pas de place dans une ligne de log).
     kChat      = 1u << 1,
     // Prochain bit libre : 1u << 2.
   };

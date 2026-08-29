@@ -230,6 +230,8 @@ constexpr uint32_t kNoticeColor = IM_COL32(90, 90, 107, 255);
 //   <ITMR>id:nom</ITMR>        lien objet de base (sans refine ni cartes)
 //   <CRAF>id:nom</CRAF>        lien recette -> l'Atlas
 //   <SETL>clé:libellé</SETL>   lien vers une destination du panneau Moonlight
+//   <STAL>efst:libellé</STAL>  lien vers un ÉTAT (buff / altération), par index
+//                              EFST — le nom se recompose chez le LECTEUR
 //   <MOBS>id</MOBS>            sprite de monstre, inline dans le texte
 //   <MOBP>id</MOBP>            portrait de PAGE (colonne de gauche)
 //   <IMG>source</IMG>          image : ressource du client, ou adresse web
@@ -786,6 +788,23 @@ const char* NpcDialogWindow::TryOwnTag(const char* p, const char* end, Run* out)
     // libellé transporté par le script reste, en texte simple. Il dit encore de
     // quoi on parle, il ne prétend plus mener quelque part.
     const std::string label = links::SettingLabel(f[0].c_str());
+    out->text = label.empty() ? AnsiToUtf8(f[1]) : label;
+    if (out->text.empty()) return nullptr;
+    return after;
+  }
+  if (TagBody(p, end, "<STAL>", "</STAL>", &b, &be, &after)) {
+    if (!SplitFields(b, be, 2, f)) return nullptr;
+    const unsigned efst = static_cast<unsigned>(
+        std::strtoul(f[0].c_str(), nullptr, 10));
+    if (efst == 0 || efst >= 0xFFFFu) return nullptr;
+    // 🔴 C'est l'INDEX qui fait foi, jamais le libellé du script : chaque client
+    // nomme les états dans SA langue, depuis son propre Lua. Un PNJ écrit donc
+    // l'index, et chacun lit le nom qu'il connaît.
+    out->target = links::FromStatus(static_cast<uint16_t>(efst));
+    // État inconnu de CETTE version du client : le libellé transporté par le
+    // script reste, en texte simple. Il dit encore de quoi on parle, il ne
+    // prétend plus rien montrer.
+    const std::string label = links::StatusLabel(static_cast<uint16_t>(efst));
     out->text = label.empty() ? AnsiToUtf8(f[1]) : label;
     if (out->text.empty()) return nullptr;
     return after;

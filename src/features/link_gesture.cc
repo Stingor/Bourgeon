@@ -10,6 +10,7 @@
 
 #include "bourgeon.h"
 #include "features/craft_data.h"                    // la recette d'un lien kRecipe
+#include "features/status_cell.h"                  // le nom et l'infobulle d'un EFST
 #include "features/fx/palette_cache.h"              // DecodeShare : validité d'un kStyle
 #include "features/windows/palette_editor.h"        // aperçu / essai d'un style
 #include "features/moonlight_ui/moonlight_ui.h"     // liste alootid
@@ -287,6 +288,35 @@ std::string SettingLabel(const char* key) {
   return buf;
 }
 
+// ── L'ÉTAT ──────────────────────────────────────────────────────────────────
+std::string StatusLabel(uint16_t efst) {
+  const char* name = statuscell::Name(efst);
+  if (name == nullptr || name[0] == '\0') return std::string();
+  char buf[160];
+  // ⚠ Le nom vient du Lua du CLIENT : il est déjà dans sa code-page, et c'est
+  // `LocalToUtf8` qui le rend affichable — jamais `Cp949ToUtf8`, qui est la
+  // conversion du PROTOCOLE.
+  std::snprintf(buf, sizeof(buf), i18n::Tr("[État: %s]"),
+                ro::LocalToUtf8(name));
+  return buf;
+}
+
+Target FromStatus(uint16_t efst) {
+  Target t;
+  if (efst == 0) return t;
+  // 🔴 Ni nom ni icône = pas de lien. Le client ne connaît pas tous les EFST de
+  // l'énumération, et un « [État: ] » vide n'apprendrait rien à personne — même
+  // règle qu'une recette absente ou qu'un réglage inconnu.
+  const std::string label = StatusLabel(efst);
+  const bool drawable = (StatusEffects::IconPath(efst) != nullptr) ||
+                        statuscell::HasFallback(efst);
+  if (label.empty() && !drawable) return t;
+  t.kind        = Target::kStatus;
+  t.status_efst = efst;
+  t.label       = label.empty() ? std::string("[État]") : label;
+  return t;
+}
+
 Target FromSetting(const char* key) {
   Target t;
   // Destination inconnue — ou absente du panneau de CE joueur — = pas de lien.
@@ -555,6 +585,8 @@ bool PostToChat(const Target& target) {
   if (target.kind == Target::kNaviSearch)
     return chat->AppendNaviSearchLink(target.navi_kind, target.navi_term.c_str(),
                                       target.navi_map.c_str());
+  if (target.kind == Target::kStatus)
+    return chat->AppendStatusLink(target.status_efst);
   return false;
 }
 
@@ -704,6 +736,19 @@ void HoverPreview(const Target& target) {
     ImGui::PopTextWrapPos();
     ImGui::EndTooltip();
     ImGui::PopStyleColor();
+    return;
+  }
+  if (target.kind == Target::kStatus) {
+    // 🔴 C'EST L'INFOBULLE QUI PORTE CE LIEN. Il n'ouvre rien au clic — aucune
+    // fenêtre de description d'état n'existe côté client — donc tout ce qu'on a
+    // à dire doit tenir ici : le nom, l'effet, l'icône. `statuscell` la compose
+    // déjà pour les quatre surfaces qui affichent des états.
+    //
+    // ⚠ Une entrée SANS échéance : ce lien désigne un état, pas une occurrence
+    // en cours. Afficher un compte à rebours donnerait à croire qu'il tourne.
+    StatusEffects::Entry e;
+    e.efst = target.status_efst;
+    statuscell::Tooltip(e);
     return;
   }
   if (target.kind == Target::kSetting) {
@@ -1052,6 +1097,18 @@ void DrawMenu(const char* popup_id, const Target& target) {
       case Target::kSetting: {
         if (ImGui::MenuItem(i18n::Tr("Ouvrir ce réglage"))) OpenDescription(target);
         if (ImGui::MenuItem(i18n::Tr("Lien dans le chat"))) PostToChat(target);
+        break;
+      }
+      // ⚠ Pas d'entrée « Ouvrir » ici, et c'est délibéré : il n'y a rien à
+      // ouvrir. Proposer une action inerte vaut moins que de n'en proposer
+      // aucune — le survol a déjà tout dit.
+      case Target::kStatus: {
+        if (ImGui::MenuItem(i18n::Tr("Lien dans le chat"))) PostToChat(target);
+        if (ImGui::MenuItem(i18n::Tr("Copier le nom"))) {
+          const char* name = statuscell::Name(target.status_efst);
+          if (name != nullptr && name[0] != '\0')
+            ImGui::SetClipboardText(ro::LocalToUtf8(name));
+        }
         break;
       }
       case Target::kNaviSearch: {

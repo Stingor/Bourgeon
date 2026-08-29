@@ -21,6 +21,7 @@
 #include "bourgeon.h"            // Bourgeon::Instance().IsGameActive / IsMapLoading
 #include "d3d9/d3d9_hook.h"      // Overlay_DeviceEpoch (invalidation des textures)
 #include "features/craft_data.h" // recette d'un lien <CRAF>
+#include "features/status_cell.h"  // nom et infobulle d'un EFST (lien <STAL>)
 #include "features/fx/palette_cache.h"  // DecodeShare : validité d'un <STYL>
 #include "features/item_cell.h"  // itemcell::NameById / liens <ITEML>
 #include "features/moonlight_ui/moonlight_ui.h"   // iface:: (sections de <SETL>)
@@ -2902,6 +2903,52 @@ void ChatWindow::ParseUtf8(const std::string& text, Line* out) const {
             // part. Accumulé dans `current` et non poussé à part, pour qu'il garde
             // la couleur et la graisse en cours — c'est du texte, il doit se
             // comporter comme tel.
+            current.text += '[';
+            current.text += fallback;
+            current.text += ']';
+          }
+          p = close + 7;
+          continue;
+        }
+      }
+    }
+    // ÉTAT — balise à NOUS : `<STAL>efst:libellé</STAL>`.
+    //
+    // Le premier lien qui désigne un ÉTAT plutôt qu'un objet du monde. « Prends
+    // Agility Up », « tu es sous Curse » : on le dit tout le temps, et le nom
+    // seul ne dit ni à quoi ressemble l'icône ni ce que l'état fait.
+    //
+    // 🔴 C'EST L'INDEX QUI VOYAGE, pas le nom. Chaque client tire ses noms
+    // d'états de son propre Lua, donc dans SA langue : transporter le libellé
+    // comme identité imposerait au lecteur la langue de l'expéditeur. Le nom
+    // affiché est donc recomposé LOCALEMENT, exactement comme pour `<SETL>`.
+    //
+    // ⚠ Le libellé transporté ne sert QU'À un client sans Bourgeon, qui verra
+    // la balise brute. Il vient en second pour que l'index reste en tête.
+    if (*p == '<' && (end - p) >= 7 && std::strncmp(p, "<STAL>", 6) == 0) {
+      const char* body  = p + 6;
+      const char* close = text::SearchSub(body, end, "</STAL>");
+      if (close != nullptr) {
+        const char* c1 = static_cast<const char*>(std::memchr(body, ':', close - body));
+        if (c1 != nullptr) {
+          const std::string id_txt(body, c1);
+          const std::string fallback(c1 + 1, close);
+          const unsigned efst = static_cast<unsigned>(std::atoi(id_txt.c_str()));
+          const links::Target t =
+              (efst > 0 && efst < 0xFFFFu)
+                  ? links::FromStatus(static_cast<uint16_t>(efst))
+                  : links::Target{};
+          if (t.valid()) {
+            flush();
+            Run link;
+            link.kind        = Run::kStatus;
+            link.status_efst = static_cast<uint16_t>(efst);
+            link.text        = t.label;
+            out->runs.push_back(link);
+          } else if (!fallback.empty()) {
+            // État inconnu de CE client : le fragment reste du TEXTE ordinaire,
+            // avec le libellé que l'expéditeur a transporté. Il dit encore de
+            // quoi on parle, il ne prétend simplement plus rien montrer.
             current.text += '[';
             current.text += fallback;
             current.text += ']';
@@ -6622,6 +6669,7 @@ links::Target ChatWindow::TargetOf(const Run& run) const {
     case Run::kUrl: return links::FromUrl(run.url.c_str());
     case Run::kPlayer: return links::FromPlayer(run.text.c_str());
     case Run::kSetting: return links::FromSetting(run.setting_key.c_str());
+    case Run::kStatus: return links::FromStatus(run.status_efst);
     case Run::kStyle:
       return links::FromStyle(run.style_code.c_str(), run.style_owner.c_str());
     case Run::kNavi:
@@ -6645,6 +6693,7 @@ links::Target ChatWindow::TargetOf(const PendingLink& link) const {
     return t;
   }
   if (link.kind == Run::kSetting) return links::FromSetting(link.setting_key.c_str());
+  if (link.kind == Run::kStatus) return links::FromStatus(link.status_efst);
   if (link.kind == Run::kStyle)
     return links::FromStyle(link.style_code.c_str(), link.style_owner.c_str());
   if (link.kind == Run::kNaviSearch)
@@ -6958,6 +7007,34 @@ bool ChatWindow::AppendSettingLink(const char* key) {
   pending.display     = display;
   pending.kind        = Run::kSetting;
   pending.setting_key = key;
+  return PostPendingLink(std::move(pending));
+}
+
+// Poser le lien d'un ÉTAT — « [État: Agility UP] ».
+//
+// 🔴 C'est l'INDEX EFST qui part sur le fil, jamais le nom : chaque client tire
+// ses noms d'états de son propre Lua, donc dans sa langue. Le libellé voyage
+// avec, uniquement pour rester lisible chez qui n'a pas Bourgeon — à
+// l'affichage, c'est le nom LOCAL qui gagne.
+bool ChatWindow::AppendStatusLink(uint16_t efst) {
+  if (!imgui_enabled_ || !input_bar_ || efst == 0) return false;
+  const links::Target t = links::FromStatus(efst);
+  if (!t.valid()) return false;
+  if (!LinkSlotAvailable()) return false;
+
+  // Le repli part dans la langue de l'EXPÉDITEUR, faute de mieux : c'est le seul
+  // nom dont on dispose, et il ne s'adresse qu'à un client sans Bourgeon.
+  const char* raw = statuscell::Name(efst);
+  char wire[192];
+  std::snprintf(wire, sizeof(wire), "<STAL>%u:%s</STAL>",
+                static_cast<unsigned>(efst),
+                (raw != nullptr && raw[0] != '\0') ? ro::LocalToUtf8(raw) : "?");
+
+  PendingLink pending;
+  pending.wire        = wire;
+  pending.display     = t.label;
+  pending.kind        = Run::kStatus;
+  pending.status_efst = efst;
   return PostPendingLink(std::move(pending));
 }
 

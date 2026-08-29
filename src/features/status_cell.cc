@@ -10,6 +10,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "features/link_gesture.h"  // MAJ + clic : le lien
 #include "ragnarok/lua.h"
 #include "ragnarok/msgstring.h"
 #include "ui/game_texture.h"
@@ -437,8 +438,28 @@ const char* Name(uint16_t efst) {
   return Lookup(efst).name.c_str();
 }
 
+// ── Les couleurs de l'infobulle ─────────────────────────────────────────────
+//
+// 🔴 ELLE IMPOSE SON FOND, et ce n'est pas de la coquetterie : `PushSkinColors`
+// pose un `PopupBg` CLAIR dans toute fenêtre RO, alors qu'un overlay garde le
+// fond sombre d'ImGui. La MÊME infobulle avait donc deux fonds selon l'endroit
+// d'où on la survolait — claire dans la fenêtre Groupe/Amis et dans un lien de
+// chat, sombre au-dessus des barres — pendant que son texte, lui, gardait la
+// couleur par défaut. Blanc sur beige : illisible une fois sur deux.
+//
+// ⚠ `TextDisabled` d'ImGui est calibré pour un fond SOMBRE ; sur ce beige il
+// s'efface presque entièrement. D'où un gris à part pour le texte secondaire,
+// celui de la palette du projet.
+constexpr ImU32 kTipBg   = IM_COL32(0xF2, 0xF3, 0xF6, 255);
+constexpr ImU32 kTipText = IM_COL32(24, 22, 20, 255);
+constexpr ImU32 kTipDim  = IM_COL32(89, 89, 107, 255);
+
 void Tooltip(const StatusEffects::Entry& e) {
   // Une altération n'a pas de texte Lua : son nom est le nôtre.
+  ImGui::PushStyleColor(ImGuiCol_PopupBg, kTipBg);
+  ImGui::PushStyleColor(ImGuiCol_Text, kTipText);
+  ImGui::PushStyleColor(ImGuiCol_TextDisabled, kTipDim);
+
   if (const AilmentLook* look = LookupAilment(e.efst)) {
     ImGui::BeginTooltip();
     ImGui::TextUnformatted(i18n::Tr(look->name));
@@ -451,6 +472,7 @@ void Tooltip(const StatusEffects::Entry& e) {
       ImGui::TextDisabled("%s", when);
     }
     ImGui::EndTooltip();
+    ImGui::PopStyleColor(3);
     return;
   }
 
@@ -505,6 +527,7 @@ void Tooltip(const StatusEffects::Entry& e) {
       ImGui::TextDisabled("%s", when);
   }
   ImGui::EndTooltip();
+  ImGui::PopStyleColor(3);
 }
 
 bool Draw(const StatusEffects::Entry& e, ImVec2 p0, ImVec2 p1,
@@ -602,6 +625,26 @@ bool Draw(const StatusEffects::Entry& e, ImVec2 p0, ImVec2 p1,
   const bool over = ImGui::IsMouseHoveringRect(p0, p1);
   if (took_hover != nullptr && over) *took_hover = true;
   if (tooltip && over) Tooltip(e);
+
+  // ── MAJ + clic : poser le lien de cet état dans le chat ───────────────────
+  //
+  // Le geste vit ICI, donc les quatre surfaces qui affichent des états l'ont
+  // d'un coup — la barre de mes états, celle de la cible, la grille de groupe et
+  // la liste Groupe/Amis. Le poser chez chacune en aurait fait la cinquième
+  // copie du même geste.
+  //
+  // ⚠ Réservé aux surfaces qui ont déjà le droit d'interagir (`tooltip`) : une
+  // case posée en décoration ne doit pas capter de clic.
+  //
+  // 🔴 On IGNORE le retour de `Gestures` — le « il faut ouvrir un menu » du clic
+  // DROIT. Sur une tuile de groupe ou une ligne de liste, ce bouton appartient
+  // déjà au membre, et lui voler son menu pour une icône de deux pixels serait
+  // une régression. Le clic gauche simple, lui, ne fait rien : un état n'a pas
+  // de description à ouvrir, et c'est l'infobulle ci-dessus qui porte le lien.
+  if (tooltip && over) {
+    const links::Target t = links::FromStatus(e.efst);
+    if (t.valid()) links::Gestures(t, true);
+  }
   return true;
 }
 

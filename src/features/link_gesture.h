@@ -75,9 +75,16 @@ struct Target {
   //  · kNaviSearch désigne ce qu'on CHERCHE, et ouvre le panneau dessus. C'est
   //    le seul moyen de partager un PNJ ou un monstre — ni l'un ni l'autre n'a
   //    de position unique, et aucune balise native ne les transporte.
+  //
+  // kStatus — un ÉTAT (buff / altération), par son index EFST. C'est le seul
+  // lien dont le clic gauche n'ouvre RIEN, et ce n'est pas un manque : il
+  // n'existe aucune fenêtre de description d'état côté client. Ce qu'on a à en
+  // dire — le nom, l'effet, l'icône — tient dans l'infobulle, que `statuscell`
+  // sait déjà composer. Le lien PORTE donc son information, au lieu d'en
+  // promettre une ailleurs.
   enum Kind : uint8_t {
     kNone = 0, kItem, kMob, kUrl, kPlayer, kRecipe, kSetting, kStyle, kNavi,
-    kNaviSearch
+    kNaviSearch, kStatus
   };
   uint8_t kind = kNone;
 
@@ -152,6 +159,12 @@ struct Target {
   std::string style_code;
   std::string style_owner;  // UTF-8
 
+  // kStatus — l'index EFST, la seule identité stable d'un état. Le NOM ne
+  // voyage pas comme identifiant : chaque client le tire de son propre Lua, donc
+  // dans sa langue. Il accompagne la balise uniquement pour rester lisible chez
+  // qui n'a pas Bourgeon.
+  uint16_t status_efst = 0;
+
   std::string label;  // ce que le menu affiche en tête (UTF-8)
 
   bool valid() const { return kind != kNone; }
@@ -224,6 +237,16 @@ std::string SettingLabel(const char* key);
 // un lien reçu d'un client plus récent, et un texte inerte y vaut mieux qu'un lien
 // qui ouvrirait le réglage d'à côté — ou rien du tout.
 Target FromSetting(const char* key);
+
+// Le libellé VISIBLE d'un lien d'état : « [État: Agility UP] ». Composé
+// LOCALEMENT — le nom vient du Lua du CLIENT QUI LIT, comme pour un réglage.
+// Chaîne vide si cet EFST n'a pas de nom chez ce client.
+std::string StatusLabel(uint16_t efst);
+
+// Un ÉTAT, par son index EFST. Cible VIDE si le client ne sait ni le nommer ni le
+// dessiner : un lien qui n'apprendrait rien vaut moins que pas de lien — même
+// règle qu'une recette absente ou qu'un réglage inconnu.
+Target FromStatus(uint16_t efst);
 
 // ── Le Maj + clic, pour les surfaces qui ne passent pas par `Gestures` ───────
 //
