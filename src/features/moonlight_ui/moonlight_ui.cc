@@ -758,10 +758,14 @@ const moonlight_ui::SettingDesc kPartyFriendSettings[] = {
      MLUI_FIELD(party_friend_window, imgui_enabled_), MLUI_LITERAL(bool, false)},
     {"partyfriend_tab", SType::kInt, MLUI_FIELD(party_friend_window, cur_tab()),
      MLUI_LITERAL(int, 1)},
+    {"partyfriend_lock_size", SType::kBool,
+     MLUI_FIELD(party_friend_window, lock_size()), MLUI_LITERAL(bool, false)},
     // Apparence des lignes. Défauts calqués sur ce que le natif montrait —
     // personne ne doit voir sa fenêtre changer parce qu'on a ouvert des réglages.
     {"partyfriend_jobicon", SType::kBool,
      MLUI_FIELD(party_friend_window, show_job_icon_), MLUI_LITERAL(bool, true)},
+    {"partyfriend_head_mode", SType::kInt,
+     MLUI_FIELD(party_friend_window, head_mode_), MLUI_LITERAL(int, 0)},
     {"partyfriend_level", SType::kBool,
      MLUI_FIELD(party_friend_window, show_level_), MLUI_LITERAL(bool, true)},
     {"partyfriend_hpbar", SType::kBool,

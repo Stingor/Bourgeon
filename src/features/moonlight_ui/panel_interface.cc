@@ -685,9 +685,15 @@ void MoonlightUi::DrawInterfacePanel() {
               "Au-delà, les états en trop sont écartés — ce sont les DERNIERS du "
               "rangement ci-dessous, qui décide donc de ce qu'on perd."));
           {
-            const char* kSorts[] = {i18n::Tr("Ordre d'arrivée"),
-                                    i18n::Tr("Bientôt fini d'abord"),
-                                    i18n::Tr("Plus long d'abord")};
+            // 🔴 ITEMS NUS, PAS DE `i18n::Tr` ICI. RoCombo traduit ses items a
+            // la LECTURE (ro_imgui.cc) : envelopper la table les fait passer
+            // DEUX fois par Tr, et le second appel cherche la traduction
+            // anglaise comme si elle etait une cle francaise. Il ne trouve
+            // rien, garde le texte tel quel — et la panne est INVISIBLE en
+            // francais, ou Tr rend l'identite. Elle ne se voit qu'en EN/ES.
+            const char* kSorts[] = {"Ordre d'arrivée",
+                                    "Bientôt fini d'abord",
+                                    "Plus long d'abord"};
             changed |= ro::RoCombo(i18n::Tr("Rangement"), &tsb->sort(),
                                    kSorts, IM_ARRAYSIZE(kSorts));
           }
@@ -711,9 +717,9 @@ void MoonlightUi::DrawInterfacePanel() {
           // ── Écoulement ────────────────────────────────────────────────────
           SeparatorText(i18n::Tr("Écoulement"));
           {
-            const char* kSweeps[] = {i18n::Tr("Aucun"),
-                                     i18n::Tr("Balayage horaire"),
-                                     i18n::Tr("Voile descendant")};
+            const char* kSweeps[] = {"Aucun",
+                                     "Balayage horaire",
+                                     "Voile descendant"};
             changed |= ro::RoCombo(i18n::Tr("Grisage de la case"),
                                    &tsb->sweep(), kSweeps,
                                    IM_ARRAYSIZE(kSweeps));
@@ -754,18 +760,40 @@ void MoonlightUi::DrawInterfacePanel() {
           ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
         } else {
           bool changed = false;
+          SeparatorText(i18n::Tr("Fenêtre"));
+          changed |= ro::RoCheckbox(i18n::Tr("Verrouiller la taille"),
+                                    &pfw->lock_size());
+          SameLine(); HelpMarker(i18n::Tr(
+              "Empêche le redimensionnement, PAS le déplacement : la fenêtre "
+              "se déplace toujours par sa barre de titre.\n\n"
+              "Une fois la largeur réglée, viser le bord au lieu du titre la "
+              "dérègle d'un pixel et recompose les lignes sous la souris."));
           SeparatorText(i18n::Tr("Contenu d'une ligne"));
           changed |= ro::RoCheckbox(i18n::Tr("Icône de classe"),
                                     &pfw->show_job_icon_);
           SameLine(); HelpMarker(i18n::Tr(
               "L'art du client, à gauche du nom. Éteinte, la ligne se resserre — "
               "utile sur une fenêtre étroite."));
+          {
+            // ⚠ Items NUS : RoCombo traduit à la lecture (cf. plus bas).
+            const char* kHeads[] = {"Aucune", "Groupe", "Amis", "Les deux"};
+            changed |= ro::RoCombo(i18n::Tr("Tête du personnage"),
+                                   &pfw->head_mode_, kHeads,
+                                   IM_ARRAYSIZE(kHeads));
+          }
+          SameLine(); HelpMarker(i18n::Tr(
+              "La tête du personnage à la place de l'icône de classe, comme la "
+              "fenêtre des membres de guilde.\n\n"
+              "Pour qui est à l'écran, elle vient de son sprite et suit un "
+              "changement de coiffure aussitôt. Pour les autres, le serveur la "
+              "donne sur demande — un joueur HORS LIGNE n'en a pas, et dans "
+              "l'onglet Amis la ligne reste alors sans vignette."));
           changed |= ro::RoCheckbox(i18n::Tr("Niveau devant le nom"),
                                     &pfw->show_level_);
           {
-            const char* kMapModes[] = {i18n::Tr("Nom complet"),
-                                       i18n::Tr("Nom court"),
-                                       i18n::Tr("Masquée")};
+            const char* kMapModes[] = {"Nom complet",
+                                       "Nom court",
+                                       "Masquée"};
             changed |= ro::RoCombo(i18n::Tr("Carte"), &pfw->map_mode_,
                                     kMapModes, IM_ARRAYSIZE(kMapModes));
           }
@@ -826,9 +854,9 @@ void MoonlightUi::DrawInterfacePanel() {
             changed |= ro::RoCheckbox(i18n::Tr("Temps restant sous l'icône"),
                                       &pfw->buff_time_);
             {
-              const char* kSweeps[] = {i18n::Tr("Aucun"),
-                                       i18n::Tr("Balayage horaire"),
-                                       i18n::Tr("Voile descendant")};
+              const char* kSweeps[] = {"Aucun",
+                                       "Balayage horaire",
+                                       "Voile descendant"};
               changed |= ro::RoCombo(i18n::Tr("Grisage de la case"),
                                      &pfw->buff_sweep(), kSweeps,
                                      IM_ARRAYSIZE(kSweeps));
@@ -860,8 +888,8 @@ void MoonlightUi::DrawInterfacePanel() {
                                     &pfw->show_hp_bar_);
           {
             const char* kHpModes[] = {
-                i18n::Tr("Rien"), i18n::Tr("Chiffres"),
-                i18n::Tr("Pourcentage"), i18n::Tr("Chiffres et pourcentage")};
+                "Rien", "Chiffres",
+                "Pourcentage", "Chiffres et pourcentage"};
             changed |= ro::RoCombo(i18n::Tr("Texte des PV"),
                                    &pfw->hp_text_mode_, kHpModes,
                                    IM_ARRAYSIZE(kHpModes));
@@ -869,8 +897,8 @@ void MoonlightUi::DrawInterfacePanel() {
           changed |= ro::RoCheckbox(i18n::Tr("Barre de SP"), &pfw->show_sp_);
           {
             const char* kSpModes[] = {
-                i18n::Tr("Rien"), i18n::Tr("Chiffres"),
-                i18n::Tr("Pourcentage"), i18n::Tr("Chiffres et pourcentage")};
+                "Rien", "Chiffres",
+                "Pourcentage", "Chiffres et pourcentage"};
             changed |= ro::RoCombo(i18n::Tr("Texte du SP"),
                                     &pfw->sp_text_mode_, kSpModes,
                                     IM_ARRAYSIZE(kSpModes));
@@ -972,8 +1000,8 @@ void MoonlightUi::DrawInterfacePanel() {
             // plus lisible en combat : on compare des membres entre eux, on ne
             // lit pas des totaux.
             const char* kHpModes[] = {
-                i18n::Tr("Rien"), i18n::Tr("Chiffres"),
-                i18n::Tr("Pourcentage"), i18n::Tr("Chiffres et pourcentage")};
+                "Rien", "Chiffres",
+                "Pourcentage", "Chiffres et pourcentage"};
             changed |= ro::RoCombo(i18n::Tr("Points de vie"),
                                     &pf->hp_text_mode_, kHpModes,
                                     IM_ARRAYSIZE(kHpModes));
@@ -1071,9 +1099,9 @@ void MoonlightUi::DrawInterfacePanel() {
             changed |= ro::RoCheckbox(i18n::Tr("Temps restant sous l'icône"),
                                       &pf->buff_time_);
             {
-              const char* kSweeps[] = {i18n::Tr("Aucun"),
-                                       i18n::Tr("Balayage horaire"),
-                                       i18n::Tr("Voile descendant")};
+              const char* kSweeps[] = {"Aucun",
+                                       "Balayage horaire",
+                                       "Voile descendant"};
               changed |= ro::RoCombo(i18n::Tr("Grisage de la case"),
                                      &pf->buff_sweep(), kSweeps,
                                      IM_ARRAYSIZE(kSweeps));

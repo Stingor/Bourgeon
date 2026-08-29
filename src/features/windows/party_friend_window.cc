@@ -14,6 +14,7 @@
 #include "features/overlays/party_frames.h"      // le cache de SP, partagé
 #include "features/overlays/target_frame.h"      // cibler par le chemin clavier
 #include "features/status_cell.h"                // le rendu d'UNE case d'état
+#include "features/systems/entity_looks.h"       // l'apparence, hors de portée
 #include "features/systems/status_effects.h"     // les buffs, lus au fil du réseau
 #include "features/windows/entity_context_menu.h"  // le menu du personnage
 #include "imgui.h"
@@ -25,6 +26,7 @@
 #include "ragnarok/ui_window_mgr.h"  // UIM_MAKE_WHISPER_WINDOW (ouverture d'un 1:1)
 #include "ragnarok/uiwnd.h"
 #include "ui/game_texture.h"  // ro::CachedTextureFromGameFile (icônes du client)
+#include "ui/head_icon.h"     // ro::DrawHeadIcon (la vignette de la guilde)
 #include "ui/ro_imgui.h"
 #include "ui/ro_widgets.h"
 #include "utils/i18n.h"
@@ -561,12 +563,34 @@ void PartyFriendWindow::OnRenderUI() {
   // La valeur tient au contenu : les DEUX onglets côte à côte, et une ligne de
   // membre — icône de job de 40 px, nom, niveau. En dessous, la fenêtre ne
   // montre plus ce pour quoi on l'ouvre.
-  ImGui::SetNextWindowSizeConstraints(ImVec2(ro::Px(260.0f), ro::Px(150.0f)),
-                                      ImVec2(FLT_MAX, FLT_MAX));
+  //
+  // 🔴 Le minimum se MESURE, il ne se devine pas. La ligne du haut porte
+  // maintenant trois choses — les deux onglets et la case de la grille — et un
+  // seuil calé sur le français laisserait « Party » / « Friends » / « Grid »
+  // sortir du cadre chez un joueur anglophone. La formule vaut donc dans la
+  // langue COURANTE, et le plancher historique reste le sien quand elle passe
+  // en dessous.
+  //
+  // ⚠ La case compte MÊME quand l'onglet des amis la masque : un minimum
+  // qui change d'un onglet à l'autre ferait sauter la fenêtre à chaque
+  // bascule. C'est le pire cas qui fait la règle.
+  const ImGuiStyle& st = ImGui::GetStyle();
+  const float top_row = ro::SmallButtonWidth(i18n::Tr("Groupe")) +
+                        ro::SmallButtonWidth(i18n::Tr("Amis")) +
+                        ro::CheckboxWidth(i18n::Tr("Grille")) +
+                        st.ItemSpacing.x * 2.0f + st.WindowPadding.x * 2.0f;
+  ImGui::SetNextWindowSizeConstraints(
+      ImVec2(std::max(ro::Px(260.0f), top_row), ro::Px(150.0f)),
+      ImVec2(FLT_MAX, FLT_MAX));
 
   // Bullet de la barre de titre = raccourci vers la config de CETTE fenêtre.
   ro::SetNextWindowTitleBullet(i18n::Tr("Réglages Groupe / Amis"));
-  const bool begun = ro::BeginRoWindow(i18n::Tr("Groupe / Amis"), &open_);
+  // ⚠ `NoResize` SEUL : le verrou porte sur la taille, jamais sur la position.
+  // Le plancher de taille ci-dessus reste actif — il ne sert plus à rien tant
+  // que le verrou tient, mais il reprend la main dès qu'on le lève.
+  const bool begun = ro::BeginRoWindow(
+      i18n::Tr("Groupe / Amis"), &open_,
+      lock_size_ ? ImGuiWindowFlags_NoResize : 0);
   if (ro::TitleBulletClicked()) {
     if (auto* mu = Bourgeon::Instance().moonlight_ui())
       mu->OpenInterfaceSection(MoonlightUi::kIfacePartyFriend);
@@ -574,10 +598,54 @@ void PartyFriendWindow::OnRenderUI() {
   if (begun) {
     // Les deux onglets du natif, dans le même ordre et avec le même sens de
     // `cur_tab_` que son champ +0x28C (0 = amis, 1 = groupe).
-    if (ro::RoToggleButton(i18n::Tr("Groupe"), cur_tab_ == 1)) cur_tab_ = 1;
+    //
+    // ⚠ En PETIT : la ligne ne leur appartient plus, elle porte aussi la case
+    // de la grille. Deux boutons pleine taille ne laissaient pas la place.
+    if (ro::RoSmallToggleButton(i18n::Tr("Groupe"), cur_tab_ == 1)) cur_tab_ = 1;
     ImGui::SameLine();
-    if (ro::RoToggleButton(i18n::Tr("Amis"), cur_tab_ == 0)) cur_tab_ = 0;
+    if (ro::RoSmallToggleButton(i18n::Tr("Amis"), cur_tab_ == 0)) cur_tab_ = 0;
+
+    // ── La grille de groupe, allumée d'ici ────────────────────────────────
+    //
+    // Elle vivait uniquement dans le panneau de réglages, à quatre clics de
+    // l'endroit où on s'en sert. C'est le seul affichage qu'on allume et
+    // qu'on éteint selon ce qu'on fait — solo, groupe de deux, raid — et sa
+    // fenêtre de rattachement est celle-ci.
+    //
+    // ⚠ Le MÊME `enabled_` que le panneau, pas un doublon : deux drapeaux
+    // pour un affichage finiraient par se contredire, et c'est le panneau qui
+    // porte la description du réglage.
+    //
+    // ⚠ Sur l'onglet des AMIS, elle disparaît : la grille ne montre que le
+    // groupe, et une case qui ne concerne pas ce qu'on regarde se lit comme un
+    // réglage de la liste sous les yeux.
+    auto* pf = (cur_tab_ == 1) ? Bourgeon::Instance().party_frames() : nullptr;
+    if (pf != nullptr) {
+      // La case est plus basse que le bouton : sans ce recentrage elle
+      // pendrait au haut de la ligne. `GetItemRectSize` mesure le bouton qui
+      // vient d'être posé — l'art du skin n'expose pas sa hauteur autrement.
+      const float row_h = ImGui::GetItemRectSize().y;
+      const float cb_h = std::max(ro::Px(10.0f), ImGui::GetTextLineHeight());
+      ImGui::SameLine();
+      ImGui::SetCursorPosY(ImGui::GetCursorPosY() +
+                           std::max(0.0f, (row_h - cb_h) * 0.5f));
+      if (ro::RoCheckbox(i18n::Tr("Grille"), &pf->enabled_)) {
+        if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
+      }
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s", i18n::Tr(
+            "Affiche le groupe en grille de tuiles, à la place du HUD du "
+            "client. Le réglage est le même que dans Interface de jeu."));
+    }
     ImGui::Separator();
+
+    // La demande d'apparences : VIVANTE, redemandée à chaque frame affichée. Le
+    // registre ne sonde que si quelqu'un regarde, et seulement la liste qu'on
+    // regarde — un onglet Groupe ne fait pas parcourir quarante amis.
+    if (auto* looks = Bourgeon::Instance().entity_looks()) {
+      if (cur_tab_ == 1 && HeadInParty()) looks->RequestParty();
+      if (cur_tab_ == 0 && HeadInFriends()) looks->RequestFriends();
+    }
 
     // Relu à CHAQUE frame, comme le fait DrawContent : le manager est la source de
     // vérité et rien ne nous prévient qu'il a changé.
@@ -654,7 +722,6 @@ void PartyFriendWindow::DrawPartyTab() {
   }
 
   DrawPartyOptions();
-  ImGui::Separator();
 
   // 🔴 L'espace entre lignes est l'ESPACEMENT D'ImGui, pas un bloc ajouté après
   // coup : un `Dummy` s'AJOUTAIT à `ItemSpacing.y`, si bien que le réglage à zéro
@@ -717,6 +784,40 @@ void PartyFriendWindow::DrawFriendTab() {
                       static_cast<int>(friends_.size()), rag::social::kMaxFriends);
 }
 
+// L'apparence à peindre pour cette ligne, ou faux si on ne la connaît pas.
+//
+// 🔴 DEUX SOURCES, ET L'ORDRE COMPTE. L'acteur est la vérité vivante : un
+// changement de coiffure s'y voit à la frame suivante, alors que le registre
+// réseau ne se rafraîchit que toutes les quinze secondes. Mais l'acteur n'existe
+// qu'à PORTÉE, et c'est justement le cas que le paquet est là pour couvrir.
+// L'acteur d'abord, donc, et le registre en repli — jamais l'inverse.
+//
+// ⚠ Rend faux pour un joueur HORS LIGNE sans même chercher : le serveur ne
+// renseigne que les sessions ouvertes, et une entrée de l'ancien tour resterait
+// dans le registre.
+static bool LookFor(const rag::social::Entry& row, int* hair, int* color,
+                    int* sex, int* job) {
+  if (row.offline) return false;
+  if (row.has_look) {
+    *hair  = row.hair;
+    *color = row.hair_color;
+    *sex   = row.sex;
+    *job   = row.job;
+    return true;
+  }
+  auto* looks = Bourgeon::Instance().entity_looks();
+  EntityLooks::Look l;
+  if (looks == nullptr || !looks->Of(row.gid, &l)) return false;
+  *hair  = l.hair;
+  *color = l.hair_color;
+  *sex   = l.sex;
+  // ⚠ Le job du PAQUET, pas celui de la ligne : la liste d'amis du client ne
+  // porte pas de classe fiable, et c'est lui qui choisit la RACE — donc le
+  // dossier de sprites. Un Doram servi avec un job d'humain ne trouve rien.
+  *job   = l.job;
+  return true;
+}
+
 // ── Une ligne de GROUPE, calquée sur le natif ────────────────────────────────
 //
 //   [icône de classe]  Lv.N Nom(Carte)              [statut]
@@ -741,10 +842,15 @@ void PartyFriendWindow::DrawPartyRow(const rag::social::Entry& row) {
   // peut pas la centrer verticalement sur une hauteur qu'on ne connaît pas
   // encore. Posée d'emblée, elle restait collée en haut — et l'écart sautait aux
   // yeux dès qu'on changeait sa taille ou qu'on empilait les jauges.
+  //
+  // ⚠ DEUX réglages la commandent, et l'un suffit : « Icône de classe » et
+  // « Tête du personnage » désignent la MÊME case. Tester le premier seul
+  // faisait disparaître la tête avec l'icône qu'elle remplace.
+  const bool thumb = show_job_icon_ || HeadInParty();
   rag::social::JobIconPath(row.job, path, sizeof(path));
   const ro::GameTexture job_icon =
-      show_job_icon_ ? ro::CachedTextureFromGameFile(path) : ro::GameTexture{};
-  if (show_job_icon_) {
+      thumb ? ro::CachedTextureFromGameFile(path) : ro::GameTexture{};
+  if (thumb) {
     ImGui::Dummy(ImVec2(icon, icon));
   }
   // Le natif pose le nom de classe sur son bouton d'icône
@@ -752,9 +858,9 @@ void PartyFriendWindow::DrawPartyRow(const rag::social::Entry& row) {
   // où il tient sans encombrer la ligne.
   // ⚠ Seulement quand l'infobulle de LIGNE est éteinte : elle porte déjà la
   // classe, et deux infobulles sur la même ligne se disputeraient l'affichage.
-  if (show_job_icon_ && !show_tooltip_ && ImGui::IsItemHovered())
+  if (thumb && !show_tooltip_ && ImGui::IsItemHovered())
     ImGui::SetTooltip("%s", ro::LocalToUtf8(rag::social::JobName(row.job)));
-  if (show_job_icon_) ImGui::SameLine();
+  if (thumb) ImGui::SameLine();
 
   ImGui::BeginGroup();
 
@@ -869,14 +975,33 @@ void PartyFriendWindow::DrawPartyRow(const rag::social::Entry& row) {
   // Sa place a été réservée plus haut ; maintenant que le contenu est posé, on
   // connaît la hauteur sur laquelle la centrer. La ligne fait au moins la
   // hauteur de l'icône (le `Dummy` la garantit), d'où le `max`.
-  if (show_job_icon_ && job_icon.tex) {
+  if (thumb) {
     const float content_h = std::max(icon, ImGui::GetItemRectSize().y);
     const ImVec2 i0(origin.x, origin.y + (content_h - icon) * 0.5f);
-    // Hors ligne : la même icône, assombrie — le natif grise toute la ligne.
-    const ImU32 tint = row.offline ? IM_COL32(140, 140, 140, 220) : IM_COL32_WHITE;
-    ImGui::GetWindowDrawList()->AddImage(
-        reinterpret_cast<ImTextureID>(job_icon.tex), i0,
-        ImVec2(i0.x + icon, i0.y + icon), ImVec2(0, 0), ImVec2(1, 1), tint);
+
+    // La TÊTE d'abord, quand on la veut ET qu'on la connaît. `DrawHeadIcon`
+    // rend faux si la ressource manque — on retombe alors sur l'icône, sans
+    // laisser de case vide.
+    //
+    // ⚠ `allow_upscale` FAUX : une tête plus petite que la case reste à sa
+    // taille. L'agrandir sur une ligne de liste en fait une bouillie de pixels,
+    // le sprite étant minuscule à l'origine.
+    bool drawn = false;
+    int hair = 0, color = 0, sex = 1, job = 0;
+    if (HeadInParty() && LookFor(row, &hair, &color, &sex, &job)) {
+      drawn = ro::DrawHeadIcon(ImGui::GetWindowDrawList(), i0.x, i0.y, icon,
+                               hair, sex, color, /*allow_upscale=*/false, job);
+    }
+    // Le repli n'a lieu que si l'icône de classe est, elle, demandée : qui n'a
+    // coché QUE la tête ne veut pas voir surgir une icône à la place.
+    if (!drawn && show_job_icon_ && job_icon.tex) {
+      // Hors ligne : la même icône, assombrie — le natif grise toute la ligne.
+      const ImU32 tint =
+          row.offline ? IM_COL32(140, 140, 140, 220) : IM_COL32_WHITE;
+      ImGui::GetWindowDrawList()->AddImage(
+          reinterpret_cast<ImTextureID>(job_icon.tex), i0,
+          ImVec2(i0.x + icon, i0.y + icon), ImVec2(0, 0), ImVec2(1, 1), tint);
+    }
   }
 
   // ── La pastille de statut, calée à droite de la ligne ─────────────────────
@@ -1599,8 +1724,26 @@ void PartyFriendWindow::DrawFriendRow(const rag::social::Entry& row) {
   // CONNEXION : sa branche amis ne blitte son icône que si `+0x40` est nul. On
   // rend la même information avec la pastille du groupe, pour que l'état « en
   // ligne » se lise pareil dans les deux onglets.
-  if (row.offline) ImGui::TextDisabled("%s", ro::LocalToUtf8(row.name.c_str()));
-  else             ImGui::TextUnformatted(ro::LocalToUtf8(row.name.c_str()));
+  // ── La tête, quand on la connaît ─────────────────────────────────────────
+  //
+  // 🔴 Un ami est presque toujours HORS de portée : son apparence n'est alors
+  // nulle part, et aucun repli n'est possible ici (la ligne d'ami n'a jamais eu
+  // de vignette de classe). On ne réserve donc RIEN quand la tête manque —
+  // c'est le geste exact de la liste de guilde, qui indente son libellé
+  // seulement pour les membres en ligne.
+  int hair = 0, color = 0, sex = 1, job = 0;
+  const bool head_here =
+      HeadInFriends() && LookFor(row, &hair, &color, &sex, &job);
+  const float head_box = ImGui::GetTextLineHeight() + ro::Px(6.0f);
+  char name_label[64];
+  std::snprintf(name_label, sizeof(name_label), "%s%s", head_here ? "      " : "",
+                ro::LocalToUtf8(row.name.c_str()));
+  if (row.offline) ImGui::TextDisabled("%s", name_label);
+  else             ImGui::TextUnformatted(name_label);
+  if (head_here) {
+    ro::DrawHeadIcon(ImGui::GetWindowDrawList(), origin.x, origin.y - ro::Px(2.0f),
+                     head_box, hair, sex, color, /*allow_upscale=*/false, job);
+  }
 
   DrawStatusBadge(row.offline ? "OFF" : "ON",
                   row.offline ? IM_COL32(105, 105, 105, 255)

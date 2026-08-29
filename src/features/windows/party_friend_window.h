@@ -226,6 +226,18 @@ class PartyFriendWindow : public Plugin {
   // ⚠ Ne fait rien non plus si le mode Ciblage du joueur est éteint : c'est SON
   // réglage qui décide qu'une cible existe (`RequestTargetFromProxy` rend faux).
   bool click_targets_ = false;
+  bool lock_size_     = false;  // réglage : plus de redimensionnement
+
+  // La TÊTE du personnage à la place de l'icône de classe, comme la fenêtre
+  // « Member » de la guilde. Un MODE et non une case : les deux onglets n'ont
+  // pas le même intérêt à la montrer, et le coût n'est pas le même non plus —
+  // c'est ce réglage qui décide des listes qu'on fait suivre au serveur.
+  //
+  //   0 = aucune · 1 = groupe · 2 = amis · 3 = les deux
+  int head_mode_ = 0;
+
+  bool HeadInParty()   const { return (head_mode_ & 1) != 0; }
+  bool HeadInFriends() const { return (head_mode_ & 2) != 0; }
 
   // ── Densité et forme des jauges ───────────────────────────────────────────
   //
@@ -264,6 +276,16 @@ class PartyFriendWindow : public Plugin {
   // Onglet courant. Mêmes valeurs que le champ natif `+0x28C`, pour que le sens se
   // lise pareil des deux côtés : 0 = amis, 1 = groupe.
   int& cur_tab() { return cur_tab_; }
+
+  // Taille verrouillée : la fenêtre se DÉPLACE encore, elle ne se
+  // redimensionne plus.
+  //
+  // 🔴 Les deux verrous ne se valent pas. Une fenêtre posée à la
+  // bonne taille se dérègle d'un pixel dès qu'on vise son bord au lieu
+  // de son titre, et le contenu se recompose sous la souris ; la déplacer,
+  // au contraire, reste un geste qu'on veut garder. D'où `NoResize` seul,
+  // et jamais `NoMove` avec.
+  bool& lock_size() { return lock_size_; }
 
  private:
   // Une entrée sociale : le MÊME type que celui du HUD de groupe, décrit et lu
