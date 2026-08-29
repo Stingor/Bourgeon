@@ -981,5 +981,25 @@ static LRESULT CALLBACK WindowProcHook(HWND hwnd, UINT uMsg, WPARAM wParam,
     }
   }
 
+  // ── Échap décible, EN DERNIER RECOURS ─────────────────────────────────────
+  // Le geste des MMO : Échap lâche d'abord la cible, et n'ouvre le menu du jeu
+  // que s'il n'y en avait pas. Opt-in (« Échap efface la cible » dans le HUD de
+  // cible), parce que la touche appartient au client depuis toujours.
+  //
+  // 🔴 SA PLACE EST ICI, tout en bas, et pas dans le bloc Échap du haut : tout
+  // ce qui pouvait vouloir cette touche l'a déjà prise — fenêtre RO fermable,
+  // barre de chat dépliée, saisie ImGui, dialogue NPC. Un appui ne fait jamais
+  // deux choses, et le déciblage est ce qu'on veut EN DERNIER.
+  //
+  // 🔴 La touche n'est confisquée que si le déciblage a EU LIEU : sans cible,
+  // `ClearTarget` renvoie faux et Échap repart intact au client, qui ouvre son
+  // menu. C'est le second appui du geste, et il doit marcher du premier coup.
+  if ((uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN) && wParam == VK_ESCAPE) {
+    auto* target_frame = Bourgeon::Instance().target_frame();
+    if (target_frame != nullptr && target_frame->escape_clears_ &&
+        target_frame->ClearTarget())
+      return 0;
+  }
+
   return WndProcRef(hwnd, uMsg, wParam, lParam);
 }

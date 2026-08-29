@@ -1125,6 +1125,10 @@ const moonlight_ui::SettingDesc kOptInWindowSettings[] = {
      MLUI_LITERAL(bool, true)},
     {"target_cycle_reset_ms", SType::kInt,
      MLUI_FIELD(target_frame, cycle_reset_ms_), MLUI_LITERAL(int, 1000)},
+    // ⚠ Défaut FAUX : ce réglage PREND une touche au client (Échap ouvre le menu
+    // du jeu). On ne l'active jamais à la place du joueur.
+    {"target_escape_clears", SType::kBool,
+     MLUI_FIELD(target_frame, escape_clears_), MLUI_LITERAL(bool, false)},
     {"target_native_marker", SType::kBool,
      MLUI_FIELD(target_frame, native_marker_), MLUI_LITERAL(bool, true)},
     {"target_click_no_attack", SType::kBool,

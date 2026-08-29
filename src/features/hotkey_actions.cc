@@ -76,6 +76,11 @@ const Action kActions[] = {
     // sans rien parcourir. Le cyclage sert à EXPLORER, celle-ci à ENGAGER — les
     // confondre obligeait à deviner où le cycle en était resté.
     {"target_nearest",    "Cible la plus proche",   ActionGroup::kTools,   0, {}},
+    // Et son inverse : LÂCHER la cible. Aucun défaut non plus — la touche qui
+    // vient à l'esprit, Échap, ouvre le menu du jeu depuis toujours ; elle a son
+    // réglage à elle dans le panneau du HUD de cible, où le joueur la donne
+    // explicitement (cf. `TargetFrame::escape_clears_`).
+    {"target_clear",      "Effacer la cible",       ActionGroup::kTools,   0, {}},
     // Rapport de bug. 🔴 SEULE ACTION À PORTER UN DÉFAUT : Ctrl+Alt+B est le combo
     // sous lequel elle a été livrée, et le catalogue le reprend tel quel plutôt que
     // de le laisser en dur dans `BugReport` — invisible à l'écran des raccourcis,
@@ -275,6 +280,13 @@ bool Invoke(const char* id) {
   if (std::strcmp(id, "target_nearest") == 0) {
     if (auto* target_frame = bourgeon.target_frame())
       return target_frame->TargetNearest();
+    return false;
+  }
+  // Déciblage. `false` quand il n'y avait rien de ciblé : la touche n'a alors
+  // rien fait, et l'appelant est libre de la laisser suivre son chemin.
+  if (std::strcmp(id, "target_clear") == 0) {
+    if (auto* target_frame = bourgeon.target_frame())
+      return target_frame->ClearTarget();
     return false;
   }
   // Rapport de bug. `Open` ne fait que poser une demande traitée au frame suivant

@@ -711,6 +711,38 @@ bool TargetFrame::CycleTarget(bool forward) {
   return ApplyKeyboardTarget(gm, found[next].gid);
 }
 
+// Lâcher la cible. Le pendant exact d'`ApplyKeyboardTarget` : là où celle-ci
+// pose une désignation, celle-ci la retire — des DEUX côtés, le nôtre et le
+// natif, sans quoi le nom flottant du jeu resterait sur l'entité abandonnée.
+bool TargetFrame::ClearTarget() {
+  // Le mode éteint, le raccourci ne fait rien : même règle que le cyclage, et
+  // même raison — un interrupteur maître qui laisse des restes n'en est pas un.
+  if (!enabled_) return false;
+  // Rien à lâcher. 🔴 Ce refus n'est PAS une politesse : c'est lui qui rend la
+  // touche Échap au jeu quand il n'y a pas de cible (cf. le WndProc).
+  if (gid_ == 0) return false;
+  auto& bourgeon = Bourgeon::Instance();
+  // Les offsets sont ceux de CE build : ailleurs, on n'écrit rien dans le mode —
+  // mais on éteint quand même NOTRE HUD, qui n'appartient à aucun client.
+  if (bourgeon.client().timestamp() == 20250716) {
+    if (void* gm = rag::ActiveModeSafe()) WriteNativeSelection(gm, 0);
+  }
+  Reset(0);
+  // 🔴 Et l'état des GESTES avec, sinon le déciblage ne tient pas une frame : un
+  // geste resté en attente rallumerait la cible au rendu suivant, et
+  // `last_native_sel_` non remis à zéro ferait lire la remise à zéro qu'on vient
+  // d'écrire comme un CHANGEMENT de sélection.
+  pending_gesture_gid_ = 0;
+  last_native_sel_     = 0;
+  // La dispense d'attaque tombe avec la cible : elle a été accordée pour engager
+  // CETTE entité, la garder ferait attaquer au simple clic la suivante alors que
+  // « le clic cible sans attaquer » est coché.
+  explicit_attack_gid_     = 0;
+  explicit_engage_pending_ = false;
+  explicit_attack_once_    = false;
+  return true;
+}
+
 void TargetFrame::NoteExplicitAttack(uint32_t gid, bool once) {
   explicit_attack_gid_     = gid;
   explicit_engage_pending_ = (gid != 0);
@@ -1695,14 +1727,24 @@ bool TargetFrame::DrawSettings() {
   Separator();
   SeparatorText(i18n::Tr("Ciblage au clavier"));
   TextWrapped(i18n::Tr(
-      "Trois actions à lier dans l'écran des raccourcis : « Cible suivante », "
-      "« Cible précédente » et « Cible la plus proche ». Les deux premières "
-      "passent d'un monstre à l'autre parmi ceux qui sont à l'écran, du plus "
-      "proche au plus loin ; la troisième prend directement le plus proche, sans "
-      "rien parcourir. Tab et Maj+Tab conviennent bien, et restent au chat tant "
-      "que la barre de saisie a le focus."));
+      "Quatre actions à lier dans l'écran des raccourcis : « Cible suivante », "
+      "« Cible précédente », « Cible la plus proche » et « Effacer la cible ». "
+      "Les deux premières passent d'un monstre à l'autre parmi ceux qui sont à "
+      "l'écran, du plus proche au plus loin ; la troisième prend directement le "
+      "plus proche, sans rien parcourir ; la quatrième lâche la cible. Tab et "
+      "Maj+Tab conviennent bien, et restent au chat tant que la barre de saisie "
+      "a le focus."));
   changed |= ro::RoCheckbox(i18n::Tr("Boucler après la dernière cible"),
                             &cycle_wrap_);
+
+  changed |= ro::RoCheckbox(i18n::Tr("Échap efface la cible"), &escape_clears_);
+  SameLine();
+  HelpMarker(i18n::Tr(
+      "Échap lâche d'abord la cible, et n'ouvre le menu du jeu que s'il n'y en "
+      "avait pas.\n\nLa touche n'est prise que si le déciblage a vraiment eu "
+      "lieu : sans cible, Échap fait ce qu'il a toujours fait.\n\nElle passe en "
+      "dernier, après les fenêtres qu'Échap referme et la barre de chat — un "
+      "même appui ne fait jamais deux choses."));
 
   ImGui::PushItemWidth(160.0f);
   changed |= WheelSliderInt(i18n::Tr("Reprendre au plus proche après (ms)"),

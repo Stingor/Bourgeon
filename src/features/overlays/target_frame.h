@@ -192,6 +192,21 @@ class TargetFrame : public Plugin {
   // remise à zéro, le cycle se souvient indéfiniment.
   int   cycle_reset_ms_ = 1000;
 
+  // ── Échap décible ─────────────────────────────────────────────────────────
+  // Le geste des MMO : Échap lâche d'abord la cible, et n'ouvre le menu du jeu
+  // que s'il n'y en avait pas. 🔴 Défaut FAUX, comme tout ce qui prend une
+  // touche au client : Échap ouvre le menu depuis toujours, et le lui retirer
+  // sans qu'on l'ait demandé est le genre de cadeau qu'on passe sa vie à
+  // retirer. L'action « Effacer la cible » de l'écran des raccourcis, elle, est
+  // disponible sans ce réglage — c'est la voie qui ne vole rien.
+  //
+  // ⚠ La touche n'est confisquée QUE si le déciblage a vraiment eu lieu : sans
+  // cible, Échap repart intact vers le jeu (cf. `ClearTarget`, qui renvoie faux
+  // quand il n'y a rien à lâcher). Et il passe en DERNIER, après les fenêtres
+  // RO fermables et la barre de chat : celles-là ont la priorité, un Échap ne
+  // fait jamais deux choses à la fois.
+  bool  escape_clears_ = false;
+
   // ── La flèche de ciblage du jeu ───────────────────────────────────────────
   // 🔴 Le petit triangle blanc n'est PAS piloté par la seule sélection `+0xF4`.
   // `GameMode_UpdateSelectedTargetNameLabel` commence par un verrou :
@@ -362,6 +377,20 @@ class TargetFrame : public Plugin {
   // trente fois par combat, et le faire passer par un cycle dont on ne sait plus
   // où il en est est exactement ce qu'on veut éviter.
   bool TargetNearest();
+
+  // Lâche la cible : le HUD s'éteint, et la sélection NATIVE (`CGameMode+0xF4`)
+  // est remise à zéro avec lui — sinon le nom flottant du jeu et sa flèche
+  // resteraient accrochés à l'entité qu'on vient d'abandonner.
+  //
+  // 🔴 Zéro est une valeur que le natif écrit LUI-MÊME dans ce champ : c'est
+  // exactement ce que fait `GameMode_OnEnterMapSetup` (0x00C6BE20), son unique
+  // nettoyage. On ne lui invente donc aucun état. Les deux voisins ne sont pas
+  // touchés — `+0xF0` est la cible de TRAVAIL du pipeline souris, et `+0xF8` a
+  // déjà coûté un bug (cf. `WriteNativeSelection`).
+  //
+  // Renvoie false quand il n'y avait rien à décibler. C'est ce qui permet à
+  // Échap de repartir vers le jeu : sans cible, la touche n'a pas été employée.
+  bool ClearTarget();
 
   // ── Ce que le dispatch de messages du mode appelle ────────────────────────
   // Vrai si la flèche de ciblage du jeu doit être posée sur NOTRE cible ; remplit

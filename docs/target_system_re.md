@@ -514,9 +514,40 @@ la cible clavier est donc la même que celle d'un clic pour tout ce qui lit ce c
 > clavier par la réécriture du message 5 décrite en §4 bis (« ce que Bourgeon en
 > fait »), pas par l'écriture de `+0xF4`.
 
-Deux actions dans le catalogue de raccourcis (`hotkey_actions`) :
-`target_cycle_next` et `target_cycle_prev`, **sans touche par défaut** (le joueur
-choisit ; rien n'est imposé).
+Quatre actions dans le catalogue de raccourcis (`hotkey_actions`), **aucune avec
+une touche par défaut** (le joueur choisit ; rien n'est imposé) :
+`target_cycle_next`, `target_cycle_prev`, `target_nearest` (le plus proche, sans
+rien parcourir — le geste qu'on refait trente fois par combat) et `target_clear`
+(lâcher la cible).
+
+### Décibler
+
+`TargetFrame::ClearTarget()` est le pendant exact d'`ApplyKeyboardTarget` : elle
+éteint le HUD (`Reset(0)`), remet à zéro l'état des **gestes**
+(`pending_gesture_gid_`, `last_native_sel_` — sans quoi la remise à zéro qu'on
+vient d'écrire se relirait comme un *changement* de sélection à la frame
+suivante), abandonne la dispense d'attaque en cours, et **écrit 0 dans
+`CGameMode+0xF4`**.
+
+> 🔴 Écrire **0** dans ce champ n'invente aucun état : c'est exactement ce que
+> fait le natif lui-même dans `GameMode_OnEnterMapSetup` (`0x00C6BE20`), son
+> **unique** nettoyage (§ « les 5 sites d'écriture »). Sans lui, le nom flottant
+> du jeu et sa flèche resteraient accrochés à l'entité qu'on vient d'abandonner.
+> Les deux voisins ne sont pas touchés : `+0xF0` est la cible de **travail** du
+> pipeline souris, et `+0xF8` a déjà coûté un bug (correction du 2026-08-22
+> ci-dessus).
+
+Elle renvoie **false quand il n'y avait rien à décibler**, et ce refus porte une
+fonction : c'est lui qui rend la touche **Échap** au client.
+
+**Échap décible** — réglage `target_escape_clears`, **opt-in**, défaut faux :
+Échap appartient au menu du jeu depuis toujours, on ne le lui retire pas sans
+qu'on l'ait demandé. Le test vit **tout en bas du WndProc**
+(`ragnarok_client.cc`), après le bloc Échap des fenêtres RO fermables, après la
+barre de chat dépliée, après la capture clavier d'ImGui et le dialogue NPC : tout
+ce qui pouvait vouloir cette touche l'a déjà prise, et un appui ne fait jamais
+deux choses. La touche n'est confisquée (`return 0`) **que si le déciblage a eu
+lieu** ; sans cible, elle repart intacte au client, qui ouvre son menu.
 
 **Tab et Maj+Tab sont assignables** depuis le 2026-08-20. Ils ne l'étaient pas :
 l'écran des raccourcis n'offrait aux actions Bourgeon que lettres, chiffres,
