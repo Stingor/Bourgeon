@@ -9,13 +9,18 @@
 #include "ragnarok/homunculus.h"  // skill d'homoncule posé dans une case : lecture + lancement
 #include <Windows.h>
 
+#include <yaml-cpp/yaml.h>
+
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
+#include <map>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "imgui.h"
@@ -29,6 +34,7 @@
 #include "ui/window_clamp.h"  // ClampWindowPosToScreen (barre déplacée à la main)
 #include "ui/window_zorder.h"  // HUD maintenu sous les vraies fenêtres
 #include "ui/ro_imgui.h"
+#include "utils/game_paths.h"  // paths::ItemBarPath (barre d'items PAR PERSONNAGE)
 #include "utils/hooking/hook_manager.h"
 #include "utils/log_console.h"
 #include "utils/i18n.h"
@@ -822,9 +828,19 @@ void SkillBar::RefreshDrawnSlots() {
 }
 
 void SkillBar::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
-  in_game_ = (mode_type == ModeMgr::ModeType::kGame);
+  const bool now_in_game = (mode_type == ModeMgr::ModeType::kGame);
+  // 🔴 AVANT de basculer in_game_ : on quitte le jeu, donc c'est la dernière
+  // occasion de graver la barre d'items du personnage qui s'en va. Après, le
+  // store live est hors d'usage et le CID de la globale n'est plus le sien —
+  // une case posée moins d'une seconde plus tôt attendrait encore son écriture.
+  if (in_game_ && !now_in_game) SaveItemSlotsIfChanged(/*force*/ true);
+  in_game_ = now_in_game;
   if (!in_game_) {
     native_hidden_ = false; last_tab_ = -1; items_restored_ = false;
+    item_char_id_ = 0;  // la barre en mémoire n'appartient plus à personne
+    item_dirty_ = false;
+    item_cid_warned_ = false;
+    std::memset(saved_item_slots_, 0, sizeof(saved_item_slots_));
     ForgetDrag();                    // un glisser interrompu par un changement de carte
                                      // ne décidera de rien au retour en jeu
     g_suppress_native_draw = false;  // hors jeu : ne pas bloquer le dessin natif
@@ -833,8 +849,140 @@ void SkillBar::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
   FlushIconCache();  // recharge les icônes au changement de zone
 }
 
-// Lit les slots d'items du store plugin (g_itemStore) -> item_slots_ (pour la sauvegarde yaml). SEH.
-// Garde : avant la restauration en jeu le store est vide -> on garde la valeur chargée du yaml.
+namespace {
+
+// ── Le fichier de la barre d'items : une entrée par PERSONNAGE ───────────────
+// `SaveData\bourgeon_itembar.yaml`, un map CID -> { slot: nameid }. Les cases
+// vides n'y figurent pas ; une entrée VIDE, elle, est significative — c'est un
+// joueur qui a tout retiré, et il ne doit pas re-hériter au relog.
+//
+// La clé 0 est à part : la barre d'avant la migration, quand le contenu vivait
+// dans bourgeon_settings.yaml et valait donc pour l'installation entière. Elle
+// sert de point de départ à tout personnage qui n'a pas encore la sienne.
+constexpr uint32_t kInheritedItemBarKey = 0;
+// Temps de calme avant d'écrire. Un glisser passe par des états intermédiaires
+// (case vidée puis remplie) qu'il serait absurde de graver un par un.
+constexpr unsigned long kItemBarFlushDelayMs = 1000;
+
+using ItemBarSlots = std::map<int, uint32_t>;  // slot -> nameid
+std::map<uint32_t, ItemBarSlots> g_itemBars;   // CID -> cases (0 = barre héritée)
+bool g_itemBarsLoaded = false;
+
+void ItemBarsLoad() {
+  if (g_itemBarsLoaded) return;
+  g_itemBarsLoaded = true;  // même en cas d'échec : ne pas relire le disque à chaque appel
+  try {
+    const YAML::Node root = YAML::LoadFile(paths::ItemBarPath());
+    if (!root || !root.IsMap()) return;
+    for (const auto& entry : root) {
+      // Clé illisible : ignorée plutôt que repliée sur 0, qui écraserait la
+      // barre héritée avec le contenu d'une entrée abîmée.
+      const uint32_t cid = entry.first.as<uint32_t>(0xFFFFFFFFu);
+      if (cid == 0xFFFFFFFFu || !entry.second.IsMap()) continue;
+      ItemBarSlots cases;
+      for (const auto& kv : entry.second) {
+        const int slot = kv.first.as<int>(-1);
+        const uint32_t nameid = kv.second.as<uint32_t>(0u);
+        if (slot < 0 || slot >= SkillBar::kItemSlotMax || nameid == 0) continue;
+        cases[slot] = nameid;
+      }
+      g_itemBars[cid] = std::move(cases);
+    }
+  } catch (const std::exception&) {
+    // Fichier absent au premier lancement : c'est le cas NOMINAL. Un document
+    // abîmé se traite pareil — on repart d'une barre vide plutôt que de refuser.
+  }
+}
+
+void ItemBarsFlush() {
+  const std::string path = paths::ItemBarPath();
+  YAML::Node root(YAML::NodeType::Map);
+  for (const auto& entry : g_itemBars) {
+    YAML::Node cases(YAML::NodeType::Map);
+    for (const auto& kv : entry.second) cases[kv.first] = kv.second;
+    root[entry.first] = cases;
+  }
+  std::ofstream f(path, std::ios::binary | std::ios::trunc);
+  if (!f) {
+    LogError("[skillbar] barre d'items non écrite : {}", path);
+    return;
+  }
+  f << root;
+  f << "\n";
+}
+
+}  // namespace
+
+// Charge la barre d'items du personnage EN COURS. Appelée en jeu, juste avant la
+// restauration des cases : hors du mode jeu la globale d'identité porte un
+// vestige de la session précédente (cf. ragnarok/globals.h), et s'y fier ici
+// rendrait la barre d'un autre personnage — puis l'écraserait à la sauvegarde.
+bool SkillBar::LoadItemSlotsForCurrentChar() {
+  item_char_id_ = rag::OwnCharIdSafe();
+  std::memset(item_slots_, 0, sizeof(item_slots_));
+  if (item_char_id_ == 0) {
+    if (!item_cid_warned_) {
+      item_cid_warned_ = true;
+      LogError("[skillbar] CID illisible : barre d'items ni restaurée ni sauvegardée");
+    }
+    return false;
+  }
+  ItemBarsLoad();
+  auto it = g_itemBars.find(item_char_id_);
+  // Personnage encore inconnu du fichier : il hérite de la barre d'avant la
+  // migration. Une entrée vide, elle, RESTE vide : le joueur l'a vidée.
+  if (it == g_itemBars.end()) it = g_itemBars.find(kInheritedItemBarKey);
+  if (it == g_itemBars.end()) return true;  // personnage neuf, rien à hériter : barre vide
+  for (const auto& kv : it->second)
+    if (kv.first >= 0 && kv.first < kItemSlotMax) item_slots_[kv.first] = kv.second;
+  return true;
+}
+
+// Réécrit le fichier quand le contenu a bougé. `force` = écrire sans attendre le
+// temps de calme (sortie du mode jeu : il n'y aura pas de frame suivante).
+void SkillBar::SaveItemSlotsIfChanged(bool force) {
+  if (item_char_id_ == 0) return;  // personnage inconnu : ne rien écrire sous un CID deviné
+  SnapshotItemSlots();
+  const bool changed =
+      std::memcmp(item_slots_, saved_item_slots_, sizeof(item_slots_)) != 0;
+  if (!changed) {
+    item_dirty_ = false;  // revenu de lui-même à l'état déjà écrit : plus rien à graver
+    return;
+  }
+  if (!item_dirty_) {
+    item_dirty_ = true;
+    item_dirty_ms_ = GetTickCount();
+  }
+  if (!force && GetTickCount() - item_dirty_ms_ < kItemBarFlushDelayMs) return;
+
+  ItemBarsLoad();
+  ItemBarSlots& cases = g_itemBars[item_char_id_];
+  cases.clear();
+  for (int i = 0; i < kItemSlotMax; ++i)
+    if (item_slots_[i] != 0) cases[i] = item_slots_[i];
+  ItemBarsFlush();
+  std::memcpy(saved_item_slots_, item_slots_, sizeof(item_slots_));
+  item_dirty_ = false;
+}
+
+// Reprise de la barre unique d'avant la migration (clés `skillbar_item*` de
+// bourgeon_settings.yaml), rangée sous la clé 0. Écrite UNE fois : une fois la
+// barre héritée posée, elle ne bouge plus, sinon le dernier personnage à jouer
+// redéfinirait le point de départ de tous les autres.
+void SkillBar::AdoptLegacyItemSlots(const uint32_t* slots, int count) {
+  if (!slots) return;
+  ItemBarsLoad();
+  if (g_itemBars.count(kInheritedItemBarKey) != 0) return;  // déjà migré
+  ItemBarSlots cases;
+  for (int i = 0; i < count && i < kItemSlotMax; ++i)
+    if (slots[i] != 0) cases[i] = slots[i];
+  if (cases.empty()) return;  // rien à hériter : pas de fichier créé pour rien
+  g_itemBars[kInheritedItemBarKey] = std::move(cases);
+  ItemBarsFlush();
+}
+
+// Lit les slots d'items du store plugin (g_itemStore) -> item_slots_ (pour la sauvegarde). SEH.
+// Garde : avant la restauration en jeu le store est vide -> on garde la valeur chargée du fichier.
 void SkillBar::SnapshotItemSlots() {
   if (!in_game_ || !items_restored_) return;
   __try {
@@ -947,12 +1095,22 @@ void SkillBar::OnRenderUI() {
       native_hidden_ = true;
       // Restaure 1×/session le contenu persisté de la barre d'items (store plugin g_itemStore ;
       // ni le serveur ni le natif ne le fournissent). WriteSlotRecord écrit g_itemStore.
-      if (!items_restored_) {
+      // Le contenu est celui du PERSONNAGE : il se charge ici, au premier instant où son CID
+      // est lisible.
+      if (!items_restored_ && LoadItemSlotsForCurrentChar()) {
         for (int i = 0; i < kItemSlotMax; ++i)
           if (item_slots_[i] != 0) WriteSlotRecord(2, i, /*is_item*/ true, item_slots_[i], 0);
+        // Ce qu'on vient de poser EST l'état écrit : sans ça la restauration elle-même
+        // passerait pour un changement et déclencherait une écriture à chaque entrée en jeu.
+        std::memcpy(saved_item_slots_, item_slots_, sizeof(item_slots_));
+        item_dirty_ = false;
         items_restored_ = true;
       }
     }
+    // Le joueur remplit et vide ses cases sans rien nous dire (glisser natif, clic molette) :
+    // c'est la comparaison avec le dernier état écrit qui décide, pas un drapeau posé aux
+    // endroits qu'on aurait pensé à instrumenter.
+    SaveItemSlotsIfChanged(/*force*/ false);
   } else if (native_hidden_) {
     if (w) {
       ShowNative(w);

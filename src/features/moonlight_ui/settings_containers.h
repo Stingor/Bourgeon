@@ -107,8 +107,11 @@ void WritePortraitLayout(YAML::Emitter& out);
 void ReadTargetLayout(const YAML::Node& ui);
 void WriteTargetLayout(YAML::Emitter& out);
 
-// Barres de raccourcis : skillbarN_* (3 barres fixes) + skillbar_itemN (contenu
-// persisté de la barre d'items).
+// Barres de raccourcis : skillbarN_* (3 barres fixes). Le CONTENU de la barre
+// d'items n'est plus ici — il vit par personnage dans
+// `SaveData\bourgeon_itembar.yaml` (paths::ItemBarPath) ; ne restent que les
+// vieilles clés `skillbar_itemN`, relues une dernière fois pour en faire la
+// barre héritée dont part chaque personnage.
 void ReadSkillBarLayout(const YAML::Node& ui);
 void WriteSkillBarLayout(YAML::Emitter& out);
 

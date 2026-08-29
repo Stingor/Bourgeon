@@ -78,11 +78,25 @@ class SkillBar : public Plugin {
       {false, 300, 580, 9, 0, 9, 32.0f, 2.0f},   // Items
   };
 
-  // Contenu PERSISTÉ de la barre d'items (nameids ; 0 = vide). Le natif ne persiste PAS les slots
-  // d'items (OnDrop appelle juste SetShortCutItemSlot, aucun paquet) -> on les sauve en yaml et on les
-  // restaure à l'entrée en jeu. SnapshotItemSlots() rafraîchit ce tableau depuis les globals live.
+  // Contenu PERSISTÉ de la barre d'items (nameids ; 0 = vide), pour le PERSONNAGE en cours. Le natif
+  // ne persiste PAS les slots d'items (OnDrop appelle juste SetShortCutItemSlot, aucun paquet) -> on
+  // les sauve nous-mêmes, dans `SaveData\bourgeon_itembar.yaml` sous le CID (paths::ItemBarPath), et
+  // on les restaure à l'entrée en jeu. SnapshotItemSlots() rafraîchit ce tableau depuis le store live.
+  //
+  // 🔴 Ce tableau ne vaut QUE pour item_char_id_ : il est rechargé à chaque entrée en jeu et remis à
+  // zéro en sortant. Le sauver sous un autre CID écrirait la barre d'un personnage par-dessus celle
+  // d'un autre — d'où le CID capturé À LA RESTAURATION et non relu au moment d'écrire (les globales
+  // d'identité gardent un vestige de la session précédente hors du mode jeu, cf. ragnarok/globals.h).
   uint32_t item_slots_[kItemSlotMax] = {};
-  void SnapshotItemSlots();     // lit g_ShortCutItemSlotExt -> item_slots_ (appelé avant la sauvegarde)
+  void SnapshotItemSlots();     // lit le store d'items -> item_slots_ (appelé avant la sauvegarde)
+
+  // Barre d'items HÉRITÉE de l'époque où elle vivait, unique, dans bourgeon_settings.yaml
+  // (clés `skillbar_item0..N`). MoonlightUi la lit encore et nous la passe ici ; on la range une
+  // fois pour toutes dans le nouveau fichier sous la clé 0, d'où chaque personnage qui n'a pas
+  // encore la sienne la reçoit en point de départ. Sans ce relais, la migration aurait effacé la
+  // barre de tout le monde — les anciennes clés disparaissent du yaml partagé à sa prochaine
+  // écriture, qu'un simple réglage coché au char-select suffit à déclencher.
+  void AdoptLegacyItemSlots(const uint32_t* slots, int count);
   void DrawSettings();   // contenu des réglages (réutilisé dans l'onglet MoonlightUi)
 
   // Rejoue l'utilisation d'une case d'OBJET — la voie exacte de sa touche. Pour
@@ -127,6 +141,23 @@ class SkillBar : public Plugin {
   // nombre de cases ne les désarmait pas, et une barre rangée après avoir été
   // remplie continuait de lancer ses compétences en aveugle.
   void RefreshDrawnSlots();
+
+  // Charge item_slots_ depuis `bourgeon_itembar.yaml` pour le personnage en cours et fixe
+  // item_char_id_. Appelée EN JEU, juste avant la restauration des cases : c'est le premier
+  // instant où le CID de la globale du client est celui de la session courante.
+  // Rend false si ce CID est illisible — l'appelant retente alors à la frame suivante plutôt
+  // que de figer la session sur une barre vide.
+  bool LoadItemSlotsForCurrentChar();
+  // Relit le store live et, si le contenu a bougé, réécrit le fichier — après un temps de calme,
+  // car un glisser passe par des états intermédiaires qu'il serait absurde de graver un par un.
+  // `force` écrit tout de suite ce qui attendait (sortie du mode jeu).
+  void SaveItemSlotsIfChanged(bool force);
+
+  uint32_t item_char_id_ = 0;    // CID auquel item_slots_ appartient (0 = inconnu -> on ne sauve rien)
+  uint32_t saved_item_slots_[kItemSlotMax] = {};  // dernier contenu ÉCRIT, pour ne réécrire qu'au change
+  bool     item_dirty_    = false;  // un changement attend son écriture
+  unsigned long item_dirty_ms_ = 0;  // GetTickCount du dernier changement observé
+  bool     item_cid_warned_ = false;  // CID illisible déjà signalé (une ligne par session, pas par frame)
 
   bool in_game_        = false;
   bool native_hidden_  = false;  // état courant de la barre native

@@ -383,6 +383,15 @@ inline uint32_t OwnAccountIdSafe() {
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
 }
 inline uint32_t OwnCharId()    { return *reinterpret_cast<uint32_t*>(kOwnCharIdAddr); }
+// Le même sous SEH, pour les lecteurs qui n'ont pas de `__try` à eux (une
+// fonction qui manipule des objets C++ ne peut pas en ouvrir un). 0 = illisible,
+// et c'est un verdict utile : rien qui s'adresse au personnage ne doit partir
+// sur un CID deviné.
+inline uint32_t OwnCharIdSafe() {
+  __try {
+    return OwnCharId();
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+}
 inline int      OwnJobId()     { return *reinterpret_cast<int*>(kOwnJobIdAddr); }
 
 // ── L'APPARENCE du personnage, telle que le client la tient ─────────────────

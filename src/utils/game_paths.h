@@ -83,6 +83,20 @@ std::string StartupSettingsPath();
 // rien savoir de ses couleurs. Sans lui, un personnage s'y afficherait dans son
 // apparence native puis changerait en entrant en jeu.
 std::string PaletteCachePath();
+// Contenu de la barre d'ITEMS, une entrée par PERSONNAGE (clé = CID) :
+// `SaveData\bourgeon_itembar.yaml`. Le dossier est créé au besoin.
+//
+// Fichier DÉDIÉ et non une section de bourgeon_settings.yaml, pour la raison qui
+// fait toute la différence ici : ce yaml-là est UNIQUE pour l'installation, donc
+// tous les personnages de tous les comptes y partageaient une seule barre. Le
+// serveur ne peut pas prendre le relais — le natif ne persiste PAS les cases
+// d'objets (son OnDrop appelle SetShortCutItemSlot, aucun paquet ne part), à la
+// différence des deux onglets de skills que rAthena range dans sa table
+// `hotkey` par char_id.
+//
+// ⚠ Corollaire de « côté client » : la barre ne suit pas le joueur d'un PC à
+// l'autre. C'est le prix d'un stockage qui ne demande aucun opcode.
+std::string ItemBarPath();
 // Recettes de fabrication, générées depuis les DB serveur par
 // moonlight/tools/gen_metalprocess.py.
 //

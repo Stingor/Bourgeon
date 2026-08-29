@@ -646,11 +646,16 @@ void ReadSkillBarLayout(const YAML::Node& ui) {
     bar.icon_size  = ui[prefix + "size"].as<float>(bar.icon_size);
     bar.spacing    = ui[prefix + "spacing"].as<float>(bar.spacing);
   }
-  // Contenu persisté de la barre d'items (nameids).
+  // Contenu de la barre d'items : il a QUITTÉ ce fichier pour
+  // `SaveData\bourgeon_itembar.yaml`, où il est rangé par personnage (le yaml
+  // partagé est unique pour l'installation, donc tous les personnages de tous
+  // les comptes y partageaient une seule barre). Ne restent ici que les clés
+  // `skillbar_item*` des versions précédentes, qu'on transmet une fois à
+  // SkillBar : elles deviennent la barre HÉRITÉE dont part chaque personnage.
+  uint32_t legacy[SkillBar::kItemSlotMax] = {};
   for (int slot = 0; slot < SkillBar::kItemSlotMax; ++slot)
-    skill_bar->item_slots_[slot] =
-        ui["skillbar_item" + std::to_string(slot)].as<uint32_t>(
-            skill_bar->item_slots_[slot]);
+    legacy[slot] = ui["skillbar_item" + std::to_string(slot)].as<uint32_t>(0u);
+  skill_bar->AdoptLegacyItemSlots(legacy, SkillBar::kItemSlotMax);
 }
 
 void WriteSkillBarLayout(YAML::Emitter& out) {
@@ -668,12 +673,11 @@ void WriteSkillBarLayout(YAML::Emitter& out) {
         << YAML::Key << (prefix + "size")    << YAML::Value << bar.icon_size
         << YAML::Key << (prefix + "spacing") << YAML::Value << bar.spacing;
   }
-  // Capture le contenu VIVANT de la barre d'items avant de l'écrire : c'est le
-  // jeu qui le modifie (drag&drop), pas nous.
-  skill_bar->SnapshotItemSlots();
-  for (int slot = 0; slot < SkillBar::kItemSlotMax; ++slot)
-    out << YAML::Key << ("skillbar_item" + std::to_string(slot))
-        << YAML::Value << skill_bar->item_slots_[slot];
+  // (Plus de `skillbar_item*` ici : le contenu de la barre d'items vit
+  // maintenant dans `SaveData\bourgeon_itembar.yaml`, par personnage, et c'est
+  // SkillBar qui l'écrit lui-même dès qu'une case bouge. Les anciennes clés
+  // disparaissent donc du fichier à cette écriture — elles ont déjà été reprises
+  // à la lecture, cf. ReadSkillBarLayout.)
 }
 
 void ReadWindowPositions(const YAML::Node& ui) {
