@@ -3,9 +3,4 @@
 # freshly-built ddraw.dll is available for conf/bourgeon_integrity.conf.
 file(SHA256 "${DLL}" BOURGEON_SHA256)
 file(WRITE "${OUT}" "${BOURGEON_SHA256}\n")
-
-message(STATUS "----------------------------------------------------------------")
 message(STATUS "ddraw.dll SHA-256: ${BOURGEON_SHA256}")
-message(STATUS "  written to: ${OUT}")
-message(STATUS "  server cfg: hash: ${BOURGEON_SHA256}")
-message(STATUS "----------------------------------------------------------------")
