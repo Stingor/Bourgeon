@@ -54,14 +54,28 @@ constexpr uintptr_t kFindWindowAddr  = 0x00a47b90;  // UIWindowMgr::FindWindow(i
 // LITTÉRAUX dans des tables (celle de `window_pos_tweaks`), hors de portée de
 // toute recherche de `constexpr`.
 //
+// 📖 LA LISTE EXHAUSTIVE — les **269** fenêtres que sert le dispatcher natif,
+// avec classe RTTI, vtable, ctor, slot du gestionnaire et taille — est dans
+// `docs/native_window_dispatch.md`. Y aller AVANT d'ajouter une entrée ici : le
+// document dit aussi quels identifiants sont MORTS (107 d'entre eux rendent
+// nullptr), lesquels sont des aiguilleurs, et lesquels relèvent de la SECONDE
+// fabrique (le framework `CUI`, ids 10001..10033).
+//
 // ⚠ La VTABLE accompagne l'identifiant quand elle est connue : `WndOfClass`
 // demande les deux, et les séparer invite à apparier de travers.
 
-constexpr int kChatWndId                   = 1;     // 0x1     classe non relevée
+constexpr int kChatWndId                   = 1;     // 0x1     UINewChatWnd
 constexpr int kCharServerWndId             = 2;     // 0x2     « Select Service » : choix du char-server
 constexpr int kUIInventoryWnd              = 8;     // 0x8
 constexpr int kUIEquipWnd                  = 10;    // 0xa
-constexpr uintptr_t kUIEquipWndVTable      = 0x01022f68;
+// 🔴 CORRIGÉE le 2026-08-29. Elle valait 0x01022f68, qui est la vtable de
+// `UIRPData` — une classe sans rapport, que docs/entity_chat_balloon_re.md avait
+// déjà rencontrée sur un objet DÉTRUIT. Personne ne s'en servait, donc rien ne
+// cassait : une constante fausse et inutilisée ne se signale jamais. La bonne
+// valeur vient du RTTI du ctor appelé par le cas 10 de MakeWindow (0x0088d740),
+// et equip_tweaks.cc:19 la portait déjà en commentaire.
+// Cf. docs/native_window_dispatch.md §9.
+constexpr uintptr_t kUIEquipWndVTable      = 0x0103223c;
 constexpr int kUIStatusWnd                 = 11;    // 0xb
 constexpr uintptr_t kUIStatusWndVTable     = 0x010329d4;
 constexpr int kItemDescWndId               = 12;    // 0xc     description d'OBJET ; msg 0x18, p2 = &ItemSkillInfo
@@ -78,7 +92,7 @@ constexpr uintptr_t kUIItemSellWndVTable   = 0x0103ce78;
 constexpr int kUIChooseSellBuyWnd          = 25;    // 0x19    « Please select a Deal Type »
 constexpr uintptr_t kUIChooseSellBuyWndVTable = 0x010335a4;
 constexpr int kUIChatRoomMakeWnd           = 27;    // 0x1b    création de salon
-constexpr int kChatRoomWndId               = 28;    // 0x1c    la salle elle-même ; classe non relevée
+constexpr int kChatRoomWndId               = 28;    // 0x1c    la salle elle-même ; UIChatRoomWnd
 constexpr int kChatRoomPasswordWndId       = 29;    // 0x1d    « Veuillez saisir le mot de passe »
 constexpr int kChatRoomChangeWndId         = 30;    // 0x1e    « Réglages » du salon, encore NATIVE
 constexpr int kTradeAcceptPopupWndId       = 32;    // 0x20    popup de requête d'échange (best-effort)
@@ -100,11 +114,22 @@ constexpr uintptr_t kSkillDescWndIdVTable  = 0x01032e0c;
 constexpr int kUIItemParamChangeDisplayWnd = 50;    // 0x32    comparateur ATK/DEF ; id FIXE (cas 50)
 constexpr uintptr_t kUIItemParamChangeDisplayWndVTable = 0x010323ec;
 constexpr int kNpcEditNumWndId             = 56;    // 0x38    saisie d'un NOMBRE
-constexpr int kUIGuildWnd                  = 59;    // 0x3b    le conteneur à onglets
-constexpr int kUIGuildPanelFirst           = 60;    // 0x3c    0x3c + rang : TotalInfo, MemberManage, …
-constexpr int kUIGuildPanelLast            = 66;    // 0x42    … PositionManage, Skill, AllyGuild, InfoPopup, Banished
-constexpr int kMessengerGroupWndId         = 69;    // 0x45    classe non relevée
-constexpr int kCardInsertWndId             = 74;    // 0x4a    classe non relevée
+// ⚠ 59 n'est PAS une fenêtre : son cas de MakeWindow est un AIGUILLEUR qui lit
+// l'onglet actif en `mgr+0x844` (0..6) et fabrique `0x3c + onglet`. Il n'existe
+// aucune classe « fenêtre de guilde » ; les sept panneaux SONT la fenêtre.
+constexpr int kUIGuildWnd                  = 59;    // 0x3b    → 0x3c + onglet (aiguilleur)
+// Ordre RÉEL des sept panneaux, relevé au RTTI le 2026-08-29 — l'ancienne liste
+// était décalée d'un cran, y compris dans les noms de l'IDB :
+//   60 UIGuildInfoManageWnd      63 UIGuildSkillWnd            66 UIGuildTotalInfoWnd
+//   61 UIGuildMemberManageWnd    64 UIGuildBanishedMemberWnd
+//   62 UIGuildPositionManageWnd  65 UIGuildNoticeWnd
+constexpr int kUIGuildPanelFirst           = 60;    // 0x3c    UIGuildInfoManageWnd
+constexpr int kUIGuildPanelLast            = 66;    // 0x42    UIGuildTotalInfoWnd (vtable 0x0103b5d0)
+// ⚠ 69 n'a PAS de classe : son cas de MakeWindow est un AIGUILLEUR. Il fabrique
+// la 34 (0x22, UIMessengerGroupWnd) puis lui envoie OnMsg(0xD7). Chercher une
+// fenêtre d'id 69 dans la map du gestionnaire ne rendra donc jamais rien.
+constexpr int kMessengerGroupWndId         = 69;    // 0x45    → 34 (UIMessengerGroupWnd)
+constexpr int kCardInsertWndId             = 74;    // 0x4a    UIItemCompositionWnd
 constexpr int kUIMakeTargetListWnd         = 79;    // 0x4f
 constexpr uintptr_t kUIMakeTargetListWndVTable = 0x0103ec50;
 constexpr int kUIMakeTargetProcessWnd      = 80;    // 0x50    reste NATIVE : on ne fait que la déclencher
@@ -145,7 +170,7 @@ constexpr int kUIMakeCharWnd               = 200;   // 0xc8
 constexpr int kUINavigationV4Wnd           = 203;   // 0xcb    la principale
 constexpr uintptr_t kUINavigationV4WndVTable = 0x00fd95ec;
 constexpr int kGuildNoneWndId              = 212;   // 0xd4    demandée quand on n'a PAS de guilde
-constexpr int kNpcSay2WndId                = 226;   // 0xe2    second dialogue NPC ; classe non relevée
+constexpr int kNpcSay2WndId                = 226;   // 0xe2    second dialogue NPC ; UISayDialogWnd, MÊME classe que 16
 constexpr int kUINavigationHelpWnd         = 229;   // 0xe5
 constexpr int kItemCompareDescWndId        = 234;   // 0xea    2e instance parallèle à 12 : MÊME layout, vtable et slot distincts
 constexpr uintptr_t kItemCompareDescWndIdVTable = 0x01032c5c;
@@ -166,13 +191,18 @@ constexpr int kUIBank_NewWnd               = 275;   // 0x113
 constexpr uintptr_t kUIBank_NewWndVTable   = 0x01030fd4;
 constexpr int kUINewSelectCharWnd          = 277;   // 0x115
 constexpr int kUINewMakeCharWnd            = 278;   // 0x116   ⚠ PAS `kUIMakeCharWnd` (200) : deux fenêtres, un « New » d'écart
-constexpr int kUIMiniPartyWnd              = 301;   // 0x12d   le conteneur du HUD de groupe
+// 🔴 301 tombe au DÉFAUT du switch de MakeWindow, et le registre CUI qui prend
+// le relais ne connaît que les ids ≥ 10001 : `MakeWindow(301)` rend donc
+// TOUJOURS nullptr. Le HUD de groupe existe, mais il naît par un autre chemin.
+// Garder l'id pour `FindWindow`, jamais pour fabriquer.
+constexpr int kUIMiniPartyWnd              = 301;   // 0x12d   conteneur du HUD de groupe (NON fabricable)
 constexpr int kUINavigationroadiconWnd     = 306;   // 0x132   sic : la casse est celle du client
-constexpr int kMenuIconWndId               = 307;   // 0x133   la grille d'icônes ; classe non relevée
+constexpr int kMenuIconWndId               = 307;   // 0x133   la grille d'icônes ; UIMenuIconWnd
 constexpr int kUINavigationRuideWnd        = 314;   // 0x13a   sic
 constexpr int kUICashShopWnd               = 318;   // 0x13e
 constexpr uintptr_t kUICashShopWndVTable   = 0x0101ca18;
-constexpr int kQuestJournalWndId           = 321;   // 0x141   classe INCONNUE — le seul dont aucun relevé ne donne le nom
+constexpr int kQuestJournalWndId           = 321;   // 0x141   UIRenewQuestWnd (RTTI, 2026-08-29)
+constexpr uintptr_t kQuestJournalWndVTable = 0x01021588;
 constexpr int kCUIExchangeUI               = 10011; // 0x271b  l'ÉCHANGE ; famille « CUI », comme 10014
 constexpr uintptr_t kCUIExchangeUIVTable   = 0x010457d8;
 constexpr int kCUIGameSettingsUI           = 10014; // 0x271e  le client ne suit pas `UI…Wnd` pour cette classe ; objet 0x100
@@ -225,6 +255,24 @@ inline bool IsHudReplaced() { return FindWindow(kUIRoMapWnd) != nullptr; }
 // majuscules — invisible à un grep sensible à la casse), kCloseWindowAddr dans 8.
 constexpr uintptr_t kMakeWindowAddr  = 0x00a39340;  // UIWindowMgr::MakeWindow(id)
 constexpr uintptr_t kCloseWindowAddr = 0x00a2e770;  // UIWindowMgr::Close(id)
+
+// 🔴 LA RESTAURATION DE LAYOUT — celle qui ROUVRE les fenêtres à CHAQUE MAP.
+//
+// `UIWindowMgr::RestoreWindowLayout(blob)`, __thiscall(mgr, blob). Le blob est
+// une suite d'entrées {id:2, taille:4} ouverte par le marqueur 20000 et close
+// par 20001 ; pour chaque id dans 20100..20499 la fonction appelle
+// `MakeWindow(id - 20100)` puis pousse le reste de l'entrée par `OnMsg(0, 123, …)`.
+//
+// Elle n'a qu'UN appelant dans tout le binaire (mesuré) : `CGameMode::EnterWorld`
+// (0x00c733d0), qui tourne à chaque entrée dans le monde — donc à chaque
+// changement de map, pas seulement à la connexion. C'est par là, et par nulle
+// autre, que le client rejoue « les fenêtres que tu avais ouvertes ».
+//
+// ⚠ Elle s'exécute APRÈS l'envoi de CZ_NOTIFY_ACTORINIT (0x007d), fait par
+// `GameMode_OnEnterMapSetup` plus haut dans la MÊME fonction : la barrière
+// `Bourgeon::IsMapLoading()` est déjà retombée quand elle fabrique les fenêtres.
+// Aucune garde temporelle ne l'attrape — il faut le hook (window_pos_tweaks).
+constexpr uintptr_t kRestoreWindowLayoutAddr = 0x00a4a930;
 
 // Crée la fenêtre `window_id` si elle n'existe pas, et la rend. IDEMPOTENT :
 // appelée sur une fenêtre déjà ouverte, elle rend l'existante sans en créer une
