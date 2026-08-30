@@ -5,7 +5,9 @@
 #include <cmath>
 #include <cstdint>
 
+#include "features/systems/login_spectator.h"
 #include "imgui.h"
+#include "utils/startup_settings.h"
 #include "ragnarok/audio.h"
 #include "ui/game_texture.h"
 #include "ui/mob_sprite.h"
@@ -232,8 +234,37 @@ void LoginParade::OnModeSwitch(ModeMgr::ModeType, const char*) {
   g_inited = false;
 }
 
+// La clé du miroir dans le fichier de démarrage (cf. login_parade.h).
+constexpr char kStartupKey[] = "login_parade";
+
+LoginParade::LoginParade() {
+  // Lu ICI, et pas attendu de `bourgeon_settings.yaml` : ce dernier n'arrive
+  // qu'à l'entrée en jeu, très longtemps après le seul écran où cette parade
+  // existe.
+  enabled_ = startup::BoolKey(kStartupKey, /*fallback=*/true);
+  startup_mirror_ = enabled_;
+}
+
+void LoginParade::OnTick() {
+  // Le réglage a-t-il bougé ? On ne cherche pas à savoir QUI l'a changé — la
+  // case du panneau ou la relecture du yaml à l'entrée en jeu : comparer la
+  // valeur suffit, et couvre les deux sans que personne ait à nous prévenir.
+  if (enabled_ == startup_mirror_) return;
+  startup_mirror_ = enabled_;
+  startup::SaveBoolKey(kStartupKey, enabled_, "parade de l'écran de connexion");
+}
+
 void LoginParade::OnRenderLoginUI() {
   if (!enabled_) return;  // (déjà garanti login/char-select par le dispatch)
+  // 🔴 Pas par-dessus le décor de connexion. Cette parade a été dessinée pour un
+  // FOND FIXE : ses Porings se promènent sur une image, avec leur propre échelle
+  // et leur propre sol. Sur une vraie ville en perspective, ils flottent à
+  // contre-emploi — et le décor n'a pas besoin d'eux pour être vivant.
+  // `Pending` autant qu'`Active` : la parade ne doit pas s'installer pendant la
+  // seconde et demie qui précède le décor, pour disparaître aussitôt derrière le
+  // voile. C'est cette apparition-pour-rien qui donnait au démarrage son air de
+  // succession d'écrans.
+  if (spectator::Active() || spectator::Pending()) return;
 
   const ImVec2 disp = ImGui::GetIO().DisplaySize;
   if (disp.x <= 0.0f || disp.y <= 0.0f) return;  // garde minimize (cf. feedback)

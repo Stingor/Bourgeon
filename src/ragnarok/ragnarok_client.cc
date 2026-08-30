@@ -17,6 +17,7 @@
 #include "features/overlays/skill_bar.h"
 #include "features/windows/storage_window.h"
 #include "features/windows/inventory_viewer.h"
+#include "features/systems/login_spectator.h"       // InWorld (décor de connexion)
 #include "features/systems/moonlight_auth.h"        // WantsKeyboard (écrans de login)
 #include "features/systems/native_login.h"          // CharSelectWindowPresent (Entrée tardive)
 #include "features/windows/char_select.h"           // NativeScreenHasKeyboard
@@ -150,8 +151,18 @@ void __fastcall Hooked_CursorRender(void* thisptr) {
     // Consommé chaque frame (remis à 0) : type de curseur RO demandé par un widget
     // du toolkit au survol (main sur scrollbar/resize/checkbox/bouton), 0 = flèche.
     const int req = ro::TakeHoverCursor();
-    if (IsMouseOverAnyImGuiWindow(mp.x, mp.y))
+    if (IsMouseOverAnyImGuiWindow(mp.x, mp.y)) {
       *reinterpret_cast<int*>(reinterpret_cast<char*>(thisptr) + 0x50) = req;
+    } else if (spectator::InWorld()) {
+      // 🔴 Décor de connexion : la ville est un DÉCOR, pas une aire de jeu. Sans
+      // ce forçage, la machine à états du survol continue de faire son travail
+      // sur les entités du fond — le curseur passait à « parler au NPC » ou à
+      // « attaquer » au-dessus d'un passant, sur un écran où le joueur n'a même
+      // pas encore de personnage. Le même geste que pour l'ImGui juste au-dessus,
+      // étendu à tout l'écran ; l'écriture est transitoire, le jeu re-dérive le
+      // type à chaque frame.
+      *reinterpret_cast<int*>(reinterpret_cast<char*>(thisptr) + 0x50) = 0;
+    }
   }
   // Curseur plein écran (login Moonlight / char-select) : on laisse le rendu natif
   // s'exécuter (il alimente la capture d'atlas via Hooked_AtlasGet — rien à
@@ -759,6 +770,29 @@ static LRESULT CALLBACK WindowProcHook(HWND hwnd, UINT uMsg, WPARAM wParam,
     // ImGui's own software cursor is never drawn — the game controls the cursor
     // appearance (arrow/hand/NPC) via SetCursor() which the OS renders on top.
     io.MouseDrawCursor = false;
+
+    // 🔴 Décor de connexion : la ville est un DÉCOR, pas une aire de jeu. Tout ce
+    // qui viserait le monde est avalé — le clic DROIT en tête, qui fait pivoter
+    // la caméra du client et se battrait avec la mise en scène ; le clic gauche,
+    // qui ferait marcher un personnage qui n'appartient à personne ; la molette,
+    // qui dézoomerait hors du cadre choisi.
+    //
+    // ⚠ Seulement hors des fenêtres ImGui : le formulaire de connexion doit
+    // rester cliquable, et il est traité juste en dessous. ImGui, lui, a déjà
+    // reçu le message bien plus haut — l'avaler ici ne le prive de rien.
+    //
+    // Et l'avalage est SYMÉTRIQUE (appuis ET relâchements) : n'en prendre qu'une
+    // moitié laisserait le client croire un bouton encore enfoncé.
+    if (!over_imgui && spectator::InWorld()) {
+      switch (uMsg) {
+        case WM_LBUTTONDOWN: case WM_LBUTTONUP: case WM_LBUTTONDBLCLK:
+        case WM_RBUTTONDOWN: case WM_RBUTTONUP: case WM_RBUTTONDBLCLK:
+        case WM_MBUTTONDOWN: case WM_MBUTTONUP: case WM_MBUTTONDBLCLK:
+        case WM_XBUTTONDOWN: case WM_XBUTTONUP:
+        case WM_MOUSEWHEEL:  case WM_MOUSEHWHEEL:
+          return 0;
+      }
+    }
 
     if (over_imgui) {
       switch (uMsg) {

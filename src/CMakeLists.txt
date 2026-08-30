@@ -253,6 +253,8 @@ set(BOURGEON_FILES
 	"features/systems/dx7_warning.h"
 	"features/systems/integrity_check.cc"
 	"features/systems/integrity_check.h"
+	"features/systems/login_spectator.cc"
+	"features/systems/login_spectator.h"
 	"features/systems/moonlight_auth.cc"
 	"features/systems/moonlight_auth.h"
 	"features/systems/native_login.cc"
@@ -493,8 +495,7 @@ if(RO_DEPLOY_DIR)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "$<TARGET_FILE:bourgeon>"
             "${RO_DEPLOY_DIR}/ddraw.dll"
-            || ${CMAKE_COMMAND} -E echo "Deploy skipped (ddraw.dll in use — close the game)"
-        COMMENT "Deployed to ${RO_DEPLOY_DIR}"
+            || ${CMAKE_COMMAND} -E echo "Deploy skipped (ddraw.dll in use - close the game)"
     )
 
     # Les catalogues de langue (tools/lang/*.yaml) vers SaveData\lang\ du client.
@@ -510,7 +511,7 @@ if(RO_DEPLOY_DIR)
             -D "SRC_DIR=${CMAKE_SOURCE_DIR}/tools/lang"
             -D "GAME_DIR=${RO_DEPLOY_DIR}"
             -P "${CMAKE_SOURCE_DIR}/cmake/deploy_lang.cmake"
-        COMMENT "Deploying language catalogs to ${RO_DEPLOY_DIR}/SaveData/lang"
+        #COMMENT "Deploying language catalogs to ${RO_DEPLOY_DIR}/SaveData/lang"
         VERBATIM
     )
     # Après la DLL, et pas du tout si elle n'a pas été produite : un catalogue neuf

@@ -169,6 +169,7 @@ class MoonlightUi : public Plugin {
   // opération qui pourrait faire perdre la fenêtre d'anti-rebond.
   void FlushSettings();
 
+
   // Shared HUD alignment grid. Public so sibling plugins (BasicInfo bars,
   // MenuIcons) can read it for snapping while dragging/resizing.
   AlignGrid grid_;

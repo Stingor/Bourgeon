@@ -92,6 +92,7 @@
 #include "features/windows/rodex_window.h"
 #include "features/windows/npc_dialog_window.h"
 #include "features/systems/bug_report.h"
+#include "features/systems/login_spectator.h"
 #include "features/systems/net_ping.h"
 #include "features/windows/character_sheet.h"
 #include "features/overlays/login_parade.h"
@@ -399,6 +400,13 @@ void Bourgeon::OnGameFrame() {
   // jauge sans prévenir — au rythme d'OnTick (~100 ms) elle réapparaîtrait
   // plusieurs frames à chaque fois.
   if (auto* bi = basic_info()) bi->OnGameFramePulse();
+
+  // Décor de connexion : le pantin du spectateur est effacé ICI, en tête de
+  // frame, plutôt qu'attendu du serveur. Celui-ci le cache bien — il envoie même
+  // un paquet rien que pour ça — mais après un aller-retour réseau : le
+  // personnage se voyait une frame ou deux au sortir du chargement. Cf.
+  // spectator::HideOwnActor, qui explique pourquoi c'est à REFAIRE chaque frame.
+  spectator::HideOwnActor();
 
   // Écran de veille : la caméra avance ICI, pas dans OnRenderUI. Deux raisons
   // qui se cumulent. La pose écrite en tête de frame vaut pour l'image en cours
@@ -715,6 +723,30 @@ void Bourgeon::RenderUI() {
     }
     return;
   }
+  // ── Session spectateur : en jeu, mais devant l'écran de CONNEXION ──────────
+  // Le monde tourne pour de vrai (features/systems/login_spectator), donc
+  // `IsGameActive()` est vrai et le test ci-dessus nous a laissés passer — mais
+  // le personnage n'appartient à personne et le joueur, lui, n'est pas encore
+  // connecté. Ce sont donc les hooks d'ÉCRAN DE CONNEXION qu'il faut dispatcher,
+  // exactement comme au login : le formulaire, le char-select, le panneau de
+  // session. Le HUD, lui, n'a rien à afficher — et l'écran de veille a déjà
+  // effacé celui du client (son veto de rendu natif).
+  //
+  // Le `return` qui suit est le pendant de celui de la branche hors-jeu : la
+  // boucle de HUD plus bas ne doit jamais tourner sur cette session.
+  if (spectator::InWorld()) {
+    ro::SetWindowCollapseAllowed(false);
+    for (auto& plugin : plugins_) {
+      try {
+        plugin->OnRenderLoginUI();
+      } catch (const std::exception& error) {
+        LogError("[{}] OnRenderLoginUI: {}", plugin->name(), error.what());
+      }
+    }
+    ro::ProcessEscapeStack();
+    return;
+  }
+
   // Suivre le « cacher l'interface » natif (F11) : quand le joueur masque l'UI du
   // jeu — capture d'écran, vue dégagée — l'overlay ImGui disparaît avec elle.
   if (IsNativeUiHidden()) return;
@@ -785,6 +817,14 @@ void Bourgeon::FireModeSwitch(ModeMgr::ModeType mode_type,
     // sont réémis par le serveur à l'entrée en jeu (skill_blockpc_start).
     ro::ClearSkillCooldowns();
   }
+  // Même règle pour la session spectateur, et pour une raison voisine : le monde
+  // y est bien réel, mais le personnage n'appartient à personne. Cf.
+  // spectator::NotifyModeSwitch, qui laisse en revanche passer la SORTIE.
+  // ⚠ Et on ne relit PAS `bourgeon_settings.yaml` au passage, quoique tentant :
+  // ce fichier porte les réglages du JEU du joueur, dont sa veille. Le décor a
+  // les siens (spectator::Camera) — l'angle d'un écran de connexion n'a rien à
+  // voir avec celui qu'on veut quand on s'éloigne de son clavier en jouant.
+  if (spectator::NotifyModeSwitch(mode_type, map_name)) return;
   for (auto& plugin : plugins_) {
     try {
       plugin->OnModeSwitch(mode_type, map_name);
@@ -1077,6 +1117,10 @@ void Bourgeon::LoadPlugins() {
     login_parade_ = login_parade.get();
     plugins_.emplace_back(std::move(login_parade));
   }
+  // Session spectateur : la capitale VIVANTE derrière l'écran de connexion. Elle
+  // se déroule sur les écrans hors du monde, d'où sa place ici, entre le décor
+  // hors ligne qu'elle remplace et le reste.
+  plugins_.emplace_back(std::make_unique<LoginSpectator>());
   plugins_.emplace_back(std::make_unique<EquipTweaks>());
   plugins_.emplace_back(std::make_unique<WindowPosTweaks>());
   plugins_.emplace_back(std::make_unique<WandBolt>());

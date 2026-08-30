@@ -71,6 +71,33 @@ void SaveUiFontFamily(int family);
 int UiScalePercent(int fallback);
 void SaveUiScalePercent(int percent);
 
+// ── Le décor de connexion (features/systems/login_spectator) ─────────────────
+// La ville vivante derrière le formulaire, ACTIVÉE par défaut. Opt-out : c'est
+// une mise en scène, et elle coûte — un monde chargé, une session ouverte sur le
+// serveur. Qui joue sur une machine juste, une connexion étroite, ou qui veut
+// simplement se connecter vite, doit pouvoir s'en passer.
+//
+// 🔴 ICI et pas dans `bourgeon_settings.yaml`, pour la même raison que la langue
+// et la police : ce réglage décide de ce qui se passe AVANT toute entrée en jeu,
+// et l'autre fichier n'est relu qu'à ce moment-là. Il n'aurait donc jamais eu
+// d'effet sur l'écran qu'il gouverne.
+bool LoginBackdropEnabled(bool fallback);
+void SaveLoginBackdropEnabled(bool enabled);
+
+// ── Un booléen quelconque, à la racine ───────────────────────────────────────
+// 🔴 Pour TOUT réglage qui agit avant l'entrée en jeu. La frontière est
+// TEMPORELLE (cf. le ⚠ en tête) et elle se rappelle à nous à chaque fois :
+// `bourgeon_settings.yaml` n'est relu qu'en entrant en jeu, donc un réglage qui
+// gouverne l'écran de connexion y est LU TROP TARD — il vaut son défaut pendant
+// tout le temps où il compte. La parade de Porings s'affichait ainsi chez des
+// joueurs qui l'avaient décochée, et l'écran de veille pilotait la caméra du
+// décor avec des valeurs que personne n'avait choisies.
+//
+// Écrit en 0/1 : ce document est tapé à la main, et un entier se relit sans se
+// demander si `no` compte pour faux.
+bool BoolKey(const char* key, bool fallback);
+void SaveBoolKey(const char* key, bool value, const char* what);
+
 // ── Écrire UNE clé à la racine, sans toucher au reste du document ────────────
 //
 // Relit le fichier, pose `key: value`, réécrit tout. Le document est relu à

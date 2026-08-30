@@ -20,6 +20,7 @@
 #include "imgui.h"
 #include "nlohmann/json.hpp"
 #include "features/systems/auto_login.h"
+#include "features/systems/login_spectator.h"
 #include "features/systems/native_login.h"
 #include "ragnarok/ragnarok_client.h"  // PostGameKey (frappes destinées au natif)
 #include "ui/ro_imgui.h"
@@ -387,6 +388,11 @@ void HyperlinkOpen(const char* label, const std::string& url) {
     ShellExecuteA(nullptr, "open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 }
 
+// Le temps qu'on laisse à la fenêtre de login pour finir de s'initialiser avant
+// d'écrire dans ses champs (cf. MoonlightAuth::login_wnd_tick_). Le décor de
+// connexion attend la même chose, pour la même raison.
+constexpr unsigned long kLoginSettleMs = 400;
+
 // ── Le choix de la langue et de la police, sur l'écran de login ──────────────
 // Les deux réglages existent déjà dans le panneau « Interface de jeu », mais
 // celui-là n'est atteignable qu'une fois EN JEU. Un joueur anglophone qui lance
@@ -464,6 +470,44 @@ void DrawLanguageAndFontPickers() {
   // traduction dans son anneau, d'où sa lecture possible plus haut.)
   ImGui::SameLine();
   ro::DrawUiFontCombo(font_label, font_w);
+
+  // ── Le décor de connexion ─────────────────────────────────────────────────
+  // Sa place est ici, avec la langue et la police : les trois réglages du
+  // PREMIER écran, ceux qu'on ne peut pas aller chercher dans le panneau du jeu
+  // sans s'être connecté d'abord. Et celui-ci gouverne précisément ce qu'on a
+  // sous les yeux.
+  //
+  // Décocher ferme le décor sur-le-champ et l'écrit (spectator::SetBackdropWanted).
+  bool backdrop = spectator::BackdropWanted();
+  if (ro::RoCheckbox(i18n::TrId("Ville en fond", "bourgeon_login_backdrop"),
+                     &backdrop)) {
+    spectator::SetBackdropWanted(backdrop);
+  }
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("%s",
+                      i18n::Tr("Affiche une ville du serveur en direct derrière "
+                               "cet écran, tirée au hasard à chaque connexion. "
+                               "Décoche si ta machine ou ta connexion préfèrent "
+                               "s'en passer."));
+  }
+
+  // ⚠ Seulement quand un décor est EN PLACE : sans session à refermer, ce bouton
+  // n'aurait rien à relancer. Il disparaît donc de lui-même pendant la séquence
+  // et une fois le décor décoché.
+  if (backdrop && spectator::InWorld()) {
+    ImGui::SameLine();
+    if (ro::RoSmallButton(
+            i18n::TrId("Changer de vue", "bourgeon_login_backdrop_reroll"))) {
+      spectator::Reroll();
+    }
+    if (ImGui::IsItemHovered()) {
+      ImGui::SetTooltip("%s",
+                        i18n::Tr("Tire une autre ville. Le lieu est choisi par "
+                                 "le serveur à l'ouverture d'une session : en "
+                                 "changer demande d'en rouvrir une, ce qui prend "
+                                 "un instant."));
+    }
+  }
 }
 
 }  // namespace
@@ -635,6 +679,12 @@ void MoonlightAuth::OnModeSwitch(ModeMgr::ModeType mode_type,
     // (LoadClientInfoXml) : la liste des connexions y était alors vide. On la
     // re-résout ici — en mode login, l'arbre XML natif est forcément prêt.
     if (server_count_ == 0) ResolveServer();
+    // 🔴 Sortie d'une session spectateur : ce retour au mode login est PROVOQUÉ
+    // par nous — le décor se démonte justement pour rendre l'écran de connexion
+    // natif dans lequel il y a un login à piloter. Le prendre pour une
+    // déconnexion ordinaire réarmerait le formulaire, effaçant l'OTP qu'on vient
+    // d'obtenir et renvoyant le joueur à la case départ après qu'il a tout saisi.
+    if (spectator::Active()) return;
     // Retour au char-select DEPUIS LE JEU (changement de perso) : c'est un
     // kGame->kLogin, mais la session char-server est toujours vivante et on est
     // déjà authentifié. Il ne faut PAS reforcer le formulaire web (sinon le
@@ -663,7 +713,19 @@ bool MoonlightAuth::WantsKeyboard() const {
   if (!enabled_ || native_fallback_ || state_ == State::kDisabled) return false;
   // Et seulement sur les écrans de connexion : une fois en jeu, le clavier est
   // celui du jeu. `AtLoginScreen()` couvre login ET char-select (même mode).
-  return native_login::AtLoginScreen();
+  //
+  // 🔴 Le décor de connexion en fait partie, tout « en jeu » qu'il soit : le
+  // client y est bel et bien en mode de jeu, donc sans cette seconde branche
+  // chaque touche du formulaire part au JEU — raccourcis, chatbox, et le
+  // personnage du spectateur qui reçoit des ordres pendant qu'on tape son
+  // identifiant.
+  // ⚠ `Pending` est là pour couvrir l'instant le plus tôt de tous : le voile du
+  // décor est déjà posé alors que le client n'est parfois même pas encore entré
+  // dans son mode de connexion. `AtLoginScreen()` répond alors « non », et sans
+  // ce troisième terme les touches partiraient à des écrans natifs en train de
+  // se construire, invisibles sous le voile.
+  return native_login::AtLoginScreen() || spectator::InWorld() ||
+         spectator::Pending();
 }
 
 void MoonlightAuth::RearmWebLogin(bool service_select_pending) {
@@ -706,6 +768,16 @@ void MoonlightAuth::RearmWebLogin(bool service_select_pending) {
 
 void MoonlightAuth::OnRenderLoginUI() {
   if (!enabled_ || state_ == State::kDisabled) return;
+  // Séquence spectateur EN COURS : elle pilote les écrans natifs, et notre
+  // formulaire viendrait s'y superposer — le joueur cliquerait au milieu d'un
+  // automate. Une fois la session EN PLACE, en revanche, ce formulaire est
+  // exactement ce qu'il faut dessiner : c'est lui l'écran de connexion, et la
+  // capitale est son décor.
+  if (spectator::Connecting()) return;
+  // Le décor tient-il ? Trois branches en dépendent plus bas — il n'y a pas
+  // d'écran de connexion NATIF derrière, donc rien à franchir, rien à masquer, et
+  // le pilotage du login doit d'abord faire tomber la session.
+  const bool backdrop = spectator::InWorld();
   // Repli login natif choisi pour la session : la fenêtre native a déjà été
   // réaffichée (edge, au clic du bouton) — on rend juste la main.
   if (native_fallback_) return;
@@ -720,10 +792,59 @@ void MoonlightAuth::OnRenderLoginUI() {
   // (SetText + OnMsg). On NE masque plus par frame (OnMsg 0xBA détruit la fenêtre
   // -> plus rien à masquer, et la garde vtable rendrait l'écriture no-op).
   if (state_ == State::kDriveLogin) {
+    // 🔴 La session spectateur doit tomber AVANT quoi que ce soit d'autre : le
+    // pilotage écrit dans les champs de l'écran de connexion NATIF, qui n'existe
+    // pas tant que le décor tient. Et rien d'autre ne doit tourner en attendant
+    // — le chemin du retour repasse par le char-select natif, que les sondes
+    // ci-dessous prendraient pour la fin réussie d'un login pas même commencé
+    // (`charsel_reached_`), laissant le joueur sur un écran qui n'attend plus
+    // rien. `Leave` est sans effet une fois la sortie lancée : la redemander à
+    // chaque frame ne relance pas la manœuvre.
+    if (spectator::Active()) {
+      spectator::Leave();
+      return;
+    }
+    // ── Couvrir le pilotage ───────────────────────────────────────────────────
+    // De la validation du compte jusqu'à l'arrivée du char-select, le client
+    // traverse des écrans NATIFS qu'on est en train de piloter : la fenêtre de
+    // login, le choix du char-server, le char-select natif avant que le nôtre ne
+    // le recouvre. Une petite seconde, largement de quoi les voir défiler.
+    //
+    // 🔴 SANS capturer le clavier, et c'est toute la difficulté de cet endroit :
+    // ce bloc s'interdisait jusqu'ici la moindre fenêtre ImGui, parce qu'une
+    // fenêtre FOCUSABLE ferait avaler par le hook les frappes qu'on destine aux
+    // écrans natifs (l'Entrée d'auto-confirmation du char-server). Un voile sans
+    // widget ni navigation ne prend pas le focus : il couvre sans rien
+    // intercepter.
+    //
+    // On s'arrête dès `charsel_reached_` : à partir de là, c'est au char-select
+    // ImGui de tenir l'écran, avec son propre décor.
+    if (!charsel_reached_) {
+      ro::DrawFullscreenCover(i18n::Tr("Connexion…"),
+                              /*capture_keyboard=*/false);
+    }
     if (!fired_) {
+      // 🔴 Laisser la fenêtre de login SE POSER avant d'écrire dedans (cf.
+      // login_wnd_tick_). Sans ce délai, le contenu que le client repose après
+      // construction écrase le nôtre, et c'est le sien qui part avec le bouton
+      // Start — « Unregistered ID » sur l'identifiant, « mot de passe
+      // incorrect » sur l'OTP.
+      if (!native_login::LoginWindowPresent()) {
+        login_wnd_tick_ = 0;  // pas encore là (ou reconstruite) : on recommence
+        return;
+      }
+      const unsigned long now = GetTickCount();
+      if (login_wnd_tick_ == 0) {
+        login_wnd_tick_ = now;
+        return;
+      }
+      if (now - login_wnd_tick_ < kLoginSettleMs) return;
       if (native_login::DriveLogin(drive_user_.c_str(), drive_pw_.c_str())) {
         fired_ = true;
         fire_tick_ = GetTickCount();
+        LogDiag("[MoonlightAuth] login piloté pour « {} » ({} ms après "
+                "l'apparition de la fenêtre)",
+                drive_user_, now - login_wnd_tick_);
       }
       return;
     }
@@ -861,7 +982,12 @@ void MoonlightAuth::OnRenderLoginUI() {
   // (post-login, table mode+0x1e8 peuplée par AC_ACCEPT_LOGIN) — c'était mon erreur
   // initiale, d'où les IP garbage et le « Failed to Connect ».
   // Repli clavier (éprouvé) si le natif n'a pas fait apparaître l'écran de login.
-  if (!native_login::LoginWindowPresent()) {
+  // ⚠ `backdrop` en tête : par-dessus la capitale, la fenêtre de login native est
+  // absente parce qu'il n'y a pas de mode login du tout, et non parce qu'un
+  // service-select attendrait d'être franchi. Sans cette garde, on tirerait des
+  // sélections de connexion dans le vide, en boucle, au lieu de dessiner le
+  // formulaire.
+  if (!backdrop && !native_login::LoginWindowPresent()) {
     // Init paresseuse au cas où OnModeSwitch n'aurait pas été émis à la 1ʳᵉ entrée.
     if (login_enter_tick_ == 0) login_enter_tick_ = GetTickCount();
     // Re-résoudre TANT QUE la liste est vide : la 1ʳᵉ résolution peut tomber avant
@@ -938,6 +1064,17 @@ void MoonlightAuth::OnRenderLoginUI() {
   // La réponse /select a pu déclencher le pilotage natif : ne rien dessiner.
   if (state_ == State::kDriveLogin) return;
 
+  // 🔴 Le décor va s'armer : on ne DESSINE pas, mais on a fait tout le reste.
+  // Le formulaire apparaissait une poignée de frames avant que le voile ne se
+  // pose, puis disparaissait dessous — un clignotement à l'ouverture du client.
+  //
+  // ⚠ Et c'est un `return` ICI, pas en tête de fonction. Tout ce qui précède
+  // compte et doit continuer de tourner : le franchissement du service-select
+  // (qui POSE L'ADRESSE DU SERVEUR, sans quoi plus personne ne se connecte — le
+  // bug le plus coûteux de ce chantier), le masquage de la fenêtre native, les
+  // réponses HTTP en vol. Se taire n'est pas s'arrêter.
+  if (spectator::Pending()) return;
+
   // Force la capture CLAVIER tant que le formulaire est affiché : sinon les
   // touches (Entrée, flèches) fuient vers l'UI de login NATIVE en arrière-plan
   // (elle n'a pas d'InputText focus -> WantCaptureKeyboard resterait faux). Le
@@ -951,14 +1088,32 @@ void MoonlightAuth::OnRenderLoginUI() {
   // peut rien atteindre ; et au survol du formulaire ImGui capture tout seul.
   ImGui::SetNextFrameWantCaptureKeyboard(true);
 
+  // 🔴 `FirstUseEver` et non `Always` : reposée à CHAQUE frame, la position
+  // annulait tout déplacement — la fenêtre revenait au centre sous le curseur du
+  // joueur qui essayait de la bouger, et rien n'indiquait pourquoi. Elle
+  // s'ouvre donc centrée, puis appartient au joueur. Le décor lui donne enfin une
+  // raison de la déplacer : regarder la ville derrière.
+  //
+  // ⚠ Le pivot ne vaut plus que pour ce premier placement : `AlwaysAutoResize`
+  // fait ensuite grandir la fenêtre vers le bas et la droite quand on passe du
+  // formulaire au choix du compte. C'est le prix d'une fenêtre déplaçable, et il
+  // est mince.
   ImGui::SetNextWindowPos(ImVec2(disp.x * 0.5f, disp.y * 0.5f),
-                          ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-  const ImGuiWindowFlags flags = ImGuiWindowFlags_NoSavedSettings |
-                                 ImGuiWindowFlags_AlwaysAutoResize;
-  // `Tr` et non `TrId` : les flags ci-dessus portent NoSavedSettings et la
-  // position est reposée à chaque frame — cette fenêtre n'a aucun état qu'un
-  // changement d'identifiant pourrait lui faire perdre.
-  if (ro::BeginRoWindow(i18n::Tr("Connexion Moonlight"), nullptr, flags)) {
+                          ImGuiCond_FirstUseEver, ImVec2(0.5f, 0.5f));
+  // ⚠ Plus de `NoSavedSettings` : la position déplacée par le joueur part dans
+  // `imgui.ini` et lui revient au lancement suivant. `FirstUseEver` s'efface
+  // devant elle — le centrage ne vaut donc que pour un premier lancement, ou
+  // pour un `imgui.ini` neuf. Seule la position est rangée : `AlwaysAutoResize`
+  // garde la main sur la taille.
+  const ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize;
+  // 🔴 `TrId` et non `Tr`, et ce n'est pas cosmétique : ImGui range l'état d'une
+  // fenêtre sous son TITRE. Traduit, le titre change — et avec lui l'identité de
+  // la fenêtre, donc la position rangée. Le joueur qui place son formulaire puis
+  // passe le client en anglais le retrouverait au centre, sans rien pour
+  // l'expliquer. L'identifiant stable rend la position indépendante de la langue.
+  if (ro::BeginRoWindow(
+          i18n::TrId("Connexion Moonlight", "moonlight_auth_login"), nullptr,
+          flags)) {
     switch (state_) {
       case State::kWebLogin:     DrawWebLogin(); break;
       case State::kAuthing:      DrawSpinner(i18n::Tr("Authentification…")); break;
@@ -1081,6 +1236,11 @@ void MoonlightAuth::DrawWebLogin() {
   ImGui::TextDisabled(i18n::Tr("Tu préfères te connecter à un compte Ragnarok ?"));
   if (ro::RoSmallButton(i18n::Tr("Utiliser le login classique"))) {
     native_fallback_ = true;
+    // 🔴 Et on ferme le décor. Ce repli rend la main aux champs NATIFS — qui
+    // n'existent pas tant qu'une session spectateur tient l'écran : le joueur se
+    // retrouverait devant une ville, sans formulaire d'aucune sorte. Sans effet
+    // hors décor.
+    spectator::Leave();
     native_login::MaskLoginWindow(false);  // réaffiche le natif (one-shot)
   }
 }
@@ -1268,6 +1428,11 @@ void MoonlightAuth::DrawError() {
   if (ro::RoButton(i18n::Tr("Login classique"), FormWidth(), 0.0f)) {
     error_msg_.clear();
     native_fallback_ = true;
+    // 🔴 Et on ferme le décor. Ce repli rend la main aux champs NATIFS — qui
+    // n'existent pas tant qu'une session spectateur tient l'écran : le joueur se
+    // retrouverait devant une ville, sans formulaire d'aucune sorte. Sans effet
+    // hors décor.
+    spectator::Leave();
     native_login::MaskLoginWindow(false);  // réaffiche le natif (one-shot)
   }
 }

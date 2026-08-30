@@ -649,6 +649,20 @@ int TakeHoverCursor();
 // Effet (ragnarok_client) : le curseur natif est rendu HORS ÉCRAN (sa capture
 // continue), et la garde « souris au-dessus d'une fenêtre ImGui » du redraw saute.
 void SetFullscreenCursorActive();
+
+// ── Un voile plein écran, avec un mot au milieu ──────────────────────────────
+// Ce que trois endroits recopiaient : les écrans de connexion traversent des
+// fenêtres NATIVES qui n'appartiennent pas au joueur — service-select, choix du
+// char-server, char-select natif — et qui apparaissent le temps qu'on les
+// pilote. Une seconde suffit à les voir défiler.
+//
+// 🔴 `capture_keyboard` n'est pas un détail de confort. À vrai, le voile prend
+// le clavier : c'est ce qu'il faut quand les écrans cachés réagiraient aux
+// touches du joueur (une Entrée sur un char-select entre en jeu sur le premier
+// personnage). À FAUX, il ne fait que couvrir — indispensable pendant qu'on
+// PILOTE ces écrans, car la capture avalerait aussi les frappes qu'on leur
+// destine, et le pilotage resterait bloqué derrière son propre voile.
+void DrawFullscreenCover(const char* label, bool capture_keyboard);
 bool FullscreenCursorActive();
 
 // Leviers de customisation du skin (ce que RO ne propose pas). Modifiable à chaud ;

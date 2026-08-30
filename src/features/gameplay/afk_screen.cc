@@ -13,6 +13,7 @@
 #include "bourgeon.h"
 #include "d3d9/d3d9_hook.h"
 #include "features/fx/screen_fx.h"
+#include "features/systems/login_spectator.h"
 #include "imgui.h"
 #include "ragnarok/camera.h"
 #include "utils/hooking/hook_manager.h"
@@ -78,6 +79,26 @@ static void* g_tramp_render_windows = nullptr;
 // stub, donc en plein dessin du jeu : pas de frame ImGui autour, et surtout rien
 // à dérouler ici — juste deux lectures.
 bool NativeUiVetoed() {
+  // Deux demandeurs pour un seul veto, et c'est voulu : le détour est posé
+  // inconditionnellement au démarrage (ctor plus bas), sauter l'appel ne touche
+  // à aucun état, et 5 octets ne se posent qu'une fois — exactement la raison
+  // qui a fait de la capture caméra un module partagé.
+  //
+  // Le second demandeur est le décor de connexion : le monde y tourne, mais
+  // l'interface native afficherait le nom, les barres et les sacs d'un
+  // personnage qui n'appartient à personne.
+  //
+  // 🔴 Toute la SÉQUENCE, et pas seulement « la veille est en cours » : la sortie
+  // repose la caméra AVANT de basculer de mode (il n'y aurait plus de caméra
+  // après), ce qui termine la veille — et l'interface native revenait alors le
+  // temps de la transition, la barre de vie réapparaissant sous les yeux du
+  // joueur qui venait de fermer le décor. Le veto suit donc l'état de la
+  // SESSION, comme on l'a déjà établi pour le clavier et pour la souris.
+  //
+  // Le veto ne dépend donc plus de l'état de la veille, mais de celui de la
+  // session : pendant la séquence, aucun écran natif n'appartient au joueur —
+  // c'est déjà ce qu'on a établi pour le clavier et pour la souris.
+  if (spectator::Active()) return true;
   return g_afk_owner != nullptr && g_afk_owner->hiding_ui();
 }
 
@@ -283,11 +304,20 @@ AfkScreen::AfkScreen() {
 // ── État ─────────────────────────────────────────────────────────────────────
 
 bool AfkScreen::hiding_cursor() const {
+  // 🔴 Jamais pendant une session spectateur : la veille y sert de DÉCOR à
+  // l'écran de connexion, et le joueur a un formulaire à remplir par-dessus.
+  // Lui retirer sa flèche, c'est lui retirer l'écran de connexion.
+  if (spectator::InWorld()) return false;
   return cfg_.hide_cursor &&
          (phase_ == Phase::kEntering || phase_ == Phase::kHeld);
 }
 
 bool AfkScreen::hiding_ui() const {
+  // En décor de connexion, l'effacement n'est pas un réglage : le HUD natif
+  // afficherait le nom, les barres et les sacs d'un personnage qui n'appartient
+  // à personne. Le joueur qui décoche « effacer l'interface » parle de SA veille,
+  // pas de l'écran de connexion.
+  if (spectator::InWorld()) return phase_ != Phase::kAwake;
   // Pendant la rampe de SORTIE l'interface est déjà rendue : le joueur vient
   // d'agir, il lui faut ses barres et son chat tout de suite, quand bien même la
   // caméra met encore deux secondes à revenir se poser.
@@ -340,6 +370,8 @@ void AfkScreen::Wake() {
   afk::SetSleeping(false);
 }
 
+void AfkScreen::EndNow() { AbortSleep(); }
+
 void AfkScreen::AbortSleep() {
   if (phase_ == Phase::kAwake) return;
   // La pose de repos est remise si la caméra existe encore. Quand elle a disparu
@@ -382,6 +414,27 @@ void AfkScreen::OnTick() {
   // sélection de personnage que personne ne saurait plus éteindre.
   if (!app.IsGameActive() || app.IsMapLoading()) {
     AbortSleep();
+    return;
+  }
+
+  // ── Session spectateur : la veille devient un DÉCOR ──────────────────────
+  // Le monde tourne derrière l'écran de connexion (features/systems/
+  // login_spectator). On veut de cette veille exactement deux choses — la caméra
+  // et l'effacement des deux interfaces — et surtout pas la troisième :
+  //
+  //   · elle est TENUE, quoi qu'il arrive : le joueur va taper son identifiant,
+  //     et la moindre touche la lèverait, découvrant un HUD qui n'a aucun
+  //     personnage à afficher. `cfg_.enabled` n'entre pas en ligne de compte,
+  //     pas plus que le délai : ce n'est pas une absence, c'est une mise en
+  //     scène ;
+  //   · 🔴 et elle n'AVALE rien. `afk::SetSleeping(false)` est reposé à chaque
+  //     battement, parce que `BeginSleep` vient de le mettre à vrai : en veille
+  //     ordinaire tout clic est confisqué (le décor a tourné, il ne tomberait
+  //     pas où l'on croit viser), or ici les clics sont justement destinés au
+  //     formulaire de connexion dessiné par-dessus.
+  if (spectator::InWorld()) {
+    if (phase_ == Phase::kAwake) BeginSleep();
+    afk::SetSleeping(false);
     return;
   }
 
@@ -461,12 +514,27 @@ void AfkScreen::StepCamera(float dt) {
 
   const float blend = EaseBlend();
 
+  // 🔴 Décor de connexion : la pose vient de LUI, pas des réglages du joueur.
+  // Ceux-ci décrivent sa veille EN JEU — s'éloigner de son clavier sans perdre
+  // sa partie de vue — et n'ont rien à dire de l'écran de connexion, qui est une
+  // mise en scène et doit être la même pour tout le monde. Ils ne sont d'ailleurs
+  // même pas chargés à ce moment-là : `bourgeon_settings.yaml` n'est relu qu'à
+  // l'entrée en jeu, l'annonce que le décor ne propage pas. Sans ce branchement,
+  // la caméra tournait sur les DÉFAUTS du module (62°), ce qui ne correspondait
+  // ni au décor voulu ni au réglage du joueur — l'écart était visible et rien ne
+  // l'expliquait.
+  const spectator::CameraPose pose =
+      spectator::InWorld() ? spectator::Camera()
+                           : spectator::CameraPose{cfg_.tilt_deg,
+                                                   cfg_.zoom_factor,
+                                                   cfg_.spin_deg_s};
+
   if (phase_ == Phase::kLeaving) {
     // L'orbite se résorbe avec la rampe, en même temps que le recul et la
     // plongée : tout revient d'un seul mouvement.
     spin_deg_ = spin_at_leave_ * blend;
   } else {
-    spin_deg_ += cfg_.spin_deg_s * dt;
+    spin_deg_ += pose.spin_deg_s * dt;
     // Replié pour lui seul, et SANS toucher à la pose courante : le lissage
     // (`Camera_LerpCurrentTowardTarget` 0x00a7ab90) ramène déjà la cible dans
     // [0, 360[ et rejoint le courant par le chemin le plus court (`j` borné à
@@ -480,7 +548,7 @@ void AfkScreen::StepCamera(float dt) {
   // et le brouillard découvrent les bords du monde (c'est la même limite que
   // celle qui plafonne le dézoom étendu de ScreenFx).
   const float target_dist =
-      base_dist_ * std::clamp(cfg_.zoom_factor, 1.0f, 2.5f);
+      base_dist_ * std::clamp(pose.zoom_factor, 1.0f, 2.5f);
   const float max_dist = *reinterpret_cast<const float*>(ro::camera::kZoomMaxOutdoorAddr);
   const float dist = std::min(target_dist, max_dist > 1.0f ? max_dist : target_dist);
 
@@ -499,7 +567,7 @@ void AfkScreen::StepCamera(float dt) {
   // [-65, -25] dehors ([-55, -35] à l'intérieur) : au-delà, la vue reste juste
   // pendant la veille — cette fonction n'y tourne pas — et le moteur la ramènera
   // dans sa plage dès que le joueur reprendra la main sur sa caméra.
-  const float want_pitch = -std::clamp(cfg_.tilt_deg, kTiltMinDeg, kTiltMaxDeg);
+  const float want_pitch = -std::clamp(pose.tilt_deg, kTiltMinDeg, kTiltMaxDeg);
   const float pitch = base_pitch_ + (want_pitch - base_pitch_) * blend;
 
   ro::camera::Write(ro::camera::kTgtPitch, pitch);

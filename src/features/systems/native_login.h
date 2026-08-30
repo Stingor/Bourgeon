@@ -17,6 +17,16 @@ namespace native_login {
 // True si le mode courant est CLoginMode (on est à l'écran login/char-select).
 bool AtLoginScreen();
 
+// ⚠ La liste de personnages du client (mode+0x1CC = leur NOMBRE, borne du cmd 8
+// de CLoginMode_SendMsg) survit bien à un retour à l'écran de connexion — le mode
+// n'est pas détruit, `CLoginMode` ne la vide qu'en y ENTRANT (0x00d26bd3). Mais
+// il n'y a RIEN à corriger là : tous les chemins de réception l'ÉCRASENT
+// (Net_OnCharList_Parse006B pose `count = (len-27)/175` puis recopie depuis le
+// début ; le seul `inc` du dispatcher est l'ajout d'un personnage créé). Une
+// liste ne peut donc pas être héritée d'un compte précédent — et l'effacer
+// « pour être sûr » revient à parier sur l'instant : un cran trop tard, on efface
+// celle que le login vient de recevoir, et le char-select est vide. Mesuré.
+
 // True si une fenêtre UILoginWnd VIVANTE est présente (vtable validée). Sert à
 // détecter un ÉCHEC de login : après le tir, si l'écran de login réapparaît
 // (fenêtre recréée), c'est que l'auth a échoué (sur succès on passe au

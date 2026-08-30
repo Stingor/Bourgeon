@@ -25,6 +25,7 @@
 #include "bourgeon.h"
 #include "d3d9/d3d9_hook.h"      // Overlay_CreateTextureARGB / Overlay_DeviceEpoch
 #include "imgui.h"
+#include "features/systems/login_spectator.h"
 #include "features/systems/moonlight_auth.h"
 #include "features/systems/native_login.h"  // sondes d'écran (fenêtre 0x115, liste)
 #include "ui/ro_imgui.h"
@@ -288,6 +289,13 @@ int __fastcall Detour_ShowModal(void* ecx, void* edx, char* msg, int p2, int* p3
   // Notre char-select n'existe QUE hors monde : on exige explicitement d'être hors
   // jeu pour supprimer quoi que ce soit. Ceinture et bretelles avec le reset posé
   // dans OnModeSwitch.
+  // 🔴 Séquence du décor de connexion : elle couvre l'écran de son propre voile,
+  // et une modale native ouverte dessous serait invisible ET bloquante — elle
+  // lance sa PROPRE pompe de messages, donc le client se figerait sans un mot,
+  // en attendant un OK que personne ne peut cliquer. C'est ce qui arrive quand
+  // le serveur refuse la session : « Unregistered ID » s'ouvre derrière le voile.
+  // Le motif du refus, lui, est déjà porté par le journal de la séquence.
+  if (spectator::Connecting()) return 185;
   if (g_cover_active && !Bourgeon::Instance().IsGameActive()) {
     __try {
       if (msg) {
@@ -1107,6 +1115,10 @@ void CharSelect::DrawHairIcon(int hair, float x, float y, float sz, int color_ov
 }
 
 void CharSelect::DriveNativeCtrl(int ctrl, int slot) {
+  charsel::DriveNativeCtrl(ctrl, slot);
+}
+
+void charsel::DriveNativeCtrl(int ctrl, int slot) {
   // Pose le slot sélectionné (le natif le relit) puis pilote UINewSelectCharWnd
   // OnMsg (msg 6 / ctrl). Aucun paquet fabriqué ici : le natif construit tout.
   __try {
@@ -1279,6 +1291,26 @@ void CharSelect::ReleaseInputToNative() {
 }
 
 bool CharSelect::NativeScreenHasKeyboard() const {
+  // 🔴 Décor de connexion, séquence comprise : AUCUN écran traversé là n'appartient
+  // au joueur. Ni le char-select de la session spectateur — dont une Entrée
+  // résiduelle clique le bouton par défaut, c'est-à-dire entre en jeu sur
+  // « Spectator » — ni le monde lui-même, où le client est bel et bien en mode de
+  // JEU pendant que le joueur tape son identifiant dans le formulaire.
+  //
+  // Le filet plus bas répondrait pourtant « oui » : sa prémisse (« la salve du
+  // char-server est passée, donc le pilotage du login est terminé ») est vraie
+  // ici, mais pour la mauvaise raison — c'est la session SPECTATEUR qui l'a fait
+  // passer.
+  // ⚠ `Pending` compte autant qu'`Active` : pendant l'attente qui précède le
+  // décor, le voile est déjà posé et les écrans natifs qu'il cache sont, eux,
+  // bien vivants — le service-select et la fenêtre de login réagissent aux
+  // touches sans consulter leur visibilité. Une Entrée y déclencherait un login
+  // sur des champs que personne n'a remplis.
+  //
+  // 🔴 Et ce filet-ci ne peut PAS être laissé à sa logique ordinaire : elle
+  // répond « le natif a le clavier » dès que la salve du char-server est passée,
+  // ce qui devient vrai au deuxième passage par l'écran de connexion.
+  if (spectator::Active() || spectator::Pending()) return false;
   // Fenêtre native de CRÉATION ouverte : elle attend un NOM au clavier, et elle
   // peut s'ouvrir sans nous (une Entrée résiduelle sur le char-select natif
   // clique son bouton par défaut ; sur un compte sans personnage, c'est « Créer »).
@@ -1627,6 +1659,10 @@ void CharSelect::OnRenderLoginUI() {
   // laisse le natif gérer sa propre boîte.
   g_cover_active = false;
   if (!enabled_ || native_fallback_) return;
+  // Session spectateur : sa séquence pilote le char-select natif pour entrer en
+  // jeu (features/systems/login_spectator). Notre table s'afficherait par-dessus
+  // avec son unique personnage fantoche, et le joueur pourrait cliquer dedans.
+  if (spectator::Active()) return;
   // Règle produit : char-select ImGui réservé au parcours de login Moonlight.
   // Login natif / « Login classique » => on laisse le char-select NATIF. Le flag
   // `force` (dev) court-circuite ce gate pour tester via un login natif.
@@ -2453,6 +2489,11 @@ void CharSelect::OnRenderLoginUI() {
       // service_select_pending=false : l'état 3 recrée directement UILoginWnd, il n'y
       // a pas d'écran de choix de connexion à repasser.
       if (auth_) auth_->RearmWebLogin(/*service_select_pending=*/false);
+      // Et le DÉCOR de connexion avec, pour exactement la même raison que le
+      // formulaire ci-dessus : sans changement de mode, son réarmement — branché
+      // sur cette annonce-là — ne voit rien passer, et le joueur retrouvait un
+      // écran de connexion nu alors qu'il a demandé la ville en fond.
+      spectator::Rearm();
       left_ = true;
       ImGui::CloseCurrentPopup();
     }

@@ -1571,6 +1571,32 @@ bool FullscreenCursorActive() {
          (ImGui::GetFrameCount() - g_fs_cursor_frame) <= 1;
 }
 
+void DrawFullscreenCover(const char* label, bool capture_keyboard) {
+  const ImVec2 disp = ImGui::GetIO().DisplaySize;
+  if (disp.x <= 0.0f || disp.y <= 0.0f) return;  // garde minimize
+
+  ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+  ImGui::SetNextWindowSize(disp);
+  ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.0f, 0.0f, 0.0f, 1.0f));
+  // ⚠ `NoNav` et aucun widget : sans focus clavier ni élément actif, ImGui ne
+  // réclame pas le clavier de lui-même. C'est ce qui rend le mode « couvrir sans
+  // capturer » possible — la capture, quand on la veut, est demandée
+  // explicitement ci-dessous.
+  ImGui::Begin("##ro_fullscreen_cover", nullptr,
+               ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+                   ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoNav);
+  if (label != nullptr && label[0] != '\0') {
+    const ImVec2 size = ImGui::CalcTextSize(label);
+    ImGui::SetCursorPos(
+        ImVec2((disp.x - size.x) * 0.5f, (disp.y - size.y) * 0.5f));
+    ImGui::TextUnformatted(label);
+  }
+  ImGui::End();
+  ImGui::PopStyleColor();
+
+  if (capture_keyboard) ImGui::SetNextFrameWantCaptureKeyboard(true);
+}
+
 // Pousse les 24 couleurs de style communes aux fenêtres RO (corps, texte, onglets,
 // scrollbar transparente, table, popups clairs…). Partagé par BeginRoWindow et
 // BeginRoDescWindow. Renvoie le nombre de PushStyleColor (à dépiler par End*).

@@ -12,7 +12,21 @@ struct ImDrawList;
 struct ImVec2;
 // Mise en page persistée (features/windows/char_select_layout.h) : seule une
 // RÉFÉRENCE à Seat traverse cette interface, la déclaration anticipée suffit.
-namespace charsel { struct Seat; }
+namespace charsel {
+struct Seat;
+
+// Pilote un contrôle de la fenêtre native UINewSelectCharWnd — le chemin par
+// lequel passent TOUS les gestes du char-select (entrer en jeu, créer,
+// programmer ou annuler une suppression). Voir CharSelect::DriveNativeCtrl, qui
+// n'est plus qu'un appel à celle-ci.
+//
+// 🔴 Fonction LIBRE, et pas seulement une méthode : la séquence de connexion
+// spectateur (features/systems/login_spectator) a besoin du même geste sans rien
+// avoir à faire du reste de l'écran. Le recopier chez elle aurait dupliqué trois
+// adresses en dur — l'emplacement sélectionné, la vtable de garde et le OnMsg —
+// c'est-à-dire trois occasions de les corriger à moitié au prochain client.
+void DriveNativeCtrl(int ctrl, int slot);
+}  // namespace charsel
 
 // CharSelect — remplacement ImGui de l'écran de sélection de personnage.
 //

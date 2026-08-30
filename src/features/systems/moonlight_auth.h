@@ -53,6 +53,23 @@ class MoonlightAuth : public Plugin {
 
   bool enabled() const { return enabled_; }
 
+  // Le joueur a choisi « Login classique » pour cette session : les écrans
+  // NATIFS redeviennent les siens, et notre formulaire se tait. Lu par le décor
+  // de connexion, qui ne doit surtout pas s'armer dans ce cas — il remplacerait
+  // ces écrans natifs par une ville sans champ de saisie.
+  bool NativeFallback() const { return native_fallback_; }
+
+  // Un login est en cours de pilotage — y compris le PASSTHROUGH d'un retour au
+  // char-select depuis le jeu, où cet état est repris tel quel sans qu'aucun
+  // login ne reparte (cf. OnModeSwitch).
+  //
+  // 🔴 Le décor de connexion doit s'y refuser : dans cet état, ce module demande
+  // `spectator::Leave()` à chaque frame, et un décor qui se réarme en face
+  // rouvre une session que l'autre referme aussitôt. Mesuré : une boucle
+  // entrée/sortie complète toutes les trois secondes, qui a fini par faire
+  // planter le client dans la construction du char-select.
+  bool IsDrivingLogin() const { return state_ == State::kDriveLogin; }
+
   // L'adresse du SITE, sans '/' final. Vide si la config l'a effacée.
   const std::string& base_url() const { return base_url_; }
 
@@ -233,6 +250,18 @@ class MoonlightAuth : public Plugin {
   bool fired_ = false;
   bool socket_seen_ = false;      // diag : la socket login s'est-elle ouverte ?
   unsigned long fire_tick_ = 0;   // GetTickCount() au tir (détection d'échec/timeout)
+  // Première frame où la fenêtre de login a été vue, pour lui laisser le temps de
+  // finir de s'initialiser avant d'écrire dedans. 0 = pas vue (ou disparue).
+  //
+  // 🔴 Le client repose le contenu de ses champs APRÈS les avoir construits (il y
+  // remet l'identifiant de « Save ID ») : écrire trop tôt fait partir le bouton
+  // Start avec le contenu du CLIENT, pas le nôtre. Sur l'identifiant ça donne un
+  // « Unregistered ID », sur le mot de passe un OTP qui n'est pas le bon — et
+  // comme le login-server brûle l'OTP en le validant, le réessai échoue à son
+  // tour. Le défaut est resté invisible tant que l'écran de login restait posé
+  // le temps que le joueur saisisse ; il est devenu visible quand la fenêtre a
+  // commencé à être reconstruite juste avant le tir.
+  unsigned long login_wnd_tick_ = 0;
   // Auto-confirmation du char-server (entre login réussi et char-select) : on
   // envoie Entrée par intervalles tant que la liste de persos n'est pas chargée.
   unsigned long charsrv_tick_ = 0;

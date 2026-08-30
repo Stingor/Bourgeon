@@ -40,6 +40,27 @@ inline T SessionField(int byte_offset) {
   return *reinterpret_cast<T*>(kSessionAddr + byte_offset);
 }
 
+// Le même, en écriture. Réservé aux champs dont on sait QUI les relit — ici, la
+// cellule d'apparition juste en dessous.
+template <typename T>
+inline void SetSessionField(int byte_offset, T value) {
+  *reinterpret_cast<T*>(kSessionAddr + byte_offset) = value;
+}
+
+// ── Cellule d'apparition du joueur ───────────────────────────────────────────
+// 🔴 La position d'entrée en map n'arrive PAS au monde par un paquet : elle
+// transite par ces trois champs de la session. Le handler de `ZC_ACCEPT_ENTER`
+// les écrit (`Session_SetSpawnCell` 0x00d775d0, `__thiscall(session, x, y, dir)`)
+// AVANT de demander la bascule de mode, et `CWorld_Load` (0x00a6b410/0x00a6b418)
+// les relit quand il crée l'acteur du joueur.
+//
+// ⚠ L'ORDRE EST LE CONTRAT : écrits après le chargement, ils ne sont plus lus —
+// l'acteur est déjà né là où ils pointaient. Qui veut choisir où le joueur
+// apparaît les pose donc avant `RequestModeSwitch`.
+constexpr int kSessionSpawnCellX = 0xef8;
+constexpr int kSessionSpawnCellY = 0xefc;
+constexpr int kSessionSpawnDir   = 0xf00;  // 0..7, comme partout dans le client
+
 // ── Zeny du joueur ───────────────────────────────────────────────────────────
 // ⚠ NE PAS confondre avec `ci::kZeny`, qui est un OFFSET dans une structure
 // d'info de personnage. Ici c'est une adresse absolue.
@@ -166,6 +187,60 @@ inline void* ActiveModeSafe() {
   __try {
     return ActiveModeIfReady();
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
+}
+
+// ── Couper la connexion au serveur, volontairement ───────────────────────────
+// Les deux gestes que le client s'applique à lui-même quand c'est LUI qui décide
+// de partir : le [Apply] des options natives (qui redémarre) et le retour au
+// login depuis le char-select (case 10011 de `CLoginMode::SendMsg`, qui les
+// appelle dans cet ordre avant de poser l'état 3).
+//
+// 🔴 Ce n'est PAS une perte de lien : le client sait qu'il l'a demandée, et
+// n'affiche donc aucune boîte « déconnecté du serveur » — celle-là vient du
+// chemin de DÉTECTION, pas d'ici.
+//
+// Et le monde reste à l'écran : le `CGameMode` continue de tourner, et
+// `CRagConnection::SendPacket` sort sans rien écrire dès que la socket vaut -1
+// (c'est ce qui rend le décor hors ligne possible). Simplement, plus rien
+// n'arrive du serveur — la scène est FIGÉE sur son dernier état, entités
+// comprises.
+constexpr uintptr_t kConnGetInstanceAddr = 0x00c14d60;
+constexpr uintptr_t kConnDisconnectAddr  = 0x00c14320;
+
+inline bool DisconnectFromServer() {
+  __try {
+    void* conn = reinterpret_cast<void*(__cdecl*)()>(kConnGetInstanceAddr)();
+    if (conn == nullptr) return false;
+    reinterpret_cast<void(__thiscall*)(void*)>(kConnDisconnectAddr)(conn);
+    return true;
+  } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
+// ── Demander une bascule de mode (login <-> jeu) ─────────────────────────────
+// `CModeMgr::RequestSwitch` __thiscall(mgr, type, "<map>.rsw") — le SEUL point
+// d'entrée du client pour changer de mode, et c'est exactement ce qu'appellent
+// les handlers de ZC_ACCEPT_ENTER à l'entrée en jeu.
+//
+// Elle ne charge RIEN elle-même : trois écritures et c'est tout — le mode courant
+// sort de sa boucle (`*(mgr+4) + 0x14 = 0`), la map demandée va en `mgr+0x30`, le
+// type demandé en `mgr+0x5c`. C'est `CModeMgr::Run`, de retour dans sa boucle à la
+// fin de la frame, qui détruit le mode courant et construit le suivant. On peut
+// donc l'appeler depuis une frame ImGui sans enfreindre la règle « pas de commande
+// native lourde en frame » : rien de natif ne se déroule avant le retour.
+//
+// ⚠ Elle déréférence `mgr+4` (le mode actif) sans le tester — d'où la garde de
+// l'appel typé ci-dessous.
+constexpr uintptr_t kModeMgrRequestSwitchAddr = 0x00a764e0;
+
+// `mode_type` : 0 = login, 1 = jeu (mêmes valeurs que ModeMgr::ModeType).
+// `map_rsw` porte l'extension, comme le client l'écrit lui-même ("prontera.rsw").
+inline bool RequestModeSwitch(int mode_type, const char* map_rsw) {
+  if (map_rsw == nullptr || *map_rsw == '\0') return false;
+  if (ActiveMode() == nullptr) return false;  // aucun mode à sortir de sa boucle
+  using RequestSwitchFn = void(__thiscall*)(void*, int, const char*);
+  reinterpret_cast<RequestSwitchFn>(kModeMgrRequestSwitchAddr)(
+      reinterpret_cast<void*>(kModeMgrAddr), mode_type, map_rsw);
+  return true;
 }
 
 // Un `int` à une adresse ABSOLUE, sous SEH. Six fichiers portaient ces trois

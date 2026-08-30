@@ -10,6 +10,7 @@
 
 #include "imgui.h"
 #include "bourgeon.h"
+#include "features/systems/login_spectator.h"    // la session spectateur aussi
 #include "features/windows/navigation_window.h"  // le point de sortie de l'itinéraire
 #include "d3d9/d3d9_hook.h"  // Overlay_SetTextureFilter
 #include "features/moonlight_ui/moonlight_ui.h"
@@ -628,6 +629,17 @@ void* g_tramp_draw_minimap = nullptr;
 // donc en plein dessin du jeu : hors frame ImGui, et sans le moindre objet à
 // dérouler — c'est ce qui autorise le `__try` de `SafeFindWindow` (C2712).
 bool NativeRadarVetoed() {
+  // Décor de connexion : pas de radar sur un monde qui n'est pas la partie du
+  // joueur. Il a besoin de sa mention propre — l'écran de veille
+  // efface bien les fenêtres natives pendant le décor, mais le radar n'en est
+  // PAS une (c'est un quad du `CGameMode`, cf. l'en-tête), il a son chemin de
+  // rendu à lui et ce veto-ci est le seul qui le coupe.
+  //
+  // ⚠ Comme au-dessus : AVANT les tests de réglage. Le décor n'entre pas en jeu
+  // par la voie ordinaire — l'annonce n'est pas propagée — donc `g_in_game` y
+  // est faux, et exiger `replace_native` reviendrait à laisser le radar natif à
+  // qui ne l'a pas remplacé.
+  if (spectator::InWorld()) return true;
   if (!g_in_game || !g_cfg.enabled || !g_cfg.replace_native) return false;
   // Et le cadre avec. Le gestionnaire de fenêtres rend les siennes APRÈS ce
   // point : masquer ici retire dans la MÊME frame le texte des coordonnées et

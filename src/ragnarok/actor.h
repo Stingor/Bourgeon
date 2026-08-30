@@ -128,6 +128,39 @@ constexpr int kCastStart = 0x284;  // uint : timeGetTime de DÉBUT
 // natif reconnaît « un compagnon à moi » (`0x00C787CC`).
 constexpr int kOwnerAid = 0x2ec;
 
+// ── Le masque d'OPTIONS (les OPTION_* du serveur) ────────────────────────────
+// Témoin de l'indexation : dans le même pseudo-code, `*((_DWORD*)this + 68)`
+// est le GID — soit +0x110, exactement `kGid` ci-dessous.
+//
+// 🔴🔴 CE N'EST PAS UN INTERRUPTEUR DE VISIBILITÉ POUR UN JOUEUR, et l'erreur
+// est facile : `CActorSprite_RenderDispatch` (0x00d32100) ouvre bien par
+// `Option_IsCloak` / `Option_IsInvisible` (bit 0x40) / `Option_IsHide` et sort
+// sans rien dessiner… mais cette fonction sert une AUTRE vtable (0x01093b54,
+// son unique référence). Le joueur est un `CPlayer` (vtable 0x01094810) dont le
+// rendu est `Actor_RenderMainSprite` (slot +0x0c) — et celle-là ne sort JAMAIS
+// sur l'option invisible. Mesuré : poser le bit sur l'acteur du joueur ne change
+// rien à l'écran. Pour le faire disparaître, c'est `kDrawEnabled` juste dessous.
+//
+// ⚠ Champ du SERVEUR : en jeu, le prochain paquet d'état le réécrit.
+constexpr int kOptions = 0x2c0;
+constexpr uint32_t kOptionInvisible = 0x40;
+
+// ── « Dessine ce sprite » ────────────────────────────────────────────────────
+// 🔴 L'interrupteur qui marche, pour un joueur. `Actor_RenderMainSprite`
+// (0x00d3a220, slot +0x0c de `CPlayer`) teste cet octet AVANT tout dessin :
+//
+//     if (!this[0xA0]) return CActorSprite_RenderSimpleProjected(this, ...);
+//     ... ChildSprite_DrawShadow(...) ...      // l'ombre, APRÈS le test
+//
+// et `CActorSprite_RenderSimpleProjected` (0x00c5a010) ne dessine RIEN : elle
+// projette la position monde à l'écran et la range (vtable+24). D'où l'acteur
+// entier qui disparaît — sprite ET ombre — sans que rien ne perde le fil de sa
+// position (nameplate, caméra qui le suit, picking).
+//
+// ⚠ Le voisin +0xA1 n'a PAS le même effet : testé plus bas, il retire le corps
+// mais laisse l'ombre au sol.
+constexpr int kDrawEnabled = 0xa0;  // octet : 0 = ne rien dessiner
+
 // Type d'acteur : le champ `objecttype` du paquet de spawn, que les handlers
 // recopient tel quel (`mov [ebx+314h], al`). Deux valeurs sont PROUVÉES :
 //   · 7 = PET — `mov byte ptr [edi+314h], 7` @0x00cbab7d, dans le sous-type 0 de

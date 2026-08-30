@@ -125,6 +125,17 @@ class AfkScreen : public Plugin {
   // option décochée). Sans effet si la veille n'est pas en cours.
   void Wake();
 
+  // Fin SANS rampe : la caméra est reposée où elle était, la teinte éteinte, à
+  // l'instant même. Sans effet si la veille n'est pas en cours.
+  //
+  // 🔴 Pour le décor de connexion, qui doit rendre la pose AVANT de basculer de
+  // mode. Après la bascule, `ro::camera::Write` n'écrit plus nulle part — la
+  // caméra est partie avec son `CGameMode` — et la pose du décor (sa plongée,
+  // son orbite en cours) restait alors en place jusque dans la partie du joueur.
+  // `Wake()` ne convient pas ici : sa rampe met deux secondes, et il n'en reste
+  // pas deux avant la bascule.
+  void EndNow();
+
   // Entrer en veille SUR-LE-CHAMP, sans attendre le délai — le bouton d'essai du
   // panneau et le raccourci clavier « Écran de veille ». Le prochain geste
   // réveille comme d'habitude.

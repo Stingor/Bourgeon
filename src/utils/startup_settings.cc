@@ -12,6 +12,9 @@ namespace {
 // Les clés, sous la racine du fichier de démarrage.
 constexpr const char* kUiFontFamilyKey = "ui_font_family";
 constexpr const char* kUiScaleKey = "ui_scale_percent";
+// Le décor de connexion. Écrit en 0/1 : ce document est tapé à la main par des
+// joueurs, et un entier se relit sans se demander si `no` compte pour faux.
+constexpr const char* kLoginBackdropKey = "login_backdrop";
 // L'ancien booléen « police Malgun » : faux = police intégrée d'ImGui. Il n'a
 // jamais vécu qu'au vieil emplacement, d'où sa lecture en repli seulement.
 constexpr const char* kLegacyMalgunKey = "malgun_font";
@@ -133,6 +136,26 @@ int UiScalePercent(int fallback) {
 
 void SaveUiScalePercent(int percent) {
   SaveRootKey(kUiScaleKey, percent, "échelle de l'interface");
+}
+
+bool BoolKey(const char* key, bool fallback) {
+  const YAML::Node root = LoadDocument(paths::StartupSettingsPath());
+  if (!root.IsMap()) return fallback;
+  const YAML::Node node = root[key];
+  if (!node) return fallback;
+  return node.as<int>(fallback ? 1 : 0) != 0;
+}
+
+void SaveBoolKey(const char* key, bool value, const char* what) {
+  SaveRootKey(key, value ? 1 : 0, what);
+}
+
+bool LoginBackdropEnabled(bool fallback) {
+  return BoolKey(kLoginBackdropKey, fallback);
+}
+
+void SaveLoginBackdropEnabled(bool enabled) {
+  SaveBoolKey(kLoginBackdropKey, enabled, "décor de connexion");
 }
 
 }  // namespace startup
