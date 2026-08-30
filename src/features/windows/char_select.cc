@@ -1311,6 +1311,15 @@ bool CharSelect::NativeScreenHasKeyboard() const {
   // répond « le natif a le clavier » dès que la salve du char-server est passée,
   // ce qui devient vrai au deuxième passage par l'écran de connexion.
   if (spectator::Active() || spectator::Pending()) return false;
+  // 🔴 Et pendant le PILOTAGE d'un login, pour la même raison : un voile couvre
+  // l'écran, et les écrans natifs qu'il cache — « Select Service », le
+  // char-select le temps d'une frame — réagissent aux touches sans consulter
+  // leur visibilité. Une Entrée y entre en jeu sur le premier personnage.
+  //
+  // ⚠ `IsDrivingLoginActive` et non `IsDrivingLogin` : ce dernier couvre aussi le
+  // retour au char-select depuis le jeu, où le joueur est vraiment devant son
+  // écran et doit pouvoir y taper.
+  if (auth_ != nullptr && auth_->IsDrivingLoginActive()) return false;
   // Fenêtre native de CRÉATION ouverte : elle attend un NOM au clavier, et elle
   // peut s'ouvrir sans nous (une Entrée résiduelle sur le char-select natif
   // clique son bouton par défaut ; sur un compte sans personnage, c'est « Créer »).

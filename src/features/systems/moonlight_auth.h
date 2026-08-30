@@ -70,6 +70,17 @@ class MoonlightAuth : public Plugin {
   // planter le client dans la construction du char-select.
   bool IsDrivingLogin() const { return state_ == State::kDriveLogin; }
 
+  // Un login est EN COURS de pilotage — la séquence tourne vraiment, le
+  // char-select n'est pas encore atteint, et un voile couvre l'écran.
+  //
+  // 🔴 À distinguer d'`IsDrivingLogin()`, qui est vrai aussi pour le PASSTHROUGH
+  // d'un retour au char-select depuis le jeu. Là, le joueur est bel et bien
+  // devant son char-select et doit pouvoir y taper — confisquer le clavier
+  // l'empêcherait de nommer un personnage.
+  bool IsDrivingLoginActive() const {
+    return state_ == State::kDriveLogin && !charsel_reached_;
+  }
+
   // L'adresse du SITE, sans '/' final. Vide si la config l'a effacée.
   const std::string& base_url() const { return base_url_; }
 

@@ -393,6 +393,11 @@ void HyperlinkOpen(const char* label, const std::string& url) {
 // connexion attend la même chose, pour la même raison.
 constexpr unsigned long kLoginSettleMs = 400;
 
+// Combien de temps on attend la fenêtre de login, pendant le PILOTAGE, avant de
+// se dire qu'un choix de connexion nous barre la route et de le franchir. Large :
+// c'est un filet, et le cas nominal est que la fenêtre arrive d'elle-même.
+constexpr unsigned long kSvcSelectAfterDriveMs = 2000;
+
 // ── Le choix de la langue et de la police, sur l'écran de login ──────────────
 // Les deux réglages existent déjà dans le panneau « Interface de jeu », mais
 // celui-là n'est atteignable qu'une fois EN JEU. Un joueur anglophone qui lance
@@ -820,8 +825,18 @@ void MoonlightAuth::OnRenderLoginUI() {
     // On s'arrête dès `charsel_reached_` : à partir de là, c'est au char-select
     // ImGui de tenir l'écran, avec son propre décor.
     if (!charsel_reached_) {
+      // 🔴 ET IL CAPTE LE CLAVIER. La règle vaut pour tout voile : tant qu'un
+      // écran d'attente couvre l'image, aucune touche du joueur ne doit atteindre
+      // ce qu'il y a dessous — ici des écrans natifs qu'on est en train de
+      // piloter, et qui réagissent aux touches sans consulter leur visibilité.
+      //
+      // ⚠ La réserve d'origine (« aucune fenêtre focusable ici ») ne tient plus :
+      // elle datait du pilotage à coups de frappes synthétiques. Aujourd'hui les
+      // champs sont écrits directement, et la seule frappe qu'on poste encore
+      // porte une marque dans son `lParam` que le hook reconnaît AVANT ImGui
+      // (cf. kSyntheticKeyLParam) — capturer ici ne peut donc pas l'avaler.
       ro::DrawFullscreenCover(i18n::Tr("Connexion…"),
-                              /*capture_keyboard=*/false);
+                              /*capture_keyboard=*/true);
     }
     if (!fired_) {
       // 🔴 Laisser la fenêtre de login SE POSER avant d'écrire dedans (cf.
@@ -831,6 +846,26 @@ void MoonlightAuth::OnRenderLoginUI() {
       // incorrect » sur l'OTP.
       if (!native_login::LoginWindowPresent()) {
         login_wnd_tick_ = 0;  // pas encore là (ou reconstruite) : on recommence
+        // 🔴 Elle peut ne JAMAIS venir, et c'est arrivé : au retour du décor de
+        // connexion, le client reconstruit son mode et se retrouve devant le
+        // CHOIX DE CONNEXION. Ce bloc-ci attend la fenêtre de login ; la branche
+        // qui sait franchir le service-select est plus bas et n'est jamais
+        // atteinte, puisqu'on sort d'ici. Résultat mesuré : le voile
+        // « Connexion… » pour toujours, sans échec ni tir — le client semble
+        // pendu alors qu'il attend simplement qu'on lui réponde.
+        //
+        // On franchit donc nous-mêmes, une seule fois (`server_select_done_`,
+        // remis à zéro à chaque entrée dans le mode), et seulement après avoir
+        // laissé au mode le temps de se construire : tirer sur un mode à peine
+        // né sélectionnerait dans le vide.
+        if (!server_select_done_ && login_enter_tick_ != 0 &&
+            (GetTickCount() - login_enter_tick_) > kSvcSelectAfterDriveMs) {
+          server_select_done_ = true;
+          LogDiag("[MoonlightAuth] pilotage en attente : choix de connexion "
+                  "franchi (index {})",
+                  server_index_);
+          native_login::SelectClientInfoConnection(server_index_);
+        }
         return;
       }
       const unsigned long now = GetTickCount();
@@ -1131,6 +1166,7 @@ void MoonlightAuth::OnRenderLoginUI() {
     // atteignables dans tous les états — y compris l'écran d'erreur, où un joueur
     // qui ne comprend pas le message a justement besoin d'en changer la langue.
     DrawLanguageAndFontPickers();
+
   }
   ro::EndRoWindow();
 }
