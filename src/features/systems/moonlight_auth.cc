@@ -22,6 +22,8 @@
 #include "features/systems/auto_login.h"
 #include "features/systems/login_spectator.h"
 #include "features/systems/native_login.h"
+#include "features/windows/game_settings.h"  // le panneau de réglages, ouvert d'ici
+#include "bourgeon.h"                        // Bourgeon::game_settings()
 #include "ragnarok/ragnarok_client.h"  // PostGameKey (frappes destinées au natif)
 #include "ui/ro_imgui.h"
 #include "ui/skin_panel.h"  // ro::DrawUiFontCombo (le combo de police, partagé)
@@ -1167,6 +1169,27 @@ void MoonlightAuth::OnRenderLoginUI() {
     // qui ne comprend pas le message a justement besoin d'en changer la langue.
     DrawLanguageAndFontPickers();
 
+    // ── Réglages : son, skin, graphismes, échelle ────────────────────────────
+    // Dans la BARRE DE TITRE, comme le bouton de rapport de bug : le corps de
+    // cette fenêtre change de taille à chaque étape du login (formulaire, choix
+    // du compte, erreur), et un bouton posé dedans se déplacerait sous le
+    // curseur.
+    //
+    // 🔴 APRÈS TOUT LE RESTE, et cet ordre est une contrainte : `TitleBarButton`
+    // ne restaure pas le curseur de layout, il doit donc être le dernier item
+    // soumis à la fenêtre.
+    //
+    // ⚠ Pas pendant le PILOTAGE : à cet instant l'écran est couvert d'un voile,
+    // et le joueur n'a rien à régler d'une séquence qui se déroule sans lui.
+    if (auto* gs = Bourgeon::Instance().game_settings()) {
+      if (!IsDrivingLoginActive() &&
+          ro::TitleBarButton(
+              i18n::Tr("Réglages"),
+              i18n::Tr("Son, skin, réglages graphiques et taille de "
+                       "l'interface"))) {
+        gs->OpenFromLogin();
+      }
+    }
   }
   ro::EndRoWindow();
 }

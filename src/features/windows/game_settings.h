@@ -108,6 +108,11 @@ class GameSettings : public Plugin {
 
   void OnTick() override;
   void OnRenderUI() override;
+  // Le MÊME panneau, dessiné depuis l'écran de connexion. Deux points d'entrée
+  // parce que le dispatch de Bourgeon en a deux : hors du jeu, seule la branche
+  // `OnRenderLoginUI` tourne (bourgeon.cc), et elle s'arrête net avant la boucle
+  // de rendu ordinaire.
+  void OnRenderLoginUI() override;
   void OnModeSwitch(ModeMgr::ModeType mode_type, const char* map_name) override;
 
   // Hook de `MakeWindow` pour l'id 0x271E : masque la native (détruite au tick) et
@@ -117,6 +122,26 @@ class GameSettings : public Plugin {
 
   // Ouvre le panneau depuis le menu Échap (bouton « Réglages du jeu »).
   void OpenFromMenu();
+
+  // ── Ouvert depuis l'ÉCRAN DE CONNEXION ─────────────────────────────────────
+  // Le bouton de la barre de titre de « Connexion Moonlight ». Le panneau est
+  // alors RÉDUIT : Basique et Graphismes seulement, plus l'échelle de
+  // l'interface — soit exactement ce qui vit hors du jeu.
+  //
+  // 🔴 UN SEUL PANNEAU, PAS UN SECOND. Le son, le skin et les réglages
+  // graphiques pilotent tous des globaux du client qui existent DÈS SON
+  // DÉMARRAGE : le gestionnaire de son (dont les volumes sont déjà appliqués,
+  // sinon le menu serait muet), la liste des skins, le bloc de configuration de
+  // rendu. Rien de tout cela n'attend l'entrée en jeu — écrire un second
+  // panneau pour le login aurait dupliqué le pilotage de ces mêmes adresses, y
+  // compris les trois pièges du groupe graphique (à chaud / au redémarrage).
+  //
+  // ⚠ Ce qui, en revanche, N'EST PAS encore là : la table d'options du manager
+  // (`gamesettings::Available()`), remplie par `CSession_ctor` à l'entrée en
+  // jeu. Les trois onglets pilotés par elle — Effets, Contrôles, Divers — et la
+  // recherche qui les traverse sont donc absents au login, et le panneau le dit
+  // au lieu de montrer des listes vides.
+  void OpenFromLogin();
 
   // Ouvre le panneau SUR UN ONGLET donné. C'est ce qu'honore un lien de réglage
   // reçu dans le chat — même chemin que le saut vers une section de Moonlight
@@ -156,6 +181,22 @@ class GameSettings : public Plugin {
 
  private:
   void Close();
+
+  // Le corps du panneau, partagé par les deux points d'entrée ci-dessus.
+  void Draw();
+
+  // Applique ce qui a été demandé pendant la frame : skin, réglages graphiques,
+  // écritures d'options. 🔴 TOUT ce qui touche au client passe par ici et jamais
+  // par le rendu — ce sont des commandes natives, et certaines relâchent des
+  // textures que la frame en cours est en train de dessiner.
+  //
+  // Rend true si quelque chose a été fait : l'appelant s'arrête alors pour cette
+  // battue, comme le faisait la suite de `return` qu'elle remplace.
+  bool DrainPending();
+
+  // Le panneau a été ouvert depuis l'écran de connexion. Il s'y limite à ce qui
+  // existe hors du jeu (cf. OpenFromLogin).
+  bool login_mode_ = false;
   // Réinjecte `emblem_frame_` dans la table des drapeaux du client. Une fois par
   // entrée en jeu : la table est reconstruite à chaque session.
   void ApplyEmblemFrame();
@@ -234,6 +275,14 @@ class GameSettings : public Plugin {
   // (feedback_texture_release_defer_frame).
   static constexpr int kNoPendingSkin = -2;  // ≠ kSkinDefault, qui vaut -1
   int pending_skin_ = kNoPendingSkin;
+
+  // La bascule « musique de fond », différée au tick elle aussi. Elle n'écrit pas
+  // qu'un drapeau : quand la valeur change, le client envoie `CMode::SendMsg(90)`
+  // au mode actif, qui (re)démarre ou coupe le morceau. C'est une COMMANDE
+  // NATIVE, donc interdite en pleine frame ImGui — et au login le mode actif est
+  // `CLoginMode`, qu'on ne sollicite pas au milieu d'un rendu.
+  // -1 = rien en attente.
+  int pending_bgm_ = -1;
 
   // ── Onglet Graphismes ──────────────────────────────────────────────────────
   //

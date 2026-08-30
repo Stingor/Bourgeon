@@ -15,6 +15,7 @@
 #include "features/moonlight_ui/moonlight_ui.h"  // SaveSettings (bourgeon_settings.yaml)
 #include "features/fx/weapon_dual_sprites.h"
 #include "features/systems/dx7_warning.h"  // dx7::DrawWarningBody — texte PARTAGÉ
+#include "features/systems/login_spectator.h"  // le décor de connexion, qui est EN JEU
 #include "imgui.h"
 #include "ragnarok/game_settings.h"
 #include "ragnarok/msgstring.h"
@@ -22,6 +23,7 @@
 #include "ui/game_texture.h"  // ro::InvalidateGameTextures (changement de skin)
 #include "ui/ro_imgui.h"
 #include "ui/ro_widgets.h"
+#include "ui/skin_panel.h"  // ro::DrawUiScaleCombo (l'échelle, au login)
 #include "utils/i18n.h"
 #include "utils/text.h"  // text::ToLowerAscii / ContainsNoCase
 #include "ui/ui_palette.h"  // ro::pal : la palette de l'UI
@@ -312,6 +314,17 @@ void GameSettings::OpenFromMenu() {
   modes_.clear();
 }
 
+void GameSettings::OpenFromLogin() {
+  // Même remise à plat que le menu Échap — et la même raison de la faire : le
+  // brouillon graphique doit repartir de la configuration réelle du client.
+  OpenFromMenu();
+  login_mode_ = true;
+  // 🔴 Basique D'EMBLÉE, et pas « Tout » : hors du jeu, la table d'options n'est
+  // pas remplie, donc les onglets qui en vivent n'existent pas. Ouvrir sur un
+  // onglet absent laisserait un panneau vide au premier coup d'œil.
+  tab_ = kTabBasic;
+}
+
 void GameSettings::OpenTab(int tab) {
   // Réouvrir remet le brouillon graphique à plat : c'est ce que fait le menu
   // Échap, et un lien de chat ne doit pas se comporter autrement.
@@ -326,6 +339,7 @@ void GameSettings::OpenTab(int tab) {
 
 void GameSettings::Close() {
   open_ = false;
+  login_mode_ = false;
   confirm_reset_ = false;
   confirm_restart_ = false;
 }
@@ -344,6 +358,12 @@ void GameSettings::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
   // prêt ici (`CSession_ctor` remplit sa table juste après), donc on ne peut
   // qu'armer — c'est `OnTick` qui écrira, une fois le manager debout.
   emblem_frame_applied_ = false;
+  // 🔴 Le panneau du LOGIN survit aux bascules de mode, et il le faut : le décor
+  // de connexion entre et sort du monde tout seul (une ville tirée au sort, un
+  // « Changer de vue »), ce qui déclenche ici deux bascules par reroll. Fermer
+  // dessus ferait disparaître les réglages sous les doigts du joueur. C'est
+  // `OnTick` qui referme, quand le jeu qui tourne n'est plus le décor.
+  if (login_mode_) return;
   if (mode_type != ModeMgr::ModeType::kGame) {
     Close();
     rows_.clear();
@@ -359,6 +379,24 @@ void GameSettings::OnTick() {
     if (open_) Close();
     return;
   }
+  // ── Le panneau ouvert depuis l'écran de connexion ────────────────────────
+  // Presque rien de ce qui suit ne s'y applique : il n'y a ni carte, ni HUD à
+  // reconstruire, ni fenêtre native 0x271E à détruire. Reste le drainage des
+  // demandes — skin et réglages graphiques, qui valent hors du jeu comme dedans.
+  if (login_mode_) {
+    // Le décor de connexion EST une session de jeu : c'est donc l'entrée en jeu
+    // du JOUEUR qui doit fermer ce panneau, pas n'importe quel monde chargé.
+    if (Bourgeon::Instance().IsGameActive() && !spectator::Active()) {
+      Close();
+      return;
+    }
+    // Pendant qu'une carte charge, on ne touche à rien : le client démonte et
+    // reconstruit tout, et c'est la fenêtre de tir où agir a déjà coûté un
+    // use-after-free. Ce qui est en attente le reste.
+    if (!Bourgeon::Instance().IsMapLoading()) DrainPending();
+    return;
+  }
+
   if (!Bourgeon::Instance().IsGameActive()) {
     if (open_) Close();
     return;
@@ -389,11 +427,30 @@ void GameSettings::OnTick() {
   // rempli : on attend qu'il le soit plutôt que d'écrire dans le vide.
   if (!emblem_frame_applied_ && gamesettings::Count() > 0) ApplyEmblemFrame();
 
+  if (DrainPending()) return;
+
+  // 🔴 DÉTRUIRE, pas masquer : le hook de création l'a rendue invisible, mais une
+  // native vivante avale un appui sur deux et garde le clavier.
+  if (uiwnd::FindWindow(uiwnd::kCUIGameSettingsUI))
+    uiwnd::CloseWindow(uiwnd::kCUIGameSettingsUI);
+}
+
+// Tout ce qui touche au client, hors frame ImGui. Les `return` d'origine sont
+// devenus des `return true` : une seule commande native par battue, comme avant.
+bool GameSettings::DrainPending() {
   if (pending_reset_) {
     pending_reset_ = false;
     gamesettings::ResetAllToDefault();
     rows_dirty_ = true;
-    return;
+    return true;
+  }
+
+  // La musique : un drapeau ET un message au mode actif (cf. pending_bgm_).
+  if (pending_bgm_ >= 0) {
+    const bool on = pending_bgm_ != 0;
+    pending_bgm_ = -1;
+    gamesettings::SetBgmEnabled(on);
+    return true;
   }
 
   // Les réglages structurels : différés jusqu'ici parce qu'ils réénumèrent les
@@ -422,7 +479,7 @@ void GameSettings::OnTick() {
         gamesettings::graphics::ShutdownClient();
       }
     }
-    return;
+    return true;
   }
 
   // Les trois réglages « effet immédiat » : différés jusqu'ici parce que les
@@ -434,7 +491,7 @@ void GameSettings::OnTick() {
     if (hot.sprite >= 0)    gamesettings::graphics::SetSpriteDetail(hot.sprite);
     if (hot.texture >= 0)   gamesettings::graphics::SetTextureDetail(hot.texture);
     if (hot.trilinear >= 0) gamesettings::graphics::SetTrilinear(hot.trilinear != 0);
-    return;
+    return true;
   }
 
   // Énumération auprès du client : coûteuse (elle crée un device Direct3D en
@@ -442,7 +499,7 @@ void GameSettings::OnTick() {
   if (pending_graphics_refresh_) {
     pending_graphics_refresh_ = false;
     RefreshGraphicsLists();
-    return;
+    return true;
   }
 
   if (pending_skin_ != kNoPendingSkin) {
@@ -454,7 +511,7 @@ void GameSettings::OnTick() {
     ro::InvalidateGameTextures();   // les .bmp mémorisés par chemin
     ro::InvalidateSkinTextures();   // les pièces d'habillage de nos propres fenêtres
     gamesettings::SetSkin(skin);
-    return;
+    return true;
   }
 
   if (!pending_writes_.empty()) {
@@ -477,13 +534,10 @@ void GameSettings::OnTick() {
       }
     }
     rows_dirty_ = true;
-    return;
+    return true;
   }
 
-  // 🔴 DÉTRUIRE, pas masquer : le hook de création l'a rendue invisible, mais une
-  // native vivante avale un appui sur deux et garde le clavier.
-  if (uiwnd::FindWindow(uiwnd::kCUIGameSettingsUI))
-    uiwnd::CloseWindow(uiwnd::kCUIGameSettingsUI);
+  return false;
 }
 
 bool GameSettings::PendingValue(int id, bool actual) const {
@@ -512,6 +566,19 @@ void GameSettings::RefreshRows() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 void GameSettings::OnRenderUI() {
+  // Le panneau du login ne se dessine QUE sur la branche login : le jeu et lui
+  // ne coexistent jamais, mais `open_` survit à l'instant où le monde apparaît
+  // (le décor de connexion en est un), et il apparaîtrait alors par-dessus.
+  if (login_mode_) return;
+  Draw();
+}
+
+void GameSettings::OnRenderLoginUI() {
+  if (!login_mode_) return;
+  Draw();
+}
+
+void GameSettings::Draw() {
   if (!imgui_enabled_ || !open_) return;
 
   if (esc_grace_frames_ > 0) {
@@ -540,18 +607,26 @@ void GameSettings::OnRenderUI() {
   if (!show_panel_) { Close(); show_panel_ = true; }
   if (!begun) { ro::EndRoWindow(); return; }
 
-  if (!gamesettings::Available()) {
-    ImGui::TextColored(ro::pal::kSecondaryText, "%s",
-                       i18n::Tr("Les réglages du client ne sont pas encore chargés."));
-    ro::EndRoWindow();
-    return;
-  }
+  // ── Ce qui dépend de la TABLE D'OPTIONS, et ce qui n'en dépend pas ─────────
+  //
+  // 🔴 La garde ne coupe plus tout le panneau, et c'est une correction : le son,
+  // le skin, la priorité et les réglages graphiques ne passent PAS par le
+  // manager d'options. Ils lisent des globaux vivants dès le démarrage du client
+  // — c'est bien pourquoi le menu a déjà le volume qu'on lui a laissé. Seuls les
+  // trois onglets pilotés par la table (et la recherche qui les traverse) ont
+  // besoin d'elle, et elle n'est remplie qu'à l'entrée en jeu.
+  //
+  // Avant, le panneau ouvert hors du jeu affichait « pas encore chargés » et
+  // rien d'autre — y compris pour des réglages parfaitement disponibles.
+  const bool has_table = gamesettings::Available();
 
   // ── Recherche ──────────────────────────────────────────────────────────────
-  ImGui::SetNextItemWidth(-1.0f);
-  ImGui::InputTextWithHint("##gs_filter",
-                           i18n::Tr("Rechercher un réglage ou une commande..."),
-                           filter_, sizeof(filter_));
+  if (has_table) {
+    ImGui::SetNextItemWidth(-1.0f);
+    ImGui::InputTextWithHint("##gs_filter",
+                             i18n::Tr("Rechercher un réglage ou une commande..."),
+                             filter_, sizeof(filter_));
+  }
 
   // ── Onglets ────────────────────────────────────────────────────────────────
   // « Tout » en tête — c'est lui qui donne son sens à la recherche.
@@ -560,6 +635,10 @@ void GameSettings::OnRenderUI() {
                            gamesettings::kTabControl, gamesettings::kTabEtc};
   if (ro::RoBeginTabBar("gs_tabs")) {
     for (int tab : tab_order) {
+      // Les onglets qui vivent de la table disparaissent quand elle n'est pas
+      // là. Les laisser vides ferait passer pour cassé un panneau qui ne l'est
+      // pas.
+      if (!has_table && tab != kTabBasic && tab != kTabGraphics) continue;
       const char* label =
           (tab == kTabAll)        ? i18n::Tr("Tout")
           : (tab == kTabBasic)    ? msgstr::Utf8Or(kMsgTabBasic, i18n::Tr("Basique"))
@@ -610,6 +689,10 @@ void GameSettings::OnRenderUI() {
                          ImGui::GetStyle().ItemSpacing.y * 2.0f;
   const ImVec2 body_size(0.0f, ImGui::GetContentRegionAvail().y - footer_h);
 
+  // L'onglet mémorisé peut ne plus exister — le panneau rouvert hors du jeu
+  // après une session, par exemple. On se rabat sur celui qui est toujours là.
+  if (!has_table && tab_ != kTabBasic && tab_ != kTabGraphics) tab_ = kTabBasic;
+
   if (ImGui::BeginChild("gs_body", body_size, false)) {
     if (tab_ == kTabBasic) {
       DrawBasicTab();
@@ -647,10 +730,13 @@ void GameSettings::OnRenderUI() {
   const char* label_close = i18n::Tr("Fermer");
   const float btn_w = ro::MaxButtonWidth({label_reset, label_close});
 
-  if (ro::RoButton(label_reset, btn_w)) confirm_reset_ = true;
+  // Le reset rejoue les défauts de la table d'options : sans elle, il n'aurait
+  // rien à remettre — et le proposer laisserait croire qu'il couvre le son ou
+  // les graphismes, qu'il ne touche pas plus que le bouton natif dont il vient.
+  if (has_table && ro::RoButton(label_reset, btn_w)) confirm_reset_ = true;
+  if (has_table) ImGui::SameLine();
 
   // Fermer, calé à droite et recalculé à chaque frame : il suit le redimensionnement.
-  ImGui::SameLine();
   ImGui::SetCursorPosX(ImGui::GetContentRegionMax().x - btn_w);
   if (ro::RoButton(label_close, btn_w)) Close();
 
@@ -786,9 +872,14 @@ void GameSettings::DrawBasicTab() {
   // curseur qui garderait sa valeur mentirait.
   mui::SeparatorText(i18n::Tr("Son"));
 
-  bool bgm_on = gamesettings::BgmEnabled();
+  // 🔴 DIFFÉRÉE, contrairement aux volumes juste en dessous : elle envoie un
+  // message au mode actif, ce qui est une commande native (cf. pending_bgm_).
+  // L'affichage montre la demande en attendant, sinon la case se redessinerait
+  // dans son ancien état jusqu'au tick.
+  bool bgm_on = pending_bgm_ >= 0 ? (pending_bgm_ != 0)
+                                  : gamesettings::BgmEnabled();
   if (ro::RoCheckbox(i18n::Tr("Musique de fond"), &bgm_on))
-    gamesettings::SetBgmEnabled(bgm_on);
+    pending_bgm_ = bgm_on ? 1 : 0;
 
   int bgm = gamesettings::BgmVolume();
   ImGui::BeginDisabled(!bgm_on);
@@ -808,54 +899,74 @@ void GameSettings::DrawBasicTab() {
     gamesettings::SetEffectVolume(sfx);
   ImGui::EndDisabled();
 
+  // ── L'échelle de TOUTE l'interface ─────────────────────────────────────────
+  // Seulement au login, et c'est délibéré : en jeu, elle vit dans le panneau
+  // Moonlight, à côté de la langue et de la police — les trois réglages qui
+  // valent pour l'interface entière. Hors du jeu ce panneau-là n'existe pas, et
+  // c'est précisément l'écran où une interface minuscule se constate.
+  //
+  // Elle persiste toute seule, dans le fichier de DÉMARRAGE (le seul relu assez
+  // tôt pour gouverner cet écran) : rien à sauvegarder ici.
+  if (login_mode_) {
+    mui::SeparatorText(i18n::Tr("Interface"));
+    ro::DrawUiScaleCombo(
+        i18n::TrId("Échelle de l'interface", "bourgeon_ui_scale"), ro::Px(120.0f));
+  }
+
   // ── Les deux bascules de la page Basique qui sont de simples TALKTYPE ───────
-  mui::SeparatorText(i18n::Tr("Affichage"));
+  // ⚠ ABSENTES au login, faute de table d'options : `IsOn` y rendrait faux pour
+  // les deux, et les cases afficheraient un état inventé. Elles ne gouvernent
+  // d'ailleurs que des choses de jeu — l'emblème au-dessus des noms, l'annonce
+  // des connexions d'amis.
+  if (!login_mode_) {
+    mui::SeparatorText(i18n::Tr("Affichage"));
 
-  bool emblem = PendingValue(kTtEmblemFrame, gamesettings::IsOn(kTtEmblemFrame));
-  if (ro::RoCheckbox(
-          msgstr::Utf8Or(kMsgEmblemFrame, i18n::Tr("Bordure d'emblème")), &emblem)) {
-    // 🔴 NOTRE copie D'ABORD : c'est la seule qui survive à la relance (cf. le
-    // .h). L'écriture dans la table du client suit, pour la session en cours.
-    emblem_frame_ = emblem;
-    if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
-    PendingWrite write;
-    write.valid = true;
-    write.id = kTtEmblemFrame;
-    write.on = emblem;
-    // ⛔ PLUS DE CHEMIN PAR NOM DE COMMANDE. La clé de cette option n'existe pas
-    // dans la table des drapeaux — `SetFlagRaw` ne met à jour que l'existant —
-    // et le réglage est pour cette raison inerte JUSQUE DANS LA FENÊTRE NATIVE.
-    // La première correction passait par « /frame », la seule fonction qui
-    // INSÈRE… mais cette chaîne n'existe nulle part dans le client, ni dans le
-    // `CmdOnOffList` du Lua : la résolution rendait « commande inconnue » et la
-    // case restait morte. `SetOn` insère désormais lui-même (docs §3.3).
-    pending_writes_.push_back(write);
-  }
-  ImGui::SameLine();
-  // 🔴 L'INFOBULLE DIT LA CONDITION MANQUANTE, parce que le réglage seul ne
-  // suffit jamais : le client calcule `cadre = (carte GvG) ET (/frame)`. Sans
-  // cette phrase, la case passe pour cassée — c'est exactement ce qui a coûté
-  // une demi-journée d'enquête (docs/game_option_re.md §3.3).
-  mui::HelpMarker(
-      i18n::Tr("Encadre l'emblème de guilde au-dessus des noms. Le client ne "
-               "dessine ce cadre que sur une carte de siège (GvG) : ailleurs la "
-               "commande bascule, mais rien ne change à l'écran. Bourgeon "
-               "l'honore partout où il dessine lui-même l'emblème, comme la "
-               "fiche de personnage."));
+    bool emblem = PendingValue(kTtEmblemFrame, gamesettings::IsOn(kTtEmblemFrame));
+    if (ro::RoCheckbox(
+            msgstr::Utf8Or(kMsgEmblemFrame, i18n::Tr("Bordure d'emblème")), &emblem)) {
+      // 🔴 NOTRE copie D'ABORD : c'est la seule qui survive à la relance (cf. le
+      // .h). L'écriture dans la table du client suit, pour la session en cours.
+      emblem_frame_ = emblem;
+      if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
+      PendingWrite write;
+      write.valid = true;
+      write.id = kTtEmblemFrame;
+      write.on = emblem;
+      // ⛔ PLUS DE CHEMIN PAR NOM DE COMMANDE. La clé de cette option n'existe pas
+      // dans la table des drapeaux — `SetFlagRaw` ne met à jour que l'existant —
+      // et le réglage est pour cette raison inerte JUSQUE DANS LA FENÊTRE NATIVE.
+      // La première correction passait par « /frame », la seule fonction qui
+      // INSÈRE… mais cette chaîne n'existe nulle part dans le client, ni dans le
+      // `CmdOnOffList` du Lua : la résolution rendait « commande inconnue » et la
+      // case restait morte. `SetOn` insère désormais lui-même (docs §3.3).
+      pending_writes_.push_back(write);
+    }
+    ImGui::SameLine();
+    // 🔴 L'INFOBULLE DIT LA CONDITION MANQUANTE, parce que le réglage seul ne
+    // suffit jamais : le client calcule `cadre = (carte GvG) ET (/frame)`. Sans
+    // cette phrase, la case passe pour cassée — c'est exactement ce qui a coûté
+    // une demi-journée d'enquête (docs/game_option_re.md §3.3).
+    mui::HelpMarker(
+        i18n::Tr("Encadre l'emblème de guilde au-dessus des noms. Le client ne "
+                 "dessine ce cadre que sur une carte de siège (GvG) : ailleurs la "
+                 "commande bascule, mais rien ne change à l'écran. Bourgeon "
+                 "l'honore partout où il dessine lui-même l'emblème, comme la "
+                 "fiche de personnage."));
 
-  bool login = PendingValue(kTtLoginNotify, gamesettings::IsOn(kTtLoginNotify));
-  if (ro::RoCheckbox(
-          msgstr::Utf8Or(kMsgLoginNotify, i18n::Tr("Notification de connexion")),
-          &login)) {
-    PendingWrite write;
-    write.valid = true;
-    write.id = kTtLoginNotify;
-    write.on = login;
-    pending_writes_.push_back(write);
-  }
-  ImGui::SameLine();
-  mui::HelpMarker(
-      i18n::Tr("Annonce au chat les connexions et déconnexions de vos amis."));
+    bool login = PendingValue(kTtLoginNotify, gamesettings::IsOn(kTtLoginNotify));
+    if (ro::RoCheckbox(
+            msgstr::Utf8Or(kMsgLoginNotify, i18n::Tr("Notification de connexion")),
+            &login)) {
+      PendingWrite write;
+      write.valid = true;
+      write.id = kTtLoginNotify;
+      write.on = login;
+      pending_writes_.push_back(write);
+    }
+    ImGui::SameLine();
+    mui::HelpMarker(
+        i18n::Tr("Annonce au chat les connexions et déconnexions de vos amis."));
+  }  // if (!login_mode_)
 
   // ⛔ PAS DE GROUPE « COURRIER » ICI, ET C'EST UN CHOIX. Le natif en a un — deux
   // boutons radio « recevoir de tout le monde / bloquer les inconnus » — mais il
@@ -979,13 +1090,6 @@ void GameSettings::DrawBasicTab() {
   }
 
   mui::PopStyleCompact();
-
-  // Ce que cet onglet ne reprend toujours pas — dit franchement plutôt que laissé
-  // deviner. Les graphismes restent au client : ce sont des resets de device.
-  ImGui::Spacing();
-  ImGui::TextColored(ro::pal::kSecondaryText, "%s",
-                     i18n::Tr("Les réglages graphiques (résolution, mode d'écran, "
-                              "filtrage) restent dans la fenêtre du client."));
 }
 
 void GameSettings::RefreshGraphicsLists() {
@@ -1304,7 +1408,11 @@ void GameSettings::DrawGraphicsTab() {
                        i18n::Tr("Enregistré. Actif au prochain démarrage du jeu."));
   }
 
-  DrawBourgeonGraphics();
+  // ⚠ PAS au login : ces réglages-là vivent dans `bourgeon_settings.yaml`, qui
+  // n'est relu qu'à l'entrée en jeu (feedback : la frontière est TEMPORELLE).
+  // Les montrer avant donnerait des cases dont la valeur sera écrasée sous les
+  // yeux du joueur au moment où il entrera dans le monde.
+  if (!login_mode_) DrawBourgeonGraphics();
   mui::PopStyleCompact();
 }
 

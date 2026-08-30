@@ -160,66 +160,19 @@ void BugReport::Button(const Context& ctx, const char* imgui_id) {
 
 void BugReport::TitleBarButton(const Context& ctx) {
   if (!enabled_) return;  // opt-out via MoonlightUi
-  // 🔴 Le littéral reste NU : il est `static`, donc construit au chargement de la
-  // DLL — bien avant que le catalogue n'existe. Un `Tr` posé ici serait figé en
-  // français pour toujours, sans la moindre erreur.
-  static const char kLabel[] = "Signaler un bug";
-  // ⚠ Traduit UNE fois, et la même chaîne sert à MESURER et à DESSINER. Mesurer le
-  // français pour dessiner l'anglais donnerait un bouton mal placé — la largeur
-  // calculée plus bas positionne le bouton dans la barre de titre.
-  const char* label = i18n::Tr(kLabel);
-
-  const ImVec2 wp = ImGui::GetWindowPos();  // = coin haut-gauche de la barre
-  const float ww = ImGui::GetWindowWidth();
-  const float title_h = ImGui::GetFrameHeight();  // hauteur de l'art de la barre
-  // Largeur donnée EXPLICITEMENT (même formule que le mode auto de RoSmallButton)
-  // pour la connaître avant de placer le curseur : la mesurer après coup ferait
-  // sauter le bouton d'une frame à chaque ouverture — le défaut qu'on corrige.
+  // 🔴 EN DERNIER dans la fenêtre : `ro::TitleBarButton` ne restaure pas le
+  // curseur de layout (cf. sa déclaration).
   //
-  // 🔴 LES CAPS PASSENT PAR `ro::Px`, EXACTEMENT COMME DANS RoSmallButton. Cette
-  // formule DOIT rendre le même nombre que le mode auto du bouton : c'est elle
-  // qui le positionne. Mesurée sur l'art non mis à l'échelle pendant que le
-  // bouton, lui, se dessinait à l'échelle, elle le faisait déborder de la barre
-  // de titre — le décalage visible dès que le réglage quittait 100 %.
-  const float bw = ImGui::CalcTextSize(label).x +
-                   ro::Px(static_cast<float>(ro::skin::ksBtnOutLeft.w +
-                                             ro::skin::ksBtnOutRight.w));
-  // La croix de fermeture vit à 5 px du bord droit : on lui laisse sa largeur plus
-  // 4 px de respiration.
-  const float bx = wp.x + ww -
-                   ro::Px(static_cast<float>(ro::skin::kSysCloseOff.w) + 9.0f) - bw;
-  // RoSmallButton peint son art 3 px SOUS le haut de son item : on remonte d'autant
-  // pour que ce soit l'ART, et non l'item, qui soit centré dans la barre. Le +1 est
-  // un ajustement optique — centré au pixel près, le bouton paraît haut.
-  // (Le décalage de 3 px est `art_drop_y` chez RoSmallButton, à l'échelle lui
-  // aussi : les deux valeurs doivent rester la même.)
-  const float by =
-      wp.y +
-      (title_h - ro::Px(static_cast<float>(ro::skin::ksBtnOutLeft.h))) * 0.5f -
-      ro::Px(3.0f) + ro::Px(1.0f);
-
-  // 🔴 Le clip rect du corps EXCLUT la barre de titre. Sans ce PushClipRect, le
-  // bouton ne serait pas seulement invisible : il serait INERTE — ImGui::ItemAdd
-  // rejette tout ce qui tombe hors du clip, donc ni survol ni clic. C'est aussi ce
-  // qui empêche le clic de partir dans le déplacement de la fenêtre : tant que le
-  // bouton est survolé, HoveredId != 0 et ImGui ne démarre pas le drag de titre.
-  ImGui::PushClipRect(wp, ImVec2(wp.x + ww, wp.y + title_h), false);
-  ImGui::SetCursorScreenPos(ImVec2(bx, by));
-  const bool clicked = ro::RoSmallButton(label, bw);
-  const bool hovered = ImGui::IsItemHovered();
-  ImGui::PopClipRect();
-  // 🔴 On NE restaure PAS le curseur, et c'est pour ça que cet appel doit être le
-  // DERNIER de la fenêtre. Un SetCursorPos() final arme `DC.IsSetPos` ; si aucun
-  // item ne suit, End() lève « Code uses SetCursorPos() to extend window/parent
-  // boundaries » (l'encadré rose « MESSAGE FROM DEAR IMGUI »). Ici le bouton EST le
-  // dernier item soumis, et ItemSize() a déjà désarmé le drapeau.
-
-  // Infobulle APRÈS le PopClipRect : elle ouvre une autre fenêtre ImGui, elle ne
-  // doit pas hériter du clip de la barre de titre.
-  if (hovered)
-    ImGui::SetTooltip(i18n::Tr("Envoyer un rapport de bug à l'équipe (le contexte est "
-                      "joint automatiquement)"));
-  if (clicked) Open(ctx);
+  // Le placement vivait ICI, recopié de l'art du skin. Il est parti dans le
+  // toolkit le jour où l'écran de connexion a voulu le même bouton : cette
+  // fenêtre-là n'a pas de croix, et la formule d'ici comptait sur elle pour
+  // savoir où s'arrêter.
+  if (ro::TitleBarButton(
+          i18n::Tr("Signaler un bug"),
+          i18n::Tr("Envoyer un rapport de bug à l'équipe (le contexte est "
+                   "joint automatiquement)"))) {
+    Open(ctx);
+  }
 }
 
 void BugReport::Open(const Context& ctx) {

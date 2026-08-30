@@ -373,6 +373,21 @@ bool RoChatWindowIsResizing();
 void SetNextWindowTitleBullet(const char* tooltip = nullptr);
 bool TitleBulletClicked();
 
+// ── Un bouton DANS la barre de titre ─────────────────────────────────────────
+// Calé à gauche des boutons système, quels qu'ils soient : la géométrie est
+// relevée au Begin de la fenêtre, donc le bouton se place aussi bien sur une
+// fenêtre fermable ([mini][pin][close]) que sur une fenêtre qui ne l'est pas —
+// l'écran de connexion, qui n'a que son bouton mini.
+//
+// 🔴 À appeler EN DERNIER dans la fenêtre : le curseur de layout n'est pas
+// restauré derrière. Un `SetCursorPos` final arme `DC.IsSetPos`, et si aucun
+// item ne suit, `End()` lève l'encadré rose « Code uses SetCursorPos() to
+// extend window/parent boundaries ».
+//
+// `label` et `tooltip` se passent DÉJÀ TRADUITS : le libellé est mesuré pour
+// placer le bouton, et mesurer le français pour dessiner l'anglais le décalerait.
+bool TitleBarButton(const char* label, const char* tooltip = nullptr);
+
 // ── Épingle de la barre de titre (« Échap ne me ferme pas ») ─────────────────
 // Ajoute un 3e bouton système, JUSTE À GAUCHE de la croix : [mini][pin][close].
 // Épinglée, la fenêtre sort de la pile Échap — elle ne se ferme plus sur Échap,

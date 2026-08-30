@@ -1671,6 +1671,117 @@ void SetNextWindowTitleBullet(const char* tooltip) {
 
 bool TitleBulletClicked() { return g_bullet_clicked; }
 
+// -- Boutons posés DANS la barre de titre ------------------------------------
+// Le bord gauche des boutons système, PAR FENÊTRE. Une seule variable ne
+// suffirait pas : une popup ou une infobulle ouverte pendant le corps d'une
+// fenêtre écraserait la valeur avant que celle-ci ne pose son bouton.
+namespace {
+struct TitleBarSysEntry {
+  ImGuiID id = 0;
+  float   left = 0.0f;    // bord gauche des boutons système
+  float   top = 0.0f;     // haut de la barre, en coordonnées écran
+  float   height = 0.0f;  // sa hauteur PEINTE
+};
+std::vector<TitleBarSysEntry> g_titlebar_sys;
+}  // namespace
+
+static void RememberTitleBar(ImGuiID id, float left, float top, float height) {
+  for (TitleBarSysEntry& entry : g_titlebar_sys) {
+    if (entry.id == id) {
+      entry.left = left; entry.top = top; entry.height = height;
+      return;
+    }
+  }
+  g_titlebar_sys.push_back(TitleBarSysEntry{id, left, top, height});
+}
+
+// La géométrie relevée au dernier Begin de cette fenêtre. À défaut — fenêtre
+// jamais peinte, ou masquée — on retombe sur celle d'une fenêtre fermable, la
+// plus courante.
+//
+// 🔴 LA HAUTEUR EST RELEVÉE, PAS RECALCULÉE, et c'est une correction : la barre
+// est peinte pendant `BeginRoWindow`, sous le style de CE moment-là. Un bouton
+// posé plus tard, dans le corps de la fenêtre, lit un `GetFrameHeight()` que les
+// `PushStyleVar` du skin ont entre-temps déplacé — il se centrait donc sur une
+// barre qui n'a pas cette hauteur, et débordait par le bas.
+static TitleBarSysEntry TitleBarGeometry(const ImGuiWindow* w) {
+  if (w) {
+    for (const TitleBarSysEntry& entry : g_titlebar_sys)
+      if (entry.id == w->ID) return entry;
+  }
+  TitleBarSysEntry fallback;
+  fallback.left = ImGui::GetWindowPos().x + ImGui::GetWindowWidth() -
+                  Px((float)skin::kSysCloseOff.w + 4.0f);
+  fallback.top = ImGui::GetWindowPos().y;
+  fallback.height = ImGui::GetFrameHeight();
+  return fallback;
+}
+
+bool TitleBarButton(const char* label, const char* tooltip) {
+  ImGuiWindow* w = ImGui::GetCurrentWindow();
+  const TitleBarSysEntry bar = TitleBarGeometry(w);
+  const float wx = ImGui::GetWindowPos().x;
+  const float ww = ImGui::GetWindowWidth();
+  // Largeur donnée EXPLICITEMENT (la formule du mode auto de RoSmallButton) pour
+  // la connaître AVANT de placer le curseur : la mesurer après coup ferait sauter
+  // le bouton d'une frame à chaque ouverture.
+  //
+  // 🔴 LES CAPS PASSENT PAR `ro::Px`, comme dans RoSmallButton : mesurée sur l'art
+  // non mis à l'échelle pendant que le bouton, lui, se dessine à l'échelle, elle
+  // le ferait déborder de la barre dès que le réglage quitte 100 %.
+  //
+  // 🔴 ARRONDI AU PIXEL, et c'est ce qui décide de la NETTETÉ. L'art du skin est
+  // du pixel-art échantillonné en POINT : posé sur une abscisse fractionnaire, il
+  // tombe entre deux texels et ses bordures d'un pixel bavent — le bouton paraît
+  // sale à côté d'un autre dont la largeur est tombée juste. Or `CalcTextSize`
+  // rend presque toujours des fractions, et elles se propagent à la position.
+  //
+  // Au PLAFOND et non au plancher : rogner sous la largeur du texte le ferait
+  // réduire par `FitButtonLabel`.
+  const float bw =
+      ImCeilFast(ImGui::CalcTextSize(label).x +
+                 Px((float)(skin::ksBtnOutLeft.w + skin::ksBtnOutRight.w)));
+  // 5 px de respiration entre le bouton et le premier bouton système.
+  const float bx = ImFloor(bar.left - Px(5.0f) - bw);
+  // RoSmallButton peint son art 3 px SOUS le haut de son item : on remonte
+  // d'autant pour que ce soit l'ART, et non l'item, qui soit centré dans la
+  // barre. (Le décalage de 3 px est `art_drop_y` chez RoSmallButton, à l'échelle
+  // lui aussi : les deux valeurs doivent rester la même.)
+  //
+  // ⛔ PLUS D'AJUSTEMENT OPTIQUE de +1 px. Il venait de l'époque où la hauteur
+  // de barre était estimée par `GetFrameHeight()` — trop grande — et rattrapait
+  // à la main un centrage déjà faux. Sur la hauteur RÉELLE il ne corrige plus
+  // rien, il décale : mesuré en jeu, 2 px au-dessus du bouton pour 0 en dessous.
+  //
+  // ⚠ Arrondi, comme l'abscisse : la hauteur de la barre est rarement paire,
+  // donc le centrage tombe sur un demi-pixel.
+  const float by =
+      ImFloor(bar.top + (bar.height - Px((float)skin::ksBtnOutLeft.h)) * 0.5f -
+              Px(3.0f));
+
+  // 🔴 Le clip rect du corps EXCLUT la barre de titre. Sans ce PushClipRect, le
+  // bouton ne serait pas seulement invisible : il serait INERTE — ImGui::ItemAdd
+  // rejette tout ce qui tombe hors du clip, donc ni survol ni clic. C'est aussi ce
+  // qui empêche le clic de partir dans le déplacement de la fenêtre : tant que le
+  // bouton est survolé, HoveredId != 0 et ImGui ne démarre pas le drag de titre.
+  ImGui::PushClipRect(ImVec2(wx, bar.top),
+                      ImVec2(wx + ww, bar.top + bar.height), false);
+  ImGui::SetCursorScreenPos(ImVec2(bx, by));
+  const bool clicked = RoSmallButton(label, bw);
+  const bool hovered = ImGui::IsItemHovered();
+  ImGui::PopClipRect();
+  // 🔴 On NE restaure PAS le curseur, et c'est pour ça que cet appel doit être le
+  // DERNIER de la fenêtre. Un SetCursorPos() final arme `DC.IsSetPos` ; si aucun
+  // item ne suit, End() lève « Code uses SetCursorPos() to extend window/parent
+  // boundaries ». Ici le bouton EST le dernier item soumis, et ItemSize() a déjà
+  // désarmé le drapeau.
+
+  // Infobulle APRÈS le PopClipRect : elle ouvre une autre fenêtre ImGui, elle ne
+  // doit pas hériter du clip de la barre de titre.
+  if (hovered && tooltip && *tooltip) ImGui::SetTooltip("%s", tooltip);
+  return clicked;
+}
+
 void SetNextWindowBodyColor(unsigned int argb) {
   g_next_body_set = true;
   g_next_body_col = argb;
@@ -1914,7 +2025,14 @@ bool BeginRoWindow(const char* title, bool* p_open, int imgui_window_flags) {
     if (show_mini) {
       ImVec2 mini_tl(bx - Px((float)g_mini.w), by);
       mini_clicked = SysButton(dl, g_mini, g_mini_on, mini_tl);
+      bx = mini_tl.x;
     }
+    // Ce que `TitleBarButton` doit savoir et ne peut pas recalculer : le bord
+    // GAUCHE des boutons système. Il dépend de ce que la fenêtre porte —
+    // [mini][pin][close] au complet, ou le seul mini quand elle n'est pas
+    // fermable, comme l'écran de connexion. Le déduire chez l'appelant
+    // supposerait de lui faire connaître `p_open` et les drapeaux du Begin.
+    RememberTitleBar(w->ID, bx, tb.Min.y, tb.GetHeight());
     dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
     dl->PopClipRect();
 
