@@ -128,7 +128,25 @@ constexpr int kUIGuildPanelLast            = 66;    // 0x42    UIGuildTotalInfoW
 // ⚠ 69 n'a PAS de classe : son cas de MakeWindow est un AIGUILLEUR. Il fabrique
 // la 34 (0x22, UIMessengerGroupWnd) puis lui envoie OnMsg(0xD7). Chercher une
 // fenêtre d'id 69 dans la map du gestionnaire ne rendra donc jamais rien.
-constexpr int kMessengerGroupWndId         = 69;    // 0x45    → 34 (UIMessengerGroupWnd)
+//
+// 🔴🔴 CONSÉQUENCE À NE PAS MANQUER — les deux ids ne se remplacent PAS l'un
+// l'autre selon l'opération, et le tableau ci-dessous est MESURÉ :
+//
+// | opération      | 69 (0x45)                          | 34 (0x22)                    |
+// |----------------|------------------------------------|------------------------------|
+// | `FindWindow`   | ❌ **rend toujours nullptr** (aucun | ✅ `case 34` → `mgr+0x2C8`,  |
+// |                | case ; retombe sur la map, où cette | LE slot où le case 34 de     |
+// |                | fenêtre n'est jamais insérée)      | MakeWindow range l'objet     |
+// | `CloseWindow`  | ✅ `case 69` : notifie `vt+0x2C`    | ✅ `case 34` : détruit et    |
+// |                | puis **délègue au case 34**        | remet `mgr+0x2C8` à 0        |
+//
+// ⇒ **DÉTECTER avec 34, FERMER avec 69.** Un `FindWindow(69)` utilisé comme garde
+// avant la fermeture ne rend jamais rien : la native survit, masquée mais VIVANTE,
+// et toute bascule du client (`ToggleWindowById`, `DispatchHotkeyBehavior`) la
+// FERME au lieu de la créer — un appui sur deux avalé, exactement le symptôme que
+// la règle « détruire, pas masquer » est censée éviter.
+constexpr int kMessengerGroupWndId         = 69;    // 0x45    aiguilleur → 34 ; à FERMER
+constexpr int kMessengerGroupWndSlotId     = 34;    // 0x22    la vraie classe ; à CHERCHER
 constexpr int kCardInsertWndId             = 74;    // 0x4a    UIItemCompositionWnd
 constexpr int kUIMakeTargetListWnd         = 79;    // 0x4f
 constexpr uintptr_t kUIMakeTargetListWndVTable = 0x0103ec50;

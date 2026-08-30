@@ -468,7 +468,20 @@ void PartyFriendWindow::FlushPending() {
 // ── Bascule natif / ImGui ────────────────────────────────────────────────────
 
 void PartyFriendWindow::KillNative(bool adopt_open_state) {
-  if (!uiwnd::FindWindow(uiwnd::kMessengerGroupWndId)) return;
+  // 🔴🔴 CHERCHER avec 34, FERMER avec 69 — et pas l'inverse. `FindWindow(69)`
+  // rend TOUJOURS nullptr : le dispatcher n'a aucun case pour 69, il retombe sur
+  // la map générique du gestionnaire, et cette fenêtre n'y est jamais insérée (le
+  // case 34 de MakeWindow la range dans le slot dédié `mgr+0x2C8` puis la pousse
+  // dans la liste de rendu, jamais dans la map). Le case 34 de `FindWindow` lit
+  // précisément ce slot.
+  //
+  // Ce `return` prématuré est ce qui faisait AVALER UN APPUI SUR DEUX : la garde
+  // ne trouvant jamais rien, la native n'était jamais détruite. Masquée mais
+  // VIVANTE, elle faisait répondre « fermé » à la bascule suivante du client
+  // (`ToggleWindowById` ferme si ça existe, ne crée que sinon), et notre
+  // `HandleNativeCreation` ne voyait pas passer la demande. Cf. uiwnd.h, le
+  // tableau des deux ids.
+  if (!uiwnd::FindWindow(uiwnd::kMessengerGroupWndSlotId)) return;
   // Sa présence PROUVE que le joueur avait la fenêtre ouverte : on adopte l'état
   // avant de détruire, sinon activer le mode moderne la ferait disparaître.
   if (adopt_open_state && !open_) {

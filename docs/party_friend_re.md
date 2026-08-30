@@ -301,8 +301,28 @@ Le piège central de ce chantier. `UIMessengerGroupWnd` répond à **deux** ids 
 
 | id | rôle | preuve |
 |---|---|---|
-| **0x22** (34) | **fabrique** | case 34 @`0x00a3aeac` — le seul endroit qui construise la classe : le ctor `0x00701fc0` n'a **qu'un appelant** dans tout le binaire, `UIWindowMgr_MakeWindow` |
-| **0x45** (69) | **enregistrement** | `FindWindow` / `CloseWindow` ; c'est l'id que le case 34 passe à `SaveRectAndCloseWindow` avant de construire |
+| **0x22** (34) | **fabrique ET slot** | case 34 @`0x00a3aeac` — le seul endroit qui construise la classe : le ctor `0x00701fc0` n'a **qu'un appelant** dans tout le binaire, `UIWindowMgr_MakeWindow`. Il range l'objet dans **`mgr+0x2C8`** |
+| **0x45** (69) | **point d'entrée** | aiguilleur d'ouverture (onglet) et de fermeture ; il ne possède rien |
+
+### 🔴🔴 Ce que chaque id sait faire (MESURÉ, 2026-08-30 — la ligne précédente disait faux)
+
+| opération | 69 (0x45) | 34 (0x22) |
+|---|---|---|
+| `FindWindow` | ❌ **rend TOUJOURS `nullptr`** — aucun case pour 69 dans `UIWindowMgr_FindWindow` `0x00a47b90` ; il retombe sur la map générique (`this+8`), où cette fenêtre n'est **jamais** insérée : le case 34 la range dans `mgr+0x2C8` et la pousse dans la liste de rendu (`sub_A2D220` → `mgr+380`) | ✅ `case 34` → `*(this + 178*4)` = **`mgr+0x2C8`**, exactement ce slot |
+| `CloseWindow` | ✅ `case 69` @`0x00a2f387` : appelle `vt+0x2C` sur la fenêtre puis **délègue à `SaveRectAndCloseWindow(0x22)`** | ✅ `case 34` @`0x00a2f3ba` : `QueueDestroyWindow`, remet `mgr+0x2C8` à 0, puis ferme les satellites 53 et 68 |
+
+⇒ **DÉTECTER avec 34, FERMER avec 69.**
+
+🔴 Le bug que ça a coûté : `KillNative` gardait sa destruction derrière `FindWindow(0x45)`, qui ne
+rend jamais rien. La native n'était donc **jamais détruite** — seulement masquée à la naissance.
+Or « masquée » veut dire « existe », et toute bascule du client (`ToggleWindowById` `0x00812e60`,
+`DispatchHotkeyBehavior` `0x00a451e0`) **ferme si ça existe et ne crée que sinon** : un appui sur
+deux partait fermer une fenêtre invisible sans jamais atteindre notre `HandleNativeCreation`.
+D'où « deux pressions pour ouvrir, deux pour fermer », et une native qui pouvait réapparaître.
+
+⚠ La contradiction était **déjà dans cette page** : la note de bas de section signale que le
+client lui-même cherche cette fenêtre par `FindWindow(0x22)` (`UIMessengerGroupWnd_OnMemberDrop`).
+Une note qui contredit la table à trois lignes d'écart n'a pas suffi à faire relire la table.
 
 Le case 69 n'est **pas** une fabrique — c'est un point d'entrée « ouvrir sur le bon onglet » :
 
