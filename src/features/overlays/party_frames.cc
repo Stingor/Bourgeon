@@ -417,10 +417,13 @@ uint32_t PartyFrames::SkillTargetGid(int targeting_mode) const {
   // Les offsets sont ceux de CE build : ailleurs, on ne propose rien.
   if (Bourgeon::Instance().client().timestamp() != 20250716) return 0u;
 
-  // 🔴 En OFFENSIF, la grille ne propose rien. Elle ne contient que des membres
-  // du groupe : viser un allié avec un sort d'attaque relève du PVP, que le
-  // client réserve au clic manuel (mêmes règles Maj/PVP/GVG que
-  // `ValidSkillTarget`). Un raid frame sert à soutenir.
+  // 🔴 En OFFENSIF, la grille ne propose rien — et elle reste seule à le faire
+  // depuis que `ValidSkillTarget` accepte les joueurs (2026-08-30). La raison
+  // n'est plus la même : ce n'est pas la légalité PVP, c'est qu'une tuile de
+  // raid frame est SURVOLÉE en permanence pendant qu'on soigne. Y laisser
+  // partir un sort d'attaque enverrait un offensif sur un coéquipier au moindre
+  // sort mal armé. Un raid frame sert à soutenir ; pour attaquer un joueur, on
+  // le vise dans le monde ou par le HUD de cible.
   if (targeting_mode == 2) return 0u;
 
   // L'acteur doit être là : c'est lui que le message d'acteur vise. Un membre

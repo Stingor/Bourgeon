@@ -326,8 +326,10 @@ uint32_t ValidSkillTarget(uint32_t gid, int mode) {
     const uint32_t own = rag::OwnAccountIdSafe();
     if (own != 0 && gid == own) return 0u;
     if (mode == 2) {  // offensif
-      if (!rag::IsMonsterJob(static_cast<unsigned>(Read<uint32_t>(actor, rag::actor::kJobId))))
-        return 0u;    // un joueur reste au clic manuel (PVP/GVG)
+      // 🔴 Un JOUEUR passe (demande utilisateur 2026-08-30) : le filtre « monstre
+      // uniquement » qui vivait ici est retiré, comme dans
+      // `QuickCast::PickTargetGid`. Reste le cadavre — viser un mort avec un sort
+      // d'attaque n'est jamais ce qu'on veut.
       if (Read<int32_t>(actor, rag::actor::kMotionState) == 3) return 0u;  // cadavre
     }
     return gid;

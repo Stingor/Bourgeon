@@ -19,7 +19,6 @@
 #include "ui/ro_widgets.h"  // mui::HelpMarker, mui::WheelSliderInt
 #include "utils/i18n.h"
 #include "utils/game_focus.h"  // win::GameHasFocus
-#include "ragnarok/job_ids.h"  // rag::IsPlayerJob / IsMonsterJob
 
 // ── Adresses (client 20250716, no-ASLR : addr Ghidra == live) ────────────────
 namespace {
@@ -204,11 +203,14 @@ unsigned PickTargetGid(int mode) {
     const unsigned job = static_cast<unsigned>(q[gamescene::kQuadJob]);
     if (aid == 0 || job == kJobWarpPortal) return 0;
     if (mode == 2) {
-      // Offensif : monstre uniquement, et jamais soi-même. C'est ICI que vit
-      // désormais la règle — le chemin natif qui la portait
-      // (CursorMgr_UpdateHover) n'est plus emprunté.
+      // Offensif : jamais soi-même. C'est ICI que vit désormais la règle — le
+      // chemin natif qui la portait (CursorMgr_UpdateHover) n'est plus emprunté.
+      //
+      // 🔴 Un JOUEUR est une cible valide (demande utilisateur 2026-08-30) : le
+      // filtre « monstre uniquement » qui vivait ici est retiré. Le serveur reste
+      // seul juge de la légalité (PVP/GVG, Maj) — un sort offensif sur un joueur
+      // hors zone PVP part donc, et c'est lui qui le refuse.
       if (aid == rag::OwnAccountId()) return 0;
-      if (!rag::IsMonsterJob(job)) return 0;  // joueur : PVP/GVG au clic manuel
     }
     return aid;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
@@ -641,10 +643,11 @@ void QuickCast::DrawSettings() {
   ImGui::SameLine();
   mui::HelpMarker(
       i18n::Tr("Une compétence CIBLÉE part immédiatement si une cible compatible est "
-      "sous le curseur : monstre pour un sort offensif ; joueur, monstre ou "
-      "soi-même pour un soutien.\n\n"
-      "Sans cible compatible sous le curseur (ou pour viser un joueur en "
-      "PVP/GVG), le mode ciblage classique reste armé — rien n'est perdu."));
+      "sous le curseur : monstre ou joueur pour un sort offensif ; joueur, "
+      "monstre ou soi-même pour un soutien.\n\n"
+      "Sans cible compatible sous le curseur, le mode ciblage classique reste "
+      "armé — rien n'est perdu. C'est le SERVEUR qui juge si un joueur peut "
+      "être attaqué (PVP/GVG)."));
 
   if (ground_enabled_ || target_enabled_) {
     ImGui::SetNextItemWidth(ro::Px(160.0f));
