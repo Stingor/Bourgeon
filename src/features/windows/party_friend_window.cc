@@ -490,13 +490,32 @@ void PartyFriendWindow::ToggleFromUi() {
   if (open_) need_pos_ = true;
 }
 
-void PartyFriendWindow::HandleNativeCreation(void* win, bool user_gesture) {
+void PartyFriendWindow::HandleNativeCreation(void* win, bool user_gesture,
+                                             bool layout_restore) {
   if (!imgui_enabled_) return;
 
   // Masquer AVANT sa première frame : OnTick la détruira, mais il ne passe que
   // toutes les ~100 ms et elle serait visible d'ici là.
   uiwnd::SafeSetVisible(win, false);
 
+  // 🔴🔴 LA GARDE QUI MANQUAIT, et elle a un PRÉCÉDENT : le grimoire (et les cinq
+  // autres natives de CharacterSheet) la porte depuis longtemps —
+  // `CharacterSheet::HandleReplacedNativeCreation`, même commentaire, même raison.
+  // Pendant un changement de map, le HUD natif est démonté puis RECONSTRUIT, et le
+  // client rouvre au passage les fenêtres qu'il croit ouvertes. Cette naissance-là
+  // ne dit rien de ce que le joueur veut : elle est du même bois qu'un rejeu
+  // d'état. On masque (toujours, ci-dessus), OnTick détruira dès la fin du
+  // chargement, mais on ne touche PAS à `open_` — sinon la fenêtre se rouvre à
+  // chaque warp et sa fermeture ne « tient » jamais.
+  if (Bourgeon::Instance().IsMapLoading()) return;
+  if (layout_restore) {
+    // Même raisonnement, pour le chemin qui échappe à la barrière ci-dessus :
+    // `CGameMode::EnterWorld` rejoue le layout mémorisé APRÈS avoir envoyé
+    // CZ_NOTIFY_ACTORINIT (0x007d), donc après que `IsMapLoading()` soit retombée
+    // (cf. uiwnd::kRestoreWindowLayoutAddr). Le client se relit lui-même ; l'état
+    // qu'il relit ne vaut plus rien puisque sa native est détruite.
+    return;
+  }
   if (user_gesture) {
     // Geste du joueur. Le client fait « ferme si elle existe, sinon crée » : la
     // native étant détruite, elle n'existe jamais et la demande arrive toujours

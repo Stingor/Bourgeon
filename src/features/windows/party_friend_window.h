@@ -149,7 +149,16 @@ class PartyFriendWindow : public Plugin {
   //     rappelle 0x22 en interne, donc l'appel 0x22 y est IMBRIQUÉ -> bascule.
   //   · `MakeWindow(0x22)` seul = le client veut la fenêtre pour la peupler
   //     -> on l'OUVRE si elle est fermée, et on n'y touche pas si elle l'est déjà.
-  void HandleNativeCreation(void* win, bool user_gesture);
+  //
+  // 🔴 `layout_restore` = un TROISIÈME cas, et c'est celui qui empêchait de fermer
+  // cette fenêtre pour de bon. À chaque entrée dans le monde — donc à chaque
+  // changement de map — `CGameMode::EnterWorld` rejoue le layout mémorisé du
+  // client et refabrique les fenêtres qu'il croit ouvertes. Cette création-là ne
+  // dit rien de ce que le joueur veut : c'est le client qui se relit lui-même, et
+  // l'état qu'il relit ne vaut plus rien puisque notre native est détruite. On
+  // masque et on ignore, sinon la fenêtre se rouvrait à chaque map (rouverte, elle
+  // se resauvegardait ouverte : la boucle ne se refermait jamais).
+  void HandleNativeCreation(void* win, bool user_gesture, bool layout_restore);
 
   // ── Settings PERSISTANTS (bourgeon_settings.yaml, via MoonlightUi) ─────────
   // « partyfriend_imgui » : basculé en GROUPE par SetModernInterface, jamais

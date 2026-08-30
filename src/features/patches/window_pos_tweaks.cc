@@ -84,12 +84,20 @@ TrackedWindow g_windows[] = {
     {0x113, "bank"},         // UIBank_NewWnd    (275), vt 0x01030fd4 — LIVE id (0x169 was wrong)
     {0x106, "mail"},         // UIOpenMailBoxWnd (262), ctor 0x0090cc70, vt 0x01039dac
     {0x107, "rodex"},        // UIRodexInboxWnd  (263), ctor 0x007cd7d0, vt 0x01022170
-    {0x16d, "party"},        // UIPartyInfoWnd   (365), vt 0x0101a040 (id field this+0x8c)
+    // 🔴 RETIRÉE le 2026-08-29 : {0x16d, "party"} ne pouvait rien faire.
+    // Deux raisons, chacune suffisante (cf. docs/native_window_dispatch.md §9) :
+    //   — 365 > 0x16A, donc le switch de MakeWindow n'a AUCUN cas pour cet id ;
+    //   — `UIPartyInfoWnd` (vtable 0x0101a040) n'est pas une fenêtre de premier
+    //     plan mais un CONTRÔLE ENFANT, construit par UIAdvenPartyBoardWnd_OnCreate
+    //     (id 324 / 0x144).
+    // Le hook ne faisant rien sur un id absent, l'entrée était muette — c'est
+    // exactement ce qui l'a laissée passer.
     // Confirmed native-persisting (do NOT add): Inventory 8, Storage 0x21, Quest
     // journal 0x141, Skill 0xc, Pet 0x58, Homun 0x71, Merc 0x7d, shops/vending.
-    // Still lacking persistence, id UNRESOLVED (class in packed region, needs a live
-    // MakeWindow-breakpoint capture): Guild main window (UIGuildTotalInfoWnd). Add its
-    // id here once known — the hook no-ops safely on an untracked id.
+    // Guild: id RÉSOLU au RTTI le 2026-08-29 — UIGuildTotalInfoWnd = 66 (0x42),
+    // vtable 0x0103b5d0. Le conteneur 59 (0x3b) est un AIGUILLEUR (il fabrique
+    // 0x3c + l'onglet actif lu en mgr+0x844), donc suivre 59 ne suivrait rien.
+    // Ajouter {0x42, "guild"} le jour où on voudra la persistance de ce panneau.
 };
 
 constexpr int kWindowCount = static_cast<int>(sizeof(g_windows) / sizeof(g_windows[0]));
@@ -118,6 +126,38 @@ MakeWindow_t g_orig_makewindow = nullptr;  // trampoline to the real MakeWindow
 // hook supplémentaire : pendant que 0x45 s'exécute, l'appel 0x22 qu'il déclenche
 // est forcément imbriqué. Mono-thread (fil principal), donc pas d'atomique.
 int g_party_entry_depth = 0;
+
+// 🔴 Profondeur de la RESTAURATION DE LAYOUT du client, et pourquoi elle existe.
+//
+// À chaque entrée dans le monde — donc à CHAQUE CHANGEMENT DE MAP, pas seulement
+// à la connexion — `CGameMode::EnterWorld` relit son blob de configuration
+// d'interface et rejoue les fenêtres qui y sont marquées ouvertes, en appelant
+// `MakeWindow(id)` pour chacune (cf. uiwnd::kRestoreWindowLayoutAddr).
+//
+// Ces créations-là ne sont NI un geste du joueur NI un événement de jeu : le
+// client rejoue son propre état, et cet état ne fait plus autorité pour les
+// fenêtres dont nous avons DÉTRUIT la native — c'est notre module qui sait si le
+// joueur la veut ouverte. Sans ce compteur, la fenêtre Amis / Groupe se rouvrait
+// à chaque map : le blob la disait ouverte, la rouvrir la faisait resauvegarder
+// ouverte, et la boucle s'entretenait toute seule — le joueur ne pouvait plus
+// jamais la fermer pour de bon.
+//
+// Même patron que `g_party_entry_depth` (compteur autour de l'appel original,
+// mono-thread), avec un hook en plus parce que la restauration n'est pas
+// imbriquée dans un MakeWindow : c'est elle qui les appelle.
+int g_layout_restore_depth = 0;
+
+// __thiscall(mgr, blob) -> int (nombre d'octets consommés, -1 si le blob n'est
+// pas un layout). On ne touche à rien : on marque juste le contexte.
+using RestoreWindowLayout_t = int (__fastcall*)(void*, void*, void*);
+RestoreWindowLayout_t g_orig_restore_layout = nullptr;
+
+int __fastcall RestoreWindowLayoutHook(void* mgr, void* edx, void* blob) {
+  ++g_layout_restore_depth;
+  const int consumed = g_orig_restore_layout(mgr, edx, blob);
+  --g_layout_restore_depth;
+  return consumed;
+}
 
 void* __fastcall MakeWindowHook(void* mgr, void* edx, int windowID) {
   // ⚠ AVANT l'appel original : c'est LUI qui déclenche l'appel imbriqué.
@@ -226,9 +266,13 @@ void* __fastcall MakeWindowHook(void* mgr, void* edx, int windowID) {
     // il vient d'un geste du joueur (bouton « party », raccourci) -> bascule.
     // À plat, c'est le client qui fabrique la fenêtre pour la peupler (création
     // de groupe, jonction) -> on ouvre, on ne bascule pas.
+    // `g_layout_restore_depth > 0` = ni l'un ni l'autre : le client rejoue son
+    // layout à l'entrée dans le monde -> on masque la native et on ne touche PAS
+    // à notre état, sinon la fenêtre se rouvre à chaque changement de map.
     if (windowID == 0x22) {
       if (auto* pf = Bourgeon::Instance().party_friend_window())
-        pf->HandleNativeCreation(win, g_party_entry_depth > 0);
+        pf->HandleNativeCreation(win, g_party_entry_depth > 0,
+                                 g_layout_restore_depth > 0);
     }
     // « Create Chat Room » (UIChatRoomMakeWnd id 27 / 0x1B). Même raisonnement que
     // les précédentes, avec une raison de plus de ne PAS se contenter de masquer :
@@ -440,6 +484,17 @@ WindowPosTweaks::WindowPosTweaks() {
           reinterpret_cast<uint8_t*>(&MakeWindowHook)));
   // LogInfo("[WinPos] tracking {} window(s); MakeWindow restore hook {}",
           // kWindowCount, g_orig_makewindow ? "installed" : "FAILED");
+
+  // ── Marquage du contexte « le client rejoue son layout » ────────────────────
+  // Ce hook ne change RIEN au comportement du client : il pose un compteur le
+  // temps de la restauration, pour que le hook de MakeWindow ci-dessus sache que
+  // les fenêtres qui naissent là ne viennent de personne. Sans lui, un module
+  // qui a détruit sa native ne peut pas distinguer une ouverture VOULUE d'un
+  // rejeu d'état — et se rouvre à chaque changement de map.
+  g_orig_restore_layout = reinterpret_cast<RestoreWindowLayout_t>(
+      HookManager::Instance().SetHook(HookType::kJmpHook,
+          reinterpret_cast<uint8_t*>(uiwnd::kRestoreWindowLayoutAddr),
+          reinterpret_cast<uint8_t*>(&RestoreWindowLayoutHook)));
 
   // ── Disable native window dock-SNAP (kills the invisible "ghost" magnetism) ──
   // The base window-move FUN_00880e00 branches into its dock-SNAP path when the

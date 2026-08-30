@@ -344,6 +344,68 @@ Rien de spécifique à inventer — le motif du projet s'applique tel quel (cf.
 - Entrée côté joueur : le bouton « party » du menu d'icônes (id 0xC7,
   `features/overlays/menu_icons.cc`) et le raccourci natif correspondant.
 
+## 8bis. 🔴 La fenêtre se rouvrait à chaque map — deux naissances, pas une (2026-08-30)
+
+Symptôme : la fenêtre **se rouvrait à chaque changement de map**, quoi qu'ait fait le joueur —
+sa fermeture ne « tenait » jamais.
+
+### La garde qui manquait (le vrai correctif)
+
+🔴🔴 **Un PRÉCÉDENT existait dans le projet et n'a pas été consulté** : le grimoire — et les cinq
+autres natives de `CharacterSheet` — porte cette garde depuis longtemps, avec le même commentaire
+(`CharacterSheet::HandleReplacedNativeCreation`) :
+
+```cpp
+if (Bourgeon::Instance().IsMapLoading()) return;   // après avoir masqué
+```
+
+Pendant un changement de map le **HUD natif est démonté puis RECONSTRUIT**, et le client rouvre au
+passage les fenêtres qu'il croit ouvertes. `PartyFriendWindow::HandleNativeCreation` prenait cette
+naissance pour une demande et posait `open_ = true`. `HandleReplacedNativeCreation` avait déjà été
+corrigée pour ça ; la nôtre ne l'avait jamais été.
+
+**La leçon** (déjà écrite dans `feedback_re_method` : « voir où ça MARCHE déjà ») : sur un symptôme
+qu'un autre module du projet a déjà rencontré, lire d'abord ce module. Une passe de RE menée à la
+place a produit une cause plausible, mesurée, réelle — et qui n'était pas celle-là.
+
+### L'autre naissance, réelle mais insuffisante à elle seule
+
+Raisonnement d'élimination : `open_` ne peut passer à vrai que par `HandleNativeCreation`, donc
+une native `0x22` **naissait** à chaque map. Or les créateurs de `0x22` sont énumérables (le ctor
+`0x00701fc0` n'a qu'un appelant, le case 34 de `MakeWindow`) :
+
+| Site | Ce que c'est |
+|---|---|
+| `0x00a3ae62` | le case 69, point d'entrée du JOUEUR (imbriqué → `g_party_entry_depth`) |
+| `0x00ca23db` | `ZC_ACK_MAKE_GROUP` résultat 0 (msgstring 0x4D) — création d'un groupe |
+| `0x00c90725` | case 175 — acceptation d'un ami |
+| `0x00c8d261` | case 60 |
+| **`UIWindowMgr_RestoreWindowLayout` `0x00a4a930`** | **le seul lié à l'entrée sur map** |
+
+`RestoreWindowLayout(blob)` (`__thiscall(mgr, blob)`) rejoue le layout mémorisé : entrées
+`{id:2, taille:4}`, marqueur `20000`, fin `20001`, et pour chaque id dans `20100..20499` un
+`MakeWindow(id - 20100)` suivi d'un `OnMsg(0, 123, …)`. Elle n'a **qu'un appelant dans tout le
+binaire** : `CGameMode_EnterWorld` `0x00c733d0` (appel en `0x00c744b5`), qui tourne à chaque
+entrée dans le monde — donc à **chaque changement de map**, pas seulement à la connexion.
+
+🔴 **La barrière `IsMapLoading()` ne l'attrape pas** : la restauration s'exécute *après*
+`GameMode_OnEnterMapSetup`, appelée plus haut dans la MÊME fonction, qui envoie
+`CZ_NOTIFY_ACTORINIT` (0x007d) — c'est-à-dire le paquet sur lequel Bourgeon *lève* la barrière.
+Une garde temporelle serait donc muette ; il faut le hook.
+
+🔴 **La boucle s'entretenait seule** : rouverte à l'entrée sur map, la fenêtre était de nouveau
+enregistrée « ouverte » dans le layout, qui la rouvrait à la map suivante. Aucune fermeture ne
+pouvait survivre.
+
+Correction : `features/patches/window_pos_tweaks.cc` détourne cette fonction pour poser
+`g_layout_restore_depth` le temps de son exécution (même patron que `g_party_entry_depth`), et
+`HandleNativeCreation` reçoit un troisième argument `layout_restore` — dans ce cas elle masque la
+native (le tick la détruira) et **ne touche pas à `open_`**. Adresse : `uiwnd::kRestoreWindowLayoutAddr`.
+
+⚠ Ce chemin concerne **toutes** les fenêtres dont on a détruit la native, pas seulement celle-ci :
+un module qui bascule ou ouvre sur `HandleNativeCreation` sans consulter ce drapeau subira le même
+rejeu à chaque map. Le drapeau est disponible pour eux le jour où le symptôme apparaît.
+
 ## 9. Erreurs corrigées de la première passe
 
 | Ancienne note | Réalité mesurée |
