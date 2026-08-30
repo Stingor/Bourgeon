@@ -674,6 +674,23 @@ void StorageWindow::SendOpenStorage(uint8_t id) {
   ClearStorageData();
 }
 
+// ── Demandé depuis l'inventaire ou le chariot ───────────────────────────────
+// L'entrepôt PRINCIPAL (id 0), celui de `@storage` : un bouton de barre de titre
+// n'a pas à choisir parmi les entrepôts alternatifs, ce sont les onglets du
+// viewer qui servent à cela une fois qu'il est ouvert.
+void StorageWindow::PeerOpen() { SendOpenStorage(0); }
+
+void StorageWindow::PeerClose() { SendCloseStorage(); }
+
+const char* StorageWindow::PeerBlockedReason() const {
+  // Une bascule d'entrepôt est en vol : le serveur ferme puis rouvre, et
+  // `open_` ne dit pas la vérité pendant ce court instant. Un second paquet
+  // envoyé ici s'empilerait sur une demande à laquelle il n'a pas encore
+  // répondu.
+  if (switching_) return i18n::Tr("L'entrepôt répond encore à la demande précédente.");
+  return nullptr;
+}
+
 // Fil PRINCIPAL : le décodage, rejoué à chaque frame, dans l'ordre d'arrivée.
 void StorageWindow::HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) {
   // OUVERTURE (revendiquée) : data = [len:2][invType:1][name:≤24]. Le prédicat a
@@ -938,6 +955,17 @@ bool StorageWindow::DrawSettings() {
       i18n::Tr("Somme des prix de revente NPC (× quantité) des items AFFICHÉS "
       "— elle suit donc l'onglet, le sous-type et le filtre."));
 
+
+  changed |= ro::RoCheckbox(i18n::Tr("Raccourcis vers les autres fenêtres"),
+                            &peer_buttons());
+  SameLine(); HelpMarker(
+      i18n::Tr("Ajoute dans la barre de titre deux boutons vers les autres "
+      "fenêtres d'objets — inventaire, chariot, entrepôt — pour les ouvrir "
+      "et les refermer sans quitter celle-ci.\n"
+      "Le bouton « Storage » DEMANDE l'entrepôt au serveur, comme @storage : "
+      "il le refuse si votre compte n'en a pas le droit, si vous échangez, ou "
+      "si l'entrepôt de guilde est ouvert.\n"
+      "Le réglage est propre à chaque fenêtre."));
   SeparatorText(i18n::Tr("Colonnes"));
   changed |= ro::RoCheckbox(i18n::Tr("Index"), &show_index_col());
   SameLine(); HelpMarker(
@@ -2276,6 +2304,11 @@ void StorageWindow::OnRenderUI() {
   // reste du pont natif : le jeu rendait cette icône sous l'overlay ImGui, mais
   // plus aucun drag natif ne peut atteindre cette fenêtre.)
 
+
+  // Les raccourcis vers les deux autres viewers (opt-in).
+  // 🔴 EN DERNIER : ils vivent dans la barre de titre et ne restaurent pas le
+  // curseur de layout (cf. ro::TitleBarButton).
+  DrawPeerButtons(Peer::kStorage);
   ro::EndRoWindow();
 
   // ── Aperçu de description au SURVOL : TOOLTIP habillé RO ───────────────────

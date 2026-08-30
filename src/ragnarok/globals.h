@@ -602,6 +602,33 @@ constexpr uintptr_t kStorageListAddr    = 0x015fbad8;  // session+0x1718
 constexpr uintptr_t kCartListAddr       = 0x015fbae0;  // session+0x1720
 constexpr uintptr_t kCartCountAddr      = 0x015fbae4;  // session+0x1724
 
+// ── Le CHARIOT du joueur : en a-t-il un, et lequel ? ─────────────────────────
+// Type de chariot poussé (0 = aucun, 1..5 = la déco). C'est le seul endroit où
+// le client range la réponse, et il s'en sert partout :
+//   · `UIEquipWnd_OnCreate` (0x008a528f) : > 0 → le bouton de la fenêtre
+//     Équipement prend le libellé MSI_CARTOFF au lieu du nom de classe. C'est le
+//     bouton « off » que l'on voit apparaître avec le chariot ;
+//   · `Net_OnStateChange_UpdateOwnState` (0x00cd9cea) : ≤ 0 → le client VIDE la
+//     liste du chariot et FERME sa fenêtre (id 40 = 0x28) de lui-même ;
+//   · `sub_8CF830` (0x008cf840) : le teste au même rang que faucon, peco et
+//     dragon — c'est le compagnon « chariot », et il vaut 6 dans le SendMsg 80 ;
+//   · `Actor_ApplyStatusChangeEffects` (0x00d4546c) : le lit dans le **case 673**
+//     de son switch, soit `EFST_ON_PUSH_CART`.
+//
+// 🔴 IL N'Y A PAS D'AUTRE SOURCE JUSTE. Le bitmask d'options du joueur
+// (`g_OwnState_EffectState`) NE PORTE PAS le chariot sur Moonlight : le serveur
+// définit `NEW_CARTS`, où le chariot est l'état `SC_PUSH_CART` et non un bit
+// d'`OPTION`. Et les compteurs du bas de la fenêtre (« 0/0 ») ne valent que ce
+// que la dernière notification y a laissé.
+constexpr uintptr_t kOwnCartTypeAddr    = 0x015fffbc;
+
+// Le personnage pousse-t-il un chariot ? Faux hors du jeu, où rien n'a encore
+// été écrit. Lecture directe, comme les autres globaux d'ici : l'adresse est
+// dans les données du module, toujours mappées.
+inline bool OwnHasCart() {
+  return *reinterpret_cast<const int32_t*>(kOwnCartTypeAddr) > 0;
+}
+
 // ── Guilde du joueur ─────────────────────────────────────────────────────────
 // L'objet CGuild du client (relevé x32dbg 2026-07-11) : +0 = nom de guilde en
 // std::string MSVC (donc SSO — buffer en place tant que la capacité < 0x10,

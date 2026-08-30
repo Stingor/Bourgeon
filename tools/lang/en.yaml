@@ -3761,3 +3761,11 @@
 "Ville en fond": "Town in the background"
 "Changer de vue": "Change the view"
 "Tire une autre ville. Le lieu est choisi par le serveur à l'ouverture d'une session : en changer demande d'en rouvrir une, ce qui prend un instant.": "Draws another town. The spot is picked by the server when a session opens, so changing it means opening a new one - which takes a moment."
+
+# Raccourcis entre les trois fenêtres d'objets (barre de titre).
+"Raccourcis vers les autres fenêtres": "Shortcuts to the other windows"
+"Ouvrir cette fenêtre": "Open this window"
+"Refermer cette fenêtre": "Close this window"
+"L'entrepôt répond encore à la demande précédente.": "The storage is still answering the previous request."
+"Ajoute dans la barre de titre deux boutons vers les autres fenêtres d'objets — inventaire, chariot, entrepôt — pour les ouvrir et les refermer sans quitter celle-ci.\nLe bouton « Storage » DEMANDE l'entrepôt au serveur, comme @storage : il le refuse si votre compte n'en a pas le droit, si vous échangez, ou si l'entrepôt de guilde est ouvert.\nLe réglage est propre à chaque fenêtre.": "Adds two buttons in the title bar leading to the other item windows — inventory, cart, storage — to open and close them without leaving this one.\nThe \"Storage\" button ASKS the server for the storage, just like @storage: it is refused if your account lacks the right, if you are trading, or if the guild storage is open.\nThe setting is per window."
+"Ce personnage ne pousse pas de chariot.": "This character is not pushing a cart."

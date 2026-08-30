@@ -1277,6 +1277,17 @@ bool InventoryViewer::DrawSettings() {
   Unindent();
   ImGui::EndDisabled();
 
+  changed |= ro::RoCheckbox(i18n::Tr("Raccourcis vers les autres fenêtres"),
+                            &peer_buttons());
+  SameLine(); HelpMarker(
+      i18n::Tr("Ajoute dans la barre de titre deux boutons vers les autres "
+      "fenêtres d'objets — inventaire, chariot, entrepôt — pour les ouvrir "
+      "et les refermer sans quitter celle-ci.\n"
+      "Le bouton « Storage » DEMANDE l'entrepôt au serveur, comme @storage : "
+      "il le refuse si votre compte n'en a pas le droit, si vous échangez, ou "
+      "si l'entrepôt de guilde est ouvert.\n"
+      "Le réglage est propre à chaque fenêtre."));
+
   ImGui::EndDisabled();
 
   // ── Tri serveur (mêmes combos que « Commands Settings ») ────────────────────
@@ -2178,6 +2189,11 @@ void InventoryViewer::OnRenderUI() {
     HelpMarker(desc.c_str());
   }
 
+
+  // Les raccourcis vers les deux autres viewers (opt-in).
+  // 🔴 EN DERNIER : ils vivent dans la barre de titre et ne restaurent pas le
+  // curseur de layout (cf. ro::TitleBarButton).
+  DrawPeerButtons(Peer::kInventory);
   // (Le redessin de l'icône d'un glisser NATIF survolant le viewer a disparu avec
   // le reste du pont natif : plus aucune fenêtre native ne peut en émettre.)
 

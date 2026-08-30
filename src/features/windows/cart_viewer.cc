@@ -267,6 +267,16 @@ void CartViewer::Extract() {
   item_count_ = itemcell::ExtractList(rag::kCartListAddr, items_, kMaxItems);
 }
 
+// 🔴 Le chariot se lit dans le global du CLIENT, pas ailleurs (cf.
+// rag::kOwnCartTypeAddr) : c'est ce même entier qui fait apparaître le bouton
+// « off » de la fenêtre Équipement, et sur lequel le client ferme cette
+// fenêtre-ci quand le chariot disparaît.
+const char* CartViewer::PeerBlockedReason() const {
+  if (!rag::OwnHasCart())
+    return i18n::Tr("Ce personnage ne pousse pas de chariot.");
+  return nullptr;
+}
+
 void CartViewer::OnTick() {
   // `open_` n'est plus déduit de la présence de la native : elle ne vit plus.
   // Il est posé par HandleNativeCreation (la demande du joueur) et levé par elle.
@@ -281,6 +291,20 @@ void CartViewer::OnTick() {
     return;
   }
   if (Bourgeon::Instance().IsMapLoading()) return;
+
+  // Le chariot vient de disparaître (Pushcart annulé, changement de classe, mort
+  // du personnage) : le viewer se referme avec lui. Le client, lui, recevait
+  // ZC_CARTOFF et fermait SA fenêtre — celle-ci ne naît plus, donc personne ne la
+  // fermait, et elle restait ouverte sur un chariot que le joueur n'a plus.
+  //
+  // 🔴 APRÈS la barrière de chargement : pendant un warp le client réécrit son
+  // état, et un global lu au mauvais moment refermerait le chariot à chaque
+  // changement de carte.
+  //
+  // ⚠ C'est EXACTEMENT ce que fait le client pour sa propre fenêtre : sur ce même
+  // test, `Net_OnStateChange_UpdateOwnState` vide la liste du chariot et ferme la
+  // fenêtre 0x28. La sienne ne naît plus, donc personne ne fermait la nôtre.
+  if (open_ && !rag::OwnHasCart()) open_ = false;
   // 🔴 DÉTRUIRE, pas masquer : toute bascule du client fait « ferme si elle
   // existe, sinon crée » (cf. reference_native_window_toggle_router). Une native
   // seulement masquée existe, donc la demande suivante la fermerait sans repasser
@@ -798,6 +822,11 @@ void CartViewer::OnRenderUI() {
     HelpMarker(kShortcuts);
   }
 
+
+  // Les raccourcis vers les deux autres viewers (opt-in).
+  // 🔴 EN DERNIER : ils vivent dans la barre de titre et ne restaurent pas le
+  // curseur de layout (cf. ro::TitleBarButton).
+  DrawPeerButtons(Peer::kCart);
   ro::EndRoWindow();
 
   // Aperçu de description : dessiné APRÈS la fenêtre (c'est un tooltip, il doit
@@ -853,6 +882,17 @@ bool CartViewer::DrawSettings() {
   changed |= ro::RoCheckbox(i18n::Tr("Verrouiller la taille"), &lock_size());
   SameLine(); HelpMarker(
       i18n::Tr("La fenêtre ne peut plus être redimensionnée (elle reste déplaçable)."));
+  changed |= ro::RoCheckbox(i18n::Tr("Raccourcis vers les autres fenêtres"),
+                            &peer_buttons());
+  SameLine(); HelpMarker(
+      i18n::Tr("Ajoute dans la barre de titre deux boutons vers les autres "
+      "fenêtres d'objets — inventaire, chariot, entrepôt — pour les ouvrir "
+      "et les refermer sans quitter celle-ci.\n"
+      "Le bouton « Storage » DEMANDE l'entrepôt au serveur, comme @storage : "
+      "il le refuse si votre compte n'en a pas le droit, si vous échangez, ou "
+      "si l'entrepôt de guilde est ouvert.\n"
+      "Le réglage est propre à chaque fenêtre."));
+
 
   ImGui::EndDisabled();
 

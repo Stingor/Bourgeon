@@ -48,6 +48,11 @@ class CartViewer : public ItemViewerBase {
   // description, onglets verticaux, onglet courant) sont sur ItemViewerBase.
   bool& lock_size()     { return lock_size_; }
 
+  // Refuse l'ouverture par un bouton de barre de titre tant que le personnage
+  // ne pousse pas de chariot : sans lui, le viewer s'ouvre bel et bien, mais sur
+  // un « 0/0 » que rien ne peut remplir.
+  const char* PeerBlockedReason() const override;
+
   // Appelé par le hook MakeWindow de WindowPosTweaks à la création de la fenêtre
   // id 0x28 : c'est la DEMANDE du joueur. Masque la native avant son premier
   // rendu (pas de flicker) et bascule le viewer ; OnTick la détruit ensuite.

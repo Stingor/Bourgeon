@@ -576,6 +576,8 @@ const moonlight_ui::SettingDesc kInventorySettings[] = {
      MLUI_LITERAL(bool, false)},
     {"inventory_free_layout", SType::kBool, MLUI_FIELD(inventory_viewer, free_layout()),
      MLUI_LITERAL(bool, false)},
+    {"inventory_peer_buttons", SType::kBool,
+     MLUI_FIELD(inventory_viewer, peer_buttons()), MLUI_LITERAL(bool, false)},
 };
 
 // Cart ImGui (fenêtre sœur de l'inventaire côté client, mêmes réglages).
@@ -589,6 +591,8 @@ const moonlight_ui::SettingDesc kCartSettings[] = {
     {"cart_tabs_vertical", SType::kBool, MLUI_FIELD(cart_viewer, tabs_vertical()),
      MLUI_LITERAL(bool, true)},
     {"cart_lock_size", SType::kBool, MLUI_FIELD(cart_viewer, lock_size()),
+     MLUI_LITERAL(bool, false)},
+    {"cart_peer_buttons", SType::kBool, MLUI_FIELD(cart_viewer, peer_buttons()),
      MLUI_LITERAL(bool, false)},
 };
 
@@ -623,6 +627,8 @@ const moonlight_ui::SettingDesc kStorageSettings[] = {
      MLUI_LITERAL(bool, true)},
     {"storage_total_value", SType::kBool, MLUI_FIELD(storage_window, show_total_value()),
      MLUI_LITERAL(bool, true)},
+    {"storage_peer_buttons", SType::kBool,
+     MLUI_FIELD(storage_window, peer_buttons()), MLUI_LITERAL(bool, false)},
     {"storage_tab", SType::kInt, MLUI_FIELD(storage_window, cur_tab()),
      MLUI_LITERAL(int, 0)},
 };

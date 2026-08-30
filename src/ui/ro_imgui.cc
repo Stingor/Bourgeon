@@ -1743,6 +1743,12 @@ bool TitleBarButton(const char* label, const char* tooltip) {
                  Px((float)(skin::ksBtnOutLeft.w + skin::ksBtnOutRight.w)));
   // 5 px de respiration entre le bouton et le premier bouton système.
   const float bx = ImFloor(bar.left - Px(5.0f) - bw);
+  // ⚠ PLUS DE PLACE : on ne dessine rien plutôt que de recouvrir le titre. Le
+  // cas arrive dès qu'une fenêtre étroite porte deux boutons — les viewers
+  // d'objets en posent deux, et le joueur peut les rétrécir librement. Le bullet
+  // occupe les 16 premiers pixels de la barre ; on lui laisse ça et le début du
+  // titre.
+  if (bx < wx + Px(24.0f)) return false;
   // RoSmallButton peint son art 3 px SOUS le haut de son item : on remonte
   // d'autant pour que ce soit l'ART, et non l'item, qui soit centré dans la
   // barre. (Le décalage de 3 px est `art_drop_y` chez RoSmallButton, à l'échelle
@@ -1768,8 +1774,17 @@ bool TitleBarButton(const char* label, const char* tooltip) {
                       ImVec2(wx + ww, bar.top + bar.height), false);
   ImGui::SetCursorScreenPos(ImVec2(bx, by));
   const bool clicked = RoSmallButton(label, bw);
-  const bool hovered = ImGui::IsItemHovered();
+  // 🔴 `AllowWhenDisabled`, sinon le survol d'un bouton grisé ne compte pas — et
+  // c'est précisément là que l'infobulle est indispensable : elle porte le MOTIF
+  // du grisage. Sans ce drapeau, un bouton inerte reste inerte ET muet.
+  const bool hovered = ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled);
   ImGui::PopClipRect();
+  // Le bouton devient à son tour la butée de gauche : un second appel dans la
+  // même fenêtre se pose donc À SA GAUCHE, et ainsi de suite. C'est ce qui rend
+  // possible plusieurs boutons dans une barre (l'inventaire en porte deux) sans
+  // que chaque appelant ait à tenir un compteur. Le repère repart du bord droit
+  // au prochain `BeginRoWindow` de cette fenêtre, qui le réécrit.
+  RememberTitleBar(w ? w->ID : 0, bx, bar.top, bar.height);
   // 🔴 On NE restaure PAS le curseur, et c'est pour ça que cet appel doit être le
   // DERNIER de la fenêtre. Un SetCursorPos() final arme `DC.IsSetPos` ; si aucun
   // item ne suit, End() lève « Code uses SetCursorPos() to extend window/parent

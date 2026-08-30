@@ -63,8 +63,45 @@ class ItemViewerBase : public Plugin {
            win_rect_.Contains(static_cast<float>(mx), static_cast<float>(my));
   }
 
+  // ── Aller d'un viewer à l'autre, par la barre de titre ────────────────────
+  //
+  // Les trois fenêtres se répondent : on dépose depuis l'inventaire vers
+  // l'entrepôt, on reprend du chariot, on range. Mais les OUVRIR demandait de
+  // ressortir la souris vers la barre d'action ou une touche, alors que la
+  // fenêtre voisine est ce qu'on regarde. Chacune porte donc un raccourci vers
+  // les deux autres, dans sa barre de titre.
+  //
+  // OPT-IN, par viewer : trois boutons de plus dans un bandeau étroit ne sont pas
+  // un cadeau pour qui joue en petite résolution ou n'ouvre jamais son chariot.
+  enum class Peer { kInventory, kCart, kStorage };
+
+  // Pose les deux boutons de la fenêtre COURANTE (`self` dit laquelle).
+  //
+  // 🔴 À appeler EN DERNIER dans la fenêtre, juste avant `EndRoWindow` : ils
+  // passent par `ro::TitleBarButton`, qui ne restaure pas le curseur de layout.
+  //
+  // Ils s'empilent de DROITE à GAUCHE dans l'ordre où on les pose ; l'ordre est
+  // choisi ici, pas par l'appelant.
+  void DrawPeerButtons(Peer self);
+
+  // ── Ce qu'un AUTRE viewer peut demander à celui-ci ────────────────────────
+  //
+  // Trois verbes, parce que les trois fenêtres ne s'ouvrent pas de la même
+  // façon : l'inventaire et le chariot sont à NOUS — le natif est mort, c'est
+  // notre `open_` qui fait foi — alors que l'entrepôt est une SESSION du
+  // serveur, qu'il faut lui demander et qu'il peut refuser.
+  virtual void PeerOpen()  { open_ = true; show_panel_ = true; need_pos_ = true; }
+  virtual void PeerClose() { open_ = false; }
+  // Pourquoi ce viewer refuse d'être ouvert ou fermé en ce moment — DÉJÀ
+  // TRADUIT, et nul quand il accepte. Le bouton se grise alors et affiche ce
+  // motif : un bouton inerte sans explication passe pour cassé.
+  //
+  // C'est l'entrepôt qui s'en sert, le temps qu'une bascule soit en vol.
+  virtual const char* PeerBlockedReason() const { return nullptr; }
+
   // ── Settings PERSISTANTS communs (section du panneau Moonlight) ────────────
   bool& show_panel()     { return show_panel_; }
+  bool& peer_buttons()   { return peer_buttons_; }
 
   bool& show_filter()    { return show_filter_; }
   bool& desc_tooltip()   { return show_desc_tooltip_; }
@@ -105,6 +142,9 @@ class ItemViewerBase : public Plugin {
   // ── Vue ───────────────────────────────────────────────────────────────────
   int  cur_tab_ = 0;                // onglet catégorie sélectionné (0 = Tout)
   bool show_filter_ = true;         // setting : champ de filtre par nom
+  // setting (opt-in) : les raccourcis vers les deux autres viewers, en barre de
+  // titre. Cf. `DrawPeerButtons`.
+  bool peer_buttons_ = false;
   // Description au SURVOL : ouvre la VRAIE fenêtre de description (celle du clic
   // droit) tant que la souris reste sur la case, et la ferme en sortant. OFF =
   // simple tooltip texte (nom + quantité).

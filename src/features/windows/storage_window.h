@@ -48,6 +48,22 @@ class StorageWindow : public ItemViewerBase {
   // Reçoit les prix de vente du storage (ZC_BOURGEON_STORAGE_PRICES 0x0F0F).
   void OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
 
+  // ── Ouvert et fermé DEPUIS UN AUTRE VIEWER (bouton de barre de titre) ──────
+  //
+  // 🔴 L'entrepôt est le seul des trois qui ne s'ouvre pas tout seul : c'est une
+  // SESSION du serveur. `PeerOpen` lui envoie donc la demande — la même que les
+  // onglets d'entrepôt — et le serveur la traite comme un `@storage` : il la
+  // refuse si le joueur n'en a pas le droit (`pc_can_use_command`), s'il
+  // échange, ou si son entrepôt de guilde est ouvert. Rien n'est ouvert de ce
+  // côté-ci avant sa réponse ; c'est elle qui lève `open_`.
+  //
+  // Et `PeerClose` ferme la session, exactement comme la croix du viewer : ici
+  // il n'y a pas de « masquer sans fermer », le client n'ayant aucun moyen de
+  // garder un entrepôt ouvert sans fenêtre.
+  void PeerOpen() override;
+  void PeerClose() override;
+  const char* PeerBlockedReason() const override;
+
   // (`IsOpen()`, `PointOverViewer()`, `show_panel()`, `desc_tooltip()`,
   // `show_filter()`, `tabs_vertical()`, `cur_tab()` et la bascule
   // `imgui_enabled_` sont sur ItemViewerBase — les trois viewers d'objets les

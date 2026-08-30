@@ -3719,3 +3719,11 @@
 "Ville en fond": "Ciudad de fondo"
 "Changer de vue": "Cambiar la vista"
 "Tire une autre ville. Le lieu est choisi par le serveur à l'ouverture d'une session : en changer demande d'en rouvrir une, ce qui prend un instant.": "Elige otra ciudad. El lugar lo decide el servidor al abrir una sesión, así que cambiarlo implica abrir otra, lo que lleva un momento."
+
+# Raccourcis entre les trois fenêtres d'objets (barre de titre).
+"Raccourcis vers les autres fenêtres": "Accesos a las otras ventanas"
+"Ouvrir cette fenêtre": "Abrir esta ventana"
+"Refermer cette fenêtre": "Cerrar esta ventana"
+"L'entrepôt répond encore à la demande précédente.": "El almacén aún responde a la petición anterior."
+"Ajoute dans la barre de titre deux boutons vers les autres fenêtres d'objets — inventaire, chariot, entrepôt — pour les ouvrir et les refermer sans quitter celle-ci.\nLe bouton « Storage » DEMANDE l'entrepôt au serveur, comme @storage : il le refuse si votre compte n'en a pas le droit, si vous échangez, ou si l'entrepôt de guilde est ouvert.\nLe réglage est propre à chaque fenêtre.": "Añade en la barra de título dos botones hacia las otras ventanas de objetos — inventario, carro, almacén — para abrirlas y cerrarlas sin salir de esta.\nEl botón \"Storage\" PIDE el almacén al servidor, como @storage: lo rechaza si tu cuenta no tiene el permiso, si estás intercambiando, o si el almacén de gremio está abierto.\nEl ajuste es propio de cada ventana."
+"Ce personnage ne pousse pas de chariot.": "Este personaje no lleva carro."
