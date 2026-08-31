@@ -505,6 +505,9 @@ int ResolveFrameLayers(Entry* e, int pal_slot, unsigned action,
 
 }  // namespace
 
+size_t SpriteCacheBytes() { return g_cache_bytes; }
+size_t SpriteCacheCount() { return g_cache_order.size(); }
+
 bool LoadSprite(const char* base_path, SpriteRes* res) {
   return LoadSpriteRecolored(base_path, nullptr, res);
 }

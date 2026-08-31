@@ -29,6 +29,7 @@
 #include "features/overlays/status_icon_bar.h"
 #include "features/status_cell.h"  // statuscell::kSweep* (defauts)
 #include "features/overlays/minimap.h"
+#include "features/systems/mvp_tracker.h"
 #include "features/overlays/quest_tracker.h"
 #include "features/overlays/item_obtain_toast.h"
 #include "features/fx/screen_fx.h"
@@ -90,6 +91,7 @@
 #include "utils/byte_pattern.h"
 #include "utils/hooking/hook_manager.h"
 #include "utils/i18n.h"
+#include "imgui_internal.h"  // 🔬 diagnostic z-order : g->Windows, MovingWindow
 #include "utils/log_console.h"
 #include "yaml-cpp/yaml.h"
 
@@ -218,6 +220,28 @@ const moonlight_ui::SettingDesc kMinimapSettings[] = {
     {"minimap_replace_native",  SType::kBool, MINIMAP(replace_native)},
 };
 #undef MINIMAP
+
+// Carnet de chasse MVP. 🔴 Le FAVORI n'est pas ici : il est en SQL, parce qu'il
+// suit le compte Moonlight et donc tous ses personnages et tous ses postes. Ne
+// restent locaux que le préavis d'alerte et le son — des préférences
+// d'interface, pas de la donnée.
+#define MVPTRACK(member) \
+  MLUI_FIELD(mvp_tracker, config().member), MLUI_DEFAULT(MvpTrackerConfig, member)
+const moonlight_ui::SettingDesc kMvpTrackerSettings[] = {
+    {"mvptracker_enabled",        SType::kBool, MVPTRACK(enabled)},
+    {"mvptracker_alert_sound",    SType::kBool, MVPTRACK(alert_sound)},
+    {"mvptracker_alert_lead_min", SType::kInt,  MVPTRACK(alert_lead_min)},
+    {"mvptracker_show_tombs",     SType::kBool, MVPTRACK(show_tombs)},
+    {"mvptracker_show_sprites",   SType::kBool, MVPTRACK(show_sprites)},
+    {"mvptracker_animate_sprites", SType::kBool, MVPTRACK(animate_sprites)},
+    {"mvptracker_show_filter",     SType::kBool, MVPTRACK(show_filter)},
+    {"mvptracker_line_sprite",     SType::kBool, MVPTRACK(line_show_sprite)},
+    {"mvptracker_line_text", SType::kColorHex,
+     MLUI_FIELD(mvp_tracker, config().line_text_col), MLUI_LITERAL_ARGB(0xFFF5EDD1)},
+    {"mvptracker_line_bg", SType::kColorHex,
+     MLUI_FIELD(mvp_tracker, config().line_bg_col), MLUI_LITERAL_ARGB(0x8C0A0A0F)},
+};
+#undef MVPTRACK
 
 // Bandeau « objet obtenu » (remplacement ImGui de la fenêtre native 58).
 #define IOTOAST(member) \
@@ -2041,6 +2065,8 @@ void MoonlightUi::LoadSettings() {
     moonlight_ui::ReadSettings(ui, kQuestTrackerSettings);
     moonlight_ui::ReadSettings(ui, kMinimapSettings);
     moonlight_ui::ReadMinimapMemos(ui);
+    moonlight_ui::ReadSettings(ui, kMvpTrackerSettings);
+    moonlight_ui::ReadMvpTrackerLines(ui);
     moonlight_ui::ReadSettings(ui, kItemObtainToastSettings);
     moonlight_ui::ReadSettings(ui, kGraphicsSettings);
     moonlight_ui::ReadSettings(ui, kZoneRecorderSettings);
@@ -2185,6 +2211,9 @@ void MoonlightUi::WriteSettingsFile() {
 
   moonlight_ui::WriteSettings(out, kMinimapSettings);
   moonlight_ui::WriteMinimapMemos(out);
+
+  moonlight_ui::WriteSettings(out, kMvpTrackerSettings);
+  moonlight_ui::WriteMvpTrackerLines(out);
 
   moonlight_ui::WriteSettings(out, kItemObtainToastSettings);
 
@@ -2857,6 +2886,14 @@ void MoonlightUi::OnRenderUI() {
   // Skin RO (toggleable : BeginRoWindow retombe sur ImGui::Begin si skin off).
   // La croix ferme la fenêtre — le menu Échap est là pour la rouvrir.
   bool keep_open = true;
+  // Le panneau vient d'être demandé (puce de barre de titre, menu Échap…) : on
+  // réaffirme son focus pendant quelques frames.
+  if (pending_focus_frames_ > 0) {
+    ImGui::SetNextWindowFocus();
+    // 🔴 On ne décompte QUE bouton relâché : tant qu'il est enfoncé, ImGui remet
+    // la fenêtre d'origine devant à chaque frame et notre focus serait perdu.
+    if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) --pending_focus_frames_;
+  }
   ro::BeginRoWindow("Moonlight-Destiny", &keep_open);
   if (!keep_open) {
     ui_visible_ = false;
@@ -2958,4 +2995,20 @@ void MoonlightUi::ShowWindow() {
     pending_collapse_restore_ = true;
   }
   ImGui::SetWindowFocus("Moonlight-Destiny");
+  // 🔴🔴 ET REDEMANDÉ TANT QUE LE BOUTON EST ENFONCÉ.
+  //
+  // Ce panneau s'ouvre presque toujours d'un clic dans une AUTRE fenêtre — le
+  // bullet d'une barre de titre — et il s'y ouvrait DERRIÈRE elle. Vérifié sur
+  // plusieurs fenêtres : le défaut n'appartient à aucune en particulier.
+  //
+  // Mesuré : pendant tout l'appui, ImGui considère la fenêtre d'origine « en
+  // cours de déplacement » et la remet au premier plan À CHAQUE FRAME. Aucun
+  // focus posé pendant ce temps ne tient, quelle qu'en soit la façon — trois
+  // tentatives de l'empêcher côté ImGui ont échoué.
+  //
+  // On cesse donc de lutter contre le déplacement et on attend qu'il finisse :
+  // le compteur ne se décrémente QU'UNE FOIS LE BOUTON RELÂCHÉ. Le premier plan
+  // est donc réclamé aussi longtemps que dure le clic, puis trois frames de
+  // marge — et c'est nous qui parlons en dernier.
+  pending_focus_frames_ = 3;
 }

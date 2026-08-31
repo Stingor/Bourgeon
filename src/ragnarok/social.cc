@@ -9,6 +9,7 @@
 #include "ui/game_texture.h"  // ro::uipath::kUiRoot (racine CP949 des bitmaps d'interface)
 #include "utils/i18n.h"
 #include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
+#include "ragnarok/globals.h"        // CGuild : kGuildObjAddr, kGuildListHeadOff
 #include "ragnarok/stl_node.h"  // rag::listnode
 #include "ragnarok/actor.h"  // rag::actor
 
@@ -288,6 +289,50 @@ bool IsFriendByName(const char* name) {
     if (e.name == name) return true;
   }
   return false;
+}
+
+// Le roster de guilde est une LISTE CHAÎNÉE dans l'objet CGuild du client
+// (`CGuild + 0xdc` = sentinelle), pas un tableau : on la parcourt jusqu'à
+// retomber dessus. La feuille de personnage la lisait déjà en entier pour son
+// onglet « Guilde » ; ici on ne cherche qu'un nom, donc on sort au premier
+// trouvé et on ne construit aucune liste.
+//
+// SEH et pas try/catch : la liste appartient au client, il la reconstruit à
+// chaque paquet de guilde, et on peut tomber en plein remaniement. POD
+// uniquement dans le bloc protégé — aucun objet à dérouler (contrainte C2712),
+// d'où la comparaison sur un tampon plutôt que sur une std::string.
+bool IsGuildMemberByName(const char* name) {
+  if (name == nullptr || name[0] == '\0') return false;
+  if (rag::OwnGuildId() == 0) return false;  // pas de guilde, pas de roster
+
+  constexpr int kMemName = 0x10;  // std::string : nom du personnage
+  bool found = false;
+
+  __try {
+    const uint8_t* sentinel =
+        *reinterpret_cast<uint8_t* const*>(rag::kGuildObjAddr + rag::kGuildListHeadOff);
+    if (sentinel == nullptr) return false;
+
+    const uint8_t* node = *reinterpret_cast<uint8_t* const*>(sentinel);  // ->next
+    // Garde de boucle : une liste chaînée du client à moitié réécrite peut ne
+    // plus retomber sur sa sentinelle, et on ne bouclera pas indéfiniment pour
+    // autant.
+    for (int guard = 0; node != nullptr && node != sentinel && guard < 512; ++guard) {
+      char member[32];
+      // `Copy` refuse la troncature : un nom qui ne tient pas dans le tampon
+      // n'est de toute façon pas celui qu'on cherche.
+      if (rag::clientstr::Copy(node + kMemName, member, sizeof(member)) &&
+          std::strcmp(member, name) == 0) {
+        found = true;
+        break;
+      }
+      node = *reinterpret_cast<uint8_t* const*>(node);  // ->next
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    return false;
+  }
+
+  return found;
 }
 
 bool IsPartyMemberByName(const char* name) {

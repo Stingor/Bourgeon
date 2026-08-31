@@ -233,7 +233,10 @@ class MonsterInfoWindow : public Plugin {
 
   uint32_t current_id_ = 0;   // id demandé pour la fiche affichée
   bool     open_       = false;
-  bool     need_focus_ = false;
+  // Frames de premier plan restant à demander. Un compteur et non un booléen :
+  // le focus posé à la frame d'ouverture est défait à la suivante par le clic
+  // qui a ouvert la fiche (cf. le pavé au site de consommation).
+  int      need_focus_ = 0;
 
   SenseSnapshot sense_;
 

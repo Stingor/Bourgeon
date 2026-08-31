@@ -17,6 +17,7 @@
 #include "features/overlays/target_frame.h"  // masquer la fenêtre de cible
 #include "features/windows/chat_window.h"  // TargetWhisper / OpenWhisperWindowByAid
 #include "features/windows/entity_inspector.h"
+#include "features/windows/mvp_tracker_window.h"  // DrawMvpInviteMenuItem
 #include "features/windows/monster_info_window.h"
 #include "features/windows/party_friend_window.h"  // les gestes de groupe/amitié
 #include "ragnarok/social.h"  // AmIPartyLeader / PartyMemberCount
@@ -1219,6 +1220,9 @@ void EntityContextMenu::BuildItems() {
       // REÇUS, et un clic de menu passait outre. La fenêtre est désormais une
       // entrée à part, qu'on choisit.
       add(i18n::Tr("Chuchoter"), kCodeWhisper, Local::kWhisperBar, true);
+      // Le carnet de chasse MVP, avec les autres invitations. Code natif 0 : le
+      // client ne connaît pas ce geste, l'entrée se dessine et s'exécute seule.
+      add(i18n::Tr("Inviter dans mon carnet MVP"), 0, Local::kMvpInvite);
       add(i18n::Tr("Chuchoter dans une fenêtre"), kCodeWhisper, Local::kWhisperWindow,
           false, false,
           i18n::Tr("Ouvre une conversation à part, avec son propre historique et sa "
@@ -1669,6 +1673,18 @@ void EntityContextMenu::DrawPopup() {
 // ligne ouvre son bloc ou le menu tout entier.
 bool EntityContextMenu::DrawItem(size_t index) {
   const Item& item = items_[index];
+
+  // Le carnet de chasse MVP dessine SON entrée lui-même : son grisage a quatre
+  // raisons distinctes, chacune avec son infobulle, et elles vivent en un seul
+  // endroit pour les trois menus joueur du projet. La recopier ici sous forme de
+  // `label` + `disabled` + `tip` en ferait une quatrième copie à tenir d'accord.
+  //
+  // Rend false comme une case : l'entrée agit seule, et sa sortie de switch ne
+  // doit rejouer aucun code natif — le client ne connaît pas ce geste.
+  if (item.local == Local::kMvpInvite) {
+    DrawMvpInviteMenuItem(target_name_.c_str());
+    return false;
+  }
   // Une case à cocher bascule un ÉTAT : elle ne se « choisit » pas et ne ferme
   // donc pas le menu — on doit pouvoir cocher, puis parler au NPC dans la
   // foulée. Rien n'est différé ici : ToggleNpcBlock n'écrit qu'une ligne de chat
@@ -2169,6 +2185,10 @@ void EntityContextMenu::FlushPending() {
       // Une CASE, jouée dans DrawPopup — jamais empilée. `return` et non
       // `break` : la sortie du switch rejoue un code NATIF, et celui d'une
       // case vaut 0.
+      return;
+    case Local::kMvpInvite:
+      // Dessinée ET jouée dans DrawItem, comme la case ci-dessus. Même raison de
+      // sortir par `return` : il n'y a aucun code natif à rejouer derrière.
       return;
     case Local::kNone:
       break;

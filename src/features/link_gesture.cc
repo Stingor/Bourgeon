@@ -16,6 +16,9 @@
 #include "features/moonlight_ui/moonlight_ui.h"     // liste alootid
 #include "features/systems/image_preview.h"         // aperçu d'une image de chat
 #include "features/windows/cashshop_window.h"       // disponibilité au vote shop
+#include "features/systems/mvp_tracker.h"           // inviter dans le carnet de chasse
+#include "features/windows/mvp_tracker_window.h"    // DrawMvpInviteMenuItem
+#include "ragnarok/social.h"                        // IsFriendByName (invitabilité)
 #include "features/windows/chat_window.h"           // poser un lien, armer une commande
 #include "features/windows/craft_atlas.h"           // cible d'un lien de recette
 #include "features/windows/item_desc_window.h"      // itemdesc::OpenItemDbPage
@@ -1081,6 +1084,19 @@ void DrawMenu(const char* popup_id, const Target& target) {
                   i18n::Tr("Il faut être dans un groupe — et en être le chef — pour "
                   "inviter quelqu'un."));
           }
+          // ── Carnet de chasse MVP ───────────────────────────────────────────
+          // Posé ICI, avec les autres invitations, parce que c'en est une : le
+          // menu de `Target::kPlayer` est le seul endroit à tenir, et il apparaît
+          // partout où un pseudo est cliquable — chat, fiche, plaques de nom.
+          //
+          // ⚠ On passe l'UTF-8 et NON `wire`, à l'inverse des invitations
+          // natives juste au-dessus : `MvpTracker::Send` fait lui-même la
+          // conversion vers l'encodage du fil. La règle du projet veut que la
+          // conversion vive chez le PRODUCTEUR du paquet — convertir ici la
+          // ferait deux fois.
+          DrawMvpInviteMenuItem(target.player_name.c_str());
+
+
           const bool in_guild = chat->InGuild();
           if (!in_guild) ImGui::BeginDisabled();
           if (ImGui::MenuItem(i18n::Tr("Inviter dans la guilde")))

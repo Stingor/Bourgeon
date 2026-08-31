@@ -325,6 +325,10 @@ class EntityContextMenu : public Plugin {
     // chat moderne est éteint — c'est pour ça qu'ils portent AUSSI ce code.
     kWhisperBar,    // écrit le nom dans la box « Pseudo » de la barre principale
     kWhisperWindow, // ouvre la conversation 1:1
+    // Inviter dans le carnet de chasse MVP. L'entrée se DESSINE elle-même (cf.
+    // DrawItem) : son grisage a quatre raisons, partagées avec les deux autres
+    // menus joueur, et elle ne porte aucun code natif — le client ignore ce geste.
+    kMvpInvite,
     // ── Poser un lien dans la barre de chat ─────────────────────────────────
     // « Linker » ce qu'on a sous le curseur. Les deux ne portent PAS la même
     // balise, parce qu'ils ne désignent pas la même chose :

@@ -12,6 +12,7 @@
 #include "features/windows/craft_atlas.h"
 #include "features/windows/game_menu.h"
 #include "features/windows/hotkey_settings.h"
+#include "features/windows/mvp_tracker_window.h"
 #include "features/windows/navigation_window.h"
 #include "features/staff_gate.h"  // IsStaff (actions réservées)
 #include "features/systems/bug_report.h"  // la modale du rapport générique
@@ -64,6 +65,10 @@ const Action kActions[] = {
     // raccourci-ci n'a alors rien à ouvrir. Le chemin direct marche dans les deux
     // cas — cf. `Invoke`, qui refuse proprement quand le panneau est absent.
     {"win_navigation",   "Navigation",              ActionGroup::kWindows, 0, {}},
+    // Carnet de chasse MVP. Pas de native à router (rien de tel n'existe dans le
+    // client) ni de défaut proposé : toute touche libre est déjà prise par
+    // quelqu'un, le joueur choisit la sienne.
+    {"win_mvp_tracker",  "Carnet de chasse MVP",    ActionGroup::kWindows, 0, {}},
     {"tool_craft_atlas", "Atlas des recettes",      ActionGroup::kTools,   0, {}},
     {"tool_palette",     "Style du personnage",     ActionGroup::kTools,   0, {}},
     // Ciblage clavier. 🔴 AUCUN défaut n'est proposé (`{}`), et c'est délibéré :
@@ -251,6 +256,13 @@ bool Invoke(const char* id) {
   if (std::strcmp(id, "win_navigation") == 0) {
     if (auto* navigation = bourgeon.navigation_window()) {
       navigation->Toggle();
+      return true;
+    }
+    return false;
+  }
+  if (std::strcmp(id, "win_mvp_tracker") == 0) {
+    if (auto* mvp = bourgeon.mvp_tracker_window()) {
+      mvp->Toggle();
       return true;
     }
     return false;

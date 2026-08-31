@@ -35,6 +35,7 @@
 #include <vector>
 
 #include "bourgeon.h"        // Bourgeon::Instance().SendPacket / session
+#include "features/windows/mvp_tracker_window.h"  // DrawMvpInviteMenuItem
 #include "features/windows/palette_editor.h"  // bouton « Mes couleurs »
 #include "features/systems/bourgeon_opcodes.h"  // bopcodes::kStatBonus (ZC 0x0F10)
 #include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB
@@ -5447,6 +5448,16 @@ void CharacterSheet::DrawGuildTab() {
                       "inviter quelqu'un."));
               }
             }
+            // ── Carnet de chasse MVP ─────────────────────────────────────────
+            // Même entrée que dans les deux autres menus joueur du projet, et la
+            // MÊME implémentation : le grisage et ses raisons vivent en un seul
+            // endroit, sinon les trois divergent au premier changement de règle.
+            //
+            // ⚠ Contrairement à l'invitation de groupe juste au-dessus, celle-ci
+            // veut de l'UTF-8 : `m.name` sort brut des structures du client, donc
+            // dans la code-page du fil.
+            if (!self) DrawMvpInviteMenuItem(ro::WireToUtf8(m.name));
+
             // « Envoyer un courrier », comme le « Send a mail... » du menu natif :
             // le destinataire part déjà rempli. Jamais vers soi-même (refusé).
             if (!self && ImGui::MenuItem(i18n::Tr("Envoyer un courrier…"))) {

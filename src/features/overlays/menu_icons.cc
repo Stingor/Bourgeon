@@ -12,6 +12,7 @@
 #include <Windows.h>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>  // std::strcmp (identifiant d'action d'une icone maison)
 #include <string>
 #include <vector>
 
@@ -20,6 +21,7 @@
 #include "imgui.h"
 #include "features/systems/bourgeon_opcodes.h"
 #include "features/moonlight_ui/moonlight_ui.h"  // shared AlignGrid (snap)
+#include "features/systems/mvp_tracker.h"        // le signalement de l'icone du carnet
 #include "ui/window_clamp.h"  // ClampWindowPosToScreen (icônes déplacées à la main)
 #include "utils/log_console.h"
 #include "utils/i18n.h"
@@ -215,6 +217,7 @@ struct BourgeonIconDef {
 };
 const BourgeonIconDef kBourgeonIcons[] = {
     {"atlas", "tool_craft_atlas", "Atlas des recettes"},
+    {"tracker", "win_mvp_tracker", "Carnet de chasse MVP"},
 };
 
 // Le raccourci qui ouvre CETTE icône, prêt à afficher — chaîne vide s'il n'y en
@@ -431,12 +434,52 @@ void MenuIcons::BuildIconList() {
 // Recopie dans les icônes le signalement « nouveau » tenu par la fenêtre native.
 // Appelée depuis OnTick (phase update, ~100 ms) : un badge n'a pas besoin de la
 // fréquence d'affichage, et on évite un FindWindow par frame.
+// Le signalement « nouveau » d'une icône de Bourgeon. Le natif tient une liste de
+// commandes signalées ; nous, chaque bouton sait ce qui mérite d'attirer l'œil.
+//
+// Carnet de chasse MVP : au moins un FAVORI est dans sa fenêtre de retour, ou sur
+// le point d'y entrer (le préavis réglé par le joueur). Le choix de « quels MVP
+// méritent une alerte » est donc déjà fait — c'est la liste des favoris, qui vit
+// en SQL et suit le compte, pas une seconde liste à tenir ici.
+static bool BourgeonIconBadge(const MenuIcons::Icon& ic) {
+  if (std::strcmp(ic.action_id, "win_mvp_tracker") != 0) return false;
+
+  MvpTracker* mvp = Bourgeon::Instance().mvp_tracker();
+  if (mvp == nullptr || !mvp->config().enabled) return false;
+
+  const int64_t now = mvp->ServerNow();
+  const int64_t lead = static_cast<int64_t>(mvp->config().alert_lead_min) * 60;
+
+  for (uint16_t slot_id : mvp->favorites()) {
+    int64_t from = 0, to = 0;
+    bool exact = false;
+    if (!mvp->Window(slot_id, &from, &to, &exact)) continue;
+    // Ouverte, ou sur le point de l'être. Bornée en haut pour qu'un créneau
+    // oublié depuis des heures cesse d'allumer l'icône : passé sa fenêtre, le
+    // MVP est soit déjà repris, soit déjà tué par quelqu'un d'autre.
+    const int64_t until = exact ? from + 900 : to + 1800;
+    if (now + lead >= from && now <= until) return true;
+  }
+  return false;
+}
+
 void MenuIcons::RefreshBadges() {
   constexpr int kMaxFlagged = 32;
   int flagged[kMaxFlagged];
   const int n = ReadBadgeCmdIds(uiwnd::SafeFindWindow(uiwnd::kMenuIconWndId), flagged,
                                 kMaxFlagged);
   for (Icon& ic : icons_) {
+    // Une icône de BOURGEON n'a pas de commande dans la liste du natif : son
+    // signalement vient de sa propre fonctionnalité.
+    if (ic.action_id != nullptr) {
+      const bool on = BourgeonIconBadge(ic);
+      if (!on) {
+        ic.badge_normal.fail = 0;
+        ic.badge_pressed.fail = 0;
+      }
+      ic.badge = on;
+      continue;
+    }
     // 🔴 Seules les icônes DE LA GRILLE : la liste ne porte que des commandes de
     // la grille, et le bouton du cash shop partage la commande 0xC0 avec
     // « status » — il s'allumerait à sa place, puis chercherait en vain un

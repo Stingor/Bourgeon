@@ -10,6 +10,7 @@
 #include <cstdio>
 
 #include "bourgeon.h"
+#include "features/windows/mvp_tracker_window.h"
 #include "features/overlays/basic_info.h"
 #include "features/overlays/target_frame.h"
 #include "features/patches/chat.h"
@@ -730,6 +731,53 @@ void MigrateLegacyKeys(YAML::Node ui) {
     if (!ui["skillbar_key_scale"])   ui["skillbar_key_scale"]   = legacy_scale;
     if (!ui["skillbar_count_scale"]) ui["skillbar_count_scale"] = legacy_scale;
   }
+}
+
+
+// ── Les lignes détachées du carnet de chasse MVP ─────────────────────────────
+//
+// 🔴 La clé écrite est `(mob_id, map)`, JAMAIS le `slot_id`. Celui-ci vaut le
+// rang dans un registre que le map-server reconstruit à chaque démarrage :
+// ajoutez un `boss_monster` et toutes les lignes déjà posées désigneraient le
+// voisin. Même clé, et même raison, que les favoris en base.
+//
+// `mob_id` vaut 0 pour un créneau scripté (Bio Lab, Lord of Death, Thanatos) :
+// là-bas le mob change à chaque cycle et c'est la carte qui identifie.
+void ReadMvpTrackerLines(const YAML::Node& ui) {
+  auto* tracker = Bourgeon::Instance().mvp_tracker_window();
+  if (!tracker) return;
+  const YAML::Node seq = ui["mvptracker_lines"];
+  if (!seq || !seq.IsSequence()) return;
+  tracker->lines_.clear();
+  for (const YAML::Node& entry : seq) {
+    MvpTrackerWindow::PinnedLine line;
+    line.mob_id = static_cast<uint16_t>(entry["mob"].as<int>(0));
+    const std::string map = entry["map"].as<std::string>("");
+    line.x = entry["x"].as<int>(-1);
+    line.y = entry["y"].as<int>(-1);
+    // Sans carte il n'y a pas de clé, et hors de l'écran il n'y a pas de ligne :
+    // dans les deux cas on laisse tomber l'entrée plutôt que d'en poser une que
+    // le joueur ne pourra jamais ni lire ni retirer.
+    if (map.empty() || line.x < 0 || line.y < 0) continue;
+    std::snprintf(line.map, sizeof(line.map), "%s", map.c_str());
+    tracker->lines_.push_back(line);
+  }
+}
+
+void WriteMvpTrackerLines(YAML::Emitter& out) {
+  auto* tracker = Bourgeon::Instance().mvp_tracker_window();
+  out << YAML::Key << "mvptracker_lines" << YAML::Value << YAML::BeginSeq;
+  if (tracker) {
+    for (const MvpTrackerWindow::PinnedLine& line : tracker->lines_) {
+      out << YAML::BeginMap
+          << YAML::Key << "mob" << YAML::Value << static_cast<int>(line.mob_id)
+          << YAML::Key << "map" << YAML::Value << std::string(line.map)
+          << YAML::Key << "x"   << YAML::Value << line.x
+          << YAML::Key << "y"   << YAML::Value << line.y
+          << YAML::EndMap;
+    }
+  }
+  out << YAML::EndSeq;
 }
 
 }  // namespace moonlight_ui

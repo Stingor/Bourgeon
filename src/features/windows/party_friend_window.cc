@@ -1710,13 +1710,29 @@ void PartyFriendWindow::DrawInvitePopup() {
 
   const char* who = ro::LocalToUtf8(invite_.name.c_str());
   if (invite_.is_friend) {
-    // Le natif compose msgstring 0x332 avec le nom ; on garde les deux, le nom
-    // en évidence au-dessus de la phrase du client.
-    ImGui::TextUnformatted(who);
-    ImGui::Spacing();
-    ImGui::TextUnformatted(
-        msgstr::Utf8Or(kMsgFriendRequestText,
-                       i18n::Tr("souhaite vous ajouter à sa liste d'amis.")));
+    // 🔴 Le message 0x332 PORTE un `%s` — « (%s) wishes to be friends with
+    // you. » — et il faut donc le composer, pas l'afficher tel quel. On montrait
+    // le nom au-dessus puis la phrase brute : le joueur lisait « (%s) souhaite
+    // devenir votre ami », placeholder compris.
+    //
+    // ⚠ Le voisin, 0x5E (invitation de groupe), n'en a PAS : sa traduction
+    // commence par une espace parce qu'elle est conçue pour SUIVRE le nom. Les
+    // deux branches ne se traitent donc pas pareil, et c'est le message qui
+    // décide — d'où le test sur la présence du format plutôt qu'une règle
+    // écrite en dur.
+    const char* fmt =
+        msgstr::Utf8Or(kMsgFriendRequestText, nullptr);
+    if (fmt != nullptr && std::strstr(fmt, "%s") != nullptr) {
+      char line[256];
+      std::snprintf(line, sizeof(line), fmt, who);
+      ImGui::TextUnformatted(line);
+    } else {
+      // Message absent, ou traduction dont le format a été refusé au chargement :
+      // on retombe sur les deux lignes, qui ne mentent pas.
+      ImGui::TextUnformatted(who);
+      ImGui::Spacing();
+      ImGui::TextUnformatted(i18n::Tr("souhaite vous ajouter à sa liste d'amis."));
+    }
   } else {
     ImGui::TextUnformatted(who);
     ImGui::Spacing();

@@ -27,6 +27,7 @@
 #include "features/windows/make_item_window.h"
 #include "features/windows/entity_context_menu.h"
 #include "features/windows/monster_info_window.h"
+#include "features/windows/mvp_tracker_window.h"
 #include "features/windows/pet_window.h"
 #include "features/windows/weapon_refine_window.h"
 #include "features/systems/bug_report.h"
@@ -99,6 +100,7 @@ constexpr NavEntry kIfaceSections[] = {
     {MoonlightUi::kIfaceCastBar,     "cast_bar",     "Barre de Cast"},
     {MoonlightUi::kIfaceBasicInfo,   "basic_info",   "Basic Info"},
     {MoonlightUi::kIfaceCart,        "cart",         "Cart"},
+    {MoonlightUi::kIfaceMvpTracker,  "mvp_tracker",  "Carnet de chasse MVP"},
     {MoonlightUi::kIfaceChat,        "chat",         "Chat"},
     {MoonlightUi::kIfaceDesc,        "desc",         "Descriptions"},
     {MoonlightUi::kIfaceMakeItem,    "make_item",    "Fabrication"},
@@ -915,6 +917,17 @@ void MoonlightUi::DrawInterfacePanel() {
 
           if (!pf->enabled_) ImGui::EndDisabled();
           if (changed) SaveSettings();
+        }
+      }
+
+      // ── Carnet de chasse MVP (MvpTrackerWindow) ──────────────────────────
+      // Ce que le groupe a OBSERVÉ, jamais ce que le serveur sait : le tirage du
+      // respawn ne sort que par un Convex Mirror.
+      if (iface_nav == kIfaceMvpTracker) {
+        if (auto* mvp = Bourgeon::Instance().mvp_tracker_window()) {
+          if (mvp->DrawSettings()) SaveSettings();
+        } else {
+          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
         }
       }
 

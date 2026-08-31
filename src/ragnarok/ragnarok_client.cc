@@ -576,6 +576,24 @@ static HWND WINAPI CreateWindowExAHook(DWORD dwExStyle, LPCSTR lpClassName,
   ImGuiIO& io = ImGui::GetIO();
   io.MouseDrawCursor = false;
   io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
+  // 🔴🔴 ON DÉPLACE UNE FENÊTRE PAR SA BARRE DE TITRE, PAS PAR SON CORPS.
+  //
+  // Par défaut, ImGui démarre un déplacement au clic n'importe où dans une
+  // fenêtre dès qu'aucun ITEM ne prend le clic. Or le projet dessine beaucoup de
+  // choses cliquables qui ne sont pas des items ImGui — les liens de monstre,
+  // d'objet et de lieu en premier lieu, qui ne sont que du texte décoré.
+  //
+  // Conséquence mesurée : cliquer un lien « attrape » la fenêtre qui le porte, et
+  // ImGui la remet au premier plan à CHAQUE frame tant que le bouton est enfoncé.
+  // La fiche ou le panneau que le lien vient d'ouvrir se retrouvait donc DERRIÈRE
+  // elle. Le carnet de chasse MVP l'a rendu criant — quatre-vingts lignes,
+  // chacune portant un lien qui ouvre une autre fenêtre — mais le défaut valait
+  // pour toutes les surfaces à liens.
+  //
+  // Le réglage est aussi le bon comportement en soi : un HUD de jeu se déplace
+  // par sa poignée, et attraper une fenêtre en visant un lien manqué a toujours
+  // été un accident, jamais une intention.
+  io.ConfigWindowsMoveFromTitleBarOnly = true;
 
   return hwnd;
 }

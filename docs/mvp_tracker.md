@@ -7,6 +7,10 @@ Le chantier est à cheval sur **deux dépôts** — le map-server (collecte,
 persistance, protocole) et Bourgeon (fenêtre, minimap, saisie). Développement sur
 une **branche dédiée dans chacun**, avec bascule coordonnée : voir §7.4.
 
+> 📐 **Le *comment* est dans `docs/mvp_tracker_blueprint.md`** : découpage en
+> lots, structures, schéma SQL, layouts de paquets et points d'accroche exacts.
+> Il corrige aussi trois points de ce document — voir son §0.
+
 > 🔴 **Le piège central de ce sujet** : on croit avoir à *collecter* des heures de
 > mort. C'est déjà fait. Le map-server tient depuis longtemps un
 > `mvp_respawn_cache` qui contient l'heure de mort à la seconde, le tueur, **et la

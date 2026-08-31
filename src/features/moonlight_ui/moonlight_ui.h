@@ -229,6 +229,7 @@ class MoonlightUi : public Plugin {
     kIfaceTargetFrame,
     kIfacePartyFrames,
     kIfacePartyFriend,
+    kIfaceMvpTracker,
     kIfaceCount,
   };
   // Ouvre le panneau Moonlight directement sur `section` : déplie la fenêtre,
@@ -456,6 +457,10 @@ class MoonlightUi : public Plugin {
   // qu'un panneau de réglages existe ni où le chercher. Le joueur la ferme quand
   // il l'a comprise ; ce choix-là, lui, est persisté.
   bool ui_visible_       = true;
+  // Frames de premier plan restant à demander (cf. ShowWindow). Un compteur et
+  // non un booléen : le focus posé à l'ouverture est défait la frame suivante
+  // par le clic qui nous a ouverts.
+  int  pending_focus_frames_ = 0;
 
   // Persisted collapse state of the Moonlight-Destiny window.
   // Restored once per login via SetNextWindowCollapsed; saved on every change.

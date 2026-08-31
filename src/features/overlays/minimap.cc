@@ -11,6 +11,7 @@
 #include "imgui.h"
 #include "bourgeon.h"
 #include "features/systems/login_spectator.h"    // la session spectateur aussi
+#include "features/systems/mvp_tracker.h"        // la couche de tombes du carnet de chasse
 #include "features/windows/navigation_window.h"  // le point de sortie de l'itinéraire
 #include "d3d9/d3d9_hook.h"  // Overlay_SetTextureFilter
 #include "features/moonlight_ui/moonlight_ui.h"
@@ -1256,6 +1257,56 @@ void Minimap::OnRenderUI() {
               dl->AddImage(
                   static_cast<ImTextureID>(reinterpret_cast<uintptr_t>(bt.tex)),
                   ImVec2(ax - bh2, ay - bh2), ImVec2(ax + bh2, ay + bh2));
+            }
+          }
+        }
+
+        // ── Tombes connues du groupe (carnet de chasse MVP) ────────────────
+        // 🔴 Une COUCHE DE PLUS, pas une modification du marqueur ci-dessus.
+        // Les deux n'ont ni la même source (le natif après ZC_BOSS_INFO contre
+        // notre serveur), ni la même durée de vie, ni le même réglage. Et
+        // contrairement au boss, une tombe hors cadrage est OMISE et non collée
+        // au bord : elle informe d'un lieu, pas d'une direction.
+        if (have_map) {
+          MvpTracker* mvp = Bourgeon::Instance().mvp_tracker();
+          if (mvp != nullptr && mvp->config().enabled && mvp->config().show_tombs) {
+            const int64_t mvp_now = mvp->ServerNow();
+            for (const auto& entry : mvp->observations()) {
+              const mvp::Obs& obs = entry.second;
+              // -1 veut dire « position inconnue ». 0,0 n'a jamais ce sens ici :
+              // le serveur convertit, précisément pour ne pas reproduire le bug
+              // du Convex Mirror natif.
+              if (obs.tomb_x < 0 || obs.tomb_y < 0) continue;
+              const mvp::Slot* slot = mvp->FindSlot(entry.first);
+              if (slot == nullptr || strcmp(slot->map, map) != 0) continue;
+
+              int64_t to = 0;
+              bool exact = false;
+              if (!mvp->Window(entry.first, nullptr, &to, &exact)) continue;
+              // Une fenêtre entièrement passée ne dit plus rien de la tombe.
+              if (!exact && to + 3600 < mvp_now) continue;
+
+              const float fu = static_cast<float>(obs.tomb_x) /
+                               static_cast<float>(snap.cells_w);
+              const float fv = (static_cast<float>(snap.cells_h) -
+                                static_cast<float>(obs.tomb_y)) /
+                               static_cast<float>(snap.cells_h);
+              if (fu < u0 || fu > u1 || fv < v0 || fv > v1) continue;
+
+              const float su = (u1 > u0) ? (fu - u0) / (u1 - u0) : 0.5f;
+              const float sv = (v1 > v0) ? (fv - v0) / (v1 - v0) : 0.5f;
+              const ImVec2 tat(p0.x + su * draw_w, p0.y + sv * draw_h);
+              const float th = (half * 0.8f < 4.0f) ? 4.0f : half * 0.8f;
+              // Doré quand l'instant est MÉRITÉ (un miroir l'a payé), orangé
+              // quand on n'a qu'une fenêtre : la couleur dit la précision.
+              const ImU32 tint = exact ? IM_COL32(255, 216, 96, 235)
+                                       : IM_COL32(232, 140, 60, 205);
+              const ImVec2 pts[4] = {ImVec2(tat.x, tat.y - th),
+                                     ImVec2(tat.x + th, tat.y),
+                                     ImVec2(tat.x, tat.y + th),
+                                     ImVec2(tat.x - th, tat.y)};
+              dl->AddConvexPolyFilled(pts, 4, tint);
+              dl->AddPolyline(pts, 4, IM_COL32(20, 20, 20, 200), ImDrawFlags_Closed, 1.0f);
             }
           }
         }

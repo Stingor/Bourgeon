@@ -196,4 +196,13 @@ bool DrawSprite(ImDrawList* draw_list, const SpriteRes& res, ImVec2 rect_min,
                 float ms_per_frame = 130.0f, bool allow_upscale = false,
                 float alpha = 1.0f);
 
+// Occupation du cache : octets décodés retenus, et nombre d'entrées chargées.
+// Le plafond est `kCacheBudget` (48 Mo) et l'éviction se fait à l'entrée.
+//
+// Exposé pour MESURER avant de décider : « faut-il agrandir le cache ? » ne se
+// répond pas au doigt mouillé, surtout dans un client 32 bits où l'espace
+// d'adressage est la vraie contrainte. Aucun coût — deux compteurs déjà tenus.
+size_t SpriteCacheBytes();
+size_t SpriteCacheCount();
+
 }  // namespace ro

@@ -5,6 +5,7 @@
 
 #include "bourgeon.h"
 #include "features/windows/chat_window.h"
+#include "features/systems/mvp_tracker.h"
 #include "features/windows/npc_dialog_window.h"
 #include "utils/log_console.h"
 
@@ -38,6 +39,12 @@ uint32_t UiCaps::Current() {
   }
   if (ChatWindow* cw = b.chat_window()) {
     if (cw->imgui_enabled_) caps |= kChat;
+  }
+  // L'interrupteur MAÎTRE du tracker, pas la visibilité de sa fenêtre : une
+  // alerte doit pouvoir sonner fenêtre fermée, et un delta reçu fenêtre fermée
+  // est ce qui la rendra juste à sa réouverture.
+  if (MvpTracker* mt = b.mvp_tracker()) {
+    if (mt->config().enabled) caps |= kMvpTracker;
   }
   return caps;
 }

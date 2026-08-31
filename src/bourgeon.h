@@ -52,6 +52,8 @@ class LoginParade;
 class ItemDescWindow;
 class MonsterInfoWindow;
 class ViewEquipWindow;
+class MvpTracker;
+class MvpTrackerWindow;
 class NavigationWindow;
 class PetWindow;
 class PartyFriendWindow;
@@ -142,6 +144,10 @@ class Bourgeon {
   // EntityContextMenu lui donne l'AID de la cible avant de rejouer le code 42 —
   // la réponse du serveur, elle, ne le porte pas.
   ViewEquipWindow* view_equip_window();
+  // Carnet de chasse MVP : l'état réseau et sa fenêtre. Le premier est aussi lu
+  // par la couche de tombes de la minimap et par le masque UiCaps.
+  MvpTracker* mvp_tracker();
+  MvpTrackerWindow* mvp_tracker_window();
   // Navigation ImGui. Exposée pour l'action de raccourci `win_navigation`, pour
   // le hook qui route la native 203, et pour les liens de lieu du chat.
   NavigationWindow* navigation_window();
@@ -411,6 +417,8 @@ class Bourgeon {
   ItemDescWindow* item_desc_ = nullptr;       // non-owning, lifetime tied to plugins_
   MonsterInfoWindow* monster_info_ = nullptr;  // non-owning, lifetime tied to plugins_
   ViewEquipWindow* view_equip_window_ = nullptr;  // non-owning, lifetime tied to plugins_
+  MvpTracker* mvp_tracker_ = nullptr;               // non-owning, idem
+  MvpTrackerWindow* mvp_tracker_window_ = nullptr;  // non-owning, idem
   NavigationWindow* navigation_window_ = nullptr;  // non-owning, idem
   PetWindow* pet_window_ = nullptr;            // non-owning, lifetime tied to plugins_
   PartyFriendWindow* party_friend_window_ = nullptr;  // idem

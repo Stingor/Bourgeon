@@ -120,6 +120,15 @@ bool IsFriendByName(const char* name);
 // qu'une entrée de groupe.
 bool IsPartyMemberByName(const char* name);
 
+// Ce nom est-il dans MA guilde ? Le troisième de la famille, à côté de
+// `IsFriendByName` et `IsPartyMemberByName`.
+//
+// Le roster vit dans l'objet CGuild du client sous forme de liste chaînée
+// (`CGuild + 0xdc`) — la feuille de personnage le lisait déjà en entier pour son
+// onglet « Guilde », mais en local. Faux d'office quand on n'est dans aucune
+// guilde : il n'y a alors pas de roster à parcourir.
+bool IsGuildMemberByName(const char* name);
+
 // L'entrée d'un membre du groupe, par GID. Rend false s'il n'y est plus.
 // Sert aux surfaces qui n'ont qu'un GID et ont besoin du NOM (les actions de
 // groupe voyagent par nom).

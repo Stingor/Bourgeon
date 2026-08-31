@@ -74,6 +74,8 @@
 #include "features/windows/entity_inspector.h"
 #include "features/windows/monster_info_window.h"
 #include "features/windows/view_equip_window.h"
+#include "features/systems/mvp_tracker.h"
+#include "features/windows/mvp_tracker_window.h"
 #include "features/windows/navigation_window.h"
 #include "features/fx/style_sync.h"
 #include "features/windows/palette_editor.h"
@@ -165,6 +167,8 @@ LoginParade* Bourgeon::login_parade() { return login_parade_; }
 ItemDescWindow* Bourgeon::item_desc() { return item_desc_; }
 MonsterInfoWindow* Bourgeon::monster_info() { return monster_info_; }
 ViewEquipWindow* Bourgeon::view_equip_window() { return view_equip_window_; }
+MvpTracker* Bourgeon::mvp_tracker() { return mvp_tracker_; }
+MvpTrackerWindow* Bourgeon::mvp_tracker_window() { return mvp_tracker_window_; }
 NavigationWindow* Bourgeon::navigation_window() { return navigation_window_; }
 PetWindow* Bourgeon::pet_window() { return pet_window_; }
 PartyFriendWindow* Bourgeon::party_friend_window() { return party_friend_window_; }
@@ -1292,6 +1296,17 @@ void Bourgeon::LoadPlugins() {
     auto minimap = std::make_unique<Minimap>();
     minimap_ = minimap.get();
     plugins_.emplace_back(std::move(minimap));
+  }
+  {
+    // L'état AVANT la fenêtre : celle-ci le lit dès son premier OnTick, et la
+    // couche de tombes de la minimap aussi.
+    auto mvp_tracker = std::make_unique<MvpTracker>();
+    mvp_tracker_ = mvp_tracker.get();
+    plugins_.emplace_back(std::move(mvp_tracker));
+
+    auto mvp_tracker_window = std::make_unique<MvpTrackerWindow>();
+    mvp_tracker_window_ = mvp_tracker_window.get();
+    plugins_.emplace_back(std::move(mvp_tracker_window));
   }
   {
     auto item_obtain_toast = std::make_unique<ItemObtainToast>();

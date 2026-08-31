@@ -492,7 +492,7 @@ void MonsterInfoWindow::Open(uint32_t mob_id, bool by_view) {
   }
   current_id_ = mob_id;
   open_ = true;
-  need_focus_ = true;
+  need_focus_ = 2;
   RequestInfo(mob_id, by_view);
 }
 
@@ -739,9 +739,17 @@ void MonsterInfoWindow::OnRenderUI() {
   // ne fait que lui donner l'occasion de reposer la question, à l'identique.
   if (const MobInfo* cur = Current()) RequestInfo(current_id_, cur->by_view);
 
-  if (need_focus_) {
+  // Le premier plan est redemandé sur deux frames plutôt qu'une. C'est un FILET,
+  // pas le correctif : la cause de la fiche qui s'ouvrait DERRIÈRE la fenêtre du
+  // lien est traitée à sa racine dans `ro::ClaimClickFromWindowMove` — un clic
+  // pris à la main démarrait un déplacement de fenêtre, qui la remettait devant
+  // à chaque frame tant que le bouton restait enfoncé.
+  //
+  // Le filet reste parce qu'il ne coûte rien et couvre les autres courses au
+  // focus (une fiche rouverte pendant qu'un menu se ferme, par exemple).
+  if (need_focus_ > 0) {
     ImGui::SetNextWindowFocus();
-    need_focus_ = false;
+    --need_focus_;
   }
   ImGui::SetNextWindowSize(ImVec2(560.0f, 420.0f), ImGuiCond_FirstUseEver);
   ImGui::SetNextWindowSizeConstraints(ImVec2(430.0f, 300.0f),

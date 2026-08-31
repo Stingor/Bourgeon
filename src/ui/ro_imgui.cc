@@ -1320,6 +1320,43 @@ void DrawRoScrollbar(ImGuiWindow* w) {
   const ImVec2 mouse = ImGui::GetIO().MousePos;
   const bool down = ImGui::IsMouseDown(ImGuiMouseButton_Left);
   const bool clicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+
+  // 🔴 NE PAS DISPUTER UNE SOURIS QU'IMGUI TIENT DÉJÀ.
+  //
+  // Cette scrollbar est pilotée à la main — des rectangles et l'état BRUT de la
+  // souris — donc elle ignore l'arbitrage par `ActiveId` qui empêche justement
+  // deux widgets de réagir au même clic. Conséquence visible : la zone sensible
+  // du grip de redimensionnement d'ImGui (un carré d'environ 1,35 × la hauteur
+  // de police au coin) déborde AU-DESSUS de la flèche du bas, et un clic dans ce
+  // recouvrement redimensionnait la fenêtre ET faisait défiler le contenu.
+  //
+  // Le redimensionnement gagne, parce qu'il a commencé : `ImGui::Begin` a posé
+  // son `ActiveId` avant qu'on arrive ici (on est appelé depuis EndRoWindow).
+  // La règle vaut pour tout le reste au passage — glisser la barre de titre par
+  // dessus la scrollbar, ou tenir un slider — et c'est exactement ce qu'on veut.
+  //
+  // ⚠ Un drag de thumb DÉJÀ EN COURS continue : c'est NOUS qui le tenons, et
+  // ImGui n'a aucun `ActiveId` pour lui. Sans cette exception, la scrollbar se
+  // bloquerait au premier widget actif ailleurs dans la fenêtre.
+  ImGuiContext* ctx = ImGui::GetCurrentContext();
+  const bool imgui_owns_mouse = ctx != nullptr && ctx->ActiveId != 0;
+
+  // 🔴🔴 ET la souris doit être sur CETTE fenêtre. `IsMouseHoveringRect` ne
+  // connaît que des coordonnées : il ignore complètement ce qui est POSÉ
+  // PAR-DESSUS. Un clic sur la barre de titre d'une fenêtre au premier plan
+  // attrapait donc en même temps la scrollbar de celle d'en dessous, et on
+  // déplaçait l'une en faisant défiler l'autre.
+  //
+  // L'`ActiveId` ci-dessus ne suffit pas à l'arrêter : ImGui ne décide de
+  // déplacer une fenêtre qu'à la FIN de la frame du clic
+  // (`UpdateMouseMovingWindowEndFrame`), si bien que sur cette frame-là —
+  // celle où `clicked` est vrai, la seule qui compte — `ActiveId` vaut encore
+  // zéro. `HoveredWindow`, lui, est déjà juste : c'est le même test de
+  // recouvrement qu'ImGui applique à tous ses propres widgets.
+  const ImGuiWindow* hovered_root =
+      (ctx != nullptr && ctx->HoveredWindow != nullptr) ? ctx->HoveredWindow->RootWindow
+                                                        : nullptr;
+  const bool mouse_on_us = hovered_root != nullptr && hovered_root == w->RootWindow;
   float sratio = smax > 0.0f ? ImSaturate(w->Scroll.y / smax) : 0.0f;
   float grab_y = track_top + sratio * (track_h - grab_h);
 
@@ -1329,7 +1366,7 @@ void DrawRoScrollbar(ImGuiWindow* w) {
   if (scrollable && smax > 0.0f && track_h > grab_h) {
     const bool over_thumb = ImGui::IsMouseHoveringRect(
         ImVec2(x0, grab_y), ImVec2(x1, grab_y + grab_h), false);
-    if (s_drag == 0 && over_thumb && clicked) {
+    if (s_drag == 0 && over_thumb && clicked && !imgui_owns_mouse && mouse_on_us) {
       s_drag = w->ID;
       s_off = mouse.y - grab_y;
     }
@@ -1344,10 +1381,10 @@ void DrawRoScrollbar(ImGuiWindow* w) {
   }
   // Flèches (clic = 1 pas, maintien = défilement continu).
   const float step = ImGui::GetTextLineHeightWithSpacing() * 3.0f;
-  if (scrollable && down &&
+  if (scrollable && down && !imgui_owns_mouse && mouse_on_us &&
       ImGui::IsMouseHoveringRect(ImVec2(x0, y0), ImVec2(x1, y0 + arrow), false))
     set_scroll(w->Scroll.y - (clicked ? step : step * 0.2f));
-  if (scrollable && down &&
+  if (scrollable && down && !imgui_owns_mouse && mouse_on_us &&
       ImGui::IsMouseHoveringRect(ImVec2(x0, y1 - arrow), ImVec2(x1, y1), false))
     set_scroll(w->Scroll.y + (clicked ? step : step * 0.2f));
 
@@ -1988,12 +2025,39 @@ bool BeginRoWindow(const char* title, bool* p_open, int imgui_window_flags) {
     bool bullet_hovered = false;
     if (bullet_btn) {
       // Cible élargie de 2px : 11px est trop petit pour viser confortablement.
+      //
+      // 🔴 Test MANUEL et non `ButtonBehavior` : celui-ci clippe son survol sur
+      // le rectangle courant, or la barre de titre est peinte sous un clip qui
+      // l'exclut — le bouton n'était alors jamais survolé, donc jamais pressé.
+      // `IsMouseHoveringRect(..., clip=false)` est la seule forme qui marche ici.
       bullet_hovered = ImGui::IsMouseHoveringRect(
           ImVec2(base_tl.x - Px(2.0f), base_tl.y - Px(2.0f)),
           ImVec2(base_br.x + Px(2.0f), base_br.y + Px(2.0f)), false);
+
+      // 🔴🔴 ...mais en TENANT un `ActiveId`, ce qui est le seul point qui
+      // comptait vraiment.
+      //
+      // ImGui démarre un déplacement de fenêtre en fin de frame
+      // (`UpdateMouseMovingWindowEndFrame`) sous la condition `g.ActiveId == 0`.
+      // Un clic sur la barre de titre en fait donc partie, même avec
+      // `ConfigWindowsMoveFromTitleBarOnly` — et tant que le bouton reste
+      // enfoncé, ImGui remet la fenêtre au premier plan à chaque frame, ce qui
+      // renvoyait derrière elle le panneau que ce bouton venait d'ouvrir.
+      //
+      // Prendre l'`ActiveId` au clic, le relâcher au lâcher : exactement ce que
+      // fait un vrai widget, sans hériter du clipping qui nous a cassé le survol.
+      const ImGuiID bullet_id = w->GetID("##ro_title_bullet");
+      ImGui::KeepAliveID(bullet_id);
       if (bullet_hovered) {
         SetHoverCursor(kCursorHand);
-        g_bullet_clicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+          g_bullet_clicked = true;
+          ImGui::SetActiveID(bullet_id, w);
+        }
+      }
+      if (ImGui::GetCurrentContext()->ActiveId == bullet_id &&
+          !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+        ImGui::ClearActiveID();
       }
     }
     const SkinTex& base_tex =

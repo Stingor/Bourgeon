@@ -85,6 +85,9 @@ constexpr uint16_t kStyleOpen      = 0x0F28;  // ZC_BOURGEON_STYLE_OPEN (un NPC 
 constexpr uint16_t kTargetInfo     = 0x0F2A;  // ZC_BOURGEON_TARGET_INFO (PV/SP/niveau/race/élément de la cible ; SP introuvable autrement)
 constexpr uint16_t kStatusList     = 0x0F2D;  // ZC_BOURGEON_STATUS_LIST (liste COMPLETE des buffs/debuffs ; remplace ce qu'on savait du GID)
 constexpr uint16_t kLooks          = 0x0F2F;  // ZC_BOURGEON_LOOKS (aid + job + coiffure + couleur + sexe, pour composer une tete hors de portee)
+constexpr uint16_t kMvpCmd         = 0x0F30;  // CZ_BOURGEON_MVP_CMD (carnet de chasse MVP : toutes les commandes)
+constexpr uint16_t kMvpState       = 0x0F31;  // ZC_BOURGEON_MVP_STATE (catalogue / instantané / delta / favoris)
+constexpr uint16_t kMvpGroup       = 0x0F32;  // ZC_BOURGEON_MVP_GROUP (membres, invitation, refus)
 
 // --- PROCHAIN OPCODE LIBRE : la valeur de kNextFree ci-dessous ---------------
 // Pour ajouter un opcode custom : prendre la valeur ci-dessous, l'incrémenter,
@@ -92,5 +95,5 @@ constexpr uint16_t kLooks          = 0x0F2F;  // ZC_BOURGEON_LOOKS (aid + job + 
 // Aucune vérification de collision nécessaire : toute la plage 0x0F00..0x0FFF
 // est hors de la table du client (garantie flag=-1 = variable). Champ libre.
 // (0x0F00/0x0F01 libérés — anciennes valeurs tech data avant regroupement.)
-constexpr uint16_t kNextFree    = 0x0F30;
+constexpr uint16_t kNextFree    = 0x0F33;
 }  // namespace bopcodes

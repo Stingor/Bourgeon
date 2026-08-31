@@ -36,6 +36,10 @@ void WriteInventoryLayout(YAML::Emitter& out);
 // sauvegarde à l'autre.
 void ReadMinimapMemos(const YAML::Node& ui);
 void WriteMinimapMemos(YAML::Emitter& out);
+// Les lignes du carnet de chasse MVP détachées à l'écran. Clé stable
+// `(mob_id, map)` — surtout pas le slot_id, qui est un rang de registre.
+void ReadMvpTrackerLines(const YAML::Node& ui);
+void WriteMvpTrackerLines(YAML::Emitter& out);
 
 // NPC rendus sourds au clic gauche : séquence d'objets { id, name }. L'id est un
 // GID de la plage réservée aux NPC à identifiant fixe (moon/npc_fixed_id.yml) —

@@ -53,7 +53,11 @@ class UiCaps : public Plugin {
     // La chatbox est la nôtre : mêmes balises de LIEN, `<STAL>` compris (pas
     // les médias, qui n'auraient pas de place dans une ligne de log).
     kChat      = 1u << 1,
-    // Prochain bit libre : 1u << 2.
+    // Le carnet de chasse MVP est allumé : les deltas d'observation seront
+    // montrés. Éteint, le serveur cesse de nous les diffuser — mais nos kills
+    // continuent d'ALIMENTER le groupe. Ce n'est donc pas un cas dégradé.
+    kMvpTracker = 1u << 2,
+    // Prochain bit libre : 1u << 3.
   };
 
   void OnTick() override;
