@@ -76,6 +76,14 @@ struct Obs {
   int16_t  tomb_y        = -1;
   uint32_t by_user_id    = 0;
   int64_t  reported_at   = 0;   // l'ÂGE fait partie de l'information
+  // QUI l'affirme : le tueur pour un kill, le nom lu sur la tombe, ou celui
+  // qui a partagé le lien qu'on a importé. Vide pour une saisie au clavier —
+  // c'est soi-même, et `by_user_id` le dit déjà.
+  //
+  // 🔴 Ce n'est PAS un doublon de `by_user_id` : celui-là désigne le COMPTE qui
+  // a porté l'information au groupe, celui-ci la PERSONNE qui l'affirme, et
+  // les deux diffèrent dès qu'un lien de chat traverse la frontière du groupe.
+  char     by_name[24]   = {};
 };
 
 struct Member {
@@ -232,7 +240,7 @@ class MvpTracker : public Plugin {
   // où il est mort — c'est le cas de la saisie à la main, mais pas de l'import
   // d'un lien `<MVPL>`, qui transporte la tombe quand son auteur l'avait.
   void ReportManual(uint16_t slot_id, int64_t kill_time, int16_t tomb_x = -1,
-                    int16_t tomb_y = -1);
+                    int16_t tomb_y = -1, const char* shared_by_utf8 = nullptr);
 
  private:
   void Send(uint8_t cmd, uint32_t a, uint32_t b, const char* text_utf8);

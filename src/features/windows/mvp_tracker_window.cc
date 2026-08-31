@@ -680,7 +680,9 @@ void MvpTrackerWindow::DrawGroupPanel() {
   // Le dernier refus du serveur, affiché quelques secondes.
   if (state->last_result() != 0 &&
       GetTickCount() - state->last_result_ms() < 6000) {
-    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.45f, 0.4f, 1.0f));
+    // Rouge FONCÉ, même raison que le vert de la colonne « Retour » : le fond
+    // de cette fenêtre est clair.
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.60f, 0.12f, 0.12f, 1.0f));
     if (const char* why = ResultText(state->last_result()))
       ImGui::TextWrapped("%s", why);
     else
@@ -1542,7 +1544,11 @@ void MvpTrackerWindow::DrawTable() {
     } else if (from <= now) {
       char buf[32];
       FormatDuration(to - now, buf, sizeof(buf));
-      ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.5f, 1.0f, 0.5f, 1.0f));
+      // 🔴 Vert FONCÉ, pas pastel. Le corps d'une fenêtre RO est CLAIR : un
+      // (0.5, 1.0, 0.5) y est presque blanc, et la seule ligne qui doive sauter
+      // aux yeux était la moins lisible de la table. Même paire que la fiche de
+      // personnage — vert 0.10/0.50/0.15, rouge 0.60/0.12/0.12.
+      ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.10f, 0.50f, 0.15f, 1.0f));
       ImGui::Text(i18n::Tr("possible (jusqu'à %s)"), buf);
       ImGui::PopStyleColor();
     } else {
@@ -1569,8 +1575,18 @@ void MvpTrackerWindow::DrawTable() {
       manual_time_buf_[0] = '\0';
       open_manual_popup_ = true;
     }
-    if (ImGui::IsItemHovered())
-      ImGui::SetTooltip(i18n::Tr("Saisir l'heure de mort observée."));
+    if (ImGui::IsItemHovered()) {
+      // QUI l'affirme, quand le serveur nous l'a dit. C'est ce qui sépare une
+      // observation d'une rumeur : « tué » ne veut pas dire grand-chose, « tué
+      // par Stingor » se vérifie. Le nom manque pour une saisie au clavier —
+      // c'est soi-même — et l'infobulle retombe alors sur son texte d'origine.
+      if (obs != nullptr && obs->by_name[0] != '\0') {
+        ImGui::SetTooltip(i18n::Tr("%s — d'après %s.\nCliquer pour saisir une heure."),
+                          SourceLabel(obs->source), ro::WireToUtf8(obs->by_name));
+      } else {
+        ImGui::SetTooltip(i18n::Tr("Saisir l'heure de mort observée."));
+      }
+    }
 
     ImGui::PopID();  // slot_id
     ImGui::PopID();  // "slot"

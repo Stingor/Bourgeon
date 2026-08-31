@@ -436,6 +436,27 @@ std::string MvpTagPayload(const Target& target) {
   return buf;
 }
 
+bool MvpWindowPassed(const Target& target) {
+  MvpTracker* state = Bourgeon::Instance().mvp_tracker();
+  // L'horloge SERVEUR si on la connaît : c'est celle dans laquelle tous ces
+  // instants sont écrits. Sinon la locale, qui en est très proche — le serveur
+  // et ses joueurs vivent dans le même fuseau.
+  const int64_t now = (state != nullptr && state->clock_known())
+                          ? state->ServerNow()
+                          : static_cast<int64_t>(std::time(nullptr));
+
+  // Un instant EXACT dépassé veut dire qu'il est revenu : l'information est
+  // dépensée, exactement comme une fenêtre refermée.
+  if (target.mvp_resp > 0) return target.mvp_resp < now;
+  if (target.mvp_kill > 0 && target.mvp_d1_min > 0) {
+    const int64_t to =
+        target.mvp_kill +
+        (static_cast<int64_t>(target.mvp_d1_min) + target.mvp_d2_min) * 60;
+    return to < now;
+  }
+  return false;
+}
+
 Target FromSetting(const char* key) {
   Target t;
   // Destination inconnue — ou absente du panneau de CE joueur — = pas de lien.
@@ -731,6 +752,22 @@ bool PostToChat(const Target& target) {
   return false;
 }
 
+namespace {
+
+// Ce qu'un Maj+clic doit POSER. Un lien de monstre qui porte une observation ne
+// vient que d'un endroit : le carnet de chasse. Partout ailleurs ces champs
+// valent zéro et la cible ressort inchangée.
+Target MvpShareIntent(const Target& target) {
+  if (target.kind != Target::kMob) return target;
+  if (target.mvp_kill <= 0 && target.mvp_resp <= 0) return target;
+  Target share = target;
+  share.kind  = Target::kMvp;
+  share.label = MvpLabel(share);
+  return share;
+}
+
+}  // namespace
+
 Gesture Hit(const Target& target, bool hovered) {
   if (!target.valid() || !hovered) return Gesture::kNone;
   ro::SetHoverCursor(2);  // curseur « main » RO
@@ -746,7 +783,12 @@ Gesture Hit(const Target& target, bool hovered) {
 bool Gestures(const Target& target, bool hovered) {
   switch (Hit(target, hovered)) {
     case Gesture::kDescription: OpenDescription(target); return false;
-    case Gesture::kChatLink:    PostToChat(target);      return false;
+    // 🔴 Le Maj+clic d'un lien VENU DU CARNET pose le respawn, pas le monstre.
+    // Tout le monde sait ce qu'est Baphomet ; ce qu'on veut annoncer, c'est
+    // quand il revient. L'entrée « Lien dans le chat » du menu, elle, continue
+    // de poser le monstre — deux gestes, deux intentions, et le menu porte
+    // « Partager le respawn » juste à côté pour qui veut choisir.
+    case Gesture::kChatLink:    PostToChat(MvpShareIntent(target)); return false;
     case Gesture::kMenu:        return true;
     default:                    return false;
   }
@@ -1218,6 +1260,23 @@ void DrawMenu(const char* popup_id, const Target& target) {
             share.label  = MvpLabel(share);
             PostToChat(share);
           }
+          // 🔴 Et le guidage vers la TOMBE, qui manquait exactement là où la
+          // tombe est connue. Le lien partagé l'offrait, le carnet non — alors
+          // que c'est le carnet qui DÉTIENT la position et le lien qui la
+          // recopie. Un cas d'école : la fonctionnalité avait été écrite pour
+          // le destinataire en oubliant l'expéditeur.
+          //
+          // Le survol de la colonne « Carte » montre déjà la tombe sur un plan ;
+          // ceci y envoie.
+          if (target.mvp_tomb_x >= 0 && target.mvp_tomb_y >= 0 &&
+              !target.navi_map.empty()) {
+            if (ImGui::MenuItem(i18n::Tr("Guider vers la tombe"))) {
+              if (auto* nav = Bourgeon::Instance().navigation_window())
+                nav->GoTo(target.navi_map.c_str(),
+                          static_cast<int>(target.mvp_tomb_x),
+                          static_cast<int>(target.mvp_tomb_y));
+            }
+          }
         }
         ImGui::Separator();
         // ── Où le trouver ────────────────────────────────────────────────────
@@ -1333,7 +1392,19 @@ void DrawMenu(const char* popup_id, const Target& target) {
                                      target.navi_map.c_str())
                 : nullptr;
         const bool has_group = state != nullptr && state->group().group_id != 0;
-        const bool importable = slot != nullptr && has_group && target.mvp_kill > 0;
+
+        // 🔴 Le serveur arbitre par PRÉCISION : une saisie ne remplace jamais
+        // une tombe, un kill ou un Convex Mirror. L'import serait donc accepté
+        // puis ignoré, et le joueur cliquerait sans que rien ne bouge ni ne le
+        // lui dise. On refait ici le même arbitrage, pour répondre AVANT le
+        // clic — le seul moment où la réponse sert encore à quelque chose.
+        const mvp::Obs* mine = (state != nullptr && slot != nullptr)
+                                   ? state->FindObs(slot->slot_id)
+                                   : nullptr;
+        const bool outranked =
+            mine != nullptr && mine->source > mvp::Source::kManual;
+        const bool importable =
+            slot != nullptr && has_group && target.mvp_kill > 0 && !outranked;
 
         // 🔴 L'import écrit dans le carnet de TOUT LE GROUPE, et il est marqué
         // « saisi » — la source la moins précise, celle de ce qu'un joueur
@@ -1342,8 +1413,21 @@ void DrawMenu(const char* popup_id, const Target& target) {
         // provenance, et la colonne Source du carnet existe pour ça.
         ImGui::BeginDisabled(!importable);
         if (ImGui::MenuItem(i18n::Tr("Ajouter à mon carnet")) && importable) {
+          // 🔴 Le pseudo de l'EXPÉDITEUR part avec, et c'est lui qui répond à
+          // « qui le dit ». `by_user_id` ne le remplace pas : celui-là désigne
+          // le compte qui a porté l'information au groupe — le nôtre — alors
+          // que la personne qui l'affirme est hors du groupe, sans quoi on
+          // n'aurait pas eu besoin d'un lien de chat pour l'apprendre.
           state->ReportManual(slot->slot_id, target.mvp_kill, target.mvp_tomb_x,
-                              target.mvp_tomb_y);
+                              target.mvp_tomb_y,
+                              target.player_name.empty()
+                                  ? nullptr
+                                  : target.player_name.c_str());
+          // Le carnet s'ouvre SUR la ligne. Le rang qui change sous les yeux
+          // est la seule confirmation qui vaille — et la fenêtre était le plus
+          // souvent fermée, donc son bandeau de résultat ne serait jamais lu.
+          if (auto* win = Bourgeon::Instance().mvp_tracker_window())
+            win->OpenOn(slot->slot_id);
         }
         ImGui::EndDisabled();
         // ⚠ `AllowWhenDisabled` : sans lui l'entrée grisée est muette, alors que
@@ -1354,6 +1438,8 @@ void DrawMenu(const char* popup_id, const Target& target) {
             ImGui::SetTooltip(i18n::Tr("Créez un groupe de chasse pour tenir un carnet."));
           else if (slot == nullptr)
             ImGui::SetTooltip(i18n::Tr("Ce créneau n'est pas dans votre catalogue."));
+          else if (outranked)
+            ImGui::SetTooltip(i18n::Tr("Votre groupe en sait déjà plus : il l'a vu de ses yeux."));
           else
             ImGui::SetTooltip(i18n::Tr("Ce lien ne porte pas d'heure de mort."));
         }

@@ -16,7 +16,10 @@ namespace {
 // Tailles des entrées, miroir EXACT de clif.cpp côté moonlight. Une seule des
 // deux qui bouge, et tous les champs suivants glissent sans que rien ne le dise.
 constexpr int kCatalogEntryLen = 2 + 2 + 1 + 4 + 4 + 2 + 2 + 16 + 24;  // 57
-constexpr int kObsEntryLen     = 2 + 1 + 2 + 8 + 8 + 2 + 2 + 4 + 8;  // 37
+// Le NOM au bout d'une observation, c'est QUI l'affirme. Le serveur le tenait
+// depuis le début et ne l'envoyait à personne : la colonne Source disait
+// « tué » sans jamais dire par qui.
+constexpr int kObsEntryLen     = 2 + 1 + 2 + 8 + 8 + 2 + 2 + 4 + 8 + 24;  // 61
 constexpr int kFavEntryLen     = 2;
 constexpr int kMemberEntryLen  = 4 + 2 + 1 + 24;  // 31
 
@@ -133,6 +136,10 @@ void MvpTracker::HandleState(const uint8_t* data, uint16_t len) {
         obs.tomb_y        = Read<int16_t>(e + 23);
         obs.by_user_id    = Read<uint32_t>(e + 25);
         obs.reported_at   = Read<int64_t>(e + 29);
+        // NUL-paddé par le serveur, mais on borne quand même : le tampon vient
+        // du fil, et un nom sans terminaison déborderait à la première lecture.
+        std::memcpy(obs.by_name, e + 37, sizeof(obs.by_name) - 1);
+        obs.by_name[sizeof(obs.by_name) - 1] = '\0';
         // L'arbitrage a déjà eu lieu côté serveur : ce qui arrive fait autorité.
         obs_[slot_id] = obs;
       }
@@ -284,14 +291,29 @@ void MvpTracker::SetFavorite(uint16_t slot_id, bool on) {
 //
 // Vide = pas de tombe, ce que le serveur traite comme l'ancien comportement.
 void MvpTracker::ReportManual(uint16_t slot_id, int64_t kill_time,
-                              int16_t tomb_x, int16_t tomb_y) {
-  char tomb[24] = {};
+                              int16_t tomb_x, int16_t tomb_y,
+                              const char* shared_by_utf8) {
+  // « x,y|Pseudo », les deux moitiés facultatives. Le nom vient EN DERNIER et
+  // le serveur ne l'analyse pas : un pseudo peut porter n'importe quoi sauf la
+  // barre qui le précède.
+  char extra[40] = {};
+  char* p = extra;
+  size_t left = sizeof(extra);
+
   if (tomb_x >= 0 && tomb_y >= 0) {
-    std::snprintf(tomb, sizeof(tomb), "%d,%d", static_cast<int>(tomb_x),
-                  static_cast<int>(tomb_y));
+    const int n = std::snprintf(p, left, "%d,%d", static_cast<int>(tomb_x),
+                                static_cast<int>(tomb_y));
+    if (n > 0 && static_cast<size_t>(n) < left) { p += n; left -= n; }
   }
+  if (shared_by_utf8 != nullptr && shared_by_utf8[0] != '\0') {
+    // 🔴 Le pseudo repart dans la code-page du FIL : il en vient (une ligne de
+    // chat), il y retourne. Le serveur le range dans un champ de NAME_LENGTH
+    // qu'il renverra tel quel au reste du groupe.
+    std::snprintf(p, left, "|%s", ro::Utf8ToWire(shared_by_utf8));
+  }
+
   Send(10, slot_id, static_cast<uint32_t>(kill_time),
-       tomb[0] != '\0' ? tomb : nullptr);
+       extra[0] != '\0' ? extra : nullptr);
 }
 
 const mvp::Slot* MvpTracker::FindSlotFor(uint16_t mob_id, const char* map) const {

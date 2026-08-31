@@ -1209,6 +1209,10 @@ constexpr uint32_t kDefaultRgb = 0xFFFFFF;
 constexpr ImU32 kStampCol   = IM_COL32(150, 150, 150, 255);
 constexpr ImU32 kDiagCol    = IM_COL32(0xFF, 0xB0, 0x40, 255);  // marqueur de type
 constexpr ImU32 kLinkCol    = IM_COL32(0xF4, 0x93, 0x4A, 0xFF);  // liens du client
+// Le même orange, éteint : un lien dont l'échéance est passée (respawn de MVP).
+// Il reste lisible sur le fond sombre du log — on le retire de l'attention,
+// pas de la lecture.
+constexpr ImU32 kLinkColSpent = IM_COL32(0x96, 0x70, 0x52, 0xFF);
 constexpr ImU32 kTabTextCol = IM_COL32(0x14, 0x14, 0x14, 255);   // texte des onglets
 constexpr ImU32 kDarkText   = IM_COL32(0x14, 0x14, 0x14, 255);   // sur champ clair
 
@@ -4708,8 +4712,31 @@ void ChatWindow::DrawLines(const Channel& channel) {
         continue;
       }
 
-      const ImU32 col = run.is_link() ? kLinkCol : (run.color != 0 ? run.color : def_col);
-      const std::string& u = run.text;
+      // ── Un lien de RESPAWN se recompose à CHAQUE frame ───────────────────
+      //
+      // 🔴 C'est le seul fragment du log dont le texte n'est pas figé, et il le
+      // faut : ce qu'il annonce est une ÉCHÉANCE. « retour 21:12–21:22 » reste
+      // écrit sur la ligne à 23 h, et une information périmée qui a l'air
+      // fraîche est pire qu'une information absente. Le corps de la balise,
+      // lui, ne bouge pas — c'est le libellé qu'on refait.
+      //
+      // ⚠ La couleur du périmé est une version ÉTEINTE de celle des liens, pas
+      // un gris : le fond du log est sombre, et le fragment doit rester lisible
+      // en cessant d'attirer l'œil.
+      std::string live_text;
+      ImU32 live_col = 0;
+      if (run.kind == Run::kMvp) {
+        const links::Target mvp = links::FromMvpTag(run.mvp_payload.c_str());
+        if (mvp.valid()) {
+          live_text = mvp.label;
+          if (links::MvpWindowPassed(mvp)) live_col = kLinkColSpent;
+        }
+      }
+      const ImU32 col = live_col != 0
+                            ? live_col
+                            : (run.is_link() ? kLinkCol
+                                             : (run.color != 0 ? run.color : def_col));
+      const std::string& u = live_text.empty() ? run.text : live_text;
       // ── La police de CE fragment ─────────────────────────────────────────
       // 🔴 Elle sert à la MESURE autant qu'au dessin. Le gras est plus large que
       // le normal : mesurer avec l'une et dessiner avec l'autre ferait tomber
@@ -4750,7 +4777,15 @@ void ChatWindow::DrawLines(const Channel& channel) {
         ro::SetHoverCursor(2);  // curseur « main » RO
         // La description simple SOUS LA SOURIS, comme sur une cellule d'objet :
         // lire un lien ne devrait pas obliger à cliquer.
-        links::HoverPreview(TargetOf(run));
+        // 🔴 L'EXPÉDITEUR de la ligne part avec la cible. Il ne s'analyse pas
+        // depuis le texte — rien ne distingue un pseudo d'un mot ordinaire —
+        // et c'est la seule chose qui réponde à « qui l'affirme » quand on
+        // importe un respawn partagé dans son carnet.
+        auto said_by = [&](links::Target target) {
+          if (target.kind == links::Target::kMvp) target.player_name = line.sender;
+          return target;
+        };
+        links::HoverPreview(said_by(TargetOf(run)));
         // Convention commune à tout le client (features/link_gesture.h) : gauche
         // = description, droite = menu, Maj+clic = lien dans la barre.
         //
@@ -4760,11 +4795,11 @@ void ChatWindow::DrawLines(const Channel& channel) {
         // pointer dans le deque serait pire encore, l'ingestion y pousse depuis
         // le fil du jeu.
         if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-          click_target = TargetOf(run);
+          click_target = said_by(TargetOf(run));
           click_shift  = ImGui::GetIO().KeyShift;
         }
         if (ImGui::IsMouseClicked(ImGuiMouseButton_Right))
-          link_menu_.Arm(TargetOf(run));
+          link_menu_.Arm(said_by(TargetOf(run)));
       };
       // ── Miniature d'une image de NOTRE miroir ────────────────────────────
       //
@@ -7087,6 +7122,13 @@ bool ChatWindow::AppendStatusLink(uint16_t efst) {
 bool ChatWindow::AppendMvpLink(const char* payload_utf8, const char* display_utf8) {
   if (!imgui_enabled_ || !input_bar_) return false;
   if (payload_utf8 == nullptr || payload_utf8[0] == '\0') return false;
+  // 🔴 Le commentaire de `NameFitsInTag` prévoyait le cas : « un quatrième type
+  // de balise aurait pu l'oublier ». Le corps porte un nom de MVP et un nom de
+  // carte ; un chevron dans l'un ou l'autre couperait la balise en deux à la
+  // relecture, et les trois lecteurs — nous, Discord, le site — la rendraient
+  // en toutes lettres. Le test porte sur le corps entier plutôt que sur le seul
+  // nom : c'est là qu'est le contrat.
+  if (!NameFitsInTag(payload_utf8)) return false;
   if (!LinkSlotAvailable()) return false;
 
   char wire[320];

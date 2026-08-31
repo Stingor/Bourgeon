@@ -132,6 +132,11 @@ struct Target {
   // TOUT ce dont on dispose : pas d'AID, donc aucune des actions du menu
   // contextuel d'entité (qui résout sa cible par l'acteur à l'écran) n'est
   // utilisable ici. Celles du menu ci-dessous prennent toutes un nom.
+  //
+  // 🔴 `kMvp` le réutilise pour l'EXPÉDITEUR de la ligne, c'est-à-dire celui qui
+  // affirme le respawn. Ce n'est pas un détournement : dans les deux cas, c'est
+  // « le pseudo d'un joueur, tel qu'une ligne de chat le porte ». Il est posé
+  // par le log au moment du geste — le nom ne s'analyse pas depuis le texte.
   std::string player_name;  // UTF-8
 
   // kSetting — la CLÉ de la destination (« item_toast », « graphics »). C'est
@@ -301,6 +306,12 @@ std::string MvpTagPayload(const Target& target);
 // du LECTEUR : « [MVP: Baphomet (gef_dun03) — 21:12–21:22] ». L'heure est celle
 // de l'horloge du serveur, la seule sur laquelle tout le monde s'accorde.
 std::string MvpLabel(const Target& target);
+
+// La fenêtre de retour est-elle DERRIÈRE nous ? Une ligne de chat ne vieillit
+// pas toute seule : « retour 21:12–21:22 » reste écrit à 23 h, et une
+// information périmée qui a l'air fraîche est pire qu'une information absente.
+// Le log s'en sert pour estomper le lien.
+bool MvpWindowPassed(const Target& target);
 
 // ── Le Maj + clic, pour les surfaces qui ne passent pas par `Gestures` ───────
 //
