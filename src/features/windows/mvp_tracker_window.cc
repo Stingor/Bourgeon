@@ -1528,7 +1528,8 @@ void MvpTrackerWindow::DrawTable() {
     ImGui::TableSetColumnIndex(5);
     int64_t from = 0, to = 0;
     bool exact = false;
-    if (!state->Window(slot->slot_id, &from, &to, &exact)) {
+    const bool window_known = state->Window(slot->slot_id, &from, &to, &exact);
+    if (!window_known) {
       // Rien d'observé : on n'écrit RIEN, alors même que le serveur connaît le
       // tirage. C'est la règle de non-triche, visible à l'œil nu.
       ImGui::TextDisabled(i18n::Tr("jamais vu"));
@@ -1569,8 +1570,26 @@ void MvpTrackerWindow::DrawTable() {
     // Un bouton plutôt qu'un clic droit sur du texte : quand aucune observation
     // n'existe, la cellule serait vide et `IsItemHovered` désignerait l'item
     // PRÉCÉDENT — donc une autre colonne, voire une autre ligne.
-    if (ro::RoSmallButton(obs != nullptr ? SourceLabel(obs->source)
-                                         : i18n::Tr("saisir"))) {
+
+    // 🔴 Une observation DÉPENSÉE — fenêtre refermée, ou instant exact
+    // dépassé — n'attend plus qu'on la lise : elle attend qu'on la REMPLACE.
+    // Le MVP est revenu, et il est peut-être déjà retombé. Annoncer « tué »
+    // sur une mort dont plus rien ne découle donne à la ligne un air de
+    // renseignement à jour ; ce bouton est le seul geste qui la remette en
+    // état, autant qu'il le dise.
+    //
+    // Ce que l'observation FUT n'est pas perdu pour autant : l'infobulle le
+    // porte, et c'est sa place — une archive se consulte, elle n'invite pas.
+    // La colonne « Retour » dit déjà « fenêtre passée » juste à côté, et
+    // « Âge » l'ancienneté : la ligne reste lisible d'un bout à l'autre.
+    //
+    // ⚠ Sans effet sur le TRI : la colonne Source n'a pas de cas dans le
+    // comparateur, elle retombe sur le nom. Un libellé qui change ne
+    // réordonne donc rien.
+    const bool spent = window_known && (exact ? from <= now : to <= now);
+
+    if (ro::RoSmallButton((obs != nullptr && !spent) ? SourceLabel(obs->source)
+                                                     : i18n::Tr("saisir"))) {
       manual_slot_ = slot->slot_id;
       manual_time_buf_[0] = '\0';
       open_manual_popup_ = true;
@@ -1578,13 +1597,20 @@ void MvpTrackerWindow::DrawTable() {
     if (ImGui::IsItemHovered()) {
       // QUI l'affirme, quand le serveur nous l'a dit. C'est ce qui sépare une
       // observation d'une rumeur : « tué » ne veut pas dire grand-chose, « tué
-      // par Stingor » se vérifie. Le nom manque pour une saisie au clavier —
-      // c'est soi-même — et l'infobulle retombe alors sur son texte d'origine.
-      if (obs != nullptr && obs->by_name[0] != '\0') {
+      // par Stingor » se vérifie.
+      //
+      // 🔴 La SOURCE est nommée ici dès qu'une observation existe, et pas
+      // seulement quand un nom l'accompagne : c'est devenu la seule place où
+      // elle se lit une fois la fenêtre passée, le bouton disant alors
+      // « saisir ».
+      if (obs == nullptr) {
+        ImGui::SetTooltip(i18n::Tr("Saisir l'heure de mort observée."));
+      } else if (obs->by_name[0] != '\0') {
         ImGui::SetTooltip(i18n::Tr("%s — d'après %s.\nCliquer pour saisir une heure."),
                           SourceLabel(obs->source), ro::WireToUtf8(obs->by_name));
       } else {
-        ImGui::SetTooltip(i18n::Tr("Saisir l'heure de mort observée."));
+        ImGui::SetTooltip(i18n::Tr("%s.\nCliquer pour saisir une heure."),
+                          SourceLabel(obs->source));
       }
     }
 
