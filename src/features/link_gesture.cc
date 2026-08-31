@@ -6,6 +6,8 @@
 
 #include <cstdarg>  // DimText, relais variadique vers ImGui::TextV
 #include <cstdio>
+#include <cstdlib>  // atoll (corps d'une balise <MVPL>)
+#include <ctime>    // localtime_s (l'heure murale d'un respawn partagé)
 #include <cstring>  // _strnicmp (adresse « www.… » sans schéma)
 
 #include "bourgeon.h"
@@ -320,6 +322,120 @@ Target FromStatus(uint16_t efst) {
   return t;
 }
 
+// ── Le RESPAWN d'un MVP, partagé dans le chat ──────────────────────────
+
+namespace {
+
+// L'heure MURALE d'un instant de l'horloge serveur.
+//
+// Le carnet fait déjà ce raccourci pour sa saisie manuelle, et il est correct
+// ici pour la même raison : le serveur et ses joueurs vivent dans le même
+// fuseau, si bien que `localtime_s` sur un instant SERVEUR rend l'heure que
+// les deux lisent à leur horloge. Entretenir un second décalage n'ajouterait
+// qu'une occasion de se tromper.
+bool MvpClock(int64_t epoch, char* out, size_t cap) {
+  if (epoch <= 0) return false;
+  const std::time_t moment = static_cast<std::time_t>(epoch);
+  std::tm local{};
+  if (localtime_s(&local, &moment) != 0) return false;
+  std::snprintf(out, cap, "%02d:%02d", local.tm_hour, local.tm_min);
+  return true;
+}
+
+}  // namespace
+
+// Le libellé est composé CHEZ LE LECTEUR, comme celui d'un réglage ou d'un
+// état : le nom transporté ne sert qu'à rester lisible chez qui n'a pas
+// Bourgeon. Ce qu'on met en tête, c'est le RETOUR — c'est la question posée ;
+// l'heure de mort ne s'affiche que faute de mieux.
+std::string MvpLabel(const Target& target) {
+  const char* name = !target.mob_name.empty() ? target.mob_name.c_str() : "?";
+  const char* map  = !target.navi_map.empty() ? target.navi_map.c_str() : "?";
+
+  char buf[224];
+  char a[16], b[16];
+
+  // Un instant EXACT : quelqu'un a payé un Convex Mirror et l'a partagé.
+  if (target.mvp_resp > 0 && MvpClock(target.mvp_resp, a, sizeof(a))) {
+    std::snprintf(buf, sizeof(buf), i18n::Tr("[MVP: %s (%s) — retour à %s]"),
+                  name, map, a);
+    return buf;
+  }
+  // Sinon LA LOI, appliquée à l'heure de mort : une fenêtre, jamais un point.
+  if (target.mvp_kill > 0 && target.mvp_d1_min > 0) {
+    const int64_t from = target.mvp_kill + static_cast<int64_t>(target.mvp_d1_min) * 60;
+    const int64_t to   = from + static_cast<int64_t>(target.mvp_d2_min) * 60;
+    if (MvpClock(from, a, sizeof(a)) && MvpClock(to, b, sizeof(b))) {
+      std::snprintf(buf, sizeof(buf), i18n::Tr("[MVP: %s (%s) — retour %s–%s]"),
+                    name, map, a, b);
+      return buf;
+    }
+  }
+  if (target.mvp_kill > 0 && MvpClock(target.mvp_kill, a, sizeof(a))) {
+    std::snprintf(buf, sizeof(buf), i18n::Tr("[MVP: %s (%s) — mort à %s]"),
+                  name, map, a);
+    return buf;
+  }
+  std::snprintf(buf, sizeof(buf), i18n::Tr("[MVP: %s (%s)]"), name, map);
+  return buf;
+}
+
+Target FromMvpTag(const char* payload_utf8) {
+  Target t;
+  if (payload_utf8 == nullptr || payload_utf8[0] == '\0') return t;
+
+  // Huit champs, puis le libellé. Le libellé vient EN DERNIER exactement pour
+  // qu'il puisse contenir des deux-points : on découpe huit fois, le reste EST
+  // le libellé. Même découpe que `<SETL>`.
+  const std::string body(payload_utf8);
+  std::string part[9];
+  size_t pos = 0;
+  for (int i = 0; i < 8; ++i) {
+    const size_t colon = body.find(':', pos);
+    if (colon == std::string::npos) return t;  // corps tronqué : pas de lien
+    part[i] = body.substr(pos, colon - pos);
+    pos = colon + 1;
+  }
+  part[8] = body.substr(pos);
+
+  if (part[1].empty() || part[8].empty()) return t;
+
+  const int64_t kill = std::atoll(part[2].c_str());
+  const int64_t resp = std::atoll(part[3].c_str());
+  // Ni heure de mort ni instant de retour : le lien n'apprend RIEN, et c'est
+  // son seul contenu. Même règle qu'une recette absente.
+  if (kill <= 0 && resp <= 0) return t;
+
+  t.kind       = Target::kMvp;
+  t.mob_id     = static_cast<uint32_t>(std::atoi(part[0].c_str()));
+  t.mob_rank   = 2;  // c'est un MVP, par construction
+  t.mob_name   = part[8];
+  t.navi_map   = part[1];
+  t.mvp_kill   = kill;
+  t.mvp_resp   = resp;
+  t.mvp_d1_min = static_cast<uint16_t>(std::atoi(part[4].c_str()));
+  t.mvp_d2_min = static_cast<uint16_t>(std::atoi(part[5].c_str()));
+  t.mvp_tomb_x = static_cast<int16_t>(std::atoi(part[6].c_str()));
+  t.mvp_tomb_y = static_cast<int16_t>(std::atoi(part[7].c_str()));
+  t.label      = MvpLabel(t);
+  return t;
+}
+
+std::string MvpTagPayload(const Target& target) {
+  char buf[256];
+  std::snprintf(buf, sizeof(buf), "%u:%s:%lld:%lld:%u:%u:%d:%d:%s",
+                static_cast<unsigned>(target.mob_id),
+                target.navi_map.c_str(),
+                static_cast<long long>(target.mvp_kill),
+                static_cast<long long>(target.mvp_resp),
+                static_cast<unsigned>(target.mvp_d1_min),
+                static_cast<unsigned>(target.mvp_d2_min),
+                static_cast<int>(target.mvp_tomb_x),
+                static_cast<int>(target.mvp_tomb_y),
+                target.mob_name.c_str());
+  return buf;
+}
+
 Target FromSetting(const char* key) {
   Target t;
   // Destination inconnue — ou absente du panneau de CE joueur — = pas de lien.
@@ -479,6 +595,26 @@ void OpenDescription(const Target& target) {
         mu->OpenSettingTarget(target.setting_key.c_str());
       break;
     }
+    case Target::kMvp: {
+      // Un respawn partagé n'a pas de « description » : ce qu'on veut en voir,
+      // c'est sa LIGNE dans le carnet, avec le compte à rebours vivant et le
+      // reste de la chasse autour. Même geste que `kSetting`, qui ouvre le
+      // panneau déjà déplié au bon endroit.
+      //
+      // ⚠ Le clic gauche n'IMPORTE rien : écrire dans le carnet touche celui
+      // de tout le groupe, et ça ne se fait pas par mégarde. C'est une entrée
+      // du menu.
+      if (auto* win = Bourgeon::Instance().mvp_tracker_window()) {
+        MvpTracker* state = Bourgeon::Instance().mvp_tracker();
+        const mvp::Slot* slot =
+            state != nullptr
+                ? state->FindSlotFor(static_cast<uint16_t>(target.mob_id),
+                                     target.navi_map.c_str())
+                : nullptr;
+        win->OpenOn(slot != nullptr ? slot->slot_id : 0xFFFF);
+      }
+      break;
+    }
     case Target::kNaviSearch: {
       // Une recherche n'a pas de description non plus : on l'OUVRE. C'est le
       // panneau ImGui, donc rien à différer — il se contente de poser un terme
@@ -590,6 +726,8 @@ bool PostToChat(const Target& target) {
                                       target.navi_map.c_str());
   if (target.kind == Target::kStatus)
     return chat->AppendStatusLink(target.status_efst);
+  if (target.kind == Target::kMvp)
+    return chat->AppendMvpLink(MvpTagPayload(target).c_str(), target.label.c_str());
   return false;
 }
 
@@ -752,6 +890,44 @@ void HoverPreview(const Target& target) {
     StatusEffects::Entry e;
     e.efst = target.status_efst;
     statuscell::Tooltip(e);
+    return;
+  }
+  if (target.kind == Target::kMvp) {
+    // Ce lien PORTE son information, comme celui d'un état : la ligne de chat
+    // ne montre qu'une heure, et tout le reste — la carte, la tombe, l'âge de
+    // l'observation — tient ici.
+    char a[16], b[16];
+
+    ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
+    ImGui::BeginTooltip();
+    ImGui::TextUnformatted(!target.mob_name.empty() ? target.mob_name.c_str()
+                                                    : i18n::Tr("MVP"));
+    ImGui::Separator();
+    DimText("%s", target.navi_map.c_str());
+
+    if (target.mvp_resp > 0 && MvpClock(target.mvp_resp, a, sizeof(a))) {
+      // Un instant exact ne s'invente pas : quelqu'un a payé un Convex Mirror.
+      // Le dire évite qu'on prenne cette précision pour une supposition.
+      DimText(i18n::Tr("Retour à %s (Convex Mirror)"), a);
+    } else if (target.mvp_kill > 0 && target.mvp_d1_min > 0) {
+      const int64_t from = target.mvp_kill + static_cast<int64_t>(target.mvp_d1_min) * 60;
+      const int64_t to   = from + static_cast<int64_t>(target.mvp_d2_min) * 60;
+      if (MvpClock(from, a, sizeof(a)) && MvpClock(to, b, sizeof(b)))
+        DimText(i18n::Tr("Retour entre %s et %s"), a, b);
+    }
+    if (target.mvp_kill > 0 && MvpClock(target.mvp_kill, a, sizeof(a)))
+      DimText(i18n::Tr("Mort à %s"), a);
+
+    // 🔴 `-1` et non `0,0` : la cellule (0,0) existe, et une tombe peut
+    // parfaitement s'y trouver. C'est la convention du carnet, on la tient.
+    if (target.mvp_tomb_x >= 0 && target.mvp_tomb_y >= 0)
+      DimText(i18n::Tr("Tombe en %d, %d"), static_cast<int>(target.mvp_tomb_x),
+              static_cast<int>(target.mvp_tomb_y));
+
+    ImGui::Spacing();
+    DimText(i18n::Tr("Clic : ouvrir le carnet de chasse"));
+    ImGui::EndTooltip();
+    ImGui::PopStyleColor();
     return;
   }
   if (target.kind == Target::kSetting) {
@@ -1025,6 +1201,24 @@ void DrawMenu(const char* popup_id, const Target& target) {
         if (ImGui::MenuItem(i18n::Tr("Fiche du monstre"))) OpenDescription(target);
         if (ImGui::MenuItem(i18n::Tr("Bestiaire du site"))) OpenMobDbPage(target.mob_id);
         if (ImGui::MenuItem(i18n::Tr("Lien dans le chat"))) PostToChat(target);
+        // ── Partager le RESPAWN ──────────────────────────────────────────────
+        //
+        // 🔴 Cette entrée n'existe QUE sur un lien venu du carnet de chasse : lui
+        // seul remplit ces champs. Partout ailleurs — le chat, la table des
+        // drops, une fiche — un lien de monstre ne sait rien d'une heure de mort,
+        // et proposer de la partager serait proposer du vide.
+        //
+        // Le lien POSÉ change de genre au passage : c'est un `kMvp`, pas un
+        // monstre. Ce qu'on partage n'est pas « Baphomet » — tout le monde sait
+        // ce qu'est Baphomet — c'est QUAND il revient.
+        if (target.mvp_kill > 0 || target.mvp_resp > 0) {
+          if (ImGui::MenuItem(i18n::Tr("Partager le respawn dans le chat"))) {
+            Target share = target;
+            share.kind   = Target::kMvp;
+            share.label  = MvpLabel(share);
+            PostToChat(share);
+          }
+        }
         ImGui::Separator();
         // ── Où le trouver ────────────────────────────────────────────────────
         // Le pendant de la fiche : elle dit CE QUE c'est, la navigation dit OÙ.
@@ -1129,6 +1323,62 @@ void DrawMenu(const char* popup_id, const Target& target) {
           if (name != nullptr && name[0] != '\0')
             ImGui::SetClipboardText(ro::LocalToUtf8(name));
         }
+        break;
+      }
+      case Target::kMvp: {
+        MvpTracker* state = Bourgeon::Instance().mvp_tracker();
+        const mvp::Slot* slot =
+            state != nullptr
+                ? state->FindSlotFor(static_cast<uint16_t>(target.mob_id),
+                                     target.navi_map.c_str())
+                : nullptr;
+        const bool has_group = state != nullptr && state->group().group_id != 0;
+        const bool importable = slot != nullptr && has_group && target.mvp_kill > 0;
+
+        // 🔴 L'import écrit dans le carnet de TOUT LE GROUPE, et il est marqué
+        // « saisi » — la source la moins précise, celle de ce qu'un joueur
+        // affirme. C'est exactement ce qu'est un lien reçu : on prend quelqu'un
+        // au mot. Le présenter comme un kill ou une tombe mentirait sur la
+        // provenance, et la colonne Source du carnet existe pour ça.
+        ImGui::BeginDisabled(!importable);
+        if (ImGui::MenuItem(i18n::Tr("Ajouter à mon carnet")) && importable) {
+          state->ReportManual(slot->slot_id, target.mvp_kill, target.mvp_tomb_x,
+                              target.mvp_tomb_y);
+        }
+        ImGui::EndDisabled();
+        // ⚠ `AllowWhenDisabled` : sans lui l'entrée grisée est muette, alors que
+        // c'est précisément là qu'on a besoin du motif.
+        if (!importable &&
+            ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+          if (!has_group)
+            ImGui::SetTooltip(i18n::Tr("Créez un groupe de chasse pour tenir un carnet."));
+          else if (slot == nullptr)
+            ImGui::SetTooltip(i18n::Tr("Ce créneau n'est pas dans votre catalogue."));
+          else
+            ImGui::SetTooltip(i18n::Tr("Ce lien ne porte pas d'heure de mort."));
+        }
+
+        if (ImGui::MenuItem(i18n::Tr("Ouvrir le carnet"))) OpenDescription(target);
+
+        // La tombe REDEVIENT un lieu : on sait sur quelle carte et à quelle
+        // cellule, donc on sait y aller. C'est la seule action de ce menu qui
+        // met le jeu en mouvement.
+        if (target.mvp_tomb_x >= 0 && target.mvp_tomb_y >= 0 &&
+            !target.navi_map.empty()) {
+          if (ImGui::MenuItem(i18n::Tr("Guider vers la tombe"))) {
+            if (auto* nav = Bourgeon::Instance().navigation_window())
+              nav->GoTo(target.navi_map.c_str(),
+                        static_cast<int>(target.mvp_tomb_x),
+                        static_cast<int>(target.mvp_tomb_y));
+          }
+        }
+        // 0 = créneau scripté : le mob change à chaque cycle, il n'y a pas de
+        // fiche à promettre.
+        if (target.mob_id != 0) {
+          if (ImGui::MenuItem(i18n::Tr("Fiche du monstre")))
+            OpenMobSheet(target.mob_id, false);
+        }
+        if (ImGui::MenuItem(i18n::Tr("Lien dans le chat"))) PostToChat(target);
         break;
       }
       case Target::kNaviSearch: {

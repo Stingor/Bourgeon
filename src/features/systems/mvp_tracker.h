@@ -186,6 +186,12 @@ class MvpTracker : public Plugin {
   const mvp::Group& group() const { return group_; }
 
   const mvp::Slot* FindSlot(uint16_t slot_id) const;
+  // Le créneau désigné par sa CLÉ STABLE `(mob_id, carte)` — la seule qui
+  // survive à un redémarrage du serveur, `slot_id` n'étant qu'un rang dans un
+  // registre reconstruit. C'est donc elle que transporte tout ce qui sort du
+  // client : une ligne détachée, un favori en base, un lien `<MVPL>` de chat.
+  // `mob_id` à 0 = créneau scripté, où la carte suffit à désigner.
+  const mvp::Slot* FindSlotFor(uint16_t mob_id, const char* map) const;
   const mvp::Obs*  FindObs(uint16_t slot_id) const;
   bool IsFavorite(uint16_t slot_id) const;
 
@@ -222,7 +228,11 @@ class MvpTracker : public Plugin {
   void LeaveGroup();
   void KickMember(const char* char_name_utf8);
   void SetFavorite(uint16_t slot_id, bool on);
-  void ReportManual(uint16_t slot_id, int64_t kill_time);
+  // La SAISIE : ce qu'un joueur affirme. `tomb_x/y` à -1 quand on ne sait pas
+  // où il est mort — c'est le cas de la saisie à la main, mais pas de l'import
+  // d'un lien `<MVPL>`, qui transporte la tombe quand son auteur l'avait.
+  void ReportManual(uint16_t slot_id, int64_t kill_time, int16_t tomb_x = -1,
+                    int16_t tomb_y = -1);
 
  private:
   void Send(uint8_t cmd, uint32_t a, uint32_t b, const char* text_utf8);

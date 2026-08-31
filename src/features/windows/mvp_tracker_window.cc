@@ -234,6 +234,17 @@ void MvpTrackerWindow::Open() {
   }
 }
 
+// 🔴 Le défilement n'est PAS fait ici : à cet instant la table n'existe pas
+// encore (elle naît dans le prochain OnRenderUI), et son clipper ne connaît
+// donc ni le rang du créneau ni sa hauteur. On pose une INTENTION, le rendu la
+// consomme — c'est le même contrat que `OpenSettingTarget` du panneau.
+void MvpTrackerWindow::OpenOn(uint16_t slot_id) {
+  Open();
+  focus_slot_     = slot_id;
+  focus_ms_       = GetTickCount();
+  focus_scrolled_ = false;
+}
+
 void MvpTrackerWindow::Toggle() {
   if (open_) {
     open_ = false;
@@ -1358,6 +1369,23 @@ void MvpTrackerWindow::DrawTable() {
 
   ImGuiListClipper clipper;
   clipper.Begin(static_cast<int>(rows.size()), row_h);
+
+  // 🔴 Le rang visé par `OpenOn` doit Être SOUMIS même hors écran : un clipper
+  // ne dessine que le visible, et `SetScrollHereY` ne peut pas viser un rang
+  // qui n'a pas été dessiné. `IncludeItemByIndex` l'exempte pour cette frame,
+  // le temps qu'il donne sa position au défilement.
+  int focus_row = -1;
+  if (focus_slot_ != 0xFFFF && !focus_scrolled_) {
+    for (size_t i = 0; i < rows.size(); ++i) {
+      if (rows[i]->slot_id == focus_slot_) {
+        focus_row = static_cast<int>(i);
+        clipper.IncludeItemByIndex(focus_row);
+        break;
+      }
+    }
+    // Introuvable (filtre actif, catalogue plus court) : on n'insiste pas.
+    if (focus_row < 0) focus_slot_ = 0xFFFF;
+  }
   while (clipper.Step())
   for (int row_index = clipper.DisplayStart; row_index < clipper.DisplayEnd; ++row_index) {
     const mvp::Slot* slot = rows[row_index];
@@ -1375,6 +1403,24 @@ void MvpTrackerWindow::DrawTable() {
     // hors de portée des index de colonnes.
     ImGui::PushID("slot");
     ImGui::PushID(static_cast<int>(slot->slot_id));
+
+    // Le créneau qu'un lien de chat vient de désigner : on l'amène à l'écran
+    // une seule fois, puis on le teinte quelques secondes pour que l'œil le
+    // retrouve. Au-delà, la mise en avant s'efface d'elle-même : elle répond à
+    // un geste, elle n'est pas un état du carnet.
+    if (focus_slot_ != 0xFFFF && slot->slot_id == focus_slot_) {
+      if (!focus_scrolled_) {
+        ImGui::SetScrollHereY(0.4f);
+        focus_scrolled_ = true;
+      }
+      const unsigned age = GetTickCount() - focus_ms_;
+      if (age < 6000u) {
+        ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0,
+                               ImGui::GetColorU32(ImVec4(0.85f, 0.72f, 0.30f, 0.22f)));
+      } else {
+        focus_slot_ = 0xFFFF;
+      }
+    }
 
     ImGui::TableSetColumnIndex(0);
     // ── La POIGNÉE de détachement ──────────────────────────────────────────
@@ -1431,8 +1477,24 @@ void MvpTrackerWindow::DrawTable() {
       // « Où le trouver », @mobinfo, @whereis. Rien de tout cela n'est réécrit
       // ici : c'est le même code que les liens du chat et des descriptions,
       // donc les mêmes gestes partout.
-      links::Label(links::FromMob(link_mob, /*rank=*/2, SlotLabel(*slot, obs)),
-                   SlotLabel(*slot, obs), menu_);
+      // 🔴 Le lien reste un lien de MONSTRE — on garde ses six actions — mais
+      // il PORTE en plus l'observation du créneau. C'est ce qui fait apparaître
+      // « Partager le respawn » dans son menu, et uniquement ici : partout
+      // ailleurs (chat, table des drops, fiche) ces champs valent zéro et
+      // l'entrée n'existe pas. Le carnet est le seul endroit qui SAIT une heure
+      // de mort ; c'est donc le seul d'où l'on puisse la partager.
+      links::Target name_link = links::FromMob(link_mob, /*rank=*/2,
+                                               SlotLabel(*slot, obs));
+      name_link.navi_map   = slot->map;
+      name_link.mvp_d1_min = static_cast<uint16_t>(slot->delay1_ms / 60000u);
+      name_link.mvp_d2_min = static_cast<uint16_t>(slot->delay2_ms / 60000u);
+      if (obs != nullptr) {
+        name_link.mvp_kill   = obs->kill_time;
+        name_link.mvp_resp   = obs->exact_respawn;
+        name_link.mvp_tomb_x = obs->tomb_x;
+        name_link.mvp_tomb_y = obs->tomb_y;
+      }
+      links::Label(name_link, SlotLabel(*slot, obs), menu_);
     } else {
       // Créneau scripté jamais observé : aucun mob à désigner, donc aucun lien
       // à promettre. Un lien mort serait pire qu'un libellé simple.

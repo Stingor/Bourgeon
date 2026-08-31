@@ -82,9 +82,24 @@ struct Target {
   // dire — le nom, l'effet, l'icône — tient dans l'infobulle, que `statuscell`
   // sait déjà composer. Le lien PORTE donc son information, au lieu d'en
   // promettre une ailleurs.
+  // kMvp — un RESPAWN de MVP partagé : « Baphomet (gef_dun03) — 21:12–21:22 ».
+  // C'est le seul lien qui transporte un FAIT DATÉ plutôt qu'une référence à
+  // quelque chose qui existe déjà chez le lecteur. Un objet, un monstre, un
+  // réglage se retrouvent dans les données du client ; une heure de mort
+  // n'existe que dans le carnet de celui qui l'a vue, et personne d'autre ne
+  // peut la reconstituer. Elle voyage donc EN ENTIER, comme le code d'un style.
+  //
+  // 🔴 Il RÉUTILISE trois champs plutôt que d'en créer des jumeaux :
+  //  · `mob_id` / `mob_rank` / `mob_name`, le monstre — d'où « Fiche du
+  //    monstre » au menu, sans une ligne réécrite (0 = créneau scripté) ;
+  //  · `navi_map`, la carte — même nature et même règle que pour `kNavi` : le
+  //    nom INTERNE, jamais le nom affiché.
+  // La tombe, elle, a ses propres champs : `navi_x/y` valant `(0,0)` signifie
+  // « la carte entière » pour `kNavi`, alors que `0,0` est une cellule
+  // PARFAITEMENT valide pour une tombe. C'est -1 qui dit « pas de tombe ».
   enum Kind : uint8_t {
     kNone = 0, kItem, kMob, kUrl, kPlayer, kRecipe, kSetting, kStyle, kNavi,
-    kNaviSearch, kStatus
+    kNaviSearch, kStatus, kMvp
   };
   uint8_t kind = kNone;
 
@@ -164,6 +179,22 @@ struct Target {
   // dans sa langue. Il accompagne la balise uniquement pour rester lisible chez
   // qui n'a pas Bourgeon.
   uint16_t status_efst = 0;
+
+  // kMvp — l'observation partagée. Les instants sont en secondes UNIX de
+  // l'horloge SERVEUR, la seule sur laquelle tout le monde s'accorde.
+  //
+  // 🔴 La LOI voyage avec (`mvp_d1_min`, `mvp_d2_min`, en minutes) alors que
+  // tout client Bourgeon la connaît déjà par son catalogue. Elle n'est pas là
+  // pour lui : elle est là pour DISCORD ET LE SITE, qui rendent la même balise
+  // et n'ont aucun moyen de la retrouver. Sans elle, la ligne relayée hors du
+  // jeu ne pourrait annoncer qu'une heure de mort, c'est-à-dire justement pas
+  // ce qu'on partage.
+  int64_t  mvp_kill   = 0;   // heure de MORT, 0 = inconnue
+  int64_t  mvp_resp   = 0;   // instant EXACT (Convex Mirror), 0 = une fenêtre
+  uint16_t mvp_d1_min = 0;   // au plus tôt après la mort
+  uint16_t mvp_d2_min = 0;   // amplitude du tirage
+  int16_t  mvp_tomb_x = -1;  // -1 = pas de tombe. JAMAIS 0,0 pour « aucune »
+  int16_t  mvp_tomb_y = -1;
 
   std::string label;  // ce que le menu affiche en tête (UTF-8)
 
@@ -247,6 +278,29 @@ std::string StatusLabel(uint16_t efst);
 // dessiner : un lien qui n'apprendrait rien vaut moins que pas de lien — même
 // règle qu'une recette absente ou qu'un réglage inconnu.
 Target FromStatus(uint16_t efst);
+
+// ── Le RESPAWN d'un MVP, partagé dans le chat ────────────────────────────────
+//
+// Le corps d'une balise `<MVPL>` est
+//   `mob:carte:mort:exact:d1:d2:tombe_x:tombe_y:libellé`
+// — huit champs numériques puis le libellé, qui vient EN DERNIER pour pouvoir
+// contenir n'importe quoi sauf des chevrons (même découpe que `<SETL>`).
+//
+// `MvpTagPayload` compose ce corps depuis une cible, `FromMvpTag` le relit.
+// Les deux vivent ici plutôt que dans la chatbox parce que Discord et le site
+// rendent la MÊME balise : le format est un contrat entre quatre programmes
+// dans trois dépôts, pas un détail d'affichage (cf. les trois rendus d'une
+// balise de chat — client, `groq_service.py`, `moon_chat_format()`).
+//
+// Cible VIDE si le corps est illisible : un lien qui n'apprend rien vaut moins
+// que pas de lien.
+Target FromMvpTag(const char* payload_utf8);
+std::string MvpTagPayload(const Target& target);
+
+// Le libellé VISIBLE d'un respawn partagé, composé LOCALEMENT et dans la langue
+// du LECTEUR : « [MVP: Baphomet (gef_dun03) — 21:12–21:22] ». L'heure est celle
+// de l'horloge du serveur, la seule sur laquelle tout le monde s'accorde.
+std::string MvpLabel(const Target& target);
 
 // ── Le Maj + clic, pour les surfaces qui ne passent pas par `Gestures` ───────
 //

@@ -64,6 +64,16 @@ class MvpTrackerWindow : public Plugin {
   void Open();
   void Toggle();
 
+  // Ouvre le carnet SUR un créneau : c'est ce que fait le clic gauche d'un lien
+  // `<MVPL>` reçu dans le chat. Le rang est amené à l'écran et surligné quelques
+  // secondes — sans quoi, sur quatre-vingts lignes, on ouvre une table et on ne
+  // sait pas laquelle on venait de cliquer.
+  //
+  // 🔴 0xFFFF = ouvrir sans viser. Un lien peut désigner un créneau que CE
+  // client n'a pas dans son catalogue (serveur redémarré, version différente) :
+  // le carnet s'ouvre quand même, il ne promet simplement rien.
+  void OpenOn(uint16_t slot_id);
+
   // ── Une LIGNE DÉTACHÉE ─────────────────────────────────────────────────────
   //
   // Un créneau sorti du carnet par glisser-déposer : il vit seul à l'écran et
@@ -178,6 +188,13 @@ class MvpTrackerWindow : public Plugin {
   // lâcher : on ne détache que si la souris en est SORTIE, sinon un glissement
   // maladroit à l'intérieur de la table poserait une ligne sous la fenêtre.
   uint16_t drag_slot_   = 0xFFFF;
+
+  // Le créneau mis en avant par `OpenOn`, et l'instant où il l'a été. Le
+  // défilement ne se fait qu'UNE fois : le refaire à chaque frame empêchérait
+  // le joueur de bouger dans la table.
+  uint16_t focus_slot_     = 0xFFFF;
+  unsigned focus_ms_       = 0;
+  bool     focus_scrolled_ = false;
   ImVec2   win_pos_     = ImVec2(0.0f, 0.0f);
   ImVec2   win_size_    = ImVec2(0.0f, 0.0f);
   // La ligne détachée en cours de déplacement, et la prise de la souris.

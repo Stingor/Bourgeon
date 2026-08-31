@@ -2913,6 +2913,38 @@ void ChatWindow::ParseUtf8(const std::string& text, Line* out) const {
         }
       }
     }
+    // RESPAWN DE MVP — balise à NOUS : `<MVPL>corps</MVPL>`.
+    //
+    // Le seul lien qui transporte un FAIT DATÉ plutôt qu'une référence. Le
+    // corps n'est pas découpé ici : `links::FromMvpTag` le fait, parce que le
+    // format est un contrat avec `groq_service.py` (Discord) et
+    // `moon_chat_format()` (le site), et qu'un format écrit à deux endroits
+    // dérive. Corps illisible = pas de lien du tout, et le texte disparaissant
+    // serait pire : on repose le fragment tel quel.
+    if (*p == '<' && (end - p) >= 7 && std::strncmp(p, "<MVPL>", 6) == 0) {
+      const char* body  = p + 6;
+      const char* close = text::SearchSub(body, end, "</MVPL>");
+      if (close != nullptr) {
+        const std::string payload(body, close);
+        const links::Target t = links::FromMvpTag(payload.c_str());
+        if (t.valid()) {
+          flush();
+          Run link;
+          link.kind        = Run::kMvp;
+          link.mvp_payload = payload;
+          link.text        = t.label;
+          out->runs.push_back(link);
+        } else {
+          // Balise d'une version qu'on ne sait pas lire : le fragment reste du
+          // TEXTE. Il ne prétend plus rien montrer, mais la ligne survit.
+          current.text += '[';
+          current.text.append(payload);
+          current.text += ']';
+        }
+        p = close + 7;
+        continue;
+      }
+    }
     // ÉTAT — balise à NOUS : `<STAL>efst:libellé</STAL>`.
     //
     // Le premier lien qui désigne un ÉTAT plutôt qu'un objet du monde. « Prends
@@ -6671,6 +6703,7 @@ links::Target ChatWindow::TargetOf(const Run& run) const {
     case Run::kPlayer: return links::FromPlayer(run.text.c_str());
     case Run::kSetting: return links::FromSetting(run.setting_key.c_str());
     case Run::kStatus: return links::FromStatus(run.status_efst);
+    case Run::kMvp: return links::FromMvpTag(run.mvp_payload.c_str());
     case Run::kStyle:
       return links::FromStyle(run.style_code.c_str(), run.style_owner.c_str());
     case Run::kNavi:
@@ -6695,6 +6728,7 @@ links::Target ChatWindow::TargetOf(const PendingLink& link) const {
   }
   if (link.kind == Run::kSetting) return links::FromSetting(link.setting_key.c_str());
   if (link.kind == Run::kStatus) return links::FromStatus(link.status_efst);
+  if (link.kind == Run::kMvp) return links::FromMvpTag(link.mvp_payload.c_str());
   if (link.kind == Run::kStyle)
     return links::FromStyle(link.style_code.c_str(), link.style_owner.c_str());
   if (link.kind == Run::kNaviSearch)
@@ -7036,6 +7070,35 @@ bool ChatWindow::AppendStatusLink(uint16_t efst) {
   pending.display     = t.label;
   pending.kind        = Run::kStatus;
   pending.status_efst = efst;
+  return PostPendingLink(std::move(pending));
+}
+
+// Poser le lien d'un RESPAWN de MVP — « [MVP: Baphomet (gef_dun03) —
+// 21:12–21:22] ».
+//
+// 🔴 Contrairement à tous les autres liens, celui-ci ne désigne pas : il
+// DÉCLARE. Une heure de mort n'existe nulle part chez le lecteur — ni dans sa
+// DB, ni dans son Lua, ni à l'écran — elle ne vit que dans le carnet de celui
+// qui l'a vue. Le corps de la balise porte donc tout : le monstre, la carte,
+// l'heure, la loi de respawn et la tombe.
+//
+// Le libellé, lui, se recompose chez le LECTEUR (`links::MvpLabel`) : l'heure
+// s'y écrit dans son fuseau et les mots dans sa langue.
+bool ChatWindow::AppendMvpLink(const char* payload_utf8, const char* display_utf8) {
+  if (!imgui_enabled_ || !input_bar_) return false;
+  if (payload_utf8 == nullptr || payload_utf8[0] == '\0') return false;
+  if (!LinkSlotAvailable()) return false;
+
+  char wire[320];
+  std::snprintf(wire, sizeof(wire), "<MVPL>%s</MVPL>", payload_utf8);
+
+  PendingLink pending;
+  pending.wire        = wire;
+  pending.display     = (display_utf8 != nullptr && display_utf8[0] != '\0')
+                            ? display_utf8
+                            : "[MVP]";
+  pending.kind        = Run::kMvp;
+  pending.mvp_payload = payload_utf8;
   return PostPendingLink(std::move(pending));
 }
 

@@ -409,6 +409,15 @@ class ChatWindow : public Plugin {
   // rien vaut moins que pas de lien.
   bool AppendStatusLink(uint16_t efst);
 
+  // Poser le lien d'un RESPAWN de MVP : « [MVP: Baphomet (gef_dun03) —
+  // 21:12–21:22] ». Balise `<MVPL>`, même détour maison que `<STAL>` — le
+  // client natif ne connaît pas la balise, donc il ne la filtre pas.
+  //
+  // 🔴 `payload` est composé par `links::MvpTagPayload`, jamais ici : la même
+  // chaîne est relue par le client, par le relais Discord et par la shoutbox du
+  // site. Un format écrit à deux endroits dérive.
+  bool AppendMvpLink(const char* payload_utf8, const char* display_utf8);
+
   // Poser le lien d'un STYLE : « [Style: Étiquette] ». Balise
   // `<STYL>étiquette:code`.
   //
@@ -523,9 +532,14 @@ class ChatWindow : public Plugin {
     // n'existe côté client, et tout ce qu'on a à en dire — nom, effet, icône —
     // tient dans l'infobulle que `statuscell` compose déjà. Il PORTE son
     // information au lieu d'en promettre une ailleurs.
+    // `kMvp` est un RESPAWN de MVP partagé : « Baphomet (gef_dun03) —
+    // 21:12–21:22 ». Il ne désigne rien qui existe déjà chez le lecteur — une
+    // heure de mort ne vit que dans le carnet de qui l'a vue — donc il la
+    // TRANSPORTE, comme `kStyle` transporte son code. Le clic ouvre le carnet ;
+    // c'est le menu, jamais le clic, qui écrit dedans.
     enum LinkKind : uint8_t {
       kNone = 0, kItem, kMob, kUrl, kPlayer, kRecipe, kSetting, kStyle, kNavi,
-      kNaviSearch, kStatus
+      kNaviSearch, kStatus, kMvp
     };
     std::string text;      // UTF-8, prêt pour ImGui
     uint32_t    color = 0; // 0 = couleur par défaut de la ligne
@@ -556,6 +570,11 @@ class ChatWindow : public Plugin {
     // kStatus : l'index EFST, la seule identité stable d'un état. Le nom, lui,
     // se recompose chez le LECTEUR — chaque client le tire de son propre Lua.
     uint16_t    status_efst = 0;
+    // kMvp : le CORPS de la balise, tel qu'il est arrivé. Neuf champs qu'on ne
+    // recopie pas un par un ici : `links::FromMvpTag` les relit à la demande,
+    // et le format reste décrit à UN seul endroit — celui qui est aussi le
+    // contrat de `groq_service.py` et de `moon_chat_format()`.
+    std::string mvp_payload;
     // kNavi : le nom INTERNE de la carte et la position, telles que la balise les
     // porte. `(0, 0)` = la carte entière — c'est ce que le partage écrit quand la
     // destination est un lieu et non un point.
@@ -1172,6 +1191,7 @@ class ChatWindow : public Plugin {
     std::string mob_name;
     std::string setting_key;  // kSetting
     uint16_t    status_efst = 0;  // kStatus
+    std::string mvp_payload;  // kMvp : le corps de la balise, tel qu'il partira
     std::string style_code;   // kStyle : le code, tel qu'il partira
     std::string style_owner;  // kStyle : le pseudo affiché
     std::string navi_term;    // kNaviSearch : le terme, tel qu'il partira

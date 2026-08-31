@@ -2,6 +2,7 @@
 
 #include <Windows.h>
 
+#include <cstdio>
 #include <cstring>
 #include <ctime>
 
@@ -275,6 +276,29 @@ void MvpTracker::SetFavorite(uint16_t slot_id, bool on) {
   Send(9, slot_id, on ? 1u : 0u, nullptr);
 }
 
-void MvpTracker::ReportManual(uint16_t slot_id, int64_t kill_time) {
-  Send(10, slot_id, static_cast<uint32_t>(kill_time), nullptr);
+// 🔴 La tombe voyage dans le champ TEXTE de la commande, pas dans un paquet
+// neuf. `a` porte déjà le créneau et `b` l'heure de mort ; le texte, lui, ne
+// sert à rien pour cette commande-là (il porte un nom de groupe ou de
+// personnage pour les autres). Y écrire « x,y » évite un troisième opcode pour
+// deux entiers, et le serveur sait déjà lire ce champ.
+//
+// Vide = pas de tombe, ce que le serveur traite comme l'ancien comportement.
+void MvpTracker::ReportManual(uint16_t slot_id, int64_t kill_time,
+                              int16_t tomb_x, int16_t tomb_y) {
+  char tomb[24] = {};
+  if (tomb_x >= 0 && tomb_y >= 0) {
+    std::snprintf(tomb, sizeof(tomb), "%d,%d", static_cast<int>(tomb_x),
+                  static_cast<int>(tomb_y));
+  }
+  Send(10, slot_id, static_cast<uint32_t>(kill_time),
+       tomb[0] != '\0' ? tomb : nullptr);
+}
+
+const mvp::Slot* MvpTracker::FindSlotFor(uint16_t mob_id, const char* map) const {
+  if (map == nullptr || map[0] == '\0') return nullptr;
+  for (const mvp::Slot& slot : slots_) {
+    if (slot.mob_id != mob_id) continue;
+    if (_stricmp(slot.map, map) == 0) return &slot;
+  }
+  return nullptr;
 }
