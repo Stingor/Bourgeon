@@ -679,15 +679,32 @@ void CraftAtlas::DrawSheet() {
     // montre métier et composants au survol et ouvre l'Atlas au clic. C'est ce
     // qu'on veut donner à quelqu'un à qui l'on explique une fabrication — un
     // simple lien d'objet ne dirait rien de tout cela.
+    //
+    // 🔴 L'Atlas, lui, ne demande PAS l'interface moderne (cf. l'en-tête du .h) :
+    // il n'AGIT sur rien. Le lien, si — il n'existe que dans la barre de saisie de
+    // la chatbox moderne, et `AppendRecipeLink` refuse tout net quand elle est
+    // éteinte (ou sa barre masquée). On GRISE donc le bouton avec son motif,
+    // plutôt que de laisser un clic sans effet que rien n'explique.
+    const bool can_share = links::CanPostToChat();
+    ImGui::BeginDisabled(!can_share);
     if (ro::RoSmallButton(i18n::Tr("Partager la recette"))) {
       if (auto* chat = Bourgeon::Instance().chat_window())
         chat->AppendRecipeLink(id, ItemName(id));
     }
-    if (ImGui::IsItemHovered())
-      ImGui::SetTooltip(i18n::Tr(
-          "Pose « [Recette: %s] » dans la barre de chat. Au survol, le lien "
-          "montrera le métier et les composants ; au clic, il ouvrira l'Atlas."),
-          ItemName(id));
+    ImGui::EndDisabled();
+    // ⚠ `AllowWhenDisabled` : sans lui le bouton grisé est muet, alors que c'est
+    // précisément là qu'on a besoin du motif.
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+      if (can_share)
+        ImGui::SetTooltip(i18n::Tr(
+            "Pose « [Recette: %s] » dans la barre de chat. Au survol, le lien "
+            "montrera le métier et les composants ; au clic, il ouvrira l'Atlas."),
+            ItemName(id));
+      else
+        ImGui::SetTooltip(i18n::Tr(
+            "Activez le chat moderne et sa barre de saisie : le lien de recette "
+            "n'existe que là."));
+    }
 
     ImGui::Spacing();
     for (const craftdata::Ingredient& ing : r->mats) {

@@ -59,6 +59,11 @@
 // Pas d'opt-in « interface moderne » non plus : l'Atlas n'AGIT sur rien — il
 // n'envoie aucun paquet, ne remplace aucune fenêtre native et ne touche pas
 // l'inventaire. Il se contente de lire (feedback_optin_scope_actions_not_display).
+//
+// 🔴 SEULE exception, et elle est LOCALE : « Partager la recette » pose un lien
+// dans la barre de saisie de la chatbox moderne, qui n'existe pas quand celle-ci
+// est éteinte. Ce n'est pas l'Atlas qu'on gate pour autant, c'est le seul bouton
+// concerné — grisé avec son motif (links::CanPostToChat).
 
 class CraftAtlas : public Plugin {
  public:

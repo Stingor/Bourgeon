@@ -2427,6 +2427,7 @@
 "Maj + clic : poser le lien de cette section dans le chat": "Shift + click: post this section's link in chat"
 "Partager la recette": "Share the recipe"
 "Pose « [Recette: %s] » dans la barre de chat. Au survol, le lien montrera le métier et les composants ; au clic, il ouvrira l'Atlas.": "Puts \"[Recipe: %s]\" in the chat bar. On hover the link shows the job and the components; on click it opens the Atlas."
+"Activez le chat moderne et sa barre de saisie : le lien de recette n'existe que là.": "Turn on the modern chat and its input bar: the recipe link only exists there."
 "Filmer": "Record"
 "Filmer :": "Record:"
 "Retracer la zone :": "Redraw the area:"
