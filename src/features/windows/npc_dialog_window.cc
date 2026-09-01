@@ -400,6 +400,7 @@ void NpcDialogWindow::Reset() {
   gid_ = 0;
   num_buf_[0] = str_buf_[0] = menu_filter_[0] = '\0';
   menu_hot_ = -1;
+  menu_hot_rank_ = -1;
   rendered_ = false;  // la prochaine conversation repart sans cadre vide
   awaiting_reply_ = false;
 }
@@ -434,6 +435,7 @@ void NpcDialogWindow::CommitPage() {
     menu_opts_.clear();
     menu_filter_[0] = '\0';
     menu_hot_ = -1;
+    menu_hot_rank_ = -1;
     input_mode_ = kInputNone;
   }
   // Rien de neuf à publier : un terminateur sans `mes` (un `menu` qui suit un choix,
@@ -669,6 +671,7 @@ void NpcDialogWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
       has_close_ = false;
       menu_filter_[0] = '\0';
       menu_hot_ = -1;
+      menu_hot_rank_ = -1;
       open_ = true;
       SetNpcInteractionActive(gid_);  // §5.1 : le recv natif du menu posait +0x24C
       return;
@@ -1458,6 +1461,14 @@ void NpcDialogWindow::DrawMenu(float group_h) {
   if (enter && menu_hot_ >= 0 && menu_hot_ < static_cast<int>(visible.size()))
     chosen = visible[menu_hot_];
 
+  // Le rang de l'option focus est publié pour le bouton « OK » du footer, dessiné
+  // APRÈS cette fonction et qui n'a donc aucun autre moyen de savoir sur quelle ligne
+  // se trouve le curseur. Sous filtre, `visible` est la seule table qui relie la
+  // position à l'écran au rang attendu par le serveur.
+  menu_hot_rank_ = (menu_hot_ >= 0 && menu_hot_ < static_cast<int>(visible.size()))
+                       ? visible[menu_hot_]
+                       : -1;
+
   // Anti double-envoi : une génération de menu ne peut être répondue qu'UNE fois (sinon
   // le 1er choix fait avancer le serveur et le 2e envoi vise un menu à autre cardinalité
   // -> « Invalid menu selection ... got 14, valid [1..3] »).
@@ -1628,6 +1639,9 @@ void NpcDialogWindow::OnRenderUI() {
   // (choix de menu + annulation). Donc : clavier du footer actif seulement s'il n'y a
   // NI menu NI input en cours.
   const bool footer_kbd_ok = menu_opts_.empty() && input_mode_ == kInputNone;
+  // Même raison de snapshot : le bouton « OK » du menu appartient au footer, dessiné
+  // après DrawMenu.
+  const bool footer_menu = !menu_opts_.empty();
   // NoBringToFrontOnFocus : ne PAS repasser au 1er plan quand on clique l'overlay (sinon
   // un clic sur un lien re-focus l'overlay et masque la fenêtre de description qui vient
   // d'ouvrir). MAIS on l'OMET sur la 1re frame d'ouverture : avec ce flag posé,
@@ -1766,6 +1780,21 @@ void NpcDialogWindow::OnRenderUI() {
     bool shown = false;
     if (has_next_) {
       if (ro::RoButton(i18n::Tr("Suivant")) || kbd_ok) SendNext();
+      shown = true;
+    }
+    // Un menu se répond déjà au clic sur sa ligne et à Entrée, mais le natif offre en
+    // plus un « OK » à côté d'« Annuler » : sans lui, un joueur qui a navigué aux
+    // flèches ne voyait qu'« Annuler » et croyait la liste inerte. Il valide l'option
+    // focus. Grisé quand le filtre ne laisse aucune ligne, plutôt que retiré : un
+    // bouton qui va et vient au rythme de la frappe déplacerait « Annuler » sous le
+    // curseur. Le clavier ne passe PAS par ici — Entrée est traitée dans DrawMenu, qui
+    // seul connaît le contexte du filtre.
+    if (footer_menu) {
+      if (shown) ImGui::SameLine();
+      ImGui::BeginDisabled(menu_hot_rank_ <= 0);
+      if (ro::RoButton(i18n::Tr("OK")) && menu_gen_ != menu_answered_gen_)
+        SendMenuChoice(menu_hot_rank_);
+      ImGui::EndDisabled();
       shown = true;
     }
     if (can_close) {

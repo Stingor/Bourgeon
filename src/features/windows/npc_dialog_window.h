@@ -318,6 +318,11 @@ class NpcDialogWindow : public Plugin {
   int         pending_link_cmd_ = 0;  // type de lien cliqué (0x1D0 item / 0x1B5 url ; 0=aucun)
   std::string pending_link_arg_;      // argument du lien (id d'item ou url), traité au prochain OnTick
   int   menu_hot_ = -1;               // choix focus clavier (index VISIBLE ; -1 = auto-focus #1)
+  // RANG (1-based, cf. menu_countoptions) de l'option focus, publié par DrawMenu pour
+  // que le bouton « OK » du footer sache quoi envoyer. -1 = aucune ligne sélectionnable
+  // (un filtre qui ne laisse rien). Il ne se déduit PAS de menu_hot_ hors de DrawMenu :
+  // sous filtre, l'index visible n'est pas le rang attendu par le serveur.
+  int   menu_hot_rank_ = -1;
   unsigned menu_gen_ = 0;             // génération du menu (incr. à chaque ZC_MENU_LIST)
   unsigned menu_answered_gen_ = 0xFFFFFFFFu;  // génération déjà répondue (anti double-envoi)
 
