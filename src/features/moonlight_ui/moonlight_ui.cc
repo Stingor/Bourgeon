@@ -1365,6 +1365,14 @@ const moonlight_ui::SettingDesc kQuickCastSettings[] = {
 const moonlight_ui::SettingDesc kAfkScreenSettings[] = {
     {"afk_enabled",     SType::kBool,  AFK(enabled)},
     {"afk_delay_s",     SType::kInt,   AFK(delay_s)},
+    // L'annonce est une PRÉFÉRENCE d'interface, et vit donc ici : elle ne décrit
+    // pas l'état du personnage mais ce que ce client-ci choisit d'en dire. L'état
+    // lui-même — être absent — est transitoire et n'appartient qu'au serveur, qui
+    // ne le persiste pas davantage.
+    {"afk_announce",       SType::kBool, AFK(announce)},
+    {"afk_announce_delay", SType::kInt,  AFK(announce_delay_s)},
+    {"afk_announce_zzz",   SType::kBool, AFK(announce_zzz)},
+    {"afk_announce_tag",   SType::kBool, AFK(announce_tag)},
     {"afk_spin_deg_s",  SType::kFloat, AFK(spin_deg_s)},
     {"afk_tilt_deg",    SType::kFloat, AFK(tilt_deg)},
     {"afk_zoom_factor", SType::kFloat, AFK(zoom_factor)},

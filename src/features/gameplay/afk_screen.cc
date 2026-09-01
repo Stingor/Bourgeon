@@ -13,6 +13,7 @@
 #include "bourgeon.h"
 #include "d3d9/d3d9_hook.h"
 #include "features/fx/screen_fx.h"
+#include "features/moonlight_ui/moonlight_ui.h"
 #include "features/systems/login_spectator.h"
 #include "imgui.h"
 #include "ragnarok/camera.h"
@@ -413,6 +414,11 @@ void AfkScreen::OnTick() {
   // Sortir du monde en veille laisserait la teinte posée sur un écran de
   // sélection de personnage que personne ne saurait plus éteindre.
   if (!app.IsGameActive() || app.IsMapLoading()) {
+    // 🔴 Le miroir de l'annonce ne retombe QUE si le personnage quitte le monde.
+    // Un changement de carte n'y touche pas : la session survit côté serveur, et
+    // remettre le miroir à zéro ferait disparaître la transition que le retour
+    // du joueur devait envoyer — il resterait annoncé absent en jouant.
+    if (!app.IsGameActive()) announced_ = 0;
     AbortSleep();
     return;
   }
@@ -444,6 +450,11 @@ void AfkScreen::OnTick() {
   // l'époque zéro, sinon le client s'endormirait avant le premier geste.
   const uint32_t idle_ms = (last == 0) ? 0u : (now - last);
 
+  // L'annonce se décide sur la MÊME mesure d'inactivité, mais ni `cfg_.enabled`
+  // ni la veille en cours n'entrent en ligne de compte : elle est donc évaluée
+  // ici, avant les branches qui rendent la main quand la veille n'a rien à faire.
+  StepAnnounce(idle_ms);
+
   if (phase_ == Phase::kAwake) {
     if (!cfg_.enabled) return;
     const uint32_t delay_ms =
@@ -473,6 +484,39 @@ void AfkScreen::OnTick() {
   const bool input_since_sleep =
       (woke != 0) && (static_cast<int32_t>(woke - sleep_start_) > 0);
   if (input_since_sleep) Wake();
+}
+
+// ── Prévenir l'entourage ─────────────────────────────────────────────────────
+// Le « zzz » et le « [AFK] » ne sont PAS peints ici, et ne pourraient pas
+// l'être : ils se voient des autres joueurs, sur leurs machines. Tout ce que
+// fait le client est de dire au serveur qu'il s'est absenté — un masque, par le
+// canal des réglages (CZ_BOURGEON_SETTING, id 29). Le serveur, lui, glisse le
+// sommeil dans les paquets d'unité qu'il envoie au voisinage et préfixe
+// l'étiquette de nom ; il ne renvoie RIEN au dormeur, dont le client lirait ce
+// sommeil comme une paralysie.
+void AfkScreen::StepAnnounce(uint32_t idle_ms) {
+  uint8_t want = 0;
+  if (cfg_.announce) {
+    const uint32_t delay_ms =
+        static_cast<uint32_t>(std::clamp(cfg_.announce_delay_s, 10, 3600)) * 1000u;
+    if (idle_ms >= delay_ms) {
+      if (cfg_.announce_zzz) want |= kAnnounceSleep;
+      if (cfg_.announce_tag) want |= kAnnounceTag;
+    }
+  }
+
+  // Aux TRANSITIONS seulement. Le serveur ignore un masque qu'il a déjà, mais un
+  // paquet par battement de cœur reste un paquet par battement de cœur — et le
+  // retrait du tag coûte, lui, une étiquette de nom refaite chez chaque voisin.
+  if (want == announced_) return;
+
+  auto* ui = Bourgeon::Instance().moonlight_ui();
+  // Pas de canal : on ne note RIEN et l'on retentera au battement suivant. Noter
+  // l'envoi qui n'a pas eu lieu figerait le miroir sur un mensonge.
+  if (ui == nullptr) return;
+
+  ui->SendSetting(MoonlightUi::kSettingAfk, want);
+  announced_ = want;
 }
 
 // ── Mouvement ────────────────────────────────────────────────────────────────

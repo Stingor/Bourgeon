@@ -3432,6 +3432,17 @@
 # Ecran de veille (AfkScreen) : la caméra tourne, l'interface s'efface.
 "Écran de veille": "Salvapantallas"
 "Activer l'écran de veille": "Activar el salvapantallas"
+
+# Prevenir l'entourage : ce que les AUTRES voient d'une absence.
+"Prévenir mon entourage": "Avisar a los demás"
+"Signaler mon absence aux autres joueurs": "Indicar mi ausencia a los demás jugadores"
+"Passé le délai ci-dessous, les autres joueurs voient que tu n'es plus là. Rien ne change pour toi : tu bouges, tu attaques et tu te défends exactement comme d'habitude — c'est un signe donné aux autres, pas une altération.\n\nIndépendant de l'écran de veille : tu peux prévenir sans que ta caméra ne bouge, comme tu peux te regarder tourner sans le dire à personne.": "Pasado el tiempo indicado abajo, los demás jugadores ven que ya no estás. Para ti no cambia nada: te mueves, atacas y te defiendes exactamente como siempre — es una señal para los demás, no una alteración.\n\nIndependiente del salvapantallas: puedes avisar sin que tu cámara se mueva, igual que puedes verte girar sin decírselo a nadie."
+"Délai d'absence": "Tiempo de ausencia"
+"Temps sans toucher au clavier ni à la souris avant que ton absence ne soit annoncée. Le premier geste la retire aussitôt.": "Tiempo sin tocar el teclado ni el ratón antes de que se anuncie tu ausencia. El primer gesto la retira al instante."
+"Effet de sommeil (zzz)": "Efecto de sueño (zzz)"
+"Le sommeil du jeu flotte au-dessus de ton personnage — le même « zzz » que sur un monstre endormi. Tu le vois toi aussi : c'est ainsi que tu sais que ton absence est bien annoncée.\n\nPurement visuel, pour toi comme pour les autres : tu bouges, tu attaques et tu te défends exactement comme d'habitude.": "El sueño del juego flota sobre tu personaje — el mismo « zzz » que sobre un monstruo dormido. Tú también lo ves: así sabes que tu ausencia se está anunciando de verdad.\n\nPuramente visual, para ti como para los demás: te mueves, atacas y te defiendes exactamente como siempre."
+"Ajouter « [AFK] » devant mon nom": "Añadir « [AFK] » delante de mi nombre"
+"Ton pseudo s'affiche « [AFK] Nom » dans l'étiquette au-dessus de ton personnage.\n\nLe champ du jeu ne fait que vingt-trois caractères : un pseudo de plus de dix-sept perd sa fin le temps de l'absence, et la retrouve au retour.": "Tu nombre aparece como « [AFK] Nombre » en la etiqueta sobre tu personaje.\n\nEl campo del juego solo admite veintitrés caracteres: un nombre de más de diecisiete pierde el final mientras dure la ausencia, y lo recupera al volver."
 "Passé un moment sans toucher au clavier ni à la souris, l'interface s'efface et la caméra recule pour tourner lentement autour de ton personnage.\n\nLe premier geste rend tout comme c'était. Le clic qui te réveille ne part pas dans le jeu : le décor a changé d'angle, il tomberait ailleurs que là où tu crois viser.": "Tras un rato sin tocar el teclado ni el ratón, la interfaz desaparece y la cámara se aleja para girar lentamente alrededor de tu personaje.\n\nEl primer gesto lo devuelve todo a su sitio. El clic que te despierta no llega al juego: el decorado ha girado, y caería en un lugar distinto del que crees apuntar."
 "Caméra": "Cámara"
 "Rotation": "Rotación"

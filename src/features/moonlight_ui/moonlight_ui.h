@@ -262,42 +262,14 @@ class MoonlightUi : public Plugin {
   // destiné à un autre.
   bool ConsumeHeaderJump(const char* key);
 
- private:
-  // Ouvre le panneau sur une section de n'importe quelle nav : sélectionne
-  // l'entrée, déplie l'en-tête qui la contient et rouvre la fenêtre. C'est le
-  // corps commun d'OpenInterfaceSection et du chemin « lien de réglage ».
-  void OpenNavSection(const iface::NavGroup& group, int section);
-
-  // Fil réseau -> fil principal : OnRecvPacket ne fait que copier les octets,
-  // HandlePacket décode à chaque frame. `alootid_presets_` (vecteur de
-  // std::string) était reconstruit depuis le fil réseau pendant que le panneau
-  // l'affichait. Cf. features/net_inbox.h.
-  void HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
-
-  // Les réglages qui appartiennent à MoonlightUi elle-même (et non à un plugin)
-  // sont décrits, comme tous les autres, par des tables de descripteurs — mais
-  // un descripteur pointe l'ADRESSE du champ, or ceux-ci sont privés. Cette
-  // struct-amie ne porte QUE ces tables (définies dans moonlight_ui.cc) : c'est
-  // le strict minimum d'ouverture, à comparer aux membres qu'il aurait fallu
-  // rendre publics. Elle disparaîtra à l'étape C, quand chaque plugin portera
-  // son propre LoadConfig/SaveConfig.
-  friend struct MoonlightUiOwnSettings;
-
+  // ── Le canal des réglages ──────────────────────────────────────────────────
+  // PUBLIC parce qu'il n'appartient pas à ce panneau : c'est l'unique porte du
+  // client vers CZ 0x0F04, et des modules sans interface l'empruntent — l'écran
+  // de veille y annonce l'absence de son joueur. Les ids le suivent : ils ne
+  // décrivent rien de MoonlightUi, ils décrivent le protocole.
   // Sends a single setting change to the server.
   // CZ: [opcode:2][total_len:2][id:2][value:2]
   void SendSetting(uint16_t id, uint32_t value);
-
-  static constexpr uint16_t kOpcodeFromServer    = bopcodes::kSettings;    // ZC_BOURGEON_SETTINGS
-  static constexpr uint16_t kOpcodeToServer      = bopcodes::kSetting;     // CZ_BOURGEON_SETTING
-  static constexpr uint16_t kOpcodePresetList    = bopcodes::kPresetList;  // ZC_BOURGEON_PRESET_LIST
-  static constexpr uint16_t kOpcodePresetCmd     = bopcodes::kPresetCmd;   // CZ_BOURGEON_PRESET_CMD
-  // We read the current map name from the STANDARD client packet 0x0091
-  // (ZC_NPCACK_MAPMOVE), which arrives on login and every warp/map change and
-  // carries mapname[16] right after the opcode.  This needs no custom packet
-  // and no server changes, so there is no opcode to collide with the client's
-  // packet-length table (0x0BFC and 0x0BFF both turned out to be reserved).
-  static constexpr uint16_t kOpcodeMapMove    = 0x0091;  // [opcode:2][mapname:16][x:2][y:2]
-  static constexpr uint16_t kMapNameLen       = 16;      // mapname field width in 0x0091
 
   // Setting IDs sent via CZ 0x0F04 (must match server-side clif_parse_bourgeon_setting).
   static constexpr uint16_t kSettingShowExp              = 0;
@@ -334,6 +306,44 @@ class MoonlightUi : public Plugin {
   // ⚠ Pas une bascule : la valeur EST la vitesse, en ms par cellule (20..1000).
   // Écriture gatée serveur sur le droit de `@speed` ; le client ne fait que la lire.
   static constexpr uint16_t kSettingWalkSpeed     = 28;
+  // ⚠ Pas une bascule non plus : la valeur est un MASQUE de ce que le voisinage
+  // doit voir d'une absence (`AfkScreen::kAnnounce*` ici, `e_bourgeon_afk` côté
+  // serveur) ; zéro = présent. Ordre PONCTUEL, comme le rafraîchissement : rien
+  // n'est persisté, on ne se reconnecte pas absent.
+  static constexpr uint16_t kSettingAfk           = 29;
+
+ private:
+  // Ouvre le panneau sur une section de n'importe quelle nav : sélectionne
+  // l'entrée, déplie l'en-tête qui la contient et rouvre la fenêtre. C'est le
+  // corps commun d'OpenInterfaceSection et du chemin « lien de réglage ».
+  void OpenNavSection(const iface::NavGroup& group, int section);
+
+  // Fil réseau -> fil principal : OnRecvPacket ne fait que copier les octets,
+  // HandlePacket décode à chaque frame. `alootid_presets_` (vecteur de
+  // std::string) était reconstruit depuis le fil réseau pendant que le panneau
+  // l'affichait. Cf. features/net_inbox.h.
+  void HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
+
+  // Les réglages qui appartiennent à MoonlightUi elle-même (et non à un plugin)
+  // sont décrits, comme tous les autres, par des tables de descripteurs — mais
+  // un descripteur pointe l'ADRESSE du champ, or ceux-ci sont privés. Cette
+  // struct-amie ne porte QUE ces tables (définies dans moonlight_ui.cc) : c'est
+  // le strict minimum d'ouverture, à comparer aux membres qu'il aurait fallu
+  // rendre publics. Elle disparaîtra à l'étape C, quand chaque plugin portera
+  // son propre LoadConfig/SaveConfig.
+  friend struct MoonlightUiOwnSettings;
+
+  static constexpr uint16_t kOpcodeFromServer    = bopcodes::kSettings;    // ZC_BOURGEON_SETTINGS
+  static constexpr uint16_t kOpcodeToServer      = bopcodes::kSetting;     // CZ_BOURGEON_SETTING
+  static constexpr uint16_t kOpcodePresetList    = bopcodes::kPresetList;  // ZC_BOURGEON_PRESET_LIST
+  static constexpr uint16_t kOpcodePresetCmd     = bopcodes::kPresetCmd;   // CZ_BOURGEON_PRESET_CMD
+  // We read the current map name from the STANDARD client packet 0x0091
+  // (ZC_NPCACK_MAPMOVE), which arrives on login and every warp/map change and
+  // carries mapname[16] right after the opcode.  This needs no custom packet
+  // and no server changes, so there is no opcode to collide with the client's
+  // packet-length table (0x0BFC and 0x0BFF both turned out to be reserved).
+  static constexpr uint16_t kOpcodeMapMove    = 0x0091;  // [opcode:2][mapname:16][x:2][y:2]
+  static constexpr uint16_t kMapNameLen       = 16;      // mapname field width in 0x0091
 
   // Updates both directions of the relay based on current state.
   void UpdateRelay();

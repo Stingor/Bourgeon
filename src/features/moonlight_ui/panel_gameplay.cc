@@ -522,6 +522,47 @@ void MoonlightUi::DrawAfkScreenSettings() {
 
   ImGui::EndDisabled();
 
+  // ── Prévenir l'entourage ───────────────────────────────────────────────────
+  // 🔴 HORS du bloc grisé par `cfg.enabled`, et ce n'est pas un oubli : cette
+  // section-ci ne dépend pas de la veille. Se signaler absent et se regarder
+  // tourner sont deux envies distinctes, et la première n'a pas à se payer de la
+  // seconde — qui coûte au joueur son interface et sa caméra.
+  SeparatorText(i18n::Tr("Prévenir mon entourage"));
+  changed |= ro::RoCheckbox(i18n::Tr("Signaler mon absence aux autres joueurs"),
+                            &cfg.announce);
+  SameLine(); HelpMarker(i18n::Tr(
+      "Passé le délai ci-dessous, les autres joueurs voient que tu n'es plus là. "
+      "Rien ne change pour toi : tu bouges, tu attaques et tu te défends "
+      "exactement comme d'habitude — c'est un signe donné aux autres, pas une "
+      "altération.\n\n"
+      "Indépendant de l'écran de veille : tu peux prévenir sans que ta caméra ne "
+      "bouge, comme tu peux te regarder tourner sans le dire à personne."));
+
+  ImGui::BeginDisabled(!cfg.announce);
+  ImGui::SetNextItemWidth(ro::Px(200.0f));
+  changed |= WheelSliderInt(i18n::TrId("Délai d'absence", "afk_announce_delay"),
+                            &cfg.announce_delay_s, 10, 3600, "%d s");
+  SameLine(); HelpMarker(i18n::Tr(
+      "Temps sans toucher au clavier ni à la souris avant que ton absence ne soit "
+      "annoncée. Le premier geste la retire aussitôt."));
+
+  changed |= ro::RoCheckbox(i18n::Tr("Effet de sommeil (zzz)"), &cfg.announce_zzz);
+  SameLine(); HelpMarker(i18n::Tr(
+      "Le sommeil du jeu flotte au-dessus de ton personnage — le même « zzz » que "
+      "sur un monstre endormi. Tu le vois toi aussi : c'est ainsi que tu sais que "
+      "ton absence est bien annoncée.\n\n"
+      "Purement visuel, pour toi comme pour les autres : tu bouges, tu attaques "
+      "et tu te défends exactement comme d'habitude."));
+
+  changed |= ro::RoCheckbox(i18n::Tr("Ajouter « [AFK] » devant mon nom"),
+                            &cfg.announce_tag);
+  SameLine(); HelpMarker(i18n::Tr(
+      "Ton pseudo s'affiche « [AFK] Nom » dans l'étiquette au-dessus de ton "
+      "personnage.\n\n"
+      "Le champ du jeu ne fait que vingt-trois caractères : un pseudo de plus de "
+      "dix-sept perd sa fin le temps de l'absence, et la retrouve au retour."));
+  ImGui::EndDisabled();
+
   if (changed) SaveSettings();
 }
 

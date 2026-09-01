@@ -53,6 +53,22 @@ class AfkScreen : public Plugin {
   struct Config {
     bool  enabled       = false;  // opt-in : la veille ne surprend personne
     int   delay_s       = 90;     // silence avant bascule (10..900 s)
+    // ── Prévenir l'entourage ─────────────────────────────────────────────────
+    // 🔴 INDÉPENDANT de `enabled`, et c'est tout l'intérêt : signaler son
+    // absence et se regarder tourner sont deux envies distinctes, or la seconde
+    // coûte au joueur son interface et sa caméra. Les lier ferait payer ce prix
+    // à qui veut seulement prévenir ses amis. D'où un délai à part, plus long
+    // par défaut : on éteint son écran au bout d'une minute et demie, on se
+    // déclare absent au bout de cinq.
+    //
+    // Ces trois derniers ne peignent RIEN : le « zzz » et le « [AFK] » se voient
+    // des AUTRES joueurs, et rien de ce qui se voit d'autrui ne peut venir de
+    // notre machine. Ils composent un masque envoyé au serveur, qui seul peut
+    // montrer un joueur au voisinage (cf. StepAnnounce).
+    bool  announce         = false;  // opt-in : personne n'est signalé sans l'avoir voulu
+    int   announce_delay_s = 300;    // silence avant l'annonce (10..3600 s)
+    bool  announce_zzz     = true;   // le sommeil du jeu au-dessus du personnage
+    bool  announce_tag     = true;   // « [AFK] » devant le pseudo
     // ── Caméra ───────────────────────────────────────────────────────────────
     float spin_deg_s    = 6.0f;   // vitesse d'orbite, degrés/s (négatif = sens inverse)
     // 🔴 Degrés AU-DESSUS DE L'HORIZON, en positif : c'est ce qu'un joueur règle.
@@ -178,6 +194,19 @@ class AfkScreen : public Plugin {
   // Une ligne de l'horloge, centrée, avec son ombre portée.
   void  DrawClockLine(const char* text, float scale, uint32_t color);
 
+  // Publie — ou retire — l'absence auprès du serveur, seul capable de la
+  // montrer aux AUTRES. N'émet qu'aux TRANSITIONS : `announced_` est le miroir
+  // de ce que le serveur croit savoir de nous.
+  void  StepAnnounce(uint32_t idle_ms);
+
+  // Les bits du masque envoyé. CONTRAT FIGÉ avec `e_bourgeon_afk` (serveur,
+  // src/map/clif.hpp) : leurs valeurs ne changent plus, on n'en ajoute qu'à la
+  // suite. Le serveur laisse tomber ce qu'il ne connaît pas, si bien qu'un
+  // client en avance obtient les signes que le serveur sait donner — et jamais
+  // un état à moitié posé.
+  static constexpr uint8_t kAnnounceSleep = 0x01;
+  static constexpr uint8_t kAnnounceTag   = 0x02;
+
   Config cfg_;
 
   Phase    phase_        = Phase::kAwake;
@@ -206,6 +235,15 @@ class AfkScreen : public Plugin {
   // configuration d'origine est toujours restée la source de vérité. Une veille
   // qui s'interromprait mal ne peut donc pas laisser le jeu désaturé.
   bool fx_pushed_ = false;  // avons-nous une teinte à défaire ?
+
+  // ── Annonce d'absence ────────────────────────────────────────────────────
+  // Le dernier masque envoyé au serveur, donc ce qu'il croit savoir de nous.
+  // Il ne se remet à zéro que si le personnage QUITTE LE MONDE — là, sa session
+  // meurt de l'autre côté et l'absence avec elle. Surtout pas à chaque
+  // changement de carte, où la session survit : sans transition à envoyer, un
+  // joueur qui reprend la main juste après un chargement resterait annoncé
+  // absent aux yeux de tous jusqu'à sa sieste suivante.
+  uint8_t announced_ = 0;
 
 };
 

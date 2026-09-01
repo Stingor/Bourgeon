@@ -3474,6 +3474,17 @@
 # Ecran de veille (AfkScreen) : la caméra tourne, l'interface s'efface.
 "Écran de veille": "Screen saver"
 "Activer l'écran de veille": "Enable the screen saver"
+
+# Prevenir l'entourage : ce que les AUTRES voient d'une absence.
+"Prévenir mon entourage": "Let others know"
+"Signaler mon absence aux autres joueurs": "Show other players that I am away"
+"Passé le délai ci-dessous, les autres joueurs voient que tu n'es plus là. Rien ne change pour toi : tu bouges, tu attaques et tu te défends exactement comme d'habitude — c'est un signe donné aux autres, pas une altération.\n\nIndépendant de l'écran de veille : tu peux prévenir sans que ta caméra ne bouge, comme tu peux te regarder tourner sans le dire à personne.": "Once the delay below has passed, other players can see that you are no longer there. Nothing changes for you: you move, you attack and you defend exactly as usual — it is a sign given to others, not an ailment.\n\nIndependent from the screen saver: you can let people know without your camera moving an inch, just as you can watch yourself turn without telling anyone."
+"Délai d'absence": "Away after"
+"Temps sans toucher au clavier ni à la souris avant que ton absence ne soit annoncée. Le premier geste la retire aussitôt.": "How long without touching the keyboard or the mouse before your absence is announced. The first move takes it back at once."
+"Effet de sommeil (zzz)": "Sleeping effect (zzz)"
+"Le sommeil du jeu flotte au-dessus de ton personnage — le même « zzz » que sur un monstre endormi. Tu le vois toi aussi : c'est ainsi que tu sais que ton absence est bien annoncée.\n\nPurement visuel, pour toi comme pour les autres : tu bouges, tu attaques et tu te défends exactement comme d'habitude.": "The sleep of the game floats above your character — the very zzz you see on a sleeping monster. You see it too: that is how you know your absence is really being announced.\n\nPurely visual, for you as for everyone else: you move, you attack and you defend exactly as usual."
+"Ajouter « [AFK] » devant mon nom": "Put « [AFK] » in front of my name"
+"Ton pseudo s'affiche « [AFK] Nom » dans l'étiquette au-dessus de ton personnage.\n\nLe champ du jeu ne fait que vingt-trois caractères : un pseudo de plus de dix-sept perd sa fin le temps de l'absence, et la retrouve au retour.": "Your name shows up as « [AFK] Name » in the label above your character.\n\nThe field of the game is only twenty-three characters wide: a name longer than seventeen loses its tail for as long as you are away, and gets it back on your return."
 "Passé un moment sans toucher au clavier ni à la souris, l'interface s'efface et la caméra recule pour tourner lentement autour de ton personnage.\n\nLe premier geste rend tout comme c'était. Le clic qui te réveille ne part pas dans le jeu : le décor a changé d'angle, il tomberait ailleurs que là où tu crois viser.": "After a while without touching the keyboard or the mouse, the interface fades out and the camera pulls back to slowly orbit your character.\n\nThe first move puts everything back. The click that wakes you never reaches the game: the scenery has turned, so it would land somewhere other than where you think you are aiming."
 "Caméra": "Camera"
 "Rotation": "Rotation"
