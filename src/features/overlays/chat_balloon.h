@@ -95,7 +95,7 @@ class ChatBalloon : public Plugin {
   void OnGameFramePulse();
 
   // Section du panneau de réglages (« Interface »).
-  void DrawSettings();
+  bool DrawSettings();
 
   // 🔴 PAS d'interrupteur propre. La bulle est une conséquence de la chatbox
   // moderne, pas une option à côté : elle n'existe que parce que celle-ci

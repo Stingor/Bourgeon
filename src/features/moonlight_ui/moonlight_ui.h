@@ -45,6 +45,17 @@ void SetModernInterface(bool on);
 // réglage sans effet est un piège à support.
 bool ModernInterfaceEnabled();
 
+// Cette section du panneau ne règle-t-elle QUE des fenêtres du groupe ? Le
+// panneau s'en sert pour la griser hors groupe : ses options n'y changeraient
+// rien, et un réglage sans effet est un piège à support.
+//
+// 🔴 La réponse vient de la MÊME table que `SetModernInterface` : une section
+// ne peut plus être oubliée du grisage après l'ajout de son plugin au groupe.
+//
+// Faux pour une section MIXTE, dont une moitié ne concerne pas le groupe (le
+// menu contextuel, le chat) : celles-là portent leur propre grisage, partiel.
+bool SectionNeedsModern(int iface_section);
+
 // Dessine la case « Interface moderne » (skin RO) suivie de son point d'aide, et
 // applique déjà SetModernInterface() au clic. Renvoie true si l'état a changé —
 // au panneau appelant de persister.

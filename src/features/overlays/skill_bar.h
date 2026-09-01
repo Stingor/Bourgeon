@@ -97,7 +97,7 @@ class SkillBar : public Plugin {
   // barre de tout le monde — les anciennes clés disparaissent du yaml partagé à sa prochaine
   // écriture, qu'un simple réglage coché au char-select suffit à déclencher.
   void AdoptLegacyItemSlots(const uint32_t* slots, int count);
-  void DrawSettings();   // contenu des réglages (réutilisé dans l'onglet MoonlightUi)
+  bool DrawSettings();   // contenu des réglages (réutilisé dans l'onglet MoonlightUi)
 
   // Rejoue l'utilisation d'une case d'OBJET — la voie exacte de sa touche. Pour
   // QuickCast, qui répète tant que la touche est maintenue (le client ignorant

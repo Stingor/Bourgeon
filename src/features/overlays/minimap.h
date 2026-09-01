@@ -151,7 +151,7 @@ class Minimap : public Plugin {
 
   // Contenu de sa section du panneau Moonlight, et du menu du bouton de la
   // minimap — le même appel aux deux endroits. Appelé par panel_interface.
-  void DrawSettings();
+  bool DrawSettings();
 
  private:
   // Fenêtre native à basculer, mise en file par le menu et exécutée au tick.

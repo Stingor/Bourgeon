@@ -363,7 +363,7 @@ void StatusIconBar::OnRenderUI() {
 }
 
 // ── Les réglages (sans fenêtre) — hébergés par le panneau moonlight_ui ──────
-void StatusIconBar::DrawSettings() {
+bool StatusIconBar::DrawSettings() {
   bool changed = false;
 
   changed |= ro::RoCheckbox(i18n::Tr("Barre d'états moderne"), &enabled_);
@@ -457,5 +457,5 @@ void StatusIconBar::DrawSettings() {
 
   ImGui::EndDisabled();
 
-  if (changed) g_needs_save = true;
+  return changed;
 }

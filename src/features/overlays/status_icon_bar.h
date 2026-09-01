@@ -74,7 +74,7 @@ class StatusIconBar : public Plugin {
 
   // Rend les contrôles de réglage (sans fenêtre à elle) ; hébergés par
   // moonlight_ui dans sa section « Icônes de statut ».
-  void DrawSettings();
+  bool DrawSettings();
 
   // ── Réglages ──────────────────────────────────────────────────────────────
   //

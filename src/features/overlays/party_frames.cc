@@ -19,7 +19,10 @@
 #include "features/systems/status_effects.h"  // les buffs, lus au fil du réseau
 #include "ui/game_texture.h"  // ro::CachedTextureFromGameFile (icône de classe)
 #include "ui/ro_imgui.h"
+#include "ui/ro_widgets.h"
 #include "utils/i18n.h"
+
+using namespace mui;  // enveloppes ImGui du toolkit
 
 namespace {
 
@@ -898,4 +901,222 @@ void PartyFrames::DrawTile(const rag::social::Entry& m, ImVec2 p0, ImVec2 p1,
     dl->AddText(font, fsz, ImVec2(text_x, ty + line), text, second, nullptr,
                 0.0f, &clip);
   }
+}
+
+// ── Panneau de réglages ─────────────────────────────────────────────────────
+// 🔴 HORS du groupe « Interface moderne » : cette grille ne REMPLACE aucune
+// fenêtre native (le HUD d'origine est seulement masqué), elle ajoute une forme
+// que le client n'a pas. Seul son clic-cibler dépend du mode Ciblage, qui lui
+// est du groupe — l'infobulle concernée le dit.
+bool PartyFrames::DrawSettings() {
+  bool changed = false;
+  changed |= ro::RoCheckbox(i18n::Tr("Afficher la grille de groupe"),
+                            &enabled_);
+  SameLine(); HelpMarker(i18n::Tr(
+      "Remplace le HUD de groupe du client par une grille de tuiles : la "
+      "barre de vie EST le fond de la tuile, et sa couleur dit l'état du "
+      "membre. Le HUD d'origine est masqué tant que cette grille est "
+      "active."));
+  ImGui::BeginDisabled(!enabled_);
+
+  changed |= ro::RoCheckbox(i18n::Tr("Verrouiller la position"),
+                            &locked_);
+  SameLine(); HelpMarker(i18n::Tr(
+      "Fige le cadre et laisse passer les clics vers le jeu.\n\n"
+      "Maintenir MAJ, CURSEUR SUR LA GRILLE, la déverrouille le temps "
+      "d'un déplacement : pas besoin de revenir décocher ici.\n\n"
+      "Ailleurs à l'écran, MAJ garde son rôle habituel (attaque forcée) "
+      "— la grille ne reprend la souris que sous le curseur."));
+
+  // ── Disposition ───────────────────────────────────────────────────
+  SeparatorText(i18n::Tr("Disposition"));
+  changed |= WheelSliderInt(i18n::Tr("Colonnes"), &columns_, 1, 6,
+                            "%d");
+  SameLine(); HelpMarker(i18n::Tr(
+      "1 colonne donne une liste, comme le HUD d'origine ; 2 ou 3 donnent "
+      "la grille compacte des raid frames."));
+  changed |= WheelSliderInt(i18n::Tr("Largeur des tuiles"),
+                            &tile_w_, 60, 400, "%d px");
+  changed |= WheelSliderInt(i18n::Tr("Hauteur des tuiles"),
+                            &tile_h_, 18, 80, "%d px");
+  changed |= WheelSliderInt(i18n::Tr("Espacement"), &gap_, 0, 12,
+                            "%d px");
+  SameLine(); HelpMarker(i18n::Tr(
+      "La taille du cadre se DÉDUIT de ces valeurs : c'est la tuile qui "
+      "commande.\n\n"
+      "Tirer le cadre par sa poignée n'agit donc pas sur sa taille mais "
+      "sur le nombre de COLONNES : l'élargir en ajoute, le rétrécir en "
+      "retire. La hauteur, elle, suit le nombre de membres."));
+
+  // ── Contenu d'une tuile ───────────────────────────────────────────
+  SeparatorText(i18n::Tr("Contenu"));
+  changed |= ro::RoCheckbox(i18n::Tr("Icône de classe"),
+                            &show_job_icon_);
+  SameLine(); HelpMarker(i18n::Tr(
+      "L'art du client. C'est ce qui rend une grille lisible d'un coup "
+      "d'œil : on reconnaît le soigneur à sa silhouette, pas à son nom."));
+  changed |= ro::RoCheckbox(i18n::Tr("M'inclure dans la grille"),
+                            &show_self_);
+  changed |= ro::RoCheckbox(i18n::Tr("Garder les membres hors ligne"),
+                            &show_offline_);
+  changed |= ro::RoCheckbox(i18n::Tr("Afficher le niveau"),
+                            &show_level_);
+  {
+    // Quatre façons d'écrire les PV. Le pourcentage seul est souvent le
+    // plus lisible en combat : on compare des membres entre eux, on ne
+    // lit pas des totaux.
+    const char* kHpModes[] = {
+        "Rien", "Chiffres",
+        "Pourcentage", "Chiffres et pourcentage"};
+    changed |= ro::RoCombo(i18n::Tr("Points de vie"),
+                            &hp_text_mode_, kHpModes,
+                            IM_ARRAYSIZE(kHpModes));
+  }
+  changed |= WheelSliderInt(i18n::Tr("Taille du texte"), &text_px_,
+                            8, 28, "%d px");
+  SameLine(); HelpMarker(i18n::Tr(
+      "Indépendante de la police des fenêtres : une grille se lit en "
+      "périphérie de l'écran, pas de face."));
+
+  changed |= ro::RoCheckbox(i18n::Tr("Infobulle au survol"),
+                            &show_tooltip_);
+  SameLine(); HelpMarker(i18n::Tr(
+      "Le texte d'une tuile est DÉCOUPÉ à ses bords : sur une grille "
+      "serrée, il ne reste parfois que les premières lettres d'un nom. "
+      "L'infobulle le redonne en entier, avec la classe, la carte et les "
+      "PV/SP chiffrés."));
+  changed |= ro::RoCheckbox(i18n::Tr("Barre de SP"), &show_sp_);
+  SameLine(); HelpMarker(i18n::Tr(
+      "Le SP d'un autre joueur ne circule dans AUCUN paquet du jeu : il "
+      "est demandé au serveur membre par membre. Il n'apparaît donc que "
+      "pour ceux qui sont à portée de vue."));
+  ImGui::BeginDisabled(!show_sp_);
+  changed |= WheelSliderInt(i18n::Tr("Hauteur de la barre de SP"),
+                            &sp_bar_h_, 2, 14, "%d px");
+  ImGui::EndDisabled();
+
+  // ── Interaction ───────────────────────────────────────────────────
+  SeparatorText(i18n::Tr("Interaction"));
+  changed |= ro::RoCheckbox(
+      i18n::Tr("Lancer les sorts de soutien sur la tuile survolée"),
+      &cast_on_tile_);
+  SameLine(); HelpMarker(i18n::Tr(
+      "Une compétence de soutien (soin, buff) part sur le membre dont la "
+      "tuile est sous le curseur : la touche arme, la tuile désigne. Le "
+      "liseré blanc montre qui sera visé.\n\n"
+      "La grille ne prend PAS le clic : marcher et frapper restent "
+      "possibles curseur dessus.\n\n"
+      "Les sorts d'ATTAQUE ne sont jamais concernés — viser un allié "
+      "relève du PVP, que le jeu réserve au clic manuel."));
+  if (!cast_on_tile_) {
+    SameLine();
+    ImGui::TextDisabled("%s", i18n::Tr("(éteint)"));
+  }
+
+  changed |= ro::RoCheckbox(
+      i18n::Tr("Cliquer les tuiles (cibler, menu du groupe)"),
+      &clickable_);
+  SameLine(); HelpMarker(i18n::Tr(
+      "Clic gauche : cibler le membre, comme un clic sur son "
+      "personnage — sans effet si le mode Ciblage est éteint.\n"
+      "Clic droit : le menu du personnage, celui de son sprite. Sur un "
+      "membre qu'aucun sprite ne représente, un menu de repli propose "
+      "ce qui voyage par nom : chuchoter, expulser.\n\n"
+      "⚠ La grille PREND alors la souris sur toute sa surface : "
+      "impossible de marcher ou de frapper en cliquant dessous. C'est "
+      "le prix des gestes sur les tuiles — décoché, la grille se "
+      "contente d'afficher et laisse tout passer."));
+
+  changed |= ro::RoCheckbox(i18n::Tr("Buffs et debuffs"),
+                            &show_buffs_);
+  SameLine(); HelpMarker(i18n::Tr(
+      "Les icônes d'état du membre, calées à droite de sa tuile. Le nom "
+      "se découpe sur ce qu'elles laissent.\n\n"
+      "⚠ Une tuile SANS icône ne veut pas dire « aucun buff ». Le serveur "
+      "ne diffuse ces états qu'aux joueurs qui VOIENT le personnage, "
+      "et seulement au moment où ils COMMENCENT : un joueur déjà "
+      "béni quand il entre à l'écran arrive sans rien.\n\n"
+      "Ce qui s'affiche ici est donc ce qui est TOMBÉ sous vos yeux, "
+      "pas l'état complet du personnage."));
+  if (show_buffs_) {
+    // ⚠ PAS dans `changed` : l'aperçu ne se persiste pas.
+    ro::RoCheckbox(i18n::Tr("Aperçu (faux statuts)"), &buff_preview_);
+    SameLine(); HelpMarker(i18n::Tr(
+        "Remplit l'affichage de faux états, aux durées étagées, le "
+        "temps de le régler — sans attendre d'en avoir de "
+        "vrais.\n\nNe se garde pas d'une session à l'autre."));
+
+    // 🔴 PushID : l'identifiant ImGui d'un widget est son LIBELLÉ,
+    // donc sa TRADUCTION. « Taille des icônes » (états) et « Taille
+    // de l'icône » (classe) sont distincts en français et deviennent
+    // tous deux « Icon size » en anglais : deux widgets, un seul
+    // identifiant, et ImGui lève une erreur en plein jeu.
+    //
+    // ⚠ Le code relu en français ne montre RIEN — c'est le catalogue
+    // qui crée la collision, et il peut la recréer demain sur un
+    // autre couple. D'où une isolation par BLOC, pas un libellé
+    // rebaptisé qui ne protégerait que ce cas-ci.
+    ImGui::PushID("status_icons");
+    changed |= WheelSliderInt(i18n::Tr("Taille des icônes"),
+                                   &buff_px(), 6, 28, "%d px");
+    changed |= WheelSliderInt(i18n::Tr("Icônes au plus"),
+                                   &buff_max(), 1, 24, "%d");
+    changed |= WheelSliderInt(i18n::Tr("Lignes d'icônes"),
+                                   &buff_rows(), 1, 4, "%d");
+    SameLine(); HelpMarker(i18n::Tr(
+        "Une rangée unique s'allonge jusqu'à manger la place du nom ; "
+        "en deux lignes, le même nombre d'états tient sur moitié moins "
+        "de largeur.\n\n"
+        "Le compte maximum se répartit entre les lignes — six icônes "
+        "sur deux lignes font trois par ligne."));
+    changed |= ro::RoCheckbox(i18n::Tr("Temps restant sous l'icône"),
+                              &buff_time_);
+    {
+      const char* kSweeps[] = {"Aucun",
+                               "Balayage horaire",
+                               "Voile descendant"};
+      changed |= ro::RoCombo(i18n::Tr("Grisage de la case"),
+                             &buff_sweep(), kSweeps,
+                             IM_ARRAYSIZE(kSweeps));
+    }
+    SameLine(); HelpMarker(i18n::Tr(
+        "La case s'assombrit à mesure que l'état s'écoule.\n\n"
+        "⚠ La durée d'origine n'est portée par AUCUN paquet : elle est "
+        "exacte quand on a vu l'état commencer, et repart de « plein » "
+        "quand on le découvre en route."));
+    ImGui::PopID();
+  }
+
+  // ── Couleurs ──────────────────────────────────────────────────────
+  SeparatorText(i18n::Tr("Couleurs"));
+  changed |= RoColorSwatch(i18n::Tr("Fond du cadre"), col_frame_bg_);
+  SameLine(); HelpMarker(i18n::Tr(
+      "Le panneau qui porte les tuiles. Sans lui, une grille sombre sur "
+      "une carte sombre devient impossible à distinguer du décor."));
+  changed |= RoColorSwatch(i18n::Tr("Fond d'une tuile"), col_tile_bg_);
+  changed |= RoColorSwatch(i18n::Tr("Vie — haute"), col_hp_high_);
+  changed |= RoColorSwatch(i18n::Tr("Vie — moyenne"), col_hp_mid_);
+  changed |= RoColorSwatch(i18n::Tr("Vie — basse"), col_hp_low_);
+  changed |= RoColorSwatch(i18n::Tr("SP"), col_sp_);
+  changed |= RoColorSwatch(i18n::Tr("Texte"), col_text_);
+  changed |= RoColorSwatch(i18n::Tr("Texte — hors de portée"),
+                           col_far_);
+  SameLine(); HelpMarker(i18n::Tr(
+      "Le membre est EN JEU, simplement trop loin pour que le client "
+      "connaisse ses PV : il peut revenir à portée d'un instant à "
+      "l'autre. À ne pas confondre avec un membre déconnecté."));
+  changed |= RoColorSwatch(i18n::Tr("Texte — hors ligne"),
+                           col_offline_);
+  changed |= RoColorSwatch(i18n::Tr("Liseré de ma tuile"), col_me_);
+
+  changed |= WheelSliderInt(i18n::Tr("Seuil « vie moyenne »"),
+                            &hp_mid_pct_, 20, 90, "%d %%");
+  changed |= WheelSliderInt(i18n::Tr("Seuil « vie basse »"),
+                            &hp_low_pct_, 5, 50, "%d %%");
+  SameLine(); HelpMarker(i18n::Tr(
+      "En dessous de ces pourcentages, la tuile change de couleur. C'est "
+      "ce qui permet de repérer un blessé sans lire un seul chiffre."));
+
+  ImGui::EndDisabled();
+  return changed;
 }

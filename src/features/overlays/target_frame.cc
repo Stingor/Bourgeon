@@ -1645,6 +1645,11 @@ uint32_t TargetFrame::SkillTargetGid(int targeting_mode) const {
 bool TargetFrame::DrawSettings() {
   bool changed = false;
 
+  // 🔴 La seule case d'activation qui subsiste dans le groupe « Interface
+  // moderne » : ce mode change le COMPORTEMENT du jeu, pas l'aspect d'une
+  // fenêtre, et on doit pouvoir s'en passer sans repasser en interface native.
+  // Elle ne sert qu'à ÉTEINDRE — la section entière est grisée hors groupe
+  // (`needs_modern`, panel_interface.cc), et c'est le groupe qui la rallume.
   changed |= ro::RoCheckbox(i18n::Tr("Activer le mode Ciblage + HUD"), &enabled_);
   SameLine();
   HelpMarker(i18n::Tr(
@@ -1836,6 +1841,99 @@ bool TargetFrame::DrawSettings() {
   HelpMarker(i18n::Tr("Repose les cinq cadres à leur place d'origine, en haut à "
                       "gauche. Les couleurs et les interrupteurs ne bougent pas."));
 
+
+  // ── Les ÉTATS de la cible ──────────────────────────────────────────────
+  //
+  // 🔴 LE CADRE EST RANGÉ AVEC LES AUTRES. Sa case, sa position, son fond et son
+  // liseré sont dans « Cadres » ci-dessus, et il obéit au verrou de la fenêtre —
+  // comme le portrait, le nom ou les jauges. Il avait sa propre géométrie et son
+  // propre verrou : deux cases « Verrouiller » dans le même panneau, et un cadre
+  // qui ignorait l'aimantation de ses frères alors qu'il décrit la MÊME cible.
+  //
+  // Ne reste donc ici que ce qui décrit son CONTENU, et n'a d'équivalent dans
+  // aucun autre cadre.
+  SeparatorText(i18n::Tr("États de la cible"));
+
+  // ⚠ PAS dans `changed` : l'aperçu ne se persiste pas.
+  ro::RoCheckbox(i18n::Tr("Aperçu (faux statuts)"), &st_preview_);
+  SameLine(); HelpMarker(i18n::Tr(
+      "Remplit l'affichage de faux états, aux durées étagées, le "
+      "temps de le régler — sans attendre d'en avoir de "
+      "vrais.\n\nNe se garde pas d'une session à l'autre."));
+
+  const bool on = elems_[kElemStatus].show;
+  if (!on) {
+    ImGui::TextDisabled("%s", i18n::Tr(
+        "Le cadre « États » est décoché dans Cadres, ci-dessus."));
+  }
+  ImGui::BeginDisabled(!on);
+
+  // ── Icônes ────────────────────────────────────────────────────────
+  SeparatorText(i18n::Tr("Icônes"));
+  changed |= WheelSliderInt(i18n::Tr("Taille"), &st_icon_px(),
+                            12, 48, "%d px");
+  changed |= WheelSliderInt(i18n::Tr("Écart"), &st_gap_px(),
+                            0, 12, "%d px");
+  changed |= WheelSliderInt(i18n::Tr("Nombre au plus"),
+                            &st_max_icons(), 1, 40, "%d");
+  SameLine(); HelpMarker(i18n::Tr(
+      "Au-delà, les états en trop sont écartés — ce sont les DERNIERS du "
+      "rangement ci-dessous, qui décide donc de ce qu'on perd."));
+  changed |= WheelSliderInt(i18n::Tr("Lignes d'icônes"),
+                            &st_rows(), 1, 6, "%d");
+  SameLine(); HelpMarker(i18n::Tr(
+      "Le cadre se replie déjà sur sa largeur : ce réglage force en plus "
+      "un nombre fixe par rangée, pour un cadre haut et étroit plutôt "
+      "que long et plat."));
+  {
+    // ⚠ Items NUS : RoCombo traduit à la lecture.
+    const char* kSorts[] = {"Ordre d'arrivée", "Bientôt fini d'abord",
+                            "Plus long d'abord"};
+    changed |= ro::RoCombo(i18n::Tr("Rangement"), &st_sort(),
+                           kSorts, IM_ARRAYSIZE(kSorts));
+  }
+  SameLine(); HelpMarker(i18n::Tr(
+      "« Bientôt fini d'abord » met en tête ce qu'il faudra relancer, ou "
+      "ce qu'il suffit d'attendre.\n\n"
+      "Un état SANS durée (permanent) n'a pas sa place dans un tri par "
+      "durée : il va en fin dans les deux sens, pour ne pas chasser de "
+      "l'écran ce qui presse."));
+
+  // ── Compte à rebours ──────────────────────────────────────────────
+  SeparatorText(i18n::Tr("Compte à rebours"));
+  changed |= ro::RoCheckbox(i18n::Tr("Afficher le temps restant"),
+                            &st_show_time_);
+  SameLine(); HelpMarker(i18n::Tr(
+      "Sous chaque icône. Un état permanent n'en porte pas : un « 0 » "
+      "sous un buff qui ne finit jamais le ferait croire terminé."));
+  ImGui::BeginDisabled(!st_show_time_);
+  Indent();
+    changed |= WheelSliderInt(i18n::Tr("Taille du texte"),
+                              &st_time_px(), 7, 20, "%d px");
+  Unindent();
+  ImGui::EndDisabled();
+
+  // ── Écoulement ────────────────────────────────────────────────────
+  SeparatorText(i18n::Tr("Écoulement"));
+  {
+    const char* kSweeps[] = {"Aucun", "Balayage horaire",
+                             "Voile descendant"};
+    changed |= ro::RoCombo(i18n::Tr("Grisage de la case"),
+                           &st_sweep(), kSweeps,
+                           IM_ARRAYSIZE(kSweeps));
+  }
+  SameLine(); HelpMarker(i18n::Tr(
+      "La case s'assombrit à mesure que l'état s'écoule : on voit "
+      "d'un coup d'œil lesquels sont près de tomber.\n\n"
+      "⚠ Un état sans échéance n'est jamais voilé : il n'a pas de part "
+      "écoulée, et le griser à moitié le ferait croire à mi-course."));
+  ImGui::BeginDisabled(st_sweep() == statuscell::kSweepNone);
+  Indent();
+    changed |= RoColorSwatch(i18n::Tr("Voile"), st_col_sweep_);
+  Unindent();
+  ImGui::EndDisabled();
+
+  ImGui::EndDisabled();
   ImGui::EndDisabled();
   return changed;
 }

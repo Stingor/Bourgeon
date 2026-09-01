@@ -3714,16 +3714,10 @@ void ItemDescWindow::RenderBookWindow() {
 bool ItemDescWindow::DrawSettings() {
   bool changed = false;
   TextUnformatted(i18n::Tr("Descriptions modernes des items et skills."));
-  // Plus de cases d'activation ici : les trois panneaux (item, skill, livre)
-  // suivent le groupe « Interface moderne » depuis le 2026-08-18 — ils
-  // s'ouvrent depuis l'inventaire, le grimoire et les fiches modernes, un mixe
-  // n'aurait pas de sens. Restent les réglages FINS, grisés hors groupe pour
-  // qu'on voie qu'ils existent sans pouvoir tourner un bouton inerte.
-  const bool modern = ModernInterfaceEnabled();
-  ImGui::TextDisabled(
-      "%s", i18n::Tr("Suivent l'interface moderne — l'interrupteur est en tête "
-                     "d'« Interface de jeu »."));
-  ImGui::BeginDisabled(!modern);
+  // Pas de case d'activation : les trois panneaux (item, skill, livre) suivent le
+  // groupe « Interface moderne » — ils s'ouvrent depuis l'inventaire, le grimoire
+  // et les fiches modernes, un mixe n'aurait pas de sens. C'est le panneau qui
+  // grise la section hors groupe.
 
   changed |= ro::RoCheckbox(i18n::Tr("Livres : ouvrir à la première page"),
                             &book_reset_page());
@@ -3746,7 +3740,6 @@ bool ItemDescWindow::DrawSettings() {
       SameLine(); HelpMarker(i18n::Tr("Décalage depuis le curseur (molette au survol pour ajuster)."));
     Unindent();
   }
-  ImGui::EndDisabled();
   return changed;
 }
 

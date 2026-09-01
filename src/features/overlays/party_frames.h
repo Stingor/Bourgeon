@@ -47,6 +47,11 @@ class PartyFrames : public Plugin {
   void OnTick() override;      // masque le HUD natif, interroge le SP
   void OnRenderUI() override;  // dessine la grille
 
+  // Le contenu de la section « Groupe (grille) » du panneau Bourgeon.
+  // Renvoie true si un réglage PERSISTANT a changé — au panneau d'appeler
+  // SaveSettings, comme pour toutes les autres sections.
+  bool DrawSettings();
+
   // ── Le SP : il faut le DEMANDER au serveur ────────────────────────────────
   //
   // 🔴 Aucun paquet du protocole ne transporte le SP d'un tiers, et le client ne

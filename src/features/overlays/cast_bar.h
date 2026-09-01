@@ -63,7 +63,7 @@ class CastBar : public Plugin {
   void OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
 
   // Section du panneau de réglages (« Interface »).
-  void DrawSettings();
+  bool DrawSettings();
 
   // ── Notre propre incantation, pour la barre HUD de BasicInfo ───────────────
   // Instantané relevé au battement de frame, PAS à la lecture : BasicInfo dessine

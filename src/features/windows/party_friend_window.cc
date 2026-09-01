@@ -32,6 +32,8 @@
 #include "utils/i18n.h"
 #include "ragnarok/social.h"  // lecture des listes, noms de classe, icones
 
+using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
+
 namespace {
 
 // (`g_Own_InParty` 0x015FF804 existe et garde les cases 0x3D / 0x3E du switch
@@ -1804,4 +1806,189 @@ void PartyFriendWindow::DrawFriendRow(const rag::social::Entry& row) {
     OnRowRightClick(row);
   }
   DrawRowContextMenu(row, false);
+}
+
+// ── Panneau de réglages ─────────────────────────────────────────────────────
+// Cette fenêtre est du groupe « Interface moderne » (elle DÉTRUIT la native
+// 0x45) : c'est le panneau qui grise la section hors groupe, au site d'appel
+// unique. Rien à tester ici.
+bool PartyFriendWindow::DrawSettings() {
+  bool changed = false;
+  SeparatorText(i18n::Tr("Fenêtre"));
+  changed |= ro::RoCheckbox(i18n::Tr("Verrouiller la taille"),
+                            &lock_size());
+  SameLine(); HelpMarker(i18n::Tr(
+      "Empêche le redimensionnement, PAS le déplacement : la fenêtre "
+      "se déplace toujours par sa barre de titre.\n\n"
+      "Une fois la largeur réglée, viser le bord au lieu du titre la "
+      "dérègle d'un pixel et recompose les lignes sous la souris."));
+  SeparatorText(i18n::Tr("Contenu d'une ligne"));
+  changed |= ro::RoCheckbox(i18n::Tr("Icône de classe"),
+                            &show_job_icon_);
+  SameLine(); HelpMarker(i18n::Tr(
+      "L'art du client, à gauche du nom. Éteinte, la ligne se resserre — "
+      "utile sur une fenêtre étroite."));
+  {
+    // ⚠ Items NUS : RoCombo traduit à la lecture (cf. plus bas).
+    const char* kHeads[] = {"Aucune", "Groupe", "Amis", "Les deux"};
+    changed |= ro::RoCombo(i18n::Tr("Tête du personnage"),
+                           &head_mode_, kHeads,
+                           IM_ARRAYSIZE(kHeads));
+  }
+  SameLine(); HelpMarker(i18n::Tr(
+      "La tête du personnage à la place de l'icône de classe, comme la "
+      "fenêtre des membres de guilde.\n\n"
+      "Pour qui est à l'écran, elle vient de son sprite et suit un "
+      "changement de coiffure aussitôt. Pour les autres, le serveur la "
+      "donne sur demande — un joueur HORS LIGNE n'en a pas, et dans "
+      "l'onglet Amis la ligne reste alors sans vignette."));
+  changed |= ro::RoCheckbox(i18n::Tr("Niveau devant le nom"),
+                            &show_level_);
+  {
+    const char* kMapModes[] = {"Nom complet",
+                               "Nom court",
+                               "Masquée"};
+    changed |= ro::RoCombo(i18n::Tr("Carte"), &map_mode_,
+                            kMapModes, IM_ARRAYSIZE(kMapModes));
+  }
+  SameLine(); HelpMarker(i18n::Tr(
+      "Le client écrit « Gonryun, the Hermit Land (Kunlun) » là où "
+      "« Gonryun » suffit à se repérer — et le nom complet pousse le "
+      "reste de la ligne hors d'une fenêtre étroite.\n\n"
+      "Masquée, la ligne ne porte plus que le nom. L'infobulle au "
+      "survol continue de donner la carte entière."));
+  changed |= ro::RoCheckbox(i18n::Tr("Infobulle au survol"),
+                            &show_tooltip_);
+  SameLine(); HelpMarker(i18n::Tr(
+      "Au survol d'une ligne : la classe, la carte complète, la position "
+      "et les PV/SP chiffrés — ce qui ne tient pas dans la ligne."));
+  changed |= ro::RoCheckbox(i18n::Tr("Clic gauche : cibler le membre"),
+                            &click_targets_);
+  SameLine(); HelpMarker(i18n::Tr(
+      "Comme une tuile du HUD en grille : la ligne devient une cible "
+      "cliquable, et un liseré blanc marque la cible courante.\n\n"
+      "Sans effet sur un membre hors ligne ou hors de portée — ses PV et "
+      "sa position viennent de son sprite, et il n'y en a pas.\n\n"
+      "Demande le mode Ciblage, qui a son propre panneau : c'est lui qui "
+      "décide qu'une cible existe."));
+  changed |= ro::RoCheckbox(i18n::Tr("Buffs et debuffs"),
+                            &show_buffs_);
+  SameLine(); HelpMarker(i18n::Tr(
+      "Les icônes d'état du membre, à gauche de sa pastille.\n\n"
+      "⚠ Une ligne SANS icône ne veut pas dire « aucun buff ». Le serveur "
+      "ne diffuse ces états qu'aux joueurs qui VOIENT le personnage, "
+      "et seulement au moment où ils COMMENCENT : un joueur déjà "
+      "béni quand il entre à l'écran arrive sans rien.\n\n"
+      "Ce qui s'affiche ici est donc ce qui est TOMBÉ sous vos yeux, "
+      "pas l'état complet du personnage."));
+  if (show_buffs_) {
+    // ⚠ PAS dans `changed` : l'aperçu ne se persiste pas, et le
+    // marquer réécrirait le fichier de réglages à chaque clic.
+    ro::RoCheckbox(i18n::Tr("Aperçu (faux statuts)"), &buff_preview_);
+    SameLine(); HelpMarker(i18n::Tr(
+        "Remplit l'affichage de faux états, aux durées étagées, le "
+        "temps de le régler — sans attendre d'en avoir de "
+        "vrais.\n\nNe se garde pas d'une session à l'autre."));
+    // 🔴 PushID : l'identifiant ImGui d'un widget est son LIBELLÉ,
+    // donc sa TRADUCTION. « Taille des icônes » (états) et « Taille
+    // de l'icône » (classe) sont distincts en français et deviennent
+    // tous deux « Icon size » en anglais : deux widgets, un seul
+    // identifiant, et ImGui lève une erreur en plein jeu.
+    //
+    // ⚠ Le code relu en français ne montre RIEN — c'est le catalogue
+    // qui crée la collision, et il peut la recréer demain sur un
+    // autre couple. D'où une isolation par BLOC, pas un libellé
+    // rebaptisé qui ne protégerait que ce cas-ci.
+    ImGui::PushID("status_icons");
+    changed |= WheelSliderInt(i18n::Tr("Taille des icônes"),
+                                   &buff_px(), 8, 32, "%d px");
+    changed |= WheelSliderInt(i18n::Tr("Icônes au plus"),
+                                   &buff_max(), 1, 24, "%d");
+    changed |= WheelSliderInt(i18n::Tr("Lignes d'icônes"),
+                                   &buff_rows(), 1, 4, "%d");
+    SameLine(); HelpMarker(i18n::Tr(
+        "Une rangée unique s'allonge jusqu'à manger la place du nom ; "
+        "en deux lignes, le même nombre d'états tient sur moitié moins "
+        "de largeur.\n\n"
+        "Le compte maximum se répartit entre les lignes — six icônes "
+        "sur deux lignes font trois par ligne."));
+    changed |= ro::RoCheckbox(i18n::Tr("Temps restant sous l'icône"),
+                              &buff_time_);
+    {
+      const char* kSweeps[] = {"Aucun",
+                               "Balayage horaire",
+                               "Voile descendant"};
+      changed |= ro::RoCombo(i18n::Tr("Grisage de la case"),
+                             &buff_sweep(), kSweeps,
+                             IM_ARRAYSIZE(kSweeps));
+    }
+    SameLine(); HelpMarker(i18n::Tr(
+        "La case s'assombrit à mesure que l'état s'écoule.\n\n"
+        "⚠ La durée d'origine n'est portée par AUCUN paquet : elle est "
+        "exacte quand on a vu l'état commencer, et repart de « plein » "
+        "quand on le découvre en route."));
+    ImGui::PopID();
+  }
+
+  // ── Densité ───────────────────────────────────────────────────────
+  SeparatorText(i18n::Tr("Densité"));
+  changed |= WheelSliderInt(i18n::Tr("Taille de l'icône"),
+                            &icon_px_, 16, 56, "%d px");
+  changed |= WheelSliderInt(i18n::Tr("Espace entre les lignes"),
+                            &row_spacing_, 0, 12, "%d px");
+  SameLine(); HelpMarker(i18n::Tr(
+      "À zéro, les lignes se touchent : c'est le réglage qui gagne le "
+      "plus de hauteur sur un groupe nombreux."));
+
+  // ── Jauges ────────────────────────────────────────────────────────
+  // PV et SP ensemble : ce sont deux jauges, elles partagent forme,
+  // taille et placement du texte. Les séparer obligeait à faire des
+  // allers-retours entre deux blocs pour un réglage commun.
+  SeparatorText(i18n::Tr("Jauges"));
+  changed |= ro::RoCheckbox(i18n::Tr("Barre de vie"),
+                            &show_hp_bar_);
+  {
+    const char* kHpModes[] = {
+        "Rien", "Chiffres",
+        "Pourcentage", "Chiffres et pourcentage"};
+    changed |= ro::RoCombo(i18n::Tr("Texte des PV"),
+                           &hp_text_mode_, kHpModes,
+                           IM_ARRAYSIZE(kHpModes));
+  }
+  changed |= ro::RoCheckbox(i18n::Tr("Barre de SP"), &show_sp_);
+  {
+    const char* kSpModes[] = {
+        "Rien", "Chiffres",
+        "Pourcentage", "Chiffres et pourcentage"};
+    changed |= ro::RoCombo(i18n::Tr("Texte du SP"),
+                            &sp_text_mode_, kSpModes,
+                            IM_ARRAYSIZE(kSpModes));
+  }
+  SameLine(); HelpMarker(i18n::Tr(
+      "Le SP d'un autre joueur ne circule dans AUCUN paquet du jeu : il "
+      "est demandé au serveur, membre par membre. Il n'apparaît donc que "
+      "pour ceux qui sont à portée de vue, et coûte un peu de réseau — "
+      "d'où le défaut éteint."));
+  changed |= WheelSliderInt(i18n::Tr("Largeur des jauges"),
+                            &bar_w_, 20, 260, "%d px");
+  changed |= WheelSliderInt(i18n::Tr("Hauteur d'une jauge"),
+                            &bar_h_, 3, 20, "%d px");
+  changed |= ro::RoCheckbox(i18n::Tr("Jauges collées l'une sous l'autre"),
+                            &bars_stacked_);
+  SameLine(); HelpMarker(i18n::Tr(
+      "PV au-dessus, SP juste dessous, sans rien entre les deux.\n\n"
+      "Le texte passe alors DANS les jauges : à côté, il pousserait la "
+      "seconde d'une hauteur de ligne et elles ne seraient plus collées."));
+  changed |= ro::RoCheckbox(i18n::Tr("Texte dans les jauges"),
+                            &text_in_bars_);
+  SameLine(); HelpMarker(i18n::Tr(
+      "Centré sur la jauge, avec une ombre pour rester lisible sur le "
+      "vert comme sur le fond. La ligne ne s'allonge pas — mais il faut "
+      "une jauge assez haute."));
+  changed |= WheelSliderInt(i18n::Tr("Taille du texte des jauges"),
+                            &text_px_, 0, 20, "%d px");
+  SameLine(); HelpMarker(i18n::Tr(
+      "À zéro, celle de l'interface."));
+
+  return changed;
 }

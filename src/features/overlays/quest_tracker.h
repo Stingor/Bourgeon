@@ -58,5 +58,5 @@ class QuestTracker : public Plugin {
   QuestTrackerConfig& config();
 
   // Settings controls (no window of its own); hosted by moonlight_ui.
-  void DrawSettings();
+  bool DrawSettings();
 };

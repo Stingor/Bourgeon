@@ -1159,7 +1159,7 @@ void SkillBar::OnRenderUI() {
 // natives ne naissent plus. Remplir une case passe par le glisser ImGui.)
 
 // ---- contenu des réglages (fenêtre standalone ²/~ ET onglet MoonlightUi "Barre d'action") -----
-void SkillBar::DrawSettings() {
+bool SkillBar::DrawSettings() {
   bool changed = false;
   // Cette barre est membre du groupe « Interface moderne » (tout-ImGui ou
   // tout-natif, plus de mixe) : `SetModernInterface` écrit `enabled_` avec les
@@ -1252,7 +1252,9 @@ void SkillBar::DrawSettings() {
 
   ImGui::EndDisabled();
 
-  if (changed) dirty_ = true;  // persistance drainée par MoonlightUi
+  // `dirty_` sert aux chemins HORS panneau (fin d'un glisser de case, barre
+  // d'items) ; ici c'est le panneau qui persiste.
+  return changed;
 }
 
 // ---- retrait d'une case glissée hors des barres -----------------------------

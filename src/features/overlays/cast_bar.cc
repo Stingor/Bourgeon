@@ -458,7 +458,7 @@ void CastBar::OwnCastLabel(char* out, size_t n) const {
 }
 
 // ── Réglages ─────────────────────────────────────────────────────────────────
-void CastBar::DrawSettings() {
+bool CastBar::DrawSettings() {
   bool save = false;
 
   ImGui::TextDisabled(i18n::Tr(
@@ -541,7 +541,5 @@ void CastBar::DrawSettings() {
       "Pour qui préfère la suivre dans son interface. La barre « Cast » se règle "
       "avec les autres barres, dans la section « Basic Info »."));
 
-  if (save) {
-    if (auto* ui = Bourgeon::Instance().moonlight_ui()) ui->SaveSettings();
-  }
+  return save;
 }

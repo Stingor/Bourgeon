@@ -159,14 +159,13 @@ void MoonlightUi::DrawInterfacePanel() {
     // Cart, Banque) : cinq cases synchronisées pour un seul état, chacune donnant
     // l'impression de ne concerner que sa fenêtre alors qu'elle en basculait douze.
     // Sa place est en tête de l'en-tête, au-dessus de la navigation — c'est le
-    // réglage dont dépendent sept des quinze sections.
+    // réglage dont dépendent treize des vingt-cinq sections.
     bool modern = ModernInterfaceEnabled();
     changed |= DrawModernInterfaceCheckbox(
         &modern,
         i18n::Tr("Les réglages propres à chaque fenêtre restent dans leur section "
-        "ci-dessous (Inventaire, Cart, Storage, Banque, Refine, Fabrication, "
-        "Barre d'action). Ils sont grisés tant que cette case est décochée : "
-        "sans elle, ces fenêtres n'existent pas."));
+        "ci-dessous, et y sont grisés tant que cette case est décochée : sans "
+        "elle, ces fenêtres n'existent pas."));
 
     // ── Langue, police et échelle de l'interface ─────────────────────────────
     // Les trois réglages qui s'appliquent à TOUTE l'interface Bourgeon, groupés
@@ -196,7 +195,7 @@ void MoonlightUi::DrawInterfacePanel() {
           // Une langue sans catalogue reste VISIBLE, mais inerte. La masquer
           // laisserait croire que Bourgeon ne la connaît pas ; la griser dit ce
           // qui est vrai — elle est prévue, son fichier n'est pas là.
-          if (!language.available) ImGui::BeginDisabled();
+          ImGui::BeginDisabled(!language.available);
           if (ImGui::Selectable(language.label, selected) && !selected) {
             changed |= i18n::SetLanguage(language.code);
             // La table de messages du CLIENT suit la même langue que notre
@@ -205,7 +204,7 @@ void MoonlightUi::DrawInterfacePanel() {
             // jamais), donc un libellé « en vol » reste valide.
             msgoverride::Reload();
           }
-          if (!language.available) ImGui::EndDisabled();
+          ImGui::EndDisabled();
           if (selected) ImGui::SetItemDefaultFocus();
         }
         // 🔴 `ro::RoEndCombo`, PAS `ImGui::EndCombo` : RoBeginCombo n'appelle pas
@@ -328,18 +327,25 @@ void MoonlightUi::DrawInterfacePanel() {
 
       // ── Sections qui n'existent QUE si le groupe « Interface moderne » l'est ─
       //
-      // Ces sept-là ne règlent que des fenêtres ImGui : groupe coupé, elles
-      // n'existent pas et leurs options ne changent rien. Un réglage sans effet est
-      // un piège — on le grise, plutôt que de laisser croire qu'il agit.
+      // Elles ne règlent que des fenêtres ImGui : groupe coupé, elles n'existent
+      // pas et leurs options ne changent rien. Un réglage sans effet est un piège —
+      // on le grise, plutôt que de laisser croire qu'il agit.
       //
-      // Le test est fait ICI, au site d'appel unique, et non dans chacun des sept
-      // DrawSettings() : un BeginDisabled/EndDisabled à apparier dans sept plugins
-      // finit toujours par se dépareiller sur un chemin de sortie.
-      const bool needs_modern =
-          iface_nav == kIfaceSkillBar  || iface_nav == kIfaceStorage ||
-          iface_nav == kIfaceInventory || iface_nav == kIfaceCart    ||
-          iface_nav == kIfaceRefine    || iface_nav == kIfaceMakeItem  ||
-          iface_nav == kIfaceMonsterInfo || iface_nav == kIfacePet;
+      // 🔴 LA LISTE N'EST PAS ICI, et c'est tout l'intérêt : `SectionNeedsModern`
+      // la lit dans la table qui définit le groupe (moonlight_ui.cc), celle-là même
+      // qui bascule les plugins et qui écrit l'infobulle de la case. Elle a été
+      // recopiée à la main pendant longtemps, et l'infobulle taisait déjà cinq
+      // membres. Ajouter un plugin au groupe grise désormais sa section du même
+      // geste.
+      //
+      // Le TEST, lui, reste au site d'appel unique : un BeginDisabled à apparier
+      // dans treize plugins finit par se dépareiller sur un chemin de sortie.
+      //
+      // UNE section du groupe répond faux ici (`kSelfGated` dans la table) : le
+      // Chat, dont le relais Discord et les retouches du chat NATIF n'ont rien à
+      // voir avec le groupe — seule la chatbox ImGui en est, et elle porte son
+      // propre grisage, partiel.
+      const bool needs_modern = SectionNeedsModern(iface_nav);
       const bool locked = needs_modern && !ModernInterfaceEnabled();
       if (locked) {
         // 🔴 Un APERÇU, pas un cimetière. Ces sections sont la meilleure vitrine de
@@ -354,9 +360,9 @@ void MoonlightUi::DrawInterfacePanel() {
         // (`IM_COL32(166, 102, 0)`) : le jaune vif d'une première rédaction passait
         // mal sur le gris clair du skin RO — trop criard pour une invitation, et
         // moins lisible qu'un ton sourd sur fond pâle.
-        ImGui::TextColored(ImVec4(166 / 255.0f, 102 / 255.0f, 0.0f, 1.0f),
+        ImGui::TextColored(ImVec4(166 / 255.0f, 102 / 255.0f, 0.0f, 1.0f), "%s",
                            i18n::Tr("Aperçu — ces réglages appartiennent à l'interface "
-                           "moderne, qui est désactivée."));
+                                    "moderne, qui est désactivée."));
         if (ro::RoButton(i18n::Tr("Activer l'interface moderne"))) {
           SetModernInterface(true);
           SaveSettings();
@@ -370,10 +376,11 @@ void MoonlightUi::DrawInterfacePanel() {
       // ── Barre d'action ───────────────────────────────────────────────────
       if (iface_nav == kIfaceSkillBar)
       {
-        if (auto* sb = Bourgeon::Instance().skill_bar())
-          sb->DrawSettings();
-        else
-          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
+        if (auto* sb = Bourgeon::Instance().skill_bar()) {
+          if (sb->DrawSettings()) SaveSettings();
+        } else {
+          ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
+        }
       }
 
       // ── Barres d'info (HUD bars + alignment grid) ────────────────────────
@@ -382,7 +389,7 @@ void MoonlightUi::DrawInterfacePanel() {
         if (auto* basic_info = Bourgeon::Instance().basic_info()) {
           if (basic_info->DrawSettings()) SaveSettings();
         } else {
-          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
+          ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
         }
       }
 
@@ -391,118 +398,21 @@ void MoonlightUi::DrawInterfacePanel() {
       // section Basic Info : c'est la même famille de widgets, même verrou,
       // même aimantation. Ici on ne traite que celles des entités.
       if (iface_nav == kIfaceCastBar) {
-        if (auto* cast = Bourgeon::Instance().cast_bar())
-          cast->DrawSettings();
-        else
-          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
+        if (auto* cast = Bourgeon::Instance().cast_bar()) {
+          if (cast->DrawSettings()) SaveSettings();
+        } else {
+          ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
+        }
       }
 
       // ── Fenêtre de cible (TargetFrame) ───────────────────────────────────
       // Elle suit la sélection native — la même que la petite flèche blanche du
       // jeu — et complète ce que le client ignore par une requête serveur.
       if (iface_nav == kIfaceTargetFrame) {
-        if (auto* target_frame = Bourgeon::Instance().target_frame()) {
-          if (target_frame->DrawSettings()) SaveSettings();
-        } else {
-          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
-        }
-
-        // ── Les ÉTATS de la cible ──────────────────────────────────────────
-        //
-        // 🔴 LE CADRE EST RANGÉ AVEC LES AUTRES. Sa case, sa position, son fond
-        // et son liseré sont dans « Cadres » ci-dessus, et il obéit au verrou de
-        // la fenêtre — comme le portrait, le nom ou les jauges. Il avait sa
-        // propre géométrie et son propre verrou : deux cases « Verrouiller »
-        // dans le même panneau, et un cadre qui ignorait l'aimantation de ses
-        // frères alors qu'il décrit la MÊME cible.
-        //
-        // Ne reste donc ici que ce qui décrit son CONTENU, et n'a d'équivalent
-        // dans aucun autre cadre.
         if (auto* tf = Bourgeon::Instance().target_frame()) {
-          bool changed = false;
-          SeparatorText(i18n::Tr("États de la cible"));
-
-          // ⚠ PAS dans `changed` : l'aperçu ne se persiste pas.
-          ro::RoCheckbox(i18n::Tr("Aperçu (faux statuts)"), &tf->st_preview_);
-          SameLine(); HelpMarker(i18n::Tr(
-              "Remplit l'affichage de faux états, aux durées étagées, le "
-              "temps de le régler — sans attendre d'en avoir de "
-              "vrais.\n\nNe se garde pas d'une session à l'autre."));
-
-          const bool on = tf->elems_[TargetFrame::kElemStatus].show;
-          if (!on) {
-            ImGui::TextDisabled("%s", i18n::Tr(
-                "Le cadre « États » est décoché dans Cadres, ci-dessus."));
-          }
-          ImGui::BeginDisabled(!on);
-
-          // ── Icônes ────────────────────────────────────────────────────────
-          SeparatorText(i18n::Tr("Icônes"));
-          changed |= WheelSliderInt(i18n::Tr("Taille"), &tf->st_icon_px(),
-                                    12, 48, "%d px");
-          changed |= WheelSliderInt(i18n::Tr("Écart"), &tf->st_gap_px(),
-                                    0, 12, "%d px");
-          changed |= WheelSliderInt(i18n::Tr("Nombre au plus"),
-                                    &tf->st_max_icons(), 1, 40, "%d");
-          SameLine(); HelpMarker(i18n::Tr(
-              "Au-delà, les états en trop sont écartés — ce sont les DERNIERS du "
-              "rangement ci-dessous, qui décide donc de ce qu'on perd."));
-          changed |= WheelSliderInt(i18n::Tr("Lignes d'icônes"),
-                                    &tf->st_rows(), 1, 6, "%d");
-          SameLine(); HelpMarker(i18n::Tr(
-              "Le cadre se replie déjà sur sa largeur : ce réglage force en plus "
-              "un nombre fixe par rangée, pour un cadre haut et étroit plutôt "
-              "que long et plat."));
-          {
-            // ⚠ Items NUS : RoCombo traduit à la lecture.
-            const char* kSorts[] = {"Ordre d'arrivée", "Bientôt fini d'abord",
-                                    "Plus long d'abord"};
-            changed |= ro::RoCombo(i18n::Tr("Rangement"), &tf->st_sort(),
-                                   kSorts, IM_ARRAYSIZE(kSorts));
-          }
-          SameLine(); HelpMarker(i18n::Tr(
-              "« Bientôt fini d'abord » met en tête ce qu'il faudra relancer, ou "
-              "ce qu'il suffit d'attendre.\n\n"
-              "Un état SANS durée (permanent) n'a pas sa place dans un tri par "
-              "durée : il va en fin dans les deux sens, pour ne pas chasser de "
-              "l'écran ce qui presse."));
-
-          // ── Compte à rebours ──────────────────────────────────────────────
-          SeparatorText(i18n::Tr("Compte à rebours"));
-          changed |= ro::RoCheckbox(i18n::Tr("Afficher le temps restant"),
-                                    &tf->st_show_time_);
-          SameLine(); HelpMarker(i18n::Tr(
-              "Sous chaque icône. Un état permanent n'en porte pas : un « 0 » "
-              "sous un buff qui ne finit jamais le ferait croire terminé."));
-          ImGui::BeginDisabled(!tf->st_show_time_);
-          Indent();
-            changed |= WheelSliderInt(i18n::Tr("Taille du texte"),
-                                      &tf->st_time_px(), 7, 20, "%d px");
-          Unindent();
-          ImGui::EndDisabled();
-
-          // ── Écoulement ────────────────────────────────────────────────────
-          SeparatorText(i18n::Tr("Écoulement"));
-          {
-            const char* kSweeps[] = {"Aucun", "Balayage horaire",
-                                     "Voile descendant"};
-            changed |= ro::RoCombo(i18n::Tr("Grisage de la case"),
-                                   &tf->st_sweep(), kSweeps,
-                                   IM_ARRAYSIZE(kSweeps));
-          }
-          SameLine(); HelpMarker(i18n::Tr(
-              "La case s'assombrit à mesure que l'état s'écoule : on voit "
-              "d'un coup d'œil lesquels sont près de tomber.\n\n"
-              "⚠ Un état sans échéance n'est jamais voilé : il n'a pas de part "
-              "écoulée, et le griser à moitié le ferait croire à mi-course."));
-          ImGui::BeginDisabled(tf->st_sweep() == statuscell::kSweepNone);
-          Indent();
-            changed |= RoColorSwatch(i18n::Tr("Voile"), tf->st_col_sweep_);
-          Unindent();
-          ImGui::EndDisabled();
-
-          ImGui::EndDisabled();
-          if (changed) SaveSettings();
+          if (tf->DrawSettings()) SaveSettings();
+        } else {
+          ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
         }
       }
 
@@ -512,188 +422,10 @@ void MoonlightUi::DrawInterfacePanel() {
       // règlent pas ensemble — on ne consulte pas une liste comme on surveille
       // des barres de vie.
       if (iface_nav == kIfacePartyFriend) {
-        auto* pfw = Bourgeon::Instance().party_friend_window();
-        if (pfw == nullptr) {
-          ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
+        if (auto* pfw = Bourgeon::Instance().party_friend_window()) {
+          if (pfw->DrawSettings()) SaveSettings();
         } else {
-          bool changed = false;
-          SeparatorText(i18n::Tr("Fenêtre"));
-          changed |= ro::RoCheckbox(i18n::Tr("Verrouiller la taille"),
-                                    &pfw->lock_size());
-          SameLine(); HelpMarker(i18n::Tr(
-              "Empêche le redimensionnement, PAS le déplacement : la fenêtre "
-              "se déplace toujours par sa barre de titre.\n\n"
-              "Une fois la largeur réglée, viser le bord au lieu du titre la "
-              "dérègle d'un pixel et recompose les lignes sous la souris."));
-          SeparatorText(i18n::Tr("Contenu d'une ligne"));
-          changed |= ro::RoCheckbox(i18n::Tr("Icône de classe"),
-                                    &pfw->show_job_icon_);
-          SameLine(); HelpMarker(i18n::Tr(
-              "L'art du client, à gauche du nom. Éteinte, la ligne se resserre — "
-              "utile sur une fenêtre étroite."));
-          {
-            // ⚠ Items NUS : RoCombo traduit à la lecture (cf. plus bas).
-            const char* kHeads[] = {"Aucune", "Groupe", "Amis", "Les deux"};
-            changed |= ro::RoCombo(i18n::Tr("Tête du personnage"),
-                                   &pfw->head_mode_, kHeads,
-                                   IM_ARRAYSIZE(kHeads));
-          }
-          SameLine(); HelpMarker(i18n::Tr(
-              "La tête du personnage à la place de l'icône de classe, comme la "
-              "fenêtre des membres de guilde.\n\n"
-              "Pour qui est à l'écran, elle vient de son sprite et suit un "
-              "changement de coiffure aussitôt. Pour les autres, le serveur la "
-              "donne sur demande — un joueur HORS LIGNE n'en a pas, et dans "
-              "l'onglet Amis la ligne reste alors sans vignette."));
-          changed |= ro::RoCheckbox(i18n::Tr("Niveau devant le nom"),
-                                    &pfw->show_level_);
-          {
-            const char* kMapModes[] = {"Nom complet",
-                                       "Nom court",
-                                       "Masquée"};
-            changed |= ro::RoCombo(i18n::Tr("Carte"), &pfw->map_mode_,
-                                    kMapModes, IM_ARRAYSIZE(kMapModes));
-          }
-          SameLine(); HelpMarker(i18n::Tr(
-              "Le client écrit « Gonryun, the Hermit Land (Kunlun) » là où "
-              "« Gonryun » suffit à se repérer — et le nom complet pousse le "
-              "reste de la ligne hors d'une fenêtre étroite.\n\n"
-              "Masquée, la ligne ne porte plus que le nom. L'infobulle au "
-              "survol continue de donner la carte entière."));
-          changed |= ro::RoCheckbox(i18n::Tr("Infobulle au survol"),
-                                    &pfw->show_tooltip_);
-          SameLine(); HelpMarker(i18n::Tr(
-              "Au survol d'une ligne : la classe, la carte complète, la position "
-              "et les PV/SP chiffrés — ce qui ne tient pas dans la ligne."));
-          changed |= ro::RoCheckbox(i18n::Tr("Clic gauche : cibler le membre"),
-                                    &pfw->click_targets_);
-          SameLine(); HelpMarker(i18n::Tr(
-              "Comme une tuile du HUD en grille : la ligne devient une cible "
-              "cliquable, et un liseré blanc marque la cible courante.\n\n"
-              "Sans effet sur un membre hors ligne ou hors de portée — ses PV et "
-              "sa position viennent de son sprite, et il n'y en a pas.\n\n"
-              "Demande le mode Ciblage, qui a son propre panneau : c'est lui qui "
-              "décide qu'une cible existe."));
-          changed |= ro::RoCheckbox(i18n::Tr("Buffs et debuffs"),
-                                    &pfw->show_buffs_);
-          SameLine(); HelpMarker(i18n::Tr(
-              "Les icônes d'état du membre, à gauche de sa pastille.\n\n"
-              "⚠ Une ligne SANS icône ne veut pas dire « aucun buff ». Le serveur "
-              "ne diffuse ces états qu'aux joueurs qui VOIENT le personnage, "
-              "et seulement au moment où ils COMMENCENT : un joueur déjà "
-              "béni quand il entre à l'écran arrive sans rien.\n\n"
-              "Ce qui s'affiche ici est donc ce qui est TOMBÉ sous vos yeux, "
-              "pas l'état complet du personnage."));
-          if (pfw->show_buffs_) {
-            // ⚠ PAS dans `changed` : l'aperçu ne se persiste pas, et le
-            // marquer réécrirait le fichier de réglages à chaque clic.
-            ro::RoCheckbox(i18n::Tr("Aperçu (faux statuts)"), &pfw->buff_preview_);
-            SameLine(); HelpMarker(i18n::Tr(
-                "Remplit l'affichage de faux états, aux durées étagées, le "
-                "temps de le régler — sans attendre d'en avoir de "
-                "vrais.\n\nNe se garde pas d'une session à l'autre."));
-            // 🔴 PushID : l'identifiant ImGui d'un widget est son LIBELLÉ,
-            // donc sa TRADUCTION. « Taille des icônes » (états) et « Taille
-            // de l'icône » (classe) sont distincts en français et deviennent
-            // tous deux « Icon size » en anglais : deux widgets, un seul
-            // identifiant, et ImGui lève une erreur en plein jeu.
-            //
-            // ⚠ Le code relu en français ne montre RIEN — c'est le catalogue
-            // qui crée la collision, et il peut la recréer demain sur un
-            // autre couple. D'où une isolation par BLOC, pas un libellé
-            // rebaptisé qui ne protégerait que ce cas-ci.
-            ImGui::PushID("status_icons");
-            changed |= mui::WheelSliderInt(i18n::Tr("Taille des icônes"),
-                                           &pfw->buff_px(), 8, 32, "%d px");
-            changed |= mui::WheelSliderInt(i18n::Tr("Icônes au plus"),
-                                           &pfw->buff_max(), 1, 24, "%d");
-            changed |= mui::WheelSliderInt(i18n::Tr("Lignes d'icônes"),
-                                           &pfw->buff_rows(), 1, 4, "%d");
-            SameLine(); HelpMarker(i18n::Tr(
-                "Une rangée unique s'allonge jusqu'à manger la place du nom ; "
-                "en deux lignes, le même nombre d'états tient sur moitié moins "
-                "de largeur.\n\n"
-                "Le compte maximum se répartit entre les lignes — six icônes "
-                "sur deux lignes font trois par ligne."));
-            changed |= ro::RoCheckbox(i18n::Tr("Temps restant sous l'icône"),
-                                      &pfw->buff_time_);
-            {
-              const char* kSweeps[] = {"Aucun",
-                                       "Balayage horaire",
-                                       "Voile descendant"};
-              changed |= ro::RoCombo(i18n::Tr("Grisage de la case"),
-                                     &pfw->buff_sweep(), kSweeps,
-                                     IM_ARRAYSIZE(kSweeps));
-            }
-            SameLine(); HelpMarker(i18n::Tr(
-                "La case s'assombrit à mesure que l'état s'écoule.\n\n"
-                "⚠ La durée d'origine n'est portée par AUCUN paquet : elle est "
-                "exacte quand on a vu l'état commencer, et repart de « plein » "
-                "quand on le découvre en route."));
-            ImGui::PopID();
-          }
-
-          // ── Densité ───────────────────────────────────────────────────────
-          SeparatorText(i18n::Tr("Densité"));
-          changed |= WheelSliderInt(i18n::Tr("Taille de l'icône"),
-                                    &pfw->icon_px_, 16, 56, "%d px");
-          changed |= WheelSliderInt(i18n::Tr("Espace entre les lignes"),
-                                    &pfw->row_spacing_, 0, 12, "%d px");
-          SameLine(); HelpMarker(i18n::Tr(
-              "À zéro, les lignes se touchent : c'est le réglage qui gagne le "
-              "plus de hauteur sur un groupe nombreux."));
-
-          // ── Jauges ────────────────────────────────────────────────────────
-          // PV et SP ensemble : ce sont deux jauges, elles partagent forme,
-          // taille et placement du texte. Les séparer obligeait à faire des
-          // allers-retours entre deux blocs pour un réglage commun.
-          SeparatorText(i18n::Tr("Jauges"));
-          changed |= ro::RoCheckbox(i18n::Tr("Barre de vie"),
-                                    &pfw->show_hp_bar_);
-          {
-            const char* kHpModes[] = {
-                "Rien", "Chiffres",
-                "Pourcentage", "Chiffres et pourcentage"};
-            changed |= ro::RoCombo(i18n::Tr("Texte des PV"),
-                                   &pfw->hp_text_mode_, kHpModes,
-                                   IM_ARRAYSIZE(kHpModes));
-          }
-          changed |= ro::RoCheckbox(i18n::Tr("Barre de SP"), &pfw->show_sp_);
-          {
-            const char* kSpModes[] = {
-                "Rien", "Chiffres",
-                "Pourcentage", "Chiffres et pourcentage"};
-            changed |= ro::RoCombo(i18n::Tr("Texte du SP"),
-                                    &pfw->sp_text_mode_, kSpModes,
-                                    IM_ARRAYSIZE(kSpModes));
-          }
-          SameLine(); HelpMarker(i18n::Tr(
-              "Le SP d'un autre joueur ne circule dans AUCUN paquet du jeu : il "
-              "est demandé au serveur, membre par membre. Il n'apparaît donc que "
-              "pour ceux qui sont à portée de vue, et coûte un peu de réseau — "
-              "d'où le défaut éteint."));
-          changed |= WheelSliderInt(i18n::Tr("Largeur des jauges"),
-                                    &pfw->bar_w_, 20, 260, "%d px");
-          changed |= WheelSliderInt(i18n::Tr("Hauteur d'une jauge"),
-                                    &pfw->bar_h_, 3, 20, "%d px");
-          changed |= ro::RoCheckbox(i18n::Tr("Jauges collées l'une sous l'autre"),
-                                    &pfw->bars_stacked_);
-          SameLine(); HelpMarker(i18n::Tr(
-              "PV au-dessus, SP juste dessous, sans rien entre les deux.\n\n"
-              "Le texte passe alors DANS les jauges : à côté, il pousserait la "
-              "seconde d'une hauteur de ligne et elles ne seraient plus collées."));
-          changed |= ro::RoCheckbox(i18n::Tr("Texte dans les jauges"),
-                                    &pfw->text_in_bars_);
-          SameLine(); HelpMarker(i18n::Tr(
-              "Centré sur la jauge, avec une ombre pour rester lisible sur le "
-              "vert comme sur le fond. La ligne ne s'allonge pas — mais il faut "
-              "une jauge assez haute."));
-          changed |= WheelSliderInt(i18n::Tr("Taille du texte des jauges"),
-                                    &pfw->text_px_, 0, 20, "%d px");
-          SameLine(); HelpMarker(i18n::Tr(
-              "À zéro, celle de l'interface."));
-
-          if (changed) SaveSettings();
+          ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
         }
       }
 
@@ -703,220 +435,10 @@ void MoonlightUi::DrawInterfacePanel() {
       // ajoute ce que le client n'a pas sous cette forme, et il a du sens même en
       // interface native.
       if (iface_nav == kIfacePartyFrames) {
-        auto* pf = Bourgeon::Instance().party_frames();
-        if (pf == nullptr) {
-          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
+        if (auto* pf = Bourgeon::Instance().party_frames()) {
+          if (pf->DrawSettings()) SaveSettings();
         } else {
-          bool changed = false;
-          changed |= ro::RoCheckbox(i18n::Tr("Afficher la grille de groupe"),
-                                    &pf->enabled_);
-          SameLine(); HelpMarker(i18n::Tr(
-              "Remplace le HUD de groupe du client par une grille de tuiles : la "
-              "barre de vie EST le fond de la tuile, et sa couleur dit l'état du "
-              "membre. Le HUD d'origine est masqué tant que cette grille est "
-              "active."));
-          if (!pf->enabled_) ImGui::BeginDisabled();
-
-          changed |= ro::RoCheckbox(i18n::Tr("Verrouiller la position"),
-                                    &pf->locked_);
-          SameLine(); HelpMarker(i18n::Tr(
-              "Fige le cadre et laisse passer les clics vers le jeu.\n\n"
-              "Maintenir MAJ, CURSEUR SUR LA GRILLE, la déverrouille le temps "
-              "d'un déplacement : pas besoin de revenir décocher ici.\n\n"
-              "Ailleurs à l'écran, MAJ garde son rôle habituel (attaque forcée) "
-              "— la grille ne reprend la souris que sous le curseur."));
-
-          // ── Disposition ───────────────────────────────────────────────────
-          SeparatorText(i18n::Tr("Disposition"));
-          changed |= WheelSliderInt(i18n::Tr("Colonnes"), &pf->columns_, 1, 6,
-                                    "%d");
-          SameLine(); HelpMarker(i18n::Tr(
-              "1 colonne donne une liste, comme le HUD d'origine ; 2 ou 3 donnent "
-              "la grille compacte des raid frames."));
-          changed |= WheelSliderInt(i18n::Tr("Largeur des tuiles"),
-                                    &pf->tile_w_, 60, 400, "%d px");
-          changed |= WheelSliderInt(i18n::Tr("Hauteur des tuiles"),
-                                    &pf->tile_h_, 18, 80, "%d px");
-          changed |= WheelSliderInt(i18n::Tr("Espacement"), &pf->gap_, 0, 12,
-                                    "%d px");
-          SameLine(); HelpMarker(i18n::Tr(
-              "La taille du cadre se DÉDUIT de ces valeurs : c'est la tuile qui "
-              "commande.\n\n"
-              "Tirer le cadre par sa poignée n'agit donc pas sur sa taille mais "
-              "sur le nombre de COLONNES : l'élargir en ajoute, le rétrécir en "
-              "retire. La hauteur, elle, suit le nombre de membres."));
-
-          // ── Contenu d'une tuile ───────────────────────────────────────────
-          SeparatorText(i18n::Tr("Contenu"));
-          changed |= ro::RoCheckbox(i18n::Tr("Icône de classe"),
-                                    &pf->show_job_icon_);
-          SameLine(); HelpMarker(i18n::Tr(
-              "L'art du client. C'est ce qui rend une grille lisible d'un coup "
-              "d'œil : on reconnaît le soigneur à sa silhouette, pas à son nom."));
-          changed |= ro::RoCheckbox(i18n::Tr("M'inclure dans la grille"),
-                                    &pf->show_self_);
-          changed |= ro::RoCheckbox(i18n::Tr("Garder les membres hors ligne"),
-                                    &pf->show_offline_);
-          changed |= ro::RoCheckbox(i18n::Tr("Afficher le niveau"),
-                                    &pf->show_level_);
-          {
-            // Quatre façons d'écrire les PV. Le pourcentage seul est souvent le
-            // plus lisible en combat : on compare des membres entre eux, on ne
-            // lit pas des totaux.
-            const char* kHpModes[] = {
-                "Rien", "Chiffres",
-                "Pourcentage", "Chiffres et pourcentage"};
-            changed |= ro::RoCombo(i18n::Tr("Points de vie"),
-                                    &pf->hp_text_mode_, kHpModes,
-                                    IM_ARRAYSIZE(kHpModes));
-          }
-          changed |= WheelSliderInt(i18n::Tr("Taille du texte"), &pf->text_px_,
-                                    8, 28, "%d px");
-          SameLine(); HelpMarker(i18n::Tr(
-              "Indépendante de la police des fenêtres : une grille se lit en "
-              "périphérie de l'écran, pas de face."));
-
-          changed |= ro::RoCheckbox(i18n::Tr("Infobulle au survol"),
-                                    &pf->show_tooltip_);
-          SameLine(); HelpMarker(i18n::Tr(
-              "Le texte d'une tuile est DÉCOUPÉ à ses bords : sur une grille "
-              "serrée, il ne reste parfois que les premières lettres d'un nom. "
-              "L'infobulle le redonne en entier, avec la classe, la carte et les "
-              "PV/SP chiffrés."));
-          changed |= ro::RoCheckbox(i18n::Tr("Barre de SP"), &pf->show_sp_);
-          SameLine(); HelpMarker(i18n::Tr(
-              "Le SP d'un autre joueur ne circule dans AUCUN paquet du jeu : il "
-              "est demandé au serveur membre par membre. Il n'apparaît donc que "
-              "pour ceux qui sont à portée de vue."));
-          if (!pf->show_sp_) ImGui::BeginDisabled();
-          changed |= WheelSliderInt(i18n::Tr("Hauteur de la barre de SP"),
-                                    &pf->sp_bar_h_, 2, 14, "%d px");
-          if (!pf->show_sp_) ImGui::EndDisabled();
-
-          // ── Interaction ───────────────────────────────────────────────────
-          SeparatorText(i18n::Tr("Interaction"));
-          changed |= ro::RoCheckbox(
-              i18n::Tr("Lancer les sorts de soutien sur la tuile survolée"),
-              &pf->cast_on_tile_);
-          SameLine(); HelpMarker(i18n::Tr(
-              "Une compétence de soutien (soin, buff) part sur le membre dont la "
-              "tuile est sous le curseur : la touche arme, la tuile désigne. Le "
-              "liseré blanc montre qui sera visé.\n\n"
-              "La grille ne prend PAS le clic : marcher et frapper restent "
-              "possibles curseur dessus.\n\n"
-              "Les sorts d'ATTAQUE ne sont jamais concernés — viser un allié "
-              "relève du PVP, que le jeu réserve au clic manuel."));
-          if (!pf->cast_on_tile_) {
-            SameLine();
-            ImGui::TextDisabled("%s", i18n::Tr("(éteint)"));
-          }
-
-          changed |= ro::RoCheckbox(
-              i18n::Tr("Cliquer les tuiles (cibler, menu du groupe)"),
-              &pf->clickable_);
-          SameLine(); HelpMarker(i18n::Tr(
-              "Clic gauche : cibler le membre, comme un clic sur son "
-              "personnage — sans effet si le mode Ciblage est éteint.\n"
-              "Clic droit : le menu du personnage, celui de son sprite. Sur un "
-              "membre qu'aucun sprite ne représente, un menu de repli propose "
-              "ce qui voyage par nom : chuchoter, expulser.\n\n"
-              "⚠ La grille PREND alors la souris sur toute sa surface : "
-              "impossible de marcher ou de frapper en cliquant dessous. C'est "
-              "le prix des gestes sur les tuiles — décoché, la grille se "
-              "contente d'afficher et laisse tout passer."));
-
-          changed |= ro::RoCheckbox(i18n::Tr("Buffs et debuffs"),
-                                    &pf->show_buffs_);
-          SameLine(); HelpMarker(i18n::Tr(
-              "Les icônes d'état du membre, calées à droite de sa tuile. Le nom "
-              "se découpe sur ce qu'elles laissent.\n\n"
-              "⚠ Une tuile SANS icône ne veut pas dire « aucun buff ». Le serveur "
-              "ne diffuse ces états qu'aux joueurs qui VOIENT le personnage, "
-              "et seulement au moment où ils COMMENCENT : un joueur déjà "
-              "béni quand il entre à l'écran arrive sans rien.\n\n"
-              "Ce qui s'affiche ici est donc ce qui est TOMBÉ sous vos yeux, "
-              "pas l'état complet du personnage."));
-          if (pf->show_buffs_) {
-            // ⚠ PAS dans `changed` : l'aperçu ne se persiste pas.
-            ro::RoCheckbox(i18n::Tr("Aperçu (faux statuts)"), &pf->buff_preview_);
-            SameLine(); HelpMarker(i18n::Tr(
-                "Remplit l'affichage de faux états, aux durées étagées, le "
-                "temps de le régler — sans attendre d'en avoir de "
-                "vrais.\n\nNe se garde pas d'une session à l'autre."));
-
-            // 🔴 PushID : l'identifiant ImGui d'un widget est son LIBELLÉ,
-            // donc sa TRADUCTION. « Taille des icônes » (états) et « Taille
-            // de l'icône » (classe) sont distincts en français et deviennent
-            // tous deux « Icon size » en anglais : deux widgets, un seul
-            // identifiant, et ImGui lève une erreur en plein jeu.
-            //
-            // ⚠ Le code relu en français ne montre RIEN — c'est le catalogue
-            // qui crée la collision, et il peut la recréer demain sur un
-            // autre couple. D'où une isolation par BLOC, pas un libellé
-            // rebaptisé qui ne protégerait que ce cas-ci.
-            ImGui::PushID("status_icons");
-            changed |= mui::WheelSliderInt(i18n::Tr("Taille des icônes"),
-                                           &pf->buff_px(), 6, 28, "%d px");
-            changed |= mui::WheelSliderInt(i18n::Tr("Icônes au plus"),
-                                           &pf->buff_max(), 1, 24, "%d");
-            changed |= mui::WheelSliderInt(i18n::Tr("Lignes d'icônes"),
-                                           &pf->buff_rows(), 1, 4, "%d");
-            SameLine(); HelpMarker(i18n::Tr(
-                "Une rangée unique s'allonge jusqu'à manger la place du nom ; "
-                "en deux lignes, le même nombre d'états tient sur moitié moins "
-                "de largeur.\n\n"
-                "Le compte maximum se répartit entre les lignes — six icônes "
-                "sur deux lignes font trois par ligne."));
-            changed |= ro::RoCheckbox(i18n::Tr("Temps restant sous l'icône"),
-                                      &pf->buff_time_);
-            {
-              const char* kSweeps[] = {"Aucun",
-                                       "Balayage horaire",
-                                       "Voile descendant"};
-              changed |= ro::RoCombo(i18n::Tr("Grisage de la case"),
-                                     &pf->buff_sweep(), kSweeps,
-                                     IM_ARRAYSIZE(kSweeps));
-            }
-            SameLine(); HelpMarker(i18n::Tr(
-                "La case s'assombrit à mesure que l'état s'écoule.\n\n"
-                "⚠ La durée d'origine n'est portée par AUCUN paquet : elle est "
-                "exacte quand on a vu l'état commencer, et repart de « plein » "
-                "quand on le découvre en route."));
-            ImGui::PopID();
-          }
-
-          // ── Couleurs ──────────────────────────────────────────────────────
-          SeparatorText(i18n::Tr("Couleurs"));
-          changed |= RoColorSwatch(i18n::Tr("Fond du cadre"), pf->col_frame_bg_);
-          SameLine(); HelpMarker(i18n::Tr(
-              "Le panneau qui porte les tuiles. Sans lui, une grille sombre sur "
-              "une carte sombre devient impossible à distinguer du décor."));
-          changed |= RoColorSwatch(i18n::Tr("Fond d'une tuile"), pf->col_tile_bg_);
-          changed |= RoColorSwatch(i18n::Tr("Vie — haute"), pf->col_hp_high_);
-          changed |= RoColorSwatch(i18n::Tr("Vie — moyenne"), pf->col_hp_mid_);
-          changed |= RoColorSwatch(i18n::Tr("Vie — basse"), pf->col_hp_low_);
-          changed |= RoColorSwatch(i18n::Tr("SP"), pf->col_sp_);
-          changed |= RoColorSwatch(i18n::Tr("Texte"), pf->col_text_);
-          changed |= RoColorSwatch(i18n::Tr("Texte — hors de portée"),
-                                   pf->col_far_);
-          SameLine(); HelpMarker(i18n::Tr(
-              "Le membre est EN JEU, simplement trop loin pour que le client "
-              "connaisse ses PV : il peut revenir à portée d'un instant à "
-              "l'autre. À ne pas confondre avec un membre déconnecté."));
-          changed |= RoColorSwatch(i18n::Tr("Texte — hors ligne"),
-                                   pf->col_offline_);
-          changed |= RoColorSwatch(i18n::Tr("Liseré de ma tuile"), pf->col_me_);
-
-          changed |= WheelSliderInt(i18n::Tr("Seuil « vie moyenne »"),
-                                    &pf->hp_mid_pct_, 20, 90, "%d %%");
-          changed |= WheelSliderInt(i18n::Tr("Seuil « vie basse »"),
-                                    &pf->hp_low_pct_, 5, 50, "%d %%");
-          SameLine(); HelpMarker(i18n::Tr(
-              "En dessous de ces pourcentages, la tuile change de couleur. C'est "
-              "ce qui permet de repérer un blessé sans lire un seul chiffre."));
-
-          if (!pf->enabled_) ImGui::EndDisabled();
-          if (changed) SaveSettings();
+          ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
         }
       }
 
@@ -927,7 +449,7 @@ void MoonlightUi::DrawInterfacePanel() {
         if (auto* mvp = Bourgeon::Instance().mvp_tracker_window()) {
           if (mvp->DrawSettings()) SaveSettings();
         } else {
-          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
+          ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
         }
       }
 
@@ -978,7 +500,7 @@ void MoonlightUi::DrawInterfacePanel() {
             if (auto* chat_tweaks = Bourgeon::Instance().chat_tweaks()) {
               changed |= chat_tweaks->DrawSettings();
             } else {
-              ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
+              ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
             }
           }
 
@@ -989,7 +511,7 @@ void MoonlightUi::DrawInterfacePanel() {
           if (auto* chat_window = Bourgeon::Instance().chat_window()) {
             changed |= chat_window->DrawSettings();
           } else {
-            ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
+            ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
           }
 
           // La bulle au-dessus des têtes vit ICI, avec la chatbox, et pas dans
@@ -998,9 +520,9 @@ void MoonlightUi::DrawInterfacePanel() {
           // séparer inviterait à les faire diverger.
           SeparatorText(i18n::Tr("Bulles au-dessus des têtes"));
           if (auto* balloon = Bourgeon::Instance().chat_balloon()) {
-            balloon->DrawSettings();
+            changed |= balloon->DrawSettings();
           } else {
-            ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
+            ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
           }
 
           if (!native_chat_replaced) SeparatorText(i18n::Tr("Couleurs du chat"));
@@ -1017,7 +539,8 @@ void MoonlightUi::DrawInterfacePanel() {
               changed |= chat_tweaks->DrawBackgroundGroup(ChatTweaks::kBgDetached);
               changed |= chat_tweaks->DrawBackgroundGroup(ChatTweaks::kBgWhisper);
             } else {
-              ImGui::TextDisabled(i18n::Tr("(patch du fond de chat indisponible)"));
+              ImGui::TextDisabled("%s",
+                                i18n::Tr("(patch du fond de chat indisponible)"));
             }
           }
 
@@ -1031,40 +554,44 @@ void MoonlightUi::DrawInterfacePanel() {
         if (auto* mi = Bourgeon::Instance().menu_icons()) {
           if (mi->DrawSettings()) SaveSettings();
         } else {
-          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
+          ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
         }
       }
 
       // ── Status icons (StatusIconBar) ──────────────────────────────────
       if (iface_nav == kIfaceStatusIcons) {
-        if (auto* si = Bourgeon::Instance().status_icons())
-          si->DrawSettings();
-        else
-          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
+        if (auto* si = Bourgeon::Instance().status_icons()) {
+          if (si->DrawSettings()) SaveSettings();
+        } else {
+          ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
+        }
       }
 
       // ── Suivi de quête (QuestTracker) ──────────────────────────────
       if (iface_nav == kIfaceQuest) {
-        if (auto* qt = Bourgeon::Instance().quest_tracker())
-          qt->DrawSettings();
-        else
-          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
+        if (auto* qt = Bourgeon::Instance().quest_tracker()) {
+          if (qt->DrawSettings()) SaveSettings();
+        } else {
+          ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
+        }
       }
 
       // ── Minimap (carte du lieu + position du personnage) ────────────
       if (iface_nav == kIfaceMinimap) {
-        if (auto* mm = Bourgeon::Instance().minimap())
-          mm->DrawSettings();
-        else
-          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
+        if (auto* mm = Bourgeon::Instance().minimap()) {
+          if (mm->DrawSettings()) SaveSettings();
+        } else {
+          ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
+        }
       }
 
       // ── Bandeau « objet obtenu » (ItemObtainToast) ─────────────────
       if (iface_nav == kIfaceItemToast) {
-        if (auto* iot = Bourgeon::Instance().item_obtain_toast())
-          iot->DrawSettings();
-        else
-          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
+        if (auto* iot = Bourgeon::Instance().item_obtain_toast()) {
+          if (iot->DrawSettings()) SaveSettings();
+        } else {
+          ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
+        }
       }
 
       // ── Descriptions (ItemDescWindow : panneaux techniques item/skill) ───
@@ -1072,7 +599,7 @@ void MoonlightUi::DrawInterfacePanel() {
         if (auto* idt = Bourgeon::Instance().item_desc()) {
           if (idt->DrawSettings()) SaveSettings();
         } else {
-          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
+          ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
         }
       }
 
@@ -1088,7 +615,7 @@ void MoonlightUi::DrawInterfacePanel() {
         if (auto* nd = Bourgeon::Instance().npc_dialog_window()) {
           if (nd->DrawSettings()) SaveSettings();
         } else {
-          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
+          ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
         }
       }
 
@@ -1097,7 +624,7 @@ void MoonlightUi::DrawInterfacePanel() {
         if (auto* stg = Bourgeon::Instance().storage_window()) {
           if (stg->DrawSettings()) SaveSettings();
         } else {
-          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
+          ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
         }
       }
 
@@ -1106,7 +633,7 @@ void MoonlightUi::DrawInterfacePanel() {
         if (auto* iv = Bourgeon::Instance().inventory_viewer()) {
           if (iv->DrawSettings()) SaveSettings();
         } else {
-          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
+          ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
         }
       }
 
@@ -1115,7 +642,7 @@ void MoonlightUi::DrawInterfacePanel() {
         if (auto* cv = Bourgeon::Instance().cart_viewer()) {
           if (cv->DrawSettings()) SaveSettings();
         } else {
-          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
+          ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
         }
       }
 
@@ -1131,7 +658,7 @@ void MoonlightUi::DrawInterfacePanel() {
         if (auto* wr = Bourgeon::Instance().weapon_refine_window()) {
           if (wr->DrawSettings()) SaveSettings();
         } else {
-          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
+          ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
         }
       }
 
@@ -1140,14 +667,14 @@ void MoonlightUi::DrawInterfacePanel() {
         if (auto* mk = Bourgeon::Instance().make_item_window()) {
           if (mk->DrawSettings()) SaveSettings();
         } else {
-          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
+          ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
         }
       }
 
       // ── Fiche de monstre (MonsterInfoWindow : « Monster Info » 0x4D, Sense) ──
       if (iface_nav == kIfaceMonsterInfo) {
         if (auto* mi = Bourgeon::Instance().monster_info()) {
-          ImGui::TextWrapped(
+          ImGui::TextWrapped("%s",
               i18n::Tr("Remplace la fenêtre « Monster Info » qu'ouvre la compétence Sense. "
               "Elle ajoute ce que le paquet du skill ne transporte pas : nom "
               "fiable, EXP, ATK/MATK, stats de base, modes, drops, lieux "
@@ -1156,14 +683,14 @@ void MoonlightUi::DrawInterfacePanel() {
           ImGui::Separator();
           if (mi->DrawSettings()) SaveSettings();
         } else {
-          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
+          ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
         }
       }
 
       // ── Fiche de pet (PetWindow : 88 + menu 260 + évolution 261 + liste 90) ─
       if (iface_nav == kIfacePet) {
         if (auto* pw = Bourgeon::Instance().pet_window()) {
-          ImGui::TextWrapped(
+          ImGui::TextWrapped("%s",
               i18n::Tr("Remplace la fiche du pet, le menu de commandes qu'elle "
               "ouvrait et la fenêtre d'évolution, en une seule fenêtre flottante — "
               "ainsi que la liste d'éclosion. Les commandes ne sont pas "
@@ -1176,14 +703,14 @@ void MoonlightUi::DrawInterfacePanel() {
           ImGui::Separator();
           if (pw->DrawSettings()) SaveSettings();
         } else {
-          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
+          ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
         }
       }
 
       // ── Menu contextuel du clic droit sur une entité ────────────────────────
       if (iface_nav == kIfaceContextMenu) {
         if (auto* ecm = Bourgeon::Instance().entity_context_menu()) {
-          ImGui::TextWrapped(
+          ImGui::TextWrapped("%s",
               i18n::Tr("Remplace le menu du clic droit sur une entité. Les actions ne "
               "sont pas réécrites : elles repassent par le dispatcher du client, "
               "donc ses vérifications et ses confirmations restent jouées. Le "
@@ -1193,7 +720,7 @@ void MoonlightUi::DrawInterfacePanel() {
           ImGui::Separator();
           if (ecm->DrawSettings()) SaveSettings();
         } else {
-          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
+          ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
         }
       }
 
@@ -1205,7 +732,7 @@ void MoonlightUi::DrawInterfacePanel() {
         if (auto* atlas = Bourgeon::Instance().craft_atlas()) {
           if (atlas->DrawSettings()) SaveSettings();
         } else {
-          ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
+          ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
         }
       }
 

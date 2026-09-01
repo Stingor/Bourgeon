@@ -1620,7 +1620,7 @@ void Minimap::OnRenderUI() {
         ImGui::SetNextWindowSizeConstraints(ImVec2(300.0f, 0.0f),
                                             ImVec2(440.0f, screen.y * 0.8f));
         if (ImGui::BeginMenu(i18n::Tr("Réglages"))) {
-          DrawSettings();
+          g_needs_save |= DrawSettings();
           ImGui::EndMenu();
         }
         ImGui::EndPopup();
@@ -1662,18 +1662,14 @@ void Minimap::OnRenderUI() {
 
 // ── Réglages ─────────────────────────────────────────────────────────────────
 
-void Minimap::DrawSettings() {
-  // Plus de case d'activation : la minimap suit le groupe « Interface moderne »
-  // depuis le 2026-08-18 (SetModernInterface écrit g_cfg.enabled — le tester
-  // revient à tester le groupe). Les réglages fins restent, grisés hors groupe.
-  ImGui::TextDisabled(
-      "%s", i18n::Tr("Suivent l'interface moderne — l'interrupteur est en tête "
-                     "d'« Interface de jeu »."));
+bool Minimap::DrawSettings() {
+  // Ni case d'activation ni grisage ici : la minimap suit le groupe « Interface
+  // moderne » (SetModernInterface écrit g_cfg.enabled), et c'est le panneau qui
+  // grise la section, au site d'appel unique.
+  bool changed = false;
 
-  ImGui::BeginDisabled(!g_cfg.enabled);
-
-  g_needs_save |= ro::RoCheckbox(i18n::Tr("Remplacer le radar d'origine"),
-                                 &g_cfg.replace_native);
+  changed |= ro::RoCheckbox(i18n::Tr("Remplacer le radar d'origine"),
+                            &g_cfg.replace_native);
   SameLine();
   HelpMarker(i18n::Tr(
       "Coché : le radar du client est retiré, celui-ci le remplace.\n"
@@ -1681,7 +1677,7 @@ void Minimap::DrawSettings() {
       "Retirer le radar retire aussi ses cinq boutons — la grande carte et la\n"
       "carte du monde restent accessibles par les icônes du menu."));
 
-  g_needs_save |= ro::RoCheckbox(i18n::Tr("Traverser les clics"), &g_cfg.locked);
+  changed |= ro::RoCheckbox(i18n::Tr("Traverser les clics"), &g_cfg.locked);
   SameLine();
   HelpMarker(i18n::Tr(
       "Décoché : la carte est cliquable — la glisser la déplace, les poignées\n"
@@ -1691,30 +1687,30 @@ void Minimap::DrawSettings() {
       "Maintenir Maj au-dessus la réveille alors le temps du geste, bouton\n"
       "de réglages compris."));
 
-  g_needs_save |= WheelSliderInt(i18n::Tr("Opacité du fond"), &g_cfg.bg_alpha, 0, 100, "%d%%");
-  g_needs_save |= WheelSliderInt(i18n::Tr("Opacité de la carte"), &g_cfg.map_alpha, 10, 100, "%d%%");
-  g_needs_save |= ro::RoCheckbox(i18n::Tr("Lisser l'image"), &g_cfg.smooth);
+  changed |= WheelSliderInt(i18n::Tr("Opacité du fond"), &g_cfg.bg_alpha, 0, 100, "%d%%");
+  changed |= WheelSliderInt(i18n::Tr("Opacité de la carte"), &g_cfg.map_alpha, 10, 100, "%d%%");
+  changed |= ro::RoCheckbox(i18n::Tr("Lisser l'image"), &g_cfg.smooth);
   SameLine();
   HelpMarker(i18n::Tr("La carte est un petit bitmap très agrandi : lissée elle "
                       "est plus douce, nette elle garde ses pixels."));
 
   SeparatorText(i18n::Tr("Personnage"));
-  g_needs_save |= WheelSliderInt(i18n::Tr("Taille de la flèche"), &g_cfg.marker_px,
-                                 2, 24, "%d px");
+  changed |= WheelSliderInt(i18n::Tr("Taille de la flèche"), &g_cfg.marker_px,
+                            2, 24, "%d px");
   // 🔴 QUATRE flottants, pas trois : ColorEdit4WithAlphaBar appelle
   // ImGui::ColorEdit4, qui LIT la composante alpha même si on n'en fait rien.
   float mc[4] = {0.0f, 0.0f, 0.0f, 1.0f};
   ro::RgbToF3(g_cfg.marker_tint, mc);
   if (ColorEdit4WithAlphaBar(i18n::Tr("Teinte de la flèche"), mc)) {
     g_cfg.marker_tint = ro::F3ToRgb(mc);
-    g_needs_save = true;
+    changed = true;
   }
   SameLine();
   HelpMarker(i18n::Tr("Blanc = la flèche du client telle quelle.\n"
                       "Toute autre couleur la teinte."));
-  g_needs_save |= ro::RoCheckbox(i18n::Tr("Afficher « carte,x,y »"), &g_cfg.show_coords);
-  g_needs_save |= ro::RoCheckbox(i18n::Tr("Afficher le nom détaillé du lieu"),
-                                 &g_cfg.show_map_name);
+  changed |= ro::RoCheckbox(i18n::Tr("Afficher « carte,x,y »"), &g_cfg.show_coords);
+  changed |= ro::RoCheckbox(i18n::Tr("Afficher le nom détaillé du lieu"),
+                            &g_cfg.show_map_name);
   SameLine();
   HelpMarker(i18n::Tr(
       "Le nom lisible que la grande carte du client met en titre —\n"
@@ -1722,21 +1718,21 @@ void Minimap::DrawSettings() {
       "Plus long que la minimap, il passe à la ligne."));
 
   SeparatorText(i18n::Tr("Marqueurs"));
-  g_needs_save |= ro::RoCheckbox(i18n::Tr("PNJ et commodités"), &g_cfg.show_town);
+  changed |= ro::RoCheckbox(i18n::Tr("PNJ et commodités"), &g_cfg.show_town);
   SameLine();
   HelpMarker(i18n::Tr("Kafra, guides, marchands, forge, auberge, salon de coiffure,\n"
                       "portails — la liste que le client charge pour cette carte."));
-  g_needs_save |= ro::RoCheckbox(i18n::Tr("Membres du groupe"), &g_cfg.show_party);
-  g_needs_save |= ro::RoCheckbox(i18n::Tr("Membres de la guilde"), &g_cfg.show_guild);
-  g_needs_save |= ro::RoCheckbox(i18n::Tr("Quêtes"), &g_cfg.show_quests);
-  g_needs_save |= ro::RoCheckbox(i18n::Tr("Boss (Convex Mirror)"), &g_cfg.show_boss);
+  changed |= ro::RoCheckbox(i18n::Tr("Membres du groupe"), &g_cfg.show_party);
+  changed |= ro::RoCheckbox(i18n::Tr("Membres de la guilde"), &g_cfg.show_guild);
+  changed |= ro::RoCheckbox(i18n::Tr("Quêtes"), &g_cfg.show_quests);
+  changed |= ro::RoCheckbox(i18n::Tr("Boss (Convex Mirror)"), &g_cfg.show_boss);
   SameLine();
   HelpMarker(i18n::Tr("Le boss révélé par un Convex Mirror.\n"
                       "Hors du cadrage, l'icône se colle au bord de la carte\n"
                       "pour en donner la direction ; elle disparaît tant que le\n"
                       "boss est mort (le client n'a plus de position à donner)."));
-  g_needs_save |= ro::RoCheckbox(i18n::Tr("Repères du serveur"),
-                                 &g_cfg.show_viewpoints);
+  changed |= ro::RoCheckbox(i18n::Tr("Repères du serveur"),
+                            &g_cfg.show_viewpoints);
   SameLine();
   HelpMarker(i18n::Tr("Les croix clignotantes que posent les NPC pour indiquer\n"
                       "un lieu (commande de script « viewpoint »)."));
@@ -1748,10 +1744,10 @@ void Minimap::DrawSettings() {
   if (ro::RoButton(i18n::Tr("Réinitialiser"))) {
     g_cfg = MinimapConfig{};
     g_cfg.enabled = true;  // on la garde allumée après une remise à zéro
-    g_needs_save = true;
+    changed = true;
   }
 
-  ImGui::EndDisabled();
+  return changed;
 }
 
 MinimapConfig& Minimap::config() { return g_cfg; }

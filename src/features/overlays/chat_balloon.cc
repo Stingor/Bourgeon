@@ -857,7 +857,7 @@ void ChatBalloon::DrawBalloons() {
 }
 
 // ── Réglages ─────────────────────────────────────────────────────────────────
-void ChatBalloon::DrawSettings() {
+bool ChatBalloon::DrawSettings() {
   bool save = false;
   // Pas de case d'activation : la bulle suit la chatbox ImGui. Le dire, plutôt
   // que de laisser une section muette quand celle-ci est éteinte.
@@ -910,7 +910,5 @@ void ChatBalloon::DrawSettings() {
     if (ImGui::IsItemDeactivatedAfterEdit()) save = true;
   }
 
-  if (save) {
-    if (auto* ui = Bourgeon::Instance().moonlight_ui()) ui->SaveSettings();
-  }
+  return save;
 }

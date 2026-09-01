@@ -1763,136 +1763,253 @@ MoonlightUi::MoonlightUi() {
 // « Tout-ImGui ou tout-natif » (cf. déclaration dans moonlight_ui.h) : synchronise
 // en un point unique toutes les fenêtres modernes interdépendantes. Chaque plugin
 // garde son propre flag, mais il n'est plus jamais basculé isolément.
+// ── LE GROUPE « INTERFACE MODERNE », EN UN SEUL ENDROIT ─────────────────────
+//
+// 🔴 SOURCE UNIQUE. Le groupe était décrit à TROIS endroits tenus à la main —
+// le code qui bascule (24 plugins), l'infobulle lue par le joueur (19 lignes)
+// et le grisage des sections du panneau (13 tests). Rien ne les confrontait,
+// et l'infobulle taisait DÉJÀ cinq membres : la fenêtre de cible, « Voir
+// l'équipement », la fiche de pet, Groupe / Amis et la fabrication. Le joueur
+// cochait une case en lisant la liste de ce qu'elle bascule, amputée du quart.
+//
+// C'est la panne que `kIfaceSections` a déjà réglée pour la navigation, et le
+// remède est le même : une table, et les trois usages en découlent.
+//
+// ⚠ AJOUTER UN MEMBRE = UNE LIGNE ICI, et rien d'autre. Il bascule, il
+// s'annonce au joueur et sa section se grise du même geste.
+namespace {
+
+// Chaque membre écrit SON champ — `enabled_`, `imgui_enabled_`,
+// `config().enabled`, ou les trois accesseurs des descriptions. D'où un geste
+// par entrée plutôt qu'un pointeur sur membre commun, qui n'existe pas.
+// Lambda SANS capture : elle se convertit en pointeur de fonction, la table
+// reste donc une constante de compilation.
+using ModernApply = void (*)(bool on);
+
+// La section du panneau que ce membre commande.
+enum : int {
+  // Le membre n'a pas de section de réglages (l'échange, la banque, RODEX…).
+  kNoSection = -1,
+  // Il en a une, mais MIXTE : une moitié de la section ne concerne pas le
+  // groupe, donc elle ne peut pas être grisée en bloc et porte son propre
+  // grisage. Un seul cas — le Chat, où le relais Discord et les retouches du
+  // chat NATIF n'ont rien à voir avec le groupe : seule la chatbox ImGui en est.
+  kSelfGated = -2,
+};
+
+struct ModernMember {
+  // La ligne que LE JOUEUR lit dans l'infobulle de la case.
+  //
+  // 🔴 UNE PHRASE COURTE PAR ENTRÉE, JAMAIS UN PAVÉ. Cette liste a été une
+  // seule clé i18n de 1184 caractères : **YAML plafonne une clé simple à 1024**
+  // (yaml-cpp l'applique comme les autres, simplekey.cpp:116), et au-delà c'est
+  // le catalogue ENTIER qui cesse de parser. i18n.cc vide alors sa table et
+  // toute l'interface repasse en français, sans autre trace qu'un LogDiag. Le
+  // seuil avait été franchi en ajoutant une ligne, et personne n'a rien vu.
+  // Découpée ainsi, la liste peut grandir sans jamais en réapprocher.
+  const char* label;
+  // MoonlightUi::kIface*, ou kNoSection / kSelfGated.
+  int section;
+  // Bascule le drapeau du plugin, s'il est chargé.
+  ModernApply apply;
+};
+
+constexpr ModernMember kModernGroup[] = {
+    // L'inventaire est l'ANCRE du groupe : `ModernInterfaceEnabled` le lit, et
+    // c'est déjà sur lui que LoadSettings réconcilie un yaml hérité mixé.
+    {"Inventaire (et le sertissage de cartes)", MoonlightUi::kIfaceInventory,
+     [](bool on) {
+       if (auto* p = Bourgeon::Instance().inventory_viewer()) p->imgui_enabled_ = on;
+     }},
+    // Le cart suit l'inventaire : les deux s'échangent des objets par glisser, et
+    // un cart natif ne sait pas déposer chez nous (ni l'inverse).
+    {"Cart", MoonlightUi::kIfaceCart,
+     [](bool on) {
+       if (auto* p = Bourgeon::Instance().cart_viewer()) p->imgui_enabled_ = on;
+     }},
+    {"Storage (Kafra, guilde, premium)", MoonlightUi::kIfaceStorage,
+     [](bool on) {
+       if (auto* p = Bourgeon::Instance().storage_window()) p->imgui_enabled_ = on;
+     }},
+    {"Barres d'action", MoonlightUi::kIfaceSkillBar,
+     [](bool on) {
+       if (auto* p = Bourgeon::Instance().skill_bar()) p->enabled_ = on;
+     }},
+    {"Échange joueur-joueur", kNoSection,
+     [](bool on) {
+       if (auto* p = Bourgeon::Instance().trade_window()) p->imgui_enabled_ = on;
+     }},
+    // Le courrier fait partie du lot : sa fenêtre d'écriture reçoit les objets
+    // glissés depuis l'inventaire ImGui, ce qui n'a de sens que si les deux sont
+    // modernes en même temps (un inventaire natif ne sait pas déposer chez nous).
+    {"Courrier (RODEX)", kNoSection,
+     [](bool on) {
+       if (auto* p = Bourgeon::Instance().rodex_window()) p->imgui_enabled_ = on;
+     }},
+    // L'échoppe joueur (vente ET achat) suit aussi : elle se monte à partir du
+    // CHARIOT, qui est déjà du lot. Un formulaire d'échoppe moderne au-dessus d'un
+    // cart natif (ou l'inverse) serait le mixe qu'on a justement supprimé.
+    {"Shop joueur (vending, buying store et achat chez un vendeur)", kNoSection,
+     [](bool on) {
+       if (auto* p = Bourgeon::Instance().vending_window()) p->imgui_enabled_ = on;
+     }},
+    // La feuille de personnage REMPLACE les feuilles natives Status et Équipement
+    // (⚠ celles-ci ne sont pas encore empêchées de NAÎTRE : chantier ouvert). Ses
+    // slots reçoivent les objets glissés depuis l'inventaire ImGui, et son onglet
+    // Presets équipe en s'appuyant dessus.
+    // ⚠ Son onglet Grimoire, lui, REMPLACE bel et bien la fenêtre native 0x25 :
+    // groupe actif, celle-ci est masquée dès sa création et l'onglet prend sa place
+    // (cf. window_pos_tweaks + docs/skill_tree_re.md partie II).
+    {"Feuille de personnage (Alt+F), grimoire compris", kNoSection,
+     [](bool on) {
+       if (auto* p = Bourgeon::Instance().character_sheet()) p->imgui_enabled_ = on;
+     }},
+    // Boutiques (cash shop et PNJ) : elles achètent VERS l'inventaire et vendent
+    // DEPUIS lui — un panier moderne au-dessus d'un inventaire natif (ou l'inverse)
+    // remet exactement le mixe qu'on a supprimé. Une seule ligne pour les deux :
+    // le joueur ne les distingue pas, et elles ne se dissocient jamais.
+    {"Vote Shop et shops PNJ", kNoSection,
+     [](bool on) {
+       if (auto* p = Bourgeon::Instance().cashshop_window()) p->imgui_enabled_ = on;
+       if (auto* p = Bourgeon::Instance().npc_shop_window()) p->imgui_enabled_ = on;
+     }},
+    // La banque échange des zeny avec la POCHE, dont le montant est affiché par le
+    // footer de l'inventaire moderne — et c'est le bouton « sac de zeny » de ce
+    // footer qui l'ouvre. Une banque moderne au-dessus d'un inventaire natif (ou
+    // l'inverse) laisserait ce bouton sans fenêtre, ou la fenêtre sans bouton.
+    {"Banque de zeny (Ctrl+B)", kNoSection,
+     [](bool on) {
+       if (auto* p = Bourgeon::Instance().bank_window()) p->imgui_enabled_ = on;
+     }},
+    // Le refine Whitesmith rejoint le lot : sa liste d'armes se lit dans le MÊME
+    // modèle d'inventaire que le viewer moderne (noms composés, icônes, aperçu de
+    // description), et il ferme/rouvre la fenêtre native à chaque tentative.
+    // Moderne au-dessus d'un inventaire natif, il retomberait sur le repli « nom de
+    // base » de SafeName, faute de contexte de composition.
+    {"Refine d'arme (compétence Upgrade Weapon du Whitesmith)",
+     MoonlightUi::kIfaceRefine,
+     [](bool on) {
+       if (auto* p = Bourgeon::Instance().weapon_refine_window()) p->imgui_enabled_ = on;
+     }},
+    // Les fenêtres de FABRICATION (94 « LIST » et 79 « Manufacturing List ») pour
+    // la même raison que le refine : elles listent des objets dont le nom, l'icône
+    // et le stock sont lus dans le même modèle d'inventaire que le viewer moderne,
+    // et elles se détruisent à chaque validation. Cf. docs/make_item_list_re.md.
+    {"Fabrication (les deux listes de création)", MoonlightUi::kIfaceMakeItem,
+     [](bool on) {
+       if (auto* p = Bourgeon::Instance().make_item_window()) p->imgui_enabled_ = on;
+     }},
+    // La fiche de monstre suit le groupe : elle REVENDIQUE le paquet 0x018C, donc
+    // l'activer isolément tuerait la fenêtre native Monster Info alors que tout le
+    // reste de l'interface serait encore natif. Et son lien depuis la table des
+    // drops n'a de sens qu'avec la fiche d'item moderne, qui en fait partie.
+    {"Fiche de monstre (compétence Sense)", MoonlightUi::kIfaceMonsterInfo,
+     [](bool on) {
+       if (auto* p = Bourgeon::Instance().monster_info()) p->imgui_enabled_ = on;
+     }},
+    // La fiche de pet DÉTRUIT deux fenêtres natives (88 et 260), et c'est le menu
+    // contextuel — lui aussi du groupe — qui demande son ouverture. L'activer seule
+    // laisserait une fiche moderne au bout d'un menu natif ; la laisser seule
+    // éteinte ferait ouvrir par ce même menu une fenêtre que rien ne détruit plus.
+    // Cf. docs/pet_re.md §12.
+    {"Fiche de pet (et son menu de commandes)", MoonlightUi::kIfacePet,
+     [](bool on) {
+       if (auto* p = Bourgeon::Instance().pet_window()) p->imgui_enabled_ = on;
+     }},
+    // « Voir l'équipement » d'un autre joueur REVENDIQUE le paquet ZC 0x0B37, donc
+    // l'activer isolément tuerait la fenêtre native 139 pendant que tout le reste
+    // serait encore natif. Et elle vit du même écosystème que la fiche d'objet —
+    // c'est elle qui s'ouvre au clic sur une pièce, et le chat moderne qui reçoit
+    // ses liens.
+    {"Voir l'équipement d'un autre joueur", kNoSection,
+     [](bool on) {
+       if (auto* p = Bourgeon::Instance().view_equip_window()) p->imgui_enabled_ = on;
+     }},
+    // Amis / Groupe REMPLACE UIMessengerGroupWnd (0x45), la seule fenêtre du client
+    // qui rende les deux listes, et sa native est DÉTRUITE quand elle est active :
+    // laisser le joueur activer l'une sans l'autre reviendrait à lui faire cohabiter
+    // deux fenêtres qui se disputent le même id.
+    {"Groupe / Amis (elle remplace la fenêtre du client)",
+     MoonlightUi::kIfacePartyFriend,
+     [](bool on) {
+       if (auto* p = Bourgeon::Instance().party_friend_window()) p->imgui_enabled_ = on;
+     }},
+    // La fenêtre de cible ne remplace rien : elle AJOUTE ce que le client n'a jamais
+    // su montrer (les points de vie et de SP de ce qu'on vise). Elle est dans le
+    // groupe parce qu'elle vit du même écosystème.
+    //
+    // 🔴 SEUL MEMBRE À GARDER SA PROPRE CASE. Les autres l'ont perdue au profit de
+    // l'interrupteur unique — une case locale rouvrirait le mixe que ce groupe
+    // interdit. Celle-ci change le COMPORTEMENT du jeu et pas seulement l'aspect
+    // d'une fenêtre (flèche de ciblage, clic sans attaque, sorts sur la cible) : on
+    // doit pouvoir s'en passer sans repasser en interface native. Elle ne permet
+    // donc que d'ÉTEINDRE — sa section est grisée hors groupe comme les autres, et
+    // c'est le groupe qui la rallume.
+    {"Fenêtre de cible (le HUD de ce qu'on vise)",
+     MoonlightUi::kIfaceTargetFrame,
+     [](bool on) {
+       if (auto* p = Bourgeon::Instance().target_frame()) p->enabled_ = on;
+     }},
+    // La navigation DÉTRUIT quatre fenêtres natives (203 et ses satellites 306 /
+    // 314 / 229), et ses résultats sont des LIENS vers la fiche de monstre ci-dessus
+    // — elle-même du groupe. L'activer seule laisserait des liens modernes menant à
+    // une fenêtre native ; la laisser seule éteinte ferait ouvrir par la fiche
+    // moderne une navigation que rien ne remplace.
+    {"Navigation (elle remplace les quatre fenêtres natives)", kNoSection,
+     [](bool on) {
+       if (auto* p = Bourgeon::Instance().navigation_window()) p->imgui_enabled_ = on;
+     }},
+    // Le menu contextuel d'entité ouvre la fiche de monstre ci-dessus, et surtout il
+    // DÉTOURNE le constructeur du menu natif — l'activer seul laisserait un menu
+    // moderne au milieu d'une interface entièrement native.
+    // Cf. docs/entity_context_menu_re.md.
+    {"Menu du clic droit sur une entité", MoonlightUi::kIfaceContextMenu,
+     [](bool on) {
+       if (auto* p = Bourgeon::Instance().entity_context_menu()) p->imgui_enabled_ = on;
+     }},
+    // La chatbox DÉTRUIT la fenêtre de chat native, et ses lignes portent les liens
+    // riches (items, réglages, fiches) qui ouvrent les fenêtres modernes ci-dessus —
+    // un lien vers une fiche d'item moderne dans un chat au milieu d'une interface
+    // native serait le mixe qu'on a supprimé.
+    {"Chatbox (canaux, filtres, liens riches)", kSelfGated,
+     [](bool on) {
+       if (auto* p = Bourgeon::Instance().chat_window()) p->imgui_enabled_ = on;
+     }},
+    // Le dialogue NPC aussi : ses menus déclenchent shops et fabrications — des
+    // fenêtres du groupe — et il cache les fenêtres natives qu'il remplace.
+    {"Dialogue NPC (texte, menus, prompts)", MoonlightUi::kIfaceNpc,
+     [](bool on) {
+       if (auto* p = Bourgeon::Instance().npc_dialog_window()) p->imgui_enabled_ = on;
+     }},
+    // Et les descriptions : elles s'ouvrent depuis l'inventaire, le grimoire et les
+    // fiches modernes. Deux lignes pour un seul plugin — le joueur distingue une
+    // description d'un livre, et chacune bascule ses propres panneaux.
+    {"Descriptions d'objet et de compétence", MoonlightUi::kIfaceDesc,
+     [](bool on) {
+       if (auto* p = Bourgeon::Instance().item_desc()) {
+         p->show_item_panel()  = on;
+         p->show_skill_panel() = on;
+       }
+     }},
+    // La fenêtre de livre NATIVE s'afficherait SOUS l'overlay.
+    {"Fenêtre de lecture des livres", MoonlightUi::kIfaceDesc,
+     [](bool on) {
+       if (auto* p = Bourgeon::Instance().item_desc()) p->show_book_panel() = on;
+     }},
+    // Le radar de la minimap remplace le natif (`replace_native` vaut true par
+    // défaut — le laisser réglable sert à comparer), et son menu ouvre la grande
+    // carte et la carte du monde comme les icônes du menu moderne.
+    {"Minimap (le radar d'origine est remplacé)", MoonlightUi::kIfaceMinimap,
+     [](bool on) {
+       if (auto* p = Bourgeon::Instance().minimap()) p->config().enabled = on;
+     }},
+};
+
+}  // namespace
+
 void SetModernInterface(bool on) {
-  // La fenêtre de cible ne remplace rien : elle AJOUTE ce que le client n'a
-  // jamais su montrer (les points de vie et de SP de ce qu'on vise). Elle est
-  // dans le groupe parce qu'elle vit du même écosystème — et elle garde sa
-  // propre case, comme les autres membres.
-  if (auto* target_frame = Bourgeon::Instance().target_frame())
-    target_frame->enabled_ = on;
-  if (auto* inventory_viewer = Bourgeon::Instance().inventory_viewer())
-    inventory_viewer->imgui_enabled_ = on;
-  // Le cart suit l'inventaire : les deux s'échangent des objets par glisser, et
-  // un cart natif ne sait pas déposer chez nous (ni l'inverse).
-  if (auto* cart_viewer = Bourgeon::Instance().cart_viewer())
-    cart_viewer->imgui_enabled_ = on;
-  if (auto* storage_window = Bourgeon::Instance().storage_window())
-    storage_window->imgui_enabled_ = on;
-  if (auto* skill_bar = Bourgeon::Instance().skill_bar())
-    skill_bar->enabled_ = on;
-  if (auto* trade_window = Bourgeon::Instance().trade_window())
-    trade_window->imgui_enabled_ = on;
-  // Le courrier fait partie du lot : sa fenêtre d'écriture reçoit les objets
-  // glissés depuis l'inventaire ImGui, ce qui n'a de sens que si les deux sont
-  // modernes en même temps (un inventaire natif ne sait pas déposer chez nous).
-  if (auto* rodex_window = Bourgeon::Instance().rodex_window())
-    rodex_window->imgui_enabled_ = on;
-  // L'échoppe joueur (vente ET achat) suit aussi : elle se monte à partir du
-  // CHARIOT, qui est déjà du lot. Un formulaire d'échoppe moderne au-dessus d'un
-  // cart natif (ou l'inverse) serait le mixe qu'on a justement supprimé.
-  if (auto* vending_window = Bourgeon::Instance().vending_window())
-    vending_window->imgui_enabled_ = on;
-  // La feuille de personnage REMPLACE désormais les feuilles natives Status et
-  // Équipement (⚠ celles-ci ne sont pas encore empêchées de NAÎTRE : chantier
-  // ouvert). Elle vit du même écosystème : ses slots reçoivent
-  // les objets glissés depuis l'inventaire ImGui, et son onglet Presets équipe en
-  // s'appuyant dessus. Elle n'a donc plus de case isolée non plus.
-  // ⚠ Son onglet Grimoire, lui, REMPLACE bel et bien la fenêtre native 0x25 : quand
-  // ce groupe est actif, celle-ci est masquée dès sa création et l'onglet prend sa
-  // place (cf. window_pos_tweaks + docs/skill_tree_re.md partie II).
-  if (auto* character_sheet = Bourgeon::Instance().character_sheet())
-    character_sheet->imgui_enabled_ = on;
-  // Boutiques (cash shop et PNJ) : elles achètent VERS l'inventaire et vendent
-  // DEPUIS lui — un panier moderne au-dessus d'un inventaire natif (ou l'inverse)
-  // remet exactement le mixe qu'on a supprimé.
-  if (auto* cashshop_window = Bourgeon::Instance().cashshop_window())
-    cashshop_window->imgui_enabled_ = on;
-  if (auto* npc_shop_window = Bourgeon::Instance().npc_shop_window())
-    npc_shop_window->imgui_enabled_ = on;
-  // La banque échange des zeny avec la POCHE, dont le montant est affiché par le
-  // footer de l'inventaire moderne — et c'est le bouton « sac de zeny » de ce
-  // footer qui l'ouvre. Une banque moderne au-dessus d'un inventaire natif (ou
-  // l'inverse) laisserait ce bouton sans fenêtre, ou la fenêtre sans bouton.
-  if (auto* bank_window = Bourgeon::Instance().bank_window())
-    bank_window->imgui_enabled_ = on;
-  // Amis / Groupe : elle REMPLACE UIMessengerGroupWnd (0x45), la seule fenêtre du
-  // client qui rende les deux listes. Elle est dans le groupe pour la raison
-  // habituelle — on ne veut pas d'un demi-jeu moderne — et parce que sa native est
-  // DÉTRUITE quand elle est active : laisser le joueur activer l'une sans l'autre
-  // reviendrait à lui faire cohabiter deux fenêtres qui se disputent le même id.
-  if (auto* party_friend_window = Bourgeon::Instance().party_friend_window())
-    party_friend_window->imgui_enabled_ = on;
-  // Le refine Whitesmith rejoint le lot : sa liste d'armes se lit dans le
-  // MÊME modèle d'inventaire que le viewer moderne (noms composés, icônes,
-  // aperçu de description), et il ferme/rouvre la fenêtre native à chaque
-  // tentative. Moderne au-dessus d'un inventaire natif, il retomberait sur le
-  // repli « nom de base » de SafeName, faute de contexte de composition.
-  if (auto* weapon_refine_window = Bourgeon::Instance().weapon_refine_window())
-    weapon_refine_window->imgui_enabled_ = on;
-  // Les fenêtres de FABRICATION (94 « LIST » et 79 « Manufacturing List ») pour la
-  // même raison que le refine : elles listent des objets dont le nom, l'icône et
-  // le stock sont lus dans le même modèle d'inventaire que le viewer moderne, et
-  // elles se détruisent à chaque validation. Cf. docs/make_item_list_re.md.
-  if (auto* make_item_window = Bourgeon::Instance().make_item_window())
-    make_item_window->imgui_enabled_ = on;
-  // La fiche de monstre suit le groupe : elle REVENDIQUE le paquet 0x018C, donc
-  // l'activer isolément tuerait la fenêtre native Monster Info alors que tout le
-  // reste de l'interface serait encore natif. Et son lien depuis la table des
-  // drops n'a de sens qu'avec la fiche d'item moderne, qui en fait partie.
-  if (auto* monster_info = Bourgeon::Instance().monster_info())
-    monster_info->imgui_enabled_ = on;
-  // « Voir l'équipement » d'un autre joueur suit le groupe : elle REVENDIQUE le
-  // paquet ZC 0x0B37, donc l'activer isolément tuerait la fenêtre native 139
-  // pendant que tout le reste serait encore natif. Et elle vit du même
-  // écosystème que la fiche d'objet — c'est elle qui s'ouvre au clic sur une
-  // pièce, et le chat moderne qui reçoit ses liens.
-  if (auto* view_equip = Bourgeon::Instance().view_equip_window())
-    view_equip->imgui_enabled_ = on;
-  // Le menu contextuel d'entité suit le groupe : une de ses entrées ouvre la
-  // fiche de monstre ci-dessus, et surtout il DÉTOURNE le constructeur du menu
-  // natif — l'activer seul laisserait un menu moderne au milieu d'une interface
-  // entièrement native. Cf. docs/entity_context_menu_re.md.
-  if (auto* entity_context_menu = Bourgeon::Instance().entity_context_menu())
-    entity_context_menu->imgui_enabled_ = on;
-  // La fiche de pet suit le groupe : elle DÉTRUIT deux fenêtres natives (88 et
-  // 260), et c'est le menu contextuel ci-dessus — lui aussi du groupe — qui
-  // demande son ouverture. L'activer seule laisserait une fiche moderne au bout
-  // d'un menu natif ; la laisser seule éteinte ferait ouvrir par ce même menu
-  // une fenêtre que rien ne détruit plus. Cf. docs/pet_re.md §12.
-  if (auto* pet_window = Bourgeon::Instance().pet_window())
-    pet_window->imgui_enabled_ = on;
-  // La navigation suit le groupe : elle DÉTRUIT quatre fenêtres natives (203 et
-  // ses satellites 306 / 314 / 229), et ses résultats sont des LIENS vers la
-  // fiche de monstre ci-dessus — elle-même du groupe. L'activer seule laisserait
-  // des liens modernes menant à une fenêtre native ; la laisser seule éteinte
-  // ferait ouvrir par la fiche moderne une navigation que rien ne remplace.
-  if (auto* navigation_window = Bourgeon::Instance().navigation_window())
-    navigation_window->imgui_enabled_ = on;
-  // La chatbox suit le groupe (2026-08-18) : elle DÉTRUIT la fenêtre de chat
-  // native, et ses lignes portent les liens riches (items, réglages, fiches)
-  // qui ouvrent les fenêtres modernes ci-dessus — un lien vers une fiche
-  // d'item moderne dans un chat au milieu d'une interface native serait le
-  // mixe qu'on a supprimé.
-  if (auto* chat_window = Bourgeon::Instance().chat_window())
-    chat_window->imgui_enabled_ = on;
-  // Le dialogue NPC aussi : ses menus déclenchent shops et fabrications — des
-  // fenêtres du groupe — et il cache les fenêtres natives qu'il remplace.
-  if (auto* npc_dialog_window = Bourgeon::Instance().npc_dialog_window())
-    npc_dialog_window->imgui_enabled_ = on;
-  // Et les descriptions (panneau technique item, panneau skill, livre) : elles
-  // s'ouvrent depuis l'inventaire, le grimoire et les fiches modernes, et la
-  // fenêtre de livre native s'afficherait SOUS l'overlay.
-  if (auto* item_desc = Bourgeon::Instance().item_desc()) {
-    item_desc->show_item_panel()  = on;
-    item_desc->show_skill_panel() = on;
-    item_desc->show_book_panel()  = on;
-  }
-  // La minimap suit le groupe (2026-08-18) : son radar remplace le natif
-  // (replace_native vaut true par défaut — le laisser réglable sert à
-  // comparer), et son menu ouvre la grande carte et la carte du monde comme
-  // les icônes du menu moderne.
-  if (auto* minimap = Bourgeon::Instance().minimap())
-    minimap->config().enabled = on;
+  for (const ModernMember& member : kModernGroup) member.apply(on);
+
   // 🔴 LE MENU ÉCHAP ET SA TABLE DES RACCOURCIS NE SONT PAS DANS CE GROUPE, et ce
   // n'est pas un oubli : ils sont ON PAR DÉFAUT pour tout le monde (cf. leurs
   // descripteurs). Un menu enterré sous une fenêtre du jeu est un menu cassé, et
@@ -1904,6 +2021,15 @@ void SetModernInterface(bool on) {
   // Ce que le groupe garantissait et qui reste vrai autrement : ces fenêtres ne
   // dépendent d'AUCUN autre morceau moderne — le menu route ses commandes par le
   // `OnMsg` du client, la table écrit par ses ponts Lua.
+}
+
+bool SectionNeedsModern(int iface_section) {
+  // Les sentinelles sont négatives : sans ce garde-fou, une section inconnue
+  // valant -1 se dirait « du groupe » en tombant sur kNoSection.
+  if (iface_section < 0) return false;
+  for (const ModernMember& member : kModernGroup)
+    if (member.section == iface_section) return true;
+  return false;
 }
 
 bool ModernInterfaceEnabled() {
@@ -1921,52 +2047,19 @@ bool DrawModernInterfaceCheckbox(bool* enabled, const char* window_help) {
     SetModernInterface(*enabled);
     changed = true;
   }
-  // Liste du groupe : SOURCE UNIQUE de l'infobulle (le code, lui, a la sienne
-  // juste au-dessus, dans SetModernInterface).
-  // ── 🔴 UNE PHRASE PAR CLÉ, JAMAIS LE PAVÉ ENTIER ──────────────────────────
-  // Ce texte était UNE SEULE clé i18n de 1184 caractères, la liste des fenêtres
-  // comprise. Or **YAML plafonne une clé simple à 1024 caractères** — yaml-cpp
-  // l'applique comme les autres (simplekey.cpp:116) — et au-delà c'est le
-  // catalogue ENTIER qui cesse de parser, pas seulement cette entrée. i18n.cc
-  // vide alors sa table : toute l'interface repasse en français, sans autre
-  // trace qu'un LogDiag. Le seuil a été franchi en ajoutant une ligne à la
-  // liste, et personne n'a rien vu passer.
-  //
-  // La liste est donc composée d'ITEMS COURTS, chacun sa clé. Elle peut grandir
-  // indéfiniment sans jamais réapprocher la limite, chaque entrée se traduit
-  // isolément, et une ligne ajoutée ne périme plus la traduction des autres.
-  static const char* const kGroupMembers[] = {
-      "Inventaire (et le sertissage de cartes)",
-      "Cart",
-      "Storage (Kafra, guilde, premium)",
-      "Barres d'action",
-      "Échange joueur-joueur",
-      "Courrier (RODEX)",
-      "Shop joueur (vending, buying store et achat chez un vendeur)",
-      "Feuille de personnage (Alt+F), grimoire compris",
-      "Vote Shop et shops PNJ",
-      "Banque de zeny (Ctrl+B)",
-      "Refine d'arme (compétence Upgrade Weapon du Whitesmith)",
-      "Fiche de monstre (compétence Sense)",
-      "Navigation (elle remplace les quatre fenêtres natives)",
-      "Menu du clic droit sur une entité",
-      "Chatbox (canaux, filtres, liens riches)",
-      "Dialogue NPC (texte, menus, prompts)",
-      "Descriptions d'objet et de compétence",
-      "Fenêtre de lecture des livres",
-      "Minimap (le radar d'origine est remplacé)",
-  };
-
+  // La liste du groupe vient de `kModernGroup` — la MÊME table que la bascule
+  // et que le grisage des sections. Elle en recopiait une version tenue à la
+  // main, qui taisait cinq membres.
   std::string help = i18n::Tr(
       "Interrupteur GLOBAL — ces fenêtres s'activent ENSEMBLE, pas de mixe "
       "(tout ImGui ou tout natif) :");
   help += '\n';
-  for (const char* member : kGroupMembers) {
+  for (const ModernMember& member : kModernGroup) {
     help += "  • ";
-    help += i18n::Tr(member);
+    help += i18n::Tr(member.label);
     help += '\n';
   }
-  help += i18n::Tr("La case des autres sections reflète donc le même état.");
+  help += i18n::Tr("Seule la fenêtre de cible garde une case à elle : le mode Ciblage change le jeu et pas seulement l'aspect d'une fenêtre.");
   help += "\n\n";
   help += window_help;
   ImGui::SameLine();

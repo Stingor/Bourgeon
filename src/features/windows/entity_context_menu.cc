@@ -726,11 +726,11 @@ EntityContextMenu::EntityContextMenu() {
   if (!g_trampoline) {
     LogDiag("[EntityContextMenu] detour NON pose (prologue non relocalisable)");
   }
-  // 🔴 Ce second détour N'EST PAS gardé par `imgui_enabled_` : le blocage d'un
-  // NPC est une préférence de jeu, pas un habillage, et l'éteindre avec
-  // l'interface moderne ferait « oublier » au client des NPC que le joueur avait
-  // rendus sourds. Il ne coûte rien tant que la liste est vide (cf.
-  // ShouldIgnoreWorldClick), et le panneau garde la liste débrayable.
+  // Ce second détour est posé inconditionnellement comme le premier, mais son
+  // prédicat `ShouldIgnoreWorldClick` répond faux hors du groupe « Interface
+  // moderne » : on ne peut bloquer un NPC que par le menu ImGui, donc un blocage
+  // qui survivrait à l'extinction du groupe laisserait des NPC muets sans aucun
+  // moyen de les rouvrir. Il ne coûte rien tant que la liste est vide.
   g_trampoline_route = HookManager::Instance().SetHook(
       HookType::kJmpHook, reinterpret_cast<uint8_t*>(kRouteHoverAndClick),
       reinterpret_cast<uint8_t*>(&RouteHoverAndClickDetour));
@@ -1019,9 +1019,15 @@ bool EntityContextMenu::IsNpcClickBlocked(uint32_t gid) const {
 }
 
 bool EntityContextMenu::ShouldIgnoreWorldClick(const int* quad) {
-  // Le cas courant — aucun NPC bloqué — sort en deux tests, sans toucher au
+  // 🔴 INERTE HORS DU GROUPE « INTERFACE MODERNE ». On ne peut bloquer un NPC
+  // que par le menu ImGui : si le blocage survivait à l'extinction du groupe,
+  // le joueur garderait des NPC muets sans aucun menu pour les rendre
+  // cliquables. La liste est CONSERVÉE — elle reprend effet au retour.
+  //
+  // Le cas courant — aucun NPC bloqué — sort en trois tests, sans toucher au
   // quad : ce détour tourne à chaque frame de la passe souris.
-  if (!npc_block_enabled_ || blocked_npcs_.empty() || !quad) return false;
+  if (!imgui_enabled_ || !npc_block_enabled_ || blocked_npcs_.empty() || !quad)
+    return false;
 
   // 🔴 Seuls les états qui DÉCLENCHENT une action sont neutralisés. Le survol
   // (état 0) et le relâchement (état 3) passent intacts, donc la plaque de nom
@@ -2244,9 +2250,8 @@ bool EntityContextMenu::DrawSettings() {
 
   // ── Blocage du clic sur les NPC de service ─────────────────────────────────
   // La case elle-même se coche dans le menu, sur le NPC. Ce qui vit ICI, c'est
-  // l'interrupteur général et la LISTE — sans quoi un joueur qui éteint
-  // l'interface moderne n'aurait plus aucun moyen de débloquer un NPC : le menu,
-  // et donc la case, disparaissent avec elle.
+  // l'interrupteur général et la LISTE, pour reprendre d'un geste ce qu'on a
+  // bloqué au fil du jeu.
   changed |= ro::RoCheckbox(
       i18n::Tr("Blocage du clic sur les NPC de service###ctxmenu_npcblock_opt"),
       &npc_block_enabled_);

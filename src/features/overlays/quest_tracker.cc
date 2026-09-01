@@ -272,12 +272,13 @@ void QuestTracker::OnRenderUI() {
   }
 }
 
-void QuestTracker::DrawSettings() {
-  g_needs_save |= ro::RoCheckbox(i18n::Tr("Suivi de quête personnalisé"), &g_cfg.enabled);
+bool QuestTracker::DrawSettings() {
+  bool changed = false;
+  changed |= ro::RoCheckbox(i18n::Tr("Suivi de quête personnalisé"), &g_cfg.enabled);
   SameLine(); HelpMarker(i18n::Tr("Activé = overlay personnalisable\nDésactivé = overlay d'origine."));
 
   ImGui::BeginDisabled(!g_cfg.enabled);
-  g_needs_save |= ro::RoCheckbox(i18n::Tr("Barre de titre (nom + bouton de fermeture)"), &g_cfg.show_titlebar);
+  changed |= ro::RoCheckbox(i18n::Tr("Barre de titre (nom + bouton de fermeture)"), &g_cfg.show_titlebar);
   SameLine(); HelpMarker(
     i18n::Tr("Affiche une barre de titre avec le nombre de quêtes suivies.\n"
     "Le panneau se déplace en glissant la barre."));
@@ -287,17 +288,17 @@ void QuestTracker::DrawSettings() {
   bool unlocked = !g_cfg.locked;
   if (ro::RoCheckbox(i18n::Tr("Déverrouiller (glisser pour déplacer)"), &unlocked)) {
     g_cfg.locked = !unlocked;
-    g_needs_save = true;
+    changed = true;
   }
   SameLine(); HelpMarker(i18n::Tr("Déverrouille = glisser le corps du panneau\nVerrouille = overlay non cliquable."));
   ImGui::EndDisabled();
 
-  g_needs_save |= ro::RoCheckbox(i18n::Tr("Afficher l'objectif"), &g_cfg.show_objective);
-  g_needs_save |= WheelSliderInt(i18n::Tr("Position X"), &g_cfg.pos_x, 0, 1920);
-  g_needs_save |= WheelSliderInt(i18n::Tr("Position Y"), &g_cfg.pos_y, 0, 1080);
-  g_needs_save |= WheelSliderInt(i18n::Tr("Largeur"), &g_cfg.width, 120, 600, "%d px");
-  g_needs_save |= WheelSliderInt(i18n::Tr("Quetes max"), &g_cfg.max_quests, 1, kMaxCollect);
-  g_needs_save |= WheelSliderInt(i18n::Tr("Taille police"), &g_cfg.font_scale, 60, 200, "%d%%");
+  changed |= ro::RoCheckbox(i18n::Tr("Afficher l'objectif"), &g_cfg.show_objective);
+  changed |= WheelSliderInt(i18n::Tr("Position X"), &g_cfg.pos_x, 0, 1920);
+  changed |= WheelSliderInt(i18n::Tr("Position Y"), &g_cfg.pos_y, 0, 1080);
+  changed |= WheelSliderInt(i18n::Tr("Largeur"), &g_cfg.width, 120, 600, "%d px");
+  changed |= WheelSliderInt(i18n::Tr("Quetes max"), &g_cfg.max_quests, 1, kMaxCollect);
+  changed |= WheelSliderInt(i18n::Tr("Taille police"), &g_cfg.font_scale, 60, 200, "%d%%");
 
   SeparatorText(i18n::Tr("Couleurs"));
   float tc[3], dc[3], hc[3];
@@ -306,29 +307,30 @@ void QuestTracker::DrawSettings() {
   ro::RgbToF3(g_cfg.hunt_rgb, hc);
   if (ColorEdit4WithAlphaBar(i18n::Tr("Couleur titre"), tc)) {
     g_cfg.title_rgb = ro::F3ToRgb(tc);
-    g_needs_save = true;
+    changed = true;
   }
   if (ColorEdit4WithAlphaBar(i18n::Tr("Couleur objectif"), dc)) {
     g_cfg.desc_rgb = ro::F3ToRgb(dc);
-    g_needs_save = true;
+    changed = true;
   }
   if (ColorEdit4WithAlphaBar(i18n::Tr("Couleur chasse"), hc)) {
     g_cfg.hunt_rgb = ro::F3ToRgb(hc);
-    g_needs_save = true;
+    changed = true;
   }
 
-  g_needs_save |= ro::RoCheckbox(i18n::Tr("Fond translucide"), &g_cfg.show_bg);
+  changed |= ro::RoCheckbox(i18n::Tr("Fond translucide"), &g_cfg.show_bg);
   ImGui::BeginDisabled(!g_cfg.show_bg);
-  g_needs_save |= WheelSliderInt(i18n::Tr("Opacité du fond"), &g_cfg.bg_alpha, 0, 100, "%d%%");
+  changed |= WheelSliderInt(i18n::Tr("Opacité du fond"), &g_cfg.bg_alpha, 0, 100, "%d%%");
   ImGui::EndDisabled();
 
   if (ro::RoButton(i18n::Tr("Réinitialiser"))) {
     g_cfg = QuestTrackerConfig{};
     g_cfg.enabled = true;  // keep it on after a reset from the panel
-    g_needs_save = true;
+    changed = true;
   }
 
   ImGui::EndDisabled();
+  return changed;
 }
 
 QuestTrackerConfig& QuestTracker::config() { return g_cfg; }

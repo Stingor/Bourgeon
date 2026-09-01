@@ -144,5 +144,5 @@ class ItemObtainToast : public Plugin {
   ItemObtainToastConfig& config();
 
   // Panneau de réglages (sans fenêtre propre), hébergé par moonlight_ui.
-  void DrawSettings();
+  bool DrawSettings();
 };

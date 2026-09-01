@@ -1522,22 +1522,15 @@ void NpcDialogWindow::DrawInput() {
 // l'état de CE plugin, ils appartiennent donc à ce fichier. MoonlightUi ne garde
 // que l'appel et la décision de sauvegarder.
 bool NpcDialogWindow::DrawSettings() {
+  // Pas de case d'activation : le dialogue NPC suit le groupe « Interface
+  // moderne » (ses menus déclenchent shops et fabrications, des fenêtres du
+  // groupe), et c'est le panneau qui grise la section hors groupe.
   bool changed = false;
-  // Plus de case d'activation : le dialogue NPC suit le groupe « Interface
-  // moderne » depuis le 2026-08-18 (ses menus déclenchent shops et fabrications,
-  // des fenêtres du groupe). Le réglage fin reste, grisé hors groupe —
-  // imgui_enabled_ est écrit par SetModernInterface, donc le tester revient à
-  // tester le groupe.
-  ImGui::TextDisabled(
-      "%s", i18n::Tr("Suivent l'interface moderne — l'interrupteur est en tête "
-                     "d'« Interface de jeu »."));
-  ImGui::BeginDisabled(!imgui_enabled_);
   changed |= ro::RoCheckbox(i18n::Tr("Barre de recherche du menu"), &menu_search_);
   ImGui::SameLine();
   HelpMarker(
       i18n::Tr("Affiche un champ de recherche au-dessus des longs menus (plus de 8 "
       "choix) pour filtrer les options. Décoche pour un menu épuré."));
-  ImGui::EndDisabled();
   return changed;
 }
 

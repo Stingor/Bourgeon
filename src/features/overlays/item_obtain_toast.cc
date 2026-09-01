@@ -547,32 +547,33 @@ void ItemObtainToast::OnRenderUI() {
   }
 }
 
-void ItemObtainToast::DrawSettings() {
-  g_needs_save |= ro::RoCheckbox(i18n::Tr("Bandeau d'objet obtenu personnalisé"),
-                                 &g_cfg.enabled);
+bool ItemObtainToast::DrawSettings() {
+  bool changed = false;
+  changed |= ro::RoCheckbox(i18n::Tr("Bandeau d'objet obtenu personnalisé"),
+                            &g_cfg.enabled);
   SameLine();
   HelpMarker(i18n::Tr("Activé = bandeau empilable et réglable\n"
                       "Désactivé = bandeau d'origine du client."));
 
   ImGui::BeginDisabled(!g_cfg.enabled);
 
-  g_needs_save |= WheelSliderInt(i18n::Tr("Lignes max"), &g_cfg.max_lines, 1, kMaxLines);
+  changed |= WheelSliderInt(i18n::Tr("Lignes max"), &g_cfg.max_lines, 1, kMaxLines);
   SameLine();
   HelpMarker(i18n::Tr("Le bandeau d'origine est bloqué à UNE ligne : un second "
                       "ramassage écrase le premier."));
 
-  g_needs_save |= ro::RoCheckbox(i18n::Tr("La plus récente en haut"),
-                                 &g_cfg.newest_on_top);
-  g_needs_save |= ro::RoCheckbox(i18n::Tr("Regrouper le même objet"),
-                                 &g_cfg.merge_same);
+  changed |= ro::RoCheckbox(i18n::Tr("La plus récente en haut"),
+                            &g_cfg.newest_on_top);
+  changed |= ro::RoCheckbox(i18n::Tr("Regrouper le même objet"),
+                            &g_cfg.merge_same);
   SameLine();
   HelpMarker(i18n::Tr("Additionne les quantités sur une seule ligne tant qu'elle "
                       "est affichée, au lieu d'en ouvrir une par ramassage."));
 
   // Clé « Durée (ms) » : elle existe déjà au catalogue, autant la réutiliser que
   // d'en créer une quasi identique. Le format ne répète donc pas l'unité.
-  g_needs_save |= WheelSliderInt(i18n::Tr("Durée (ms)"), &g_cfg.duration_ms,
-                                 500, 20000, "%d");
+  changed |= WheelSliderInt(i18n::Tr("Durée (ms)"), &g_cfg.duration_ms,
+                            500, 20000, "%d");
   SameLine();
   HelpMarker(i18n::Tr("Le client d'origine tient 5000 ms, sans réglage possible."));
 
@@ -584,7 +585,7 @@ void ItemObtainToast::DrawSettings() {
   if (ro::RoCheckbox(i18n::Tr("Déverrouiller (glisser pour déplacer)"), &unlocked)) {
     g_cfg.locked = !unlocked;
     g_anchor_force = true;
-    g_needs_save = true;
+    changed = true;
   }
   SameLine();
   HelpMarker(i18n::Tr("Déverrouillé, une poignée apparaît à l'emplacement du "
@@ -598,27 +599,27 @@ void ItemObtainToast::DrawSettings() {
     // repose le bandeau là où le client l'aurait mis.
     g_cfg.pos_x = centered ? -1 : 220;
     g_anchor_force = true;
-    g_needs_save = true;
+    changed = true;
   }
   SameLine();
   HelpMarker(i18n::Tr("Le centrage survit à un déplacement VERTICAL de la "
                       "poignée ; un déplacement horizontal en sort."));
 
   SeparatorText(i18n::Tr("Compacité"));
-  g_needs_save |= WheelSliderInt(i18n::Tr("Interligne"), &g_cfg.row_gap, 0, 16, "%d px");
+  changed |= WheelSliderInt(i18n::Tr("Interligne"), &g_cfg.row_gap, 0, 16, "%d px");
   SameLine();
   HelpMarker(i18n::Tr("L'espace entre deux lignes. À 0 elles se touchent."));
-  g_needs_save |= WheelSliderInt(i18n::Tr("Marge verticale"), &g_cfg.pad_v, 0, 12, "%d px");
+  changed |= WheelSliderInt(i18n::Tr("Marge verticale"), &g_cfg.pad_v, 0, 12, "%d px");
   SameLine();
   HelpMarker(i18n::Tr("La marge au-dessus et au-dessous du contenu d'une ligne.\n"
                       "Sans effet tant que le cadre RO est affiché : sa hauteur "
                       "est imposée par la taille de ses tuiles."));
-  g_needs_save |= WheelSliderInt(i18n::Tr("Taille police"), &g_cfg.font_scale,
-                                 60, 200, "%d%%");
+  changed |= WheelSliderInt(i18n::Tr("Taille police"), &g_cfg.font_scale,
+                            60, 200, "%d%%");
 
   SeparatorText(i18n::Tr("Apparence"));
-  g_needs_save |= ro::RoCheckbox(i18n::Tr("Afficher l'icône"), &g_cfg.show_icon);
-  g_needs_save |= ro::RoCheckbox(i18n::Tr("Cadre RO"), &g_cfg.show_frame);
+  changed |= ro::RoCheckbox(i18n::Tr("Afficher l'icône"), &g_cfg.show_icon);
+  changed |= ro::RoCheckbox(i18n::Tr("Cadre RO"), &g_cfg.show_frame);
   SameLine();
   HelpMarker(i18n::Tr("Le cadre clair du client. Décoché, le fond libre "
                       "ci-dessous prend sa place."));
@@ -626,30 +627,30 @@ void ItemObtainToast::DrawSettings() {
   // Le fond libre ne sert QUE sans le cadre RO : le griser dit pourquoi il ne
   // fait rien, au lieu de laisser croire à un réglage cassé.
   ImGui::BeginDisabled(g_cfg.show_frame);
-  g_needs_save |= ro::RoCheckbox(i18n::Tr("Fond libre"), &g_cfg.bg_enabled);
+  changed |= ro::RoCheckbox(i18n::Tr("Fond libre"), &g_cfg.bg_enabled);
   float bgc[4];
   RgbToF4(g_cfg.bg_rgb, bgc);
   if (ColorEdit4WithAlphaBar(i18n::Tr("Couleur du fond"), bgc)) {
     g_cfg.bg_rgb = ro::F3ToRgb(bgc);
-    g_needs_save = true;
+    changed = true;
   }
-  g_needs_save |= WheelSliderInt(i18n::Tr("Opacité du fond"), &g_cfg.bg_alpha,
-                                 0, 100, "%d%%");
-  g_needs_save |= WheelSliderInt(i18n::Tr("Arrondi"), &g_cfg.bg_rounding,
-                                 0, 16, "%d px");
+  changed |= WheelSliderInt(i18n::Tr("Opacité du fond"), &g_cfg.bg_alpha,
+                            0, 100, "%d%%");
+  changed |= WheelSliderInt(i18n::Tr("Arrondi"), &g_cfg.bg_rounding,
+                            0, 16, "%d px");
 
-  g_needs_save |= ro::RoCheckbox(i18n::Tr("Bordure"), &g_cfg.border_enabled);
+  changed |= ro::RoCheckbox(i18n::Tr("Bordure"), &g_cfg.border_enabled);
   ImGui::BeginDisabled(!g_cfg.border_enabled);
   float bdc[4];
   RgbToF4(g_cfg.border_rgb, bdc);
   if (ColorEdit4WithAlphaBar(i18n::Tr("Couleur de la bordure"), bdc)) {
     g_cfg.border_rgb = ro::F3ToRgb(bdc);
-    g_needs_save = true;
+    changed = true;
   }
-  g_needs_save |= WheelSliderInt(i18n::Tr("Opacité de la bordure"),
-                                 &g_cfg.border_alpha, 0, 100, "%d%%");
-  g_needs_save |= WheelSliderInt(i18n::Tr("Épaisseur de la bordure"),
-                                 &g_cfg.border_thickness, 1, 4, "%d px");
+  changed |= WheelSliderInt(i18n::Tr("Opacité de la bordure"),
+                            &g_cfg.border_alpha, 0, 100, "%d%%");
+  changed |= WheelSliderInt(i18n::Tr("Épaisseur de la bordure"),
+                            &g_cfg.border_thickness, 1, 4, "%d px");
   ImGui::EndDisabled();
   ImGui::EndDisabled();
 
@@ -659,19 +660,14 @@ void ItemObtainToast::DrawSettings() {
   RgbToF4(g_cfg.qty_rgb, qc);
   if (ColorEdit4WithAlphaBar(i18n::Tr("Couleur du nom"), tc)) {
     g_cfg.text_rgb = ro::F3ToRgb(tc);
-    g_needs_save = true;
+    changed = true;
   }
   if (ColorEdit4WithAlphaBar(i18n::Tr("Couleur de la quantité"), qc)) {
     g_cfg.qty_rgb = ro::F3ToRgb(qc);
-    g_needs_save = true;
+    changed = true;
   }
 
   ImGui::EndDisabled();
 
-  // On ne sauvegarde qu'une édition POSÉE : sans ça, un glissement de slider
-  // écrirait le yaml à chaque frame.
-  if (g_needs_save && !ImGui::IsAnyItemActive()) {
-    if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
-    g_needs_save = false;
-  }
+  return changed;
 }

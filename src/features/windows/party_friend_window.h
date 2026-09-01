@@ -73,6 +73,11 @@ class PartyFriendWindow : public Plugin {
   void OnTick() override;      // détruit la native, tient l'état d'ouverture
   void OnRenderUI() override;  // dessine la fenêtre ImGui
 
+  // Le contenu de la section « Groupe / Amis » du panneau Bourgeon.
+  // Renvoie true si un réglage PERSISTANT a changé — au panneau d'appeler
+  // SaveSettings, comme pour toutes les autres sections.
+  bool DrawSettings();
+
   // ── Les deux demandes REÇUES ──────────────────────────────────────────────
   //
   // 🔴 On REMPLACE les handlers de ces deux paquets (RegisterReplaceOpcode), on ne
