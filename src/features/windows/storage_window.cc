@@ -884,7 +884,7 @@ bool StorageWindow::DrawSettings() {
   // suit ne dit que ce que la bascule change pour le storage.
   // 🔴 Plus de CASE ici (cf. skill_bar.cc et moonlight_ui.h) : l'interrupteur du
   // groupe est unique, en tête de « Interface de jeu ». On garde la DESCRIPTION.
-  ImGui::TextDisabled(i18n::Tr("Fenêtre du groupe « Interface moderne »"));
+  ImGui::TextDisabled("%s", i18n::Tr("Fenêtre du groupe « Interface moderne »"));
   SameLine(); HelpMarker(
       i18n::Tr("ON : storage ImGui moderne (icônes, onglets, tri, drag-drop). La "
       "fenêtre native ne s'ouvre plus du tout.\nOFF : storage natif "
@@ -981,7 +981,7 @@ bool StorageWindow::DrawSettings() {
   // L'ORDRE des colonnes, lui, se règle dans la fenêtre elle-même : on ne fait
   // ici que le dire, et offrir la marche arrière (le joueur peut vouloir la
   // demander storage fermé — d'où le drapeau, consommé à la prochaine table).
-  ImGui::TextDisabled(i18n::Tr("Ordre : glissez un en-tête de colonne."));
+  ImGui::TextDisabled("%s", i18n::Tr("Ordre : glissez un en-tête de colonne."));
   SameLine(); HelpMarker(
       i18n::Tr("Dans la fenêtre du storage, attrapez le TITRE d'une colonne et "
       "faites-la glisser à gauche ou à droite. L'ordre choisi est retenu "
@@ -1079,7 +1079,7 @@ void StorageWindow::OnRenderUI() {
   // plutôt que de griser une trentaine de cases et de cibles de glisser.
   if (viewers::VendingComposing())
     ImGui::TextColored(ImVec4(0.85f, 0.15f, 0.15f, 1.0f),
-                       i18n::Tr("Shop en composition : les transferts sont figés."));
+                       "%s", i18n::Tr("Shop en composition : les transferts sont figés."));
 
   // ── Onglets de STORAGE (opt-in) ─────────────────────────────────────────────
   // Ils basculent d'un entrepôt à l'autre — principal, alternatifs — sans passer
@@ -1492,9 +1492,9 @@ void StorageWindow::OnRenderUI() {
       if (ic.tex && ic.w > 0 && ic.h > 0)
         ImGui::Image(reinterpret_cast<ImTextureID>(ic.tex), ImVec2(24.0f, 24.0f));
       else
-        ImGui::TextDisabled(i18n::Tr("(icône introuvable pour cet id)"));
+        ImGui::TextDisabled("%s", i18n::Tr("(icône introuvable pour cet id)"));
     } else {
-      ImGui::TextDisabled(i18n::Tr("Astuce : glissez un item du storage sur l'onglet."));
+      ImGui::TextDisabled("%s", i18n::Tr("Astuce : glissez un item du storage sur l'onglet."));
     }
     if (ro::RoButton(i18n::Tr("Réinitialiser"), 110.0f, 20.0f)) {
       tab_custom_.erase(tab.id);
@@ -1861,7 +1861,7 @@ void StorageWindow::OnRenderUI() {
   // Bascule en vol : la liste est vide À DESSEIN (cf. OnTick, on ne lit plus le
   // modèle) et le storage demandé peut mettre un aller-retour char-server à
   // arriver. Sans cette ligne, l'écran dirait « storage vide ».
-  if (switching_) ImGui::TextDisabled(i18n::Tr("Chargement du storage..."));
+  if (switching_) ImGui::TextDisabled("%s", i18n::Tr("Chargement du storage..."));
 
   // Catégories VERTICALES -> la rangée de storages est HORIZONTALE. Elle est
   // émise ICI et pas en tête de fenêtre : au plus PRÈS de la table, juste

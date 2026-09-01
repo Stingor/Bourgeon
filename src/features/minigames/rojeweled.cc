@@ -309,7 +309,7 @@ void Rojeweled::OnRenderUI() {
     ImGui::SameLine(0, 24);
     if (ImGui::SmallButton(i18n::Tr("Nouvelle partie"))) NewGame();
     ImGui::SameLine(0, 16);
-    ImGui::TextDisabled(i18n::Tr("Clique 2 monstres voisins pour les échanger"));
+    ImGui::TextDisabled("%s", i18n::Tr("Clique 2 monstres voisins pour les échanger"));
 
 
     UpdateGame();  // advance the slide/revert state machine + age explosions

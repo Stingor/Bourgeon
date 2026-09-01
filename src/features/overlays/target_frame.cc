@@ -1770,8 +1770,8 @@ bool TargetFrame::DrawSettings() {
   // n'ouvre qu'en cas de doute. Ocre d'avertissement du projet.
   if (proxy_click_ && !locked_) {
     ImGui::TextColored(ImVec4(166 / 255.0f, 102 / 255.0f, 0.0f, 1.0f),
-                       i18n::Tr("Sans effet : les cadres ne sont pas "
-                                "verrouillés, le clic sert à les déplacer."));
+                       "%s", i18n::Tr("Sans effet : les cadres ne sont pas "
+                                      "verrouillés, le clic sert à les déplacer."));
   }
 
   Separator();

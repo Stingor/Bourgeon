@@ -1497,7 +1497,7 @@ void Bourgeon::ShowLogWindow() {
   ImGui::InputTextWithHint("##logfilter", i18n::Tr("filtre (sous-chaîne)"), filter,
                             sizeof(filter));
   ImGui::SameLine();
-  ImGui::TextDisabled(i18n::Tr("(sélection souris · Ctrl+A · Ctrl+C)"));
+  ImGui::TextDisabled("%s", i18n::Tr("(sélection souris · Ctrl+A · Ctrl+C)"));
 
   // Deuxième rangée : les niveaux. Chaque case porte la couleur que la ligne
   // aurait en console, pour qu'on la reconnaisse sans lire l'étiquette.

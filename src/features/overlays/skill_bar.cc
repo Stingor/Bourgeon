@@ -1171,7 +1171,7 @@ bool SkillBar::DrawSettings() {
   // synchronisée, ce qui laissait croire à un réglage local alors qu'il en basculait
   // douze. Ce que la bascule apporte ICI reste dit — mais comme une DESCRIPTION :
   // section grisée ou non, elle doit donner envie d'essayer.
-  ImGui::TextDisabled(i18n::Tr("Fenêtre du groupe « Interface moderne »"));
+  ImGui::TextDisabled("%s", i18n::Tr("Fenêtre du groupe « Interface moderne »"));
   SameLine(); HelpMarker(
       i18n::Tr("Désactivé = barres classiques.\nActivé = barres modernes entièrement "
       "customisables."));
@@ -1191,7 +1191,7 @@ bool SkillBar::DrawSettings() {
   changed |= ro::RoCheckbox(i18n::Tr("Texte \"gras\""), &bold_text_);  // faux-gras (touches + nombres)
   changed |= WheelSliderFloat(i18n::Tr("Taille texte raccourcis"), &key_scale_, 0.5f, 2.0f, "%.2fx");
   changed |= WheelSliderFloat(i18n::Tr("Taille texte level/qté"), &count_scale_, 0.5f, 2.0f, "%.2fx");
-  ImGui::TextDisabled(i18n::Tr("Aimantation : Réglages interface > \"Aimanter à la grille\" (grille commune à tout l'UI)."));
+  ImGui::TextDisabled("%s", i18n::Tr("Aimantation : Réglages interface > \"Aimanter à la grille\" (grille commune à tout l'UI)."));
 
   // ── 3 barres FIXES (jeu fixe) : Onglet 1 / Onglet 2 / Items ──
   SeparatorText(i18n::Tr("Barres"));

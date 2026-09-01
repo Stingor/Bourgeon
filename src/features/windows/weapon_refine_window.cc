@@ -1354,9 +1354,9 @@ void WeaponRefineWindow::OnRenderUI() {
       // create items yet. ») ne parle ni d'arme, ni de refine, ni de minerai :
       // on énumère les vraies causes, celles du filtre serveur
       // (clif_item_refine_list, cf. docs/weapon_refine_re.md §7).
-      ImGui::TextColored(V4(ro::pal::kColWarn), i18n::Tr("Aucune arme refinable."));
+      ImGui::TextColored(V4(ro::pal::kColWarn), "%s", i18n::Tr("Aucune arme refinable."));
       ImGui::Spacing();
-      ImGui::TextWrapped(i18n::Tr("Le serveur ne propose une arme que si TOUT est vrai :"));
+      ImGui::TextWrapped("%s", i18n::Tr("Le serveur ne propose une arme que si TOUT est vrai :"));
       BulletWrapped(i18n::Tr("elle est identifiée et a un niveau d'arme (1 à 4) ;"));
       BulletWrapped(i18n::Tr("elle n'est PAS portée (déséquipe-la d'abord) ;"));
       BulletWrapped(i18n::Tr("son refine est encore sous le plafond de ta compétence ;"));
@@ -1373,8 +1373,8 @@ void WeaponRefineWindow::OnRenderUI() {
       if (!awaiting_result_ && consumed_ && auto_recast_at_ == 0 &&
           pending_ != kActRecast) {
         ImGui::TextWrapped(
-            i18n::Tr("Session terminée : le serveur n'autorise qu'un refine par "
-            "lancement de la compétence."));
+            "%s", i18n::Tr("Session terminée : le serveur n'autorise qu'un refine par "
+                  "lancement de la compétence."));
       }
       ImGui::Spacing();
       DrawFooter();
@@ -1522,7 +1522,7 @@ void WeaponRefineWindow::OnRenderUI() {
       // largeur ne serait plus celle qu'on a fixée.
       ImGui::TextWrapped("%s", name[0] ? name : i18n::Tr("(arme inconnue)"));
       ImGui::Spacing();
-      ImGui::TextColored(V4(ro::pal::kColBad), i18n::Tr("Un échec DÉTRUIT l'arme."));
+      ImGui::TextColored(V4(ro::pal::kColBad), "%s", i18n::Tr("Un échec DÉTRUIT l'arme."));
       ImGui::TextWrapped(
           i18n::Tr("Le minerai est consommé dans tous les cas. En cas de réussite "
           "l'arme passe de +%d à +%d."),
@@ -2089,7 +2089,7 @@ void WeaponRefineWindow::DrawFooter() {
   // s'affiche plus bas, à sa place et au bon moment.)
 
   if (awaiting_result_) {
-    ImGui::TextColored(V4(ro::pal::kColWarn), i18n::Tr("Tentative envoyée — en attente du serveur…"));
+    ImGui::TextColored(V4(ro::pal::kColWarn), "%s", i18n::Tr("Tentative envoyée — en attente du serveur…"));
     ImGui::Spacing();
   }
 
@@ -2115,8 +2115,8 @@ void WeaponRefineWindow::DrawFooter() {
     ImGui::Spacing();
   } else if (auto_paused_) {
     ImGui::TextColored(V4(ro::pal::kColWarn),
-                       i18n::Tr("Chaîne arrêtée. Un clic sur « Refine » ou « Relancer le "
-                       "skill » la reprend."));
+                       "%s", i18n::Tr("Chaîne arrêtée. Un clic sur « Refine » ou « Relancer le "
+                             "skill » la reprend."));
     ImGui::Spacing();
   } else if (auto_stop_reason_ && AutoChain()) {
     ImGui::TextColored(V4(ro::pal::kColWarn), "%s", auto_stop_reason_);
@@ -2154,15 +2154,15 @@ void WeaponRefineWindow::DrawFooter() {
   const bool relaunch_coming = auto_recast_at_ != 0 || pending_ == kActRecast;
   if (consumed_ && !awaiting_result_ && !relaunch_coming) {
     ImGui::TextDisabled(
-        i18n::Tr("Session terminée : le serveur n'autorise qu'un refine par lancement de "
-        "la compétence."));
+        "%s", i18n::Tr("Session terminée : le serveur n'autorise qu'un refine par lancement de "
+              "la compétence."));
     ImGui::Spacing();
   }
 
   if (!entries_.empty()) {
     // Dire POURQUOI le bouton est gris, sinon il a juste l'air cassé.
     if (!has_sel && !busy) {
-      ImGui::TextDisabled(i18n::Tr("Sélectionne une arme dans la liste."));
+      ImGui::TextDisabled("%s", i18n::Tr("Sélectionne une arme dans la liste."));
       ImGui::Spacing();
     }
     ImGui::BeginDisabled(!has_sel || busy);
@@ -2225,13 +2225,13 @@ void WeaponRefineWindow::DrawFooter() {
     }
     if (ImGui::IsItemHovered()) {
       ImGui::SetTooltip(
-          i18n::Tr("Arrête le refine automatique tout de suite.\n"
-          "\n"
-          "Une tentative DÉJÀ envoyée ira à son terme : le serveur a l'arme,\n"
-          "elle ne se reprend pas. Rien ne repartira ensuite.\n"
-          "\n"
-          "Le réglage reste coché : un clic sur « Refine » ou « Relancer le\n"
-          "skill » reprend la chaîne."));
+          "%s", i18n::Tr("Arrête le refine automatique tout de suite.\n"
+                "\n"
+                "Une tentative DÉJÀ envoyée ira à son terme : le serveur a l'arme,\n"
+                "elle ne se reprend pas. Rien ne repartira ensuite.\n"
+                "\n"
+                "Le réglage reste coché : un clic sur « Refine » ou « Relancer le\n"
+                "skill » reprend la chaîne."));
     }
     ImGui::SameLine();
   } else if ((entries_.empty() || consumed_) && !relaunch_coming) {
@@ -2253,11 +2253,11 @@ void WeaponRefineWindow::DrawFooter() {
     // besoin d'être expliqué, et il est déjà à l'étroit dans le pied.
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
       ImGui::SetTooltip(
-          i18n::Tr("Relance la compétence Upgrade Weapon pour obtenir une nouvelle liste.\n"
-          "\n"
-          "Le serveur n'autorise QU'UNE tentative par lancement : après chaque\n"
-          "refine il faut relancer, et c'est ce que fait ce bouton — sans\n"
-          "repasser par la barre d'action."));
+          "%s", i18n::Tr("Relance la compétence Upgrade Weapon pour obtenir une nouvelle liste.\n"
+                "\n"
+                "Le serveur n'autorise QU'UNE tentative par lancement : après chaque\n"
+                "refine il faut relancer, et c'est ce que fait ce bouton — sans\n"
+                "repasser par la barre d'action."));
     }
     ImGui::SameLine();
   }
@@ -2292,11 +2292,11 @@ void WeaponRefineWindow::DrawHistory(float h) {
 bool WeaponRefineWindow::DrawSettings() {
   bool changed = false;
   ImGui::TextDisabled(
-      i18n::Tr("Remplace la fenêtre « Upgradeable weapons » du skill Upgrade Weapon."));
+      "%s", i18n::Tr("Remplace la fenêtre « Upgradeable weapons » du skill Upgrade Weapon."));
   ImGui::TextDisabled(
-      i18n::Tr("Clic droit : description · double-clic ou Entrée : refine."));
+      "%s", i18n::Tr("Clic droit : description · double-clic ou Entrée : refine."));
   ImGui::TextDisabled(
-      i18n::Tr("En-têtes de colonne : trier (3e clic = ordre d'inventaire)."));
+      "%s", i18n::Tr("En-têtes de colonne : trier (3e clic = ordre d'inventaire)."));
   changed |= ro::RoCheckbox(i18n::Tr("Confirmer avant un refine"), &confirm_);
   ImGui::SameLine();
   HelpMarker(
@@ -2373,9 +2373,9 @@ bool WeaponRefineWindow::DrawSettings() {
     ImGui::Indent();
     ImGui::PushStyleColor(ImGuiCol_Text, V4(ro::pal::kColBad));
     ImGui::TextWrapped(
-        i18n::Tr("Chaque tentative peut DÉTRUIRE l'arme, et elles partent sans "
-        "confirmation. La chaîne joue les armes de la liste jusqu'à épuisement "
-        "du SP."));
+        "%s", i18n::Tr("Chaque tentative peut DÉTRUIRE l'arme, et elles partent sans "
+              "confirmation. La chaîne joue les armes de la liste jusqu'à épuisement "
+              "du SP."));
     ImGui::PopStyleColor();
     ImGui::Unindent();
   }

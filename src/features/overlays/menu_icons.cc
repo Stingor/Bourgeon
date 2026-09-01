@@ -638,7 +638,7 @@ bool MenuIcons::DrawSettings() {
   // elle est issue (elle le faisait, via mi->icons() une fois le préfixe retiré).
   auto& icon_list = icons();
   if (icon_list.empty()) {
-    ImGui::TextDisabled(i18n::Tr("(disponible une fois en jeu)"));
+    ImGui::TextDisabled("%s", i18n::Tr("(disponible une fois en jeu)"));
   } else {
     for (auto& ic : icon_list) {
       // Le bouton du cash shop est bien dans la liste (il se déplace comme les

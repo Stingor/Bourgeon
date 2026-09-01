@@ -175,14 +175,14 @@ void DrawEggPreview() {
 bool DrawJumpKeyBinding(PlayerJump* player_jump) {
   bool changed = false;
   ImGui::AlignTextToFramePadding();
-  ImGui::TextDisabled(i18n::Tr("Touche :"));
+  ImGui::TextDisabled("%s", i18n::Tr("Touche :"));
   SameLine();
 
   if (player_jump->key_capturing()) {
     // Gèle les raccourcis (saut ET presets) le temps du choix : la touche
     // pressée doit remapper, pas déclencher l'action qu'elle porte encore.
     hotkeys::PingCapture();
-    Text(i18n::Tr("appuie sur une touche…  (Échap : annuler)"));
+    Text("%s", i18n::Tr("appuie sur une touche…  (Échap : annuler)"));
     ImGuiIO& io = ImGui::GetIO();
     if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
       player_jump->key_capturing() = false;

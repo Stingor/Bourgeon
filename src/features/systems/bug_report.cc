@@ -153,8 +153,8 @@ void BugReport::Button(const Context& ctx, const char* imgui_id) {
   // dialogue PNJ où il est posé (toutes des fenêtres RO à fond clair).
   if (ro::RoButton(i18n::Tr("Signaler un bug"))) Open(ctx);
   if (ImGui::IsItemHovered())
-    ImGui::SetTooltip(i18n::Tr("Envoyer un rapport de bug à l'équipe (le contexte est "
-                      "joint automatiquement)"));
+    ImGui::SetTooltip("%s", i18n::Tr("Envoyer un rapport de bug à l'équipe (le contexte est "
+                            "joint automatiquement)"));
   ImGui::PopID();
 }
 
@@ -270,8 +270,8 @@ void BugReport::RenderModal() {
   // secondaires de cette modale passent donc par un gris SOMBRE explicite — la
   // palette que la feuille de personnage emploie déjà sur le même fond.
 
-  ImGui::TextWrapped(i18n::Tr("Décris brièvement le problème. Le contexte ci-dessous "
-                     "est joint automatiquement à ton rapport."));
+  ImGui::TextWrapped("%s", i18n::Tr("Décris brièvement le problème. Le contexte ci-dessous "
+                           "est joint automatiquement à ton rapport."));
   ImGui::Separator();
 
   // Contexte capturé (lecture seule).
@@ -307,7 +307,7 @@ void BugReport::RenderModal() {
   // survolé — or c'est précisément là qu'il faut dire POURQUOI. L'infobulle du
   // throttle ne pouvait donc jamais sortir (défaut antérieur au skinning).
   if (throttled && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-    ImGui::SetTooltip(i18n::Tr("Patiente quelques secondes avant un nouveau rapport."));
+    ImGui::SetTooltip("%s", i18n::Tr("Patiente quelques secondes avant un nouveau rapport."));
 
   ImGui::SameLine();
   if (ro::RoButton(i18n::Tr("Annuler"), 120.0f, 0.0f)) {

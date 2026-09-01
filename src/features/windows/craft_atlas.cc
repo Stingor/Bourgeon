@@ -368,10 +368,10 @@ void CraftAtlas::DrawToolbar() {
   SameLine();
   ro::RoCheckbox(i18n::Tr("Réalisable maintenant"), &only_craftable_);
   if (ImGui::IsItemHovered())
-    ImGui::SetTooltip(i18n::Tr(
-        "Ne garder que les recettes dont TOUS les matériaux sont dans le sac. "
-        "Le filtre ne regarde pas les compétences apprises : le serveur, lui, "
-        "refusera une recette dont le métier manque."));
+    ImGui::SetTooltip("%s", i18n::Tr(
+              "Ne garder que les recettes dont TOUS les matériaux sont dans le sac. "
+              "Le filtre ne regarde pas les compétences apprises : le serveur, lui, "
+              "refusera une recette dont le métier manque."));
 
   SameLine();
   ImGui::BeginDisabled(back_.empty());
@@ -613,9 +613,9 @@ void CraftAtlas::DrawSheet() {
       // objet (`produce N;` d'une Mini Furnace, d'un marteau, d'un kit), sans
       // qu'aucune compétence n'y donne accès. Le dire évite de chercher un métier
       // qui n'existe pas.
-      ImGui::TextColored(V4(ro::pal::kColWarn), i18n::Tr(
-          "Aucune compétence : cette recette s'ouvre en UTILISANT un objet "
-          "(fourneau, marteau, kit)."));
+      ImGui::TextColored(V4(ro::pal::kColWarn), "%s", i18n::Tr(
+                "Aucune compétence : cette recette s'ouvre en UTILISANT un objet "
+                "(fourneau, marteau, kit)."));
     } else {
       ImGui::TextColored(V4(kColText), i18n::Tr("Compétence : %s (id %d), niveau %d"),
                          SkillLabel(r->skill, r->lv), r->skill, r->skill_lv);
@@ -628,9 +628,9 @@ void CraftAtlas::DrawSheet() {
       // Affiché SEULEMENT quand le joueur a demandé à voir ces recettes : sinon
       // elles ne sont pas là. Le dire évite qu'il aille chercher un métier
       // qu'aucune classe n'ouvre sur ce serveur.
-      ImGui::TextColored(V4(ro::pal::kColWarn), i18n::Tr(
-          "Injouable ici : aucune classe de ce serveur n'apprend cette "
-          "compétence."));
+      ImGui::TextColored(V4(ro::pal::kColWarn), "%s", i18n::Tr(
+                "Injouable ici : aucune classe de ce serveur n'apprend cette "
+                "compétence."));
     }
 
     // ── Le rendement, quand il n'est pas de UN ──────────────────────────────
@@ -640,9 +640,9 @@ void CraftAtlas::DrawSheet() {
     const craftdata::ProduceQty qty = craftdata::QtyForSkill(r->skill);
     if (!qty.IsFixedOne()) {
       if (qty.mode == craftdata::ProduceQty::kTable) {
-        ImGui::TextColored(V4(ro::pal::kColWarn), i18n::Tr(
-            "Le résultat n'est pas ce produit : le serveur tire dans sa propre "
-            "table de transmutation, avec ses taux et ses quantités."));
+        ImGui::TextColored(V4(ro::pal::kColWarn), "%s", i18n::Tr(
+                  "Le résultat n'est pas ce produit : le serveur tire dans sa propre "
+                  "table de transmutation, avec ses taux et ses quantités."));
       } else if (qty.mode == craftdata::ProduceQty::kBonusRoll) {
         // 🔴 Le bonus le plus intéressant à afficher de tous : il est PROPRE à ce
         // serveur, et rien en jeu ne l'annonce. Un joueur ne peut pas le déduire
@@ -673,7 +673,7 @@ void CraftAtlas::DrawSheet() {
       ImGui::TextColored(V4(ro::pal::kColOk), i18n::Tr("Réalisable %d fois avec le sac actuel."),
                          craftable);
     else if (craftable == 0)
-      ImGui::TextColored(V4(ro::pal::kColBad), i18n::Tr("Matériaux insuffisants."));
+      ImGui::TextColored(V4(ro::pal::kColBad), "%s", i18n::Tr("Matériaux insuffisants."));
 
     // Partager la RECETTE, pas l'objet : le lien posé s'affiche « [Recette: … ] »,
     // montre métier et composants au survol et ouvre l'Atlas au clic. C'est ce
@@ -701,9 +701,9 @@ void CraftAtlas::DrawSheet() {
             "montrera le métier et les composants ; au clic, il ouvrira l'Atlas."),
             ItemName(id));
       else
-        ImGui::SetTooltip(i18n::Tr(
-            "Activez le chat moderne et sa barre de saisie : le lien de recette "
-            "n'existe que là."));
+        ImGui::SetTooltip("%s", i18n::Tr(
+                  "Activez le chat moderne et sa barre de saisie : le lien de recette "
+                  "n'existe que là."));
     }
 
     ImGui::Spacing();
@@ -756,8 +756,8 @@ void CraftAtlas::DrawSheet() {
     // ⚠ UNE fabrication consomme UN exemplaire et rend TOUT ce qui suit — ce
     // n'est pas un tirage entre les lignes. Le dire, parce que la présentation en
     // liste suggère naturellement le contraire.
-    ImGui::TextColored(V4(kColDim), i18n::Tr(
-        "Un exemplaire consommé donne tout ce qui suit, en une fois :"));
+    ImGui::TextColored(V4(kColDim), "%s", i18n::Tr(
+              "Un exemplaire consommé donne tout ce qui suit, en une fois :"));
     for (const craftdata::Yield& y : a->yields) {
       char suffix[64];
       std::snprintf(suffix, sizeof(suffix), i18n::Tr("x%d obtenues"), y.qty);
@@ -835,11 +835,11 @@ bool CraftAtlas::DrawSettings() {
   // vide.
   EnsureIndex();
 
-  ImGui::TextWrapped(i18n::Tr(
-      "L'Atlas répertorie tout ce que le serveur sait fabriquer : par métier, par "
-      "produit, par matériau, et les flèches. Le client ne peut pas le faire seul "
-      "— sa table de recettes ne s'interroge que par produit connu, et le serveur "
-      "n'envoie une liste qu'après un lancement de compétence."));
+  ImGui::TextWrapped("%s", i18n::Tr(
+            "L'Atlas répertorie tout ce que le serveur sait fabriquer : par métier, par "
+            "produit, par matériau, et les flèches. Le client ne peut pas le faire seul "
+            "— sa table de recettes ne s'interroge que par produit connu, et le serveur "
+            "n'envoie une liste qu'après un lancement de compétence."));
   ImGui::Separator();
 
   if (ro::RoCheckbox(i18n::Tr("Ouvrir l'Atlas"), &open_)) changed = true;
@@ -851,12 +851,12 @@ bool CraftAtlas::DrawSettings() {
                      &show_unavailable_))
     changed = true;
   if (ImGui::IsItemHovered())
-    ImGui::SetTooltip(i18n::Tr(
-        "produce_db contient des recettes dont aucune classe de ce serveur "
-        "n'apprend la compétence. Elles sont masquées par défaut : le serveur "
-        "les refuserait. Le critère est l'arbre des compétences, pas le mode "
-        "renewal — ce serveur est pre-renewal et ouvre pourtant les classes de "
-        "3e, dont les recettes sont bien jouables."));
+    ImGui::SetTooltip("%s", i18n::Tr(
+              "produce_db contient des recettes dont aucune classe de ce serveur "
+              "n'apprend la compétence. Elles sont masquées par défaut : le serveur "
+              "les refuserait. Le critère est l'arbre des compétences, pas le mode "
+              "renewal — ce serveur est pre-renewal et ouvre pourtant les classes de "
+              "3e, dont les recettes sont bien jouables."));
 
   ImGui::Spacing();
   DimNotice(i18n::Tr(
@@ -872,8 +872,8 @@ bool CraftAtlas::DrawSettings() {
                   static_cast<int>(craftdata::AllArrows().size()));
     ImGui::TextColored(V4(kColDim), "%s", line);
   } else {
-    ImGui::TextColored(V4(ro::pal::kColWarn), i18n::Tr(
-        "Fichier de recettes absent : SystemEN\\bourgeon_recipes.yaml"));
+    ImGui::TextColored(V4(ro::pal::kColWarn), "%s", i18n::Tr(
+              "Fichier de recettes absent : SystemEN\\bourgeon_recipes.yaml"));
   }
   return changed;
 }

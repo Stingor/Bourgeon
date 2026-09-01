@@ -477,9 +477,9 @@ void MoonlightUi::DrawInterfacePanel() {
           // le relais ci-dessus (le pseudo affiché côté Discord), d'où la place
           // de la mention ici plutôt que dans un panneau « compte ».
           ImGui::TextDisabled(
-              i18n::Tr("Ton avatar Discord : le panneau utilisateur du site génère "
-              "l'image de ton personnage à la bonne dimension pour Discord, en "
-              "un clic."));
+              "%s", i18n::Tr("Ton avatar Discord : le panneau utilisateur du site génère "
+                    "l'image de ton personnage à la bonne dimension pour Discord, en "
+                    "un clic."));
           const std::string avatar_url = DiscordAvatarUrl();
           if (ro::RoButton(i18n::Tr("Générer mon avatar Discord"))) {
             ShellExecuteA(nullptr, "open", avatar_url.c_str(), nullptr, nullptr,

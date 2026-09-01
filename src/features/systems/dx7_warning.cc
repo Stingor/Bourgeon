@@ -90,10 +90,10 @@ void DrawWarningBody() {
       "n'a ni shaders ni cible de rendu : plusieurs fonctionnalités sont "
       "automatiquement désactivées ou dégradées."));
   ImGui::Spacing();
-  ImGui::BulletText(i18n::Tr("Effets d'image : luminosité, contraste, filtres, vignettage, netteté, FXAA"));
-  ImGui::BulletText(i18n::Tr("Capture d'écran propre (sans interface) et filtrage des textures"));
-  ImGui::BulletText(i18n::Tr("Aperçus de sprites et d'effets (SPR Effect Lab, aperçus de costumes)"));
-  ImGui::BulletText(i18n::Tr("Mini-jeux : sprites réels indisponibles, DOOM inaccessible"));
+  ImGui::BulletText("%s", i18n::Tr("Effets d'image : luminosité, contraste, filtres, vignettage, netteté, FXAA"));
+  ImGui::BulletText("%s", i18n::Tr("Capture d'écran propre (sans interface) et filtrage des textures"));
+  ImGui::BulletText("%s", i18n::Tr("Aperçus de sprites et d'effets (SPR Effect Lab, aperçus de costumes)"));
+  ImGui::BulletText("%s", i18n::Tr("Mini-jeux : sprites réels indisponibles, DOOM inaccessible"));
   ImGui::Spacing();
   ImGui::TextUnformatted(
       i18n::Tr("Les performances et la compatibilité avec Windows 10/11 sont également "
@@ -131,7 +131,7 @@ void Dx7Warning::Draw(bool at_login) {
   ro::SuppressEscapeStack();
 
   ImGui::TextColored(ImVec4(0.75f, 0.15f, 0.15f, 1.0f),
-                     i18n::Tr("Ton client tourne en DirectX 7."));
+                     "%s", i18n::Tr("Ton client tourne en DirectX 7."));
   ImGui::Spacing();
   dx7::DrawWarningBody();
   ImGui::Spacing();
@@ -163,8 +163,8 @@ void Dx7Warning::Draw(bool at_login) {
       // le réglage ne sera pris en compte qu'au prochain lancement.
       if (ro::RoButton(i18n::Tr("Ouvrir le Setup"))) LaunchSetup();
       if (ImGui::IsItemHovered())
-        ImGui::SetTooltip(i18n::Tr("Le Setup s'ouvre derrière le jeu — le changement prend "
-                          "effet au prochain lancement."));
+        ImGui::SetTooltip("%s", i18n::Tr("Le Setup s'ouvre derrière le jeu — le changement prend "
+                                "effet au prochain lancement."));
     }
     ImGui::SameLine();
   }

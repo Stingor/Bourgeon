@@ -219,7 +219,7 @@ bool installed() { return g_installed; }
 void DrawSettings() {
   if (!g_installed) {
     ImGui::TextDisabled(
-        i18n::Tr("Zones cliquables : détour non posé (client inattendu)."));
+        "%s", i18n::Tr("Zones cliquables : détour non posé (client inattendu)."));
     return;
   }
 
@@ -258,7 +258,7 @@ void DrawSettings() {
   // n'émet aucun acteur au GID négatif et le réglage ne fait rien du tout.
   const unsigned int hits = negative_gid_hits();
   if (hits == 0)
-    ImGui::TextDisabled(i18n::Tr("Aucun GID négatif rencontré."));
+    ImGui::TextDisabled("%s", i18n::Tr("Aucun GID négatif rencontré."));
   else
     ImGui::TextDisabled(i18n::Tr("Zones rétrécies : %u"), hits);
 

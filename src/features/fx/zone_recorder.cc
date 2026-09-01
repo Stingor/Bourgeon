@@ -838,8 +838,8 @@ void ZoneRecorder::DrawSettings(bool player_view) {
 
   if (g_imgui_dx7_active) {
     ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.35f, 1.0f),
-                       i18n::Tr("Indisponible : le client rend en DirectX 7."));
-    ImGui::TextDisabled(i18n::Tr("Bascule en DirectX 9 dans Setup.exe pour enregistrer."));
+                       "%s", i18n::Tr("Indisponible : le client rend en DirectX 7."));
+    ImGui::TextDisabled("%s", i18n::Tr("Bascule en DirectX 9 dans Setup.exe pour enregistrer."));
     return;
   }
 
@@ -852,7 +852,7 @@ void ZoneRecorder::DrawSettings(bool player_view) {
     ImGui::Text(i18n::Tr("Zone : %d x %d  (en %d, %d)"), zone_w_, zone_h_, zone_x_, zone_y_);
     preview_zone = ImGui::IsItemHovered();
   } else {
-    ImGui::TextDisabled(i18n::Tr("Aucune zone définie."));
+    ImGui::TextDisabled("%s", i18n::Tr("Aucune zone définie."));
   }
   const bool busy = (state_ != State::kIdle);
   ImGui::BeginDisabled(busy);
@@ -885,7 +885,7 @@ void ZoneRecorder::DrawSettings(bool player_view) {
       "Un second appui sur la touche arrête avant la fin."));
 
   if (state_ == State::kSelecting)
-    ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.3f, 1.0f), i18n::Tr("Tracé en cours à l'écran…"));
+    ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.3f, 1.0f), "%s", i18n::Tr("Tracé en cours à l'écran…"));
 
   // ── Réglages ──
   SeparatorText(i18n::Tr("Réglages"));
@@ -971,7 +971,7 @@ void ZoneRecorder::DrawSettings(bool player_view) {
       bytes / (1024.0 * 1024.0));
   if (over_budget)
     ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f),
-                       i18n::Tr("Au-delà du budget : réduis la durée ou la largeur."));
+                       "%s", i18n::Tr("Au-delà du budget : réduis la durée ou la largeur."));
 
   // ── Raccourcis ──
   // Deux touches indépendantes, toutes deux facultatives. Une ligne par touche,
@@ -988,7 +988,7 @@ void ZoneRecorder::DrawSettings(bool player_view) {
       // Gèle les autres raccourcis le temps du choix : la touche pressée doit
       // remapper, pas déclencher l'action qu'elle porte encore.
       hotkeys::PingCapture();
-      ImGui::Text(i18n::Tr("appuie sur une touche…  (Échap : annuler)"));
+      ImGui::Text("%s", i18n::Tr("appuie sur une touche…  (Échap : annuler)"));
       ImGuiIO& io = ImGui::GetIO();
       if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
         capturing_key_ = -1;

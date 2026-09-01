@@ -181,8 +181,8 @@ bool LinkableHeader(const char* key) {
   // où l'on s'en sert — la barre de chat ouverte.
   if (header != nullptr && links::CanPostToChat() &&
       links::HoveredForLinkTooltip())
-    ImGui::SetTooltip(i18n::Tr("Maj + clic : poser le lien de cette "
-                               "section dans le chat"));
+    ImGui::SetTooltip("%s", i18n::Tr("Maj + clic : poser le lien de cette "
+                                     "section dans le chat"));
   return open;
 }
 

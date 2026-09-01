@@ -396,7 +396,7 @@ void Doom::DrawWindow() {
     switch (state_) {
       case State::kNoWad:
         ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f),
-                           i18n::Tr("Aucun WAD DOOM à côté du client !"));
+                           "%s", i18n::Tr("Aucun WAD DOOM à côté du client !"));
         ImGui::TextUnformatted(
             i18n::Tr("Place un WAD dans le dossier du client (même dossier que l'exe du\n"
             "jeu) : doom.wad (Doom complet), doom2.wad, tnt.wad, plutonia.wad,\n"
@@ -407,8 +407,8 @@ void Doom::DrawWindow() {
         ImGui::TextUnformatted(
             i18n::Tr("Plusieurs WAD trouvés à côté du client. Choisis lequel lancer :"));
         ImGui::TextDisabled(
-            i18n::Tr("Le moteur ne démarre qu'une fois par session : ce choix tient\n"
-            "jusqu'au redémarrage du client."));
+            "%s", i18n::Tr("Le moteur ne démarre qu'une fois par session : ce choix tient\n"
+                  "jusqu'au redémarrage du client."));
         ImGui::Spacing();
         for (int i = 0; i < found_count_; ++i) {
           char label[128];
@@ -423,7 +423,7 @@ void Doom::DrawWindow() {
       }
       case State::kDead:
         ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f),
-                           i18n::Tr("DOOM a crashé (I_Error) :"));
+                           "%s", i18n::Tr("DOOM a crashé (I_Error) :"));
         ImGui::TextWrapped("%s", g_doom_fatal);
         break;
       case State::kQuit:
@@ -461,11 +461,11 @@ void Doom::DrawWindow() {
           // state once focused; the WndProc gate below covers this frame).
           ImGui::SetNextFrameWantCaptureKeyboard(true);
           ImGui::TextDisabled(
-              i18n::Tr("ZQSD/WASD/flèches bouger - clic/Ctrl tirer - clic droit/Espace "
-              "ouvrir - Shift courir - Échap menu"));
+              "%s", i18n::Tr("ZQSD/WASD/flèches bouger - clic/Ctrl tirer - clic droit/Espace "
+                    "ouvrir - Shift courir - Échap menu"));
         } else {
           ImGui::TextDisabled(
-              i18n::Tr("Clique dans la fenêtre pour capturer le clavier."));
+              "%s", i18n::Tr("Clique dans la fenêtre pour capturer le clavier."));
         }
         PumpDoomKeys(want_keys);      // also flushes releases on focus loss
         PumpDoomMouse(over_image);    // click = fire, right-click = use

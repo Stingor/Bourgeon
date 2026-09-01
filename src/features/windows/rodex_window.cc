@@ -1817,9 +1817,9 @@ void RodexWindow::DrawMailDetail() {
 
   ImGui::BeginChild("rodex_body", ImVec2(0, 86), true);
   if (!mail->content_ready)
-    ImGui::TextDisabled(i18n::Tr("Chargement du message..."));
+    ImGui::TextDisabled("%s", i18n::Tr("Chargement du message..."));
   else if (mail->body.empty())
-    ImGui::TextDisabled(i18n::Tr("(message vide)"));
+    ImGui::TextDisabled("%s", i18n::Tr("(message vide)"));
   else
     ImGui::TextWrapped("%s", mail->body.c_str());
   ImGui::EndChild();
@@ -1863,7 +1863,7 @@ void RodexWindow::DrawMailDetail() {
   if (!can_delete) ImGui::BeginDisabled();
   if (ro::RoButton(i18n::Tr("Supprimer"), 110.0f, 0.0f)) confirm_ = kConfirmDelete;
   if (!can_delete) ImGui::EndDisabled();
-  if (!can_delete) ImGui::TextDisabled(i18n::Tr("Récupère d'abord les pièces jointes."));
+  if (!can_delete) ImGui::TextDisabled("%s", i18n::Tr("Récupère d'abord les pièces jointes."));
 
   DrawConfirmPopup();
 }
@@ -1905,7 +1905,7 @@ void RodexWindow::DrawComposeWindow() {
   }
 
   // ── Destinataire ──
-  ImGui::TextColored(ro::pal::kBlack, i18n::Tr("Destinataire"));
+  ImGui::TextColored(ro::pal::kBlack, "%s", i18n::Tr("Destinataire"));
   ImGui::SetNextItemWidth(ro::Px(200.0f));
   ImGui::InputText("##rodex_to", to_, sizeof(to_));
   ImGui::SameLine();
@@ -1937,15 +1937,15 @@ void RodexWindow::DrawComposeWindow() {
   }
 
   // ── Sujet / message ──
-  ImGui::TextColored(ro::pal::kBlack, i18n::Tr("Sujet"));
+  ImGui::TextColored(ro::pal::kBlack, "%s", i18n::Tr("Sujet"));
   ImGui::SetNextItemWidth(-1.0f);
   ImGui::InputText("##rodex_subject", subject_, sizeof(subject_));
-  ImGui::TextColored(ro::pal::kBlack, i18n::Tr("Message"));
+  ImGui::TextColored(ro::pal::kBlack, "%s", i18n::Tr("Message"));
   ImGui::InputTextMultiline("##rodex_body", body_, sizeof(body_),
                             ImVec2(-1.0f, 130.0f));
 
   // ── Zeny joint + frais ──
-  ImGui::TextColored(ro::pal::kBlack, i18n::Tr("Zeny à joindre"));
+  ImGui::TextColored(ro::pal::kBlack, "%s", i18n::Tr("Zeny à joindre"));
   ImGui::SetNextItemWidth(ro::Px(160.0f));
   ImGui::InputScalar("##rodex_zeny", ImGuiDataType_S64, &attach_zeny_);
   if (attach_zeny_ < 0) attach_zeny_ = 0;
@@ -1955,7 +1955,7 @@ void RodexWindow::DrawComposeWindow() {
   // Tant que le natif n'a pas eu à le calculer, on se contente de prévenir.
   ImGui::SameLine();
   if (tax_ > 0) ImGui::TextDisabled(i18n::Tr("frais : %lld z"), static_cast<long long>(tax_));
-  else          ImGui::TextDisabled(i18n::Tr("(des frais d'envoi s'appliquent)"));
+  else          ImGui::TextDisabled("%s", i18n::Tr("(des frais d'envoi s'appliquent)"));
 
   // ── Pièces jointes : cible de dépôt de l'inventaire ImGui ──
   ImGui::TextColored(ro::pal::kBlack, i18n::Tr("Pièces jointes (%d/%d)"),

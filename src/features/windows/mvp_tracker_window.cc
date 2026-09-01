@@ -208,9 +208,9 @@ void DrawMvpInviteMenuItem(const char* name_utf8) {
       ImGui::SetTooltip("%s", why);
   } else if (ImGui::IsItemHovered()) {
     // Active, mais la règle mérite d'être dite avant le clic.
-    ImGui::SetTooltip(i18n::Tr(
-        "Guilde et liste d'amis uniquement.\nInviter quelqu'un, c'est inviter "
-        "tous ses personnages et tous ses comptes de jeu."));
+    ImGui::SetTooltip("%s", i18n::Tr(
+              "Guilde et liste d'amis uniquement.\nInviter quelqu'un, c'est inviter "
+              "tous ses personnages et tous ses comptes de jeu."));
   }
 }
 
@@ -274,7 +274,7 @@ bool MvpTrackerWindow::DrawSettings() {
     changed = true;  // Open() a pu allumer l'interrupteur
   }
   SameLine();
-  ImGui::TextDisabled(i18n::Tr("ou une touche à lier : « Carnet de chasse MVP »"));
+  ImGui::TextDisabled("%s", i18n::Tr("ou une touche à lier : « Carnet de chasse MVP »"));
 
   ImGui::BeginDisabled(!cfg.enabled);
 
@@ -327,11 +327,11 @@ bool MvpTrackerWindow::DrawSettings() {
       "« Boss (Convex Mirror) » de la minimap, qui vient du client."));
 
   SeparatorText(i18n::Tr("Lignes détachées"));
-  ImGui::TextWrapped(i18n::Tr(
-      "Glisser une ligne du carnet par sa poignée, à gauche, et la lâcher HORS de "
-      "la fenêtre : elle reste à l'écran et survit à la fermeture du carnet. Les "
-      "lignes s'aimantent entre elles. Clic droit sur une ligne pour la remettre "
-      "au carnet."));
+  ImGui::TextWrapped("%s", i18n::Tr(
+            "Glisser une ligne du carnet par sa poignée, à gauche, et la lâcher HORS de "
+            "la fenêtre : elle reste à l'écran et survit à la fermeture du carnet. Les "
+            "lignes s'aimantent entre elles. Clic droit sur une ligne pour la remettre "
+            "au carnet."));
 
   changed |= ro::RoCheckbox(i18n::Tr("Sprite dans les lignes détachées"),
                             &cfg.line_show_sprite);
@@ -650,7 +650,7 @@ void MvpTrackerWindow::DrawInvitePopup() {
   const bool already = state->group().group_id != 0;
   if (already) {
     ImGui::TextDisabled(
-        i18n::Tr("Quittez d'abord votre groupe actuel pour pouvoir accepter."));
+        "%s", i18n::Tr("Quittez d'abord votre groupe actuel pour pouvoir accepter."));
     ImGui::Spacing();
   }
 
@@ -692,7 +692,7 @@ void MvpTrackerWindow::DrawGroupPanel() {
   }
 
   if (group.group_id == 0) {
-    ImGui::TextDisabled(i18n::Tr("Vous n'êtes dans aucun groupe de chasse."));
+    ImGui::TextDisabled("%s", i18n::Tr("Vous n'êtes dans aucun groupe de chasse."));
     ImGui::SetNextItemWidth(ro::Px(200));
     ImGui::InputTextWithHint("##mvp_group_name", i18n::Tr("Nom du groupe"),
                              group_name_buf_, sizeof(group_name_buf_));
@@ -752,7 +752,7 @@ void MvpTrackerWindow::DrawGroupPanel() {
       if (!first_of_account) ImGui::Unindent(ro::Px(12.0f));
       if (first_of_account && member.user_id == owner_id) {
         ImGui::SameLine();
-        ImGui::TextDisabled(i18n::Tr("(propriétaire)"));
+        ImGui::TextDisabled("%s", i18n::Tr("(propriétaire)"));
       }
 
       ImGui::TableSetColumnIndex(1);
@@ -762,7 +762,7 @@ void MvpTrackerWindow::DrawGroupPanel() {
       if (member.online)
         ImGui::TextUnformatted(i18n::Tr("en ligne"));
       else
-        ImGui::TextDisabled(i18n::Tr("absent"));
+        ImGui::TextDisabled("%s", i18n::Tr("absent"));
 
       ImGui::TableSetColumnIndex(3);
       if (first_of_account && member.user_id != owner_id &&
@@ -788,9 +788,9 @@ void MvpTrackerWindow::DrawGroupPanel() {
   }
   if (ImGui::IsItemHovered()) {
     ImGui::SetTooltip(
-        i18n::Tr("Guilde et liste d'amis uniquement.\n"
-                 "Inviter quelqu'un, c'est inviter tous ses personnages et tous "
-                 "ses comptes de jeu."));
+        "%s", i18n::Tr("Guilde et liste d'amis uniquement.\n"
+                       "Inviter quelqu'un, c'est inviter tous ses personnages et tous "
+                       "ses comptes de jeu."));
   }
 
   ImGui::SameLine();
@@ -798,8 +798,8 @@ void MvpTrackerWindow::DrawGroupPanel() {
 
   if (confirm_leave_) {
     ImGui::TextWrapped(
-        i18n::Tr("Quitter le groupe ? Si vous en êtes le dernier membre, il sera "
-                 "détruit avec ses invitations."));
+        "%s", i18n::Tr("Quitter le groupe ? Si vous en êtes le dernier membre, il sera "
+                       "détruit avec ses invitations."));
     if (ro::RoButton(i18n::Tr("Confirmer"))) {
       state->LeaveGroup();
       confirm_leave_ = false;
@@ -1209,7 +1209,7 @@ void MvpTrackerWindow::DrawTable() {
 
   if (!state->catalog_known()) {
     // Une table vide voudrait dire « rien à chasser » : on dit plutôt la vérité.
-    ImGui::TextDisabled(i18n::Tr("Catalogue non reçu — en attente du serveur."));
+    ImGui::TextDisabled("%s", i18n::Tr("Catalogue non reçu — en attente du serveur."));
     return;
   }
 
@@ -1225,14 +1225,14 @@ void MvpTrackerWindow::DrawTable() {
   // explique pourquoi il est là.
   if (state->group().group_id == 0) {
     ImGui::Spacing();
-    ImGui::TextWrapped(i18n::Tr(
-        "Le carnet se remplit de ce que VOTRE GROUPE observe : ses kills, les "
-        "tombes qu'il lit, les Convex Mirror qu'il porte. Sans groupe, aucune "
-        "ligne ne se remplira."));
+    ImGui::TextWrapped("%s", i18n::Tr(
+              "Le carnet se remplit de ce que VOTRE GROUPE observe : ses kills, les "
+              "tombes qu'il lit, les Convex Mirror qu'il porte. Sans groupe, aucune "
+              "ligne ne se remplira."));
     ImGui::Spacing();
-    ImGui::TextWrapped(i18n::Tr(
-        "Créez-en un ci-dessus — vous pouvez y chasser seul, et inviter plus "
-        "tard vos amis et vos compagnons de guilde."));
+    ImGui::TextWrapped("%s", i18n::Tr(
+              "Créez-en un ci-dessus — vous pouvez y chasser seul, et inviter plus "
+              "tard vos amis et vos compagnons de guilde."));
     return;
   }
 
@@ -1465,14 +1465,14 @@ void MvpTrackerWindow::DrawTable() {
         dl->AddCircleFilled(ImVec2(g0.x + ro::Px(7.0f), g0.y + step * r), 1.2f, dot);
       }
       if (grip_hovered)
-        ImGui::SetTooltip(i18n::Tr("Glisser hors du carnet pour détacher la ligne."));
+        ImGui::SetTooltip("%s", i18n::Tr("Glisser hors du carnet pour détacher la ligne."));
     }
 
     ImGui::TableSetColumnIndex(1);
     if (DrawFavoriteButton(state->IsFavorite(slot->slot_id)))
       state->SetFavorite(slot->slot_id, !state->IsFavorite(slot->slot_id));
     if (ImGui::IsItemHovered())
-      ImGui::SetTooltip(i18n::Tr("Favori : alerte à l'ouverture de la fenêtre."));
+      ImGui::SetTooltip("%s", i18n::Tr("Favori : alerte à l'ouverture de la fenêtre."));
 
     ImGui::TableSetColumnIndex(2);
     // Deux ids et pas un : celui qu'on PEINT tourne sur un créneau scripté,
@@ -1532,11 +1532,11 @@ void MvpTrackerWindow::DrawTable() {
       if (lo == hi) ImGui::Text(i18n::Tr("%d min"), lo);
       else          ImGui::Text("%d-%d min", lo, hi);
       if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip(i18n::Tr(
-            "Le délai écrit dans le script de spawn : au plus tôt, au plus tard.\n\n"
-            "C'est une donnée publique, et la seule que le serveur ait le droit de "
-            "publier — le tirage exact à l'intérieur de cette plage, lui, ne sort "
-            "que si un membre l'a payé avec un Convex Mirror."));
+        ImGui::SetTooltip("%s", i18n::Tr(
+                  "Le délai écrit dans le script de spawn : au plus tôt, au plus tard.\n\n"
+                  "C'est une donnée publique, et la seule que le serveur ait le droit de "
+                  "publier — le tirage exact à l'intérieur de cette plage, lui, ne sort "
+                  "que si un membre l'a payé avec un Convex Mirror."));
       }
     }
 
@@ -1547,7 +1547,7 @@ void MvpTrackerWindow::DrawTable() {
     if (!window_known) {
       // Rien d'observé : on n'écrit RIEN, alors même que le serveur connaît le
       // tirage. C'est la règle de non-triche, visible à l'œil nu.
-      ImGui::TextDisabled(i18n::Tr("jamais vu"));
+      ImGui::TextDisabled("%s", i18n::Tr("jamais vu"));
     } else if (exact) {
       char buf[32];
       FormatDuration(from - now, buf, sizeof(buf));
@@ -1619,7 +1619,7 @@ void MvpTrackerWindow::DrawTable() {
       // elle se lit une fois la fenêtre passée, le bouton disant alors
       // « saisir ».
       if (obs == nullptr) {
-        ImGui::SetTooltip(i18n::Tr("Saisir l'heure de mort observée."));
+        ImGui::SetTooltip("%s", i18n::Tr("Saisir l'heure de mort observée."));
       } else if (obs->by_name[0] != '\0') {
         ImGui::SetTooltip(i18n::Tr("%s — d'après %s.\nCliquer pour saisir une heure."),
                           SourceLabel(obs->source), ro::WireToUtf8(obs->by_name));
@@ -1662,11 +1662,11 @@ void MvpTrackerWindow::DrawManualPopup() {
   ImGui::SetNextItemWidth(ro::Px(120));
   ImGui::InputTextWithHint("##mvp_manual_time", "1430 / 14h30 / -2350",
                            manual_time_buf_, sizeof(manual_time_buf_));
-  ImGui::TextDisabled(i18n::Tr("Un « - » de tête désigne la veille."));
+  ImGui::TextDisabled("%s", i18n::Tr("Un « - » de tête désigne la veille."));
 
   const int64_t when = ParseKillTime(manual_time_buf_);
   if (manual_time_buf_[0] != '\0' && when == 0)
-    ImGui::TextDisabled(i18n::Tr("Heure illisible."));
+    ImGui::TextDisabled("%s", i18n::Tr("Heure illisible."));
 
   if (ro::RoButton(i18n::Tr("Envoyer")) && when != 0) {
     // La source « saisie » est la plus faible : elle n'écrasera jamais un kill

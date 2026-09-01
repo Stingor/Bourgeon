@@ -256,7 +256,7 @@ void CheatDetector::OnRenderUI() {
   ImGui::Separator();
 
   if (detections_.empty()) {
-    ImGui::TextDisabled(i18n::Tr("Aucune detection"));
+    ImGui::TextDisabled("%s", i18n::Tr("Aucune detection"));
   } else {
     const ImGuiTableFlags flags = ImGuiTableFlags_Borders
                                 | ImGuiTableFlags_RowBg

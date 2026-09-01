@@ -1082,7 +1082,7 @@ void InventoryViewer::RenderCardInsert() {
       ImGui::TextWrapped(n > 0
           ? i18n::Tr("Impossible de retrouver les équipements proposés par le serveur.") : i18n::Tr("Aucun équipement compatible avec un emplacement libre."));
     } else {
-      ImGui::TextDisabled(i18n::Tr("Choisissez l'équipement à sertir :"));
+      ImGui::TextDisabled("%s", i18n::Tr("Choisissez l'équipement à sertir :"));
       const float footer = ImGui::GetFrameHeightWithSpacing() + ImGui::GetStyle().ItemSpacing.y;
       if (ImGui::BeginChild("##ci_list", ImVec2(0, -footer), true)) {
         constexpr float kRowH = 26.0f;
@@ -1224,7 +1224,7 @@ bool InventoryViewer::DrawSettings() {
   // ⚠ Cette fenêtre reste l'ANCRE du groupe — `ModernInterfaceEnabled()` lit
   // `imgui_enabled_` ici. Ne pas renommer ni supprimer ce membre sans reprendre
   // cette fonction.
-  ImGui::TextDisabled(i18n::Tr("Fenêtre du groupe « Interface moderne »"));
+  ImGui::TextDisabled("%s", i18n::Tr("Fenêtre du groupe « Interface moderne »"));
   SameLine(); HelpMarker(
       i18n::Tr("ON : inventaire ImGui moderne (grille d'icônes, onglets, recherche, "
       "double-clic utiliser/équiper, clic-droit, drag) et la fenêtre native "
@@ -1382,7 +1382,7 @@ void InventoryViewer::OnRenderUI() {
   // ouverte, donc sans lui l'inventaire n'avertissait de rien du tout.
   if (viewers::VendingComposing())
     ImGui::TextColored(ImVec4(0.85f, 0.15f, 0.15f, 1.0f),
-                       i18n::Tr("Shop en composition : les transferts sont figés."));
+                       "%s", i18n::Tr("Shop en composition : les transferts sont figés."));
 
   const ImVec2 wp = ImGui::GetWindowPos(), ws = ImGui::GetWindowSize();
   win_rect_.Capture(wp.x, wp.y, ws.x, ws.y);
@@ -1803,10 +1803,10 @@ void InventoryViewer::OnRenderUI() {
         const ImVec2 drag_mouse = ImGui::GetMousePos();
         if (viewers::VendingComposing())
           ImGui::TextColored(ImVec4(0.85f, 0.15f, 0.15f, 1.0f),
-                             i18n::Tr("Shop en composition : les transferts sont figés"));
+                             "%s", i18n::Tr("Shop en composition : les transferts sont figés"));
         else if (viewers::StorageOpen() && viewers::MouseOverCart(drag_mouse.x, drag_mouse.y))
           ImGui::TextColored(ImVec4(0.85f, 0.15f, 0.15f, 1.0f),
-                             i18n::Tr("Storage ouvert : vers le cart impossible"));
+                             "%s", i18n::Tr("Storage ouvert : vers le cart impossible"));
         ImGui::EndDragDropSource();
       }
       ImGui::PopStyleVar();  // WindowPadding (marge du fantôme de drag)
@@ -1880,9 +1880,9 @@ void InventoryViewer::OnRenderUI() {
                   ImGui::PopID();
                 }
               } else if (qs_equip_index_ == it.index) {
-                ImGui::TextDisabled(i18n::Tr("Aucune carte compatible"));
+                ImGui::TextDisabled("%s", i18n::Tr("Aucune carte compatible"));
               } else {
-                ImGui::TextDisabled(i18n::Tr("Chargement…"));
+                ImGui::TextDisabled("%s", i18n::Tr("Chargement…"));
               }
               ImGui::EndMenu();
             }
@@ -1960,8 +1960,8 @@ void InventoryViewer::OnRenderUI() {
           if (vending_lock &&
               ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
             ImGui::SetTooltip(
-                i18n::Tr("Figé pendant la composition d'un shop, pour que le stock\n"
-                "ne bouge pas sous la fenêtre en cours."));
+                "%s", i18n::Tr("Figé pendant la composition d'un shop, pour que le stock\n"
+                      "ne bouge pas sous la fenêtre en cours."));
         }
         // Échange joueur-joueur : stack -> prompt quantité (comme « Jeter... »),
         // sinon ajout direct d'1 unité.

@@ -336,7 +336,7 @@ void MoonlightUi::DrawCommandsPanel() {
               else
                 ImGui::TextDisabled("(%s)", autoload_preset->name.c_str());
             } else {
-              ImGui::TextDisabled(i18n::Tr("(aucun)"));
+              ImGui::TextDisabled("%s", i18n::Tr("(aucun)"));
             }
           }
           ImGui::SetNextItemWidth(ro::Px(120.0f));

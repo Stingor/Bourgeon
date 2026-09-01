@@ -3654,9 +3654,9 @@ void ChatWindow::DrawDockedWindow() {
       if (ImGui::IsItemHovered()) {
         ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
         ImGui::SetTooltip(
-            i18n::Tr("Change le log en texte sélectionnable : glisser pour sélectionner,\n"
-            "Ctrl+A tout prendre, Ctrl+C copier. Les couleurs et les icônes\n"
-            "disparaissent le temps de la sélection — c'est du texte nu."));
+            "%s", i18n::Tr("Change le log en texte sélectionnable : glisser pour sélectionner,\n"
+                  "Ctrl+A tout prendre, Ctrl+C copier. Les couleurs et les icônes\n"
+                  "disparaissent le temps de la sélection — c'est du texte nu."));
         ImGui::PopStyleColor();
       }
     }
@@ -3697,8 +3697,8 @@ void ChatWindow::DrawDockedWindow() {
       ImGui::PopStyleColor();
       if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip(
-            i18n::Tr("Dans un salon, tout ce que tu dis y part.\nClic : ramener la "
-                     "fenêtre du salon devant."));
+            "%s", i18n::Tr("Dans un salon, tout ce que tu dis y part.\nClic : ramener la "
+                           "fenêtre du salon devant."));
         if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
           chatroomwnd::FocusRoom();
       }
@@ -5248,8 +5248,8 @@ void ChatWindow::DrawGameEmoteGrid(int whisper_index) {
         LogInfo("[chat] export des emotes : {} fichiers dans {}", written, dir);
     }
     if (ImGui::IsItemHovered())
-      ImGui::SetTooltip(i18n::Tr("Ecrit un GIF par emote dans « emotes_export »,\n"
-                        "a cote de l'executable. Pour Discord."));
+      ImGui::SetTooltip("%s", i18n::Tr("Ecrit un GIF par emote dans « emotes_export »,\n"
+                              "a cote de l'executable. Pour Discord."));
   }
 }
 
@@ -5423,7 +5423,7 @@ void ChatWindow::DrawInputRow() {
     ImGui::OpenPopup("##chat_whisper_hist");
   if (ImGui::IsItemHovered() && !ImGui::IsPopupOpen("##chat_whisper_hist")) {
     ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
-    ImGui::SetTooltip(i18n::Tr("Destinataire du chuchotement.\nClic droit : les récents."));
+    ImGui::SetTooltip("%s", i18n::Tr("Destinataire du chuchotement.\nClic droit : les récents."));
     ImGui::PopStyleColor();
   }
   DrawWhisperHistoryPopup();
@@ -5546,9 +5546,9 @@ void ChatWindow::DrawInputRow() {
   }
   if (pick_hovered) {
     ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
-    ImGui::SetTooltip(i18n::Tr("Emotes et emoji.\nUne emote part SEULE, en clair "
-                      "(« :smile: ») : tout le monde la lit.\nUn emoji, lui, "
-                      "s'ajoute à ta phrase."));
+    ImGui::SetTooltip("%s", i18n::Tr("Emotes et emoji.\nUne emote part SEULE, en clair "
+                            "(« :smile: ») : tout le monde la lit.\nUn emoji, lui, "
+                            "s'ajoute à ta phrase."));
     ImGui::PopStyleColor();
   }
   DrawEmotePicker(pick_pos,
@@ -6197,18 +6197,18 @@ void ChatWindow::DrawCloseConfirmPopup() {
   // illisible — c'est une couleur pensée pour un fond sombre.
   if (whisper) {
     ImGui::TextColored(ro::pal::kLabel,
-                       i18n::Tr("Rien n'est perdu : le journal garde les messages, et\n"
-                                "rouvrir la conversation les remontrera."));
+                       "%s", i18n::Tr("Rien n'est perdu : le journal garde les messages, et\n"
+                                      "rouvrir la conversation les remontrera."));
   } else {
     ImGui::TextColored(ro::pal::kLabel,
-                       i18n::Tr("Ses réglages partent avec lui : les filtres du log, son\n"
-                                "apparence propre, son nom. Un onglet ne se rouvre pas —\n"
-                                "il faudra le recréer et le régler à nouveau."));
+                       "%s", i18n::Tr("Ses réglages partent avec lui : les filtres du log, son\n"
+                                      "apparence propre, son nom. Un onglet ne se rouvre pas —\n"
+                                      "il faudra le recréer et le régler à nouveau."));
     ImGui::Spacing();
     ImGui::TextColored(ro::pal::kLabel,
-                       i18n::Tr("Les messages, eux, RESTENT : ils vivent dans un journal\n"
-                                "commun à toutes les fenêtres, et les autres onglets\n"
-                                "continuent de les afficher."));
+                       "%s", i18n::Tr("Les messages, eux, RESTENT : ils vivent dans un journal\n"
+                                      "commun à toutes les fenêtres, et les autres onglets\n"
+                                      "continuent de les afficher."));
   }
   ImGui::Spacing();
 
@@ -6281,7 +6281,7 @@ void ChatWindow::DrawLogOptionsPopup() {
     ImGui::CloseCurrentPopup();
   }
   if (ImGui::IsItemHovered())
-    ImGui::SetTooltip(i18n::Tr("Renommer le canal — Entrée pour valider."));
+    ImGui::SetTooltip("%s", i18n::Tr("Renommer le canal — Entrée pour valider."));
   ImGui::Separator();
   // Détacher / rattacher. 🔴 `detach_owned` fait gagner NOTRE état sur celui du
   // registre au prochain rafraîchissement : tant que le déplacement de l'entrée
@@ -6315,7 +6315,7 @@ void ChatWindow::DrawLogOptionsPopup() {
       // `AllowWhenDisabled` : sans ce drapeau, un item grisé n'est jamais survolé,
       // et l'infobulle qui EXPLIQUE le grisé ne s'afficherait justement jamais.
       if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-        ImGui::SetTooltip(i18n::Tr("Le dernier onglet ne peut pas être détaché."));
+        ImGui::SetTooltip("%s", i18n::Tr("Le dernier onglet ne peut pas être détaché."));
     }
   }
 
@@ -6345,10 +6345,10 @@ void ChatWindow::DrawLogOptionsPopup() {
   }
   if (ImGui::IsItemHovered())
     ImGui::SetTooltip(
-        i18n::Tr("Fige la position et la taille de cette fenêtre-là. Les onglets, les "
-        "menus et l'arrachage continuent de fonctionner —\nc'est la géométrie "
-        "qui est verrouillée, pas la fenêtre.\n\n"
-        "Chaque fenêtre a le sien : une flottante qu'on détache naît libre."));
+        "%s", i18n::Tr("Fige la position et la taille de cette fenêtre-là. Les onglets, les "
+              "menus et l'arrachage continuent de fonctionner —\nc'est la géométrie "
+              "qui est verrouillée, pas la fenêtre.\n\n"
+              "Chaque fenêtre a le sien : une flottante qu'on détache naît libre."));
   ImGui::Separator();
 
   // Créer / fermer. 🔴 Le plafond de 10 canaux n'est pas décoratif : le CHARGEUR
@@ -6387,7 +6387,7 @@ void ChatWindow::DrawLogOptionsPopup() {
   if (!can_close) {
     ImGui::EndDisabled();
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-      ImGui::SetTooltip(i18n::Tr("Il doit rester au moins un onglet dans la fenêtre principale."));
+      ImGui::SetTooltip("%s", i18n::Tr("Il doit rester au moins un onglet dans la fenêtre principale."));
   }
   ImGui::Separator();
 
@@ -6504,10 +6504,10 @@ void ChatWindow::DrawLogOptionsPopup() {
   if (ImGui::Selectable(i18n::Tr("Vider cet onglet"))) channel->clear_seq = LastLineSeq();
   if (ImGui::IsItemHovered())
     ImGui::SetTooltip(
-        i18n::Tr("Masque ce que cet onglet affiche aujourd'hui ; la suite s'affichera "
-                 "normalement.\n\nRien n'est détruit : les autres onglets gardent ces "
-                 "lignes, l'historique enregistré aussi,\net « Réafficher tout » les "
-                 "ramène ici."));
+        "%s", i18n::Tr("Masque ce que cet onglet affiche aujourd'hui ; la suite s'affichera "
+                       "normalement.\n\nRien n'est détruit : les autres onglets gardent ces "
+                       "lignes, l'historique enregistré aussi,\net « Réafficher tout » les "
+                       "ramène ici."));
   // Proposée seulement s'il y a quelque chose à défaire — le geste est réversible,
   // encore faut-il que le joueur le voie, et un menu qui propose toujours d'annuler
   // ne dit plus rien de l'état de l'onglet.
@@ -6515,9 +6515,9 @@ void ChatWindow::DrawLogOptionsPopup() {
     if (ImGui::Selectable(i18n::Tr("Réafficher tout"))) channel->clear_seq = 0;
     if (ImGui::IsItemHovered())
       ImGui::SetTooltip(
-          i18n::Tr("Annule le vidage : cet onglet remontre tout ce que ses filtres "
-                   "acceptent.\n\nSauf ce que l'éviction a évacué entre-temps — le "
-                   "tampon ne garde qu'un nombre de lignes borné."));
+          "%s", i18n::Tr("Annule le vidage : cet onglet remontre tout ce que ses filtres "
+                         "acceptent.\n\nSauf ce que l'éviction a évacué entre-temps — le "
+                         "tampon ne garde qu'un nombre de lignes borné."));
   }
 
   ImGui::PopStyleColor();
@@ -7620,7 +7620,7 @@ bool ChatWindow::DrawSettings() {
   {
     const std::vector<std::string> hosts = imgprev::UserHosts();
     if (!hosts.empty()) {
-      ImGui::TextDisabled(i18n::Tr("  Vos sites autorisés :"));
+      ImGui::TextDisabled("%s", i18n::Tr("  Vos sites autorisés :"));
       for (const std::string& h : hosts) {
         char rm[96];
         std::snprintf(rm, sizeof(rm), i18n::Tr("Retirer###chatwnd_rmhost_%s"), h.c_str());
@@ -7787,7 +7787,7 @@ bool ChatWindow::DrawSettings() {
       "et déplacer la voisine n'entraîne pas celle qui lui était collée."));
 
   SeparatorText(i18n::Tr("Apparence de la chatbox ImGui"));
-  ImGui::TextDisabled(i18n::Tr("Réglages généraux — un onglet peut avoir les siens"));
+  ImGui::TextDisabled("%s", i18n::Tr("Réglages généraux — un onglet peut avoir les siens"));
   ImGui::SameLine();
   HelpMarker(
       i18n::Tr("Clic droit sur un onglet → « Apparence ». Un onglet qui n'a pas ses "

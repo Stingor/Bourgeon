@@ -1635,7 +1635,7 @@ void VendingWindow::OnRenderUI() {
                             ImGuiWindowFlags_AlwaysAutoResize |
                             ImGuiWindowFlags_NoCollapse)) {
         if (myshop_.empty()) {
-          ImGui::TextDisabled(i18n::Tr("Tout est vendu."));
+          ImGui::TextDisabled("%s", i18n::Tr("Tout est vendu."));
         } else if (ImGui::BeginTable("##t_myshop", 4,
                                      ImGuiTableFlags_SizingFixedFit |
                                      ImGuiTableFlags_RowBg)) {
@@ -1697,7 +1697,7 @@ void VendingWindow::OnRenderUI() {
         // — que le clic vienne du bouton ou de la croix.
         const bool close_clicked = ro::RoButton(i18n::Tr("Fermer le shop"));
         if (ImGui::IsItemHovered())
-          ImGui::SetTooltip(i18n::Tr("Met fin à la vente et récupère les objets invendus."));
+          ImGui::SetTooltip("%s", i18n::Tr("Met fin à la vente et récupère les objets invendus."));
         if (close_clicked || !keep_open) ImGui::OpenPopup(i18n::Tr("Fermer ?###bourgeon_vending_close"));
         if (ro::BeginRoPopupModal(i18n::Tr("Fermer ?###bourgeon_vending_close"))) {
           ImGui::TextUnformatted(i18n::Tr("Mettre fin au shop ?"));
@@ -1836,7 +1836,7 @@ void VendingWindow::OnRenderUI() {
       if (ro::BeginRoWindow(title, &keep_vendor, ImGuiWindowFlags_NoCollapse)) {
         char cell[48];
         if (offers_.empty()) {
-          ImGui::TextDisabled(i18n::Tr("Le shop est vide."));
+          ImGui::TextDisabled("%s", i18n::Tr("Le shop est vide."));
         } else if (ImGui::BeginTable("##t_offer", 5,
                                      ImGuiTableFlags_SizingFixedFit |
                                      ImGuiTableFlags_RowBg)) {
@@ -1916,8 +1916,8 @@ void VendingWindow::OnRenderUI() {
         }
 
         if (!offers_.empty())
-          ImGui::TextDisabled(i18n::Tr("Ctrl+clic sur « Ajouter » : achète toute la ligne "
-                              "immédiatement."));
+          ImGui::TextDisabled("%s", i18n::Tr("Ctrl+clic sur « Ajouter » : achète toute la ligne "
+                                    "immédiatement."));
 
         ImGui::Separator();
         long long total = 0;
@@ -1925,7 +1925,7 @@ void VendingWindow::OnRenderUI() {
           total += static_cast<long long>(b.price) * b.amount;
 
         if (basket_.empty()) {
-          ImGui::TextDisabled(i18n::Tr("Panier vide."));
+          ImGui::TextDisabled("%s", i18n::Tr("Panier vide."));
         } else if (ImGui::BeginTable("##t_basket", 4,
                                      ImGuiTableFlags_SizingFixedFit |
                                      ImGuiTableFlags_RowBg)) {
@@ -2032,7 +2032,7 @@ void VendingWindow::OnRenderUI() {
         ImGui::BeginChild("##bs_wanted_pane", ImVec2(-1.0f, pane_h),
                           ImGuiChildFlags_Borders);
         if (bs_wanted_rows_.empty()) {
-          ImGui::TextDisabled(i18n::Tr("Cette échoppe ne demande plus rien."));
+          ImGui::TextDisabled("%s", i18n::Tr("Cette échoppe ne demande plus rien."));
         } else if (ImGui::BeginTable("##t_bs_wanted", 3,
                                      ImGuiTableFlags_SizingStretchProp |
                                      ImGuiTableFlags_RowBg)) {
@@ -2063,7 +2063,7 @@ void VendingWindow::OnRenderUI() {
         ImGui::BeginChild("##bs_avail_pane", ImVec2(-1.0f, pane_h),
                           ImGuiChildFlags_Borders);
         if (bs_avail_.empty()) {
-          ImGui::TextDisabled(i18n::Tr("Rien à proposer."));
+          ImGui::TextDisabled("%s", i18n::Tr("Rien à proposer."));
         } else if (ImGui::BeginTable("##t_bs_avail", 4,
                                      ImGuiTableFlags_SizingStretchProp |
                                      ImGuiTableFlags_RowBg)) {
@@ -2103,7 +2103,7 @@ void VendingWindow::OnRenderUI() {
             ImGui::EndDisabled();
             if (sellable <= 0 && ImGui::IsItemHovered(
                                      ImGuiHoveredFlags_AllowWhenDisabled))
-              ImGui::SetTooltip(i18n::Tr("L'acheteur n'en veut plus."));
+              ImGui::SetTooltip("%s", i18n::Tr("L'acheteur n'en veut plus."));
             ImGui::PopID();
           }
           ImGui::EndTable();
@@ -2111,13 +2111,13 @@ void VendingWindow::OnRenderUI() {
         ImGui::EndChild();
         // Hors du panneau défilant : ces deux lignes doivent rester lisibles même
         // quand la liste déborde.
-        ImGui::TextDisabled(i18n::Tr("Ctrl+clic sur « Vendre » : propose tout ce que "
-                            "l'acheteur peut encore prendre."));
+        ImGui::TextDisabled("%s", i18n::Tr("Ctrl+clic sur « Vendre » : propose tout ce que "
+                                  "l'acheteur peut encore prendre."));
         // ⚠ Comportement natif reproduit tel quel : mettre une PARTIE d'une pile
         // en vente en retire la pile ENTIÈRE d'ici. Le dire évite de le prendre
         // pour une perte d'objets.
-        ImGui::TextDisabled(i18n::Tr("Une pile entamée quitte cette liste : le reste "
-                            "revient si vous retirez la ligne."));
+        ImGui::TextDisabled("%s", i18n::Tr("Une pile entamée quitte cette liste : le reste "
+                                  "revient si vous retirez la ligne."));
 
         // ── Ce que je mets en vente ──────────────────────────────────────────
         ImGui::TextUnformatted(i18n::Tr("À vendre"));
@@ -2132,7 +2132,7 @@ void VendingWindow::OnRenderUI() {
         ImGui::BeginChild("##bs_sell_pane", ImVec2(-1.0f, -footer_h),
                           ImGuiChildFlags_Borders);
         if (bs_sell_rows_.empty()) {
-          ImGui::TextDisabled(i18n::Tr("Rien en vente."));
+          ImGui::TextDisabled("%s", i18n::Tr("Rien en vente."));
         } else if (ImGui::BeginTable("##t_bs_sell", 4,
                                      ImGuiTableFlags_SizingStretchProp |
                                      ImGuiTableFlags_RowBg)) {
@@ -2180,9 +2180,9 @@ void VendingWindow::OnRenderUI() {
         const bool overflow =
             static_cast<long long>(PlayerZeny()) + total > kZenyMax;
         if (over_funds)
-          ImGui::TextDisabled(i18n::Tr("L'acheteur n'a pas de quoi tout payer."));
+          ImGui::TextDisabled("%s", i18n::Tr("L'acheteur n'a pas de quoi tout payer."));
         else if (overflow)
-          ImGui::TextDisabled(i18n::Tr("Cette vente dépasserait le zeny maximum."));
+          ImGui::TextDisabled("%s", i18n::Tr("Cette vente dépasserait le zeny maximum."));
         else
           ImGui::TextDisabled(" ");
 
@@ -2322,8 +2322,8 @@ void VendingWindow::OnRenderUI() {
       if (ro::RoCheckbox(kGridLabel, &compose_grid_))
         if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
       if (ImGui::IsItemHovered())
-        ImGui::SetTooltip(i18n::Tr("Affiche le stock en grille d'icônes, comme le client "
-                          "d'origine.\nLe glisser fonctionne dans les deux modes."));
+        ImGui::SetTooltip("%s", i18n::Tr("Affiche le stock en grille d'icônes, comme le client "
+                                "d'origine.\nLe glisser fonctionne dans les deux modes."));
     }
     // Répartition de la hauteur entre les deux panneaux défilants.
     //
@@ -2349,7 +2349,7 @@ void VendingWindow::OnRenderUI() {
     if (ImGui::BeginChild("##dispo", ImVec2(-1.0f, pane_h),
                           ImGuiChildFlags_Borders)) {
       if (avail == 0) {
-        ImGui::TextDisabled(i18n::Tr("Aucun objet proposable."));
+        ImGui::TextDisabled("%s", i18n::Tr("Aucun objet proposable."));
       } else if (compose_grid_) {
         // ── Présentation GRILLE (celle du natif) ──────────────────────────────
         // Une tuile par lot, l'icône à sa taille naturelle et la quantité en
@@ -2564,7 +2564,7 @@ void VendingWindow::OnRenderUI() {
 
           ImGui::TableNextColumn();
           if (ro::RoSmallButton("x")) take_row = i;
-          if (ImGui::IsItemHovered()) ImGui::SetTooltip(i18n::Tr("Retirer du shop"));
+          if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", i18n::Tr("Retirer du shop"));
 
           ImGui::PopID();
         }
@@ -2656,7 +2656,7 @@ void VendingWindow::OnRenderUI() {
     FormatZeny(grand, buf, sizeof(buf));
     ImGui::Text(buying_ ? i18n::Tr("Coût total : %s z") : i18n::Tr("Recette brute : %s z"), buf);
     ImGui::SameLine();
-    ImGui::TextDisabled(i18n::Tr("(hors taxe serveur)"));
+    ImGui::TextDisabled("%s", i18n::Tr("(hors taxe serveur)"));
 
     FormatZeny(PlayerZeny(), buf, sizeof(buf));
     ImGui::Text(i18n::Tr("Zeny : %s z"), buf);
@@ -2679,8 +2679,8 @@ void VendingWindow::OnRenderUI() {
                          i18n::Tr("Zeny + recette dépasse le plafond de %s z (excédent : %s z)."),
                          cap, over);
       ImGui::TextDisabled(
-          i18n::Tr("Le client refuse d'ouvrir le shop dans ce cas. Baisse un prix ou une\n"
-          "quantité, ou dépose des zeny au storage."));
+          "%s", i18n::Tr("Le client refuse d'ouvrir le shop dans ce cas. Baisse un prix ou une\n"
+                "quantité, ou dépose des zeny au storage."));
     }
 
     if (buying_) {
@@ -2701,8 +2701,8 @@ void VendingWindow::OnRenderUI() {
       ImGui::TextDisabled("(?)");
       if (ImGui::IsItemHovered())
         ImGui::SetTooltip(
-            i18n::Tr("Case native « Safe check for over 10 mil zeny » : demande une "
-            "confirmation dès qu'un prix dépasse le seuil du serveur."));
+            "%s", i18n::Tr("Case native « Safe check for over 10 mil zeny » : demande une "
+                  "confirmation dès qu'un prix dépasse le seuil du serveur."));
     }
 
     // ⚠ Validations du chemin OK natif en ÉCHOPPE D'ACHAT (étapes 5 et 6 de la

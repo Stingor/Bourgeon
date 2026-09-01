@@ -1346,7 +1346,7 @@ void RenderCardDescBody(uint32_t id, const char* sctext_id, float wrap) {
                           IM_COL32_BLACK, wrap);
     ImGui::EndGroup();
   } else if (!illust.tex) {
-    ImGui::TextDisabled(i18n::Tr("(pas de description)"));
+    ImGui::TextDisabled("%s", i18n::Tr("(pas de description)"));
   }
 }
 
@@ -1363,8 +1363,8 @@ void RenderCardTooltip(uint32_t id) {
   // ⚠ Les gestes sont ceux de TOUS les liens du client (features/link_gesture.h) :
   // ce rappel doit suivre la convention, pas décrire ce que faisait cette liste.
   ImGui::TextDisabled(
-      i18n::Tr("Clic : la description   ·   Clic droit : le menu   ·   "
-      "Maj + clic : lien dans le chat"));
+      "%s", i18n::Tr("Clic : la description   ·   Clic droit : le menu   ·   "
+            "Maj + clic : lien dans le chat"));
   ImGui::EndTooltip();
   ImGui::PopStyleColor(2);
 }
@@ -1882,7 +1882,7 @@ static links::MenuAnchor g_item_menu;
 void ItemDescWindow::RenderDropTable(const TechData& td, const char* table_id,
                                      uint32_t filter_key, bool show_type) {
   if (td.drops.empty()) {
-    ImGui::TextDisabled(i18n::Tr("Aucune source."));
+    ImGui::TextDisabled("%s", i18n::Tr("Aucune source."));
     return;
   }
   // Filtre texte (par nom de monstre), persistant entre frames par (id,scope).
@@ -1942,10 +1942,10 @@ void ItemDescWindow::RenderDropTable(const TechData& td, const char* table_id,
       ImGui::TableNextColumn();
       // Badge type de boss avant le nom.
       if (d->boss == 2) {
-        ImGui::TextColored(ImVec4(0.85f, 0.15f, 0.15f, 1.0f), i18n::Tr("[MVP]"));
+        ImGui::TextColored(ImVec4(0.85f, 0.15f, 0.15f, 1.0f), "%s", i18n::Tr("[MVP]"));
         ImGui::SameLine();
       } else if (d->boss == 1) {
-        ImGui::TextColored(ImVec4(0.80f, 0.55f, 0.10f, 1.0f), i18n::Tr("[Mini]"));
+        ImGui::TextColored(ImVec4(0.80f, 0.55f, 0.10f, 1.0f), "%s", i18n::Tr("[Mini]"));
         ImGui::SameLine();
       }
       // 🔴 Nom cliquable — un LIEN, avec la convention commune à tout le client
@@ -1971,9 +1971,9 @@ void ItemDescWindow::RenderDropTable(const TechData& td, const char* table_id,
       if (show_type) {
         ImGui::TableNextColumn();
         if (d->src == 1)
-          ImGui::TextColored(ImVec4(0.80f, 0.55f, 0.10f, 1.0f), i18n::Tr("MVP reward"));
+          ImGui::TextColored(ImVec4(0.80f, 0.55f, 0.10f, 1.0f), "%s", i18n::Tr("MVP reward"));
         else
-          ImGui::TextDisabled(i18n::Tr("Drop normal"));
+          ImGui::TextDisabled("%s", i18n::Tr("Drop normal"));
       }
     }
     ImGui::EndTable();
@@ -1983,12 +1983,12 @@ void ItemDescWindow::RenderDropTable(const TechData& td, const char* table_id,
   if (td.treasure_excluded > 0)
     ImGui::TextDisabled(i18n::Tr("%u coffre(s) au trésor exclu(s)."), td.treasure_excluded);
   if (td.truncated)
-    ImGui::TextDisabled(i18n::Tr("... autres sources : voir la base de données."));
+    ImGui::TextDisabled("%s", i18n::Tr("... autres sources : voir la base de données."));
   // Les spawns d'instance (donjons instanciés) ne sont pas encore pris en
   // compte par le scan serveur : ces sources peuvent manquer dans la liste.
   ImGui::TextColored(ImVec4(0.70f, 0.55f, 0.20f, 1.0f),
-                     i18n::Tr("Note : les spawns d'instance ne sont pas encore "
-                     "comptés/scannés."));
+                     "%s", i18n::Tr("Note : les spawns d'instance ne sont pas encore "
+                           "comptés/scannés."));
 }
 
 // ── Rendu « éditeur » d'un script rAthena (pretty-print + coloration) ────────
@@ -2343,7 +2343,7 @@ void RenderSimpleDesc(uint32_t id, float wrap, const uint32_t* cards,
                           IM_COL32_BLACK, text_wrap);
     ImGui::EndGroup();
   } else if (!img.tex) {
-    ImGui::TextDisabled(i18n::Tr("(pas de description)"));
+    ImGui::TextDisabled("%s", i18n::Tr("(pas de description)"));
   }
 
   // ── ŒUF DE FAMILIER : la fiche du pet, résolue ────────────────────────────
@@ -2353,9 +2353,9 @@ void RenderSimpleDesc(uint32_t id, float wrap, const uint32_t* cards,
     rag::pet::EggCards ec{};
     if (cards && rag::pet::DecodeEggCards(cards, card_count, &ec) && ec.has_pet) {
       ImGui::Separator();
-      ImGui::TextColored(hdr, i18n::Tr("Pet"));
+      ImGui::TextColored(hdr, "%s", i18n::Tr("Pet"));
       if (ec.intimacy_rank > 0) {
-        ImGui::TextDisabled(i18n::Tr("Intimité"));
+        ImGui::TextDisabled("%s", i18n::Tr("Intimité"));
         ImGui::SameLine();
         ImGui::TextUnformatted(
             msgstr::Utf8(rag::pet::IntimacyRankMsgId(ec.intimacy_rank)));
@@ -2395,7 +2395,7 @@ void RenderSimpleDesc(uint32_t id, float wrap, const uint32_t* cards,
     if (opts && opts[i].index) ++nopts;
   if (nopts > 0) {
     ImGui::Separator();
-    ImGui::TextColored(ImVec4(0.30f, 0.24f, 0.10f, 1.0f), i18n::Tr("Options"));
+    ImGui::TextColored(ImVec4(0.30f, 0.24f, 0.10f, 1.0f), "%s", i18n::Tr("Options"));
     for (int i = 0; i < opt_count; ++i) {
       if (!opts || !opts[i].index) continue;
       const char* nm = GetOptName(opts[i].index, opts[i].value);
@@ -2428,9 +2428,9 @@ void ItemDescWindow::RenderTechTabs(const DescWindow& w) {
     const FetchState st =
         (it != cache_.end()) ? it->second.state : FetchState::kNone;
     if (st == FetchState::kPending)
-      ImGui::TextDisabled(i18n::Tr("Chargement..."));
+      ImGui::TextDisabled("%s", i18n::Tr("Chargement..."));
     else if (st == FetchState::kFailed)
-      ImGui::TextDisabled(i18n::Tr("échec de la requête"));
+      ImGui::TextDisabled("%s", i18n::Tr("échec de la requête"));
     return (st == FetchState::kReady && it != cache_.end()) ? &it->second
                                                             : nullptr;
   };
@@ -2440,7 +2440,7 @@ void ItemDescWindow::RenderTechTabs(const DescWindow& w) {
     if (ImGui::BeginTabItem(i18n::Tr("Infos techniques"))) {
       const TechData* td = tech_body(kScopeNormal);
       if (td && td->levels.empty()) {
-        ImGui::TextDisabled(i18n::Tr("Aucune donnée de cast."));
+        ImGui::TextDisabled("%s", i18n::Tr("Aucune donnée de cast."));
       } else if (td) {
         const ImGuiTableFlags tf = ImGuiTableFlags_Borders |
                                    ImGuiTableFlags_RowBg |
@@ -2465,7 +2465,7 @@ void ItemDescWindow::RenderTechTabs(const DescWindow& w) {
           ImGui::EndTable();
         }
         ImGui::PopStyleColor();
-        ImGui::TextDisabled(i18n::Tr("Valeurs effectives : tes stats + gear + buffs actifs."));
+        ImGui::TextDisabled("%s", i18n::Tr("Valeurs effectives : tes stats + gear + buffs actifs."));
       }
       ImGui::EndTabItem();
     }
@@ -2506,23 +2506,23 @@ void ItemDescWindow::RenderTechTabs(const DescWindow& w) {
       const FetchState st =
           (it != dmg_cache_.end()) ? it->second.state : FetchState::kNone;
       if (st == FetchState::kPending) {
-        ImGui::TextDisabled(i18n::Tr("Calcul en cours..."));
+        ImGui::TextDisabled("%s", i18n::Tr("Calcul en cours..."));
       } else if (st == FetchState::kReady && it != dmg_cache_.end()) {
         const DamageEst& d = it->second;
         if (d.status == 1) {
-          ImGui::TextDisabled(i18n::Tr("Sort non offensif (aucun dégât)."));
+          ImGui::TextDisabled("%s", i18n::Tr("Sort non offensif (aucun dégât)."));
         } else if (d.status == 2) {
-          ImGui::TextDisabled(i18n::Tr("Monstre introuvable (ID invalide ?)."));
+          ImGui::TextDisabled("%s", i18n::Tr("Monstre introuvable (ID invalide ?)."));
         } else if (d.status != 0) {
-          ImGui::TextDisabled(i18n::Tr("Estimation indisponible."));
+          ImGui::TextDisabled("%s", i18n::Tr("Estimation indisponible."));
         } else {
           const char* atk = (d.atk_type == 1) ? "Physique"
                           : (d.atk_type == 2) ? "Magique"
                                               : "Divers";
           if (d.target == 0xFFFFFFFFu)
-            ImGui::TextDisabled(i18n::Tr("Cible : toi-même (miroir PvP)"));
+            ImGui::TextDisabled("%s", i18n::Tr("Cible : toi-même (miroir PvP)"));
           else if (d.target == 0)
-            ImGui::TextDisabled(i18n::Tr("Cible : neutre 0 def (dégâts bruts)"));
+            ImGui::TextDisabled("%s", i18n::Tr("Cible : neutre 0 def (dégâts bruts)"));
           else if (!d.target_name.empty())
             ImGui::Text(i18n::Tr("Cible : %s (#%u)"), d.target_name.c_str(), d.target);
           else
@@ -2536,7 +2536,7 @@ void ItemDescWindow::RenderTechTabs(const DescWindow& w) {
             ImGui::SameLine();
             ImGui::Text(i18n::Tr("x%u coups"), d.hits);
           }
-          ImGui::TextDisabled(i18n::Tr("Inclut ton stuff / buffs. Neutre = avant def/elem."));
+          ImGui::TextDisabled("%s", i18n::Tr("Inclut ton stuff / buffs. Neutre = avant def/elem."));
         }
       }
       ImGui::EndTabItem();
@@ -2610,12 +2610,12 @@ void ItemDescWindow::RenderTechTabs(const DescWindow& w) {
     const FetchState st =
         (it != script_cache_.end()) ? it->second.state : FetchState::kNone;
     if (st == FetchState::kPending) {
-      ImGui::TextDisabled(i18n::Tr("Chargement..."));
+      ImGui::TextDisabled("%s", i18n::Tr("Chargement..."));
       return nullptr;
     }
     if (st != FetchState::kReady || it == script_cache_.end()) return nullptr;
     if (it->second.status != 0) {
-      ImGui::TextDisabled(i18n::Tr("Script indisponible (item introuvable serveur)."));
+      ImGui::TextDisabled("%s", i18n::Tr("Script indisponible (item introuvable serveur)."));
       return nullptr;
     }
     return &it->second;
@@ -2638,18 +2638,18 @@ void ItemDescWindow::RenderTechTabs(const DescWindow& w) {
   if (tab_script) {
     if (const ScriptData* sd = script_body()) {
       if (sd->main.empty() && sd->equip.empty() && sd->unequip.empty()) {
-        ImGui::TextDisabled(i18n::Tr("Cet item n'a aucun script."));
+        ImGui::TextDisabled("%s", i18n::Tr("Cet item n'a aucun script."));
       } else {
         if (!sd->main.empty()) {
-          ImGui::TextColored(ImVec4(0.85f, 0.72f, 0.35f, 1.0f), i18n::Tr("Script"));
+          ImGui::TextColored(ImVec4(0.85f, 0.72f, 0.35f, 1.0f), "%s", i18n::Tr("Script"));
           draw_code("##script_main", sd->main);
         }
         if (!sd->equip.empty()) {
-          ImGui::TextColored(ImVec4(0.85f, 0.72f, 0.35f, 1.0f), i18n::Tr("EquipScript"));
+          ImGui::TextColored(ImVec4(0.85f, 0.72f, 0.35f, 1.0f), "%s", i18n::Tr("EquipScript"));
           draw_code("##script_equip", sd->equip);
         }
         if (!sd->unequip.empty()) {
-          ImGui::TextColored(ImVec4(0.85f, 0.72f, 0.35f, 1.0f), i18n::Tr("UnEquipScript"));
+          ImGui::TextColored(ImVec4(0.85f, 0.72f, 0.35f, 1.0f), "%s", i18n::Tr("UnEquipScript"));
           draw_code("##script_unequip", sd->unequip);
         }
       }
@@ -2667,7 +2667,7 @@ void ItemDescWindow::RenderTechTabs(const DescWindow& w) {
   if (tab_combos) {
     if (const ScriptData* sd = script_body()) {
       if (sd->combos.empty()) {
-        ImGui::TextDisabled(i18n::Tr("Cet item ne fait partie d'aucun combo."));
+        ImGui::TextDisabled("%s", i18n::Tr("Cet item ne fait partie d'aucun combo."));
       } else {
         // Rend un membre de combo comme LIEN vers l'itemdb du site : bleu (or pour
         // l'item courant), soulignement + curseur main au survol, aperçu de
@@ -2737,7 +2737,7 @@ void ItemDescWindow::RenderTechTabs(const DescWindow& w) {
             std::snprintf(bid, sizeof(bid), "##combo_scr%zu", i);
             draw_code(bid, c.script);
           } else {
-            ImGui::TextDisabled(i18n::Tr("(pas de script)"));
+            ImGui::TextDisabled("%s", i18n::Tr("(pas de script)"));
           }
           if (i + 1 < sd->combos.size()) ImGui::Separator();
           ImGui::PopID();
@@ -2921,7 +2921,7 @@ void ItemDescWindow::RenderItemWindow() {
                            e.view_id);
         const bool hov = ImGui::IsItemHovered();
         ImGui::SameLine(0, 6);
-        ImGui::TextDisabled(i18n::Tr("(molette : tourner)"));
+        ImGui::TextDisabled("%s", i18n::Tr("(molette : tourner)"));
         if (hov) {
           ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
           // + hat effect superposé si l'item en a un (costume viewid AVEC hateffect).
@@ -2983,7 +2983,7 @@ void ItemDescWindow::RenderItemWindow() {
         // libellé porte le prix, qui est toute l'information.
         if (ro::RoSmallButton(vs)) shop->OpenWithItem(snap.id);
         if (ImGui::IsItemHovered())
-          ImGui::SetTooltip(i18n::Tr("Ouvre le Vote Shop avec cet objet dans le panier."));
+          ImGui::SetTooltip("%s", i18n::Tr("Ouvre le Vote Shop avec cet objet dans le panier."));
       }
     }
 
@@ -3082,8 +3082,8 @@ void ItemDescWindow::RenderItemWindow() {
       // n'affiche alors AUCUNE fenêtre) — pas de panneau à reproduire.
       if (ro::RoSmallButton(rb)) CallDescButton(wnd, kCmdAutoReadBook);
       if (ImGui::IsItemHovered())
-        ImGui::SetTooltip(i18n::Tr("Le personnage lit le livre à voix haute, ligne par "
-                          "ligne, dans le chat."));
+        ImGui::SetTooltip("%s", i18n::Tr("Le personnage lit le livre à voix haute, ligne par "
+                                "ligne, dans le chat."));
     }
     ImGui::EndGroup();
 
@@ -3206,16 +3206,16 @@ void ItemDescWindow::RenderItemWindow() {
         if (e.pet_egg) {
           rag::pet::EggCards ec{};
           rag::pet::DecodeEggCards(e.cards, rag::itemlist::kMaxCards, &ec);
-          ImGui::TextColored(brown, i18n::Tr("Pet"));
+          ImGui::TextColored(brown, "%s", i18n::Tr("Pet"));
           ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4.0f, 1.0f));
           if (!ec.has_pet) {
             // Quatre slots à zéro : un œuf sorti d'un `@item`, sans pet derrière.
             // Le serveur le listera bien à l'éclosion mais `pet_select_egg` le
             // refusera — autant le dire ici.
-            ImGui::TextDisabled(i18n::Tr("Œuf vierge : aucun familier dedans."));
+            ImGui::TextDisabled("%s", i18n::Tr("Œuf vierge : aucun familier dedans."));
           } else {
             if (ec.intimacy_rank > 0) {
-              ImGui::TextDisabled(i18n::Tr("Intimité"));
+              ImGui::TextDisabled("%s", i18n::Tr("Intimité"));
               ImGui::SameLine();
               ImGui::TextUnformatted(
                   msgstr::Utf8(rag::pet::IntimacyRankMsgId(ec.intimacy_rank)));
@@ -3235,11 +3235,11 @@ void ItemDescWindow::RenderItemWindow() {
           ImGui::TextColored(brown, i18n::Tr("Cartes / Enchants (%d emplacement%s)"),
                              e.card_slots, e.card_slots > 1 ? "s" : "");
         else
-          ImGui::TextColored(brown, i18n::Tr("Cartes / Enchants"));
+          ImGui::TextColored(brown, "%s", i18n::Tr("Cartes / Enchants"));
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4.0f, 1.0f));
         for (int i = 0; i < slot_rows; ++i) {
           if (e.cards[i] == 0) {  // emplacement vide de l'item
-            ImGui::TextDisabled(i18n::Tr("[Emplacement vide]"));
+            ImGui::TextDisabled("%s", i18n::Tr("[Emplacement vide]"));
             continue;
           }
           char clbl[160];

@@ -1334,8 +1334,8 @@ void DrawMenu(const char* popup_id, const Target& target) {
             ImGui::EndDisabled();
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
               ImGui::SetTooltip(
-                  i18n::Tr("Il faut être dans un groupe — et en être le chef — pour "
-                  "inviter quelqu'un."));
+                  "%s", i18n::Tr("Il faut être dans un groupe — et en être le chef — pour "
+                        "inviter quelqu'un."));
           }
           // ── Carnet de chasse MVP ───────────────────────────────────────────
           // Posé ICI, avec les autres invitations, parce que c'en est une : le
@@ -1357,7 +1357,7 @@ void DrawMenu(const char* popup_id, const Target& target) {
           if (!in_guild) {
             ImGui::EndDisabled();
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-              ImGui::SetTooltip(i18n::Tr("Il faut appartenir à une guilde pour y inviter."));
+              ImGui::SetTooltip("%s", i18n::Tr("Il faut appartenir à une guilde pour y inviter."));
           }
           if (ImGui::MenuItem(i18n::Tr("Ajouter en ami")))
             chat->QueueNameAction(ChatWindow::NameAction::kFriendAdd, wire);
@@ -1435,13 +1435,13 @@ void DrawMenu(const char* popup_id, const Target& target) {
         if (!importable &&
             ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
           if (!has_group)
-            ImGui::SetTooltip(i18n::Tr("Créez un groupe de chasse pour tenir un carnet."));
+            ImGui::SetTooltip("%s", i18n::Tr("Créez un groupe de chasse pour tenir un carnet."));
           else if (slot == nullptr)
-            ImGui::SetTooltip(i18n::Tr("Ce créneau n'est pas dans votre catalogue."));
+            ImGui::SetTooltip("%s", i18n::Tr("Ce créneau n'est pas dans votre catalogue."));
           else if (outranked)
-            ImGui::SetTooltip(i18n::Tr("Votre groupe en sait déjà plus : il l'a vu de ses yeux."));
+            ImGui::SetTooltip("%s", i18n::Tr("Votre groupe en sait déjà plus : il l'a vu de ses yeux."));
           else
-            ImGui::SetTooltip(i18n::Tr("Ce lien ne porte pas d'heure de mort."));
+            ImGui::SetTooltip("%s", i18n::Tr("Ce lien ne porte pas d'heure de mort."));
         }
 
         if (ImGui::MenuItem(i18n::Tr("Ouvrir le carnet"))) OpenDescription(target);

@@ -962,7 +962,7 @@ void NpcShopWindow::OnRenderUI() {
   if (ImGui::InputTextWithHint("##shop_filter", i18n::Tr("Filtrer..."), filter.InputBuf,
                                IM_ARRAYSIZE(filter.InputBuf)))
     filter.Build();
-  ImGui::TextDisabled(i18n::Tr("Clic = panier   -   Ctrl+clic = achat/vente immédiat"));
+  ImGui::TextDisabled("%s", i18n::Tr("Clic = panier   -   Ctrl+clic = achat/vente immédiat"));
   ImGui::Separator();
 
   const ImVec2 avail = ImGui::GetContentRegionAvail();
@@ -1019,7 +1019,7 @@ void NpcShopWindow::OnRenderUI() {
       ImGui::EndTable();
     }
     if (buy_items_.empty())
-      ImGui::TextDisabled(i18n::Tr("(liste d'achat en attente du serveur...)"));
+      ImGui::TextDisabled("%s", i18n::Tr("(liste d'achat en attente du serveur...)"));
   } else {  // kSell
     // "Tout vendre" : remplit le panier avec TOUS les items vendables au stack
     // complet ; l'utilisateur confirme ensuite via le bouton "Vendre".
@@ -1031,8 +1031,8 @@ void NpcShopWindow::OnRenderUI() {
       sell_all_close_ = true;  // arme la fermeture auto du shop apres la vente
     }
     if (ImGui::IsItemHovered())
-      ImGui::SetTooltip(i18n::Tr("Ajoute tout l'inventaire vendable ; le shop se fermera "
-                        "automatiquement après la vente."));
+      ImGui::SetTooltip("%s", i18n::Tr("Ajoute tout l'inventaire vendable ; le shop se fermera "
+                              "automatiquement après la vente."));
     if (ImGui::BeginTable("selltbl", 3,
                           ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY |
                               ImGuiTableFlags_SizingStretchProp)) {
@@ -1084,7 +1084,7 @@ void NpcShopWindow::OnRenderUI() {
       ImGui::EndTable();
     }
     if (sell_items_.empty())
-      ImGui::TextDisabled(i18n::Tr("(rien à vendre / liste en attente...)"));
+      ImGui::TextDisabled("%s", i18n::Tr("(rien à vendre / liste en attente...)"));
   }
   ImGui::EndChild();
 
@@ -1170,7 +1170,7 @@ void NpcShopWindow::OnRenderUI() {
   if (ro::RoButton(i18n::Tr("Fermer"), 90.0f, 0.0f)) want_close_ = true;
   ImGui::SameLine();
   ImGui::AlignTextToFramePadding();
-  ImGui::TextDisabled(i18n::Tr("Survol : aperçu   -   Clic droit : description"));
+  ImGui::TextDisabled("%s", i18n::Tr("Survol : aperçu   -   Clic droit : description"));
 
   ro::EndRoWindow();
   ImGui::PopStyleVar(5);

@@ -667,8 +667,8 @@ void GameSettings::Draw() {
         // Le geste n'a aucune trace visible : sans cette aide, il n'existe que
         // pour qui l'a lu dans un changelog.
         else if (links::HoveredForLinkTooltip())
-          ImGui::SetTooltip(i18n::Tr("Maj + clic : poser le lien de cet onglet "
-                                     "dans le chat"));
+          ImGui::SetTooltip("%s", i18n::Tr("Maj + clic : poser le lien de cet onglet "
+                                           "dans le chat"));
       }
       if (selected) {
         // Les listes d'adaptateurs et de modes sont demandées À L'ENTRÉE dans

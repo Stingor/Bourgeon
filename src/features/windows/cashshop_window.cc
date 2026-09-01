@@ -641,7 +641,7 @@ void CashShopWindow::OnRenderUI() {
                  &use_kafra_);
   if (last_result_ == 0) {
     ImGui::SameLine();
-    ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.4f, 1.0f), i18n::Tr(" | Achat OK"));
+    ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.4f, 1.0f), "%s", i18n::Tr(" | Achat OK"));
   } else if (last_result_ > 0) {
     // Le message EXACT du client, pas un code (cf. BuyResultMsgId). Repli sur le
     // code seulement si la table de messages ne rend rien — mieux vaut un numéro
@@ -978,7 +978,7 @@ void CashShopWindow::OnRenderUI() {
     }
     clipper.End();
     ImGui::PopStyleVar();
-    if (n == 0) ImGui::TextDisabled(i18n::Tr("(aucun item dans cette catégorie)"));
+    if (n == 0) ImGui::TextDisabled("%s", i18n::Tr("(aucun item dans cette catégorie)"));
   }
   ImGui::EndChild();
   preview_active_ = preview_now;  // gele le scroll grille tant qu'on survole un apercu

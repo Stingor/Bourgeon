@@ -862,14 +862,14 @@ bool ChatBalloon::DrawSettings() {
   // Pas de case d'activation : la bulle suit la chatbox ImGui. Le dire, plutôt
   // que de laisser une section muette quand celle-ci est éteinte.
   if (!Active()) {
-    ImGui::TextDisabled(i18n::Tr(
-        "Suit la chatbox ImGui : allume-la pour remplacer les bulles. Avec la "
-        "chatbox native, le client résout ses propres liens et sa bulle est "
-        "correcte — la remplacer n'apporterait rien."));
+    ImGui::TextDisabled("%s", i18n::Tr(
+              "Suit la chatbox ImGui : allume-la pour remplacer les bulles. Avec la "
+              "chatbox native, le client résout ses propres liens et sa bulle est "
+              "correcte — la remplacer n'apporterait rien."));
   } else {
-    ImGui::TextDisabled(i18n::Tr(
-        "Les bulles reprennent le rendu de la chatbox : mêmes libellés de liens, "
-        "mêmes couleurs. Sans elles le client afficherait les balises brutes."));
+    ImGui::TextDisabled("%s", i18n::Tr(
+              "Les bulles reprennent le rendu de la chatbox : mêmes libellés de liens, "
+              "mêmes couleurs. Sans elles le client afficherait les balises brutes."));
     Spacing();
     if (ro::RoCheckbox(i18n::Tr("Afficher aussi les tiennes"), &show_self_)) save = true;
     SameLine();
@@ -885,9 +885,9 @@ bool ChatBalloon::DrawSettings() {
       ImGui::SetNextItemWidth(ro::Px(160.0f));
       if (WheelSliderInt(i18n::Tr("Rallonge par caractère (ms)"), &per_char_ms_, 0, 120)) save = true;
       if (ImGui::IsItemDeactivatedAfterEdit()) save = true;
-      ImGui::TextDisabled(i18n::Tr(
-          "Le client donne 5 s à tout le monde : un pavé de trois lignes "
-          "disparaît aussi vite qu'un « ok »."));
+      ImGui::TextDisabled("%s", i18n::Tr(
+                "Le client donne 5 s à tout le monde : un pavé de trois lignes "
+                "disparaît aussi vite qu'un « ok »."));
     }
 
     ImGui::SetNextItemWidth(ro::Px(160.0f));

@@ -365,9 +365,9 @@ bool ChatTweaks::DrawPresetBar() {
     PushStyleCompact();
     BgGroup& main_chat = bg_[kBgMain];
     if (bg_presets_.empty()) {
-      ImGui::TextDisabled(i18n::Tr("Aucun préréglage."));
-      ImGui::TextDisabled(i18n::Tr("Ajoute-en depuis le"));
-      ImGui::TextDisabled(i18n::Tr("sélecteur du chat."));
+      ImGui::TextDisabled("%s", i18n::Tr("Aucun préréglage."));
+      ImGui::TextDisabled("%s", i18n::Tr("Ajoute-en depuis le"));
+      ImGui::TextDisabled("%s", i18n::Tr("sélecteur du chat."));
     } else {
       for (int i = 0; i < static_cast<int>(bg_presets_.size()); ++i) {
         const BgPreset& preset = bg_presets_[i];

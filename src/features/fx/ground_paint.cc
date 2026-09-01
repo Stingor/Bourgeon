@@ -216,15 +216,15 @@ void EnsureInstalled() {
 void DrawSettings() {
   bool changed = ro::RoCheckbox(i18n::Tr("Sol uni (fond de capture)"), &g_enabled);
   if (ImGui::IsItemHovered())
-    ImGui::SetTooltip(i18n::Tr("Repeint tout le terrain .gnd d'une couleur unie, sans toucher au reste\n"
-                      "de la scène : la géométrie et le z-buffer du sol restent intacts, donc\n"
-                      "l'occlusion par le terrain reste correcte.\n"
-                      "L'eau, le ciel et le brouillard ne sont PAS affectés.\n"
-                      "DX9 uniquement (le chemin de rendu DX7 est une autre famille de "
-                      "fonctions)."));
+    ImGui::SetTooltip("%s", i18n::Tr("Repeint tout le terrain .gnd d'une couleur unie, sans toucher au reste\n"
+                            "de la scène : la géométrie et le z-buffer du sol restent intacts, donc\n"
+                            "l'occlusion par le terrain reste correcte.\n"
+                            "L'eau, le ciel et le brouillard ne sont PAS affectés.\n"
+                            "DX9 uniquement (le chemin de rendu DX7 est une autre famille de "
+                            "fonctions)."));
   if (g_imgui_dx7_active) {
     ImGui::SameLine();
-    ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.3f, 1.0f), i18n::Tr("(DX7 : non supporté)"));
+    ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.3f, 1.0f), "%s", i18n::Tr("(DX7 : non supporté)"));
   }
   if (g_enabled) {
     // Poser les hooks dès l'activation : ils ne servent à rien tant que la case est
@@ -235,7 +235,7 @@ void DrawSettings() {
     // Le picker renvoie true à CHAQUE frame de drag : on ne persiste qu'au relâchement,
     // sinon on réécrit tout le YAML des dizaines de fois par seconde.
     if (ImGui::IsItemDeactivatedAfterEdit()) changed = true;
-    ImGui::TextDisabled(i18n::Tr("L'alpha est ignoré (la passe du sol est opaque)."));
+    ImGui::TextDisabled("%s", i18n::Tr("L'alpha est ignoré (la passe du sol est opaque)."));
   }
   if (changed) {
     if (auto* ui = Bourgeon::Instance().moonlight_ui()) ui->SaveSettings();

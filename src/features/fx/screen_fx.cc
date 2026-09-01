@@ -189,7 +189,7 @@ void ScreenFx::DrawSettings() {
     apply = true;
     save  = true;
   }
-  ImGui::TextDisabled(i18n::Tr("Affecte le rendu du moteur (monde + UI native), pas l'overlay."));
+  ImGui::TextDisabled("%s", i18n::Tr("Affecte le rendu du moteur (monde + UI native), pas l'overlay."));
 
   if (fx_.enabled) {
     // ── Presets ──

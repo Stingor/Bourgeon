@@ -29,7 +29,7 @@ void MoonlightUi::DrawFunPanels() {
     if (auto* dps_meter = Bourgeon::Instance().dps_meter()) {
       if (dps_meter->DrawSettings()) SaveSettings();
     } else {
-      ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
+      ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
     }
     PopStyleCompact();
   }
@@ -57,7 +57,7 @@ void MoonlightUi::DrawFunPanels() {
           "jusqu'au redémarrage du client."));
       ImGui::TextDisabled(i18n::Tr("État : %s"), doom->StatusText());
     } else
-      ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
+      ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
 
     SeparatorText(i18n::Tr("Parade de Porings (login)"));
     if (auto* login_parade = Bourgeon::Instance().login_parade()) {
@@ -73,7 +73,7 @@ void MoonlightUi::DrawFunPanels() {
           "Purement cosmétique. Ils s'estompent au-dessus du panneau de login "
           "pour ne pas gêner la saisie. Visible uniquement à l'écran de login."));
     } else
-      ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
+      ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
 
     SeparatorText(i18n::Tr("Roggle"));
     if (auto* roggle = Bourgeon::Instance().roggle()) {
@@ -87,7 +87,7 @@ void MoonlightUi::DrawFunPanels() {
           "bas rattrape la bille = bille gratuite.\n"
           "Fermer la fenêtre ou décocher = masquer (la partie est conservée)."));
     } else
-      ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
+      ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
 
     SeparatorText(i18n::Tr("Rojeweled"));
     if (auto* rojeweled = Bourgeon::Instance().rojeweled()) {
@@ -102,6 +102,6 @@ void MoonlightUi::DrawFunPanels() {
           "les faire disparaître (les cascades rapportent plus). DX9 requis "
           "(sinon tuiles colorées)."));
     } else
-      ImGui::TextDisabled(i18n::Tr(kPluginUnavailable));
+      ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
   }
 }

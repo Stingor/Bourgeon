@@ -388,7 +388,7 @@ void CartViewer::OnRenderUI() {
   // le cart : autant l'annoncer une fois en clair, en plus des entrées grisées.
   if (viewers::VendingComposing())
     ImGui::TextColored(ImVec4(0.85f, 0.15f, 0.15f, 1.0f),
-                       i18n::Tr("Shop en composition : les transferts sont figés."));
+                       "%s", i18n::Tr("Shop en composition : les transferts sont figés."));
 
   const ImVec2 wp = ImGui::GetWindowPos(), ws = ImGui::GetWindowSize();
   win_rect_.Capture(wp.x, wp.y, ws.x, ws.y);
@@ -648,10 +648,10 @@ void CartViewer::OnRenderUI() {
         const ImVec2 drag_mouse = ImGui::GetMousePos();
         if (viewers::VendingComposing())
           ImGui::TextColored(ImVec4(0.85f, 0.15f, 0.15f, 1.0f),
-                             i18n::Tr("Shop en composition : le cart est figé"));
+                             "%s", i18n::Tr("Shop en composition : le cart est figé"));
         else if (viewers::StorageOpen() && viewers::MouseOverInventory(drag_mouse.x, drag_mouse.y))
           ImGui::TextColored(ImVec4(0.85f, 0.15f, 0.15f, 1.0f),
-                             i18n::Tr("Storage ouvert : vers l'inventaire impossible"));
+                             "%s", i18n::Tr("Storage ouvert : vers l'inventaire impossible"));
         ImGui::EndDragDropSource();
       }
       ImGui::PopStyleVar();  // WindowPadding (marge du fantôme de drag)
@@ -852,7 +852,7 @@ bool CartViewer::DrawSettings() {
   // suit ne dit que ce que la bascule change pour le cart.
   // 🔴 Plus de CASE ici (cf. skill_bar.cc et moonlight_ui.h) : l'interrupteur du
   // groupe est unique, en tête de « Interface de jeu ». On garde la DESCRIPTION.
-  ImGui::TextDisabled(i18n::Tr("Fenêtre du groupe « Interface moderne »"));
+  ImGui::TextDisabled("%s", i18n::Tr("Fenêtre du groupe « Interface moderne »"));
   SameLine(); HelpMarker(
       i18n::Tr("ON : cart ImGui moderne (grille d'icônes, onglets, recherche, "
       "double-clic pour retirer, clic droit, glisser vers l'inventaire ou le "

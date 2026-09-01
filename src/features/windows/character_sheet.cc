@@ -3307,12 +3307,12 @@ void CharacterSheet::DrawPresetsTab() {
                    ro::ButtonWidth(i18n::Tr("Tout déséquiper"))))
     UnequipAll(false);
   if (ImGui::IsItemHovered())
-    ImGui::SetTooltip(i18n::Tr("Retire l'équipement porté (garde les costumes)"));
+    ImGui::SetTooltip("%s", i18n::Tr("Retire l'équipement porté (garde les costumes)"));
   ImGui::SameLine(0.0f, 4.0f);
   if (ro::RoButton(i18n::Tr("+ costumes"), ro::ButtonWidth(i18n::Tr("+ costumes"))))
     UnequipAll(true);
   if (ImGui::IsItemHovered())
-    ImGui::SetTooltip(i18n::Tr("Retire aussi les costumes (têtes + cape)"));
+    ImGui::SetTooltip("%s", i18n::Tr("Retire aussi les costumes (têtes + cape)"));
   // Style du personnage : c'est ici que le joueur regarde son apparence, donc
   // ici que le raccourci a du sens. Alt+P reste, mais un raccourci qu'on ne
   // découvre nulle part n'existe pas.
@@ -3323,14 +3323,14 @@ void CharacterSheet::DrawPresetsTab() {
       editeur->Toggle();
   }
   if (ImGui::IsItemHovered())
-    ImGui::SetTooltip(i18n::Tr("Couleurs du corps, coiffure et couleur de "
-                               "cheveux (Alt+P)"));
+    ImGui::SetTooltip("%s", i18n::Tr("Couleurs du corps, coiffure et couleur de "
+                                     "cheveux (Alt+P)"));
   ImGui::Spacing();
   ImGui::Separator();
   ImGui::Spacing();
 
   if (mine.empty()) {
-    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Aucun preset enregistré pour ce personnage."));
+    ImGui::TextColored(ro::pal::kLabel, "%s", i18n::Tr("Aucun preset enregistré pour ce personnage."));
     ImGui::Spacing();
   }
 
@@ -3348,12 +3348,12 @@ void CharacterSheet::DrawPresetsTab() {
                          std::max(0.0f, avail - load_w - del_w - 6.0f));  // boutons à droite
     if (ro::RoButton(i18n::Tr("Charger"), load_w)) to_load = mine[mi];
     if (ImGui::IsItemHovered())
-      ImGui::SetTooltip(i18n::Tr("Rééquipe exactement ce jeu (déséquipe le reste)"));
+      ImGui::SetTooltip("%s", i18n::Tr("Rééquipe exactement ce jeu (déséquipe le reste)"));
     ImGui::SameLine(0.0f, 4.0f);
     if (ro::RoButton(i18n::Tr("Suppr"), del_w)) to_delete = mine[mi];
     // Rangée d'icônes des items (wrap selon la largeur disponible).
     if (ep.items.empty()) {
-      ImGui::TextColored(ro::pal::kLabel, i18n::Tr("(vide)"));
+      ImGui::TextColored(ro::pal::kLabel, "%s", i18n::Tr("(vide)"));
     } else {
       const float availw = ImGui::GetContentRegionAvail().x;
       const int perRow = std::max(1, static_cast<int>((availw + igap) / (icon + igap)));
@@ -3372,21 +3372,21 @@ void CharacterSheet::DrawPresetsTab() {
         if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
       }
       if (ImGui::IsItemHovered())
-        ImGui::SetTooltip(i18n::Tr(
-            "Coché, le preset rétablit exactement l'apparence enregistrée : il remet ses "
-            "costumes et retire ceux qui n'en font pas partie.\n\n"
-            "Décoché (défaut), il ne touche pas aux costumes portés.\n\n"
-            "Les costumes portés au moment de l'enregistrement sont gardés dans le preset "
-            "quoi qu'il arrive : cocher la case plus tard suffit, sans le ré-enregistrer."));
+        ImGui::SetTooltip("%s", i18n::Tr(
+                  "Coché, le preset rétablit exactement l'apparence enregistrée : il remet ses "
+                  "costumes et retire ceux qui n'en font pas partie.\n\n"
+                  "Décoché (défaut), il ne touche pas aux costumes portés.\n\n"
+                  "Les costumes portés au moment de l'enregistrement sont gardés dans le preset "
+                  "quoi qu'il arrive : cocher la case plus tard suffit, sans le ré-enregistrer."));
     }
 
     // Ligne raccourci clavier : libellé + Définir/Effacer, ou mode capture.
     ImGui::AlignTextToFramePadding();
-    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Raccourci :"));
+    ImGui::TextColored(ro::pal::kLabel, "%s", i18n::Tr("Raccourci :"));
     ImGui::SameLine();
     if (hk_capturing_ == mine[mi]) {
       hotkeys::PingCapture();  // gèle les raccourcis (saut compris) le temps du choix
-      ImGui::TextColored(ro::pal::kBlack, i18n::Tr("appuie sur une touche…  (Échap : annuler)"));
+      ImGui::TextColored(ro::pal::kBlack, "%s", i18n::Tr("appuie sur une touche…  (Échap : annuler)"));
       ImGuiIO& io = ImGui::GetIO();
       if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
         hk_capturing_ = -1;
@@ -3478,12 +3478,12 @@ void CharacterSheet::DrawTitlesTab() {
   const ImVec4 kGreen(0.15f, 0.55f, 0.20f, 1.0f);
 
   ImGui::AlignTextToFramePadding();
-  ImGui::TextColored(ro::pal::kBlack, i18n::Tr("Titre équipé :"));
+  ImGui::TextColored(ro::pal::kBlack, "%s", i18n::Tr("Titre équipé :"));
   ImGui::SameLine();
   if (ot.equipped != 0)
     ImGui::TextColored(kGreen, "%s", TitleName(ot.equipped));
   else
-    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("aucun"));
+    ImGui::TextColored(ro::pal::kLabel, "%s", i18n::Tr("aucun"));
 
   ImGui::Spacing();
   // Filtre par libellé (pratique quand beaucoup de titres décrochés).
@@ -3506,7 +3506,7 @@ void CharacterSheet::DrawTitlesTab() {
 
   if (ot.count == 0) {
     ImGui::TextColored(ro::pal::kLabel,
-                       i18n::Tr("Aucun titre décroché. Complète des succès qui récompensent un titre."));
+                       "%s", i18n::Tr("Aucun titre décroché. Complète des succès qui récompensent un titre."));
   }
 
   // Comparaison insensible à la casse pour le filtre.
@@ -3772,7 +3772,7 @@ void CharacterSheet::DrawSkillsTab() {
   // ── Seconde ligne : rappel des gestes + lissage des icônes ────────────────
   // « Raccourcis » en texte discret plutôt qu'un pavé permanent : les gestes se
   // découvrent une fois, la place au-dessus de la grille sert tous les jours.
-  ImGui::TextDisabled(i18n::Tr("Raccourcis"));
+  ImGui::TextDisabled("%s", i18n::Tr("Raccourcis"));
   mui::Tooltip(
       i18n::Tr("Clic gauche          réserve un point (et ses prérequis manquants)\n"
       "Ctrl + clic gauche   réserve jusqu'au niveau maximum\n"
@@ -3807,7 +3807,7 @@ void CharacterSheet::DrawSkillsTab() {
   // plus — un point réservé sur une compétence que `@resetskill` vient d'effacer
   // se ferait jeter au tri de la frame suivante, mais après avoir compté pour rien.
   if (IsStaff()) {
-    ImGui::TextDisabled(i18n::Tr("Staff"));
+    ImGui::TextDisabled("%s", i18n::Tr("Staff"));
     ImGui::SameLine();
     if (ro::RoSmallButton(i18n::Tr("Reset"), 0.0f, 0.0f)) {
       SendAtCommand("@resetskill");
@@ -3868,7 +3868,7 @@ void CharacterSheet::DrawSkillsTab() {
   add_group(i18n::Tr("Divers"), nullptr, -1, kNoSource);  // liste plate
 
   if (group_count == 0) {
-    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Aucune compétence."));
+    ImGui::TextColored(ro::pal::kLabel, "%s", i18n::Tr("Aucune compétence."));
     return;
   }
   if (ro::RoBeginTabBar("cs_skill_tabs")) {
@@ -3938,7 +3938,7 @@ void CharacterSheet::DrawSkillsTab() {
     count += n;
   }
   if (count == 0) {
-    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Aucune compétence dans cet onglet."));
+    ImGui::TextColored(ro::pal::kLabel, "%s", i18n::Tr("Aucune compétence dans cet onglet."));
     return;
   }
 
@@ -4120,7 +4120,7 @@ void CharacterSheet::DrawSkillsTab() {
       ImGui::TextUnformatted(skill_name(s.id));
       if (level_tunable) {
         ImGui::SameLine();
-        ImGui::TextDisabled(i18n::Tr("(molette : niveau)"));
+        ImGui::TextDisabled("%s", i18n::Tr("(molette : niveau)"));
       }
       ImGui::EndDragDropSource();
     }
@@ -4554,7 +4554,7 @@ void CharacterSheet::DrawSkillsTab() {
         else ImGui::TextColored(ro::pal::kLabel, "-/%d", s.maxlv);
 
         ImGui::TableNextColumn();
-        if (s.inf == 0)          ImGui::TextColored(ro::pal::kLabel, i18n::Tr("passif"));
+        if (s.inf == 0)          ImGui::TextColored(ro::pal::kLabel, "%s", i18n::Tr("passif"));
         else if (s.learned > 0)  ImGui::Text("%d", s.sp);
         else                     ImGui::TextColored(ro::pal::kLabel, "-");
 
@@ -4597,11 +4597,11 @@ void CharacterSheet::DrawHomunTab() {
   if (!rag::homun::ReadState(&h)) {
     // Classe == -1 : le client ne sait rien de l'homoncule — c'est exactement le cas
     // où MakeWindow(113) refuse de créer la fenêtre native.
-    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Aucun homoncule."));
+    ImGui::TextColored(ro::pal::kLabel, "%s", i18n::Tr("Aucun homoncule."));
     ImGui::Spacing();
-    ImGui::TextWrapped(i18n::Tr(
-        "Un Alchimiste ayant appris Bioéthique peut en invoquer un avec une Embryon. "
-        "Cet onglet reprend la fiche d'état (Alt+R) et l'arbre de compétences."));
+    ImGui::TextWrapped("%s", i18n::Tr(
+              "Un Alchimiste ayant appris Bioéthique peut en invoquer un avec une Embryon. "
+              "Cet onglet reprend la fiche d'état (Alt+R) et l'arbre de compétences."));
     return;
   }
 
@@ -4684,8 +4684,8 @@ void CharacterSheet::DrawHomunTab() {
                      h.level);
   if (resting || !alive) {
     ImGui::SameLine();
-    if (resting) ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Au repos."));
-    else         ImGui::TextColored(ro::pal::kRed,  i18n::Tr("Hors de combat (0 PV)."));
+    if (resting) ImGui::TextColored(ro::pal::kLabel, "%s", i18n::Tr("Au repos."));
+    else         ImGui::TextColored(ro::pal::kRed,  "%s", i18n::Tr("Hors de combat (0 PV)."));
   }
   ImGui::Separator();
 
@@ -4917,7 +4917,7 @@ void CharacterSheet::DrawHomunTab() {
   if (!open) return;
 
   if (count == 0) {
-    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Aucune compétence reçue du serveur."));
+    ImGui::TextColored(ro::pal::kLabel, "%s", i18n::Tr("Aucune compétence reçue du serveur."));
     return;
   }
 
@@ -5050,18 +5050,18 @@ void CharacterSheet::DrawGuildTab() {
   if (!ReadGuild(&gi)) {
     // Sans guilde : même service que le « Guild Companion » natif (Alt+G), à savoir
     // la création directe, sans passer par ses deux fenêtres.
-    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Tu n'appartiens à aucune guilde."));
+    ImGui::TextColored(ro::pal::kLabel, "%s", i18n::Tr("Tu n'appartiens à aucune guilde."));
     ImGui::Spacing();
     ImGui::TextWrapped(
-        i18n::Tr("Rejoins-en une (invitation d'un maître de guilde) ou crée la tienne "
-        "ici : cet onglet affichera ensuite membres, postes et relations."));
+        "%s", i18n::Tr("Rejoins-en une (invitation d'un maître de guilde) ou crée la tienne "
+              "ici : cet onglet affichera ensuite membres, postes et relations."));
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::Spacing();
-    ImGui::TextColored(ro::pal::kBlack, i18n::Tr("Créer une guilde"));
+    ImGui::TextColored(ro::pal::kBlack, "%s", i18n::Tr("Créer une guilde"));
     ImGui::TextColored(ro::pal::kLabel,
-                       i18n::Tr("Un Emperium dans l'inventaire est nécessaire, et la carte ne "
-                       "doit pas interdire les guildes."));
+                       "%s", i18n::Tr("Un Emperium dans l'inventaire est nécessaire, et la carte ne "
+                             "doit pas interdire les guildes."));
     ImGui::SetNextItemWidth(ro::Px(220.0f));
     const bool name_submitted =
         ro::InputTextCp949("##cs_guild_create", guild_create_buf_, sizeof(guild_create_buf_),
@@ -5142,7 +5142,7 @@ void CharacterSheet::DrawGuildTab() {
     ImGui::SetCursorPosX(saved_cursor.x + ImGui::GetContentRegionAvail().x - refresh_width);
     if (ro::RoButton(i18n::Tr("Actualiser"), refresh_width, 0.0f)) guild_last_req_ = 0;
     if (ImGui::IsItemHovered())
-      ImGui::SetTooltip(i18n::Tr("Redemande au serveur membres, postes et infos de guilde."));
+      ImGui::SetTooltip("%s", i18n::Tr("Redemande au serveur membres, postes et infos de guilde."));
     ImGui::SetCursorPos(saved_cursor);
   }
   const float  emblem_size = 48.0f;
@@ -5172,7 +5172,7 @@ void CharacterSheet::DrawGuildTab() {
     if (ImGui::IsItemHovered()) {
       ImGui::GetWindowDrawList()->AddRect(emblem_min, emblem_max, IM_COL32(255, 220, 120, 255),
                                           4.0f, 0, 2.0f);
-      ImGui::SetTooltip(i18n::Tr("Modifier cet emblème dans l'éditeur…"));
+      ImGui::SetTooltip("%s", i18n::Tr("Modifier cet emblème dans l'éditeur…"));
     }
     ImGui::SetCursorPos(saved_cursor);
   }
@@ -5220,7 +5220,7 @@ void CharacterSheet::DrawGuildTab() {
     // Le rappel « titre, puis message » vaut aussi en RÉÉDITION : les indices ne
     // s'affichent que sur un champ vide, donc ils ne diraient rien sur une annonce
     // déjà remplie — exactement le cas où l'on hésite.
-    ImGui::TextColored(ro::pal::kBlack, i18n::Tr("Annonce de la guilde — titre, puis message"));
+    ImGui::TextColored(ro::pal::kBlack, "%s", i18n::Tr("Annonce de la guilde — titre, puis message"));
     // Deux champs identiques l'un au-dessus de l'autre : rien ne disait lequel est le
     // titre. L'indice le dit là où on tape, sans voler une ligne de libellé.
     ImGui::SetNextItemWidth(-1.0f);
@@ -5444,8 +5444,8 @@ void CharacterSheet::DrawGuildTab() {
                 ImGui::EndDisabled();
                 if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
                   ImGui::SetTooltip(
-                      i18n::Tr("Il faut être dans un groupe — et en être le chef — pour "
-                      "inviter quelqu'un."));
+                      "%s", i18n::Tr("Il faut être dans un groupe — et en être le chef — pour "
+                            "inviter quelqu'un."));
               }
             }
             // ── Carnet de chasse MVP ─────────────────────────────────────────
@@ -5541,7 +5541,7 @@ void CharacterSheet::DrawGuildTab() {
         ImGui::TextColored(ro::pal::kBlack, "%d", m.contribution);
         ImGui::TableSetColumnIndex(5);
         if (m.online) {
-          ImGui::TextColored(ro::pal::kGreen, i18n::Tr("En ligne"));
+          ImGui::TextColored(ro::pal::kGreen, "%s", i18n::Tr("En ligne"));
         } else {
           char seen[32] = "—";
           if (m.last_login != 0) {
@@ -5615,7 +5615,7 @@ void CharacterSheet::DrawGuildTab() {
         ImGui::PopID();
         ++shown;
       }
-      if (shown == 0) ImGui::TextColored(ro::pal::kLabel, i18n::Tr("   aucune"));
+      if (shown == 0) ImGui::TextColored(ro::pal::kLabel, "%s", i18n::Tr("   aucune"));
       ImGui::Spacing();
     }
     ImGui::EndChild();
@@ -5626,12 +5626,12 @@ void CharacterSheet::DrawGuildTab() {
   // Invitation : soumise au droit « inviter » du poste, comme côté serveur.
   if (can_invite) {
     ImGui::AlignTextToFramePadding();
-    ImGui::TextColored(ro::pal::kBlack, i18n::Tr("Inviter :"));
+    ImGui::TextColored(ro::pal::kBlack, "%s", i18n::Tr("Inviter :"));
     ImGui::SameLine();
     ImGui::SetNextItemWidth(ro::Px(130.0f));
     ro::InputTextCp949("##cs_guild_invite", guild_invite_buf_, sizeof(guild_invite_buf_));
     if (ImGui::IsItemHovered())
-      ImGui::SetTooltip(i18n::Tr("Nom exact du personnage à inviter (il doit être connecté)."));
+      ImGui::SetTooltip("%s", i18n::Tr("Nom exact du personnage à inviter (il doit être connecté)."));
     ImGui::SameLine();
     if (ro::RoButton(i18n::Tr("Inviter")) && guild_invite_buf_[0]) {
       SendGuildInvite(guild_invite_buf_);
@@ -5653,7 +5653,7 @@ void CharacterSheet::DrawGuildTab() {
       ImGui::OpenPopup(i18n::Tr("Dissoudre la guilde###bourgeon_guild_disband"));
     }
     if (ImGui::IsItemHovered())
-      ImGui::SetTooltip(i18n::Tr("Supprime définitivement la guilde (@breakguild)."));
+      ImGui::SetTooltip("%s", i18n::Tr("Supprime définitivement la guilde (@breakguild)."));
   }
   if (!guild_status_.empty()) ImGui::TextColored(ro::pal::kLabel, "%s", guild_status_.c_str());
 
@@ -5703,8 +5703,8 @@ void CharacterSheet::DrawGuildTab() {
     else
       ImGui::Text(i18n::Tr("Retirer %s de la liste des ennemis ?"), guild_rel_del_name_);
     ImGui::TextColored(ro::pal::kLabel,
-                       i18n::Tr("Refusé par le serveur pendant une guerre de guildes\n"
-                       "et sur les cartes verrouillées."));
+                       "%s", i18n::Tr("Refusé par le serveur pendant une guerre de guildes\n"
+                             "et sur les cartes verrouillées."));
     ImGui::Spacing();
     if (ro::RoButton(guild_rel_del_kind_ == 0 ? i18n::Tr("Rompre") : i18n::Tr("Retirer"), 110.0f, 0.0f)) {
       SendGuildDeleteRelation(guild_rel_del_id_, guild_rel_del_kind_);
@@ -5719,9 +5719,9 @@ void CharacterSheet::DrawGuildTab() {
 
   if (ro::BeginRoPopupModal(i18n::Tr("Quitter la guilde###bourgeon_guild_leave"))) {
     ImGui::TextUnformatted(i18n::Tr("Quitter définitivement la guilde ?"));
-    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Il faudra une nouvelle invitation pour y revenir."));
+    ImGui::TextColored(ro::pal::kLabel, "%s", i18n::Tr("Il faudra une nouvelle invitation pour y revenir."));
     ImGui::Spacing();
-    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Motif (facultatif) :"));
+    ImGui::TextColored(ro::pal::kLabel, "%s", i18n::Tr("Motif (facultatif) :"));
     ImGui::SetNextItemWidth(ro::Px(240.0f));
     ro::InputTextCp949("##cs_guild_leave_reason", guild_reason_buf_,
                        sizeof(guild_reason_buf_));
@@ -5744,19 +5744,19 @@ void CharacterSheet::DrawGuildTab() {
   // qui existe, à l'image de ce que demande la fenêtre native pour dissoudre.
   if (ro::BeginRoPopupModal(i18n::Tr("Dissoudre la guilde###bourgeon_guild_disband"))) {
     ImGui::TextColored(ro::pal::kRed, i18n::Tr("Dissoudre « %s » ?"), gi.name);
-    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Irréversible : la guilde, ses postes, son storage et ses\n"
-                              "compétences disparaissent."));
+    ImGui::TextColored(ro::pal::kLabel, "%s", i18n::Tr("Irréversible : la guilde, ses postes, son storage et ses\n"
+                                    "compétences disparaissent."));
     ImGui::Spacing();
     // Conditions RÉELLES de guild_break() : les dire AVANT évite un clic qui échoue,
     // d'autant que deux des trois refus sont peu bavards côté client.
-    ImGui::TextColored(ro::pal::kBlack, i18n::Tr("Le serveur refusera si :"));
-    ImGui::BulletText(i18n::Tr("tu n'es pas le maître de guilde ;"));
-    ImGui::BulletText(i18n::Tr("il reste un autre membre — il faut être SEUL ;"));
-    ImGui::BulletText(i18n::Tr("la carte interdit les modifications de guilde\n(mapflag guildlock) ;"));
-    ImGui::BulletText(i18n::Tr("une instance de guilde est en cours."));
-    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("L'instance fait échouer la dissolution SANS aucun message."));
+    ImGui::TextColored(ro::pal::kBlack, "%s", i18n::Tr("Le serveur refusera si :"));
+    ImGui::BulletText("%s", i18n::Tr("tu n'es pas le maître de guilde ;"));
+    ImGui::BulletText("%s", i18n::Tr("il reste un autre membre — il faut être SEUL ;"));
+    ImGui::BulletText("%s", i18n::Tr("la carte interdit les modifications de guilde\n(mapflag guildlock) ;"));
+    ImGui::BulletText("%s", i18n::Tr("une instance de guilde est en cours."));
+    ImGui::TextColored(ro::pal::kLabel, "%s", i18n::Tr("L'instance fait échouer la dissolution SANS aucun message."));
     ImGui::Spacing();
-    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Retape le nom de la guilde pour confirmer :"));
+    ImGui::TextColored(ro::pal::kLabel, "%s", i18n::Tr("Retape le nom de la guilde pour confirmer :"));
     ImGui::SetNextItemWidth(ro::Px(240.0f));
     // Indice STATIQUE, pas gi.name : le nom vient du client en CP949, et l'indice est
     // rendu en UTF-8. La comparaison, elle, se fait bien CP949 contre CP949.
@@ -5780,7 +5780,7 @@ void CharacterSheet::DrawGuildTab() {
   if (ro::BeginRoPopupModal(i18n::Tr("Expulser de la guilde###bourgeon_guild_expel"))) {
     ImGui::Text(i18n::Tr("Expulser %s de la guilde ?"), guild_expel_name_);
     ImGui::Spacing();
-    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Motif (facultatif) :"));
+    ImGui::TextColored(ro::pal::kLabel, "%s", i18n::Tr("Motif (facultatif) :"));
     ImGui::SetNextItemWidth(ro::Px(240.0f));
     ro::InputTextCp949("##cs_guild_expel_reason", guild_reason_buf_,
                        sizeof(guild_reason_buf_));
@@ -5804,16 +5804,16 @@ void CharacterSheet::DrawGuildTab() {
     ImGui::TextColored(ro::pal::kRed, i18n::Tr("Faire de %s le maître de « %s » ?"),
                        guild_gm_name_, gi.name);
     ImGui::TextColored(ro::pal::kLabel,
-                       i18n::Tr("Tu perds le poste de maître sur-le-champ : postes, emblème,\n"
-                       "annonce, invitations et dissolution passent à ce membre.\n"
-                       "Lui seul pourra te rendre la direction."));
+                       "%s", i18n::Tr("Tu perds le poste de maître sur-le-champ : postes, emblème,\n"
+                             "annonce, invitations et dissolution passent à ce membre.\n"
+                             "Lui seul pourra te rendre la direction."));
     ImGui::Spacing();
-    ImGui::TextColored(ro::pal::kBlack, i18n::Tr("Le serveur refusera si :"));
-    ImGui::BulletText(i18n::Tr("une guerre de guildes est en cours ;"));
-    ImGui::BulletText(i18n::Tr("le précédent transfert est trop récent (délai serveur) ;"));
-    ImGui::BulletText(i18n::Tr("une instance de guilde est en cours — refus SANS message."));
+    ImGui::TextColored(ro::pal::kBlack, "%s", i18n::Tr("Le serveur refusera si :"));
+    ImGui::BulletText("%s", i18n::Tr("une guerre de guildes est en cours ;"));
+    ImGui::BulletText("%s", i18n::Tr("le précédent transfert est trop récent (délai serveur) ;"));
+    ImGui::BulletText("%s", i18n::Tr("une instance de guilde est en cours — refus SANS message."));
     ImGui::Spacing();
-    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Retape le nom du membre pour confirmer :"));
+    ImGui::TextColored(ro::pal::kLabel, "%s", i18n::Tr("Retape le nom du membre pour confirmer :"));
     ImGui::SetNextItemWidth(ro::Px(240.0f));
     // Indice STATIQUE, pas guild_gm_name_ : le nom vient du client en CP949 et l'indice
     // est rendu en UTF-8. La comparaison, elle, reste CP949 contre CP949.
@@ -5842,11 +5842,11 @@ void CharacterSheet::DrawGuildTab() {
 // Purement informatif : rien ne permet de réintégrer quelqu'un depuis le client.
 void CharacterSheet::DrawGuildBansTab() {
   if (!guild_bans_known_) {
-    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Liste non encore reçue — clic sur « Actualiser »."));
+    ImGui::TextColored(ro::pal::kLabel, "%s", i18n::Tr("Liste non encore reçue — clic sur « Actualiser »."));
     return;
   }
   if (guild_bans_.empty()) {
-    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Aucune expulsion enregistrée."));
+    ImGui::TextColored(ro::pal::kLabel, "%s", i18n::Tr("Aucune expulsion enregistrée."));
     return;
   }
 
@@ -5862,7 +5862,7 @@ void CharacterSheet::DrawGuildBansTab() {
     ImGui::TextUnformatted(ban.name[0] ? ban.name : "?");
     ImGui::TableNextColumn();
     if (ban.reason[0]) ImGui::TextUnformatted(ban.reason);
-    else               ImGui::TextColored(ro::pal::kLabel, i18n::Tr("(aucun motif)"));
+    else               ImGui::TextColored(ro::pal::kLabel, "%s", i18n::Tr("(aucun motif)"));
   }
   ImGui::EndTable();
 }
@@ -5972,7 +5972,7 @@ void CharacterSheet::EnsureGuildSkillTree() {
 void CharacterSheet::DrawGuildSkillsTab() {
   EnsureGuildSkillTree();
   if (!guild_skills_known_) {
-    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Compétences non encore reçues — clic sur « Actualiser »."));
+    ImGui::TextColored(ro::pal::kLabel, "%s", i18n::Tr("Compétences non encore reçues — clic sur « Actualiser »."));
     return;
   }
 
@@ -5983,7 +5983,7 @@ void CharacterSheet::DrawGuildSkillsTab() {
   mui::Tooltip(i18n::Tr("Bascule entre la grille d'icônes et la liste détaillée\n"
                "(niveau, SP, lancer, monter) — comme le Grimoire."));
   ImGui::SameLine();
-  ImGui::TextDisabled(i18n::Tr("Raccourcis"));
+  ImGui::TextDisabled("%s", i18n::Tr("Raccourcis"));
   mui::Tooltip(
       i18n::Tr("Clic gauche      monter d'un niveau (envoyé aussitôt au serveur)\n"
       "Double-clic      lancer la compétence\n"
@@ -6009,7 +6009,7 @@ void CharacterSheet::DrawGuildSkillsTab() {
   // Sans l'arbre on ne peut montrer que ce que le serveur envoie ; avec, les
   // verrouillées apparaissent aussi, donc la liste n'est jamais vide.
   if (guild_skill_tree_state_ != 1 && guild_skills_.empty()) {
-    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Aucune compétence disponible (prérequis non remplis)."));
+    ImGui::TextColored(ro::pal::kLabel, "%s", i18n::Tr("Aucune compétence disponible (prérequis non remplis)."));
     return;
   }
 
@@ -6442,7 +6442,7 @@ void CharacterSheet::DrawGuildSkillsTab() {
     // jusqu'ici invisible : rien ne distinguait une passive d'une active, il fallait
     // ouvrir la description ou tenter le drag pour le découvrir.
     ImGui::TableNextColumn();
-    if (live && live->inf == 0)    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Passif"));
+    if (live && live->inf == 0)    ImGui::TextColored(ro::pal::kLabel, "%s", i18n::Tr("Passif"));
     else if (live && live->sp > 0) ImGui::Text("%d", live->sp);
     else                           ImGui::TextColored(ro::pal::kLabel, "-");
 
@@ -6464,10 +6464,10 @@ void CharacterSheet::DrawGuildSkillsTab() {
       if (cd_ms > 0)
         ImGui::SetTooltip(i18n::Tr("Encore %lu s.\nLancer une compétence de guilde les bloque toutes les quatre."),
                           (cd_ms + 999) / 1000);
-      else if (can_use)                 ImGui::SetTooltip(i18n::Tr("Lancer (ou double-clic sur le nom)."));
-      else if (live && live->inf == 0)  ImGui::SetTooltip(i18n::Tr("Compétence passive : rien à lancer."));
-      else if (locked || level == 0)    ImGui::SetTooltip(i18n::Tr("Non apprise."));
-      else                              ImGui::SetTooltip(i18n::Tr("Se lance sur une cible : à glisser dans une barre."));
+      else if (can_use)                 ImGui::SetTooltip("%s", i18n::Tr("Lancer (ou double-clic sur le nom)."));
+      else if (live && live->inf == 0)  ImGui::SetTooltip("%s", i18n::Tr("Compétence passive : rien à lancer."));
+      else if (locked || level == 0)    ImGui::SetTooltip("%s", i18n::Tr("Non apprise."));
+      else                              ImGui::SetTooltip("%s", i18n::Tr("Se lance sur une cible : à glisser dans une barre."));
     }
 
     ImGui::TableNextColumn();
@@ -6481,10 +6481,10 @@ void CharacterSheet::DrawGuildSkillsTab() {
     }
     ImGui::EndDisabled();
     if (ImGui::IsItemHovered()) {
-      if (can_up)                        ImGui::SetTooltip(i18n::Tr("Monter d'un niveau."));
-      else if (locked)                   ImGui::SetTooltip(i18n::Tr("Prérequis non remplis."));
-      else if (guild_skill_points_ <= 0) ImGui::SetTooltip(i18n::Tr("Aucun point de compétence disponible."));
-      else                               ImGui::SetTooltip(i18n::Tr("Niveau maximum, ou réservé au maître de guilde."));
+      if (can_up)                        ImGui::SetTooltip("%s", i18n::Tr("Monter d'un niveau."));
+      else if (locked)                   ImGui::SetTooltip("%s", i18n::Tr("Prérequis non remplis."));
+      else if (guild_skill_points_ <= 0) ImGui::SetTooltip("%s", i18n::Tr("Aucun point de compétence disponible."));
+      else                               ImGui::SetTooltip("%s", i18n::Tr("Niveau maximum, ou réservé au maître de guilde."));
     }
     ImGui::PopID();
   }
@@ -6507,7 +6507,7 @@ void CharacterSheet::DrawGuildPositionsTab(bool can_edit) {
   for (int i = 0; i < kGuildPositionSlots; ++i)
     if (guild_positions_[i].has_name || guild_positions_[i].has_info) { any_info = true; break; }
   if (!any_info) {
-    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Postes non encore reçus — clic sur « Actualiser »."));
+    ImGui::TextColored(ro::pal::kLabel, "%s", i18n::Tr("Postes non encore reçus — clic sur « Actualiser »."));
     return;
   }
 
@@ -6516,7 +6516,7 @@ void CharacterSheet::DrawGuildPositionsTab(bool can_edit) {
                        i18n::Tr("Nom, droits et part d'exp de chaque poste. Le serveur plafonne "
                        "la part d'exp à %d %%."), kGuildPayRateMax);
   else
-    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Seul le maître de guilde peut modifier les postes."));
+    ImGui::TextColored(ro::pal::kLabel, "%s", i18n::Tr("Seul le maître de guilde peut modifier les postes."));
 
   const ImGuiTableFlags table_flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter |
                                       ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_ScrollY;
@@ -6644,7 +6644,7 @@ void CharacterSheet::DrawGuildEmblemModal(int guildId, bool is_master) {
   // Le serveur (clif_parse_GuildChangeEmblem) sort SANS RIEN DIRE quand l'expéditeur
   // n'a pas le drapeau gmaster : autant l'annoncer avant de laisser dessiner.
   if (!is_master)
-    ImGui::TextColored(ro::pal::kRed, i18n::Tr("Tu n'es pas maître de guilde : le serveur ignorera l'envoi."));
+    ImGui::TextColored(ro::pal::kRed, "%s", i18n::Tr("Tu n'es pas maître de guilde : le serveur ignorera l'envoi."));
   ImGui::Spacing();
   if (!ro::RoBeginTabBar("cs_emblem_tabs")) {
     ro::EndRoPopupModal();
@@ -6673,11 +6673,11 @@ void CharacterSheet::DrawGuildEmblemModal(int guildId, bool is_master) {
   std::string shown_dir = dir;
   std::replace(shown_dir.begin(), shown_dir.end(), '\\', '/');
   ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Fichiers .bmp de %s"), shown_dir.c_str());
-  ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Attendu : 24 bits ou 256 couleurs, non compressé."));
+  ImGui::TextColored(ro::pal::kLabel, "%s", i18n::Tr("Attendu : 24 bits ou 256 couleurs, non compressé."));
   ImGui::Spacing();
 
   if (g_emblem_files.empty()) {
-    ImGui::TextColored(ro::pal::kRed, i18n::Tr("Aucun .bmp dans ce dossier."));
+    ImGui::TextColored(ro::pal::kRed, "%s", i18n::Tr("Aucun .bmp dans ce dossier."));
   } else {
     const float row_h = std::max(ImGui::GetTextLineHeight() + 8.0f, 32.0f);
     // Hauteur EXACTE du contenu (lignes + interlignes + marges + bordure) : la calculer
@@ -6738,7 +6738,7 @@ void CharacterSheet::DrawGuildEmblemModal(int guildId, bool is_master) {
   } else if (!guild_emblem_error_.empty()) {
     ImGui::TextColored(ro::pal::kRed, "%s", guild_emblem_error_.c_str());
   } else {
-    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Choisis un fichier dans la liste."));
+    ImGui::TextColored(ro::pal::kLabel, "%s", i18n::Tr("Choisis un fichier dans la liste."));
   }
 
   ImGui::Spacing();
@@ -6780,8 +6780,8 @@ void CharacterSheet::DrawGuildEmblemModal(int guildId, bool is_master) {
   ImGui::SameLine();
   ImGui::SameLine();
   ImGui::TextColored(ro::pal::kLabel,
-                     i18n::Tr("L'envoi passe par le service web du serveur, comme la fenêtre native.\n"
-                     "L'emblème se met à jour dès que le serveur a publié la nouvelle version."));
+                     "%s", i18n::Tr("L'envoi passe par le service web du serveur, comme la fenêtre native.\n"
+                           "L'emblème se met à jour dès que le serveur a publié la nouvelle version."));
   // Compte rendu du dernier envoi (aussi écrit dans bourgeon.log et la console).
   if (!guild_emblem_diag_.empty()) ImGui::TextColored(ro::pal::kLabel, "%s", guild_emblem_diag_.c_str());
   ro::EndRoPopupModal();
@@ -6929,7 +6929,7 @@ void CharacterSheet::DrawGuildEmblemPaintTab(int guildId) {
   // ── Outils ────────────────────────────────────────────────────────────────
   ImGui::Spacing();
   ImGui::AlignTextToFramePadding();
-  ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Outil :"));
+  ImGui::TextColored(ro::pal::kLabel, "%s", i18n::Tr("Outil :"));
   ImGui::SameLine();
   const char* tool_names[6] = {"Crayon", "Gomme", "Remplir", "Ligne", "Rectangle", "Ellipse"};
   const char* tool_hints[6] = {
@@ -6950,14 +6950,14 @@ void CharacterSheet::DrawGuildEmblemPaintTab(int guildId) {
     if (t != 2 && t != 5) ImGui::SameLine();
   }
   ImGui::SameLine();
-  ImGui::TextColored(ro::pal::kLabel, i18n::Tr("(clic droit = efface)"));
+  ImGui::TextColored(ro::pal::kLabel, "%s", i18n::Tr("(clic droit = efface)"));
 
   ImGui::SetNextItemWidth(ro::Px(140.0f));
   ro::RoSliderInt(i18n::Tr("Épaisseur"), &g_emblem_canvas.brush, 1, 3, "%d px");
   ImGui::SameLine();
   ro::RoCheckbox(i18n::Tr("Symétrie"), &g_emblem_canvas.mirror);
   if (ImGui::IsItemHovered())
-    ImGui::SetTooltip(i18n::Tr("Chaque trait est répété en miroir gauche/droite."));
+    ImGui::SetTooltip("%s", i18n::Tr("Chaque trait est répété en miroir gauche/droite."));
   ImGui::SameLine();
   // Ne concerne que le rectangle et l'ellipse : grisé ailleurs plutôt que caché, pour
   // que la barre d'outils ne saute pas d'un outil à l'autre.
@@ -6966,7 +6966,7 @@ void CharacterSheet::DrawGuildEmblemPaintTab(int guildId) {
   ImGui::EndDisabled();
 
   ImGui::AlignTextToFramePadding();
-  ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Couleur :"));
+  ImGui::TextColored(ro::pal::kLabel, "%s", i18n::Tr("Couleur :"));
   ImGui::SameLine();
   if (ImGui::ColorEdit3("##cs_emblem_color", g_emblem_canvas.color, ImGuiColorEditFlags_NoInputs)) {
     g_emblem_canvas.color_clear = false;  // choisir une teinte, c'est quitter le « vide »
@@ -6977,7 +6977,7 @@ void CharacterSheet::DrawGuildEmblemPaintTab(int guildId) {
   // pouvoir en remplir une zone ou en tracer une forme, ce que la gomme (à main levée)
   // ne permet pas. Elle laisse donc l'outil courant tel quel.
   ImGui::AlignTextToFramePadding();
-  ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Transparence :"));
+  ImGui::TextColored(ro::pal::kLabel, "%s", i18n::Tr("Transparence :"));
   ImGui::SameLine();
   const ImVec4 magenta(1.0f, 0.0f, 1.0f, 1.0f);
   const float swatch_h = ImGui::GetFrameHeight();
@@ -6986,13 +6986,13 @@ void CharacterSheet::DrawGuildEmblemPaintTab(int guildId) {
                          ImVec2(swatch_h * 1.6f, swatch_h)))
     g_emblem_canvas.color_clear = true;
   if (ImGui::IsItemHovered())
-    ImGui::SetTooltip(i18n::Tr("Magenta pur (255, 0, 255) : ces pixels sont transparents en jeu.\n"
-                      "S'utilise avec n'importe quel outil (remplissage, formes…)."));
+    ImGui::SetTooltip("%s", i18n::Tr("Magenta pur (255, 0, 255) : ces pixels sont transparents en jeu.\n"
+                            "S'utilise avec n'importe quel outil (remplissage, formes…)."));
   if (g_emblem_canvas.color_clear) {
     ImGui::SameLine();
-    ImGui::TextColored(ImVec4(0.10f, 0.35f, 0.70f, 1.0f), i18n::Tr("couleur active"));
+    ImGui::TextColored(ImVec4(0.10f, 0.35f, 0.70f, 1.0f), "%s", i18n::Tr("couleur active"));
   }
-  ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Palette :"));
+  ImGui::TextColored(ro::pal::kLabel, "%s", i18n::Tr("Palette :"));
   ImGui::SameLine();
   // Nuancier : une case pose la couleur courante (et sort du « vide » comme de la gomme).
   const float swatch = ImGui::GetFrameHeight() - 2.0f;
@@ -7043,13 +7043,13 @@ void CharacterSheet::DrawGuildEmblemPaintTab(int guildId) {
   }
   ImGui::EndDisabled();
   if (ImGui::IsItemHovered())
-    ImGui::SetTooltip(i18n::Tr("Repart de l'emblème que porte la guilde (annulable)."));
+    ImGui::SetTooltip("%s", i18n::Tr("Repart de l'emblème que porte la guilde (annulable)."));
 
   // ── Point de départ : une icône d'item ────────────────────────────────────
   // Les icônes d'inventaire du client font 24x24, la taille exacte d'un emblème :
   // elles font d'excellentes bases (potion, carte, arme…) à retoucher ensuite.
   ImGui::AlignTextToFramePadding();
-  ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Partir d'une icône d'item :"));
+  ImGui::TextColored(ro::pal::kLabel, "%s", i18n::Tr("Partir d'une icône d'item :"));
   ImGui::SameLine();
   ImGui::SetNextItemWidth(ro::Px(90.0f));
   ImGui::InputInt("##cs_emblem_itemid", &guild_emblem_item_id_, 0, 0);
@@ -7078,16 +7078,16 @@ void CharacterSheet::DrawGuildEmblemPaintTab(int guildId) {
   }
   ImGui::EndDisabled();
   if (ImGui::IsItemHovered())
-    ImGui::SetTooltip(i18n::Tr("Remplace le dessin par l'icône de l'item (annulable)."));
+    ImGui::SetTooltip("%s", i18n::Tr("Remplace le dessin par l'icône de l'item (annulable)."));
   if (guild_emblem_item_id_ > 0 && !preview_icon.tex) {
     ImGui::SameLine();
-    ImGui::TextColored(ro::pal::kRed, i18n::Tr("aucune icône"));
+    ImGui::TextColored(ro::pal::kRed, "%s", i18n::Tr("aucune icône"));
   }
   ImGui::SameLine();
   if (ro::RoToggleButton("Inventaire", guild_emblem_gallery_, 110.0f, 0.0f))
     guild_emblem_gallery_ = !guild_emblem_gallery_;
   if (ImGui::IsItemHovered())
-    ImGui::SetTooltip(i18n::Tr("Choisir l'icône dans son sac, sans connaître les numéros."));
+    ImGui::SetTooltip("%s", i18n::Tr("Choisir l'icône dans son sac, sans connaître les numéros."));
 
   if (guild_emblem_gallery_) {
     // Un balayage par seconde suffit : le sac bouge (loot, vente), mais pas à la
@@ -7122,7 +7122,7 @@ void CharacterSheet::DrawGuildEmblemPaintTab(int guildId) {
                           style.WindowPadding.y * 2.0f + style.ChildBorderSize * 2.0f;
     ImGui::BeginChild("##cs_emblem_gallery", ImVec2(0.0f, child_h), true);
     if (s_gallery_ids.empty()) {
-      ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Aucun item dans le sac."));
+      ImGui::TextColored(ro::pal::kLabel, "%s", i18n::Tr("Aucun item dans le sac."));
     } else {
       ImDrawList* dl = ImGui::GetWindowDrawList();
       for (size_t i = 0; i < s_gallery_ids.size(); ++i) {
@@ -7429,7 +7429,7 @@ void CharacterSheet::DrawAmmoSlot(float x, float y, float sz) {
       if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && !shift)
         SendUnequip(am.invIndex);
     } else {
-      ImGui::SetTooltip(i18n::Tr("Munition\n(glissez une flèche/balle/grenade/arme de jet ici pour l'équiper)"));
+      ImGui::SetTooltip("%s", i18n::Tr("Munition\n(glissez une flèche/balle/grenade/arme de jet ici pour l'équiper)"));
     }
   }
   ImGui::PopID();
@@ -7827,7 +7827,7 @@ void CharacterSheet::DrawDoll(float avail_w) {
     if (ro::RoCheckbox(i18n::Tr("Voir les costumes"), &show))
       SendConfigToggle(kCmdViewCostume, show ? 1 : 0);
     if (ImGui::IsItemHovered())
-      ImGui::SetTooltip(i18n::Tr("Affiche ou masque les costumes sur ton personnage"));
+      ImGui::SetTooltip("%s", i18n::Tr("Affiche ou masque les costumes sur ton personnage"));
   } else {
     bool pub = ReadInt(kShowEquipFlag) != 0;
     const float cw = ImGui::CalcTextSize(i18n::Tr("Montrer mon équipement")).x + 42.0f;
@@ -7835,7 +7835,7 @@ void CharacterSheet::DrawDoll(float avail_w) {
     if (ro::RoCheckbox(i18n::Tr("Montrer mon équipement"), &pub))
       SendConfigToggle(kCmdShowEquip, pub ? 1 : 0);
     if (ImGui::IsItemHovered())
-      ImGui::SetTooltip(i18n::Tr("Rend ton équipement visible (ou non) aux autres joueurs"));
+      ImGui::SetTooltip("%s", i18n::Tr("Rend ton équipement visible (ou non) aux autres joueurs"));
   }
   // Effet costume (.str) : rendu 100 % automatique et toujours actif (aucun réglage UI).
 }

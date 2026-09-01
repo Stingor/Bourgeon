@@ -461,10 +461,10 @@ void CastBar::OwnCastLabel(char* out, size_t n) const {
 bool CastBar::DrawSettings() {
   bool save = false;
 
-  ImGui::TextDisabled(i18n::Tr(
-      "La barre du client fait 60×6 pixels, sans nom de compétence ni durée. "
-      "Elle n'est pas détruite mais masquée : c'est son horloge qui alimente "
-      "celle-ci."));
+  ImGui::TextDisabled("%s", i18n::Tr(
+            "La barre du client fait 60×6 pixels, sans nom de compétence ni durée. "
+            "Elle n'est pas détruite mais masquée : c'est son horloge qui alimente "
+            "celle-ci."));
   Spacing();
 
   if (ro::RoCheckbox(i18n::Tr("Remplacer les barres d'incantation"), &enabled_)) save = true;

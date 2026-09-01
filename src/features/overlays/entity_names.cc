@@ -170,7 +170,7 @@ void EntityNames::DrawNames() {
 void EntityNames::DrawSettings() {
   bool save = false;
   if (ro::RoCheckbox(i18n::Tr("Afficher les noms en permanence"), &enabled_)) save = true;
-  ImGui::TextDisabled(i18n::Tr("Affiche le nom au-dessus des entités sans avoir à les survoler."));
+  ImGui::TextDisabled("%s", i18n::Tr("Affiche le nom au-dessus des entités sans avoir à les survoler."));
 
   if (enabled_) {
     Spacing();
@@ -189,8 +189,8 @@ void EntityNames::DrawSettings() {
     if (WheelSliderFloat(i18n::Tr("Taille du texte"), &font_scale_, 0.7f, 1.6f)) save = true;
     if (ImGui::IsItemDeactivatedAfterEdit()) save = true;
 
-    ImGui::TextDisabled(i18n::Tr("Les monstres déclenchent une requête de nom au serveur : sur une "
-             "map très peuplée, cela génère du trafic réseau."));
+    ImGui::TextDisabled("%s", i18n::Tr("Les monstres déclenchent une requête de nom au serveur : sur une "
+                   "map très peuplée, cela génère du trafic réseau."));
   }
 
   if (save) {

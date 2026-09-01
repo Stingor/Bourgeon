@@ -1282,7 +1282,7 @@ void MoonlightAuth::DrawWebLogin() {
   // comptes du site (ouvre le navigateur). URL bâtie sur base_url_ (même origine
   // que les appels API) — pas d'hôte hardcodé.
   ImGui::Spacing();
-  ImGui::TextDisabled(i18n::Tr("Plusieurs comptes à regrouper ?"));
+  ImGui::TextDisabled("%s", i18n::Tr("Plusieurs comptes à regrouper ?"));
   ImGui::SameLine();
   HyperlinkOpen(i18n::Tr("Fusionner mes comptes"),
                 base_url_ + "/ucp.php?i=moonlight&mode=merge");
@@ -1292,7 +1292,7 @@ void MoonlightAuth::DrawWebLogin() {
   // principal — masque le formulaire moderne pour la session.
   ImGui::Spacing();
   ImGui::Separator();
-  ImGui::TextDisabled(i18n::Tr("Tu préfères te connecter à un compte Ragnarok ?"));
+  ImGui::TextDisabled("%s", i18n::Tr("Tu préfères te connecter à un compte Ragnarok ?"));
   if (ro::RoSmallButton(i18n::Tr("Utiliser le login classique"))) {
     native_fallback_ = true;
     // 🔴 Et on ferme le décor. Ce repli rend la main aux champs NATIFS — qui
@@ -1317,8 +1317,8 @@ void MoonlightAuth::DrawDiscordWait() {
   ImGui::Spacing();
   ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + FormWidth());
   ImGui::TextWrapped(
-      i18n::Tr("Termine la connexion dans ton navigateur, puis reviens ici : ta liste "
-      "de comptes s'affichera automatiquement."));
+      "%s", i18n::Tr("Termine la connexion dans ton navigateur, puis reviens ici : ta liste "
+            "de comptes s'affichera automatiquement."));
   ImGui::PopTextWrapPos();
   ImGui::Spacing();
   // Ré-ouvrir la page si le joueur a fermé l'onglet par erreur.
@@ -1337,7 +1337,7 @@ void MoonlightAuth::DrawDiscordWait() {
 
 void MoonlightAuth::DrawPickAccount() {
   ImGui::TextUnformatted(i18n::Tr("Choisis un compte Ragnarok"));
-  ImGui::TextDisabled(i18n::Tr("Flèches pour naviguer, Entrée (ou double-clic) pour jouer."));
+  ImGui::TextDisabled("%s", i18n::Tr("Flèches pour naviguer, Entrée (ou double-clic) pour jouer."));
   ImGui::Separator();
 
   const int n = static_cast<int>(accounts_.size());

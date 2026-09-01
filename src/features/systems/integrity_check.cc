@@ -368,16 +368,16 @@ void IntegrityCheck::OnRenderUI() {
     // était calibré pour un fond sombre ; ici il passerait au-dessus du texte
     // sans ressortir.
     ImGui::TextColored(ImVec4(0.60f, 0.12f, 0.12f, 1.0f),
-                       i18n::Tr("Your game client is outdated!"));
+                       "%s", i18n::Tr("Your game client is outdated!"));
     ImGui::Spacing();
     if (patcher_exe_.empty()) {
       ImGui::TextWrapped(
-          i18n::Tr("Please close the game and run the patcher to update,\n"
-          "then reconnect."));
+          "%s", i18n::Tr("Please close the game and run the patcher to update,\n"
+                "then reconnect."));
     } else {
       ImGui::TextWrapped(
-          i18n::Tr("The patcher will open automatically once the game closes.\n"
-          "Update, then reconnect."));
+          "%s", i18n::Tr("The patcher will open automatically once the game closes.\n"
+                "Update, then reconnect."));
     }
     ImGui::Spacing();
 
@@ -391,7 +391,7 @@ void IntegrityCheck::OnRenderUI() {
                          secs, secs == 1 ? "" : "s");
     } else {
       ImGui::TextColored(ro::pal::kLabel,
-                         i18n::Tr("Disconnecting in a few seconds..."));
+                         "%s", i18n::Tr("Disconnecting in a few seconds..."));
     }
 
     ro::EndRoPopupModal();

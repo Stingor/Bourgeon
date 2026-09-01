@@ -3684,10 +3684,10 @@ void MakeItemWindow::DrawFooter() {
             source_item_name_);
       else
         ImGui::SetTooltip(
-            i18n::Tr("Relance la compétence pour obtenir une nouvelle liste.\n"
-            "\n"
-            "Le serveur n'autorise qu'une fabrication par lancement : après "
-            "chaque objet produit, il faut relancer."));
+            "%s", i18n::Tr("Relance la compétence pour obtenir une nouvelle liste.\n"
+                  "\n"
+                  "Le serveur n'autorise qu'une fabrication par lancement : après "
+                  "chaque objet produit, il faut relancer."));
     }
   } else {
     // ⚠ ro::RoButton, PAS ImGui::Button : le corps d'une fenêtre Bourgeon porte le
@@ -3718,10 +3718,10 @@ void MakeItemWindow::DrawFooter() {
     }
   }
   if (ImGui::IsItemHovered())
-    ImGui::SetTooltip(i18n::Tr(
-        "Ouvre l'Atlas des recettes : tout ce qui se fabrique sur ce serveur, "
-        "par métier, par produit et par matériau — y compris ce que cette liste "
-        "ne propose pas encore."));
+    ImGui::SetTooltip("%s", i18n::Tr(
+              "Ouvre l'Atlas des recettes : tout ce qui se fabrique sur ce serveur, "
+              "par métier, par produit et par matériau — y compris ce que cette liste "
+              "ne propose pas encore."));
 
   // ── Quantité voulue — SUR SA PROPRE LIGNE ─────────────────────────────────
   // 🔴 Ces widgets étaient à la suite des deux boutons. La barre débordait alors
@@ -3737,7 +3737,7 @@ void MakeItemWindow::DrawFooter() {
   // Le serveur n'accepte pas de quantité : « ×20 » veut dire vingt tours
   // complets. Le champ n'est donc qu'une CIBLE.
   ImGui::AlignTextToFramePadding();
-  ImGui::TextDisabled(i18n::Tr("Quantité"));
+  ImGui::TextDisabled("%s", i18n::Tr("Quantité"));
   SameLine();
   // ro::RoSmallButton, pas les flèches d'ImGui::InputInt : celles-ci sont des
   // boutons ImGui nus au milieu d'un pied entièrement habillé RO.
@@ -3856,13 +3856,13 @@ bool MakeItemWindow::DrawSettings() {
   // comme le reste, et un widget ImGui nu y détonne. Même remarque que pour les
   // boutons du pied de la fenêtre.
   ImGui::TextDisabled(
-      i18n::Tr("Remplace les DEUX listes natives : « LIST » (flèches, convertisseurs, "
-      "poison, leurres, cuisine, bombes) et « Manufacturing List » "
-      "(pharmacie, runes, forge)."));
+      "%s", i18n::Tr("Remplace les DEUX listes natives : « LIST » (flèches, convertisseurs, "
+            "poison, leurres, cuisine, bombes) et « Manufacturing List » "
+            "(pharmacie, runes, forge)."));
   ImGui::TextDisabled(
-      i18n::Tr("Clic droit : description · double-clic ou Entrée : fabriquer."));
+      "%s", i18n::Tr("Clic droit : description · double-clic ou Entrée : fabriquer."));
   ImGui::TextDisabled(
-      i18n::Tr("En-têtes de colonne : trier (3e clic = ordre du serveur)."));
+      "%s", i18n::Tr("En-têtes de colonne : trier (3e clic = ordre du serveur)."));
 
   changed |= ro::RoCheckbox(i18n::Tr("Colonnes « Possédé » et « Faisable »"), &show_owned_);
   ImGui::SameLine();

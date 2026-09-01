@@ -227,7 +227,7 @@ void QuestTracker::OnRenderUI() {
 
     ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + w);
     if (n == 0) {
-      ImGui::TextDisabled(i18n::Tr("(aucune quête suivie)"));
+      ImGui::TextDisabled("%s", i18n::Tr("(aucune quête suivie)"));
     }
     for (int i = 0; i < n; ++i) {
       const QuestEntry& q = quests[i];
