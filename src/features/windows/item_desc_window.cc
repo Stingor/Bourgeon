@@ -1505,9 +1505,33 @@ void ReadItemLayoutWindow(uintptr_t slot, uintptr_t vtable,
 }
 }  // namespace
 
+// Suivre un lien depuis la description : l'objet courant est EMPILÉ avant d'être
+// remplacé, faute de quoi il serait perdu (le client n'a qu'une fenêtre 0xc).
+void ItemDescWindow::NavigateToItem(uint32_t id) {
+  if (id == 0 || id == item_.id) return;
+  // ⚠ Un saut est-il DÉJÀ en attente pour ce tick ? Alors l'objet courant n'a
+  // pas encore bougé : on change de destination sans l'empiler une seconde fois,
+  // sinon deux clics dans la même frame coûteraient deux pas de retour vers le
+  // même objet.
+  if (pending_card_open_ == 0 && item_.open && item_.id != 0)
+    nav_back_.push_back(item_.id);
+  pending_card_open_ = id;
+  nav_expected_      = id;
+}
+
+// Revenir d'un cran. Ne réempile rien : le retour n'est pas une navigation de
+// plus, sinon « précédent » ferait osciller entre deux objets.
+void ItemDescWindow::NavigateBack() {
+  if (nav_back_.empty()) return;
+  const uint32_t id = nav_back_.back();
+  nav_back_.pop_back();
+  pending_card_open_ = id;
+  nav_expected_      = id;
+}
+
 void ItemDescWindow::OnTick() {
-  // Clic droit sur une carte au frame précédent -> ouvre sa desc complète MAINTENANT
-  // (hors rendu ImGui). Navigue la fenêtre 0xc vers la carte ; les lectures de slot
+  // Lien suivi au frame précédent -> ouvre sa desc complète MAINTENANT (hors
+  // rendu ImGui). Navigue la fenêtre 0xc vers l'objet ; les lectures de slot
   // ci-dessous prennent aussitôt le nouvel id.
   if (pending_card_open_ != 0) {
     OpenCardDescWindow(pending_card_open_);
@@ -1614,6 +1638,18 @@ void ItemDescWindow::OnTick() {
   // prochain tick ; ce test-ci reste le filet si le détour n'a pas pu être posé.
   if (item_.open && (!item_was_open_ || item_.id != item_last_id_))
     item_need_raise_ = true;
+  // Fil de navigation. La pile ne vaut que pour le chemin qu'on a suivi DEPUIS
+  // la description : une desc fermée, ou un objet arrivé d'ailleurs (clic droit
+  // dans l'inventaire pendant qu'elle est ouverte), ouvre un autre fil et le
+  // « précédent » d'avant n'y mène plus.
+  if (!item_.open) {
+    nav_back_.clear();
+    nav_expected_ = 0;
+  } else if (item_.id == nav_expected_) {
+    nav_expected_ = 0;  // notre propre saut : la pile reste
+  } else if (item_.id != item_last_id_) {
+    nav_back_.clear();
+  }
   item_last_id_  = item_.open ? item_.id : 0;
   item_was_open_ = item_.open;
   if (skill_.open && !skill_was_open_) {
@@ -2011,18 +2047,17 @@ void ItemDescWindow::RenderProbabilityTab(uint32_t item_id) {
                       table->entry_count);
 
   const int columns = many_groups ? 3 : 2;
+  // 🔴 PAS de `ScrollY` : la table ne défile pas d'elle-même, c'est la FENÊTRE
+  // qui défile — comme la table des sources de drop, juste à côté. Une région de
+  // défilement interne demande une hauteur, et toute hauteur écrite ici finit
+  // par dépasser une fiche redimensionnable dont le minimum est de 300 px : la
+  // table débordait alors du cadre, barre comprise. Le clipper suffit à ce que
+  // le millier de lignes ne coûte rien.
   const ImGuiTableFlags tf =
       ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
-      ImGuiTableFlags_Sortable | ImGuiTableFlags_ScrollY |
-      ImGuiTableFlags_SizingStretchProp;
+      ImGuiTableFlags_Sortable | ImGuiTableFlags_SizingStretchProp;
   ImGui::PushStyleColor(ImGuiCol_TableHeaderBg, IM_COL32(206, 198, 172, 255));
-  // Hauteur IMPOSÉE : `ScrollY` sans elle prendrait toute la place restante, or
-  // cet onglet vit dans une fenêtre qui défile déjà — deux barres imbriquées et
-  // une hauteur indéterminée. Bornée, la table garde son en-tête figé et défile
-  // seule, ce qu'il faut pour un millier de lignes.
-  if (ImGui::BeginTable("##probtable", columns, tf,
-                        ImVec2(0.0f, ro::Px(260.0f)))) {
-    ImGui::TableSetupScrollFreeze(0, 1);
+  if (ImGui::BeginTable("##probtable", columns, tf)) {
     ImGui::TableSetupColumn(i18n::Tr("Contenu"), ImGuiTableColumnFlags_WidthStretch);
     ImGui::TableSetupColumn(i18n::Tr("Chance"),
                             ImGuiTableColumnFlags_WidthFixed |
@@ -2085,7 +2120,7 @@ void ItemDescWindow::RenderProbabilityTab(uint32_t item_id) {
           const links::Target t =
               links::FromItemId(e.id, ro::LocalToUtf8(e.name.c_str()));
           switch (links::LabelHit(t, shown, links::LabelOpts().Icon(e.id))) {
-            case links::Gesture::kDescription: pending_card_open_ = e.id; break;
+            case links::Gesture::kDescription: NavigateToItem(e.id); break;
             case links::Gesture::kChatLink:    links::PostToChat(t); break;
             case links::Gesture::kMenu:        g_prob_menu.Arm(t); break;
             default: break;
@@ -2821,7 +2856,7 @@ void ItemDescWindow::RenderTechTabs(const DescWindow& w) {
           // ordinaires ne montrerait pas l'illustration d'une carte.
           const links::Target t = links::FromItemId(mem.first, lbl);
           switch (links::LabelHit(t, lbl, links::LabelOpts().Color(col).NoPreview())) {
-            case links::Gesture::kDescription: pending_card_open_ = mem.first; break;
+            case links::Gesture::kDescription: NavigateToItem(mem.first); break;
             case links::Gesture::kChatLink:    links::PostToChat(t); break;
             case links::Gesture::kMenu:
               g_item_menu.Arm(t);  // ouvert plus bas, hors de la pile d'ids
@@ -3389,7 +3424,7 @@ void ItemDescWindow::RenderItemWindow() {
           // au prochain OnTick. Le site est passé dans le menu.
           const links::Target t = links::FromItemId(e.cards[i], clbl);
           switch (links::Hit(t, card_hovered)) {
-            case links::Gesture::kDescription: pending_card_open_ = e.cards[i]; break;
+            case links::Gesture::kDescription: NavigateToItem(e.cards[i]); break;
             case links::Gesture::kChatLink:    links::PostToChat(t); break;
             case links::Gesture::kMenu:
               g_item_menu.Arm(t);  // ouvert plus bas, hors de la pile d'ids
@@ -3464,6 +3499,20 @@ void ItemDescWindow::RenderItemWindow() {
     const ImVec2 wp = ImGui::GetWindowPos();
     const ImVec2 ws = ImGui::GetWindowSize();
     ImGui::PushClipRect(wp, ImVec2(wp.x + ws.x, wp.y + ws.y - 10.0f), true);
+  }
+  // Fil d'Ariane : le retour se pose AU-DESSUS des onglets, pas dedans — on
+  // revient en arrière depuis n'importe lequel d'entre eux, y compris celui des
+  // probabilités d'où l'on vient de partir. Il n'occupe sa ligne que tant qu'il
+  // y a un pas à défaire.
+  if (visible && !nav_back_.empty()) {
+    const CardDesc* prev = GetCardDesc(nav_back_.back());
+    char blbl[96];
+    std::snprintf(blbl, sizeof(blbl), i18n::Tr("< Retour : %s###descback"),
+                  prev->name[0] ? prev->name : "?");
+    if (ro::RoSmallButton(blbl)) NavigateBack();
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip(i18n::Tr("Revenir à l'objet d'où vient ce lien (%zu pas)."),
+                        nav_back_.size());
   }
   if (visible && ro::RoBeginTabBar("##itemtabs")) {
     if (ImGui::BeginTabItem(i18n::Tr("Description"))) {

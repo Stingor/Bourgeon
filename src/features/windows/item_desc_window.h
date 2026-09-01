@@ -294,6 +294,20 @@ class ItemDescWindow : public Plugin {
   // Donnée du CLIENT (packageitem.lub), aucun paquet — l'onglet ne dépend donc
   // pas de la couche serveur. Lue seulement quand l'onglet est ouvert.
   void RenderProbabilityTab(uint32_t item_id);
+
+  // ── Navigation INTERNE de la description ──────────────────────────────────
+  //
+  // 🔴 Il n'existe qu'UNE fenêtre de description d'objet côté client (id 0xc) :
+  // suivre un lien depuis la description REMPLACE l'objet affiché, il n'en
+  // ouvre pas un second. Sans mémoire du chemin, on ne revient jamais au
+  // conteneur d'où l'on est parti — et TROIS surfaces posent ce lien : les
+  // cartes serties, les membres d'un combo, les lignes de l'onglet
+  // Probabilités. D'où une pile, et un seul endroit qui la remplit.
+  //
+  // `NavigateToItem` est le passage OBLIGÉ de ces trois surfaces : écrire
+  // `pending_card_open_` en direct saute l'empilement et casse le retour.
+  void NavigateToItem(uint32_t id);
+  void NavigateBack();
   // Rend une table de sources de drop (filtre + tri + liens). show_type ajoute
   // une colonne mécanisme (drop normal / MVP reward), utile pour le bucket MVP.
   void RenderDropTable(const TechData& td, const char* table_id,
@@ -352,8 +366,15 @@ class ItemDescWindow : public Plugin {
   std::unordered_map<uint32_t, ScriptData> script_cache_;  // clé = item id
   int        dmg_target_input_ = 0;      // champ "ID monstre" du panneau dégâts
   bool       dmg_target_self_  = false;  // cible = soi-même (miroir PvP)
-  // Carte/enchant à ouvrir en desc complète au prochain tick (clic droit dans le
-  // panneau « Cartes / Enchants »). 0 = rien en attente. On diffère l'appel natif
-  // (MakeWindow 0xc + OnMsg 0x18) hors du rendu ImGui -> timing sûr.
+  // Objet à ouvrir en desc complète au prochain tick (lien suivi depuis la
+  // description). 0 = rien en attente. On diffère l'appel natif (MakeWindow 0xc
+  // + OnMsg 0x18) hors du rendu ImGui -> timing sûr.
+  // ⚠ Passer par NavigateToItem / NavigateBack, jamais l'écrire en direct.
   uint32_t   pending_card_open_ = 0;
+  // Les objets quittés en suivant un lien interne, du plus ancien au plus récent.
+  std::vector<uint32_t> nav_back_;
+  // L'objet que NOTRE navigation vient de demander. Il distingue un changement
+  // que l'on a provoqué d'un clic droit venu d'AILLEURS dans le jeu : ce
+  // dernier ouvre un autre fil, et la pile de retour ne le concerne plus.
+  uint32_t   nav_expected_ = 0;
 };

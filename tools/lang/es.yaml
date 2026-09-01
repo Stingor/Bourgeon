@@ -908,6 +908,8 @@
 "Ouvre le Vote Shop avec cet objet dans le panier.": "Abre el Vote Shop con este objeto en la cesta."
 "Cet objet est dans ta liste de ramassage automatique. Clique pour l'en retirer.": "Este objeto está en tu lista de alootid. Haz clic para quitarlo."
 "Ramasser automatiquement cet objet.": "Recoger este objeto automáticamente."
+"< Retour : %s###descback": "< Volver: %s###descback"
+"Revenir à l'objet d'où vient ce lien (%zu pas).": "Volver al objeto del que viene este enlace (%zu paso(s))."
 "Probabilités": "Probabilidades"
 "Aucune table de probabilité pour cet objet.": "Sin tabla de probabilidades para este objeto."
 "Filtrer (contenu)##prob": "Filtrar (contenido)##prob"
@@ -3860,3 +3862,9 @@
 "PIC": "MÁX"
 "MOY": "MED"
 "TOTAL": "TOTAL"
+
+# Libellés venus de TABLES statiques (barre d'action, panneaux de réglages,
+# grille d'icônes) : l'extracteur ne lit que les littéraux passés à Tr, seul
+# l'export du jeu les remonte.
+"Carnet de chasse MVP": "Registro de caza MVP"
+"GreyWorld": "GreyWorld"
