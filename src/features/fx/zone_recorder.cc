@@ -833,14 +833,14 @@ size_t ZoneRecorder::EstimatedBytes() const {
 }
 
 // ── Panneau « Staff Tools » ──────────────────────────────────────────────────
-void ZoneRecorder::DrawSettings(bool player_view) {
+bool ZoneRecorder::DrawSettings(bool player_view) {
   bool save = false;
 
   if (g_imgui_dx7_active) {
     ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.35f, 1.0f),
                        "%s", i18n::Tr("Indisponible : le client rend en DirectX 7."));
     ImGui::TextDisabled("%s", i18n::Tr("Bascule en DirectX 9 dans Setup.exe pour enregistrer."));
-    return;
+    return false;  // rien n'a pu être réglé : rien à persister
   }
 
   // ── Zone ──
@@ -1086,7 +1086,5 @@ void ZoneRecorder::DrawSettings(bool player_view) {
     }
   }
 
-  if (save) {
-    if (auto* ui = Bourgeon::Instance().moonlight_ui()) ui->SaveSettings();
-  }
+  return save;
 }

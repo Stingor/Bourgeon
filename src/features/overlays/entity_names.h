@@ -22,7 +22,7 @@ class EntityNames : public Plugin {
   void OnRenderUI() override;
 
   // Panneau de configuration (rendu par MoonlightUi).
-  void DrawSettings();
+  bool DrawSettings();
 
   // Accesseurs pour la persistance (bourgeon_settings.yaml via MoonlightUi).
   bool&  enabled()       { return enabled_; }

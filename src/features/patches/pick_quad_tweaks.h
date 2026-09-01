@@ -102,7 +102,7 @@ unsigned int negative_gid_hits();
 bool installed();
 
 // Réglages, dans Staff Tools.
-void DrawSettings();
+bool DrawSettings();
 
 }  // namespace pick_quad
 

@@ -167,7 +167,7 @@ void EntityNames::DrawNames() {
   if (show_self_) draw_one(own_actor);
 }
 
-void EntityNames::DrawSettings() {
+bool EntityNames::DrawSettings() {
   bool save = false;
   if (ro::RoCheckbox(i18n::Tr("Afficher les noms en permanence"), &enabled_)) save = true;
   ImGui::TextDisabled("%s", i18n::Tr("Affiche le nom au-dessus des entités sans avoir à les survoler."));
@@ -193,7 +193,5 @@ void EntityNames::DrawSettings() {
                    "map très peuplée, cela génère du trafic réseau."));
   }
 
-  if (save) {
-    if (auto* ui = Bourgeon::Instance().moonlight_ui()) ui->SaveSettings();
-  }
+  return save;
 }

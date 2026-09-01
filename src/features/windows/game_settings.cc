@@ -1430,7 +1430,11 @@ void GameSettings::DrawBourgeonGraphics() {
   ImGui::Spacing();
   mui::SeparatorText(i18n::Tr("Ajouts de Bourgeon"));
 
-  if (auto* screen_fx = Bourgeon::Instance().screen_fx()) screen_fx->DrawSettings();
+  if (auto* screen_fx = Bourgeon::Instance().screen_fx()) {
+    if (screen_fx->DrawSettings()) {
+      if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
+    }
+  }
 
   // ⛔ PLUS DE CASE « sprites d'armes doubles » ICI. Le comportement est devenu
   // le DÉFAUT — une arme porte son sprite, main gauche comprise — donc il n'y a

@@ -172,23 +172,25 @@ void StaffTools::OnRenderUI() {
 
   // Le fantôme au GID négatif — même sujet que le contour ci-dessus, puisqu'on
   // le DÉBUSQUE avec, et corrigé au même endroit du client.
-  pick_quad::DrawSettings();
+  if (pick_quad::DrawSettings()) Persist();
 
   mui::SeparatorText(i18n::Tr("Noms des entités"));
-  if (auto* entity_names = Bourgeon::Instance().entity_names())
-    entity_names->DrawSettings();
+  if (auto* entity_names = Bourgeon::Instance().entity_names()) {
+    if (entity_names->DrawSettings()) Persist();
+  }
 
   // Cast en une action : la touche du sort suffit, la visée est résolue sous le
   // curseur et le lancement émis par les messages d'acteur du clic natif
   // (cf. quick_cast.h pour les deux approches écartées).
   mui::SeparatorText(i18n::Tr("Quick cast"));
-  if (auto* quick_cast = Bourgeon::Instance().quick_cast())
-    quick_cast->DrawSettings();
+  if (auto* quick_cast = Bourgeon::Instance().quick_cast()) {
+    if (quick_cast->DrawSettings()) Persist();
+  }
 
   // Fond neutre pour les captures d'écran : repeint le terrain d'une couleur unie
   // sans toucher à sa géométrie (l'occlusion reste correcte).
   mui::SeparatorText(i18n::Tr("Fond de capture"));
-  ground_paint::DrawSettings();
+  if (ground_paint::DrawSettings()) Persist();
 
   // ── Sprites d'armes doubles ────────────────────────────────────────────────
   // ⚠ CE N'EST PLUS UN RÉGLAGE DE JOUEUR. Le comportement est devenu le défaut —
@@ -212,8 +214,9 @@ void StaffTools::OnRenderUI() {
   // Enregistrement d'une zone de l'écran en GIF animé : de quoi illustrer un
   // tutoriel avec ce que le joueur verra vraiment, interface Bourgeon comprise.
   mui::SeparatorText(i18n::Tr("Enregistrer une zone (GIF)"));
-  if (auto* zone_recorder = Bourgeon::Instance().zone_recorder())
-    zone_recorder->DrawSettings();
+  if (auto* zone_recorder = Bourgeon::Instance().zone_recorder()) {
+    if (zone_recorder->DrawSettings()) Persist();
+  }
 
   // ── Journal Bourgeon ───────────────────────────────────────────────────────
   // Remplace la console Windows : tout ce qui passe par LogInfo/LogDiag/LogError

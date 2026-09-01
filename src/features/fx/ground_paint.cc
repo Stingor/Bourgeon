@@ -213,7 +213,7 @@ void EnsureInstalled() {
           reinterpret_cast<uint8_t*>(&Hooked_DrawTerrain)));
 }
 
-void DrawSettings() {
+bool DrawSettings() {
   bool changed = ro::RoCheckbox(i18n::Tr("Sol uni (fond de capture)"), &g_enabled);
   if (ImGui::IsItemHovered())
     ImGui::SetTooltip("%s", i18n::Tr("Repeint tout le terrain .gnd d'une couleur unie, sans toucher au reste\n"
@@ -237,9 +237,7 @@ void DrawSettings() {
     if (ImGui::IsItemDeactivatedAfterEdit()) changed = true;
     ImGui::TextDisabled("%s", i18n::Tr("L'alpha est ignoré (la passe du sol est opaque)."));
   }
-  if (changed) {
-    if (auto* ui = Bourgeon::Instance().moonlight_ui()) ui->SaveSettings();
-  }
+  return changed;
 }
 
 }  // namespace ground_paint

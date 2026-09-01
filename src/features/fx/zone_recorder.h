@@ -66,7 +66,7 @@ class ZoneRecorder : public Plugin {
   // Staff Tools appelle sans argument et garde le curseur « Largeur max » nu ;
   // la section « Gameplay » du panneau joueur passe true et propose trois
   // tailles nommées à la place — même champ dessous, les vues restent d'accord.
-  void DrawSettings(bool player_view = false);
+  bool DrawSettings(bool player_view = false);
 
   // ── Accès pour la persistance (moonlight_ui) ──────────────────────────────
   int& zone_x()   { return zone_x_; }

@@ -209,7 +209,7 @@ class QuickCast : public Plugin {
   // Panneau de configuration — le MÊME pour les deux fenêtres qui l'affichent
   // (Staff Tools et la section « Gameplay » du panneau joueur) : c'est le DROIT
   // qui change les bornes et les textes (IsStaff), pas la fenêtre.
-  void DrawSettings();
+  bool DrawSettings();
 
   // Accesseurs pour la persistance (bourgeon_settings.yaml via MoonlightUi).
   bool& ground_enabled() { return ground_enabled_; }

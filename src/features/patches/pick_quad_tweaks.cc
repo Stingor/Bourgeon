@@ -216,11 +216,11 @@ unsigned int negative_gid_hits() {
 }
 bool installed() { return g_installed; }
 
-void DrawSettings() {
+bool DrawSettings() {
   if (!g_installed) {
     ImGui::TextDisabled(
         "%s", i18n::Tr("Zones cliquables : détour non posé (client inattendu)."));
-    return;
+    return false;  // rien n'a pu être réglé : rien à persister
   }
 
   bool changed =
@@ -262,9 +262,7 @@ void DrawSettings() {
   else
     ImGui::TextDisabled(i18n::Tr("Zones rétrécies : %u"), hits);
 
-  if (changed) {
-    if (auto* ui = Bourgeon::Instance().moonlight_ui()) ui->SaveSettings();
-  }
+  return changed;
 }
 
 }  // namespace pick_quad

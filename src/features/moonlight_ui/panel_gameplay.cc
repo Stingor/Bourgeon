@@ -248,16 +248,18 @@ void MoonlightUi::DrawGameplayPanel() {
 
   if (gameplay_nav == kGpTargeting) DrawTargetingSettings();
   if (gameplay_nav == kGpQuickCast) {
-    if (auto* quick_cast = Bourgeon::Instance().quick_cast())
-      quick_cast->DrawSettings();
-    else
+    if (auto* quick_cast = Bourgeon::Instance().quick_cast()) {
+      if (quick_cast->DrawSettings()) SaveSettings();
+    } else {
       ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
+    }
   }
   if (gameplay_nav == kGpZoneRecorder) {
-    if (auto* zone_recorder = Bourgeon::Instance().zone_recorder())
-      zone_recorder->DrawSettings(/*player_view=*/true);
-    else
+    if (auto* zone_recorder = Bourgeon::Instance().zone_recorder()) {
+      if (zone_recorder->DrawSettings(/*player_view=*/true)) SaveSettings();
+    } else {
       ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
+    }
   }
   if (gameplay_nav == kGpAfkScreen) DrawAfkScreenSettings();
   if (gameplay_nav == kGpItemDropArc) DrawItemDropArcSettings();

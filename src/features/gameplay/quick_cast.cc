@@ -625,7 +625,7 @@ void QuickCast::OnModeSwitch(ModeMgr::ModeType mode_type,
   arm_vk_     = 0;
 }
 
-void QuickCast::DrawSettings() {
+bool QuickCast::DrawSettings() {
   bool save = false;
   if (ro::RoCheckbox(i18n::Tr("Sort de zone : cast direct sous la souris"),
                      &ground_enabled_))
@@ -715,7 +715,5 @@ void QuickCast::DrawSettings() {
     }
   }
 
-  if (save) {
-    if (auto* ui = Bourgeon::Instance().moonlight_ui()) ui->SaveSettings();
-  }
+  return save;
 }

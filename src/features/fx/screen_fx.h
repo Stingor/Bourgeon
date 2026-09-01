@@ -61,7 +61,7 @@ class ScreenFx : public Plugin {
 
   // Renders the graphics-tweak controls (no window of its own); hosted by
   // moonlight_ui inside its "Graphismes" section.
-  void DrawSettings();
+  bool DrawSettings();
 
   // Always-on FPS / frametime overlay (its own small window).
   void OnRenderUI() override;

@@ -32,6 +32,6 @@ bool&  enabled();
 float* color();
 
 // Contrôles ImGui (section « Staff Tools » de MoonlightUi).
-void DrawSettings();
+bool DrawSettings();
 
 }  // namespace ground_paint

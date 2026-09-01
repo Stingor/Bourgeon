@@ -123,7 +123,7 @@ void PatchFloatRO(float* addr, float value) {
 
 }  // namespace
 
-void ScreenFx::DrawSettings() {
+bool ScreenFx::DrawSettings() {
   bool apply = false;  // push to the renderer this frame (live preview)
   bool save  = false;  // persist to disk (on release, not every drag frame)
   auto slider = [&](const char* label, float* v, float lo, float hi) {
@@ -271,9 +271,7 @@ void ScreenFx::DrawSettings() {
   // code but intentionally NOT exposed in the UI (disabled by default).
 
   if (apply) Apply();
-  if (save) {
-    if (auto* ui = Bourgeon::Instance().moonlight_ui()) ui->SaveSettings();
-  }
+  return save;
 }
 
 // Le texte de l'overlay, avec son ombre portée.
