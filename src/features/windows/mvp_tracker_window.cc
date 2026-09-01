@@ -1304,6 +1304,21 @@ void MvpTrackerWindow::DrawTable() {
     if (specs->SpecsCount > 0) {
       const ImGuiTableColumnSortSpecs& spec = specs->Specs[0];
       const bool asc = spec.SortDirection == ImGuiSortDirection_Ascending;
+
+      // 🔴 On trie sur le nom AFFICHÉ, jamais sur `slot.name`. Celui du
+      // catalogue est VIDE pour les quatre créneaux scriptés — Bio Lab 3 et 4,
+      // Lord of Death, Thanatos — parce que leur monstre change à chaque
+      // cycle : c'est `SlotLabel` qui leur donne un nom, depuis la table d'art
+      // du client. Comparer le champ brut mettait donc ces quatre-là en tête
+      // de toute la table (la chaîne vide précède tout), à un endroit où rien
+      // ne les explique.
+      //
+      // ⚠ Deux appels vivants dans la même expression : c'est permis parce que
+      // `WireToUtf8` écrit dans un anneau de HUIT tampons. Avec un tampon
+      // unique, on comparerait la chaîne à elle-même et le tri serait muet.
+      auto by_label = [&](const mvp::Slot* a, const mvp::Slot* b) {
+        return std::strcmp(SlotLabel(*a, nullptr), SlotLabel(*b, nullptr));
+      };
       std::stable_sort(
           rows.begin(), rows.end(),
           [&](const mvp::Slot* a, const mvp::Slot* b) {
@@ -1315,7 +1330,7 @@ void MvpTrackerWindow::DrawTable() {
                 const bool fa = state->IsFavorite(a->slot_id);
                 const bool fb = state->IsFavorite(b->slot_id);
                 if (fa != fb) return asc ? fa : fb;
-                cmp = std::strcmp(a->name, b->name);  // départage stable
+                cmp = by_label(a, b);  // départage stable
                 break;
               }
               case 4:
@@ -1346,7 +1361,7 @@ void MvpTrackerWindow::DrawTable() {
                 break;
               }
               default:
-                cmp = std::strcmp(a->name, b->name);
+                cmp = by_label(a, b);
                 break;
             }
             return asc ? cmp < 0 : cmp > 0;

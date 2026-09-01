@@ -296,7 +296,17 @@ void MvpTracker::ReportManual(uint16_t slot_id, int64_t kill_time,
   // « x,y|Pseudo », les deux moitiés facultatives. Le nom vient EN DERNIER et
   // le serveur ne l'analyse pas : un pseudo peut porter n'importe quoi sauf la
   // barre qui le précède.
-  char extra[40] = {};
+  //
+  // 🔴🔴 LE PSEUDO RESTE EN UTF-8 ICI. `Send` convertit DÉJÀ tout son champ
+  // texte vers l'encodage du fil — le convertir une seconde fois relisait des
+  // octets CP949 comme de l'UTF-8 et détruisait le nom. Le piège est invisible
+  // tant que tous les pseudos sont ASCII, qui traverse les deux conversions
+  // sans bouger : c'est exactement le motif « la conversion appartient au
+  // PRODUCTEUR, et à lui seul ».
+  //
+  // D'où la taille : un pseudo de 23 caractères peut peser jusqu'à ~69 octets
+  // en UTF-8 avant que `Send` ne le ramène à la code-page.
+  char extra[96] = {};
   char* p = extra;
   size_t left = sizeof(extra);
 
@@ -305,12 +315,8 @@ void MvpTracker::ReportManual(uint16_t slot_id, int64_t kill_time,
                                 static_cast<int>(tomb_y));
     if (n > 0 && static_cast<size_t>(n) < left) { p += n; left -= n; }
   }
-  if (shared_by_utf8 != nullptr && shared_by_utf8[0] != '\0') {
-    // 🔴 Le pseudo repart dans la code-page du FIL : il en vient (une ligne de
-    // chat), il y retourne. Le serveur le range dans un champ de NAME_LENGTH
-    // qu'il renverra tel quel au reste du groupe.
-    std::snprintf(p, left, "|%s", ro::Utf8ToWire(shared_by_utf8));
-  }
+  if (shared_by_utf8 != nullptr && shared_by_utf8[0] != '\0')
+    std::snprintf(p, left, "|%s", shared_by_utf8);
 
   Send(10, slot_id, static_cast<uint32_t>(kill_time),
        extra[0] != '\0' ? extra : nullptr);

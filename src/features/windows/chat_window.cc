@@ -4727,10 +4727,26 @@ void ChatWindow::DrawLines(const Channel& channel) {
       ImU32 live_col = 0;
       if (run.kind == Run::kMvp) {
         const links::Target mvp = links::FromMvpTag(run.mvp_payload.c_str());
-        if (mvp.valid()) {
+        if (mvp.valid() && links::MvpWindowPassed(mvp)) {
+          live_col = kLinkColSpent;
+          // 🔴 Un MOT, pas seulement une teinte. Une couleur éteinte ne se lit
+          // que si l'on sait qu'elle veut dire quelque chose — et elle ne
+          // survit ni à une capture d'écran commentée, ni à un daltonien.
+          //
+          // ⚠ La marque va DANS le crochet fermant. Posée après, elle se
+          // détacherait du lien et se lirait comme un mot de la phrase de
+          // celui qui l'a écrite.
           live_text = mvp.label;
-          if (links::MvpWindowPassed(mvp)) live_col = kLinkColSpent;
+          const char* mark = i18n::Tr(" · passé");
+          if (!live_text.empty() && live_text.back() == ']')
+            live_text.insert(live_text.size() - 1, mark);
+          else
+            live_text += mark;
         }
+        // Fenêtre encore ouverte : `live_text` reste vide et le fragment garde
+        // son texte d'origine. Le recomposer n'apprendrait rien — `MvpLabel` ne
+        // dépend que du corps de la balise, jamais de l'heure qu'il est, donc
+        // il rendrait mot pour mot la même chaîne.
       }
       const ImU32 col = live_col != 0
                             ? live_col
