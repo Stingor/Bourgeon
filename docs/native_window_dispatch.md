@@ -199,6 +199,12 @@ table du dépôt ? (Les fiches de mémoire ne comptent pas — quelques fenêtre
 - **121** sont déjà outillées ou décrites.
 - **148 ne le sont pas.**
 
+🔴 **Ce tableau dit ce qui EXISTE, pas ce qui TOURNE.**
+[unexplored_systems.md](unexplored_systems.md) trie ces mêmes familles selon ce
+que le serveur Moonlight émet réellement : trois d'entre elles (barter market,
+roulette, carte de présence) sont **éteintes par `conf/import/`** et ne sont donc
+pas des chantiers.
+
 Les **fonctionnalités entières** que le dépôt n'a jamais approchées, par thème :
 
 | thème | ids | classes |
@@ -207,7 +213,7 @@ Les **fonctionnalités entières** que le dépôt n'a jamais approchées, par th
 | **Barter market** | 334, 335, 341, 342 | `UIBartermarketWnd`, `UIBarterItemPurchaseWnd`, `UIExpandedBartermarketWnd`, `UIExpandedBarterItemPurchaseWnd` |
 | **Rune system** | 361, 362 | `UIRuneSystemWnd`, `UIRuneSystem_DecomResultWnd` |
 | **Lapine (boîtes)** | 290, 302 | `UILapineBoxWnd`, `UILapineUpgradeBoxWnd` |
-| **File d'attente d'instance** | 157, 209, 210, 211 | `UIEntryQueueWnd`, `…StandByWnd`, `…RequestWnd`, `…HelpWnd` |
+| ~~**File d'attente d'instance**~~ → **file d'attente de BATTLEGROUND** ✅ relevée | 157, 209, 210, 211 | `UIEntryQueueWnd`, `…StandByWnd`, `…RequestWnd`, `…HelpWnd` — voir [entry_queue_re.md](entry_queue_re.md). 🔴 Le nom « instance » était faux : c'est le battleground, et c'est **vivant sur Moonlight** |
 | **Recherche de groupe** | 164, 168, 169, 170, 173, 323, 324, 326, 345 | `UISeekPartyWnd`, `UISeekPartyMBWnd`, `UISeekPartyListWnd`, `UIJobListWnd`, `UIPartyBookingHelpWnd`, `UIRegisterPartyWnd`, `UIAdvenPartyBoardWnd`, `UIRequestJoinPartyWnd`, `UIApplyForPartyWnd` |
 | **Anti-macro / captcha** | 284, 286, 287, 288, 359 | `UICaptchaRegisterWnd`, `UIMacroReporterWnd`, `UIMacroUserInfoWnd`, `UICaptchaPreviewWnd`, `UIMacroBlackListCheckWnd` |
 | **Replay** | 186, 187, 198 | `UISelectReplayDataWnd`, `UIReplayControlWnd`, `UIReplayRECControlWnd` |
@@ -641,11 +647,11 @@ dans ces répertoires. `**jamais citee**` = ni l'un ni l'autre.
 | 328 | 0x148 | UICheckAttendanceWnd | 0x101e6cc | 0x7a24f0 |  | 0xd0 | **jamais citee** |
 | 332 | 0x14C | UIDisconnectedServerMsgWnd | 0x103367c | 0x88d680 |  | 0xb8 | **jamais citee** |
 | 333 | 0x14D | UINoteWnd | 0x103a474 | 0x90cb90 |  | 0xb8 | **jamais citee** |
-| 334 | 0x14E | UIBartermarketWnd | 0x1027a9c | 0x8088a0 | +0x4F188 | 0x110 | **jamais citee** |
-| 335 | 0x14F | UIBarterItemPurchaseWnd | 0x1027c50 | 0x808840 | +0x4F18C | 0x104 | **jamais citee** |
+| 334 | 0x14E | UIBartermarketWnd | 0x1027a9c | 0x8088a0 | +0x4F188 | 0x110 | docs/ ([barter](barter_market_re.md)) |
+| 335 | 0x14F | UIBarterItemPurchaseWnd | 0x1027c50 | 0x808840 | +0x4F18C | 0x104 | docs/ ([barter](barter_market_re.md)) |
 | 340 | 0x154 | UIAccountLimitedToolWnd | 0x103a624 | 0x90c690 |  | 0x11c | **jamais citee** |
-| 341 | 0x155 | UIExpandedBartermarketWnd | 0x1027dd8 | 0x80d410 | +0x4F190 | 0xd4 | **jamais citee** |
-| 342 | 0x156 | UIExpandedBarterItemPurchaseWnd | 0x1027f8c | 0x80d2f0 | +0x4F194 | 0xdc | **jamais citee** |
+| 341 | 0x155 | UIExpandedBartermarketWnd | 0x1027dd8 | 0x80d410 | +0x4F190 | 0xd4 | docs/ ([barter](barter_market_re.md)) |
+| 342 | 0x156 | UIExpandedBarterItemPurchaseWnd | 0x1027f8c | 0x80d2f0 | +0x4F194 | 0xdc | docs/ ([barter](barter_market_re.md)) |
 | 343 | 0x157 | UIGradeEnchantWnd | 0x101f63c | 0x7af350 |  | 0x228 | **jamais citee** |
 | 344 | 0x158 | UIChangeMaterialWnd | 0xfdab90 | 0x5be6f0 |  | 0x220 | **jamais citee** |
 | 345 | 0x159 | UIApplyForPartyWnd | 0x1019f68 | 0x780a40 | +0x4F1A4 | 0x104 | **jamais citee** |
