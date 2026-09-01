@@ -412,6 +412,7 @@ void MenuIcons::BuildIconList() {
     Icon ic;
     ic.name = kCashShopIconName;
     ic.dir = kCashShopIconDir;
+    ic.has_press = false;  // un seul bitmap pour les trois états (cf. plus haut)
     ic.wnd_id = uiwnd::kUInCash_CallWnd;
     ic.cmd_id = kCashShopCmdId;
     ic.msg_id = kCashShopMsgId;
@@ -725,8 +726,10 @@ void MenuIcons::OnRenderUI() {
 
     // L'état ENFONCÉ, chargé une fois pour toutes dès la première frame : à la
     // différence du badge, il ne dépend d'aucun événement, et l'attendre du
-    // premier clic ferait manquer le retour visuel de ce clic-là.
-    EnsureBitmap(ic.pressed, ic.dir, ic.name, "_press");
+    // premier clic ferait manquer le retour visuel de ce clic-là. On ne le
+    // demande qu'aux icônes qui en ont un : un fichier absent, c'est une
+    // recherche GRF pour rien et une erreur du natif dans la console.
+    if (ic.has_press) EnsureBitmap(ic.pressed, ic.dir, ic.name, "_press");
     // Icône signalée : on charge son bitmap « _new » (celui qui porte le N) à la
     // première frame où le natif l'allume — et son état enfoncé avec, pour la
     // même raison que ci-dessus.

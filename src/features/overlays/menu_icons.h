@@ -78,6 +78,11 @@ class MenuIcons : public Plugin {
     int         hk_cmd = -1;
     int         x = 0, y = 0;   // screen position
     bool        hidden = false; // user-hidden via the MoonlightUi list
+    // Cette icône a-t-elle un bitmap d'état enfoncé dans le jeu ? Faux pour le
+    // bouton du cash shop, dont l'art unique sert les trois états. Le demander
+    // quand même coûterait une recherche GRF infructueuse ET une ligne d'erreur
+    // « Resource File Loading fail » du natif à chaque tentative.
+    bool        has_press = true;
     // Les quatre bitmaps. `normal` porte AUSSI la taille de référence de l'icône
     // (position, aimantage, clamp) : les trois autres ne sont que des états.
     Bitmap      normal;
