@@ -84,6 +84,20 @@ class DpsMeter : public Plugin {
   void UpdatePlotSlot(DWORD now);
   void FlushChatQueue();
 
+  // ── Peinture ───────────────────────────────────────────────────────────────
+  // Le compteur ne pose aucun widget : ses trois bandes sont peintes dans la
+  // draw list de la fenêtre. C'est ce que demande un HUD — on le lit d'un coup
+  // d'œil, comme une jauge, pas comme une liste de libellés — et ce qu'un
+  // `PlotLines` ne sait pas donner (ni aire, ni repère de pic, ni tête de
+  // courbe).
+  //
+  // 🔴 Chacune AVANCE le curseur ImGui d'un item de sa hauteur (Dummy ou
+  // InvisibleButton) : sans quoi la fenêtre ne connaîtrait pas la taille de son
+  // contenu, et le redimensionnement comme le scroll tomberaient à côté.
+  void DrawHeader(float width, float height, DWORD now);
+  void DrawGraph(float width, float height);
+  void DrawStatsRow(float width, float height, DWORD now);
+
   // Messages queued from OnRecvPacket to avoid calling UIWindowMgr::SendMsg
   // from within the recv dispatch loop (causes freeze under heavy AoE spam).
   // Drained in OnRenderUI() — at most kMaxChatFlushPerFrame per frame.
