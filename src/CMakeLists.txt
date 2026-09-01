@@ -99,6 +99,8 @@ set(BOURGEON_FILES
 	"features/windows/item_viewer_base.h"
 	"features/windows/item_desc_window.cc"
 	"features/windows/item_desc_window.h"
+	"features/windows/item_probability.cc"
+	"features/windows/item_probability.h"
 	"features/windows/macro_window.cc"
 	"features/windows/macro_window.h"
 	"features/windows/monster_info_window.cc"

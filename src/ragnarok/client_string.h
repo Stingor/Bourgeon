@@ -2,10 +2,13 @@
 
 // ── La `std::string` du CLIENT ───────────────────────────────────────────────
 //
-// Le client est bâti avec la STL de MSVC : un champ `std::string` occupe 0x1C
+// Le client est bâti avec la STL de MSVC : un champ `std::string` occupe 0x18
 // octets — seize qui portent SOIT le texte court, SOIT un pointeur vers le tas,
 // puis la taille (+0x10) et la capacité (+0x14). C'est la CAPACITÉ qui tranche :
 // au-delà de quinze, le texte est ailleurs.
+//
+// ⚠ 0x18 est la taille du CHAMP, pas toujours son pas dans une structure : un
+// `double` qui le suit s'aligne sur huit et laisse quatre octets de bourrage.
 //
 // Ces quatre lignes de décodage étaient recopiées ONZE fois, sous six noms —
 // CopyClientString(), ReadStdStringSEH(), ReadClientString(), StdStringData(),
@@ -29,9 +32,11 @@
 
 namespace rag::clientstr {
 
-constexpr int      kSizeOff = 0x10;  // _Mysize, relatif au CHAMP
-constexpr int      kCapOff  = 0x14;  // _Myres
-constexpr uint32_t kSsoMax  = 16;    // capacité >= 16 ⇒ le texte est sur le tas
+constexpr int      kSizeOff   = 0x10;  // _Mysize, relatif au CHAMP
+constexpr int      kCapOff    = 0x14;  // _Myres
+constexpr uint32_t kSsoMax    = 16;    // capacité >= 16 ⇒ le texte est sur le tas
+constexpr int      kFieldSize = 0x18;  // le champ ENTIER : pas d'un vector, offset
+                                       // du membre suivant dans une structure
 
 // Longueur annoncée. À n'appeler que sous la protection de l'appelant.
 inline uint32_t Size(const void* field) {

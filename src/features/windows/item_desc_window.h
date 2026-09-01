@@ -290,6 +290,10 @@ class ItemDescWindow : public Plugin {
   // Onglets d'infos techniques (émis dans le TabBar de la fenêtre, après
   // l'onglet Description). Aucune requête tant qu'un onglet data n'est pas actif.
   void RenderTechTabs(const DescWindow& w);
+  // Corps de l'onglet « Probabilités » : ce que rend une boîte / une branche.
+  // Donnée du CLIENT (packageitem.lub), aucun paquet — l'onglet ne dépend donc
+  // pas de la couche serveur. Lue seulement quand l'onglet est ouvert.
+  void RenderProbabilityTab(uint32_t item_id);
   // Rend une table de sources de drop (filtre + tri + liens). show_type ajoute
   // une colonne mécanisme (drop normal / MVP reward), utile pour le bucket MVP.
   void RenderDropTable(const TechData& td, const char* table_id,

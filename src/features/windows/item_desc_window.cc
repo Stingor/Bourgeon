@@ -29,6 +29,7 @@
 #include "features/systems/bug_report.h"  // BugReport::ItemContext/SkillContext
 #include "features/windows/cashshop_window.h"  // disponibilité au vote shop
 #include "features/windows/craft_atlas.h"      // l'étiquette « Craft » y renvoie
+#include "features/windows/item_probability.h"  // contenu d'une boîte / branche
 #include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB
 #include "imgui.h"
 #include "ui/imgui_escape.h"
@@ -119,7 +120,7 @@ constexpr uintptr_t kSkillBoxBody = 0xb8;    // ptr box corps
 constexpr uintptr_t kSkillBoxHead = 0x108;   // ptr box id/max level
 constexpr uintptr_t kRichLinesBegin = 0x88;  // vector<std::string> begin
 constexpr uintptr_t kRichLinesEnd   = 0x8c;  // vector<std::string> end
-constexpr int       kStdStringSize  = 0x18;  // taille d'un std::string MSVC élément
+constexpr int       kStdStringSize  = rag::clientstr::kFieldSize;  // pas d'un élément
 
 // Recette texture (identique à skill_bar / menu_icons).
 
@@ -141,13 +142,6 @@ using BuildName_t = int(__thiscall*)(void*, void*, int*, GVec*, char**, size_t*,
                                      char**, char, char);
 // OnMsg des fenêtres desc (vtable+0x94) : __thiscall(this, p1, msg, p3, p4, p5, p6).
 using DescOnMsg_t    = int   (__thiscall*)(void*, int, int, int, int, int, int);
-constexpr int kCmdProbability = 0x157;  // « View Probability Info » -> wnd 0x271c
-// Éligibilité du bouton Probabilité : l'item a-t-il un enregistrement dans la DB
-// de probabilité (DAT_01255108, chargée depuis packageitem.lub/simplecashshop..).
-// ItemProbabilityDB_Fetch(mgr, out, id) __thiscall : out[0]=record, out[1].byte=found.
-constexpr uintptr_t kProbDbPtr = 0x01255108;  // ptr vers le mgr (lazy-new)
-constexpr uintptr_t kProbFetch = 0x0069f480;  // ItemProbabilityDB_Fetch
-using ProbFetch_t = void(__thiscall*)(void*, int*, int);
 // Boutons « Read » / « Auto Read » des LIVRES (enfants natifs +0x1b8/+0x1bc de la
 // fenêtre desc, libellés msg 0x50e/0x50f). Le cmd ouvre book\<id>.txt via
 // ResFileStream puis MakeWindow(0x6a) + OnMsg 0x5e (RE 2026-07-27).
@@ -1027,20 +1021,6 @@ void SelectableColoredText(const char* id, const char lines[][kLineLen],
     if (bx.link >= 0)
       dl->AddLine(ImVec2(bx.x0, bx.y + fsz), ImVec2(bx.x1, bx.y + fsz), bx.col);
   }
-}
-
-// L'item a-t-il des données de probabilité (=> bouton Probabilité éligible) ?
-// SEH (POD only). false si la DB n'est pas encore allouée / id absent.
-bool ItemHasProbability(uint32_t id) {
-  bool found = false;
-  __try {
-    void* mgr = *reinterpret_cast<void**>(kProbDbPtr);
-    if (!mgr) return false;
-    int out[2] = {0, 0};
-    reinterpret_cast<ProbFetch_t>(kProbFetch)(mgr, out, static_cast<int>(id));
-    found = (out[1] & 0xff) != 0;
-  } __except (EXCEPTION_EXECUTE_HANDLER) { found = false; }
-  return found;
 }
 
 // L'item est-il un LIVRE lisible ET possédé (=> boutons « Lire » éligibles) ?
@@ -1989,6 +1969,150 @@ void ItemDescWindow::RenderDropTable(const TechData& td, const char* table_id,
   ImGui::TextColored(ImVec4(0.70f, 0.55f, 0.20f, 1.0f),
                      "%s", i18n::Tr("Note : les spawns d'instance ne sont pas encore "
                            "comptés/scannés."));
+}
+
+// Ancre du menu contextuel des liens de l'onglet « Probabilités ». Séparée des
+// deux autres : le menu appartient à la pile d'ids qui l'a ouvert, et cet onglet
+// arme depuis l'intérieur d'une table.
+static links::MenuAnchor g_prob_menu;
+
+// ── Onglet « Probabilités » : ce que rend une boîte / une branche ────────────
+//
+// Remplace le bouton natif « View Probability Info » : sa fenêtre (0x271C) se
+// compose avant ImGui et passait sous la description. On relit la même donnée
+// (`itemprob`) et on la dessine ici, avec les liens du client — clic gauche sur
+// un objet REMPLACE l'objet affiché (convention d'une surface de description),
+// clic gauche sur un monstre ouvre sa fiche.
+void ItemDescWindow::RenderProbabilityTab(uint32_t item_id) {
+  const itemprob::Table* table = itemprob::Get(item_id);
+  if (!table) {
+    ImGui::TextDisabled("%s", i18n::Tr("Aucune table de probabilité pour cet objet."));
+    return;
+  }
+  const bool many_groups = table->groups.size() > 1;
+
+  // Filtre par nom, retenu PAR OBJET : passer d'une boîte à l'autre ne doit pas
+  // hériter du filtre de la précédente.
+  static std::unordered_map<uint32_t, ImGuiTextFilter> s_filters;
+  ImGuiTextFilter& filter = s_filters[item_id];
+  ImGui::SetNextItemWidth(ro::Px(180.0f));
+  filter.Draw(i18n::Tr("Filtrer (contenu)##prob"));
+
+  // Vue à plat : chaque ligne garde son groupe, dont dépend le libellé du tirage.
+  struct Row { const itemprob::Entry* e; const itemprob::Group* g; };
+  std::vector<Row> view;
+  view.reserve(table->entry_count);
+  for (const itemprob::Group& g : table->groups)
+    for (const itemprob::Entry& e : g.entries)
+      if (filter.PassFilter(e.name.c_str())) view.push_back({&e, &g});
+
+  ImGui::SameLine();
+  ImGui::TextDisabled(i18n::Tr("%zu / %zu entrée(s)"), view.size(),
+                      table->entry_count);
+
+  const int columns = many_groups ? 3 : 2;
+  const ImGuiTableFlags tf =
+      ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
+      ImGuiTableFlags_Sortable | ImGuiTableFlags_ScrollY |
+      ImGuiTableFlags_SizingStretchProp;
+  ImGui::PushStyleColor(ImGuiCol_TableHeaderBg, IM_COL32(206, 198, 172, 255));
+  // Hauteur IMPOSÉE : `ScrollY` sans elle prendrait toute la place restante, or
+  // cet onglet vit dans une fenêtre qui défile déjà — deux barres imbriquées et
+  // une hauteur indéterminée. Bornée, la table garde son en-tête figé et défile
+  // seule, ce qu'il faut pour un millier de lignes.
+  if (ImGui::BeginTable("##probtable", columns, tf,
+                        ImVec2(0.0f, ro::Px(260.0f)))) {
+    ImGui::TableSetupScrollFreeze(0, 1);
+    ImGui::TableSetupColumn(i18n::Tr("Contenu"), ImGuiTableColumnFlags_WidthStretch);
+    ImGui::TableSetupColumn(i18n::Tr("Chance"),
+                            ImGuiTableColumnFlags_WidthFixed |
+                                ImGuiTableColumnFlags_PreferSortDescending |
+                                ImGuiTableColumnFlags_DefaultSort,
+                            ro::Px(80.0f));
+    if (many_groups)
+      ImGui::TableSetupColumn(i18n::Tr("Tirage"), ImGuiTableColumnFlags_WidthFixed,
+                              ro::Px(60.0f));
+    ImGui::TableHeadersRow();
+
+    if (ImGuiTableSortSpecs* sort = ImGui::TableGetSortSpecs()) {
+      if (sort->SpecsCount > 0) {
+        const ImGuiTableColumnSortSpecs& sp = sort->Specs[0];
+        const bool asc = sp.SortDirection == ImGuiSortDirection_Ascending;
+        std::sort(view.begin(), view.end(), [&](const Row& a, const Row& b) {
+          int c;
+          if (sp.ColumnIndex == 1) {
+            c = (a.e->pct < b.e->pct) ? -1 : (a.e->pct > b.e->pct ? 1 : 0);
+          } else if (sp.ColumnIndex == 2) {
+            c = (a.g->id < b.g->id) ? -1 : (a.g->id > b.g->id ? 1 : 0);
+          } else {
+            c = _stricmp(a.e->name.c_str(), b.e->name.c_str());
+          }
+          return asc ? c < 0 : c > 0;
+        });
+      }
+    }
+
+    // Un millier de lignes pour une seule boîte : sans clipper, chaque frame
+    // dessinerait mille liens dont vingt sont visibles.
+    ImGuiListClipper clipper;
+    clipper.Begin(static_cast<int>(view.size()));
+    while (clipper.Step()) {
+      for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i) {
+        const itemprob::Entry& e = *view[static_cast<size_t>(i)].e;
+        const itemprob::Group& g = *view[static_cast<size_t>(i)].g;
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        // 🔴 Un NOM d'abord, puis le rang : `TableHeadersRow` pose déjà
+        // `PushID(column_n)` au même étage, et un rang scellé par son seul index
+        // rendrait l'identifiant de la colonne de même numéro. Le conflit dort
+        // jusqu'au jour où un libellé coïncide — ici un objet qui s'appellerait
+        // « Chance » entrerait en collision avec l'en-tête de la colonne 1.
+        ImGui::PushID("probrow");
+        ImGui::PushID(i);
+        char shown[160];
+        if (e.id != 0)
+          std::snprintf(shown, sizeof(shown), "%s (%u)", e.name.c_str(), e.id);
+        else
+          std::snprintf(shown, sizeof(shown), "%s", e.name.c_str());
+        if (e.id == 0) {
+          // Libellé sans balise : rien vers quoi pointer.
+          ImGui::TextUnformatted(shown);
+        } else if (e.is_mob) {
+          // Le rang n'est pas dans la table du client : l'aperçu du lien le dira.
+          links::Label(links::FromMob(e.id, 0, ro::LocalToUtf8(e.name.c_str())),
+                       shown, g_prob_menu);
+        } else {
+          const links::Target t =
+              links::FromItemId(e.id, ro::LocalToUtf8(e.name.c_str()));
+          switch (links::LabelHit(t, shown, links::LabelOpts().Icon(e.id))) {
+            case links::Gesture::kDescription: pending_card_open_ = e.id; break;
+            case links::Gesture::kChatLink:    links::PostToChat(t); break;
+            case links::Gesture::kMenu:        g_prob_menu.Arm(t); break;
+            default: break;
+          }
+        }
+        ImGui::PopID();
+        ImGui::PopID();
+        ImGui::TableNextColumn();
+        ImGui::Text("%.4f%%", e.pct);
+        if (ImGui::IsItemHovered() && g.total > 0)
+          ImGui::SetTooltip(i18n::Tr("%d chances sur %d"), e.weight, g.total);
+        if (many_groups) {
+          ImGui::TableNextColumn();
+          if (g.id == 0)
+            ImGui::TextDisabled("%s", i18n::Tr("garanti"));
+          else
+            ImGui::Text("%d", g.id);
+        }
+      }
+    }
+    ImGui::EndTable();
+  }
+  ImGui::PopStyleColor();  // TableHeaderBg
+  // 🔴 L'ouverture du menu se fait ICI, hors de la table : l'identifiant d'un
+  // popup se hache avec la pile d'ids, et le `PushID` de la ligne rendrait
+  // introuvable ce que `BeginPopup` cherche à ce niveau.
+  g_prob_menu.Draw("##prob_menu");
 }
 
 // ── Rendu « éditeur » d'un script rAthena (pretty-print + coloration) ────────
@@ -3054,13 +3178,9 @@ void ItemDescWindow::RenderItemWindow() {
       }
     }
 
-    // Bouton « Probabilité » (rejoue le natif « View Probability Info » -> ouvre
-    // la fenêtre 0x271c des taux refine/enchant pour cet item).
-    if (ItemHasProbability(snap.id)) {
-      char pb[48];
-      std::snprintf(pb, sizeof(pb), i18n::Tr("Probabilités%s"), selId);
-      if (ro::RoSmallButton(pb)) CallDescButton(wnd, kCmdProbability);
-    }
+    // (Le bouton « Probabilités » a disparu : il rejouait le natif, dont la
+    // fenêtre se compose AVANT ImGui et passait donc sous la description. Son
+    // contenu est maintenant l'onglet « Probabilités » de cette fenêtre.)
 
     // Boutons « Lire » / « Lecture auto » des LIVRES (rejouent les 2 boutons
     // natifs +0x1b8/+0x1bc : ouvrent book\<id>.txt dans la fenêtre livre 0x6a).
@@ -3377,6 +3497,13 @@ void ItemDescWindow::RenderItemWindow() {
       } else {
         draw_col("##seltext_single", nullptr, iicon, ie, item_, iwnd);
       }
+      ImGui::EndTabItem();
+    }
+    // Onglet « Probabilités » : seulement pour les objets qui ont une table
+    // (boîtes, albums, branches, sacs). Donnée du CLIENT -> émis avant les
+    // onglets serveur, et indépendant d'eux.
+    if (itemprob::Has(item_.id) && ImGui::BeginTabItem(i18n::Tr("Probabilités"))) {
+      RenderProbabilityTab(item_.id);
       ImGui::EndTabItem();
     }
     // Onglets drops de l'objet principal (item_). En comparaison, ce sont les
