@@ -9,8 +9,8 @@
 > ([bank_window.cc:70](../src/features/windows/bank_window.cc#L70)) qui rejoue
 > le blocage du barter étendu. Il était classé « mort » dans
 > [unexplored_systems.md](unexplored_systems.md) §3 sur le seul critère
-> `feature.barter: off`. **Le verdict tient, et §7 le prouve deux fois plutôt
-> qu'une.**
+> `feature.barter: off`. **Il est éteint aujourd'hui — par deux verrous, pas un
+> (§8) — mais il est PRÉVU : §8 dit ce qu'il faut allumer, et dans quel ordre.**
 
 ## 1. Ce que c'est
 
@@ -232,37 +232,106 @@ cases 335 et 342 et **émet les deux CZ**. C'est le seul chemin propre.
 lecture du routeur de fermeture, pas une observation. À vérifier au débogueur si
 le sujet est un jour réactivé.
 
-## 8. Côté Moonlight : mort, et deux fois plutôt qu'une
+## 8. Allumer le barter sur Moonlight — marche à suivre
 
-Le classement « mort » de [unexplored_systems.md](unexplored_systems.md)
-reposait sur la configuration seule. Il y a en fait **deux** verrous
-indépendants, et un troisième indice qui va dans le même sens :
+Aujourd'hui rien n'arrive au client, et **deux** verrous indépendants s'y
+opposent (pas un seul, comme le laissait croire le classement précédent) :
 
 1. **Configuration.** `conf/import/battle_conf.txt:590-591` pose
    `feature.barter: off` **et** `feature.barter_extended: off`, écrasant les
-   `on` de `conf/battle/feature.conf:126,130`. `BarterDatabase::loadingFinished`
-   sort alors immédiatement sur `ShowError("Barter system is not enabled.")`,
-   avant même de créer le moindre PNJ.
-2. **Base de données vide.** Moonlight a **redirigé** l'emplacement du fichier :
+   `on` de `conf/battle/feature.conf:126,130`.
+2. **La base est vide.** Moonlight a **redéplacé** le fichier :
    `BarterDatabase::getDefaultLocation()` (`src/map/npc.cpp:395-397`) rend
-   `"moon/barters.yml"` au lieu du chemin rAthena. Or `moon/barters.yml` fait
-   47 lignes dont 43 de licence et de commentaires : un `Header:` (`BARTER_DB`,
-   version 2) et **aucun `Body:`**. **Zéro PNJ barter déclaré.** Même en
-   rallumant les deux `feature.*`, la boucle de `loadingFinished` n'aurait rien
-   à parcourir — et donc pas même le `ShowError` du point 1.
-3. Les catalogues rAthena qui, eux, contiennent des barters
-   (`npc/re/merchants/barters/*.yml`, 9 fichiers) sont sous `re/` : Moonlight
-   est **pre-renewal** (`src/config/renewal.hpp:8` : `#define PRERE`).
+   **`moon/barters.yml`** au lieu du chemin rAthena. Ce fichier fait 47 lignes
+   dont 43 de licence : un `Header:` (`BARTER_DB`, version 2) et **aucun
+   `Body:`**. Zéro PNJ déclaré.
 
-⚠ Un signe que l'intention n'est pas totalement absente : la commande maison
-**`@shopsearch`** (`src/custom/atcommand.inc:2336-2360`) sait déjà lire un
-`NPCTYPE_BARTER` — elle va chercher les articles dans `barter_db` indexé par
-`exname`, et affiche « troc » ou « troc + Nz ». Ce code ne peut aujourd'hui
-jamais s'exécuter.
+⚠ Les catalogues rAthena qui contiennent des barters
+(`npc/re/merchants/barters/*.yml`, 9 fichiers) sont sous `re/`, or Moonlight est
+**pre-renewal** (`src/config/renewal.hpp:8`). Ils ne peuvent pas servir tels
+quels de source : ce sont des objets et des cartes de renewal.
 
-**Verdict inchangé : ne pas ouvrir ce chantier.** Le remettre en marche
-demanderait trois gestes serveur (deux `feature.*`, un `moon/barters.yml`
-peuplé, des PNJ) avant qu'une seule ligne de client serve à quelque chose.
+### Les trois gestes
+
+1. **`conf/import/battle_conf.txt`** : passer les deux à `on`. Voir le point
+   🔴 ci-dessous : mettre `feature.barter_extended: on` **même si** on ne
+   compte faire que du troc simple.
+2. **`moon/barters.yml`** : ajouter un `Body:`. Le PNJ est déclaré **dans le
+   YAML lui-même** (`Name`, `Map`, `X`, `Y`, `Direction`, `Sprite`) — aucun
+   fichier `.npc` à écrire, aucun `scripts_moon.conf` à toucher. Le squelette
+   des champs est en commentaire en tête du fichier.
+3. **Rien côté client.** Aucun patch WARP, aucune ressource : la fenêtre
+   naît du paquet (§4) et les six messages du sous-système sont **déjà
+   traduits** en fr et es (§6).
+
+Ouverture côté jeu, deux chemins, tous deux déjà en place :
+**clic sur le PNJ** (`npc.cpp:2379`) ou **`callshop("<exname>")`** depuis un
+script (`script.cpp:18331-18341`). Et **`@reloadbarterdb`**
+(`atcommand.cpp:4597`) relit la base sans redémarrer.
+
+### 🔴🔴 Simple ou étendu n'est PAS un réglage : c'est déduit, boutique par boutique
+
+`BarterDatabase::loadingFinished()` (`npc.cpp:747-800`) inspecte chaque article
+et bascule tout le PNJ en **étendu** dès qu'**un seul** article coche l'un de
+ces cinq points :
+
+| ce qui fait basculer en étendu | pourquoi le simple ne peut pas |
+|---|---|
+| `Zeny` > 0 | le paquet `0x0B78` n'a pas de champ prix |
+| `Refine` > 0 sur l'article vendu | ni de champ raffinement |
+| aucun `RequiredItems` | il faut au moins une devise |
+| **plus d'un** `RequiredItems` | `0x0B78` ne porte **qu'une** devise par ligne (`currencyNameid` + `currencyAmount`) |
+| un `RequiredItems` portant une clé `Refine:` | idem |
+
+⚠ **Le piège du dernier point** : le défaut d'un `Refine` de devise est **-1**
+(`npc.cpp:724`), qui veut dire « n'importe quel raffinement ». Écrire
+`Refine: 0` n'est donc **pas** neutre — c'est une contrainte, et ça bascule la
+boutique en étendu. (Le défaut du `Refine` de l'article vendu, lui, est bien 0,
+`npc.cpp:637`.)
+
+⚠ Et si la bascule se produit alors que `feature.barter_extended` est `off`,
+le serveur **saute la boutique** avec
+`ShowError("Barter %s uses extended mechanics but this is not enabled.")` et
+continue : le PNJ n'existe simplement pas, et **le joueur ne voit rien du
+tout**. D'où la recommandation d'allumer les deux drapeaux.
+
+C'est aussi ce que dit le protocole côté client, et les deux lectures
+concordent : `MAX_BARTER_REQUIREMENTS` vaut 6 côté serveur, mais seule la ligne
+de `0x0B79` sait porter `currency_count` devises — celle de `0x0B78` en porte
+exactement une.
+
+### ⚠ Ce qui devra être vérifié le jour de la mise en service
+
+- **L'asymétrie de fermeture du §7** cesse d'être théorique. Si le troc mis en
+  place est **simple** (334/335), fermer la liste seule laisse le panier
+  orphelin et n'envoie pas `CZ 0x0B12` — `sd.state.barter_open` reste armé et
+  `clif_barter_open` **refusera de rouvrir**. À reproduire au débogueur dès
+  qu'un PNJ existe : c'est le premier test à faire, et le symptôme côté joueur
+  serait « le PNJ ne répond plus jusqu'à la reconnexion ».
+  → Préférer un barter **étendu** pour la première mise en service : sa paire
+  cascade correctement dans les deux sens.
+- **Le `PACKETVER` doit rester ≥ 20250402** : c'est lui qui choisit la ligne de
+  36 octets que le client 2025-07-16 sait lire (§5). Moonlight est à 20250716,
+  donc c'est acquis — mais un retour en arrière décalerait toute la liste sans
+  message d'erreur.
+- **La garde de la banque** est déjà en place côté Bourgeon
+  ([bank_window.cc:70](../src/features/windows/bank_window.cc#L70), message
+  3967) : elle se déclenchera pour de vrai, il faudra la voir passer.
+- **`@shopsearch`** (`src/custom/atcommand.inc:2336-2360`) sait déjà lire un
+  `NPCTYPE_BARTER` — il va chercher les articles dans `barter_db` indexé par
+  `exname` et affiche « troc » ou « troc + Nz ». Ce code, mort aujourd'hui,
+  s'exécutera au premier PNJ : à relire à ce moment-là.
+
+### Et si Bourgeon doit un jour remplacer ces fenêtres
+
+Le détour est **le même patron que les autres natives tuées** : brancher sur
+les handlers `0x00CB6C20` / `0x00CBE3E0`, lire la liste dans le manager
+(§3) plutôt que dans le paquet, et émettre l'achat par
+`CMode::SendMsg(308)` / `(321)` plutôt qu'en fabriquant le paquet à la main —
+c'est le code natif qui connaît la conversion `atoi` du nom stocké et
+l'`invIndex` rendu par `sub_D5A7A0` (§5). Les six gardes du §6 sont dans
+l'`OnMsg` de 335 : un remplacement qui court-circuite la fenêtre les perd
+toutes, y compris le plafond de poids.
 
 ## 9. Ce qui reste non relevé
 
@@ -278,3 +347,8 @@ peuplé, des PNJ) avant qu'une seule ligne de client serve à quelque chose.
 - L'action de mode **31**, déclenchée au clic sur une ligne, est supposée ouvrir
   `UIItemDropCntWnd` sur la foi des xrefs de cette fenêtre aux deux managers.
   **Non vérifié dans le dispatcher.**
+- Côté serveur, le moteur d'achat `npc_barter_purchase` (`npc.cpp:3300-3520`)
+  n'a pas été relevé. Un détail y a été aperçu et mérite vérification avant
+  toute mise en service : quand le raffinement exact d'une devise est
+  introuvable, la boucle de `npc.cpp:3395` **cherche un raffinement PLUS HAUT**
+  et consomme celui-là.

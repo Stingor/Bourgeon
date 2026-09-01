@@ -21,6 +21,10 @@ le surcharge, et il diverge du fichier de base sur cinq fonctionnalités. Trois
 familles entières que le fichier de base annonce actives sont **éteintes** en
 production.
 
+⚠ **Éteint ne veut pas dire abandonné.** Le **barter** est éteint aujourd'hui et
+**prévu** : la marche à suivre pour l'allumer est écrite dans
+[barter_market_re.md](barter_market_re.md) §8.
+
 | réglage | `conf/battle/feature.conf` | `conf/import/battle_conf.txt` | qui gagne |
 |---|---|---|---|
 | `feature.roulette` | `on` | **`off`** | off |
@@ -56,12 +60,12 @@ Trois niveaux de preuve, notés dans la colonne « vérifié » :
 | **Reforge d'objet** (`UIItemReformWnd`) | 348 | **P** + base `db/item_reform.yml` | 🔓 vierge |
 | **Enchantement** (`CUIEnchantUI`) | 10006 | **P** — 8 paquets `ENCHANT` enregistrés | 🔓 vierge ; c'est aussi l'une des quatre fenêtres qui **bloquent l'ouverture de la banque** (dispatch §4) |
 | **Salon de coiffure** (`UIStylingShopWnd`) | 281 | **P** + **C** — `feature.stylist: on`, 5 paquets `STYLE` | déjà décrit en mémoire ; `moon/stylist.npc` existe |
+| **Barter market** (troc) | 334, 335, 341, 342 | **C** — `feature.barter: off` **et** `barter_extended: off`, **et** `moon/barters.yml` sans `Body:` | 🔜 éteint aujourd'hui mais **prévu par l'utilisateur** — ✅ relevé, et la marche à suivre pour l'allumer est écrite : [barter_market_re.md](barter_market_re.md) §8 |
 
 ### Mort sur Moonlight — ne pas ouvrir
 
 | famille | fenêtres | pourquoi |
 |---|---|---|
-| **Barter market** | 334, 335, 341, 342 | **C** + **P** — `feature.barter: off` **et** `barter_extended: off`, **et** `moon/barters.yml` ne déclare aucun PNJ. ✅ **relevé quand même** → [barter_market_re.md](barter_market_re.md) |
 | **Roulette** | 268 | **C** — `feature.roulette: off` |
 | **Carte de présence** | 328 | **C** — `feature.attendance: off` |
 | **Lapine (boîtes)** | 290, 302 | **P** — *zéro* occurrence de `lapine` dans `src/map/` : rAthena de ce fork ne connaît pas le système |
