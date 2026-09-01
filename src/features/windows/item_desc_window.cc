@@ -3551,9 +3551,28 @@ void ItemDescWindow::RenderItemWindow() {
     // Onglet « Probabilités » : seulement pour les objets qui ont une table
     // (boîtes, albums, branches, sacs). Donnée du CLIENT -> émis avant les
     // onglets serveur, et indépendant d'eux.
-    if (itemprob::Has(item_.id) && ImGui::BeginTabItem(i18n::Tr("Probabilités"))) {
-      RenderProbabilityTab(item_.id);
-      ImGui::EndTabItem();
+    //
+    // 🔴 Il DISPARAÎT dès qu'on suit un lien vers un objet ordinaire, et ImGui
+    // rend alors la sélection au premier onglet : le retour au conteneur
+    // rouvrait sur Description. On redemande donc la sélection à la
+    // RÉAPPARITION de l'onglet, et une seule fois — la redemander à chaque frame
+    // clouerait le joueur dessus.
+    const bool prob_present = itemprob::Has(item_.id);
+    const ImGuiTabItemFlags prob_flags =
+        (prob_present && !prob_tab_present_ && prob_tab_sticky_)
+            ? ImGuiTabItemFlags_SetSelected
+            : 0;
+    prob_tab_present_ = prob_present;
+    if (prob_present) {
+      const bool prob_open =
+          ImGui::BeginTabItem(i18n::Tr("Probabilités"), nullptr, prob_flags);
+      // La mémoire ne se met à jour que tant que l'onglet EXISTE : sinon, le
+      // passage par un objet ordinaire l'effacerait à chaque lien suivi.
+      prob_tab_sticky_ = prob_open;
+      if (prob_open) {
+        RenderProbabilityTab(item_.id);
+        ImGui::EndTabItem();
+      }
     }
     // Onglets drops de l'objet principal (item_). En comparaison, ce sont les
     // sources de l'objet évalué, pas de l'équipé.

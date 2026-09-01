@@ -350,6 +350,16 @@ class ItemDescWindow : public Plugin {
   // flags sont déjà figés. Même remède que la grille du cash shop.
   bool       item_preview_active_ = false;
   uint32_t   item_last_id_ = 0;   // id affiché au tick précédent (0 = fermée)
+  // ── Persistance de l'onglet « Probabilités » ──────────────────────────────
+  //
+  // 🔴 Cet onglet-là n'existe que pour les conteneurs, et suivre un lien vers un
+  // objet ordinaire le fait DISPARAÎTRE : ImGui rend alors la sélection au
+  // premier onglet, et le retour au conteneur rouvrait sur Description alors
+  // qu'on n'avait jamais quitté les probabilités. On mémorise donc la sélection
+  // tant que l'onglet EXISTE — choisir Description pendant qu'il est là vaut
+  // renoncement — pour la redemander à sa réapparition.
+  bool       prob_tab_sticky_  = false;  // le joueur y était la dernière fois
+  bool       prob_tab_present_ = false;  // l'onglet a-t-il été émis à la frame d'avant
   DescWindow skill_;            // fenêtre skill (classe 0x2e)
   bool       skill_was_open_ = false;
   bool       skill_need_pos_ = false;
