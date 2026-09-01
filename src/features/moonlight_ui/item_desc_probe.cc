@@ -138,6 +138,10 @@ void MoonlightUi::DrawAlootOverlay() {
     // annonçait « +0x18=Y, +0x20=X » — il ne correspondait pas au code, qui lui
     // était juste.) À défaut, on retombe sur la position du curseur au moment de
     // l'ouverture.
+    // Le panneau se pose AU-DESSUS de la fenêtre native, donc son ancrage dépend
+    // de SA hauteur — qu'on ne connaît qu'une fois dessiné. On garde celle de la
+    // frame précédente : en auto-resize, elle ne bouge qu'avec le contenu.
+    static float overlay_h = 24.0f;
     float overlay_x = static_cast<float>(g_item_desc_cursor.x) + 12.0f;
     float overlay_y = static_cast<float>(g_item_desc_cursor.y) + 12.0f;
     // Le pointeur est conservé D'UNE FRAME À L'AUTRE : avant de le déréférencer,
@@ -155,19 +159,21 @@ void MoonlightUi::DrawAlootOverlay() {
           *reinterpret_cast<const int*>(desc_wnd_bytes + uiwnd::kOffPosY);
       if (wnd_x > 0 && wnd_x < 4096 && wnd_y > 0 && wnd_y < 4096) {
         overlay_x = static_cast<float>(wnd_x);
-        overlay_y = static_cast<float>(wnd_y) - 24.0f;
+        overlay_y = static_cast<float>(wnd_y) - overlay_h;
       }
     }
     ImGui::SetNextWindowPos(ImVec2(overlay_x, overlay_y), ImGuiCond_Always);  // live-track
-    ImGui::SetNextWindowBgAlpha(0.88f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(6.0f, 4.0f));
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 4.0f);
     constexpr ImGuiWindowFlags kOverlayFlags =
         ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
         ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings |
         ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoFocusOnAppearing |
         ImGuiWindowFlags_NoNav;
-    if (ImGui::Begin("##alootid_overlay", nullptr, kOverlayFlags)) {
+    // Cadre RO obligatoire : ce panneau prolonge la description native, il doit
+    // en porter le cadre (sysbox) et le fond clair. Un `ImGui::Begin` nu retombe
+    // sur le thème ImGui par défaut — fond sombre, texte blanc — alors que les
+    // `RoSmallButton` qu'il contient se peignent, eux, avec l'art clair du
+    // client : c'est cet écart-là qui jurait, pas la teinte des boutons.
+    if (ro::BeginRoDescPanel("##alootid_overlay", kOverlayFlags)) {
       const auto itv = item_names_.find(g_last_viewed_item);
       if (itv != item_names_.end())
         TextUnformatted(itv->second.c_str());
@@ -202,7 +208,9 @@ void MoonlightUi::DrawAlootOverlay() {
       if (ro::RoSmallButton("x"))
         g_item_desc_visible = false;
     }
-    ImGui::End();
-    ImGui::PopStyleVar(2);
+    // Hors du `if` : la taille reste lisible même quand Begin renvoie faux (la
+    // fenêtre existe jusqu'à End), et c'est elle qui ancre la frame suivante.
+    overlay_h = ImGui::GetWindowSize().y;
+    ro::EndRoDescPanel();
   }
 }
