@@ -103,12 +103,6 @@ constexpr uintptr_t kSpriteResGetOrLoad = 0x00568760;
 // réemploie tels quels : ce sont EXACTEMENT ceux du curseur de destination.
 constexpr uintptr_t kCellQuadDefaultUV = 0x01211c30;
 
-// La file de scène EST le contexte de rendu : `render::Context()`, une seule
-// déclaration pour tout le projet. Son slot de vtable +0x10 est le « brouillard
-// actif ou non » (World_ApplyMapFogParams l'appelle avec 0 quand la carte n'a
-// pas de données de brouillard, avec 1 après en avoir lu les quatre paramètres).
-constexpr int kVtFogEnable = 4;  // slot 4 = octet +0x10
-
 // ── Les styles de case, dans l'ordre de Config::Pattern ──────────────────────
 //
 // Deux viennent du CLIENT, la troisième est à NOUS :
@@ -169,24 +163,9 @@ using RsmRenderFn   = int(__fastcall*)(void*, void*, void*, int, int, int);
 using SceneCellsFn  = void(__fastcall*)(void*);
 using DrawCellFn    = void(__fastcall*)(void*, void*, void*, int, int, uint32_t, void*, void*);
 using SpriteResFn   = void*(__fastcall*)(void*, void*, const char*, int, int, int, int);
-using FogEnableFn   = int(__fastcall*)(void*, void*, int);
 
 RsmRenderFn  g_orig_rsm         = nullptr;
 SceneCellsFn g_orig_scene_cells = nullptr;
-FogEnableFn  g_orig_fog_enable  = nullptr;
-
-// Ce que le CLIENT a demandé en dernier pour le brouillard. C'est la valeur à
-// lui rendre quand on cesse de la couper : on ne peut pas se contenter de
-// remettre 1, la plupart des cartes n'ont aucun brouillard et le rallumer y
-// poserait une brume que le joueur n'avait jamais vue.
-//
-// 🔴 Tant qu'on n'a pas TRAVERSÉ le hook une fois — c'est-à-dire tant qu'on n'a
-// pas changé de carte depuis l'activation — cette valeur ne veut rien dire, et
-// la pousser éteindrait pour de bon un brouillard qu'on devait seulement
-// suspendre. D'où le drapeau : sans lui, on ne restaure RIEN et la carte
-// suivante rétablit d'elle-même ce qu'elle demande.
-int  g_native_fog       = 0;
-bool g_native_fog_known = false;
 
 // ── La FAMILLE d'une case ────────────────────────────────────────────────────
 // Trois familles seulement : ce qu'on marche, le mur, et le vide qu'on traverse
@@ -1123,17 +1102,11 @@ void PumpMapReload() {
   g_force_full_reload = false;
 }
 
-void TryInstallFogHook();  // défini plus bas : il lui faut Hooked_FogEnable
-
 // Le quadrillage est posé AVANT l'appel natif : à profondeur égale, la file de
 // scène départage les primitives par leur adresse d'insertion, donc soumettre
 // en premier laisse le curseur de destination et la trace de navigation du
 // client par-dessus notre grille — ce qui est l'ordre qu'on veut.
 void __fastcall Hooked_SceneRenderCells(void* self) {
-  // Le seul endroit d'où l'on soit SÛR d'être en jeu, la file de scène
-  // construite : c'est là, et pas au chargement de la DLL, que le hook du
-  // brouillard peut se poser (sa vtable n'a pas d'adresse statique).
-  if (Enabled()) TryInstallFogHook();
   // 🔴 HORS du test sur `Enabled()` : le cas qui compte le plus est justement
   // celui où le joueur vient d'ÉTEINDRE GreyWorld sur une carte chargée à plat.
   // Sous la garde, la demande ne serait jamais envoyée.
@@ -1169,67 +1142,6 @@ void __fastcall Hooked_SceneRenderCells(void* self) {
   }
   if (Enabled() && g_cfg.grid && self) DrawCellGrid(self);
   if (g_orig_scene_cells) g_orig_scene_cells(self);
-}
-
-// Brouillard. On ne l'éteint pas dans le vide : on retient ce que le client
-// demandait, pour le lui rendre intact quand le joueur décoche.
-int __fastcall Hooked_FogEnable(void* self, void* edx, int on) {
-  g_native_fog       = on;
-  g_native_fog_known = true;
-  const int want = (Enabled() && g_cfg.no_fog) ? 0 : on;
-  return g_orig_fog_enable ? g_orig_fog_enable(self, edx, want) : 0;
-}
-
-// L'objet de la file de scène n'existe qu'une fois en jeu, et sa vtable n'a pas
-// d'adresse statique : le hook du brouillard ne peut donc pas se poser au
-// chargement de la DLL comme les deux autres. On le tente donc à chaque frame de
-// rendu — mais tant que la file n'existe pas, et pas au-delà.
-//
-// 🔴🔴 UN SEUL ESSAI DE POSE, JAMAIS DEUX. `SetHook` rend un trampoline nul quand
-// le prologue n'est pas relocalisable, mais il a ÉCRIT son saut : réessayer à la
-// frame suivante patcherait le détour par-dessus lui-même, et le premier
-// brouillard venu partirait en récursion infinie. Le drapeau ne se lève qu'une
-// fois la cible réellement en main — un essai, un verdict, et on le dit.
-void TryInstallFogHook() {
-  static bool tried = false;
-  if (tried || g_orig_fog_enable) return;
-  void* target = nullptr;
-  __try {
-    void* queue = render::Context();
-    if (!queue) return;  // pas encore en jeu : on retentera, rien n'a été écrit
-    void** vt = *reinterpret_cast<void***>(queue);
-    if (vt) target = vt[kVtFogEnable];
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-  }
-  if (!target) return;
-
-  tried = true;
-  g_orig_fog_enable = reinterpret_cast<FogEnableFn>(
-      hooking::HookManager::Instance().SetHook(
-          hooking::HookType::kJmpHook, reinterpret_cast<uint8_t*>(target),
-          reinterpret_cast<uint8_t*>(&Hooked_FogEnable)));
-  if (!g_orig_fog_enable) {
-    // Sans original à chaîner, le détour avalerait tous les appels : on ne peut
-    // ni le retirer ni le refaire, mais on peut au moins ne pas se taire.
-    LogDiag("[GreyWorld] hook du brouillard : pas de trampoline, levier inerte");
-  }
-}
-
-// Repousse vers le client l'état du brouillard voulu MAINTENANT. Le hook ne suffit
-// pas : il n'est traversé qu'aux changements de carte, alors que la case se coche
-// au milieu d'une partie.
-void PushFogState() {
-  if (!g_orig_fog_enable) return;
-  const bool cut = Enabled() && g_cfg.no_fog;
-  // Rien à rendre tant qu'on n'a pas vu passer la demande du client : cf. le
-  // drapeau, plus haut. La carte suivante rétablira son brouillard elle-même.
-  if (!cut && !g_native_fog_known) return;
-  __try {
-    void* queue = render::Context();
-    if (!queue) return;
-    g_orig_fog_enable(queue, nullptr, cut ? 0 : g_native_fog);
-  } __except (EXCEPTION_EXECUTE_HANDLER) {
-  }
 }
 
 }  // namespace
@@ -1277,7 +1189,6 @@ void EnsureInstalled() {
             reinterpret_cast<uint8_t*>(kZcMapChange),
             reinterpret_cast<uint8_t*>(&Hooked_ZcMapChange)));
   }
-  TryInstallFogHook();
 }
 
 void LoadStartupState() {
@@ -1314,8 +1225,6 @@ void Apply() {
   const bool want_ground = Enabled() && g_cfg.flat_ground && !g_imgui_dx7_active;
   ground_paint::SetExternalPaint(want_ground, g_cfg.col_ground);
   if (want_ground) ground_paint::EnsureInstalled();
-
-  PushFogState();
 }
 
 bool DrawSettings() {
@@ -1489,20 +1398,6 @@ bool DrawSettings() {
                    "bouges pas.\n"
                    "Le niveau de l'eau n'est pas touché : sur une carte qui en a, "
                    "le sol peut passer dessous."));
-
-  // ── Ambiance ──────────────────────────────────────────────────────────────
-  SeparatorText(i18n::Tr("Ambiance"));
-
-  if (ro::RoCheckbox(i18n::Tr("Couper le brouillard"), &g_cfg.no_fog)) {
-    Apply();
-    changed = true;
-  }
-  Tooltip(i18n::Tr("La brume de distance que certaines cartes posent. Décocher la "
-                   "case rend à la carte exactement le brouillard qu'elle "
-                   "demandait — et rien sur celles qui n'en ont pas."));
-  ImGui::TextDisabled("%s", i18n::Tr(
-      "Les nuages et le ciel ne sont pas touchés : ce sont des effets que la "
-      "carte fait naître à l'entrée, pas un réglage de rendu."));
 
   ImGui::EndDisabled();
   return changed;

@@ -1537,9 +1537,6 @@ const moonlight_ui::SettingDesc kGreyWorldSettings[] = {
     {"greyworld_flat_ground", SType::kBool,
      []() -> void* { return &grey_world::cfg().flat_ground; },
      MLUI_LITERAL(bool, true)},
-    {"greyworld_no_fog", SType::kBool,
-     []() -> void* { return &grey_world::cfg().no_fog; },
-     MLUI_LITERAL(bool, true)},
     {"greyworld_radius", SType::kInt,
      []() -> void* { return &grey_world::cfg().radius; },
      MLUI_LITERAL(int, 24)},
@@ -2321,7 +2318,7 @@ void MoonlightUi::PostLoadApply() {
 
   // GreyWorld : même raison, et une de plus. Ses hooks doivent exister dès le
   // retour du YAML, mais son `Apply()` porte aussi ce qui ne se relit pas chaque
-  // frame — la demande de sol uni faite à ground_paint, et l'état du brouillard.
+  // frame — la demande de sol uni faite à ground_paint.
   //
   // 🔴 SANS CONDITION. `Apply()` pose l'état voulu dans les DEUX sens : gardé
   // sous « si c'est allumé », un réglage revenu ÉTEINT du fichier laissait en

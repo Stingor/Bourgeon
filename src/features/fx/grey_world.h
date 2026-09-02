@@ -23,11 +23,17 @@
 //      destination), donc le relief est épousé et le tri de la scène respecté.
 //   3. SOL UNI — le terrain repeint d'une couleur unie, par le mécanisme déjà
 //      écrit pour le fond de capture des Staff Tools (cf. ground_paint.h).
-//   4. BROUILLARD — coupé, et RENDU à sa valeur d'origine quand on éteint.
+//   4. APLATIR — les hauteurs du terrain réécrites à leur chargement.
+//
+// ⚠ PAS LE BROUILLARD, et c'est délibéré. Le client a `/fog`, que la fenêtre des
+// réglages de Bourgeon expose déjà comme toutes les bascules de `CmdOnOffList` —
+// même effet, appliqué par le handler natif et persisté dans `OptionInfo.lua`.
+// Un levier de plus ici n'aurait été qu'une SECONDE case pour un seul état, que
+// rien ne tenait d'accord avec la première.
 //
 // 🔴 CE QUI EST DX9 SEULEMENT : le sol uni (levier 3), parce qu'il encadre une
-// passe du renderer DX9. Les trois autres travaillent EN AMONT du renderer — sur
-// la file de scène, commune aux deux back-ends — et valent donc aussi en DX7.
+// passe du renderer DX9. Les autres travaillent EN AMONT du renderer — sur la
+// file de scène, commune aux deux back-ends — et valent donc aussi en DX7.
 //
 // ⚠ CE N'EST PAS ground_paint. Le « Sol uni » des Staff Tools reste un fond de
 // capture : une couleur, rien d'autre, et il ne dit rien des cellules. GreyWorld
@@ -46,8 +52,7 @@ struct Config {
   bool hide_models = true;   // levier 1 : décors .rsm, au RENDU
   bool grid        = true;   // levier 2 : quadrillage des cellules
   bool flat_ground = true;   // levier 3 : sol uni (DX9 seulement)
-  bool no_fog      = true;   // levier 4 : brouillard
-  // Levier 5 : APLATIR le terrain. Le seul qui ne se voit pas tout de suite —
+  // Levier 4 : APLATIR le terrain. Le seul qui ne se voit pas tout de suite —
   // il réécrit les hauteurs à leur chargement, donc il prend effet au prochain
   // changement de carte. Ce n'est pas une gêne pour un réglage qu'on coche une
   // fois, pour essayer ou pour adopter.
@@ -119,8 +124,7 @@ void EnsureInstalled();
 void LoadStartupState();
 
 // À appeler quand `cfg()` vient de changer : propage ce qui ne peut pas être
-// relu chaque frame — le sol uni (qui se demande à ground_paint) et le brouillard
-// (qu'il faut RENDRE au client quand on cesse de le couper).
+// relu chaque frame — la demande de sol uni, qui se pose chez ground_paint.
 void Apply();
 
 // Contrôles ImGui — section « GreyWorld » du panneau Gameplay.
