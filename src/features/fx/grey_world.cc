@@ -245,6 +245,13 @@ constexpr int kCornersPerCell = 4;
 bool  g_flat_level_known = false;
 float g_flat_level       = 0.0f;
 
+
+// Le côté d'une case du terrain, en unités de monde — relevé dans le .gat au
+// chargement, parce que c'est l'unité dans laquelle la carte se mesure et qu'on
+// s'en sert pour dimensionner autre chose que des cases (cf. les boîtes du
+// quadtree). Zéro = pas encore lu.
+int g_terrain_cell_size = 0;
+
 // 🔴🔴 UN SOL EXACTEMENT PLAT REND DES CASES NON CLIQUABLES — et c'est le .GAT
 // qu'il faut corriger, pas le .gnd.
 //
@@ -291,18 +298,8 @@ constexpr float kFlatJitter = 0.1f;
 // Moyenne des hauteurs, puis écriture de cette moyenne partout. `stride` et
 // `count` diffèrent entre les deux fichiers, le reste est identique : quatre
 // flottants en tête de chaque case.
-void FlattenHeights(char* cells, int count, int stride, bool set_level,
-                    float jitter) {
-  if (!cells || count <= 0) return;
-  if (set_level || !g_flat_level_known) {
-    double sum = 0.0;
-    for (int i = 0; i < count; ++i) {
-      const float* h = reinterpret_cast<const float*>(cells + i * stride);
-      for (int c = 0; c < kCornersPerCell; ++c) sum += h[c];
-    }
-    g_flat_level = static_cast<float>(sum / (count * kCornersPerCell));
-    g_flat_level_known = true;
-  }
+void FlattenHeights(char* cells, int count, int stride, float jitter) {
+  if (!cells || count <= 0 || !g_flat_level_known) return;
   for (int i = 0; i < count; ++i) {
     float* h = reinterpret_cast<float*>(cells + i * stride);
     // Dents de scie sur les coins : deux hauts, deux bas. Chaque case garde
@@ -415,6 +412,50 @@ void NoteGroundSurfaces(int w, int h, const char* cells) {
   }
   g_gnd_tiles_w = w;
   g_gnd_tiles_h = h;
+
+  // ── Et le NIVEAU, tant qu'on tient le seul fichier qui sache les deux ─────
+  //
+  // 🔴🔴 PAS LA MOYENNE DE TOUT. Le .gat comme le .gnd décrivent le rectangle
+  // ENTIER de la carte, vide compris, et sur une carte à trous le vide est
+  // MAJORITAIRE. Mesuré sur les fichiers : gonryun a 65 % de tuiles sans face du
+  // dessus, dont les hauteurs plongent très au-dessous de l'île — la moyenne de
+  // toutes les cases donnait -25.29 quand le sol réel est à -58.18. On aplatissait
+  // la carte 33 unités trop bas, soit plus de six cases.
+  //
+  // La moyenne des seules cases QUI ONT DU SOL donne le niveau où l'on marche.
+  // Sur une carte pleine, les deux se confondent (prontera : 4 centièmes d'écart).
+  double sum = 0.0;
+  size_t n = 0;
+  for (size_t i = 0; i < count; ++i) {
+    if (!g_gnd_has_surface[i]) continue;
+    const float* height = reinterpret_cast<const float*>(cells + i * kGndCellStride);
+    for (int c = 0; c < kCornersPerCell; ++c) sum += height[c];
+    n += kCornersPerCell;
+  }
+  if (n == 0) return;  // `solid` non nul l'exclut, mais on ne divise pas à l'aveugle
+  g_flat_level       = static_cast<float>(sum / n);
+  g_flat_level_known = true;
+}
+
+// Aplatit le .gat que la copie retient, une fois le niveau connu.
+//
+// 🔴 LE .GAT EST CHARGÉ AVANT LE .GND, et c'est le .gnd qui sait où est le sol :
+// on ne peut donc pas fixer le niveau au chargement du .gat. On y prend seulement
+// la copie des hauteurs, et on aplatit ICI, quand le niveau existe. `CWorld_Load`
+// charge les deux avant de construire quoi que ce soit — personne ne lit le .gat
+// entre les deux.
+void FlattenPendingAttr() {
+  if (!g_attr_backup_owner || !g_flat_level_known) return;
+  __try {
+    auto* a = reinterpret_cast<char*>(g_attr_backup_owner);
+    const int w = *reinterpret_cast<int*>(a + gamescene::kTerrainWidth);
+    const int h = *reinterpret_cast<int*>(a + gamescene::kTerrainHeight);
+    auto* cells = *reinterpret_cast<char**>(a + gamescene::kTerrainCells);
+    // C'est le .gat qui porte les triangles du clic-sol : c'est LUI qui a besoin
+    // du micro-relief, sans quoi un rayon rasant ne les rencontre jamais.
+    FlattenHeights(cells, w * h, gamescene::kCellStride, kFlatJitter);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+  }
 }
 
 // Y a-t-il du sol sous cette case de .gat ? Une tuile de .gnd couvre 2×2 cases,
@@ -485,14 +526,10 @@ int __fastcall Hooked_AttrLoad(void* self, void* edx, void* path) {
     const int w = *reinterpret_cast<int*>(a + gamescene::kTerrainWidth);
     const int h = *reinterpret_cast<int*>(a + gamescene::kTerrainHeight);
     auto* cells = *reinterpret_cast<char**>(a + gamescene::kTerrainCells);
-    // La copie D'ABORD : après, le relief d'origine n'existe plus nulle part.
+    g_terrain_cell_size = *reinterpret_cast<int*>(a + gamescene::kTerrainCellSize);
+    // La copie, et rien d'autre : le niveau ne sera connu qu'au chargement du
+    // .gnd, juste après (cf. FlattenPendingAttr).
     BackupAttrHeights(self, cells, w * h, gamescene::kCellStride);
-    // La carte QUI VIENT D'ARRIVER fixe le niveau (`set_level`), sans quoi on
-    // garderait celui de la précédente et le sol serait décalé. Et c'est le .gat
-    // qui porte les triangles du clic-sol : c'est LUI qui a besoin du
-    // micro-relief, sans quoi un rayon rasant ne les rencontre jamais.
-    FlattenHeights(cells, w * h, gamescene::kCellStride, /*set_level=*/true,
-                   /*jitter=*/kFlatJitter);
   } __except (EXCEPTION_EXECUTE_HANDLER) {
   }
   return ok;
@@ -513,7 +550,9 @@ int __fastcall Hooked_GndLoad(void* self, void* edx, void* path) {
     if (!Enabled() || !g_cfg.flatten) return ok;
     // Le .gnd n'est que du rendu : plan EXACT, pour que les carreaux du
     // quadrillage ne se mettent pas à onduler.
-    FlattenHeights(cells, w * h, kGndCellStride, /*set_level=*/false, /*jitter=*/0.0f);
+    FlattenHeights(cells, w * h, kGndCellStride, /*jitter=*/0.0f);
+    // Et le .gat, qui attendait ce niveau depuis son propre chargement.
+    FlattenPendingAttr();
   } __except (EXCEPTION_EXECUTE_HANDLER) {
   }
   return ok;
@@ -913,16 +952,95 @@ int __fastcall Hooked_RsmRenderNode(void* self, void* edx, void* mtx, int a, int
 // ⚠ On ne touche QUE Y : X et Z portent le découpage spatial de l'arbre, qui est
 // juste. Le culling de rendu y perd un peu, mais les nœuds sont vides — aplatir
 // emporte le déchargement des décors.
-constexpr float kOpenSkyLow  = -999999.0f;
-constexpr float kOpenSkyHigh =  999999.0f;
+// 🔴🔴 ON ÉLARGIT, ON NE REMPLACE PLUS. La version précédente écrasait les deux
+// bornes par ±999999 — les valeurs que `QuadTree_Subdivide` pose sur un nœud SANS
+// géométrie. Sur un nœud qui en a, ça fabrique une boîte de deux millions
+// d'unités de haut, et cet arbre ne sert pas qu'aux décors : `QuadTree_Rebuild`
+// 0x00a69610 calcule ses extents DEPUIS LE SOL (`world+40`, le C3dGround15, dont
+// il lit largeur, hauteur et taille de tuile) et propage par nœud. Des boîtes
+// absurdes s'y payent en tuiles de terrain écartées au loin — une bande dont la
+// forme suit le découpage de l'arbre, donc le MONDE, et qui devient diagonale
+// quand la caméra tourne.
+//
+// La boîte doit CONTENIR le plan aplati ; elle n'a pas besoin d'être infinie. On
+// garde donc les bornes du .rsw et on y ajoute le plan.
+// ⚠ ZÉRO NE CONVIENDRAIT PAS, et pas pour la raison qu'on croit : la boîte ne
+// pouvant que grandir, une marge nulle la laisserait le plus souvent intacte. Le
+// cas qui compte est celui où le plan SORT des bornes d'origine — et la boîte
+// s'arrêterait alors EXACTEMENT sur lui. Le rayon du clic frôlerait la frontière
+// au lieu de la traverser : la même dégénérescence que des triangles horizontaux
+// parallèles à un rayon rasant, déplacée de la case vers le nœud.
+//
+// La marge se lit donc dans la carte plutôt que de s'inventer : UNE CASE de
+// terrain, l'unité de ce que la boîte borne. Le repli couvre le cas où le .gat
+// n'a pas encore été lu — une case de cinq unités est la valeur de tous les
+// terrains du client, gonryun compris (zoom .gnd = 10, donc 5 par case .gat).
+constexpr float kFallbackCellSize = 5.0f;
+
+// ── ⚠ DÉFAUT CONNU, NON RÉSOLU : la bande de sol manquante ───────────────────
+//
+// Sur une carte à trous (gonryun), aplatir laisse une bande où le CLIENT ne
+// soumet pas ses tuiles de terrain — on voit le ciel à travers. Le sol existe :
+// il est dessiné sans aplatissement, au même endroit.
+//
+// Ce qui a été ÉLIMINÉ, par la mesure et non par le raisonnement (2026-09-02) —
+// ne pas refaire ces essais :
+//   · le BORD de carte et les planchers de DÉCOR : le sol est bien là ;
+//   · le PLAN LOINTAIN (1500, en dur dans World_SetupFogAndProjection
+//     0x00551370) : l'horizon ne bouge pas d'un pixel entre zoom mini et maxi ;
+//   · ce QUADTREE : la bande persiste alors qu'on n'écrit RIEN dans ses bornes ;
+//   · la CAMÉRA : elle suit le plan au centième près. Lu en jeu à deux niveaux,
+//     `scene+32` (cible) et `scene+128` (œil) — écart identique (546,73 en Y,
+//     458,76 en Z, distance 713,7). Tout se translate ensemble ;
+//   · l'EAU du .rsw : c'est du ciel qu'on voit, pas de l'eau ;
+//   · une INVERSION DE SIGNE : la racine va de −285,6 à +34, même espace et même
+//     sens que les hauteurs du .gnd.
+//
+// Il reste donc une contradiction ouverte : tout ce qui compose la scène suit le
+// plan, l'image devrait être invariante par translation verticale — et elle ne
+// l'est pas. Un décalage d'une dizaine d'unités vers le HAUT la rend presque
+// invisible sur gonryun, sans qu'on sache pourquoi ; ce n'est donc pas figé ici,
+// une valeur qui corrige sans qu'on sache ce qu'elle corrige ne tient pas.
+//
+// ➡ La suite : traverser `Camera_ComputeFrustumCorners` 0x00a79f90 au pas à pas
+// et comparer les nœuds RETENUS à deux niveaux. Le pipeline est cartographié —
+// CScene_RenderCellsAndCursor 0x00a7b0a0 sélectionne les nœuds, appelle le slot
+// vtable+0x18 du sol avec le rectangle de tuiles du nœud (`node[22..25]`,
+// mesuré : 6×6 tuiles) et le drapeau de tri à 1 ; `sub_A63680` 0x00a63680
+// parcourt le rectangle ; `sub_A63E10` 0x00a63e10 projette les quatre coins et
+// jette la tuile si sa boîte écran rate le viewport (queue+40/+44) ou si un seul
+// des quatre `rhw` est négatif.
+
+float FlatBoxMargin() {
+  return g_terrain_cell_size > 0 ? static_cast<float>(g_terrain_cell_size)
+                                 : kFallbackCellSize;
+}
+
 constexpr int   kQuadTreeMaxDepth = 5;   // le client s'arrête à 5 (1365 nœuds)
 constexpr int   kNodeMinY = 6;           // node[5..7] = min(x,y,z)
 constexpr int   kNodeMaxY = 9;           // node[8..10] = max(x,y,z)
 
 void OpenNodeHeights(int* node, int depth) {
   if (!node) return;
-  reinterpret_cast<float*>(node)[kNodeMinY] = kOpenSkyLow;
-  reinterpret_cast<float*>(node)[kNodeMaxY] = kOpenSkyHigh;
+  auto* box = reinterpret_cast<float*>(node);
+  const float margin = FlatBoxMargin();
+  // 🔴🔴 ON REMPLACE LES DEUX BORNES, on ne les élargit pas. Version précédente :
+  // n'agrandir que si la boîte ne contenait pas déjà le plan — et un nœud dont
+  // les bornes du .rsw l'englobaient restait donc décrit par le relief d'AVANT,
+  // haut de cent unités, alors que son sol tient désormais dans une case.
+  //
+  // Ça se voyait, et c'est ce qui a mis sur la piste : les boîtes sont FIXES dans
+  // le monde, la caméra SUIT le plan. Déplacer le plan de dix unités déplaçait
+  // donc la caméra par rapport à des boîtes périmées, et faisait apparaître ou
+  // disparaître des tuiles de terrain au loin — un réglage qui « marche » sans
+  // qu'on sache pourquoi est un symptôme, pas une correction.
+  //
+  // Une fois le monde aplati, un nœud ne contient plus QUE du terrain — les
+  // décors sont déchargés — et ce terrain est un plan. Sa boîte, c'est ce plan,
+  // à une case près. Elle vaut alors pour n'importe quel niveau, et le décalage
+  // d'essai n'a plus rien à corriger.
+  box[kNodeMinY] = g_flat_level - margin;
+  box[kNodeMaxY] = g_flat_level + margin;
   if (depth >= kQuadTreeMaxDepth) return;
   for (int i = 1; i <= 4; ++i) {
     OpenNodeHeights(reinterpret_cast<int*>(node[i]), depth + 1);
@@ -952,11 +1070,12 @@ void ReflattenLiveAttr() {
     // ⚠ Un `__try` qui protège plusieurs étapes cache laquelle a échoué : mettre
     // en tête ce qui doit aboutir coûte que coûte.
     //
-    // Son témoin : tant que la racine porte notre borne, l'arbre est déjà ouvert.
-    // Il ne peut revenir à autre chose que par un chargement de carte, qui
-    // recopie les bornes du .rsw.
+    // Son témoin : tant que la racine porte EXACTEMENT notre borne, l'arbre
+    // décrit déjà le plan. Elle ne peut valoir autre chose que par un chargement
+    // de carte, qui recopie les bornes du .rsw — ou par un déplacement du plan,
+    // qu'il faut justement reporter sur tout l'arbre.
     int* root = reinterpret_cast<int*>(w + gamescene::kWorldQuadTree);
-    if (reinterpret_cast<float*>(root)[kNodeMaxY] != kOpenSkyHigh) {
+    if (reinterpret_cast<float*>(root)[kNodeMaxY] != g_flat_level + FlatBoxMargin()) {
       OpenNodeHeights(root, 0);
     }
 
@@ -973,10 +1092,10 @@ void ReflattenLiveAttr() {
     auto* cells = *reinterpret_cast<char**>(a + gamescene::kTerrainCells);
     // La copie D'ABORD : après, le relief d'origine n'existe plus nulle part.
     BackupAttrHeights(attr, cells, aw * ah, gamescene::kCellStride);
-    // `set_level` : c'est ce terrain-ci qui fixe le niveau, et le .gnd le
-    // reprendra quand on le reconstruira — les deux doivent s'accorder.
-    FlattenHeights(cells, aw * ah, gamescene::kCellStride, /*set_level=*/true,
-                   /*jitter=*/kFlatJitter);
+    // Le niveau vient du .gnd de CETTE carte (cf. NoteGroundSurfaces) : il n'y a
+    // rien à recalculer ici, et surtout pas sur le .gat, qui ne sait pas où est
+    // le sol.
+    FlattenHeights(cells, aw * ah, gamescene::kCellStride, kFlatJitter);
     // La géométrie DESSINÉE, elle, ne se réécrit pas en place : il faut la
     // reconstruire depuis un .gnd rechargé.
     g_rebuild_requested = true;
