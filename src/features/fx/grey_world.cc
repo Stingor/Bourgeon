@@ -3,14 +3,18 @@
 #include <Windows.h>
 
 #include <cstdint>
+#include <vector>
 
 #include "imgui.h"
-#include "bourgeon.h"                  // chat_window(), IsGameActive, MapLoadEpoch
+#include "bourgeon.h"                  // chat_window(), IsGameActive, IsMapLoading
 #include "features/fx/ground_paint.h"  // levier 3 : le sol uni, déjà écrit
 #include "features/systems/login_spectator.h"  // le décor de login n'est pas le jeu
-#include "features/windows/chat_window.h"      // SendTextNow : notre « @refreshmap »
+#include "features/windows/chat_window.h"      // « @refreshmap » : armer, puis suivre son départ
 #include "ragnarok/game_scene.h"       // gamescene:: — le foyer des offsets de scène
-#include "ragnarok/globals.h"          // rag::ActiveModeIfReady()
+#include "ragnarok/globals.h"          // rag::ActiveModeIfReady(), kCurrentMapNameAddr
+#include "ragnarok/render.h"           // render::Context(), kSpriteRefCacheAddr
+#include "ui/color_codec.h"            // ro::ArgbFromPicker : LA conversion ARGB
+#include "ui/game_texture.h"           // ro::texmgr:: — le gestionnaire de ressources
 #include "ui/ro_imgui.h"               // ro::RoCheckbox
 #include "ui/ro_widgets.h"             // mui::WheelSliderInt, RoColorSwatch
 #include "utils/hooking/hook_manager.h"
@@ -94,18 +98,16 @@ constexpr float kDepthBias = 0.000030517578f;
 // Les valeurs sont celles que le natif passe pour `grid.tga` (0, 0, 1, 0) — on
 // les recopie plutôt que de les deviner.
 constexpr uintptr_t kSpriteResGetOrLoad = 0x00568760;
-constexpr uintptr_t kSpriteTexCache     = 0x0125161c;  // l'objet, pas un pointeur
 
 // Les 8 multiplicateurs d'UV que le client passe pour une tuile pleine. On les
 // réemploie tels quels : ce sont EXACTEMENT ceux du curseur de destination.
 constexpr uintptr_t kCellQuadDefaultUV = 0x01211c30;
 
-// La file de scène. `*(void**)kSceneRenderQueuePtr` = l'objet ; son slot de
-// vtable +0x10 est le « brouillard actif ou non » (World_ApplyMapFogParams
-// l'appelle avec 0 quand la carte n'a pas de données de brouillard, avec 1
-// après en avoir lu les quatre paramètres).
-constexpr uintptr_t kSceneRenderQueuePtr = 0x012515f8;
-constexpr int       kVtFogEnable         = 4;  // slot 4 = octet +0x10
+// La file de scène EST le contexte de rendu : `render::Context()`, une seule
+// déclaration pour tout le projet. Son slot de vtable +0x10 est le « brouillard
+// actif ou non » (World_ApplyMapFogParams l'appelle avec 0 quand la carte n'a
+// pas de données de brouillard, avec 1 après en avoir lu les quatre paramètres).
+constexpr int kVtFogEnable = 4;  // slot 4 = octet +0x10
 
 // ── Les styles de case, dans l'ordre de Config::Pattern ──────────────────────
 //
@@ -214,15 +216,6 @@ int CellFamily(const char* cells, int width, int height, int x, int y) {
 // le temps où le décor tourne, y compris pendant qu'il charge sa carte.
 bool Enabled() { return g_cfg.enabled && !spectator::Active(); }
 
-// Le picker travaille en RGBA, le client en ARGB.
-uint32_t ToArgb(const float rgba[4]) {
-  auto ch = [](float v) -> uint32_t {
-    const int i = static_cast<int>(v * 255.0f + 0.5f);
-    return static_cast<uint32_t>(i < 0 ? 0 : (i > 255 ? 255 : i));
-  };
-  return (ch(rgba[3]) << 24) | (ch(rgba[0]) << 16) | (ch(rgba[1]) << 8) | ch(rgba[2]);
-}
-
 // ── Ne pas charger les décors du tout ────────────────────────────────────────
 //
 // 🔴 CE N'EST PAS UN RÉGLAGE : c'est la moitié de l'aplatissement. Un décor garde
@@ -328,6 +321,66 @@ void FlattenHeights(char* cells, int count, int stride, bool set_level,
   }
 }
 
+// ── Les hauteurs D'ORIGINE du .gat courant ───────────────────────────────────
+//
+// 🔴🔴 SANS CETTE COPIE, DÉCOCHER NE REND RIEN. Aplatir écrit les hauteurs EN
+// PLACE, et le fichier ne sera relu qu'au prochain chargement de carte : tant
+// qu'il n'a pas eu lieu, la seule façon de rendre son relief au .gat est de le
+// réécrire depuis une copie — encore faut-il l'avoir prise AVANT d'écraser.
+//
+// Elle ne vaut que pour LE C3dAttr dont l'adresse est notée : un chargement de
+// carte en fabrique un autre, et ce qu'on gardait de l'ancien n'a plus cours.
+//
+// ⚠ Le QUADTREE, lui, n'a pas de copie et n'en a pas besoin. Rouvrir ses bornes
+// de hauteur n'ôte RIEN à la justesse du clic — ce sont les triangles du .gat qui
+// tranchent, l'arbre ne fait que présélectionner — cela ne coûte que du culling,
+// et les nœuds sont vides tant que les décors ne sont pas revenus. Or ils ne
+// peuvent revenir que par un chargement de carte, qui reconstruit l'arbre depuis
+// le .rsw.
+std::vector<float> g_attr_backup;
+void*              g_attr_backup_owner = nullptr;
+
+// Prend la copie, une seule fois par C3dAttr. Appelée depuis un `__try` : le
+// vecteur vit ici et non chez l'appelant, où il interdirait le SEH (C2712).
+void BackupAttrHeights(void* attr, const char* cells, int count, int stride) {
+  if (!attr || !cells || count <= 0) return;
+  if (g_attr_backup_owner == attr) return;  // déjà prise, et sur le bon objet
+  g_attr_backup.resize(static_cast<size_t>(count) * kCornersPerCell);
+  for (int i = 0; i < count; ++i) {
+    const float* h = reinterpret_cast<const float*>(cells + i * stride);
+    for (int c = 0; c < kCornersPerCell; ++c) {
+      g_attr_backup[static_cast<size_t>(i) * kCornersPerCell + c] = h[c];
+    }
+  }
+  g_attr_backup_owner = attr;
+}
+
+// Réécrit les hauteurs d'origine. Rend faux quand il n'y a rien à rendre — soit
+// qu'on n'ait jamais aplati ce terrain-là, soit que la copie soit celle d'un
+// autre : dans les deux cas l'appelant n'a rien à faire.
+bool RestoreAttrHeights(void* attr, char* cells, int count, int stride) {
+  if (!attr || !cells || count <= 0) return false;
+  if (g_attr_backup_owner != attr) return false;
+  if (g_attr_backup.size() != static_cast<size_t>(count) * kCornersPerCell) {
+    return false;  // le terrain a changé de taille sous la copie : on n'y touche pas
+  }
+  for (int i = 0; i < count; ++i) {
+    float* h = reinterpret_cast<float*>(cells + i * stride);
+    for (int c = 0; c < kCornersPerCell; ++c) {
+      h[c] = g_attr_backup[static_cast<size_t>(i) * kCornersPerCell + c];
+    }
+  }
+  return true;
+}
+
+// Le chargement d'une carte périme la copie : le C3dAttr d'avant n'existe plus,
+// et le nouveau terrain arrive avec son propre relief, tout frais du fichier.
+void DropAttrBackup() {
+  g_attr_backup.clear();
+  g_attr_backup.shrink_to_fit();  // un .gat fait quelques mégaoctets
+  g_attr_backup_owner = nullptr;
+}
+
 using LoadResFn = int(__fastcall*)(void*, void*, void*);
 LoadResFn g_orig_attr_load = nullptr;
 LoadResFn g_orig_gnd_load  = nullptr;
@@ -340,18 +393,35 @@ int __fastcall Hooked_RsmLoad(void* self, void* edx, void* path) {
   return g_orig_rsm_load ? g_orig_rsm_load(self, edx, path) : 0;
 }
 
+// Défini avec la machine d'état, plus bas : charger un .gat EST le signe qu'une
+// carte neuve vient d'arriver, et c'est ici qu'on le constate.
+void NoteMapLoaded();
+
 int __fastcall Hooked_AttrLoad(void* self, void* edx, void* path) {
   const int ok = g_orig_attr_load ? g_orig_attr_load(self, edx, path) : 0;
-  if (!ok || !Enabled() || !g_cfg.flatten || !self) return ok;
+  if (!ok || !self) return ok;
+
+  // 🔴 AVANT toute condition de réglage. Ce hook est traversé à CHAQUE
+  // chargement de carte, leviers cochés ou non — c'est précisément ce qui en
+  // fait un témoin sur lequel on peut compter.
+  DropAttrBackup();
+  // Le niveau appartient à la carte qui arrive. Garder celui d'avant ne
+  // servirait qu'à égarer le .gnd, qui s'en sert de repli (cf. FlattenHeights).
+  g_flat_level_known = false;
+  NoteMapLoaded();
+
+  if (!Enabled() || !g_cfg.flatten) return ok;
   __try {
     auto* a = reinterpret_cast<char*>(self);
     const int w = *reinterpret_cast<int*>(a + gamescene::kTerrainWidth);
     const int h = *reinterpret_cast<int*>(a + gamescene::kTerrainHeight);
-    // La carte QUI VIENT D'ARRIVER fixe le niveau : `true`, sans quoi on
-    // garderait celui de la précédente et le sol serait décalé.
     auto* cells = *reinterpret_cast<char**>(a + gamescene::kTerrainCells);
-    // C'est le .gat qui porte les triangles du clic-sol : c'est LUI qui a besoin
-    // du micro-relief, sans quoi un rayon rasant ne les rencontre jamais.
+    // La copie D'ABORD : après, le relief d'origine n'existe plus nulle part.
+    BackupAttrHeights(self, cells, w * h, gamescene::kCellStride);
+    // La carte QUI VIENT D'ARRIVER fixe le niveau (`set_level`), sans quoi on
+    // garderait celui de la précédente et le sol serait décalé. Et c'est le .gat
+    // qui porte les triangles du clic-sol : c'est LUI qui a besoin du
+    // micro-relief, sans quoi un rayon rasant ne les rencontre jamais.
     FlattenHeights(cells, w * h, gamescene::kCellStride, /*set_level=*/true,
                    /*jitter=*/kFlatJitter);
   } __except (EXCEPTION_EXECUTE_HANDLER) {
@@ -416,7 +486,7 @@ void DrawCellShrunk(void* ground, void* scene, int cell_x, int cell_y,
     c[i * 3 + 2] = cz + (c[i * 3 + 2] - cz) * k;
   }
 
-  void* queue = *reinterpret_cast<void**>(kSceneRenderQueuePtr);
+  void* queue = render::Context();
   if (!queue) return;
   auto acquire = reinterpret_cast<uintptr_t*(__fastcall*)(void*)>(kAcquirePrimRec);
   uintptr_t* rec = acquire(queue);
@@ -496,8 +566,9 @@ void DrawCellGrid(void* self) {
                         : Config::kPatternCross;
     const CellStyle& style = kCellStyles[pat];
     auto get_res = reinterpret_cast<SpriteResFn>(kSpriteResGetOrLoad);
-    void* grid_res = get_res(reinterpret_cast<void*>(kSpriteTexCache), nullptr,
-                             style.texture, 0, 0, 1, 0);
+    void* grid_res =
+        get_res(reinterpret_cast<void*>(render::kSpriteRefCacheAddr), nullptr,
+                style.texture, 0, 0, 1, 0);
     if (!grid_res) return;
 
     auto draw = reinterpret_cast<DrawCellFn>(kDrawCellQuad);
@@ -517,9 +588,9 @@ void DrawCellGrid(void* self) {
       uv = s_point_uv;
     }
 
-    const uint32_t col_walk  = ToArgb(g_cfg.col_walk);
-    const uint32_t col_block = ToArgb(g_cfg.col_block);
-    const uint32_t col_snipe = ToArgb(g_cfg.col_snipe);
+    const uint32_t col_walk  = ro::ArgbFromPicker(g_cfg.col_walk);
+    const uint32_t col_block = ro::ArgbFromPicker(g_cfg.col_block);
+    const uint32_t col_snipe = ro::ArgbFromPicker(g_cfg.col_snipe);
 
     const int r  = g_cfg.radius;
     const int x0 = (px - r < 0) ? 0 : px - r;
@@ -580,32 +651,34 @@ int __fastcall Hooked_RsmRenderNode(void* self, void* edx, void* mtx, int a, int
   return g_orig_rsm ? g_orig_rsm(self, edx, mtx, a, b, c) : 0;
 }
 
-// ── Le CACHE court-circuite les chargeurs — d'où ce rattrapage ───────────────
+// ── Ce qui se rejoue À CHAUD, et pourquoi ────────────────────────────────────
 //
-// 🔴🔴 `UITextureMgr_Load` 0x00a8d4a0 cherche D'ABORD dans son cache
-// (`UITextureMgr_FindCachedRes`) et ne rappelle le `Load` de la ressource que si
-// elle n'y est pas. Une carte déjà visitée dans la session ne repasse donc
-// JAMAIS par `C3dAttr_Load` : son .gat garde son relief d'origine.
+// Aplatir ne se décide pas qu'au chargement : le joueur coche la case au milieu
+// d'une partie, et deux choses savent lui répondre sans attendre — le .gat, qui
+// n'est pas pré-transformé et se réécrit en place, et les bornes du quadtree,
+// qu'on rouvre. Le reste (la géométrie dessinée, les décors) demande un
+// rechargement.
 //
-// C'est invisible à l'œil — le sol dessiné vient du .gnd — mais le clic, lui,
-// teste les triangles du .GAT : on vise alors une géométrie qu'on ne voit plus,
-// et l'angle de la caméra décide de ce qui répond. Exactement le défaut signalé.
+// ⚠ CE N'EST PAS UN RATTRAPAGE DE CACHE — la version précédente le croyait.
+// `UITextureMgr_Load` 0x00a8d4a0 sert bien depuis son cache quand la ressource y
+// est, mais AUCUNE ressource de carte n'y survit à un changement de carte :
+// `CGameMode::OnExit` 0x00c73130 appelle `CWorld_Unload`, puis purge par
+// extension "rsm", "rsw" et "gat" (`UITextureMgr_PurgeByExtension` 0x00a8f740),
+// et `CWorld_Load` 0x00a6aff0 relâche le .gnd sitôt le terrain construit
+// (destruction inconditionnelle). Nos chargeurs sont donc traversés à CHAQUE
+// carte, y compris au retour sur une carte déjà visitée : ce qu'ils font n'a
+// jamais besoin d'être refait après coup.
 //
-// Le rattrapage est simple parce que le .gat n'est pas pré-transformé : le
-// réécrire à chaud suffit. On le fait une fois par chargement de carte, et on
-// prend le niveau DANS LE .GND courant — celui qui est réellement dessiné — ce
-// qui garantit que les deux racontent la même chose, quel que soit celui des
-// deux qui est passé par le cache.
 // 🔴 NE PAS se fier à un compteur de chargements pour savoir s'il faut agir.
 // Première version : `if (MapLoadEpoch() != g_last_map_epoch)`, avec le témoin à
 // 0 — or l'epoch vaut 0 lui aussi tant qu'aucune TRANSITION n'a été comptée, et
 // entrer en jeu n'en est pas forcément une. Le rattrapage n'a alors jamais
 // tourné, mesuré à x32dbg : .gat aplati (par le chargeur) mais quadtree intact.
 //
-// L'état lui-même est un bien meilleur témoin, et il ne peut pas mentir : si la
-// borne haute de la racine n'est pas la nôtre, c'est que le client vient de
-// recopier celles du .rsw — donc qu'une carte a été chargée. Le test coûte une
-// comparaison par frame et se réarme tout seul.
+// L'ÉTAT est un bien meilleur témoin, et il ne peut pas mentir. Il y en a deux,
+// un par chose à faire : la borne haute de la racine du quadtree pour l'arbre, la
+// copie des hauteurs d'origine pour le .gat. Chacun coûte une comparaison par
+// frame et se réarme tout seul au chargement suivant.
 
 // ── Les boîtes du quadtree viennent du .RSW, pas du terrain ──────────────────
 //
@@ -646,6 +719,11 @@ void OpenNodeHeights(int* node, int depth) {
   }
 }
 
+// Posé par les cases à cocher et par la restauration à chaud, consommé au début
+// d'une passe de scène : on ne reconstruit pas des tampons de rendu depuis le
+// dessin d'une fenêtre ImGui.
+bool g_rebuild_requested = false;
+
 void ReflattenLiveAttr() {
   __try {
     void* gm = rag::ActiveModeIfReady();
@@ -655,12 +733,6 @@ void ReflattenLiveAttr() {
     if (!world) return;
     auto* w = reinterpret_cast<char*>(world);
 
-    // Le témoin : tant que la racine porte notre borne, il n'y a rien à faire.
-    // Elle ne peut revenir à autre chose que par un chargement de carte, qui
-    // recopie celles du .rsw.
-    int* root = reinterpret_cast<int*>(w + gamescene::kWorldQuadTree);
-    if (reinterpret_cast<float*>(root)[kNodeMaxY] == kOpenSkyHigh) return;
-
     // 🔴 LE QUADTREE D'ABORD, et sans rien exiger d'autre. Version précédente :
     // il venait en dernier, après quatre sorties anticipées — dont une qui
     // déréférençait `C3dGround15 + 8` en croyant y trouver le .gnd. Ce champ vaut
@@ -669,20 +741,70 @@ void ReflattenLiveAttr() {
     // mot, et le correctif du picking ne s'exécutait jamais.
     // ⚠ Un `__try` qui protège plusieurs étapes cache laquelle a échoué : mettre
     // en tête ce qui doit aboutir coûte que coûte.
-    OpenNodeHeights(root, 0);
+    //
+    // Son témoin : tant que la racine porte notre borne, l'arbre est déjà ouvert.
+    // Il ne peut revenir à autre chose que par un chargement de carte, qui
+    // recopie les bornes du .rsw.
+    int* root = reinterpret_cast<int*>(w + gamescene::kWorldQuadTree);
+    if (reinterpret_cast<float*>(root)[kNodeMaxY] != kOpenSkyHigh) {
+      OpenNodeHeights(root, 0);
+    }
 
     void* attr = *reinterpret_cast<void**>(w + gamescene::kAmTerrain);
     if (!attr) return;
+    // Le témoin du .gat : la copie de ses hauteurs d'origine. Tant qu'elle est à
+    // lui, c'est nous qui l'avons écrit — rien à refaire. 🔴 Et il faut bien un
+    // témoin PROPRE au .gat : celui du quadtree reste vrai après une restauration
+    // à chaud, où l'arbre demeure ouvert alors que le relief, lui, est revenu.
+    if (g_attr_backup_owner == attr) return;
     auto* a = reinterpret_cast<char*>(attr);
     const int aw = *reinterpret_cast<int*>(a + gamescene::kTerrainWidth);
     const int ah = *reinterpret_cast<int*>(a + gamescene::kTerrainHeight);
-    // `set_level` : on recalcule la moyenne sur place plutôt que d'aller la
-    // chercher ailleurs. Sur un .gat déjà aplati par le chargeur, la moyenne des
-    // dents de scie redonne exactement le même niveau — l'opération est donc sans
-    // effet, et elle rattrape le cas où le cache l'a soustrait à notre chargeur.
-    FlattenHeights(*reinterpret_cast<char**>(a + gamescene::kTerrainCells), aw * ah,
-                   gamescene::kCellStride, /*set_level=*/true,
+    auto* cells = *reinterpret_cast<char**>(a + gamescene::kTerrainCells);
+    // La copie D'ABORD : après, le relief d'origine n'existe plus nulle part.
+    BackupAttrHeights(attr, cells, aw * ah, gamescene::kCellStride);
+    // `set_level` : c'est ce terrain-ci qui fixe le niveau, et le .gnd le
+    // reprendra quand on le reconstruira — les deux doivent s'accorder.
+    FlattenHeights(cells, aw * ah, gamescene::kCellStride, /*set_level=*/true,
                    /*jitter=*/kFlatJitter);
+    // La géométrie DESSINÉE, elle, ne se réécrit pas en place : il faut la
+    // reconstruire depuis un .gnd rechargé.
+    g_rebuild_requested = true;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+  }
+}
+
+// ── Rendre le relief SANS changer de carte ───────────────────────────────────
+//
+// Le pendant exact du précédent, et il ne s'appuie que sur la copie : pas de
+// copie, rien à rendre — on n'a rien écrasé. C'est ce qui le rend sûr à appeler
+// à chaque frame, y compris quand GreyWorld n'a jamais servi.
+//
+// ⚠ Les décors, eux, ne reviennent PAS ici : ils sont refusés au chargement, et
+// seul un chargement peut les rendre. Le panneau le dit tant que la carte
+// affichée ne correspond pas au réglage.
+void RestoreLiveAttr() {
+  if (g_attr_backup_owner == nullptr) return;
+  __try {
+    void* gm = rag::ActiveModeIfReady();
+    if (!gm) return;
+    void* world = *reinterpret_cast<void**>(reinterpret_cast<char*>(gm) +
+                                            gamescene::kGmActorMgr);
+    if (!world) return;
+    auto* w = reinterpret_cast<char*>(world);
+    void* attr = *reinterpret_cast<void**>(w + gamescene::kAmTerrain);
+    if (!attr || attr != g_attr_backup_owner) return;
+    auto* a = reinterpret_cast<char*>(attr);
+    const int aw = *reinterpret_cast<int*>(a + gamescene::kTerrainWidth);
+    const int ah = *reinterpret_cast<int*>(a + gamescene::kTerrainHeight);
+    auto* cells = *reinterpret_cast<char**>(a + gamescene::kTerrainCells);
+    if (!RestoreAttrHeights(attr, cells, aw * ah, gamescene::kCellStride)) return;
+    // 🔴 La copie EST le témoin : la lâcher est ce qui autorise un nouvel
+    // aplatissement à chaud si le joueur recoche.
+    DropAttrBackup();
+    // Le .gnd est encore plat : sans reconstruction, le sol dessiné resterait
+    // une nappe sous des acteurs qui, eux, ont retrouvé leurs altitudes.
+    g_rebuild_requested = true;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
   }
 }
@@ -704,8 +826,16 @@ void ReflattenLiveAttr() {
 // relâcher. Aucun paquet, aucune bascule de mode, aucun acteur perdu.
 // ⭐ `Build` commence par un `Resize(w,h)` (vtbl+4) qui réalloue ses tableaux :
 // c'est ce qui rend l'appel rejouable sur un objet déjà construit.
-constexpr uintptr_t kTexMgrGet     = 0x00a90350;  // singleton, sans argument
-constexpr uintptr_t kTexMgrLoad    = 0x00a8d4a0;  // __thiscall(mgr, nom)  retn 4
+// Obtenir le gestionnaire et lui demander une ressource : `ro::texmgr::`, le
+// foyer du projet (ui/game_texture.h). Rien à redéclarer ici.
+//
+// 🔴 SAUF CELLE-CI, ET CE N'EST PAS UN OUBLI. `UITextureMgr_Release` 0x00a8f4b0
+// est le gestionnaire qui DÉTRUIT une ressource — c'est ce que `CWorld_Load`
+// appelle sur le .gnd sitôt le terrain construit, et donc ce qu'on rejoue. Elle
+// n'a rien à voir avec `ro::texmgr::kReleaseAddr` 0x00a8f910, qui est le
+// COMPTEUR DE RÉFÉRENCES de la ressource elle-même. Deux adresses, deux
+// fonctions, des noms voisins : les confondre laisserait le terrain vivant sous
+// un compteur décrémenté, ou détruirait ce qu'un autre tient encore.
 constexpr uintptr_t kTexMgrRelease = 0x00a8f4b0;  // __thiscall(mgr, res)  retn 4
 
 // Les trois triplets de lumière du monde que CWorld_Load passe à Build.
@@ -716,10 +846,6 @@ constexpr uintptr_t kWorldLightC = 0x0159b1bc;
 // Slots de la vtable du C3dGround15, en OCTETS (cf. CWorld_Load).
 constexpr int kGroundVtBuild  = 8;   // Build(gnd, a, b, c)  __thiscall retn 10h
 constexpr int kGroundVtFinish = 52;  // seconde passe(gnd)   __thiscall retn 4
-
-// Posés par la case à cocher, consommés au début d'une passe de scène : on ne
-// reconstruit pas des tampons de rendu depuis le dessin d'une fenêtre ImGui.
-bool g_rebuild_requested = false;
 
 void RebuildTerrain() {
   __try {
@@ -746,36 +872,28 @@ void RebuildTerrain() {
     const char kExt[] = ".gnd";
     for (size_t i = 0; i < sizeof(kExt); ++i) gnd_name[n + i] = kExt[i];
 
-    auto tex_get     = reinterpret_cast<void*(__cdecl*)()>(kTexMgrGet);
-    auto tex_load    = reinterpret_cast<void*(__fastcall*)(void*, void*, const char*)>(
-        kTexMgrLoad);
     auto tex_release = reinterpret_cast<void(__fastcall*)(void*, void*, void*)>(
         kTexMgrRelease);
 
-    void* mgr = tex_get();
+    void* mgr = ro::texmgr::Mgr();
     if (!mgr) {
-      LogDiag("[GreyWorld] rebuild : pas de gestionnaire de textures");
+      LogDiag("[GreyWorld] rebuild : pas de gestionnaire de ressources");
       return;
     }
-    void* gnd = tex_load(mgr, nullptr, gnd_name);
+    // Sans résolution de skin : un .gnd ne vit pas sous la racine d'interface, et
+    // `CWorld_Load` appelle lui aussi le chargeur en direct.
+    void* gnd = ro::texmgr::LoadResourceRaw(gnd_name);
     if (!gnd) {
       LogDiag("[GreyWorld] rebuild : '{}' introuvable", gnd_name);
       return;
     }
 
-    auto* g = reinterpret_cast<char*>(gnd);
-    const int gw = *reinterpret_cast<int*>(g + kGndWidth);
-    const int gh = *reinterpret_cast<int*>(g + kGndHeight);
-    auto* gnd_cells = *reinterpret_cast<char**>(g + kGndCells);
-
-    {
-      // Il revient très probablement du CACHE : s'il n'a jamais traversé notre
-      // chargeur, il porte encore son relief. On l'aplatit ici, au niveau déjà
-      // retenu par le .gat (`set_level=false`), pour que les deux s'accordent.
-      FlattenHeights(gnd_cells, gw * gh, kGndCellStride, /*set_level=*/false,
-                     /*jitter=*/0.0f);
-    }
-
+    // ⭐ RIEN À FAIRE DE SES HAUTEURS ICI. `CWorld_Load` relâche le .gnd sitôt le
+    // terrain construit, et le gestionnaire le DÉTRUIT : celui qu'on vient de
+    // demander est donc relu du fichier, à travers `CGnd::Load` — notre hook.
+    // C'est lui qui aplatit, ou non, selon le réglage du moment ; le décider une
+    // seconde fois ici ne saurait qu'aplatir, et la reconstruction sert autant à
+    // RENDRE le relief qu'à l'ôter.
     void** vt = *reinterpret_cast<void***>(ground);
     auto build = reinterpret_cast<void(__fastcall*)(void*, void*, void*, void*, void*,
                                                     void*)>(
@@ -814,8 +932,11 @@ void RebuildTerrain() {
 // chargement à chaque fly wing, chaque @jump, chaque téléportation de PNJ sur
 // place. Le drapeau expire avec le délai de grâce de la demande.
 constexpr uintptr_t kZcMapChange    = 0x00ccea30;  // __thiscall(this, paquet) retn 4
-constexpr uintptr_t kCurrentMapName = 0x015fb9ac;  // « <carte>.gat », en clair
-constexpr size_t    kMapNameMax     = 32;          // large : les noms font ~16
+// Le nom de la carte courante vit dans `rag::kCurrentMapNameAddr` — une seule
+// déclaration pour tout le projet, cf. globals.h. Ici on l'ÉCRIT, ce que
+// `rag::CurrentMapName` ne sait pas faire : d'où l'adresse brute plutôt que
+// l'accesseur.
+constexpr size_t kMapNameMax = 32;  // large : les noms font ~16
 
 using MapChangeFn = int(__fastcall*)(void*, void*, int);
 MapChangeFn g_orig_map_change   = nullptr;
@@ -829,7 +950,7 @@ int __fastcall Hooked_ZcMapChange(void* self, void* edx, int packet) {
   // Pas de SEH sur la LECTURE : ce nom est une donnée statique du module, donc
   // toujours cartographiée. Un `__try` ici n'apporterait rien et rendrait `n`
   // suspecte (une locale modifiée sous SEH n'est pas fiable).
-  auto*  live = reinterpret_cast<char*>(kCurrentMapName);
+  auto*  live = reinterpret_cast<char*>(rag::kCurrentMapNameAddr);
   char   saved[kMapNameMax];
   size_t n = 0;
   while (n < kMapNameMax && live[n] != '\0') {
@@ -887,10 +1008,25 @@ constexpr uint32_t kReloadGraceMs = 3000;  // au-delà, le serveur n'a pas suivi
 
 // Ce que la carte AFFICHÉE porte : décors déchargés et terrain aplati, ou non.
 // C'est lui, et non le réglage, qui dit s'il faut recharger.
-bool     g_flatten_on_map = false;
-uint32_t g_seen_map_epoch = 0;
-bool     g_reload_pending = false;  // demande posée, pas encore aboutie
-uint32_t g_reload_sent_ms = 0;      // 0 = pas encore partie
+bool g_flatten_on_map = false;
+
+// ── Les quatre temps d'une demande de rechargement ───────────────────────────
+//
+// 🔴🔴 « ARMÉE » ET « PARTIE » NE SONT PAS LE MÊME INSTANT, et les confondre
+// était un bug : `ChatWindow::FlushPending` ne tourne pas à la frame mais sur
+// ÉVÉNEMENT (CMode::SendMsg, cf. Bourgeon::OnProcessInput), donc une ligne armée
+// attend un geste du joueur pour partir. Le délai de grâce compté depuis
+// l'armement pouvait expirer avant même que le serveur ait vu la commande, et le
+// panneau annonçait alors un refus qui n'avait pas eu lieu.
+enum class Reload {
+  kIdle,    // rien en cours
+  kArmed,   // demande posée par une case à cocher, pas encore remise au chat
+  kQueued,  // remise au chat, en attente de son départ réel
+  kSent,    // partie : c'est de LÀ que court le délai de grâce
+};
+Reload   g_reload         = Reload::kIdle;
+uint32_t g_reload_serial  = 0;  // rang de NOTRE ligne dans la file du chat
+uint32_t g_reload_sent_ms = 0;
 
 bool FlattenActive() { return Enabled() && g_cfg.flatten; }
 
@@ -898,66 +1034,93 @@ bool FlattenActive() { return Enabled() && g_cfg.flatten; }
 // sert pour dire au joueur ce qu'il attend.
 bool MapOutOfDate() { return FlattenActive() != g_flatten_on_map; }
 
+// ── Le témoin d'une carte neuve ──────────────────────────────────────────────
+//
+// Appelé par `Hooked_AttrLoad`, et de là seulement : `CWorld_Load` charge le .gat
+// une fois par carte et TOUJOURS (rien de ce qu'il ouvre ne survit dans le cache
+// à un changement de carte, cf. plus haut). Aucun compteur, aucune comparaison —
+// le chargement lui-même est l'événement.
+//
+// 🔴 Il remplace un compteur de paquets 0x0091 qui mentait dans les DEUX sens :
+// il bougeait sur les warps SUR PLACE, que le client ne recharge pas, et restait
+// muet au retour du char-select, qu'il recharge. Le témoin s'en trouvait faussé,
+// et la demande suivante mourait d'entrée sur `MapOutOfDate()`.
+void NoteMapLoaded() {
+  g_flatten_on_map = FlattenActive();
+  // Quel qu'en soit l'auteur — notre commande, un warp de PNJ, une
+  // téléportation — le monde affiché est neuf : la demande n'a plus d'objet, et
+  // le forçage encore armé n'aurait plus qu'à frapper un warp innocent.
+  g_reload            = Reload::kIdle;
+  g_force_full_reload = false;
+}
+
 // Posée par les cases à cocher, consommée hors frame ImGui comme le rebuild.
 void RequestMapReload() {
-  if (!MapOutOfDate()) return;
-  g_reload_pending = true;
-  g_reload_sent_ms = 0;
+  if (!MapOutOfDate()) {
+    // Le joueur est revenu à ce qui est déjà chargé. Une demande pas encore
+    // remise au chat n'a plus d'objet : on la retire plutôt que de faire
+    // recharger pour rien. Partie, en revanche, elle suit son cours — le
+    // chargement qui vient appliquera le réglage du moment, quel qu'il soit.
+    if (g_reload == Reload::kArmed) g_reload = Reload::kIdle;
+    return;
+  }
+  if (g_reload == Reload::kIdle) g_reload = Reload::kArmed;
 }
 
 // La chatbox est TOUJOURS instanciée (LoadPlugins l'ajoute sans condition), même
 // quand le joueur a gardé la chatbox native : c'est son `FlushPending` qui joue
 // l'envoi, hors frame ImGui, et il tourne dans les deux cas.
+//
+// On retient le RANG de notre ligne : c'est lui qui dira qu'elle est réellement
+// partie, et non pas seulement mise en file.
 bool SendMapReload() {
   auto* chat = Bourgeon::Instance().chat_window();
   if (chat == nullptr || !chat->SendTextNow("@refreshmap")) return false;
-  // Le paquet qui reviendra désignera la carte où l'on est déjà : sans ceci, le
-  // client le rangerait dans sa branche « rien à recharger ».
-  g_force_full_reload = true;
+  g_reload_serial = chat->LastArmedSendSerial();
   return true;
 }
 
-// Une passe par frame de scène. Trois choses y sont faites, dans cet ordre :
-// constater qu'une carte a fini de charger, envoyer la demande en attente, et
-// abandonner celle qui n'a rien donné.
+// Une passe par frame de scène : elle fait avancer la demande d'un temps, et
+// jamais plus. Le retour à `kIdle` sur un chargement, lui, vient du témoin.
 void PumpMapReload() {
+  if (g_reload == Reload::kIdle) return;
   Bourgeon& b = Bourgeon::Instance();
-  const uint32_t epoch = b.MapLoadEpoch();
-
-  // Un chargement a eu lieu ET s'est terminé : le monde affiché est neuf, quel
-  // qu'en soit l'auteur — notre demande, un warp de PNJ, une téléportation.
-  if (epoch != g_seen_map_epoch && !b.IsMapLoading()) {
-    g_seen_map_epoch = epoch;
-    g_flatten_on_map = FlattenActive();
-    g_reload_pending = false;
-    g_reload_sent_ms = 0;
-    return;
-  }
-
-  if (!g_reload_pending) return;
   if (b.IsMapLoading() || !b.IsGameActive()) return;
 
-  // Un envoi de chat en attente refuse le nôtre : on réessaie à la frame
-  // suivante plutôt que de brûler la tentative. Le compteur du délai de grâce ne
-  // démarre qu'une fois la ligne réellement armée.
-  if (g_reload_sent_ms == 0) {
-    if (SendMapReload()) g_reload_sent_ms = GetTickCount();
+  if (g_reload == Reload::kArmed) {
+    if (SendMapReload()) g_reload = Reload::kQueued;
     return;
   }
 
-  // Passé le délai de grâce, le serveur a refusé (ou ne connaît pas l'opcode).
-  // On cesse de l'attendre et on rattrape ce qu'on sait faire à chaud : le
-  // terrain. Les décors, eux, attendront un vrai changement de carte — c'est ce
-  // que le panneau annonce tant que `MapOutOfDate()` reste vrai.
-  if (GetTickCount() - g_reload_sent_ms >= kReloadGraceMs) {
-    g_reload_pending = false;
-    g_reload_sent_ms = 0;
-    // 🔴 DÉSARMER. Le paquet n'est pas venu ; laissé armé, le drapeau se
-    // déclencherait sur le prochain warp sur place du joueur — une fly wing, un
-    // @jump — et lui infligerait un écran de chargement qu'il n'a pas demandé.
-    g_force_full_reload = false;
-    if (FlattenActive()) g_rebuild_requested = true;
+  if (g_reload == Reload::kQueued) {
+    auto* chat = b.chat_window();
+    if (chat == nullptr) {
+      g_reload = Reload::kIdle;  // plus de chatbox : plus personne pour l'envoyer
+      return;
+    }
+    if (chat->SentSendSerial() < g_reload_serial) return;  // toujours en file
+    // 🔴 LE FORÇAGE S'ARME ICI, au départ de la ligne — pas à son armement. Le
+    // paquet qui va venir répond à CETTE commande ; posé plus tôt, le drapeau
+    // aurait pu être consommé par un warp ordinaire survenu entre-temps, et
+    // notre rechargement serait retombé dans la branche « rien à recharger ».
+    g_force_full_reload = true;
+    g_reload_sent_ms    = GetTickCount();
+    g_reload            = Reload::kSent;
+    return;
   }
+
+  // kSent : passé le délai de grâce, le serveur a refusé (combat récent, fenêtre
+  // ouverte) ou ne connaît pas la commande. On cesse de l'attendre ; le terrain
+  // se rattrape à chaud dès la frame suivante, dans les deux sens, puisque la
+  // reprise à chaud ne s'abstient que le temps d'un rechargement en vue. Les
+  // décors, eux, attendront un vrai changement de carte — c'est ce que le
+  // panneau annonce tant que `MapOutOfDate()` reste vrai.
+  if (GetTickCount() - g_reload_sent_ms < kReloadGraceMs) return;
+  g_reload = Reload::kIdle;
+  // 🔴 DÉSARMER. Le paquet n'est pas venu ; laissé armé, le drapeau se
+  // déclencherait sur le prochain warp sur place du joueur — une fly wing, un
+  // @jump — et lui infligerait un écran de chargement qu'il n'a pas demandé.
+  g_force_full_reload = false;
 }
 
 void TryInstallFogHook();  // défini plus bas : il lui faut Hooked_FogEnable
@@ -975,19 +1138,34 @@ void __fastcall Hooked_SceneRenderCells(void* self) {
   // celui où le joueur vient d'ÉTEINDRE GreyWorld sur une carte chargée à plat.
   // Sous la garde, la demande ne serait jamais envoyée.
   PumpMapReload();
-  // Rattrapage : les boîtes du quadtree (que le .rsw fige au relief d'origine)
-  // et le .gat (que le cache de ressources peut soustraire à notre chargeur).
-  // La fonction se garde elle-même — elle sort sur une comparaison quand tout
-  // est déjà en place.
-  if (Enabled()) {
-    if (g_cfg.flatten) ReflattenLiveAttr();  // fixe le niveau que le rebuild reprend
-    // 🔴 Les deux demandes sont traitées HORS du test sur `flatten` : au
-    // décochage il vaut déjà false, et c'est précisément là qu'il faut rendre le
-    // relief.
-    if (g_rebuild_requested) {
-      g_rebuild_requested = false;
-      RebuildTerrain();
+
+  // ── Le relief à chaud, dans les DEUX sens ──────────────────────────────────
+  //
+  // 🔴 HORS de `Enabled()`, comme la pompe : le cas qui compte le plus est celui
+  // où le joueur vient d'ÉTEINDRE GreyWorld sur une carte chargée à plat, et
+  // sous la garde on ne lui rendrait jamais son relief.
+  //
+  // 🔴 MAIS PAS PENDANT QU'UN RECHARGEMENT EST EN VUE : celui-ci fait mieux (les
+  // décors suivent, les fichiers sont relus tels quels) et il effacerait de toute
+  // façon ce qu'on aurait écrit entre-temps. On ne s'en mêle donc qu'une fois
+  // qu'il a échoué — ou quand il n'a jamais été demandé, ce qui est le cas de
+  // toutes les frames ordinaires, y compris celle qui suit un chargement.
+  //
+  // Les deux fonctions se gardent elles-mêmes : elles sortent sur une
+  // comparaison quand tout est déjà en place.
+  if (g_reload == Reload::kIdle) {
+    if (FlattenActive()) {
+      ReflattenLiveAttr();  // fixe le niveau que la reconstruction reprend
+    } else {
+      RestoreLiveAttr();
     }
+  }
+  // Consommée hors de tout test de réglage : la reconstruction sert autant à
+  // rendre le relief qu'à l'ôter, et l'une des deux est demandée par un module
+  // qu'on vient peut-être d'éteindre.
+  if (g_rebuild_requested) {
+    g_rebuild_requested = false;
+    RebuildTerrain();
   }
   if (Enabled() && g_cfg.grid && self) DrawCellGrid(self);
   if (g_orig_scene_cells) g_orig_scene_cells(self);
@@ -1004,22 +1182,36 @@ int __fastcall Hooked_FogEnable(void* self, void* edx, int on) {
 
 // L'objet de la file de scène n'existe qu'une fois en jeu, et sa vtable n'a pas
 // d'adresse statique : le hook du brouillard ne peut donc pas se poser au
-// chargement de la DLL comme les deux autres. On le tente à chaque frame de
-// rendu tant qu'il n'est pas posé — c'est-à-dire une poignée de fois, puis
-// jamais plus.
+// chargement de la DLL comme les deux autres. On le tente donc à chaque frame de
+// rendu — mais tant que la file n'existe pas, et pas au-delà.
+//
+// 🔴🔴 UN SEUL ESSAI DE POSE, JAMAIS DEUX. `SetHook` rend un trampoline nul quand
+// le prologue n'est pas relocalisable, mais il a ÉCRIT son saut : réessayer à la
+// frame suivante patcherait le détour par-dessus lui-même, et le premier
+// brouillard venu partirait en récursion infinie. Le drapeau ne se lève qu'une
+// fois la cible réellement en main — un essai, un verdict, et on le dit.
 void TryInstallFogHook() {
-  if (g_orig_fog_enable) return;
+  static bool tried = false;
+  if (tried || g_orig_fog_enable) return;
+  void* target = nullptr;
   __try {
-    void* queue = *reinterpret_cast<void**>(kSceneRenderQueuePtr);
-    if (!queue) return;
+    void* queue = render::Context();
+    if (!queue) return;  // pas encore en jeu : on retentera, rien n'a été écrit
     void** vt = *reinterpret_cast<void***>(queue);
-    if (!vt || !vt[kVtFogEnable]) return;
-    g_orig_fog_enable = reinterpret_cast<FogEnableFn>(
-        hooking::HookManager::Instance().SetHook(
-            hooking::HookType::kJmpHook,
-            reinterpret_cast<uint8_t*>(vt[kVtFogEnable]),
-            reinterpret_cast<uint8_t*>(&Hooked_FogEnable)));
+    if (vt) target = vt[kVtFogEnable];
   } __except (EXCEPTION_EXECUTE_HANDLER) {
+  }
+  if (!target) return;
+
+  tried = true;
+  g_orig_fog_enable = reinterpret_cast<FogEnableFn>(
+      hooking::HookManager::Instance().SetHook(
+          hooking::HookType::kJmpHook, reinterpret_cast<uint8_t*>(target),
+          reinterpret_cast<uint8_t*>(&Hooked_FogEnable)));
+  if (!g_orig_fog_enable) {
+    // Sans original à chaîner, le détour avalerait tous les appels : on ne peut
+    // ni le retirer ni le refaire, mais on peut au moins ne pas se taire.
+    LogDiag("[GreyWorld] hook du brouillard : pas de trampoline, levier inerte");
   }
 }
 
@@ -1033,7 +1225,7 @@ void PushFogState() {
   // drapeau, plus haut. La carte suivante rétablira son brouillard elle-même.
   if (!cut && !g_native_fog_known) return;
   __try {
-    void* queue = *reinterpret_cast<void**>(kSceneRenderQueuePtr);
+    void* queue = render::Context();
     if (!queue) return;
     g_orig_fog_enable(queue, nullptr, cut ? 0 : g_native_fog);
   } __except (EXCEPTION_EXECUTE_HANDLER) {
@@ -1105,11 +1297,10 @@ void LoadStartupState() {
     // font rien tant que les drapeaux sont faux, et le réglage repassera par la
     // lecture normale.
   }
-  // La première carte du jeu sera chargée avec CES valeurs-là : c'est le point
-  // de départ du témoin, et il doit être posé ici. L'époque, elle, ne bouge
-  // qu'aux warps — l'entrée en jeu n'en est pas un.
+  // La première carte du jeu sera chargée avec CES valeurs-là. Le témoin sera de
+  // toute façon posé par son chargement (cf. NoteMapLoaded) : ceci n'est que la
+  // valeur de départ, le temps qu'il ait lieu.
   g_flatten_on_map = g_cfg.enabled && g_cfg.flatten;
-  g_seen_map_epoch = Bourgeon::Instance().MapLoadEpoch();
   EnsureInstalled();
 }
 
@@ -1152,7 +1343,7 @@ bool DrawSettings() {
   // joueur vient d'ÉTEINDRE l'interrupteur sur une carte chargée à plat, et il
   // ne verrait alors qu'un message éteint sous une case éteinte.
   if (MapOutOfDate()) {
-    if (g_reload_pending) {
+    if (g_reload != Reload::kIdle) {
       ImGui::TextDisabled("%s", i18n::Tr("Rechargement de la carte demandé…"));
     } else {
       ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.3f, 1.0f), "%s", i18n::Tr(

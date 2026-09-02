@@ -3435,7 +3435,8 @@ void MakeItemWindow::DrawForgeSlots() {
   for (int i = 0; i < 3; ++i) {
     ImGui::PushID(i);
     ImGui::SetNextItemWidth(slot_w);
-    const char* preview = forge_slot_[i] ? NameOf(forge_slot_[i]) : "(vide)";
+    const char* preview =
+        forge_slot_[i] ? NameOf(forge_slot_[i]) : i18n::Tr("(vide)");
     // ro::RoBeginCombo, pas ImGui::BeginCombo : même raison que les boutons, les
     // cases et le curseur du pied — la fenêtre porte le skin RO de bout en bout,
     // et un widget ImGui nu y devient l'exception qu'on remarque.

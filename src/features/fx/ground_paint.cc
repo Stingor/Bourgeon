@@ -61,15 +61,15 @@ constexpr uintptr_t kDX9DrawGround = 0x0055d680;  // RendererDX9_DrawGroundTiles
 // bien la vtable D3D9 standard, donc les index 57 et 67 ci-dessous sont sûrs.
 constexpr int kOffD3D9Device = 0x260;   // renderer DX9 -> IDirect3DDevice9*
 constexpr int kVtSetRenderState      = 57 * 4;  // 0x0e4
+constexpr int kVtGetRenderState      = 58 * 4;  // 0x0e8
+constexpr int kVtGetTextureStageState = 66 * 4;  // 0x108
 constexpr int kVtSetTextureStageState = 67 * 4;  // 0x10c
 
 constexpr unsigned kD3DRS_TEXTUREFACTOR = 60;
 constexpr unsigned kD3DTSS_COLOROP      = 1;
 constexpr unsigned kD3DTSS_COLORARG1    = 2;
 constexpr unsigned kD3DTOP_SELECTARG1   = 2;
-constexpr unsigned kD3DTOP_MODULATE     = 4;
 constexpr unsigned kD3DTA_CURRENT       = 1;  // le résultat du stage précédent
-constexpr unsigned kD3DTA_TEXTURE       = 2;
 constexpr unsigned kD3DTA_TFACTOR       = 3;
 
 constexpr uintptr_t kDX9DrawPrimRec  = 0x0055c830;  // vtbl +0x38 : draw mono-texture
@@ -122,9 +122,11 @@ void __fastcall Hooked_DrawGround(void* self) {
 using DrawPrimRecFn = void(__fastcall*)(void*, void*, void*);
 DrawPrimRecFn g_orig_draw_prim = nullptr;
 
-// Pose la couleur unie sur le stage 0, appelle le draw natif, puis restaure. Le stage 0
-// sert à TOUTE la suite de la scène : on remet exactement les valeurs que le cache du
-// wrapper croit actives (MODULATE / TEXTURE), donc cache et device restent cohérents.
+// Les deux stages qu'on touche : la texture du sol et la lightmap.
+constexpr unsigned kPaintedStages = 2;
+
+// Pose la couleur unie sur les deux stages, appelle le draw natif, puis rend au device
+// EXACTEMENT ce qu'il avait. Ces états servent à toute la suite de la scène.
 void PaintAroundDraw(void* self, void* edx, void* rec, DrawPrimRecFn orig) {
   __try {
     void* dev = *reinterpret_cast<void**>(reinterpret_cast<char*>(self) + kOffD3D9Device);
@@ -138,6 +140,10 @@ void PaintAroundDraw(void* self, void* edx, void* rec, DrawPrimRecFn orig) {
         vt[kVtSetRenderState / sizeof(void*)]);
     auto SetTSS = reinterpret_cast<long(__stdcall*)(void*, unsigned, unsigned, unsigned)>(
         vt[kVtSetTextureStageState / sizeof(void*)]);
+    auto GetRS = reinterpret_cast<long(__stdcall*)(void*, unsigned, unsigned*)>(
+        vt[kVtGetRenderState / sizeof(void*)]);
+    auto GetTSS = reinterpret_cast<long(__stdcall*)(void*, unsigned, unsigned, unsigned*)>(
+        vt[kVtGetTextureStageState / sizeof(void*)]);
 
     auto ch = [](float v) -> unsigned {
       int i = static_cast<int>(v * 255.0f + 0.5f);
@@ -146,6 +152,33 @@ void PaintAroundDraw(void* self, void* edx, void* rec, DrawPrimRecFn orig) {
     const float* col = PaintColor();
     const unsigned argb = (ch(col[3]) << 24) | (ch(col[0]) << 16) |
                           (ch(col[1]) << 8) | ch(col[2]);
+
+    // ── Ce qu'on va écraser, relevé SUR LE DEVICE ──────────────────────────────
+    //
+    // 🔴🔴 NE PAS REMETTRE DES VALEURS EN DUR. La version précédente rendait
+    // MODULATE/TEXTURE aux deux stages, parce que c'est ce que pose la branche
+    // ANISOTROPE de la passe terrain. L'autre branche, elle, laisse le stage 1
+    // DÉSACTIVÉ : on lui rendait donc un état qu'elle n'avait jamais demandé — et
+    // comme le client écrit ses états à travers un CACHE (cf. plus haut), il se
+    // croyait toujours à DISABLE et ne le repoussait jamais. Toute la scène qui
+    // suit se retrouvait modulée par une seconde texture.
+    //
+    // Le device, lui, ne peut pas se tromper : on lui demande ce qu'il a. Et si
+    // la lecture échoue, on ne peint PAS — laisser un état qu'on ne sait pas
+    // défaire coûterait bien plus cher qu'un sol non repeint.
+    auto ok = [](long hr) { return hr >= 0; };
+    unsigned saved_factor = 0;
+    unsigned saved_op[kPaintedStages]  = {0};
+    unsigned saved_arg[kPaintedStages] = {0};
+    bool saved = ok(GetRS(dev, kD3DRS_TEXTUREFACTOR, &saved_factor));
+    for (unsigned s = 0; s < kPaintedStages && saved; ++s) {
+      saved = ok(GetTSS(dev, s, kD3DTSS_COLOROP, &saved_op[s])) &&
+              ok(GetTSS(dev, s, kD3DTSS_COLORARG1, &saved_arg[s]));
+    }
+    if (!saved) {
+      if (orig) orig(self, edx, rec);
+      return;
+    }
 
     SetRS(dev, kD3DRS_TEXTUREFACTOR, argb);
     SetTSS(dev, 0, kD3DTSS_COLORARG1, kD3DTA_TFACTOR);
@@ -160,10 +193,13 @@ void PaintAroundDraw(void* self, void* edx, void* rec, DrawPrimRecFn orig) {
     SetTSS(dev, 1, kD3DTSS_COLORARG1, kD3DTA_CURRENT);
     SetTSS(dev, 1, kD3DTSS_COLOROP, kD3DTOP_SELECTARG1);
     if (orig) orig(self, edx, rec);
-    SetTSS(dev, 1, kD3DTSS_COLOROP, kD3DTOP_MODULATE);
-    SetTSS(dev, 1, kD3DTSS_COLORARG1, kD3DTA_TEXTURE);
-    SetTSS(dev, 0, kD3DTSS_COLOROP, kD3DTOP_MODULATE);
-    SetTSS(dev, 0, kD3DTSS_COLORARG1, kD3DTA_TEXTURE);
+    // Rendu dans l'ordre inverse de la pose, stage haut d'abord : c'est celui
+    // dont l'état dépend du précédent.
+    for (unsigned s = kPaintedStages; s-- > 0;) {
+      SetTSS(dev, s, kD3DTSS_COLOROP, saved_op[s]);
+      SetTSS(dev, s, kD3DTSS_COLORARG1, saved_arg[s]);
+    }
+    SetRS(dev, kD3DRS_TEXTUREFACTOR, saved_factor);
   } __except (EXCEPTION_EXECUTE_HANDLER) {
   }
 }

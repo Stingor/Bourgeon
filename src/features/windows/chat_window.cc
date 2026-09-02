@@ -1603,7 +1603,11 @@ void ChatWindow::OnModeSwitch(ModeMgr::ModeType mode_type, const char* map_name)
     channels_.clear();
     channels_stamp_  = 0;
     structure_owned_ = false;  // on repartira du fichier, sinon du registre
-    has_pending_ = false;
+    // Ce qui n'est pas parti ne partira plus : le personnage a quitté le monde.
+    // Le rang « sorti » rejoint le rang armé, sans quoi un module qui attendait
+    // son départ attendrait pour toujours (cf. SentSendSerial).
+    pending_sends_.clear();
+    last_sent_send_ = last_armed_send_;
     ingest_seen_ = 0;
     ingest_kept_ = 0;
   } else {
@@ -4081,10 +4085,10 @@ void ChatWindow::QueueWhisperSend(Channel& channel) {
   // 🔴 DEUX fonctions différentes, et pas par inadvertance : le TEXTE peut
   // basculer en UTF-8 s'il porte un emoji, le NOM du correspondant jamais — le
   // serveur le cherche octet par octet dans sa base, en 1252.
-  pending_text_    = ro::Utf8ToWireText(channel.whisper_input.c_str());
-  pending_whisper_ = ro::Utf8ToWire(channel.whisper_with.c_str());
-  has_pending_     = true;
-  pending_typed_   = false;  // un chuchotement ne lit aucun préfixe de canal
+  // `typed` faux : un chuchotement ne lit aucun préfixe de canal.
+  ArmSend(ro::Utf8ToWireText(channel.whisper_input.c_str()),
+          ro::Utf8ToWire(channel.whisper_with.c_str()), /*typed=*/false,
+          SendToggles());
   channel.whisper_stamp = GetTickCount();
   channel.whisper_input.clear();
 }
@@ -5368,17 +5372,13 @@ void ChatWindow::AppendToInput(const char* utf8, int whisper_index) {
 // une commande native jouée pendant le rendu gèle le client.
 bool ChatWindow::SendTextNow(const char* utf8, const char* whisper_utf8) {
   if (utf8 == nullptr || utf8[0] == '\0') return false;
-  // Un seul envoi peut attendre : écraser celui qui est là perdrait la phrase
-  // que le joueur vient de valider. La fenêtre ne dure qu'une frame.
-  if (has_pending_) return false;
-  pending_text_ = ro::Utf8ToWireText(utf8);
   // 🔴 Le destinataire est celui de la fenêtre D'OÙ L'ON PART, pas celui de la
   // barre principale : une emote cliquée dans une conversation 1:1 doit partir à
   // ce correspondant-là, même si la box destinataire du chat dit autre chose.
-  pending_whisper_ =
-      ro::Utf8ToWire((whisper_utf8 != nullptr) ? whisper_utf8 : whisper_);
-  has_pending_   = true;
-  pending_typed_ = false;  // ce n'est pas une ligne tapée : aucun préfixe à lire
+  // `typed` faux : ce n'est pas une ligne tapée, aucun préfixe à lire.
+  ArmSend(ro::Utf8ToWireText(utf8),
+          ro::Utf8ToWire((whisper_utf8 != nullptr) ? whisper_utf8 : whisper_),
+          /*typed=*/false, SendToggles());
   return true;
 }
 
@@ -6793,10 +6793,8 @@ links::Target ChatWindow::TargetOf(const PendingLink& link) const {
 // OnProcessInput.
 void ChatWindow::QueueCommand(const char* utf8) {
   if (utf8 == nullptr || utf8[0] == '\0') return;
-  pending_text_ = ro::Utf8ToWireText(utf8);
-  pending_whisper_.clear();
-  has_pending_   = true;
-  pending_typed_ = false;  // une commande de menu, pas une ligne tapée
+  // `typed` faux : une commande de menu, pas une ligne tapée.
+  ArmSend(ro::Utf8ToWireText(utf8), std::string(), /*typed=*/false, SendToggles());
 }
 
 void ChatWindow::QueueNameAction(NameAction action, const char* name_wire) {
@@ -7410,14 +7408,11 @@ void ChatWindow::QueueSend() {
   // cas elle part en UTF-8 (cf. ro::Utf8ToWireText). On convertit ICI, pas au
   // moment de l'envoi : FlushPending tourne hors frame et ne doit plus faire que
   // des appels natifs.
-  pending_text_    = ro::Utf8ToWireText(resolved.c_str());
-  pending_whisper_ = ro::Utf8ToWire(whisper_);
-  has_pending_     = true;
   // 🔴 Les touches se relèvent MAINTENANT, pas à l'envoi : `FlushPending` tourne
-  // une frame plus tard, et le Ctrl que le joueur tenait en validant sera peut-être
-  // déjà relâché. Le natif, lui, les lit dans la foulée de sa touche ENTRÉE.
-  pending_typed_   = true;
-  pending_toggles_ = ReadSendToggleKeys();
+  // plus tard, et le Ctrl que le joueur tenait en validant sera peut-être déjà
+  // relâché. Le natif, lui, les lit dans la foulée de sa touche ENTRÉE.
+  ArmSend(ro::Utf8ToWireText(resolved.c_str()), ro::Utf8ToWire(whisper_),
+          /*typed=*/true, ReadSendToggleKeys());
   input_[0] = '\0';
 }
 
@@ -7540,21 +7535,36 @@ void ChatWindow::FlushPending() {
   // n'avoir rien à envoyer du tout (`/atlas`), auquel cas le `return` ci-dessous
   // la laisserait en attente pour toujours.
   FlushCommandAction();
-  if (!has_pending_) return;
-  has_pending_ = false;
-  const SendToggles toggles = pending_toggles_;
-  const bool        typed   = pending_typed_;
-  // Remis à zéro TOUT DE SUITE : le prochain envoi qui n'est pas une ligne tapée
-  // ne doit rien hériter de celle-ci.
-  pending_typed_   = false;
-  pending_toggles_ = SendToggles();
-  const char* error = NativeSendChatText(pending_text_.c_str(),
-                                         pending_whisper_.c_str(), typed, toggles);
-  pending_text_.clear();
-  pending_whisper_.clear();
-  // Un refus (mot interdit) s'affiche dans NOTRE chat : le natif ouvrirait une
-  // modale bloquante, qui relance le rendu du mode courant — proscrit ici.
-  if (error != nullptr) AddLocalLine(error, kSendErrorRgb);
+  // Toute la file, dans l'ordre d'armement : ce qui attendait ne dépend pas du
+  // nombre d'événements qui ont suivi.
+  while (!pending_sends_.empty()) {
+    // 🔴 SORTI DE LA FILE AVANT l'appel natif, jamais après : le pipeline du
+    // client peut relancer le rendu du mode courant, donc repasser par ici, et
+    // une ligne encore en file partirait deux fois.
+    const PendingSend send = std::move(pending_sends_.front());
+    pending_sends_.pop_front();
+    const char* error = NativeSendChatText(send.text.c_str(), send.whisper.c_str(),
+                                           send.typed, send.toggles);
+    last_sent_send_ = send.serial;
+    // Un refus (mot interdit) s'affiche dans NOTRE chat : le natif ouvrirait une
+    // modale bloquante, qui relance le rendu du mode courant — proscrit ici.
+    if (error != nullptr) AddLocalLine(error, kSendErrorRgb);
+  }
+}
+
+// Le seul point d'armement : les cinq chemins d'envoi y passent, et c'est lui
+// qui distribue les rangs. Rendre le rang plutôt que de le laisser lire permet à
+// l'appelant de suivre SON envoi et pas le dernier armé.
+uint32_t ChatWindow::ArmSend(std::string text, std::string whisper, bool typed,
+                             SendToggles toggles) {
+  PendingSend send;
+  send.text    = std::move(text);
+  send.whisper = std::move(whisper);
+  send.typed   = typed;
+  send.toggles = toggles;
+  send.serial  = ++last_armed_send_;
+  pending_sends_.push_back(std::move(send));
+  return last_armed_send_;
 }
 
 // Joue la commande de Bourgeon armée par QueueSend. Appelée par FlushPending,

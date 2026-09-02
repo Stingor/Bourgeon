@@ -2322,7 +2322,11 @@ void MoonlightUi::PostLoadApply() {
   // GreyWorld : même raison, et une de plus. Ses hooks doivent exister dès le
   // retour du YAML, mais son `Apply()` porte aussi ce qui ne se relit pas chaque
   // frame — la demande de sol uni faite à ground_paint, et l'état du brouillard.
-  if (grey_world::cfg().enabled) grey_world::Apply();
+  //
+  // 🔴 SANS CONDITION. `Apply()` pose l'état voulu dans les DEUX sens : gardé
+  // sous « si c'est allumé », un réglage revenu ÉTEINT du fichier laissait en
+  // place ce que la session avait posé avant lui.
+  grey_world::Apply();
 }
 
 void MoonlightUi::WriteSettingsFile() {

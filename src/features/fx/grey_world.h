@@ -92,7 +92,10 @@ struct Config {
 
   // Ordre RGBA du picker. Les défauts vivent dans la table de réglages
   // (moonlight_ui.cc) ; ceux-ci ne servent qu'avant la première lecture du YAML.
-  float col_ground[4] = {0.16f, 0.16f, 0.18f, 1.00f};  // sol uni, ardoise
+  // ⚠ Ils doivent donc DIRE LA MÊME CHOSE qu'elle : deux valeurs voisines mais
+  // différentes ne se voient pas à l'œil et se lisent comme un réglage déjà
+  // modifié. `col_ground` = 0xFF2A2A2E, à l'octet près (42/255, 46/255).
+  float col_ground[4] = {0.16471f, 0.16471f, 0.18039f, 1.00f};  // ardoise
   float col_walk[4]   = {1.00f, 1.00f, 1.00f, 0.16f};  // marchable, trait fin
   float col_block[4]  = {1.00f, 0.31f, 0.25f, 0.55f};  // mur
   float col_snipe[4]  = {1.00f, 0.75f, 0.25f, 0.55f};  // infranchissable, tirable

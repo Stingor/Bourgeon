@@ -5577,7 +5577,8 @@ void CharacterSheet::DrawGuildTab() {
     // contextuel n'apparaissent donc que pour le maître (comme le « Delete » du natif).
     const bool can_break = is_master;
     for (int pass = 0; pass < 2; ++pass) {
-      ImGui::TextColored(pass == 0 ? ro::pal::kGreen : ro::pal::kRed, "%s", pass == 0 ? i18n::Tr("Alliés") : "Ennemis");
+      ImGui::TextColored(pass == 0 ? ro::pal::kGreen : ro::pal::kRed, "%s",
+                         pass == 0 ? i18n::Tr("Alliés") : i18n::Tr("Ennemis"));
       int shown = 0;
       for (int i = 0; i < relations.count; ++i) {
         const GuildRelation& rel = relations.entries[i];

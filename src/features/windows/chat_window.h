@@ -689,8 +689,9 @@ class ChatWindow : public Plugin {
 
   // Envoie `text` comme si le joueur l'avait validé dans la barre : commandes
   // « / », commandes serveur « @ », modes d'envoi, chuchotement. `whisper_utf8`
-  // nul = le destinataire courant de la barre principale. Rend false si un envoi
-  // attend déjà (la fenêtre ne dure qu'une frame).
+  // nul = le destinataire courant de la barre principale. Rend false sur une
+  // ligne vide, et seulement là : un envoi déjà en attente ne refuse pas
+  // celui-ci — les deux partiront, dans l'ordre (cf. la file, plus bas).
   //
   // 🔴 ARME, N'ENVOIE PAS. Le départ est joué par `FlushPending`, hors frame
   // ImGui — le pipeline natif peut ouvrir une modale BLOQUANTE, à ne jamais
@@ -698,6 +699,22 @@ class ChatWindow : public Plugin {
   // lequel le reste de Bourgeon fait dire une ligne au serveur : GreyWorld s'en
   // sert pour son « @refreshmap ».
   bool  SendTextNow(const char* text, const char* whisper_utf8 = nullptr);
+
+  // ── Savoir quand la ligne armée est RÉELLEMENT partie ──────────────────────
+  //
+  // 🔴 `FlushPending` ne tourne pas à la frame mais sur ÉVÉNEMENT (CMode::SendMsg,
+  // cf. Bourgeon::OnProcessInput) : entre l'armement et le départ il peut
+  // s'écouler un temps qu'aucun appelant ne borne. Un module qui attend ensuite
+  // une réponse du serveur doit donc compter son délai à partir du DÉPART, pas de
+  // l'armement — sinon il l'a déjà épuisé quand la ligne s'en va.
+  //
+  // Le rang est celui du dernier envoi ARMÉ ; on le retient après un
+  // `SendTextNow` accepté, et on attend que `SentSendSerial()` l'ait atteint.
+  uint32_t LastArmedSendSerial() const { return last_armed_send_; }
+  // Rang du dernier envoi SORTI de la file : parti au natif, ou abandonné avec
+  // elle au retour au char-select. Dans les deux cas celui qui attendait a sa
+  // réponse — plus rien ne partira pour ce rang-là.
+  uint32_t SentSendSerial() const { return last_sent_send_; }
 
  private:
   // Un canal, tel que le registre natif le décrit (nom + 25 octets de filtre).
@@ -1467,17 +1484,35 @@ class ChatWindow : public Plugin {
   std::string select_buf_;              // texte nu servi à InputTextMultiline
   uint32_t    select_key_  = 0xFFFFFFFFu;  // signature du dernier remplissage
 
-  // Envoi armé pendant le rendu, joué par FlushPending (hors frame ImGui). Les
-  // deux chaînes sont déjà dans la code-page du FIL, prêtes pour le natif.
-  std::string pending_text_;
-  std::string pending_whisper_;
-  bool        has_pending_ = false;
-  // 🔴 Une ligne TAPÉE et une macro ne routent pas pareil : seule la première
-  // lit les préfixes et les touches (cf. SendToggles). Les touches sont relevées
-  // à la VALIDATION et voyagent ici, parce que FlushPending tourne une frame
-  // plus tard — le temps de relâcher Ctrl et de changer de canal sans le vouloir.
-  bool        pending_typed_ = false;
-  SendToggles pending_toggles_;
+  // ── Les envois armés pendant le rendu, joués par FlushPending ──────────────
+  //
+  // 🔴 UNE FILE, PAS UN SLOT UNIQUE. `FlushPending` ne tourne que sur événement,
+  // donc l'attente n'est pas bornée par une frame : deux envois peuvent très bien
+  // se présenter dans le même intervalle. Avec un slot, le second écrasait le
+  // premier — une ligne validée à la barre de saisie effaçait celle qu'un module
+  // avait armée, qui se croyait pourtant partie. Ici rien ne choisit : tout part,
+  // dans l'ordre d'armement.
+  struct PendingSend {
+    // Les deux chaînes sont déjà dans la code-page du FIL, prêtes pour le natif.
+    std::string text;
+    std::string whisper;  // vide = pas de chuchotement
+    // 🔴 Une ligne TAPÉE et une macro ne routent pas pareil : seule la première
+    // lit les préfixes et les touches (cf. SendToggles). Les touches sont relevées
+    // à la VALIDATION et voyagent ici, parce que le départ a lieu plus tard — le
+    // temps de relâcher Ctrl et de changer de canal sans le vouloir.
+    bool        typed = false;
+    SendToggles toggles;
+    uint32_t    serial = 0;  // rang d'armement (cf. LastArmedSendSerial)
+  };
+  std::deque<PendingSend> pending_sends_;
+  // Zéro = « aucun envoi n'a jamais été armé » : c'est ce que vaut un rang qu'on
+  // n'a pas obtenu, et il est donc atteint d'avance.
+  uint32_t last_armed_send_ = 0;
+  uint32_t last_sent_send_  = 0;
+  // Arme un envoi et rend son rang. Les chaînes sont déjà converties : la
+  // conversion se fait dans la frame, jamais au départ (cf. FlushPending).
+  uint32_t ArmSend(std::string text, std::string whisper, bool typed,
+                   SendToggles toggles);
   // Action « par nom » en attente (cf. QueueNameAction). Une seule à la fois : ce
   // sont des gestes de menu, et il n'en part qu'un par clic.
   std::string pending_name_;
