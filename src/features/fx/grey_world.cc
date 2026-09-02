@@ -367,6 +367,68 @@ bool RestoreAttrHeights(void* attr, char* cells, int count, int stride) {
   return true;
 }
 
+// ── Où le sol EXISTE, tuile par tuile ────────────────────────────────────────
+//
+// 🔴 LE .GAT DÉCRIT TOUT LE RECTANGLE, Y COMPRIS CE QUI N'EST PAS DU SOL. Une
+// carte à trous — gonryun est une île dans le ciel — a des cases de .gat au-dessus
+// du VIDE, et le .gnd n'y pose aucune face du dessus : le client n'y dessine rien,
+// et c'est normal. Sans aplatissement ces cases gardent leur hauteur d'origine et
+// sortent du champ ; APLATIES, elles remontent au niveau du plan et le quadrillage
+// se met à flotter dans le ciel, au-delà du bord de l'île.
+//
+// La face du dessus est le PREMIER des trois indices de surface qui suivent les
+// quatre hauteurs — cf. `CGnd_ParseStream` 0x007169e0, qui lit `28 × largeur ×
+// hauteur` octets de cellules. Négatif = pas de face, donc pas de sol.
+constexpr int kGndCellTileUp = 16;
+
+std::vector<uint8_t> g_gnd_has_surface;  // une case par TUILE du .gnd
+int                  g_gnd_tiles_w = 0;
+int                  g_gnd_tiles_h = 0;
+
+// Relevé à chaque chargement du .gnd. Le vecteur vit ici et non chez l'appelant,
+// où il interdirait le SEH (C2712) — comme la copie des hauteurs.
+void NoteGroundSurfaces(int w, int h, const char* cells) {
+  g_gnd_has_surface.clear();
+  g_gnd_has_surface.shrink_to_fit();
+  g_gnd_tiles_w = 0;
+  g_gnd_tiles_h = 0;
+  if (!cells || w <= 0 || h <= 0) return;
+
+  const size_t count = static_cast<size_t>(w) * h;
+  g_gnd_has_surface.assign(count, 0);
+  size_t solid = 0;
+  for (size_t i = 0; i < count; ++i) {
+    const int up = *reinterpret_cast<const int*>(cells + i * kGndCellStride +
+                                                 kGndCellTileUp);
+    if (up >= 0) {
+      g_gnd_has_surface[i] = 1;
+      ++solid;
+    }
+  }
+  // 🔴 UN FILTRE QUI EFFACERAIT TOUT NE PROUVERAIT RIEN. Aucune tuile avec face
+  // du dessus, c'est l'offset qu'on lit mal, pas une carte sans sol : on renonce
+  // à filtrer plutôt que de faire disparaître le quadrillage en silence.
+  if (solid == 0) {
+    g_gnd_has_surface.clear();
+    LogDiag("[GreyWorld] .gnd : aucune face du dessus, filtre du sol désarmé");
+    return;
+  }
+  g_gnd_tiles_w = w;
+  g_gnd_tiles_h = h;
+}
+
+// Y a-t-il du sol sous cette case de .gat ? Une tuile de .gnd couvre 2×2 cases,
+// et c'est le décalage qu'emploie le client lui-même (`GetCellCorners` indexe sa
+// grille de tuiles par `cellX >> 1`). Vrai par défaut : sans relevé, on dessine
+// comme avant.
+bool GroundHasSurface(int cell_x, int cell_y) {
+  if (g_gnd_has_surface.empty()) return true;
+  const int tx = cell_x >> 1;
+  const int ty = cell_y >> 1;
+  if (tx < 0 || ty < 0 || tx >= g_gnd_tiles_w || ty >= g_gnd_tiles_h) return false;
+  return g_gnd_has_surface[static_cast<size_t>(ty) * g_gnd_tiles_w + tx] != 0;
+}
+
 // Le chargement d'une carte périme la copie : le C3dAttr d'avant n'existe plus,
 // et le nouveau terrain arrive avec son propre relief, tout frais du fichier.
 void DropAttrBackup() {
@@ -438,12 +500,17 @@ int __fastcall Hooked_AttrLoad(void* self, void* edx, void* path) {
 
 int __fastcall Hooked_GndLoad(void* self, void* edx, void* path) {
   const int ok = g_orig_gnd_load ? g_orig_gnd_load(self, edx, path) : 0;
-  if (!ok || !Enabled() || !g_cfg.flatten || !self) return ok;
+  if (!ok || !self) return ok;
   __try {
     auto* g = reinterpret_cast<char*>(self);
     const int w = *reinterpret_cast<int*>(g + kGndWidth);
     const int h = *reinterpret_cast<int*>(g + kGndHeight);
     auto* cells = *reinterpret_cast<char**>(g + kGndCells);
+    // 🔴 SANS CONDITION DE RÉGLAGE : où est le sol ne dépend pas de nos leviers,
+    // et c'est ICI qu'on peut le savoir — le gestionnaire détruit le .gnd sitôt
+    // le terrain construit.
+    NoteGroundSurfaces(w, h, cells);
+    if (!Enabled() || !g_cfg.flatten) return ok;
     // Le .gnd n'est que du rendu : plan EXACT, pour que les carreaux du
     // quadrillage ne se mettent pas à onduler.
     FlattenHeights(cells, w * h, kGndCellStride, /*set_level=*/false, /*jitter=*/0.0f);
@@ -744,6 +811,11 @@ void DrawCellGrid(void* self) {
 
     for (int y = y0; y <= y1; ++y) {
       for (int x = x0; x <= x1; ++x) {
+        // Pas de sol sous cette case : rien à dessiner. Le .gat couvre tout le
+        // rectangle de la carte, le .gnd dit où le sol existe — et sur une carte
+        // à trous, aplatir ramène ces cases-là dans le champ (cf.
+        // GroundHasSurface). Test le plus court, donc en tête.
+        if (!GroundHasSurface(x, y)) continue;
         const int fam = CellFamily(cells, width, height, x, y);
         if (fill == Config::kFillOutline &&
             fam == CellFamily(cells, width, height, x - 1, y) &&
