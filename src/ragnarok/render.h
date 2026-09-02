@@ -27,6 +27,18 @@ inline void* Context() { return *reinterpret_cast<void**>(kContextPtr); }
 // Champs connus du contexte.
 constexpr int kOffViewportW  = 0x28;
 constexpr int kOffViewportH  = 0x2c;
+
+// Le CENTRE de l'écran, en pixels et en ENTIERS — relevé dans le désassemblage de
+// `World_ProjectPointToScreen` 0x00554380, qui finit ses deux coordonnées par
+// « … * échelle + *(int*)(ctx + 0x30) » (et 0x34 pour Y). C'est donc la seule
+// origine que le client emploie réellement pour poser un point à l'écran.
+//
+// ⭐ Il vaut la moitié de la taille ci-dessus, et cette redondance sert : deux
+// lectures qui doivent s'accorder font un témoin qu'un offset devenu faux ne
+// passe pas en silence (cf. grey_world, qui s'en sert avant de jeter des cases).
+constexpr int kOffScreenCenterX = 0x30;
+constexpr int kOffScreenCenterY = 0x34;
+
 constexpr int kOffSpriteAtlas = 0xc0;
 
 inline int ViewportWidth() {

@@ -267,10 +267,25 @@ float g_flat_level       = 0.0f;
 // une pente invisible à l'œil, mais qui suffit à ce que les triangles ne soient
 // plus coplanaires avec le rayon.
 //
-// ⚠ Le .gnd, lui, reste EXACTEMENT plat : il ne sert qu'au RENDU et aux coins
-// que lit le quadrillage (`GetCellCorners` prend ses hauteurs du C3dGnd). Y
-// mettre le jitter ferait onduler les carreaux sans rien apporter au clic — c'est
-// l'erreur qu'a corrigée cette version.
+// ⚠ Le .gnd, lui, reste EXACTEMENT plat : c'est le sol DESSINÉ, et le jitter n'y
+// apporterait rien au clic tout en faisant onduler le terrain.
+//
+// 🔴🔴 MAIS LE JITTER SE VOIT QUAND MÊME, ET PAS LÀ OÙ ON LE CROYAIT. Ce fichier
+// a longtemps affirmé que le quadrillage lisait ses coins dans le .gnd. C'EST
+// FAUX, et le désassemblage de `C3dGround15_GetCellCorners` 0x00a62b70 le dit :
+// elle calcule X et Z dans la grille de TUILES, puis va chercher ses QUATRE
+// hauteurs dans `C3dAttr_GetCell(this+4, …)` — le .GAT, donc ici même.
+//
+// Conséquence, avec l'ordre des coins que rend cette fonction — (x₀,z₀), (x₁,z₀),
+// (x₀,z₁), (x₁,z₁) — et un signe alterné sur `c & 1` : les deux coins de gauche
+// montent, les deux de droite descendent. Chaque case devient une plaque
+// INCLINÉE, avec une marche à la frontière de la suivante, et sa moitié basse
+// passe SOUS le plan du .gnd, qui la mange. Le biais de profondeur du client ne
+// rattrape pas ça : il départage deux surfaces coplanaires, pas 0,1 unité de
+// monde. À l'écran, des losanges penchés sur un sol pourtant plan.
+//
+// D'où la règle : le jitter est POUR LE CLIC, et le clic seul le voit. Le
+// quadrillage, lui, se dessine au niveau du plan (cf. DrawCellShrunk).
 constexpr float kFlatJitter = 0.1f;
 
 // Moyenne des hauteurs, puis écriture de cette moyenne partout. `stride` et
@@ -360,6 +375,19 @@ void DropAttrBackup() {
   g_attr_backup_owner = nullptr;
 }
 
+// Le terrain EN MÉMOIRE est-il le nôtre, et à quel niveau ? C'est la copie qui
+// répond : elle n'existe que si on a aplati CE .gat-là, et le chargement suivant
+// la périme.
+//
+// 🔴 PAS `FlattenActive()`, qui dit ce que le RÉGLAGE demande. Entre la case
+// cochée et la carte rechargée il s'écoule plusieurs secondes pendant lesquelles
+// le terrain est encore l'ancien, avec son relief : y poser le quadrillage sur un
+// plan que le sol n'a pas encore le ferait flotter ou s'enfoncer, et le niveau
+// retenu serait celui de la carte d'avant.
+bool TerrainIsFlattened() {
+  return g_attr_backup_owner != nullptr && g_flat_level_known;
+}
+
 using LoadResFn = int(__fastcall*)(void*, void*, void*);
 LoadResFn g_orig_attr_load = nullptr;
 LoadResFn g_orig_gnd_load  = nullptr;
@@ -424,23 +452,34 @@ int __fastcall Hooked_GndLoad(void* self, void* edx, void* path) {
   return ok;
 }
 
-// ── Notre propre dessin de case, avec un JOINT ───────────────────────────────
+// ── Notre propre dessin de case ──────────────────────────────────────────────
 //
-// Calqué sur C3dGround15_DrawCellQuad, à une chose près : après avoir réduit les
-// coins à la case GAT (la parité de x et de y choisit le quart de tuile GND —
+// Calqué sur C3dGround15_DrawCellQuad, à deux choses près : après avoir réduit
+// les coins à la case GAT (la parité de x et de y choisit le quart de tuile GND —
 // c'est le calcul exact du client), on rapproche encore les quatre coins de leur
-// centre. Le sol reste visible tout autour : c'est le joint, et c'est lui qui
-// fait un carrelage plutôt qu'une nappe.
+// centre — le sol reste visible tout autour, c'est le JOINT, et c'est lui qui
+// fait un carrelage plutôt qu'une nappe ; et `flat` pose les quatre hauteurs sur
+// le plan au lieu de les prendre au terrain.
 //
-// `k` = 1 donnerait la case pleine ; on n'appelle alors PAS cette fonction mais
-// celle du client, qui est éprouvée.
+// `k` = 1 et `flat` faux ne laissent rien qui nous soit propre : on appelle alors
+// la fonction du CLIENT, qui est éprouvée.
 void DrawCellShrunk(void* ground, void* scene, int cell_x, int cell_y,
-                    uint32_t argb, void* res, float k, const float uv[8]) {
+                    uint32_t argb, void* res, float k, const float uv[8],
+                    bool flat) {
   float c[12];
   auto get_corners =
       reinterpret_cast<int(__fastcall*)(void*, void*, int, int, float*)>(
           kGetCellCorners);
   if (!get_corners(ground, nullptr, cell_x, cell_y, c)) return;  // hors carte
+
+  // 🔴 LE JITTER DU .GAT N'EST PAS POUR NOUS. Les quatre hauteurs qu'on vient de
+  // recevoir sortent du .gat (cf. kFlatJitter) : sur un terrain aplati elles
+  // portent les dents de scie du clic-sol, et le carreau se retrouve incliné,
+  // à moitié sous le plan du .gnd. Le sol dessiné est à `g_flat_level` — le
+  // carreau s'y pose, et le biais de profondeur fait le reste.
+  if (flat) {
+    for (int i = 0; i < kCornersPerCell; ++i) c[i * 3 + 1] = g_flat_level;
+  }
 
   // Les coins 0 et 1 bornent l'axe X, les coins 0 et 2 l'axe Z. Le client lit
   // ces bornes AVANT de modifier quoi que ce soit ; garder des copies donne le
@@ -501,6 +540,101 @@ void DrawCellShrunk(void* ground, void* scene, int cell_x, int cell_y,
   insert(queue, nullptr, rec, 1u);
 }
 
+// ── Ne soumettre que ce qui peut SE VOIR ─────────────────────────────────────
+//
+// 🔴 Le parcours est un CARRÉ de cases autour du joueur, mais la caméra le
+// regarde de biais : ce qu'on en voit est un trapèze, et le reste — derrière la
+// caméra, ou au-delà des bords — est du travail jeté. RIEN ne le rattrape en
+// aval, c'est ce qui rend le test nécessaire ici : `RenderQueue_InsertPrimitive`
+// 0x00550b10 ne teste aucune visibilité (vérifié dans l'IDB), il range le record
+// dans son seau, et le quad va jusqu'au GPU — qui le découpe une fois que le CPU
+// a payé la projection, une place dans le tri global des primitives transparentes
+// et un appel de dessin.
+//
+// La part perdue CROÎT avec la portée : le trapèze est borné par l'écran, le
+// carré grandit en r². À 24 cases c'est 2401 quads, à 60 c'en est 14 641.
+//
+// 🔴🔴 LE SIGNE DE RHW D'ABORD, ET IL N'EST PAS FACULTATIF.
+// `World_ProjectPointToScreen` 0x00554380 ne clippe rien et ne signale rien :
+// elle calcule `rhw = 1/w` et divise, sans jamais regarder le signe de `w`. Un
+// point DERRIÈRE la caméra a `w < 0`, donc des coordonnées d'écran MIROIR —
+// parfaitement plausibles, souvent en plein milieu de l'écran. Un test qui ne
+// regarderait que x et y garderait donc exactement les cases qu'il faut jeter.
+// `rhw` est le seul témoin de « devant », et il se lit avant tout le reste.
+constexpr int kProjRhw = 3;  // la projection écrit x, y, z, rhw
+
+// L'écran tel que LA PROJECTION le voit, et seulement s'il est sûr.
+//
+// ⭐ DEUX LECTURES QUI DOIVENT S'ACCORDER. La taille (+0x28/+0x2c) et le centre
+// que la projection ajoute à chaque point (+0x30/+0x34) décrivent le même écran :
+// si le double du centre ne redonne pas la taille, l'un des deux offsets n'est
+// pas ce qu'on croit, et on ne jette RIEN plutôt que de vider le quadrillage sur
+// une lecture fausse. Un pixel de tolérance : une largeur impaire tronque.
+struct ScreenBox {
+  float w     = 0.0f;
+  float h     = 0.0f;
+  bool  known = false;
+};
+
+ScreenBox ScreenBounds() {
+  ScreenBox box;
+  void* ctx = render::Context();
+  if (!ctx) return box;
+  const int vw = render::ViewportWidth();
+  const int vh = render::ViewportHeight();
+  if (vw <= 0 || vh <= 0) return box;
+  auto* c = reinterpret_cast<uint8_t*>(ctx);
+  const int cx = *reinterpret_cast<int*>(c + render::kOffScreenCenterX);
+  const int cy = *reinterpret_cast<int*>(c + render::kOffScreenCenterY);
+  const int dx = vw - 2 * cx;
+  const int dy = vh - 2 * cy;
+  if (dx < 0 || dx > 1 || dy < 0 || dy > 1) return box;
+  box.w     = static_cast<float>(vw);
+  box.h     = static_cast<float>(vh);
+  box.known = true;
+  return box;
+}
+
+// Faut-il soumettre cette case ? Conservateur par construction : au moindre
+// doute on rend `true`, et c'est le GPU qui tranche comme avant.
+bool CellOnScreen(void* ground, void* scene, void* queue, const ScreenBox& box,
+                  int cell_x, int cell_y) {
+  float c[12];
+  auto get_corners =
+      reinterpret_cast<int(__fastcall*)(void*, void*, int, int, float*)>(
+          kGetCellCorners);
+  if (!get_corners(ground, nullptr, cell_x, cell_y, c)) return false;  // hors carte
+
+  auto project =
+      reinterpret_cast<void(__fastcall*)(void*, void*, const float*, void*, float*)>(
+          kProjectToScreen);
+  float min_x = 0.0f, max_x = 0.0f, min_y = 0.0f, max_y = 0.0f;
+  int in_front = 0;
+  for (int i = 0; i < kCornersPerCell; ++i) {
+    float v[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    project(queue, nullptr, &c[i * 3], scene, v);
+    if (v[kProjRhw] <= 0.0f) continue;  // derrière : ses x,y ne veulent rien dire
+    if (in_front == 0) {
+      min_x = max_x = v[0];
+      min_y = max_y = v[1];
+    } else {
+      if (v[0] < min_x) min_x = v[0];
+      if (v[0] > max_x) max_x = v[0];
+      if (v[1] < min_y) min_y = v[1];
+      if (v[1] > max_y) max_y = v[1];
+    }
+    ++in_front;
+  }
+  // Pas un seul coin devant la caméra : la case est derrière nous.
+  if (in_front == 0) return false;
+  // À CHEVAL sur le plan proche. La boîte des seuls coins de devant ne décrit
+  // pas la case, et une case coupée par le plan proche est de toute façon sous
+  // le nez du joueur : on la garde sans discuter.
+  if (in_front < kCornersPerCell) return true;
+  // Boîte entièrement d'un côté de l'écran : rien à en voir.
+  return !(max_x < 0.0f || min_x > box.w || max_y < 0.0f || min_y > box.h);
+}
+
 // ── Le quadrillage ───────────────────────────────────────────────────────────
 //
 // Un quad par cellule, dessiné par la fonction du client. Elle épouse le relief
@@ -553,6 +687,22 @@ void DrawCellGrid(void* self) {
     auto draw = reinterpret_cast<DrawCellFn>(kDrawCellQuad);
     void* scene = reinterpret_cast<char*>(self) + kSceneCtxOffset;
 
+    // L'écran, relevé UNE fois pour la passe : c'est ce qui permet de ne pas
+    // soumettre les cases qu'on ne verra pas (cf. CellOnScreen). `known` faux =
+    // les deux lectures ne s'accordent pas, on ne jette alors rien et le
+    // quadrillage est exactement celui d'avant.
+    const ScreenBox box = ScreenBounds();
+    void* queue = render::Context();
+    if (!queue) return;  // sans file de scène, il n'y a rien à dessiner du tout
+    if (!box.known) {
+      // Le nominal se tait ; ceci ne sort que si un offset a bougé sous nous.
+      static bool warned = false;
+      if (!warned) {
+        warned = true;
+        LogDiag("[GreyWorld] écran non reconnu : quadrillage soumis en entier");
+      }
+    }
+
     // Les quatre coins sur le MÊME point de texture = un seul texel étiré sur
     // toute la case (cf. kCellStyles). Statique et réécrit à chaque frame : on
     // est sur le fil de rendu, seul, et le client garde le pointeur le temps de
@@ -588,6 +738,10 @@ void DrawCellGrid(void* self) {
                              ? 1.0f - static_cast<float>(gap) * 0.01f
                              : 1.0f;
 
+    // Le terrain est-il le nôtre ? Si oui, les hauteurs du .gat portent le jitter
+    // du clic-sol et le carreau doit s'en passer (cf. kFlatJitter).
+    const bool flat = TerrainIsFlattened();
+
     for (int y = y0; y <= y1; ++y) {
       for (int x = x0; x <= x1; ++x) {
         const int fam = CellFamily(cells, width, height, x, y);
@@ -606,11 +760,16 @@ void DrawCellGrid(void* self) {
         // quad plutôt que d'en soumettre un invisible, c'est autant de
         // primitives en moins dans la file — c'est LE réglage qui décide du coût.
         if ((argb >> 24) == 0) continue;
-        // Sans joint, on laisse faire le client : sa fonction est éprouvée, la
-        // nôtre n'existe que pour ce que la sienne ne sait pas faire.
-        if (shrink < 1.0f) {
+        // Hors champ : rien à soumettre. APRÈS les deux tests ci-dessus, qui ne
+        // coûtent que des lectures, et AVANT tout ce qui coûte vraiment.
+        if (box.known && !CellOnScreen(ground, scene, queue, box, x, y)) continue;
+        // Sans joint ET sans aplatissement, on laisse faire le client : sa
+        // fonction est éprouvée, la nôtre n'existe que pour ce que la sienne ne
+        // sait pas faire. 🔴 Aplati, elle ne sait justement pas : elle prendrait
+        // ses hauteurs dans le .gat, dents de scie comprises (cf. kFlatJitter).
+        if (shrink < 1.0f || flat) {
           DrawCellShrunk(ground, scene, x, y, argb, grid_res, shrink,
-                         reinterpret_cast<const float*>(uv));
+                         reinterpret_cast<const float*>(uv), flat);
         } else {
           draw(ground, nullptr, scene, x, y, argb, grid_res, uv);
         }
@@ -1007,6 +1166,10 @@ Reload   g_reload         = Reload::kIdle;
 uint32_t g_reload_serial  = 0;  // rang de NOTRE ligne dans la file du chat
 uint32_t g_reload_sent_ms = 0;
 
+// Ce que le RÉGLAGE demande — à ne pas confondre avec `TerrainIsFlattened()`,
+// qui dit ce que le terrain en mémoire porte VRAIMENT. Les deux diffèrent tout
+// le temps d'un rechargement, et c'est précisément ce que la machine d'état
+// ci-dessous a pour travail de résorber.
 bool FlattenActive() { return Enabled() && g_cfg.flatten; }
 
 // Vrai quand le monde affiché ne correspond plus au réglage : le panneau s'en
