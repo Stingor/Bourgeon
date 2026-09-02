@@ -1,13 +1,21 @@
 # -*- coding: utf-8 -*-
-"""Lecteur GRF v2.0 en lecture seule, sans dépendance.
+"""Lecteur GRF v2.0 et v3.0 en lecture seule, sans dépendance.
 
 Sert aux outils Python du projet à lire les ressources du client SANS exiger
 qu'elles soient extraites sur disque. Reproduit la résolution du client :
 **disque d'abord, GRF ensuite** — le VFS du jeu fait pareil.
 
-⚠ `data.grf` de Moonlight est CHIFFRÉ (signature « Event Horizon ») : ce lecteur
-le refuse explicitement plutôt que de rendre des octets faux. `moonlight.grf` et
-`palettes.grf` sont des GRF standard et se lisent normalement.
+Le v3.0 (signature « Event Horizon ») n'est PAS chiffré : c'est le v2.0 étendu
+aux fichiers de plus de 4 Gio. Trois différences, et rien d'autre :
+
+* l'offset de table est un **u64** (30..37) ; le champ `seed` du v2 disparaît,
+  et `count` (38) est alors le nombre d'entrées EXACT, sans `- seed - 7` ;
+* l'en-tête de table porte **un dword de rembourrage** (toujours 0) devant le
+  couple taille compressée / taille décompressée ;
+* une entrée fait **21 octets** de métadonnées au lieu de 17, son offset de
+  données étant lui aussi un u64.
+
+Référence : `GRF/Core/GrfHeader.cs` et `GRF/Core/FileEntry.cs` de GRFEditor.
 
 Les noms sont stockés en CP949 ; on les indexe en minuscules ASCII, comme le
 `_strlwr` de `Grf_NormalizePath` côté client.
@@ -17,9 +25,11 @@ import os
 import struct
 import zlib
 
-SIGNATURE = b"Master of Magic"
+SIGNATURES = (b"Master of Magic", b"Event Horizon\x00c")
 ENTETE = 46
-META = 17          # compressedSize+aligned+realSize+flags+offset
+# Par version majeure : rembourrage devant l'en-tête de table, format d'une
+# entrée (compressedSize+aligned+realSize+flags+offset) et sa taille.
+DISPOSITIONS = {2: (0, "<IIIBI", 17), 3: (4, "<IIIBQ", 21)}
 
 
 def _minuscule_ascii(octets):
@@ -33,25 +43,37 @@ class Grf(object):
         self.chemin = chemin
         with open(chemin, "rb") as f:
             entete = f.read(ENTETE)
-            if entete[:15] != SIGNATURE:
+            if entete[:15] not in SIGNATURES:
                 raise ValueError(
                     "%s : signature %r — GRF chiffré ou format inconnu, "
                     "illisible sans la clé" % (chemin, entete[:15]))
-            offset, seed, count, version = struct.unpack_from("<IIII", entete, 30)
-            if version >> 8 != 2:
+            version = struct.unpack_from("<I", entete, 42)[0]
+            majeur = version >> 8
+            if majeur not in DISPOSITIONS:
                 raise ValueError("%s : version 0x%X non gérée" % (chemin, version))
-            f.seek(ENTETE + offset)
+            # Le v3 n'étend l'offset sur 64 bits que si les 3 octets hauts sont
+            # nuls — sinon c'est un v2 déguisé, avec son `seed` (cf. GRFEditor).
+            if majeur == 3 and entete[35:38] == b"\x00\x00\x00":
+                offset = struct.unpack_from("<Q", entete, 30)[0]
+            else:
+                offset = struct.unpack_from("<I", entete, 30)[0]
+            rembourrage, format_entree, meta = DISPOSITIONS[majeur]
+            f.seek(ENTETE + offset + rembourrage)
             clen, _ulen = struct.unpack("<II", f.read(8))
             brut = zlib.decompress(f.read(clen))
 
+        # On avance jusqu'au bout du tampon plutôt que de faire confiance au
+        # compteur de l'en-tête : c'est ce que fait GRFEditor, et le compteur
+        # se lit différemment d'une version à l'autre.
         self.entrees = {}
-        i, restants = 0, count - seed - 7
-        for _ in range(restants):
+        i = 0
+        while i < len(brut):
             j = brut.index(b"\x00", i)
             nom = brut[i:j]
             i = j + 1
-            csize, _aligned, rsize, flags, doff = struct.unpack_from("<IIIBI", brut, i)
-            i += META
+            csize, _aligned, rsize, flags, doff = struct.unpack_from(
+                format_entree, brut, i)
+            i += meta
             if flags & 0x01:            # bit 0 = fichier (sinon répertoire)
                 self.entrees[_minuscule_ascii(nom)] = (doff, csize, rsize, flags)
 
