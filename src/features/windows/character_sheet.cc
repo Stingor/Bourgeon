@@ -3451,8 +3451,8 @@ void CharacterSheet::DrawPresetsTab() {
     preset_name_buf_[0] = '\0';
   }
   if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-    ImGui::SetTooltip(at_cap
-                          ? i18n::Tr("Limite de 5 presets atteinte (renomme un existant ou supprime-en un)") : i18n::Tr("Enregistre l'équipement porté actuellement sous ce nom"));
+    ImGui::SetTooltip("%s", at_cap
+                                ? i18n::Tr("Limite de 5 presets atteinte (renomme un existant ou supprime-en un)") : i18n::Tr("Enregistre l'équipement porté actuellement sous ce nom"));
   if (!can_save) ImGui::EndDisabled();
   if (!preset_status_.empty()) ImGui::TextColored(ro::pal::kLabel, "%s", preset_status_.c_str());
 
@@ -3533,7 +3533,7 @@ void CharacterSheet::DrawTitlesTab() {
     std::snprintf(row, sizeof(row), "%s%s", equipped ? "> " : "   ", label);
     if (ImGui::Selectable(row, equipped)) to_equip = id;
     if (ImGui::IsItemHovered())
-      ImGui::SetTooltip(equipped ? i18n::Tr("Titre actuellement équipé (clic : garder)") : i18n::Tr("Clic : équiper ce titre"));
+      ImGui::SetTooltip("%s", equipped ? i18n::Tr("Titre actuellement équipé (clic : garder)") : i18n::Tr("Clic : équiper ce titre"));
     ImGui::PopID();
   }
 
@@ -5271,8 +5271,8 @@ void CharacterSheet::DrawGuildTab() {
     }
     ImGui::EndDisabled();
     if (ImGui::IsItemHovered())
-      ImGui::SetTooltip(may_storage
-                            ? i18n::Tr("Ouvre — ou referme — le Storage de guilde (@guildstorage).") : i18n::Tr("Ton poste n'a pas le droit « storage »."));
+      ImGui::SetTooltip("%s", may_storage
+                                  ? i18n::Tr("Ouvre — ou referme — le Storage de guilde (@guildstorage).") : i18n::Tr("Ton poste n'a pas le droit « storage »."));
   }
 
   ImGui::Separator();
@@ -5577,7 +5577,7 @@ void CharacterSheet::DrawGuildTab() {
     // contextuel n'apparaissent donc que pour le maître (comme le « Delete » du natif).
     const bool can_break = is_master;
     for (int pass = 0; pass < 2; ++pass) {
-      ImGui::TextColored(pass == 0 ? ro::pal::kGreen : ro::pal::kRed, pass == 0 ? i18n::Tr("Alliés") : "Ennemis");
+      ImGui::TextColored(pass == 0 ? ro::pal::kGreen : ro::pal::kRed, "%s", pass == 0 ? i18n::Tr("Alliés") : "Ennemis");
       int shown = 0;
       for (int i = 0; i < relations.count; ++i) {
         const GuildRelation& rel = relations.entries[i];

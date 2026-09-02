@@ -2519,8 +2519,8 @@ void RenderSimpleDesc(uint32_t id, float wrap, const uint32_t* cards,
         ImGui::TextUnformatted(
             msgstr::Utf8(rag::pet::IntimacyRankMsgId(ec.intimacy_rank)));
       }
-      ImGui::TextDisabled(ec.renamed ? i18n::Tr("Déjà renommé")
-                                     : i18n::Tr("Renommage disponible"));
+      ImGui::TextDisabled("%s", ec.renamed ? i18n::Tr("Déjà renommé")
+                                           : i18n::Tr("Renommage disponible"));
     }
   }
 
@@ -3114,9 +3114,9 @@ void ItemDescWindow::RenderItemWindow() {
         else    mui->AddAlootId(snap.id);
       }
       if (ImGui::IsItemHovered())
-        ImGui::SetTooltip(in ? i18n::Tr("Cet objet est dans ta liste de ramassage "
-                                        "automatique. Clique pour l'en retirer.")
-                             : i18n::Tr("Ramasser automatiquement cet objet."));
+        ImGui::SetTooltip("%s", in ? i18n::Tr("Cet objet est dans ta liste de ramassage "
+                                              "automatique. Clique pour l'en retirer.")
+                                   : i18n::Tr("Ramasser automatiquement cet objet."));
       action_row = true;
     }
 
@@ -3375,8 +3375,8 @@ void ItemDescWindow::RenderItemWindow() {
               ImGui::TextUnformatted(
                   msgstr::Utf8(rag::pet::IntimacyRankMsgId(ec.intimacy_rank)));
             }
-            ImGui::TextDisabled(ec.renamed ? i18n::Tr("Déjà renommé")
-                                           : i18n::Tr("Renommage disponible"));
+            ImGui::TextDisabled("%s", ec.renamed ? i18n::Tr("Déjà renommé")
+                                                 : i18n::Tr("Renommage disponible"));
             // ⚠ Rien de plus à dire : le `pet_id` de la base ne franchit pas le
             // fil (`clif_addcards` écrase les deux slots qui le portaient), et
             // c'est tout ce que l'œuf sait de son occupant.

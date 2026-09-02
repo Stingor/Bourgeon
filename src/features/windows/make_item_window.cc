@@ -3674,6 +3674,7 @@ void MakeItemWindow::DrawFooter() {
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
       if (!can_relaunch)
         ImGui::SetTooltip(
+            "%s",
             by_item ? i18n::Tr("Il ne te reste plus l'objet qui a ouvert cette liste.") : i18n::Tr("Compétence d'origine inconnue : relance impossible."));
       else if (by_item)
         ImGui::SetTooltip(

@@ -1079,8 +1079,8 @@ void InventoryViewer::RenderCardInsert() {
       // On n'arrive ici qu'avec `found == 0` (le cas « tous pleins » a déjà refermé) :
       // soit le serveur a listé des index qu'on ne retrouve pas, soit sa liste
       // était vide.
-      ImGui::TextWrapped(n > 0
-          ? i18n::Tr("Impossible de retrouver les équipements proposés par le serveur.") : i18n::Tr("Aucun équipement compatible avec un emplacement libre."));
+      ImGui::TextWrapped("%s", n > 0
+                ? i18n::Tr("Impossible de retrouver les équipements proposés par le serveur.") : i18n::Tr("Aucun équipement compatible avec un emplacement libre."));
     } else {
       ImGui::TextDisabled("%s", i18n::Tr("Choisissez l'équipement à sertir :"));
       const float footer = ImGui::GetFrameHeightWithSpacing() + ImGui::GetStyle().ItemSpacing.y;
@@ -1939,6 +1939,7 @@ void InventoryViewer::OnRenderUI() {
           if (to_cart_off &&
               ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
             ImGui::SetTooltip(
+                "%s",
                 vending_lock
                     ? i18n::Tr("Impossible pendant la composition d'un shop (règle du\n"
                       "serveur). Ouvrez ou annulez le shop d'abord.") : i18n::Tr("Impossible tant que le storage est ouvert (règle du serveur).\n"

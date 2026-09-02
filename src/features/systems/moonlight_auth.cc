@@ -1415,6 +1415,7 @@ void MoonlightAuth::DrawPickAccount() {
                                              : IM_COL32(230, 190, 110, 255));
     ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + FormWidth());
     ImGui::TextWrapped(
+        "%s",
         is_autotrade
             ? i18n::Tr("Ce compte tient une boutique en autotrade : le choisir fermera "
               "la boutique et déconnectera le marchand.") : i18n::Tr("Ce compte est déjà connecté : le choisir déconnectera la session "

@@ -838,7 +838,7 @@ void TradeWindow::OnRenderUI() {
       ImGui::PopID();
     }
     if (items.empty())
-      ImGui::TextDisabled(mine && !locked ? i18n::Tr("(vide — glissez un objet ici)") : "(vide)");
+      ImGui::TextDisabled("%s", mine && !locked ? i18n::Tr("(vide — glissez un objet ici)") : "(vide)");
     ImGui::EndChild();
     // Le child qu'on vient de fermer est le « dernier item » ImGui : il devient donc
     // la cible de dépôt. Payload "INV_ITEM" = convention de l'inventaire ImGui (même
@@ -850,7 +850,7 @@ void TradeWindow::OnRenderUI() {
       }
       ImGui::EndDragDropTarget();
     }
-    ImGui::TextColored(locked ? kGreen : ro::pal::kBlack, locked ? i18n::Tr("  Verrouillé") : i18n::Tr("  En cours"));
+    ImGui::TextColored(locked ? kGreen : ro::pal::kBlack, "%s", locked ? i18n::Tr("  Verrouillé") : i18n::Tr("  En cours"));
   };
 
   // ── Ma colonne / colonne partenaire ──

@@ -695,6 +695,7 @@ void CartViewer::OnRenderUI() {
         }
         if (to_body_off && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
           ImGui::SetTooltip(
+              "%s",
               vending_lock
                   ? i18n::Tr("Impossible pendant la composition d'un shop (règle du\n"
                              "serveur). Ouvrez ou annulez le shop d'abord.")

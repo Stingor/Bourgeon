@@ -939,15 +939,15 @@ void CashShopWindow::OnRenderUI() {
       if (ro::RoButton(i18n::Tr("Panier"), colw, frameH))
         AddToCart(ci.id, cur_tab_, ci.price);
       if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-        ImGui::SetTooltip(afford ? i18n::Tr("Ajouter au panier (achat groupe via Acheter)")
-                                 : why);
+        ImGui::SetTooltip("%s", afford ? i18n::Tr("Ajouter au panier (achat groupe via Acheter)")
+                                       : why);
       ImGui::SetCursorPos(
           ImVec2(cx, cy + ImGui::GetTextLineHeight() + frameH + 2.0f * sp));
       if (ro::RoButton(i18n::Tr("Achat 1-Click"), colw, frameH))
         BuyNow(ci.id, cur_tab_, ci.price);
       if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-        ImGui::SetTooltip(afford ? i18n::Tr("Achat immédiat d'1 unité, puis fermeture du shop")
-                                 : why);
+        ImGui::SetTooltip("%s", afford ? i18n::Tr("Achat immédiat d'1 unité, puis fermeture du shop")
+                                       : why);
       if (!afford) ImGui::EndDisabled();
       ImGui::EndChild();
       ImGui::PopStyleVar();    // WindowPadding (carte)

@@ -1750,7 +1750,7 @@ void VendingWindow::OnRenderUI() {
                             ImGuiWindowFlags_AlwaysAutoResize |
                             ImGuiWindowFlags_NoCollapse)) {
         if (log_.empty()) {
-          ImGui::TextDisabled(log_buying_ ? i18n::Tr("Aucun achat.") : i18n::Tr("Aucune vente."));
+          ImGui::TextDisabled("%s", log_buying_ ? i18n::Tr("Aucun achat.") : i18n::Tr("Aucune vente."));
         } else if (ImGui::BeginTable("##t_log", 4,
                                      ImGuiTableFlags_SizingFixedFit |
                                      ImGuiTableFlags_RowBg)) {
@@ -2502,8 +2502,8 @@ void VendingWindow::OnRenderUI() {
     if (rows_h < line_h * 3.0f) rows_h = line_h * 3.0f;
     ImGui::BeginChild("##poses", ImVec2(-1.0f, rows_h));
     if (rows == 0) {
-      ImGui::TextDisabled(compose_grid_
-                              ? i18n::Tr("Glisse un objet ci-dessus, ou double-clique-le.") : i18n::Tr("Choisis un objet ci-dessus et clique « Poser »."));
+      ImGui::TextDisabled("%s", compose_grid_
+                                    ? i18n::Tr("Glisse un objet ci-dessus, ou double-clique-le.") : i18n::Tr("Choisis un objet ci-dessus et clique « Poser »."));
     } else {
       const int cols = buying_ ? 6 : 5;
       // Mêmes règles que le panneau du haut : « Objet » s'étire, les colonnes
@@ -2756,10 +2756,10 @@ void VendingWindow::OnRenderUI() {
       QueueSubmit();
     if (!can_open) ImGui::EndDisabled();
     if (!can_open && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-      ImGui::SetTooltip(overflow        ? i18n::Tr("Zeny + recette dépasserait le plafond.")
-                        : rows_now == 0 ? i18n::Tr("Pose au moins un objet.")
-                        : name_[0] == '\0' ? i18n::Tr("Donne un nom au shop.")
-                                           : blocker);
+      ImGui::SetTooltip("%s", overflow        ? i18n::Tr("Zeny + recette dépasserait le plafond.")
+                              : rows_now == 0 ? i18n::Tr("Pose au moins un objet.")
+                              : name_[0] == '\0' ? i18n::Tr("Donne un nom au shop.")
+                                                 : blocker);
     ImGui::SameLine();
     // « Import » natif : recharge le dernier shop monté par ce personnage. Le
     // bouton natif fait tout le travail (chargement, repose des objets, edits).
@@ -2788,6 +2788,7 @@ void VendingWindow::OnRenderUI() {
     ImGui::EndDisabled();
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
       ImGui::SetTooltip(
+          "%s",
           can_import ? i18n::Tr("Recharge les objets et les prix de ton dernier shop.")
           : import_used_ ? i18n::Tr("Déjà importé pour ce shop.") : i18n::Tr("Aucun shop précédent enregistré pour ce personnage."));
     ImGui::SameLine();

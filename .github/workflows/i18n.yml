@@ -1,11 +1,19 @@
 name: Catalogues de langue
 
-# Le prix du choix « le français EST la clé » (cf. src/utils/i18n.h) : retoucher un
-# libellé français tue SILENCIEUSEMENT sa traduction. `Tr` ne trouve plus la clé et
-# retombe en français — pas de crash, pas de warning, rien. Ce contrôle est le seul
-# endroit où cette divergence fait du bruit, donc il tourne à chaque push.
+# Deux pannes de traduction que rien d'autre ne signale, et qui ont en commun de
+# ne PAS se voir à la relecture du code français.
 #
-# Il ne compile rien : il lit le source et les catalogues. Quelques secondes.
+# 1. Le prix du choix « le français EST la clé » (cf. src/utils/i18n.h) : retoucher
+#    un libellé français tue SILENCIEUSEMENT sa traduction. `Tr` ne trouve plus la
+#    clé et retombe en français — pas de crash, pas de warning, rien.
+#
+# 2. Un texte TRADUIT passé en position de format à ImGui. Les fonctions de texte
+#    sont printf-like : un pour-cent dans la traduction y devient une
+#    spécification, et printf lit un argument que personne n'a poussé. Le français
+#    d'origine peut n'en porter aucun — c'est le catalogue qui crée le défaut, et
+#    il s'édite hors compilation. L'anglais porte déjà « 100 % straight away ».
+#
+# Ils ne compilent rien : ils lisent le source et les catalogues. Quelques secondes.
 
 on:
   push:
@@ -13,12 +21,14 @@ on:
       - "src/**"
       - "tools/lang/*.yaml"
       - "tools/lang/check_catalog.ps1"
+      - "tools/lang/check_format_strings.py"
       - ".github/workflows/i18n.yml"
   pull_request:
     paths:
       - "src/**"
       - "tools/lang/*.yaml"
       - "tools/lang/check_catalog.ps1"
+      - "tools/lang/check_format_strings.py"
       - ".github/workflows/i18n.yml"
   workflow_dispatch:
 
@@ -70,3 +80,14 @@ jobs:
         if: always() && steps.checkout.outcome == 'success'
         shell: pwsh
         run: ./tools/lang/check_catalog.ps1 -Catalog tools/lang/es.yaml
+
+      # Même raison que pour l'espagnol : on veut le rapport COMPLET en une
+      # exécution. Ce contrôle-ci est indépendant des deux précédents — il ne lit
+      # aucun catalogue, seulement la façon dont le source appelle ImGui.
+      #
+      # python3 est préinstallé sur les runners ubuntu. Le script porte ses propres
+      # témoins et refuse de rendre un verdict s'ils échouent : un détecteur devenu
+      # aveugle sortirait « OK » sur un dépôt cassé, ce qui est pire que rien.
+      - name: Chaines de format
+        if: always() && steps.checkout.outcome == 'success'
+        run: python3 tools/lang/check_format_strings.py src
