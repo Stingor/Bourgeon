@@ -228,6 +228,8 @@ set(BOURGEON_FILES
 	"features/fx/palette_inject.h"
 	"features/fx/style_sync.cc"
 	"features/fx/style_sync.h"
+	"features/fx/skill_range.cc"
+	"features/fx/skill_range.h"
 	"features/fx/screen_fx.cc"
 	"features/fx/screen_fx.h"
 	"features/fx/spr_effect_lab.cc"

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>  // uint32_t : la couleur d'une case
+
 // ── GreyWorld : le monde dépouillé ───────────────────────────────────────────
 //
 // Le pendant, réglable et réversible, des GRF « greyworld » / « darkside » que la
@@ -110,6 +112,43 @@ Config& cfg();
 
 // Installe les hooks (idempotent, sûr à appeler chaque frame).
 void EnsureInstalled();
+
+// ── Peindre des cases au sol depuis un AUTRE module ────────────────────────
+//
+// Dessiner une case n'est possible que pendant la passe de scène du client
+// (`CScene::RenderCellsAndCursor`) : elle seule fournit le contexte de dessin, et
+// c'est ce module qui la détourne. Un module qui veut peindre s'inscrit donc ici
+// et sera rappelé à chaque passe, avec une seule fonction — « peins cette case
+// de cette couleur ». Il n'a rien à savoir du sol, de la scène ni de la texture.
+//
+// ⚠ LA TEXTURE EST RÉSOLUE UNE FOIS PAR PASSE, pas une fois par case : le natif
+// fait un addref à chaque résolution, et une par case ferait déborder son
+// compteur en une soirée de jeu. C'est pour ça que le peintre ne la voit pas —
+// la lui confier reviendrait à lui confier ce piège.
+//
+// 🔴 S'INSCRIRE POSE LES DÉTOURS, même GreyWorld éteint. Ils sont inertes sans
+// lui (chacun se garde par son propre réglage), et sans ça la peinture d'un
+// module tiers dépendrait d'un réglage qui ne la concerne pas.
+using CellSink = void (*)(int cell_x, int cell_y, uint32_t argb);
+using ScenePainter = void (*)(CellSink paint);
+
+// Le peintre déclare son style AVANT chaque passe, et non une fois pour toutes :
+// c'est ce qui lui permet d'être réglable sans rien redemander à ce module.
+struct PainterStyle {
+  // 🔴 `nullptr` = rien à peindre cette passe. C'est la porte de sortie la moins
+  // chère : ni résolution de texture, ni appel du peintre. Un module éteint par
+  // son réglage rend nullptr et ne coûte alors rien du tout.
+  const char* texture = nullptr;
+  // < 0 : la texture entière (cadre, anneau). Sinon le point échantillonné aux
+  // quatre coins, ce qui étire UN texel sur toute la case et donne un aplat.
+  float u = -1.0f, v = -1.0f;
+  // 1.0 = la case entière. En deçà, les quatre coins se rapprochent du centre et
+  // le sol reste visible autour : c'est LUI qui trace alors la bordure.
+  float shrink = 1.0f;
+};
+using PainterStyleFn = PainterStyle (*)();
+
+void AddScenePainter(ScenePainter paint, PainterStyleFn style);
 
 // ── Lu au démarrage de la DLL, pas à l'entrée en jeu ─────────────────────────
 // 🔴 `bourgeon_settings.yaml` n'est relu qu'à la transition vers le mode jeu,

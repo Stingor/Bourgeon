@@ -22,6 +22,7 @@
 
 #include "bourgeon.h"
 #include "features/fx/grey_world.h"
+#include "features/fx/skill_range.h"
 #include "features/fx/item_drop_arc.h"
 #include "features/fx/zone_recorder.h"
 #include "features/gameplay/afk_screen.h"
@@ -72,6 +73,9 @@ enum GameplaySection {
   // pas de l'habillage — c'est ce que le joueur VOIT du terrain sur lequel il se
   // bat, donc sa place est ici et non dans les réglages graphiques.
   kGpGreyWorld,
+  // La zone des sorts au sol : ce que le sort tenu en main touchera, et ce que
+  // ceux des autres touchent. C'est de la lecture du combat, comme GreyWorld.
+  kGpSkillRange,
   kGpCount,
 };
 
@@ -86,6 +90,7 @@ constexpr iface::NavEntry kGameplaySections[] = {
     {kGpGreyWorld,    "greyworld",     "GreyWorld"},
     {kGpTargeting,    "targeting",     "Précision du ciblage"},
     {kGpQuickCast,    "quick_cast",    "Quick cast"},
+    {kGpSkillRange,   "skill_range",   "Zone des sorts"},
     {kGpJump,         "jump",          "Saut"},
 };
 // Message de static_assert : un LITTÉRAL, lu à la compilation — jamais i18n::Tr.
@@ -274,6 +279,10 @@ void MoonlightUi::DrawGameplayPanel() {
   // Pas de plugin derrière : l'état vit dans un agrégat libre, comme le « Sol
   // uni » des Staff Tools — d'où l'appel direct, sans le test de disponibilité
   // que réclament les sections qui, elles, pilotent un plugin enregistré.
+  if (gameplay_nav == kGpSkillRange) {
+    if (skill_range::DrawSettings()) SaveSettings();
+  }
+
   if (gameplay_nav == kGpGreyWorld) {
     if (grey_world::DrawSettings()) SaveSettings();
   }

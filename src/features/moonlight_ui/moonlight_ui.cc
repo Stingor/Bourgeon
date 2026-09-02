@@ -84,6 +84,7 @@
 #include "features/fx/spr_effect_lab.h"
 #include "features/fx/ground_paint.h"
 #include "features/fx/grey_world.h"
+#include "features/fx/skill_range.h"
 #include "features/fx/item_drop_arc.h"
 #include "ragnarok/ui_window_mgr.h"
 #include "ragnarok/uiwnd.h"
@@ -1566,6 +1567,32 @@ const moonlight_ui::SettingDesc kGreyWorldSettings[] = {
      MLUI_LITERAL_ARGB(0x8CFFBF40)},  // infranchissable mais tirable
 };
 
+// Zone des sorts (section Gameplay). Même cas : l'état vit dans un agrégat
+// libre, donc chaque résolveur pointe un champ de `skill_range::cfg()` et ne
+// peut jamais rendre nullptr.
+//
+// 🔴 LES DEUX BASCULES SONT ÉTEINTES PAR DÉFAUT, et ce n'est pas de la prudence :
+// montrer la zone d'un sort change ce que le joueur voit du combat. Celui qui la
+// veut la demande. Les MONSTRES ne sont dans aucune des deux : leur zone est
+// native, et on n'y touche pas.
+const moonlight_ui::SettingDesc kSkillRangeSettings[] = {
+    {"skillrange_preview", SType::kBool,
+     []() -> void* { return &skill_range::cfg().preview; },
+     MLUI_LITERAL(bool, false)},
+    {"skillrange_pattern", SType::kInt,
+     []() -> void* { return &skill_range::cfg().pattern; },
+     MLUI_LITERAL(int, skill_range::Config::kPatternTile)},
+    {"skillrange_gap", SType::kInt,
+     []() -> void* { return &skill_range::cfg().gap; },
+     MLUI_LITERAL(int, 12)},
+    {"skillrange_color", SType::kColorHex,
+     []() -> void* { return skill_range::cfg().color; },
+     MLUI_LITERAL_ARGB(0x80FFFFFF)},  // blanc à demi opaque
+    {"skillrange_players", SType::kBool,
+     []() -> void* { return &skill_range::cfg().players; },
+     MLUI_LITERAL(bool, false)},
+};
+
 }  // namespace
 
 // ── Réglages qui appartiennent à MoonlightUi elle-même ───────────────────────
@@ -2153,6 +2180,7 @@ void MoonlightUi::LoadSettings() {
     moonlight_ui::ReadChatBackgrounds(ui);
     moonlight_ui::ReadSettings(ui, kGroundPaintSettings);
     moonlight_ui::ReadSettings(ui, kGreyWorldSettings);
+    moonlight_ui::ReadSettings(ui, kSkillRangeSettings);
     moonlight_ui::ReadSettings(ui, MoonlightUiOwnSettings::kHeader);
     // Pas de i18n::ReloadCatalog() ici : la langue est chargée bien avant, au
     // chargement de la DLL, depuis paths::StartupSettingsPath(). La rappeler à
@@ -2344,6 +2372,7 @@ void MoonlightUi::WriteSettingsFile() {
   moonlight_ui::WriteChatBackgrounds(out);
   moonlight_ui::WriteSettings(out, kGroundPaintSettings);
   moonlight_ui::WriteSettings(out, kGreyWorldSettings);
+  moonlight_ui::WriteSettings(out, kSkillRangeSettings);
   moonlight_ui::WriteSettings(out, MoonlightUiOwnSettings::kHeader);
   moonlight_ui::WriteSettings(out, kItemDescSettings);
   moonlight_ui::WriteSettings(out, kBugReportSettings);

@@ -748,6 +748,94 @@ bool CellOnScreen(void* ground, void* scene, void* queue, const ScreenBox& box,
 // profondeur que le curseur de destination — ce qui la fait passer devant le sol
 // sans z-fighting — et insère dans la file de scène, donc le tri avec les
 // acteurs reste celui du jeu.
+// Définie plus bas, mais lue par le contexte de passe juste en dessous.
+bool FlattenActive();
+
+// ── Les peintres invités ─────────────────────────────────────────────
+// Voir le contrat dans le header. Le contexte de dessin ne vaut que le temps de
+// la passe et il est le MÊME pour tous : on le pose dans ces variables pour la
+// durée de l'appel, plutôt que de le faire traverser la signature de chaque
+// peintre — qui aurait alors à le comprendre.
+struct Invited {
+  ScenePainter   paint;
+  PainterStyleFn style;
+};
+std::vector<Invited> g_painters;
+
+void* g_paint_ground = nullptr;
+void* g_paint_scene  = nullptr;
+void* g_paint_res    = nullptr;
+bool  g_paint_flat   = false;
+float g_paint_shrink = 1.0f;
+const float* g_paint_uv = nullptr;
+
+void PaintInvitedCell(int cell_x, int cell_y, uint32_t argb) {
+  // Alpha nul = rien à soumettre. Le test vit ici et non chez l'appelant, pour
+  // qu'« invisible » coûte le même prix quel que soit le peintre.
+  if (!g_paint_ground || !g_paint_res || (argb >> 24) == 0) return;
+  DrawCellShrunk(g_paint_ground, g_paint_scene, cell_x, cell_y, argb,
+                 g_paint_res, g_paint_shrink, g_paint_uv, g_paint_flat);
+}
+
+void RunScenePainters(void* self) {
+  if (g_painters.empty() || !self) return;
+  __try {
+    void* gm = rag::ActiveModeIfReady();
+    if (!gm) return;
+    void* world = *reinterpret_cast<void**>(reinterpret_cast<char*>(gm) +
+                                            gamescene::kGmActorMgr);
+    if (!world) return;
+    void* ground = *reinterpret_cast<void**>(reinterpret_cast<char*>(world) +
+                                             gamescene::kAmGround);
+    if (!ground) return;
+
+    auto get_res = reinterpret_cast<SpriteResFn>(kSpriteResGetOrLoad);
+    g_paint_ground = ground;
+    g_paint_scene  = reinterpret_cast<char*>(self) + kSceneCtxOffset;
+    // Sur terrain aplati, les hauteurs justes sont celles du .gnd : c'est la
+    // même règle que pour le quadrillage, pour la même raison.
+    g_paint_flat   = FlattenActive();
+
+    // Un seul point d'échantillonnage, réécrit par peintre. Statique et sur le
+    // fil de rendu : le client ne garde le pointeur que le temps de l'appel.
+    static float s_point_uv[8];
+
+    // Index et non itérateur : MSVC refuse un `__try` dans une fonction qui a
+    // des objets à dérouler (C2712).
+    for (size_t i = 0; i < g_painters.size(); ++i) {
+      if (!g_painters[i].paint || !g_painters[i].style) continue;
+      const PainterStyle st = g_painters[i].style();
+      if (!st.texture) continue;  // ce peintre n'a rien à peindre : coût nul
+
+      // 🔴 UNE résolution par peintre et par passe, jamais par case : le natif
+      // fait un addref à chaque appel, et une par case ferait déborder son
+      // compteur en une soirée de jeu.
+      void* res = get_res(reinterpret_cast<void*>(render::kSpriteRefCacheAddr),
+                          nullptr, st.texture, 0, 0, 1, 0);
+      if (!res) continue;
+
+      if (st.u >= 0.0f) {
+        for (int c = 0; c < 4; ++c) {
+          s_point_uv[c * 2]     = st.u;
+          s_point_uv[c * 2 + 1] = st.v;
+        }
+        g_paint_uv = s_point_uv;
+      } else {
+        g_paint_uv = reinterpret_cast<const float*>(kCellQuadDefaultUV);
+      }
+      g_paint_res    = res;
+      g_paint_shrink = st.shrink;
+      g_painters[i].paint(&PaintInvitedCell);
+    }
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+  }
+  // Hors du `__try` : le contexte doit être rendu invalide MÊME si un peintre a
+  // faussé compagnie, sinon le sink de la passe suivante lirait un sol mort.
+  g_paint_ground = nullptr;
+  g_paint_scene  = nullptr;
+  g_paint_res    = nullptr;
+}
+
 void DrawCellGrid(void* self) {
   __try {
     void* gm = rag::ActiveModeIfReady();
@@ -1495,6 +1583,7 @@ void __fastcall Hooked_SceneRenderCells(void* self) {
     RebuildTerrain();
   }
   if (Enabled() && g_cfg.grid && self) DrawCellGrid(self);
+  RunScenePainters(self);
   if (g_orig_scene_cells) g_orig_scene_cells(self);
 }
 
@@ -1502,6 +1591,20 @@ void __fastcall Hooked_SceneRenderCells(void* self) {
 
 // ── API publique ─────────────────────────────────────────────────────────────
 Config& cfg() { return g_cfg; }
+
+void AddScenePainter(ScenePainter paint, PainterStyleFn style) {
+  if (!paint || !style) return;
+  // Poser les détours ici, et pas au premier réglage : un module qui peint ne
+  // doit pas dépendre de l'état de GreyWorld.
+  EnsureInstalled();
+  for (size_t i = 0; i < g_painters.size(); ++i)
+    if (g_painters[i].paint == paint) return;  // idempotent : s'inscrire deux
+                                               // fois ne doit pas peindre deux fois
+  Invited inv;
+  inv.paint = paint;
+  inv.style = style;
+  g_painters.push_back(inv);
+}
 
 void EnsureInstalled() {
   static bool done = false;

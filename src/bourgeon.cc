@@ -51,6 +51,7 @@
 #include "features/overlays/quest_tracker.h"
 #include "features/overlays/item_obtain_toast.h"
 #include "features/fx/grey_world.h"
+#include "features/fx/skill_range.h"
 #include "features/fx/screen_fx.h"
 #include "features/fx/zone_recorder.h"
 #include "features/fx/weapon_layer.h"
@@ -992,6 +993,7 @@ void Bourgeon::LoadPlugins() {
   plugins_.emplace_back(std::make_unique<StatusTweaks>());
   plugins_.emplace_back(std::make_unique<DamageNameFix>());
   plugins_.emplace_back(std::make_unique<BerserkChatUnlock>());
+  plugins_.emplace_back(std::make_unique<SkillRangePatch>());
   plugins_.emplace_back(std::make_unique<PickQuadTweaks>());
   plugins_.emplace_back(std::make_unique<InventoryTweaks>());
   {
