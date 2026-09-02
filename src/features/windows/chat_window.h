@@ -687,6 +687,18 @@ class ChatWindow : public Plugin {
   // libellés de liens, mêmes couleurs, mêmes emotes que la chatbox.
   void ParseWireLine(const char* wire, Line* out) const;
 
+  // Envoie `text` comme si le joueur l'avait validé dans la barre : commandes
+  // « / », commandes serveur « @ », modes d'envoi, chuchotement. `whisper_utf8`
+  // nul = le destinataire courant de la barre principale. Rend false si un envoi
+  // attend déjà (la fenêtre ne dure qu'une frame).
+  //
+  // 🔴 ARME, N'ENVOIE PAS. Le départ est joué par `FlushPending`, hors frame
+  // ImGui — le pipeline natif peut ouvrir une modale BLOQUANTE, à ne jamais
+  // déclencher entre NewFrame() et Render(). C'est ce qui en fait LE chemin par
+  // lequel le reste de Bourgeon fait dire une ligne au serveur : GreyWorld s'en
+  // sert pour son « @refreshmap ».
+  bool  SendTextNow(const char* text, const char* whisper_utf8 = nullptr);
+
  private:
   // Un canal, tel que le registre natif le décrit (nom + 25 octets de filtre).
   // `node` est l'adresse du nœud : les 25 PREMIÈRES cases d'options écrivent
@@ -962,8 +974,6 @@ class ChatWindow : public Plugin {
   // Ajoute du texte à la FIN de la saisie visée (barre principale ou
   // conversation), sans rien envoyer. Ne fait rien si le tampon est plein.
   void  AppendToInput(const char* utf8, int whisper_index);
-  // `whisper_utf8` nul = le destinataire courant de la barre principale.
-  bool  SendTextNow(const char* text, const char* whisper_utf8 = nullptr);
   void  DrawLogOptionsPopup();
   void  CreateChannel();
   void  CloseChannel(int index);

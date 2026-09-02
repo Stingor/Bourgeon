@@ -44,7 +44,22 @@ constexpr int kGmNameDict = 0x160;  //  gm+0x160  = dictionnaire, objet EMBARQU�
 // chat_balloon documente (« hors liste ! ») et que tous les parcourants doivent
 // traiter.
 constexpr int kAmListHead  = 0x10;  // *(mgr+0x10) = sentinelle std::list<Actor*>
+// Le dessinateur de SOL (C3dGround15) : c'est lui qui sait poser un quad sur une
+// case donnée, en épousant le relief. Le client s'en sert pour le curseur de
+// destination, la case de l'homoncule et la trace de navigation ; sa méthode
+// virtuelle +0x38 prend (contexte de scène, caseX, caseY, couleur ARGB).
+// Relevé dans `CWorld_Load` (0x00a6aff0), qui le construit et lui donne la .gat.
+constexpr int kAmGround    = 0x28;
 constexpr int kAmOwnPlayer = 0x2c;  // *(mgr+0x2c) = acteur du joueur local
+// La RACINE du quadtree spatial, objet EMBARQUÉ (pas un pointeur) : c'est lui que
+// le clic-sol interroge pour savoir quelles cases tester
+// (`GameMode_PickGroundCellUnderMouse` 0x00c69a40 lit `monde + 88`).
+//
+// 🔴 Ses bornes ne viennent PAS du terrain quand le .rsw en fournit : le client
+// les recopie du fichier (`QuadTree_CopyGeometry` 0x00a69b30). Un nœud fait 0x7C
+// octets — 4 pointeurs d'enfants en +4..+16, puis min(x,y,z) en +20 et
+// max(x,y,z) en +32 — et l'arbre descend à 5 niveaux.
+constexpr int kWorldQuadTree = 88;
 // Le TERRAIN (.gnd) : c'est lui que `Terrain_GetHeightAt` (0x007110c0) attend en
 // `this`. Le natif l'écrit `*(*(gm+0xCC)+0x30)` — 0x30 y est un « 48 » décimal
 // dans le pseudo-code, ce qui l'a longtemps fait lire comme un offset inconnu.
@@ -65,6 +80,29 @@ constexpr int kAmTerrain   = 0x30;
 constexpr int kTerrainWidth    = 0x110;  // largeur de la carte, en cases
 constexpr int kTerrainHeight   = 0x114;  // hauteur de la carte, en cases
 constexpr int kTerrainCellSize = 0x118;  // côté d'une case, en unités de monde
+
+// ── Les CASES elles-mêmes (la .gat) ──────────────────────────────────────────
+// Le même objet porte le tableau de ses cases, indexé `x + y * largeur`. Relevé
+// dans `C3dAttr::GetCell` (0x00711070), qui ne fait rien d'autre que borner puis
+// calculer cette adresse — et dans `Terrain_GetHeightAt`, qui interpole les
+// quatre hauteurs d'une case pour rendre l'altitude d'un point.
+//
+// Une case fait 20 octets : quatre hauteurs de coin (float) puis son TYPE.
+constexpr int kTerrainCells   = 0x11c;  // *(terrain+0x11c) = tableau des cases
+constexpr int kCellStride     = 20;     // taille d'une case, en octets
+constexpr int kCellHeights    = 0x00;   // 4 floats : les coins, dans l'ordre du .gat
+constexpr int kCellType       = 0x10;   // int : ce qu'on a le droit d'y faire
+
+// Les deux types que le pathfinder du client REFUSE — relevés dans
+// `Pathfind_IsStepWalkable` (0x00a78410), qui les teste nommément et laisse
+// passer tout le reste. Ce sont donc les deux seules valeurs sur lesquelles on
+// puisse dire « on ne marche pas là » sans deviner.
+//
+// ⚠ `kCellSnipeable` n'est pas un mur : les sorts et les projectiles la
+// traversent (le natif l'accepte quand son dernier paramètre vaut 12). Les
+// confondre ferait mentir toute lecture de terrain.
+constexpr int kCellBlocked    = 1;  // ni marche ni tir
+constexpr int kCellSnipeable  = 5;  // infranchissable, mais on tire à travers
 
 // ── CNameInfo : ce que rend le dictionnaire ──────────────────────────────────
 // Trois std::string MSVC côte à côte. Les offsets ci-dessous sont relatifs au

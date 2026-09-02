@@ -31,6 +31,17 @@ void EnsureInstalled();
 bool&  enabled();
 float* color();
 
+// ── Peinture DEMANDÉE PAR UN AUTRE MODULE ────────────────────────────────────
+// Le « Sol uni » a deux commanditaires : la case des Staff Tools (un fond de
+// capture) et GreyWorld (un sol lisible en jeu). Ils veulent la même chose du
+// renderer, et deux modules ne peuvent pas détourner les mêmes quatre fonctions.
+//
+// D'où cette entrée : GreyWorld ne repeint pas, il DEMANDE. La case du staff
+// reste maîtresse — quand les deux sont actifs, c'est sa couleur qui s'affiche,
+// parce qu'un outil de capture d'écran ne doit pas voir sa teinte changer sous
+// lui à cause d'un réglage de confort. `rgba` est copié, pas retenu.
+void SetExternalPaint(bool on, const float rgba[4]);
+
 // Contrôles ImGui (section « Staff Tools » de MoonlightUi).
 bool DrawSettings();
 

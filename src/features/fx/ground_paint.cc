@@ -68,6 +68,7 @@ constexpr unsigned kD3DTSS_COLOROP      = 1;
 constexpr unsigned kD3DTSS_COLORARG1    = 2;
 constexpr unsigned kD3DTOP_SELECTARG1   = 2;
 constexpr unsigned kD3DTOP_MODULATE     = 4;
+constexpr unsigned kD3DTA_CURRENT       = 1;  // le résultat du stage précédent
 constexpr unsigned kD3DTA_TEXTURE       = 2;
 constexpr unsigned kD3DTA_TFACTOR       = 3;
 
@@ -84,6 +85,14 @@ int g_in_ground_pass = 0;
 
 bool  g_enabled  = false;
 float g_col[4]   = {0.0f, 0.0f, 0.0f, 1.0f};  // noir opaque par défaut
+
+// La même peinture, demandée par GreyWorld (cf. SetExternalPaint dans le .h).
+// La case du staff garde la priorité sur la couleur.
+bool  g_ext_on     = false;
+float g_ext_col[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+
+bool  PaintWanted()   { return g_enabled || g_ext_on; }
+const float* PaintColor() { return g_enabled ? g_col : g_ext_col; }
 
 // NOTE : RendererDX9_DrawGroundTiles 0x0055d680 s'exécute avec ses deux listes VIDES
 // (mesuré en live). On la garde hookée par sécurité — si une carte l'utilisait, la
@@ -134,13 +143,25 @@ void PaintAroundDraw(void* self, void* edx, void* rec, DrawPrimRecFn orig) {
       int i = static_cast<int>(v * 255.0f + 0.5f);
       return static_cast<unsigned>(i < 0 ? 0 : (i > 255 ? 255 : i));
     };
-    const unsigned argb = (ch(g_col[3]) << 24) | (ch(g_col[0]) << 16) |
-                          (ch(g_col[1]) << 8) | ch(g_col[2]);
+    const float* col = PaintColor();
+    const unsigned argb = (ch(col[3]) << 24) | (ch(col[0]) << 16) |
+                          (ch(col[1]) << 8) | ch(col[2]);
 
     SetRS(dev, kD3DRS_TEXTUREFACTOR, argb);
     SetTSS(dev, 0, kD3DTSS_COLORARG1, kD3DTA_TFACTOR);
     SetTSS(dev, 0, kD3DTSS_COLOROP, kD3DTOP_SELECTARG1);
+    // ⚠ LE STAGE 0 NE SUFFIT PAS. La branche anisotrope de la passe terrain
+    // dessine par le slot BI-TEXTURE : la texture du sol est au stage 0, la
+    // LIGHTMAP au stage 1 — les ombres cuites dans la carte, celles des murs et
+    // des arbres. Ne forcer que le stage 0 laissait donc de grandes taches
+    // sombres sur un sol censé être uni, et elles ne venaient d'aucune entité :
+    // c'est pour ça qu'on les cherchait du mauvais côté.
+    // On laisse le stage 1 passer le résultat du stage 0 tel quel.
+    SetTSS(dev, 1, kD3DTSS_COLORARG1, kD3DTA_CURRENT);
+    SetTSS(dev, 1, kD3DTSS_COLOROP, kD3DTOP_SELECTARG1);
     if (orig) orig(self, edx, rec);
+    SetTSS(dev, 1, kD3DTSS_COLOROP, kD3DTOP_MODULATE);
+    SetTSS(dev, 1, kD3DTSS_COLORARG1, kD3DTA_TEXTURE);
     SetTSS(dev, 0, kD3DTSS_COLOROP, kD3DTOP_MODULATE);
     SetTSS(dev, 0, kD3DTSS_COLORARG1, kD3DTA_TEXTURE);
   } __except (EXCEPTION_EXECUTE_HANDLER) {
@@ -148,7 +169,7 @@ void PaintAroundDraw(void* self, void* edx, void* rec, DrawPrimRecFn orig) {
 }
 
 void __fastcall Hooked_DrawPrimRecord(void* self, void* edx, void* rec) {
-  if (g_in_ground_pass <= 0 || !g_enabled || g_imgui_dx7_active || !self) {
+  if (g_in_ground_pass <= 0 || !PaintWanted() || g_imgui_dx7_active || !self) {
     if (g_orig_draw_prim) g_orig_draw_prim(self, edx, rec);
     return;
   }
@@ -162,7 +183,7 @@ void __fastcall Hooked_DrawPrimRecord(void* self, void* edx, void* rec) {
 DrawPrimRecFn g_orig_draw_prim_dual = nullptr;
 
 void __fastcall Hooked_DrawPrimRecordDual(void* self, void* edx, void* rec) {
-  if (g_in_ground_pass <= 0 || !g_enabled || g_imgui_dx7_active || !self) {
+  if (g_in_ground_pass <= 0 || !PaintWanted() || g_imgui_dx7_active || !self) {
     if (g_orig_draw_prim_dual) g_orig_draw_prim_dual(self, edx, rec);
     return;
   }
@@ -186,6 +207,12 @@ void __fastcall Hooked_DrawTerrain(void* self) {
 // ── API publique ──────────────────────────────────────────────────────────────
 bool&  enabled() { return g_enabled; }
 float* color()   { return g_col; }
+
+void SetExternalPaint(bool on, const float rgba[4]) {
+  g_ext_on = on;
+  if (!on || !rgba) return;
+  for (int i = 0; i < 4; ++i) g_ext_col[i] = rgba[i];
+}
 
 void EnsureInstalled() {
   static bool done = false;

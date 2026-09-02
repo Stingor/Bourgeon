@@ -214,6 +214,8 @@ set(BOURGEON_FILES
 	"features/fx/ez_effect_capture.h"
 	"features/fx/ground_paint.cc"
 	"features/fx/ground_paint.h"
+	"features/fx/grey_world.cc"
+	"features/fx/grey_world.h"
 	"features/fx/hat_effect_depth.cc"
 	"features/fx/hat_effect_depth.h"
 	"features/fx/item_drop_arc.cc"

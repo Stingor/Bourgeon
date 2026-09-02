@@ -21,6 +21,7 @@
 #include "features/moonlight_ui/moonlight_ui.h"
 
 #include "bourgeon.h"
+#include "features/fx/grey_world.h"
 #include "features/fx/item_drop_arc.h"
 #include "features/fx/zone_recorder.h"
 #include "features/gameplay/afk_screen.h"
@@ -67,6 +68,10 @@ enum GameplaySection {
   kGpItemDropArc,
   kGpJump,
   kGpKeyboardMove,
+  // Le monde dépouillé : décors masqués, cellules montrées, sol uni. Ce n'est
+  // pas de l'habillage — c'est ce que le joueur VOIT du terrain sur lequel il se
+  // bat, donc sa place est ici et non dans les réglages graphiques.
+  kGpGreyWorld,
   kGpCount,
 };
 
@@ -78,6 +83,7 @@ constexpr iface::NavEntry kGameplaySections[] = {
     {kGpKeyboardMove, "keyboard_move", "Déplacement au clavier (Expérimental)"},
     {kGpAfkScreen,    "afk_screen",    "Écran de veille"},
     {kGpZoneRecorder, "zone_recorder", "Enregistrer une zone (GIF)"},
+    {kGpGreyWorld,    "greyworld",     "GreyWorld"},
     {kGpTargeting,    "targeting",     "Précision du ciblage"},
     {kGpQuickCast,    "quick_cast",    "Quick cast"},
     {kGpJump,         "jump",          "Saut"},
@@ -265,6 +271,12 @@ void MoonlightUi::DrawGameplayPanel() {
   if (gameplay_nav == kGpItemDropArc) DrawItemDropArcSettings();
   if (gameplay_nav == kGpJump) DrawJumpSettings();
   if (gameplay_nav == kGpKeyboardMove) DrawKeyboardMoveSettings();
+  // Pas de plugin derrière : l'état vit dans un agrégat libre, comme le « Sol
+  // uni » des Staff Tools — d'où l'appel direct, sans le test de disponibilité
+  // que réclament les sections qui, elles, pilotent un plugin enregistré.
+  if (gameplay_nav == kGpGreyWorld) {
+    if (grey_world::DrawSettings()) SaveSettings();
+  }
 
   PopItemWidth();
   iface::EndNavPanel();

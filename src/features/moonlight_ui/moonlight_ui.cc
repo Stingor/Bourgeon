@@ -83,6 +83,7 @@
 #include "features/windows/char_diagnostics.h"
 #include "features/fx/spr_effect_lab.h"
 #include "features/fx/ground_paint.h"
+#include "features/fx/grey_world.h"
 #include "features/fx/item_drop_arc.h"
 #include "ragnarok/ui_window_mgr.h"
 #include "ragnarok/uiwnd.h"
@@ -1520,6 +1521,54 @@ const moonlight_ui::SettingDesc kGroundPaintSettings[] = {
      MLUI_LITERAL_ARGB(0xFF000000)},  // noir opaque
 };
 
+// GreyWorld (section Gameplay). Même cas que ci-dessus : l'état vit dans un
+// agrégat libre, pas dans un plugin enregistré, donc chaque résolveur pointe un
+// champ de `grey_world::cfg()` et ne peut jamais rendre nullptr.
+const moonlight_ui::SettingDesc kGreyWorldSettings[] = {
+    {"greyworld", SType::kBool,
+     []() -> void* { return &grey_world::cfg().enabled; },
+     MLUI_LITERAL(bool, false)},
+    {"greyworld_hide_models", SType::kBool,
+     []() -> void* { return &grey_world::cfg().hide_models; },
+     MLUI_LITERAL(bool, true)},
+    {"greyworld_grid", SType::kBool,
+     []() -> void* { return &grey_world::cfg().grid; },
+     MLUI_LITERAL(bool, true)},
+    {"greyworld_flat_ground", SType::kBool,
+     []() -> void* { return &grey_world::cfg().flat_ground; },
+     MLUI_LITERAL(bool, true)},
+    {"greyworld_no_fog", SType::kBool,
+     []() -> void* { return &grey_world::cfg().no_fog; },
+     MLUI_LITERAL(bool, true)},
+    {"greyworld_radius", SType::kInt,
+     []() -> void* { return &grey_world::cfg().radius; },
+     MLUI_LITERAL(int, 24)},
+    {"greyworld_pattern", SType::kInt,
+     []() -> void* { return &grey_world::cfg().pattern; },
+     MLUI_LITERAL(int, grey_world::Config::kPatternSolid)},
+    {"greyworld_fill", SType::kInt,
+     []() -> void* { return &grey_world::cfg().fill; },
+     MLUI_LITERAL(int, grey_world::Config::kFillAll)},
+    {"greyworld_flatten", SType::kBool,
+     []() -> void* { return &grey_world::cfg().flatten; },
+     MLUI_LITERAL(bool, false)},
+    {"greyworld_gap", SType::kInt,
+     []() -> void* { return &grey_world::cfg().gap; },
+     MLUI_LITERAL(int, 12)},
+    {"greyworld_col_ground", SType::kColorHex,
+     []() -> void* { return grey_world::cfg().col_ground; },
+     MLUI_LITERAL_ARGB(0xFF2A2A2E)},  // ardoise opaque
+    {"greyworld_col_walk", SType::kColorHex,
+     []() -> void* { return grey_world::cfg().col_walk; },
+     MLUI_LITERAL_ARGB(0x29FFFFFF)},  // trame blanche, très discrète
+    {"greyworld_col_block", SType::kColorHex,
+     []() -> void* { return grey_world::cfg().col_block; },
+     MLUI_LITERAL_ARGB(0x8CFF4F40)},  // mur
+    {"greyworld_col_snipe", SType::kColorHex,
+     []() -> void* { return grey_world::cfg().col_snipe; },
+     MLUI_LITERAL_ARGB(0x8CFFBF40)},  // infranchissable mais tirable
+};
+
 }  // namespace
 
 // ── Réglages qui appartiennent à MoonlightUi elle-même ───────────────────────
@@ -2106,6 +2155,7 @@ void MoonlightUi::LoadSettings() {
     // ChatTweaks de les pousser dans le client, une fois tout le fichier relu.
     moonlight_ui::ReadChatBackgrounds(ui);
     moonlight_ui::ReadSettings(ui, kGroundPaintSettings);
+    moonlight_ui::ReadSettings(ui, kGreyWorldSettings);
     moonlight_ui::ReadSettings(ui, MoonlightUiOwnSettings::kHeader);
     // Pas de i18n::ReloadCatalog() ici : la langue est chargée bien avant, au
     // chargement de la DLL, depuis paths::StartupSettingsPath(). La rappeler à
@@ -2268,6 +2318,11 @@ void MoonlightUi::PostLoadApply() {
   // Tools ait jamais été ouvert de la session — ses hooks de passe terrain doivent
   // alors exister quand même, sinon le sol reste texturé et la case ment.
   if (ground_paint::enabled()) ground_paint::EnsureInstalled();
+
+  // GreyWorld : même raison, et une de plus. Ses hooks doivent exister dès le
+  // retour du YAML, mais son `Apply()` porte aussi ce qui ne se relit pas chaque
+  // frame — la demande de sol uni faite à ground_paint, et l'état du brouillard.
+  if (grey_world::cfg().enabled) grey_world::Apply();
 }
 
 void MoonlightUi::WriteSettingsFile() {
@@ -2287,6 +2342,7 @@ void MoonlightUi::WriteSettingsFile() {
       << YAML::Value << YAML::BeginMap;
   moonlight_ui::WriteChatBackgrounds(out);
   moonlight_ui::WriteSettings(out, kGroundPaintSettings);
+  moonlight_ui::WriteSettings(out, kGreyWorldSettings);
   moonlight_ui::WriteSettings(out, MoonlightUiOwnSettings::kHeader);
   moonlight_ui::WriteSettings(out, kItemDescSettings);
   moonlight_ui::WriteSettings(out, kBugReportSettings);

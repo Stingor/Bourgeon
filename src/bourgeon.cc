@@ -50,6 +50,7 @@
 #include "features/overlays/minimap.h"
 #include "features/overlays/quest_tracker.h"
 #include "features/overlays/item_obtain_toast.h"
+#include "features/fx/grey_world.h"
 #include "features/fx/screen_fx.h"
 #include "features/fx/zone_recorder.h"
 #include "features/fx/weapon_layer.h"
@@ -325,6 +326,16 @@ bool Bourgeon::Initialize() {
 
   PatchSilenceEmotePurchaseMsg();  // supprime le spam "purchased emotion" au login
   // (le filtre de messages système du chat est posé par ChatWindow — cf. ci-dessus)
+
+  // 🔴 GreyWorld AVANT les plugins, pour la même raison que la langue plus haut,
+  // mais avec une conséquence plus dure : son aplatissement du terrain travaille
+  // au CHARGEMENT d'une carte, en réécrivant les hauteurs que le client vient de
+  // lire. Or `bourgeon_settings.yaml` n'est relu qu'à la transition vers le mode
+  // jeu — c'est-à-dire APRÈS le chargement de la première carte. Ses détours
+  // n'existaient donc pas encore quand cette carte se chargeait, et le réglage
+  // ne prenait qu'au premier changement de carte SUIVANT : entrer en jeu est
+  // pourtant un chargement comme un autre.
+  grey_world::LoadStartupState();
 
   // LogInfo("Bourgeon initialized successfully!");
   LoadPlugins();
