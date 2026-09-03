@@ -11,11 +11,12 @@
 
 `src/custom/atcommand_def.inc` déclare **49 `ACMD_DEF`** propres à ce fork.
 `conf/import/groups.yml` ouvre **71 commandes** au groupe `Id: 0` (« Player »,
-celui de tout nouveau compte), dont **28 sont des commandes maison** :
+celui de tout nouveau compte), dont **28 étaient des commandes maison** —
+**27 depuis le retrait de `@partybuff`** (§3.4) :
 
 ```
 autolootmvp  autolootmvpreward  autolootpognon  autolootrare  blockexp
-flywinglast  ignore  ignorelist  unignore  partybuff  sellitem  sellstuff
+flywinglast  ignore  ignorelist  unignore  sellitem  sellstuff
 separate  shopsearch  showmobinfo  showspeed  stats  storecard  wings
 storagealt1..5  tri_inventaire  tri_cart  tri_storage  tri_gstorage
 ```
@@ -148,26 +149,46 @@ chantier.
 connexion fraîche : avant, le premier ne rangeait rien et ouvrait le coffre ;
 après, il doit ranger et refermer dès le premier.
 
-### 3.4 `@partybuff` — 🔴 la bascule ne commande RIEN
+### 3.4 `@partybuff` — ⛔ **DÉSINSTALLÉE le 2026-09-02**
 
-Elle bascule `sd->state.spb` et renvoie la liste du groupe. Mais `sd->state.spb`
+> Retirée à la demande de l'utilisateur plutôt qu'implémentée. Huit fichiers du
+> dépôt `moonlight`, 47 lignes supprimées : la commande (`ACMD_FUNC` +
+> `ACMD_DEF`), ses deux entrées de configuration (`atcommands.yml` avec ses
+> alias `spb` / `showpartybuff`, `groups.yml`), et toute la plomberie devenue
+> morte — le champ `sd->state.spb`, sa remise à zéro dans `party_member_withdraw`,
+> les trois branches `PARTY_BUFF_INFO` de `clif_send` et la valeur
+> d'énumération elle-même.
+>
+> ⚠ **Non compilé.** Les messages 1839/1840/1841 restent dans
+> `conf/msg_conf/import/` : ils sont indexés par identifiant, donc les laisser
+> orphelins ne décale rien.
+>
+> Ce qui suit décrit pourquoi elle a été retirée.
+
+Elle basculait `sd->state.spb` et renvoyait la liste du groupe. Mais `sd->state.spb`
 n'est lu qu'à un seul endroit : le `case PARTY_BUFF_INFO` de `clif_send`
 (`clif.cpp:607`). Et **`PARTY_BUFF_INFO` n'a aucun émetteur** — vérifié :
 4 occurrences dans tout `src/`, toutes dans `clif_send` (`:586`, `:601`, `:607`)
 et dans l'énumération (`clif.hpp:229`). Aucun appel n'a jamais cette cible.
 
-➡ Le joueur active un réglage **sans effet**. Deux issues honnêtes : faire
-émettre les EFST des membres vers `PARTY_BUFF_INFO` côté serveur, ou retirer la
-commande. Côté client, c'est le trou que la fenêtre de groupe voudrait combler —
-mais cf. [[project_party_friend_window_re]] : les états d'un membre hors de
-portée n'arrivent pas par l'acteur, il faut un paquet.
+➡ Le joueur activait un réglage **sans effet**. Deux issues étaient possibles :
+faire émettre les EFST des membres vers `PARTY_BUFF_INFO`, ou retirer la
+commande. **C'est le retrait qui a été choisi.**
+
+⚠ Si le besoin revient un jour — afficher les états des membres dans la fenêtre
+de groupe — il faudra repartir du serveur, pas de ce drapeau : cf.
+[[project_party_friend_window_re]], les états d'un membre hors de portée
+n'arrivent pas par l'acteur, il faut un paquet qui les porte.
 
 ## 4. Ce que ça vaut
 
-⚠ **Aucun de ces quatre n'est une panne visible.** `@shopsearch` répond,
-`@ignore` fonctionne, `@storecard` marche au second essai, `@partybuff` affiche
-son message. Ce sont trois défauts discrets et un manque d'ergonomie — à arbitrer
-contre les chantiers réellement cassés.
+⚠ **Aucun de ces quatre n'était une panne visible.** `@shopsearch` répond,
+`@ignore` fonctionne, `@storecard` marchait au second essai, `@partybuff`
+affichait son message. Trois défauts discrets et un manque d'ergonomie.
+
+**État au 2026-09-02** : `@storecard` est corrigé (§3.3 bis), `@partybuff` est
+désinstallée (§3.4). Restent `@shopsearch` — ses repères de minimap ne sont
+jamais effacés — et l'absence de surface cliente pour `@ignore`.
 
 Le plus rentable est probablement le plus petit : ajouter
 **« Où l'acheter ? » → `@shopsearch <id>`** au menu d'un lien d'objet, à côté de
