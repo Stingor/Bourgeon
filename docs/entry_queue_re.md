@@ -175,9 +175,63 @@ son propre espace d'identifiants **1..335** (`cmp eax, 14Eh`, sauts
 envoie le paquet **`0x0842`** — elle n'a aucun rapport avec `UIEntryQueueWnd`.
 Les deux espaces de numéros se recouvrent, voilà tout.
 
-➡ **L'ouvreur de la fenêtre 157 reste INCONNU.** Ce qui est établi : aucun site
-du binaire ne passe l'id 157 en immédiat à `MakeWindow`. S'il existe un chemin,
-il passe l'id par un registre.
+➡ ~~**L'ouvreur de la fenêtre 157 reste INCONNU.**~~
+
+## ✅✅ TROUVÉ le 2026-09-02 — l'icône « battle » de la barre de menu
+
+Le constat « aucun site du binaire ne passe l'id 157 en immédiat à `MakeWindow` »
+était **exact, et c'est précisément pourquoi la recherche ne pouvait pas
+aboutir : l'ouvreur n'existe pas dans le binaire qu'IDA a ouvert.** Il est
+**injecté par WARP** dans l'exe livré, par le patch
+`WARP0716\Scripts\Patches\RestoreBattlegroundUI.qjs`. Relevé complet :
+[warp_patch_map.md](warp_patch_map.md) §4.
+
+Le patch fait **deux** choses, mesurées en comparant l'exe livré au vanilla :
+
+1. **Il rend l'icône visible.** L'icône `battle` (commande **376 = `0x178`**, 8ᵉ des
+   25 icônes) est **sautée en dur** par `UIMenuIconWnd_BuildIconList` dans le
+   vanilla ; WARP repatche la table de visibilité `0x00814064` (`00` → `01`) pour
+   qu'elle soit créée. Cf. [basic_info_re.md](basic_info_re.md) §2.
+2. **Il branche son clic.** Le `call UIWindow_OnMsg` de la branche `default` de
+   `UIMenuIconWnd_OnMsg` (`0x00814ADF`, 3 octets) est détourné vers un stub de la
+   section `.xdiff` :
+
+```
+cmp  dword [ebp+10h], 178h        ; commande de l'icône « battle » ?
+jnz  suite
+push ecx ; mov ecx,[015C43E4h]    ; g_EntryQueueMgr
+cmp  byte [ecx+3Ch], 1 ; jnz +5
+call 007397D0                     ; 🔴 cible FAUSSE, voir ci-dessous
+pop  ecx
+push 9Dh                          ; 157 = UIEntryQueueWnd
+call 00812E60                     ; UIWindowMgr_ToggleWindowById
+suite:
+jmp  00A24D70                     ; UIWindow_OnMsg (comportement d'origine)
+```
+
+`WID_ENTRYQUEUEWND = 0x9D` est écrit tel quel dans le script WARP, et
+`0x015C43E4` porte déjà le nom `g_EntryQueueMgr` dans l'IDB — les deux bouts
+concordent.
+
+### 🔴🔴 Le patch porte un défaut : une adresse physique prise pour virtuelle
+
+Le `call` intermédiaire vise `0x007397D0`, qui est le **milieu d'une instruction**.
+La fonction réellement visée (`CEntryQueueMgr::Cz_Req_Entry_Queue_Ranking`, que WARP
+localise par `mov r32, 90Ah`) commence à **`0x00B3A3D0`**. L'écart vaut exactement
+`0x400C00`, le décalage `.text` entre adresse virtuelle et offset fichier :
+le script utilise le retour de `Exe.FindHex` (**physique**) sans le convertir, là où
+les deux autres cibles du stub viennent de `Exe.GetTgtAddr` (**virtuelles**) et sont
+justes. Correctif : `const AddrSendEntryPacket = Exe.Phy2Vir(Addr, CODE);`.
+
+Le `call` fautif est **gardé** par `cmp byte [g_EntryQueueMgr+0x3C], 1` : il ne part
+que si cet octet vaut 1 au clic. ⚠ **Non vérifié en jeu** — un clic sur l'icône
+suffit à trancher.
+
+⚠ **Leçon de méthode.** Une recherche exhaustive et correcte dans l'IDB a rendu
+« aucun ouvreur » pendant deux relevés successifs. Le manquant n'était pas la
+recherche, c'était la **prémisse** : l'IDB est l'exe vanilla. Avant de conclure
+« le binaire ne fait pas X » sur une fonction d'interface, vérifier qu'elle est
+**intacte** dans l'exe livré (`tools/warp/diff_warp_patches.py`).
 
 ⚠ Même piège à surveiller ailleurs : un id poussé avant `vtable+0x18` est une
 **commande**, un id poussé avant `UIWindowMgr_MakeWindow` est une **fenêtre**.

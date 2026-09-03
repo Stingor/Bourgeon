@@ -180,15 +180,57 @@ repute=0x237  adventureguide=0x245  probability=0x24B
   status `0xC0→0x69`, equip `0xC3→0x68`, item `0xC2→0x6A`, skill `0xC4→0x11B`,
   party `0xC7→0x67`…). Tooltip survol : `UIMenuIcon_OnMouseEnter_Tooltip` @ `0x008274a0`.
 
-### Table cmd → action = `FUN_00814a70`
-Handler PATH 1 (atteint via `OnLButtonDown → FUN_00a38b40`). Chaque `case <cmd>:`
-ouvre une fenêtre par id via `FUN_00812e60(<winId>)` ou lance un sélecteur du
-dispatcher. Notables :
-```
-map 0xDB → fenêtre 0x8c (carte du monde)     cash shop 0x200 → sélecteur 0x143
-option 0xC1 → 0x9b   item 0xC2 → 8   equip 0xC3 → 0xa   skill 0xC4 → 0x25
-status 0xC0 → 0xb    quest 0x169 → 0x2718
-```
+### Table complète : icône → commande → action (relevé du 2026-09-02)
+
+Handler PATH 1 = `UIMenuIconWnd_OnMsg` `0x00814a70` (atteint via
+`OnLButtonDown → FUN_00a38b40`). Les 25 noms sont posés en clair par
+`BuildIconList` ; les 25 commandes sont le tableau parallèle lu depuis
+`0x01028610`..`0x01028660` (+ la 25ᵉ en immédiat, `587`).
+
+Colonne **livré** = mesurée en comparant `Moonlight-Destiny.exe` au vanilla
+(cf. [warp_patch_map.md](warp_patch_map.md)), **pas** lue dans l'IDB.
+
+| # | icône | cmd | hex | vanilla | **livré Moonlight** | action au clic |
+|---:|---|---:|---|---|---|---|
+| 0 | `status` | 192 | 0x0C0 | créée | visible | bascule fenêtre **0x0B** |
+| 1 | `equip` | 195 | 0x0C3 | créée | visible | bascule **0x0A** |
+| 2 | `item` | 194 | 0x0C2 | créée | visible | bascule **8** |
+| 3 | `skill` | 196 | 0x0C4 | créée | visible | bascule **0x25** |
+| 4 | `booking` | 379 | 0x17B | **sautée** | cachée | — (aucun `case`) |
+| 5 | `party` | 199 | 0x0C7 | créée | visible | bascule **0x45** (aiguilleur) |
+| 6 | `guild` | 373 | 0x175 | créée | visible | bascule **59** si en guilde, sinon **212** |
+| 7 | `battle` | 376 | 0x178 | **sautée** | **VISIBLE** 🔴 | **aucun `case` en vanilla** — branchée par WARP sur la fenêtre **157** |
+| 8 | `quest` | 361 | 0x169 | créée | visible | bascule **0x2718** = **10008 `CUIRenewQuestUI`** |
+| 9 | `map` | 219 | 0x0DB | créée | visible | bascule **0x8C** |
+| 10 | `navigation` | 430 | 0x1AE | créée | visible | `0x136E57C` ? msg 6/201 : `MakeWindow(0xCB)` |
+| 11 | `option` | 193 | 0x0C1 | créée | visible | bascule **0x9B** |
+| 12 | `bank` | 461 | 0x1CD | créée | visible | envoie **paquet 2475 (`0x09AB`)** + AID |
+| 13 | `rec` | 399 | 0x18F | créée | **cachée** | bascule **0xC6** si enregistrement actif, sinon boîte « REC End please » |
+| 14 | `mail` | 476 | 0x1DC | créée | visible | bascule **0x107** (RODEX) — ⚠ **bloqué** si 295, 343 ou **10006** est ouverte (msg `0xBB0` / `0xE83` / `0xF03`) |
+| 15 | `achievement` | 473 | 0x1D9 | créée | visible | bascule **0x10E** |
+| 16 | `tip` | 511 | 0x1FF | créée | **cachée** | bascule **0x13B** |
+| 17 | `shop` | 512 | 0x200 | créée | visible | `GameMode::vtable+0x18` commande **323** |
+| 18 | `keyboard` | 370 | 0x172 | créée | visible | bascule **0x12F** |
+| 19 | `sns` | 518 | 0x206 | **sautée** | cachée | — (aucun `case`) |
+| 20 | `attendance` | 540 | 0x21C | créée | **cachée** | ferme **328** si ouverte, sinon envoie **paquet 2664 (`0x0A68`)** |
+| 21 | `adventurerAgency` | 544 | 0x220 | créée | **cachée** | bascule **0x144** = 324 (recherche de groupe moderne) |
+| 22 | `repute` | 567 | 0x237 | créée | **cachée** | bascule **0x15A** = 346 |
+| 23 | `adventureguide` | 581 | 0x245 | créée | **cachée** | bascule **0x2712** = **10002 `CUIAdventureGuide`** |
+| 24 | `probability` | 587 | 0x24B | créée | **cachée** | n'ouvre **aucune** fenêtre : boîte modale `0x1021` puis `ShellExecuteA` sur `0x1020` → **navigateur** |
+
+Boutons d'en-tête, hors des 25 : **510** replie la grille, **201** la déplie
+(`g_MenuIconWnd_Collapsed` `0x0160227c`). Et **286** n'est pas une ouverture :
+c'est la bascule du badge « nouveau » (liste `wnd+0xC4`).
+
+🔴 **Deux fenêtres `CUI` sont donc atteignables depuis cette barre** — `10008`
+(quête, `quest`) et `10002` (`adventureguide`, mais cachée sur Moonlight). Elles
+n'ont besoin d'aucun paquet pour s'ouvrir : le doute qui subsistait sur les
+fenêtres `CUI` 10008-10010 est levé de ce côté.
+
+⚠ **Deux espaces de numéros différents dans la même table** : `bank` et
+`attendance` **envoient un paquet**, `shop` passe par le **répartiteur de
+commandes** du mode de jeu, les autres passent un **id de fenêtre**. Ne jamais
+déduire l'un de l'autre.
 
 ### Visibilité des icônes = patch WARP (`NewButtonVisibility`)
 Les icônes masquées ne sont **pas** un feature-gate naturel : elles sont désactivées
@@ -202,6 +244,27 @@ la chaîne `"status_doram"`, puis patche une table d'octets de visibilité par b
 - Seuls les boutons « new » (id ≥ `0x178`) sont togglables ; les icônes classiques
   (status/item/equip/skill/party/guild/quest/map/option/keyboard, id < `0x178`)
   contournent la table et sont toujours créées.
+
+#### 🔴 État MESURÉ de la table (2026-09-02, `Moonlight-Destiny.exe` vs vanilla)
+
+⚠ **L'IDB ne répond pas à cette question** : elle porte la table *vanilla*.
+La mesure se fait sur les fichiers (`tools/warp/diff_warp_patches.py`).
+
+| | vanilla | livré Moonlight |
+|---|---:|---:|
+| entrées visibles | 220 / 224 | **214 / 224** |
+| entrées cachées | 4 | **10** |
+
+**8 octets diffèrent.** Moonlight **cache** 7 icônes que le vanilla montrait —
+`rec` (399), `tip` (511), `attendance` (540), `adventurerAgency` (544),
+`repute` (567), `adventureguide` (581), `probability` (587) — et en **rallume
+une** : **`battle` (376)**, pour le patch `RestoreBattlegroundUI`
+(cf. [warp_patch_map.md](warp_patch_map.md) §4 et
+[entry_queue_re.md](entry_queue_re.md)).
+
+Les extinctions sont cohérentes avec la configuration serveur :
+`feature.attendance: off` pour 540, recherche de groupe retirée pour 544,
+icône « probability » remplacée par un onglet ImGui pour 587.
 
 ---
 

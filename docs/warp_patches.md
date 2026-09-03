@@ -136,9 +136,17 @@ est consommé sans rien imprimer). Ce que dit IDA n'existe pas sur disque :
 `DisableTraitStatusButton` · `HideTraitStatusButton` · `HideZeroDateInGuildWin` ·
 `CustomPartyLimit` (20) · `CustomInventoryLimit` / `CustomInventoryExpandingLimit`
 (200) · `RemoveMaxNumbersLimit` · `CustomBarterZenySep` · `HideNewButtons` ·
-`ShowNewButtons` · `FixLatestNCWin` · `RestoreBattlegroundUI` ·
+`ShowNewButtons` · `FixLatestNCWin` · **`RestoreBattlegroundUI`** ⚠ · 
 `InsensitiveStorageSearch` · `InsensitiveShopSearch` · `TildeForMatk` ·
 `EnableFlagEmotes`
+
+⚠ **`RestoreBattlegroundUI` est relevé et porte un DÉFAUT** — voir
+[warp_patch_map.md](warp_patch_map.md) §4. C'est lui qui rend visible l'icône
+`battle` de la barre de menu et qui la branche sur la fenêtre **157**
+(l'ouvreur que [entry_queue_re.md](entry_queue_re.md) cherchait). Mais son
+`call` intermédiaire vise une adresse **physique** au lieu de la virtuelle
+(`0x007397D0` au lieu de `0x00B3A3D0`, écart = `0x400C00`) : il manque un
+`Exe.Phy2Vir`.
 
 ### Boutique et cash shop
 `ZeroCinShop` · `PreviewInShop` · `PreviewInTrader` · `RemovePremiumService`
