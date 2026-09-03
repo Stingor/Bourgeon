@@ -55,10 +55,39 @@ Bourgeon sait déjà afficher les deux (repères serveur dans `minimap.cc`, lien
 `<ITEML>`/`<NAVIL>` dans le chat) — mais **rien ne lance la commande** : le menu
 d'un lien d'objet propose `@iteminfo` et `@whodrops`, et s'arrête là.
 
-🔴 **Défaut vérifié : les repères ne sont jamais retirés.** Les deux seuls appels
-à `clif_viewpoint` de ce fichier sont de **type 1** (poser) ; aucun appel de
-type 2 (retirer) n'existe. Deux `@shopsearch` de suite empilent donc leurs
-marques sur la minimap.
+### ⛔ Le « défaut » des repères qui s'empilent — **RÉTRACTÉ le 2026-09-02**
+
+Ce document a affirmé que « les repères ne sont jamais retirés » et que deux
+`@shopsearch` de suite les empilaient. **C'est FAUX**, et l'erreur mérite d'être
+nommée parce qu'elle est instructive.
+
+La signature est `clif_viewpoint(sd, npc_id, type, x, y, id, color)` — **sept**
+paramètres, et une seule surcharge dans tout `src/`. L'appel de `@shopsearch` est
+`clif_viewpoint(*sd, 1, 0, x, y, ++marks, 0xFFFFFF)` : le `1` est le **npc_id**,
+et le **type vaut 0**. Or `clif.cpp:2867` documente les types :
+
+```
+///     0 = display mark for 15 seconds
+///     1 = display mark until dead or teleported
+///     2 = remove mark
+```
+
+**Les repères expirent donc d'eux-mêmes au bout de 15 secondes, côté client.**
+Aucun appel de type 2 n'est nécessaire, et c'est l'idiome de tout le dépôt :
+`@mobsearch` (`atcommand.cpp:8446`) et `teleport.cpp:38` écrivent exactement la
+même chose.
+
+🔴 **La leçon** : j'ai lu le premier `1` comme le type sans ouvrir la signature,
+puis j'ai « vérifié » en cherchant un appel de type 2 — une recherche qui ne
+pouvait que rendre vide, puisqu'elle cherchait la mauvaise chose. Un argument
+positionnel ne se lit pas au jugé. Cf. [[feedback_absence_needs_measurement]] :
+valider le motif avant de croire un zéro.
+
+⚠ Ce qui reste discutable, et qui est une **question de réglage, pas un
+défaut** : 15 secondes, est-ce assez pour lire la liste puis marcher jusqu'à
+l'échoppe ? Allonger ce délai imposerait de passer en type 1 et d'ajouter un
+minuteur serveur qui envoie les retraits — c'est un vrai petit chantier, pas une
+correction.
 
 ### 3.2 `@ignore` / `@unignore` / `@ignorelist`
 
@@ -187,8 +216,12 @@ n'arrivent pas par l'acteur, il faut un paquet qui les porte.
 affichait son message. Trois défauts discrets et un manque d'ergonomie.
 
 **État au 2026-09-02** : `@storecard` est corrigé (§3.3 bis), `@partybuff` est
-désinstallée (§3.4). Restent `@shopsearch` — ses repères de minimap ne sont
-jamais effacés — et l'absence de surface cliente pour `@ignore`.
+désinstallée (§3.4), et le prétendu défaut de `@shopsearch` était **une erreur de
+lecture de ma part** — ses repères expirent déjà tout seuls (§3.1). Il ne reste
+donc **qu'un seul défaut réel sur les quatre annoncés**, et il est déjà réglé.
+
+Ce qui subsiste n'est pas un défaut mais un **manque** : `@shopsearch` et
+`@ignore` n'ont aucune surface cliente.
 
 Le plus rentable est probablement le plus petit : ajouter
 **« Où l'acheter ? » → `@shopsearch <id>`** au menu d'un lien d'objet, à côté de
