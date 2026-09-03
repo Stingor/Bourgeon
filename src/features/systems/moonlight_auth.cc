@@ -1300,6 +1300,15 @@ void MoonlightAuth::DrawWebLogin() {
     // retrouverait devant une ville, sans formulaire d'aucune sorte. Sans effet
     // hors décor.
     spectator::Leave();
+    // 🔴 Et on retire l'identifiant du décor du champ ID. C'est la séquence qui
+    // l'y a écrit, et le client le REPOSE à chaque reconstruction de sa fenêtre
+    // (case « Save ID ») : sans ça, le repli s'ouvre sur un formulaire déjà
+    // rempli de `moonlight_spectator`, dont le mot de passe est ignoré — un
+    // joueur qui valide entre en jeu sur le compte du décor.
+    // ⚠ Le battement repasse derrière (spectator::ScrubNativePrefill) : la
+    // fenêtre visée ici est celle d'AVANT la bascule de `Leave`, et celle qui la
+    // remplacera portera la même valeur mémorisée.
+    spectator::ScrubNativePrefill();
     native_login::MaskLoginWindow(false);  // réaffiche le natif (one-shot)
   }
 }
@@ -1493,6 +1502,15 @@ void MoonlightAuth::DrawError() {
     // retrouverait devant une ville, sans formulaire d'aucune sorte. Sans effet
     // hors décor.
     spectator::Leave();
+    // 🔴 Et on retire l'identifiant du décor du champ ID. C'est la séquence qui
+    // l'y a écrit, et le client le REPOSE à chaque reconstruction de sa fenêtre
+    // (case « Save ID ») : sans ça, le repli s'ouvre sur un formulaire déjà
+    // rempli de `moonlight_spectator`, dont le mot de passe est ignoré — un
+    // joueur qui valide entre en jeu sur le compte du décor.
+    // ⚠ Le battement repasse derrière (spectator::ScrubNativePrefill) : la
+    // fenêtre visée ici est celle d'AVANT la bascule de `Leave`, et celle qui la
+    // remplacera portera la même valeur mémorisée.
+    spectator::ScrubNativePrefill();
     native_login::MaskLoginWindow(false);  // réaffiche le natif (one-shot)
   }
 }

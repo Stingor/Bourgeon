@@ -19,11 +19,23 @@
 //
 // ── Ce qui rend la chose possible, côté serveur ──────────────────────────────
 // L'identifiant réservé `moonlight_spectator` est authentifié SANS toucher la
-// base : ni compte ni personnage n'est créé, l'`account_id` se dérive du numéro
-// de session (2900000 + slot), et le personnage est rendu invisible, muet et
-// immobile. Rien n'est écrit, donc rien n'est à nettoyer. Tout le détail est
-// dans le dépôt serveur (branche `map-login`) ; ici on ne fait que dérouler la
-// séquence de connexion à sa place.
+// base : ni compte ni personnage n'est créé, et le personnage est rendu
+// invisible, muet et immobile. Rien n'est écrit, donc rien n'est à nettoyer.
+// L'`account_id` est PRIS PARMI LES LIBRES d'une plage réservée
+// (`login_spectator_pick_id`, 2900000 + 90000 ids) — 🔴 surtout PAS dérivé du
+// numéro de session : le client ferme sa socket de login dès qu'il a la liste
+// des char-servers, l'OS rend le slot pendant que la session qu'il nommait joue
+// encore, et le client suivant se faisait refuser par sa propre session
+// précédente. Tout le détail est dans le dépôt serveur (branche `map-login`) ;
+// ici on ne fait que dérouler la séquence de connexion à sa place.
+//
+// 🔴🔴 Cet identifiant voyage EN CLAIR dans la DLL, et le mot de passe est
+// ignoré côté serveur : la porte est ouverte à qui la lit. Tout ce qui empêche
+// d'en faire une partie est côté serveur (invisible, muette, immobile, rien
+// n'est écrit, session bornée dans le temps) — mais côté client il reste deux
+// gestes à faire, parce que c'est NOUS qui laissons l'identifiant à portée du
+// joueur : effacer le pré-remplissage qu'on a semé (ScrubNativePrefill) et
+// refermer une session ouverte À LA MAIN dessus (cf. l'ejection dans OnTick).
 //
 // 🔴 La séquence est celle du CLIENT, et non des paquets fabriqués : on écrit
 // dans les champs natifs et on déclenche les mêmes handlers qu'un clic humain
@@ -141,6 +153,22 @@ bool BackdropWanted();
 // Pose le choix ET l'écrit. Décocher en pleine session la ferme sur-le-champ :
 // une case qui ne prend effet qu'au prochain lancement passerait pour cassée.
 void SetBackdropWanted(bool wanted);
+
+// ── Effacer ce que la séquence laisse derrière elle ──────────────────────────
+// Le client MÉMORISE le dernier identifiant saisi (case « Save ID » native) et
+// le repose dans le champ ID chaque fois qu'il reconstruit sa fenêtre de login.
+// Or la séquence écrit dans ce champ : le joueur qui passe au « Login classique »
+// trouvait donc `moonlight_spectator` déjà inscrit, n'avait qu'un mot de passe
+// quelconque à taper — il est ignoré — et se retrouvait EN JEU sur le compte du
+// décor, avec un HUD complet, sans pouvoir marcher ni parler.
+//
+// Appelée à chaque battement hors séquence, et pas seulement au moment du
+// repli : la valeur mémorisée survit à la fenêtre, au retour au login, et au
+// LANCEMENT SUIVANT — où le décor peut très bien ne pas s'armer (case décochée),
+// donc où personne d'autre ne passerait derrière.
+//
+// Sans effet si le champ porte autre chose : l'identifiant du joueur est le sien.
+void ScrubNativePrefill();
 
 // Rend son droit à l'armement automatique : le prochain écran de connexion aura
 // son décor. N'arme RIEN par lui-même — c'est `MaybeAutoStart` qui décidera, et

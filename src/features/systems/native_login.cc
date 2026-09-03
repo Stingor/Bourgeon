@@ -33,6 +33,10 @@ constexpr int kOffEditId    = 0xB4;  // édit ID (SendMsg 0x2718 dans le handler
 constexpr int kOffEditPw    = 0xB8;  // édit MOT DE PASSE (SendMsg 0x2717 ; masque +0x84==0x2a)
 constexpr int kOffBg        = 0xBC;  // fond (fenêtre id 0x145, non enfant)
 constexpr int kOffAcctClass = 0xEC;
+// Le texte d'un CUIEdit : la `std::string` que `CUIEdit_SetText` (0x008303F0)
+// assigne à `this + 216`. Relu — jamais écrit à la main : l'écriture passe par
+// la native, qui prévient aussi le focus et le curseur.
+constexpr int kOffEditText  = 0xD8;
 
 using SetText_t = void(__thiscall*)(void* edit, const char* text);
 // ⚠ 6 ARGS PILE (la fonction fait RET 0x18) — un typedef à 5 args corrompt ESP
@@ -279,6 +283,31 @@ bool native_login::DriveLogin(const char* userid, const char* password) {
     return false;
   }
   return fired;
+}
+
+bool native_login::ClearLoginIdIf(const char* userid) {
+  if (userid == nullptr || userid[0] == '\0') return false;
+  if (!CurrentLoginMode()) return false;
+  __try {
+    void* login = ValidLoginWnd();
+    if (!login) return false;
+    void* idEdit =
+        *reinterpret_cast<void**>(reinterpret_cast<char*>(login) + kOffEditId);
+    if (!idEdit) return false;
+    const void* field = reinterpret_cast<char*>(idEdit) + kOffEditText;
+    // Comparaison sur la LONGUEUR ANNONCÉE, pas jusqu'au zéro : le texte d'un
+    // CUIEdit est une `std::string`, dont la SSO ne garantit rien après la
+    // taille. Et l'égalité doit être STRICTE — un identifiant de joueur qui
+    // commencerait par le nôtre n'est pas le nôtre.
+    const size_t want = std::strlen(userid);
+    if (rag::clientstr::Size(field) != want) return false;
+    const char* text = rag::clientstr::Data(field);
+    if (text == nullptr || std::strncmp(text, userid, want) != 0) return false;
+    reinterpret_cast<SetText_t>(kSetTextAddr)(idEdit, "");
+    return true;
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    return false;
+  }
 }
 
 void native_login::MaskLoginWindow(bool hide) {

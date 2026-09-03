@@ -28,6 +28,18 @@ namespace {
 constexpr char kSpectatorUser[] = "moonlight_spectator";
 constexpr char kSpectatorPass[] = "spectator";
 
+// La plage d'identifiants que le login-server réserve aux sessions de décor
+// (SPECTATOR_ACCOUNT_ID_BASE et SPECTATOR_ID_COUNT dans mmo.hpp, dépôt serveur).
+// Elle sert ici à RECONNAÎTRE une session de décor, jamais à en demander une :
+// c'est le serveur qui distribue, parmi les libres.
+constexpr uint32_t kSpectatorAidBase  = 2900000;
+constexpr uint32_t kSpectatorAidCount = 90000;
+
+bool IsSpectatorAccountId(uint32_t account_id) {
+  return account_id >= kSpectatorAidBase &&
+         account_id < kSpectatorAidBase + kSpectatorAidCount;
+}
+
 // Le personnage du spectateur est fabriqué à la volée par le char-server, et il
 // occupe toujours le premier emplacement (char_spectator_load : `p->slot = 0`).
 constexpr int kSpectatorSlot = 0;
@@ -616,6 +628,17 @@ void Begin() {
   LogDiag("[LoginSpectator] séquence armée");
 }
 
+void ScrubNativePrefill() {
+  // 🔴 Jamais pendant la séquence : c'est ELLE qui vient d'écrire dans ce champ,
+  // et l'effacer entre l'écriture et le tir du bouton « Start » enverrait un
+  // identifiant vide — le handler natif refuse alors sans un mot, et le décor
+  // ne partirait plus jamais.
+  if (Active()) return;
+  if (native_login::ClearLoginIdIf(kSpectatorUser)) {
+    LogDiag("[LoginSpectator] identifiant du décor retiré du champ de login");
+  }
+}
+
 void Rearm() {
   // Seulement au repos : une séquence en cours n'a pas besoin qu'on lui rende un
   // droit qu'elle exerce déjà, et la couper là serait pire.
@@ -770,9 +793,48 @@ void MaybeAutoStart() {
   spectator::Begin();
 }
 
+// ── Une arrivée À LA MAIN sur le compte du décor ─────────────────────────────
+// L'identifiant réservé voyage en clair dans la DLL et son mot de passe est
+// ignoré : rien n'empêche un joueur d'entrer avec — il n'a même pas eu à le
+// chercher, on le lui laissait pré-rempli (cf. ScrubNativePrefill). Le serveur
+// tient sa part (invisible, muet, immobile, rien n'est écrit), mais il ne peut
+// pas distinguer notre séquence d'un humain : ce qu'il rend est une partie
+// complète à l'écran, sur un personnage qui ne peut ni marcher ni parler, et
+// que rien ne referme avant la coupure du serveur — laquelle arrive, elle, par
+// le chemin de la perte de lien, avec sa boîte.
+//
+// Le client, lui, SAIT. Il connaît la plage d'identifiants du décor et il sait
+// s'il a piloté cette session. Une session de décor qu'il n'a pas ouverte est
+// donc une erreur, et la refermer tout de suite est la seule réponse honnête :
+// laisser le joueur dans un monde où il ne peut rien faire est pire que de le
+// ramener à son écran de connexion.
+//
+// ⚠ En jeu SEULEMENT. L'identifiant de compte est un global que le client pose
+// à l'acceptation du login et n'efface jamais : au retour à l'écran de
+// connexion, il porte encore celui de la session précédente — donc celui du
+// décor qui vient de se fermer. S'y fier là reviendrait à éjecter le joueur de
+// son propre login. En jeu, il est celui de la session en cours, sans ambiguïté.
+void EjectManualSpectatorSession() {
+  if (spectator::Active()) return;  // notre décor : c'est son travail
+  if (!Bourgeon::Instance().IsGameActive()) return;
+  if (!IsSpectatorAccountId(rag::OwnAccountIdSafe())) return;
+
+  LogError("[LoginSpectator] session spectateur ouverte À LA MAIN (AID {}) — "
+           "fermeture", rag::OwnAccountIdSafe());
+  ForceLeaveWorld();
+  g_leave_reports = 0;
+  g_leave_retries = 0;
+  // Le même retour que celui d'un décor : voile posé le temps de la bascule,
+  // puis l'écran de connexion. Le motif s'affiche dessus.
+  GoTo(Step::kLeaving,
+       i18n::Tr("Ce compte est réservé au décor de l'écran de connexion."));
+}
+
 }  // namespace
 
 void LoginSpectator::OnTick() {
+  EjectManualSpectatorSession();
+  spectator::ScrubNativePrefill();
   MaybeAutoStart();
   StepSequence();
 }

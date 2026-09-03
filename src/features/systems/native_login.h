@@ -69,6 +69,16 @@ bool SelectConnection(int index);
 // À appeler UNE SEULE FOIS (edge-trigger) : re-déclencher relance une connexion.
 bool DriveLogin(const char* userid, const char* password);
 
+// Efface le champ ID natif s'il porte EXACTEMENT `userid`. Rend true s'il a
+// vraiment été effacé.
+//
+// 🔴 Conditionnel, et c'est tout le contrat : le client REPOSE dans ce champ
+// l'identifiant qu'il a mémorisé (case « Save ID » native), et celui-là
+// appartient au joueur. On ne retire donc que le nôtre — celui que `DriveLogin`
+// y a écrit pour le décor de connexion, et que le joueur retrouverait
+// pré-rempli en passant au « Login classique ».
+bool ClearLoginIdIf(const char* userid);
+
 // Masque (hide=true) / réaffiche la fenêtre de login native ET son fond
 // (bg_login.tga, fenêtre séparée). No-op hors CLoginMode (garde anti-UAF).
 // N'appeler EN MASQUAGE que pendant que le formulaire ImGui est affiché (la
