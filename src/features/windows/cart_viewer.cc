@@ -12,7 +12,6 @@
 #include <Windows.h>
 
 #include <cstdio>
-#include <cmath>    // std::fabs (recalage de la taille verrouillée sur les tuiles)
 #include <cstdlib>
 #include <cstring>
 #include <vector>
@@ -27,8 +26,7 @@
 #include "utils/i18n.h"                         // i18n::Tr (libellés traduisibles)
 #include "d3d9/d3d9_hook.h"            // Overlay_DeviceEpoch
 #include "imgui.h"
-#include "ui/qty_prompt.h"             // ro::QuantityPrompt (dialogue « combien ? »)
-#include "ui/ro_imgui.h"               // skin RO (BeginRoWindow / RoCheckbox / …)
+#include "ui/ro_imgui.h"               // skin RO (RoCheckbox / Px / SkinImageTint)
 #include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 #include "features/windows/viewer_probes.h"  // etat des fenetres voisines
 #include "ui/item_grid_chrome.h"  // ro::grid : le decor commun aux grilles
@@ -55,6 +53,9 @@ namespace {
 // (avant, ils étaient lus sur la fenêtre native, qui ne naît plus).
 constexpr float kSpawnX = 420.0f, kSpawnY = 160.0f;
 constexpr float kSpawnW = 300.0f, kSpawnH = 300.0f;
+
+// Le bandeau du bas porte le poids (ligne 1) et le compteur d'objets (ligne 2).
+constexpr int kFooterLines = 2;
 
 // Compteurs du footer NATIF (RE UICartWnd_DrawContent) : nb d'items et poids, avec
 // leur max. Le natif passe le texte en rouge dès que cur >= max — on fait pareil.
@@ -209,26 +210,21 @@ void LoadAssets() {
 // Teinte des AddImage = luminosité + opacité du skin RO (les images du jeu sont
 // dessinées en draw-list brut, elles échapperaient sinon à ces réglages).
 
-// 🔴 TOUJOURS `ro::Px` : la dimension transverse suit l'échelle de l'interface.
-// Ce correctif était passé dans `inventory_viewer` et `storage_window` sans
-// arriver ici — un strip resté à 22 px à côté d'une grille agrandie. Les trois
-// corps ne peuvent pas fusionner (chacun lit son `g_tab` et son nombre de
-// catégories) : ils doivent donc être corrigés ENSEMBLE, à la main.
 // Largeur du strip d'onglets VERTICAL / hauteur de la rangée HORIZONTALE : la
 // dimension TRANSVERSE (jamais étirée), l'autre se déduit du ratio de l'image.
+//
+// 🔴 Le corps était recopié ici, dans `inventory_viewer` et dans
+// `storage_window`, et la note qui l'accompagnait disait que les trois « ne
+// peuvent pas fusionner (chacun lit son `g_tab` et son nombre de catégories) :
+// ils doivent donc être corrigés ENSEMBLE, à la main ». Ils ne l'ont pas été —
+// le passage à `ro::Px` a atteint les deux autres et pas celui-ci, qui est resté
+// à 22 px à côté d'une grille agrandie. Le jeu d'images et le nombre de
+// catégories sont deux ARGUMENTS, pas un obstacle : cf. `ro::grid`.
 float TabStripWidth() {
-  float w = 0.0f;
-  for (int c = 0; c < kNumCats; ++c)
-    for (int s = 0; s < 2; ++s)
-      if (g_tab[c][s].w > w) w = static_cast<float>(g_tab[c][s].w);
-  return ro::Px(w > 0.0f ? w : 22.0f);  // à l'échelle, cf. inventory_viewer
+  return ro::grid::TabStripThickness(&g_tab[0][0], kNumCats, false);
 }
 float TabStripHeightH() {
-  float h = 0.0f;
-  for (int c = 0; c < kNumCats; ++c)
-    for (int s = 0; s < 2; ++s)
-      if (g_tabh[c][s].h > h) h = static_cast<float>(g_tabh[c][s].h);
-  return ro::Px(h > 0.0f ? h : 22.0f);  // à l'échelle, cf. TabStripWidth
+  return ro::grid::TabStripThickness(&g_tabh[0][0], kNumCats, true);
 }
 
 // itemwin_mid PAVÉ (répété à sa taille native) dans [mn..mx], aligné sur `origin`
@@ -330,68 +326,23 @@ void CartViewer::OnTick() {
 }
 
 void CartViewer::OnRenderUI() {
-  // Pas dessinee ce frame => elle n a plus de rect : un depot lache sur sa
-  // derniere position connue ne doit pas lui etre route.
-  if (!open_ || !imgui_enabled_) { win_rect_.Invalidate(); return; }
+  if (!ShouldRender()) return;
   MaybeFlushTextures();  // device reset/TDR -> lâche les handles morts
 
-  if (need_pos_) {
-    // FirstUseEver : simple DÉFAUT de première ouverture ; ensuite ImGui garde la
-    // position déplacée par le joueur. Ce défaut se lisait sur la fenêtre native,
-    // qui ne naît plus — on le fixe, rabattu dans l'écran sur petite résolution.
-    const ImVec2 screen = ImGui::GetIO().DisplaySize;
-    ImGui::SetNextWindowPos(
-        ImVec2(std::min(kSpawnX, std::max(0.0f, screen.x - kSpawnW)),
-               std::min(kSpawnY, std::max(0.0f, screen.y - kSpawnH))),
-        ImGuiCond_FirstUseEver);
-    need_pos_ = false;
-  }
-  ImGui::SetNextWindowSize(ImVec2(kSpawnW, kSpawnH), ImGuiCond_FirstUseEver);
-  if (ro::grid::Snap().valid && !lock_size_) {
-    const float minGrid = 5.0f * (ro::grid::Snap().cell + ro::grid::Snap().gap) - ro::grid::Snap().gap;  // min 5 tuiles
-    ImGui::SetNextWindowSizeConstraints(
-        ImVec2(ro::grid::Snap().chromew + minGrid, ro::grid::Snap().chromeh + minGrid),
-        ImVec2(10000.0f, 10000.0f), ro::grid::SnapWindowSize);
-  } else if (ro::grid::Snap().valid && win_rect_.valid()) {
-    // Taille VERROUILLÉE : le callback de snap ne tourne plus (il n'agit que pendant
-    // un redimensionnement), donc la fenêtre resterait sur une hauteur quelconque —
-    // dernière ligne coupée. On la recale une fois sur le palier le plus proche.
-    const float step = ro::grid::Snap().cell + ro::grid::Snap().gap;
-    int cols = static_cast<int>((win_rect_.w() - ro::grid::Snap().chromew + ro::grid::Snap().gap) / step + 0.5f);
-    int rows = static_cast<int>((win_rect_.h() - ro::grid::Snap().chromeh + ro::grid::Snap().gap) / step + 0.5f);
-    if (cols < 5) cols = 5;
-    if (rows < 5) rows = 5;
-    const ImVec2 snapped(ro::grid::Snap().chromew + cols * step - ro::grid::Snap().gap,
-                         ro::grid::Snap().chromeh + rows * step - ro::grid::Snap().gap);
-    if (std::fabs(snapped.x - win_rect_.w()) > 0.5f ||
-        std::fabs(snapped.y - win_rect_.h()) > 0.5f)
-      ImGui::SetNextWindowSize(snapped, ImGuiCond_Always);
-  }
-
-  // Bullet de la barre de titre = raccourci vers la config de CETTE fenêtre.
-  ro::SetNextWindowTitleBullet(i18n::Tr("Options du cart"));
-  ro::SetNextWindowPinnable();  // épingle : Échap ne referme plus le cart
-  const bool begun = ro::BeginRoWindow(
-      i18n::Tr("Cart###bourgeon_cart"), &show_panel_,
-      lock_size_ ? ImGuiWindowFlags_NoResize : 0);
-  if (ro::TitleBulletClicked())
-    if (auto* mu = Bourgeon::Instance().moonlight_ui())
-      mu->OpenInterfaceSection(MoonlightUi::kIfaceCart);
-  // X du viewer : l'état d'ouverture est le NÔTRE maintenant, il n'y a plus de
-  // fenêtre native à fermer. Réarme show_panel_ pour la prochaine ouverture.
-  if (!show_panel_) { open_ = false; show_panel_ = true; }
-  // Repliee ou clippee : ImGui ne l a pas dessinee, son rect deplie ne vaut
-  // plus rien comme cible de depot.
-  if (!begun) { win_rect_.Invalidate(); ro::EndRoWindow(); return; }
-
-  // Pendant la composition d'un shop, le serveur refuse TOUT mouvement touchant
-  // le cart : autant l'annoncer une fois en clair, en plus des entrées grisées.
-  if (viewers::VendingComposing())
-    ImGui::TextColored(ImVec4(0.85f, 0.15f, 0.15f, 1.0f),
-                       "%s", i18n::Tr("Shop en composition : les transferts sont figés."));
-
-  const ImVec2 wp = ImGui::GetWindowPos(), ws = ImGui::GetWindowSize();
-  win_rect_.Capture(wp.x, wp.y, ws.x, ws.y);
+  // Le décor de la fenêtre : placement et taille par défaut, snap par palier de
+  // case, puce de barre de titre, épingle, X, bandeau d'échoppe, capture du rect
+  // écran. Le corps était recopié de `inventory_viewer` ; il vit dans
+  // `ItemViewerBase`, et seuls ces sept champs sont propres au chariot.
+  WindowChrome chrome;
+  chrome.spawn_x = kSpawnX;
+  chrome.spawn_y = kSpawnY;
+  chrome.spawn_w = kSpawnW;
+  chrome.spawn_h = kSpawnH;
+  chrome.title = i18n::Tr("Cart###bourgeon_cart");
+  chrome.bullet_tip = i18n::Tr("Options du cart");
+  chrome.iface_section = MoonlightUi::kIfaceCart;
+  chrome.lock_size = lock_size_;
+  if (!BeginViewerWindow(chrome)) return;  // 🔴 EndRoWindow déjà appelé
 
   // ── Action en attente (transfert d'une pile) -> prompt quantité ──
   auto do_move = [this](int amount) {
@@ -401,20 +352,13 @@ void CartViewer::OnRenderUI() {
       default: break;
     }
   };
-  if (pend_id_ != 0) {
-    if (pend_open_prompt_) { ro::OpenQuantityPrompt(this); pend_open_prompt_ = false; }
-    else if (pend_max_ <= 1) { do_move(1); pend_id_ = 0; }
-  }
-  // Dialogue « combien ? » PARTAGÉ (ui/qty_prompt) : habillé RO, identique dans
-  // l'inventaire, le storage et le cart.
-  {
-    const char* verb = pend_action_ == kPendToStorage ? i18n::Tr("Vers le storage")
-                                                      : i18n::Tr("Vers l'inventaire");
-    bool cancelled = false;
-    const int qty = ro::QuantityPrompt(this, verb, pend_max_, &cancelled);
-    if (qty > 0) { do_move(qty); pend_id_ = 0; }
-    else if (cancelled) pend_id_ = 0;
-  }
+  // Un objet seul part sans qu'on demande combien ; une PILE ouvre le dialogue
+  // partagé (habillé RO, identique dans les trois fenêtres). Les deux appels
+  // peuvent rendre une quantité dans la même frame — c'était déjà le cas.
+  if (const int n = TakePendingAmount()) do_move(n);
+  const char* verb = pend_action_ == kPendToStorage ? i18n::Tr("Vers le storage")
+                                                    : i18n::Tr("Vers l'inventaire");
+  if (const int n = PumpQuantityPrompt(verb)) do_move(n);
 
   // Aide raccourcis : le texte est construit ici, le « (?) » est émis dans le FOOTER
   // pour ne pas manger une ligne au-dessus de la grille.
@@ -428,26 +372,15 @@ void CartViewer::OnRenderUI() {
       "- Alt + clic droit : transfert rapide (storage si ouvert, sinon inventaire)\n"
       "- Glisser : lâcher sur l'inventaire ou le storage pour y transférer");
   static ImGuiTextFilter filter;
-  if (show_filter_) {
-    ImGui::SetNextItemWidth(-1.0f);
-    // 1er argument = l'ID du champ, JAMAIS traduit ; seul l'indice l'est.
-    if (ImGui::InputTextWithHint("##cart_filter", i18n::Tr("Filtrer..."), filter.InputBuf,
-                                 IM_ARRAYSIZE(filter.InputBuf)))
-      filter.Build();
-  } else if (filter.InputBuf[0]) {
-    // Filtre masqué : on le vide, sinon il continuerait de cacher des items sans
-    // que rien à l'écran ne l'explique.
-    filter.Clear();
-  }
+  ro::grid::DrawNameFilter("##cart_filter", &filter, show_filter_);
 
-  // ── Dimensions communes (footer réservé + snap) ──
+  // ── Dimensions communes (bandeau réservé + snap) ──
   LoadAssets();
-  const float lineH = ImGui::GetTextLineHeight();
-  const float footerH = 2.0f * lineH + 6.0f;  // 2 lignes compactes (barre étirée dessous)
+  const ro::grid::Metrics gm = ro::grid::Measure(kFooterLines);
+  const float lineH = gm.line_h;
+  const float footerH = gm.footer_h;
   const ImGuiStyle& style = ImGui::GetStyle();
-  const float mainW = ImGui::GetWindowWidth();
-  const float mainH = ImGui::GetWindowHeight();
-  const float childH = -(footerH + style.ItemSpacing.y);
+  const float childH = gm.child_h;
 
   // ── Onglets IMAGES (jeu tab_* en vertical, tabh_* en horizontal ; actif =
   //    <img>1.bmp, inactif = <img>2.bmp). Sans image chargée -> libellé texte.
@@ -519,47 +452,21 @@ void CartViewer::OnRenderUI() {
     if (in_tab(cur_tab_, items_[i]) && filter.PassFilter(items_[i].name))
       view.push_back(i);
 
-  // ── Grille de tuiles 32px (fond itemwin_mid) : à DROITE des onglets en
-  //    disposition verticale, EN DESSOUS en horizontale. Défile. ──
-  if (vtabs) {
-    ImGui::SameLine(0.0f, 0.0f);
-  } else {
-    // Collée à la rangée d'onglets : on reprend l'ItemSpacing vertical que le child
-    // du strip vient d'insérer.
-    ImGui::SetCursorPosY(ImGui::GetCursorPosY() - style.ItemSpacing.y);
-  }
-  // Style du MENU CONTEXTUEL, mémorisé AVANT les push de la grille : celle-ci
-  // tourne en WindowPadding 0 / ItemSpacing jointif (tuiles collées), et un popup
-  // ouvert dans ce scope en hérite — entrées serrées, sans marge. Le menu du
-  // storage, lui, est rendu au style normal de la fenêtre : c'est cette référence
-  // qu'on repousse autour du popup (cf. plus bas).
-  const ImVec2 menu_pad = style.WindowPadding;
-  const ImVec2 menu_spacing = style.ItemSpacing;
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-  ImGui::BeginChild("cartgrid", ImVec2(0.0f, childH), true,
-                    ImGuiWindowFlags_AlwaysVerticalScrollbar);
+  // ── La grille de cases ──────────────────────────────────────────────────
+  // À DROITE des onglets en disposition verticale, EN DESSOUS en horizontale.
+  // Défile. `BeginItemGrid` place le curseur, ouvre l'enfant sans marge, mesure
+  // le chrome pour le snap et pave le fond.
+  // 🔴 À refermer par `EndItemGrid` : deux PushStyleVar restent en vol.
+  const ro::grid::Grid grid =
+      ro::grid::BeginItemGrid("cartgrid", vtabs, gm, ro::grid::Assets().tile);
   {
-    // Tuiles de 32 px (taille native du client), jointives, À L'ÉCHELLE de
-    // l'interface — même règle que la grille d'inventaire, dont ceci est le
-    // jumeau.
-    const float cell = ro::Px(32.0f), gap = 0.0f;
-    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(gap, gap));
-    const float availw = ImGui::GetContentRegionAvail().x;  // exclut déjà la scrollbar
-    const float availh = ImGui::GetContentRegionAvail().y;
-    // Mesure du chrome (fenêtre - zone grille) pour le snap de resize (frame +1).
-    ro::grid::Snap().cell = cell; ro::grid::Snap().gap = gap;
-    ro::grid::Snap().chromew = mainW - availw;
-    ro::grid::Snap().chromeh = mainH - availh;
-    ro::grid::Snap().valid = true;
-    int cols = static_cast<int>((availw + gap) / (cell + gap));
-    if (cols < 1) cols = 1;
-    ImDrawList* dl = ImGui::GetWindowDrawList();
-    {  // Fond itemwin_mid PAVÉ, ALIGNÉ sur la grille d'items.
-      const ImVec2 gridOrigin = ImGui::GetCursorScreenPos();  // = 1re tuile
-      const ImVec2 gmn = ImGui::GetWindowPos();
-      const ImVec2 gsz = ImGui::GetWindowSize();
-      ro::grid::DrawTiledBg(dl, ro::grid::Assets().tile, gridOrigin, gmn, ImVec2(gmn.x + gsz.x, gmn.y + gsz.y));
-    }
+    // Le style du MENU CONTEXTUEL, relevé avant les push de la grille : on le
+    // repousse autour du popup, sinon il hériterait des tuiles jointives.
+    const ImVec2 menu_pad = grid.menu_pad;
+    const ImVec2 menu_spacing = grid.menu_spacing;
+    const float cell = grid.cell;
+    const int cols = grid.cols;
+    ImDrawList* dl = grid.dl;
 
     // Aperçu de description au survol : recalculé à chaque frame (0 = aucune case).
     hover_desc_id_ = 0;
@@ -725,52 +632,29 @@ void CartViewer::OnRenderUI() {
 
       ImGui::PopID();
     }
-    ImGui::PopStyleVar();  // ItemSpacing
   }
-  ImGui::EndChild();
-  ImGui::PopStyleVar();  // WindowPadding (grille)
+  ro::grid::EndItemGrid();
 
   // Onglet actif « mange » le bord entre le strip et la grille : petit pont sur le
   // bord qui touche la grille (droit en vertical, bas en horizontal) -> passage
   // blanc continu qui souligne l'onglet actif.
-  if (haveActiveTab) {
-    const ImU32 pont = IM_COL32_WHITE;
-    ImDrawList* dl = ImGui::GetWindowDrawList();
-    if (vtabs)
-      dl->AddRectFilled(ImVec2(activeTabMax.x - 1.0f, activeTabMin.y + 1.0f),
-                        ImVec2(activeTabMax.x + 2.0f, activeTabMax.y - 1.0f), pont);
-    else
-      dl->AddRectFilled(ImVec2(activeTabMin.x + 1.0f, activeTabMax.y - 1.0f),
-                        ImVec2(activeTabMax.x - 1.0f, activeTabMax.y + 2.0f), pont);
-  }
+  if (haveActiveTab)
+    ro::grid::DrawActiveTabBridge(ImGui::GetWindowDrawList(), activeTabMin,
+                                  activeTabMax, vtabs, IM_COL32_WHITE);
 
   // ── Drag terminé : router selon la cible (inventaire / storage) ──
-  if (drag_active_) {
-    const ImGuiPayload* pl = ImGui::GetDragDropPayload();
-    if (pl && pl->IsDataType("CART_ITEM")) {
-      const ImVec2 m = ImGui::GetMousePos();
-      drag_mx_ = m.x; drag_my_ = m.y;
-    } else {  // relâché ce frame
-      int action = -1;
-      if (drag_index_ > 0) {
-        const bool over_self = win_rect_.Contains(drag_mx_, drag_my_);
-        if (!over_self) {
-          if (viewers::MouseOverStorage(drag_mx_, drag_my_))        action = kPendToStorage;
-          // Entrepôt ouvert => le serveur refuse cart -> inventaire (storage_flag,
-          // cf. le menu contextuel) : on n'arme RIEN, plutôt que d'ouvrir un prompt
-          // de quantité dont la validation partirait à la poubelle.
-          else if (viewers::MouseOverInventory(drag_mx_, drag_my_) && !viewers::StorageOpen())
-            action = kPendToBody;
-        }
-      }
-      if (action != -1) {
-        pend_id_ = drag_index_; pend_index_ = drag_index_;
-        pend_max_ = drag_amount_ > 0 ? drag_amount_ : 1;
-        pend_action_ = action;
-        pend_open_prompt_ = (pend_max_ > 1);
-      }
-      drag_active_ = false;
+  if (DragReleased("CART_ITEM") && drag_index_ > 0) {
+    int action = -1;
+    const bool over_self = win_rect_.Contains(drag_mx_, drag_my_);
+    if (!over_self) {
+      if (viewers::MouseOverStorage(drag_mx_, drag_my_))        action = kPendToStorage;
+      // Entrepôt ouvert => le serveur refuse cart -> inventaire (storage_flag,
+      // cf. le menu contextuel) : on n'arme RIEN, plutôt que d'ouvrir un prompt
+      // de quantité dont la validation partirait à la poubelle.
+      else if (viewers::MouseOverInventory(drag_mx_, drag_my_) && !viewers::StorageOpen())
+        action = kPendToBody;
     }
+    if (action != -1) ArmDraggedAction(action);
   }
 
   // ── Footer : barre 3-slice portant le poids (ligne 1) et le compteur d'items
@@ -824,25 +708,12 @@ void CartViewer::OnRenderUI() {
   }
 
 
-  // Les raccourcis vers les deux autres viewers (opt-in).
-  // 🔴 EN DERNIER : ils vivent dans la barre de titre et ne restaurent pas le
-  // curseur de layout (cf. ro::TitleBarButton).
-  DrawPeerButtons(Peer::kCart);
-  ro::EndRoWindow();
-
-  // Aperçu de description : dessiné APRÈS la fenêtre (c'est un tooltip, il doit
-  // passer AU-DESSUS d'elle) et hors de tout Begin/End.
-  if (hover_desc_id_ != 0 && hover_desc_idx_ >= 0 && hover_desc_idx_ < item_count_) {
-    const Item& hit = items_[hover_desc_idx_];
-    itemdesc::SimpleOpt sopts[5];
-    for (int i = 0; i < hit.opt_count && i < 5; ++i) {
-      sopts[i].index = hit.opts[i].index;
-      sopts[i].value = hit.opts[i].value;
-      sopts[i].param = hit.opts[i].param;
-    }
-    itemcell::DrawTooltip(hit.id, hit.cards, 4, sopts, hit.opt_count, hit.refine, hit.name,
-                          hit.damaged != 0);
-  }
+  // Les raccourcis de barre de titre, la fermeture, puis l'aperçu de
+  // description au survol — un tooltip, donc HORS de la fenêtre. L'ordre des
+  // trois compte : il est tenu par `EndViewerWindow`.
+  EndViewerWindow(Peer::kCart, hover_desc_idx_ >= 0 && hover_desc_idx_ < item_count_
+                                   ? &items_[hover_desc_idx_]
+                                   : nullptr);
 }
 
 // ── Section « Cart » du panneau Moonlight ──────────────────────────────────

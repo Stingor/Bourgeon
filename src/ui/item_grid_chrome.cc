@@ -6,6 +6,7 @@
 #include "d3d9/d3d9_hook.h"  // Overlay_DeviceEpoch : les textures d'un device mort
 #include "ui/ro_imgui.h"  // ro::Px (échelle), ro::SkinImageTint (teinte du skin)
 #include "ui/ro_widgets.h"
+#include "utils/i18n.h"   // i18n::Tr : l'indice du champ de filtre"
 
 namespace ro::grid {
 namespace {
@@ -15,6 +16,17 @@ bool     g_loaded = false;
 unsigned g_epoch  = 0;
 
 SnapState g_snap;
+
+// Épaisseur de repli du strip quand aucune image d'onglet n'a pu être chargée.
+constexpr float kTabStripFallbackPx = 22.0f;
+// Côté d'une case : la taille NATIVE du client, mise à l'échelle par `ro::Px`.
+constexpr float kCellPx = 32.0f;
+// Ce que le bandeau du bas prend en plus de ses lignes de texte.
+constexpr float kFooterPadPx = 6.0f;
+// Le pont de l'onglet actif : de combien il rentre dans l'onglet, et de combien
+// il mord sur la grille au-delà du bord.
+constexpr float kBridgeInsetPx = 1.0f;
+constexpr float kBridgeOverlapPx = 2.0f;
 
 }  // namespace
 
@@ -113,6 +125,102 @@ void SnapWindowSize(ImGuiSizeCallbackData* d) {
   if (rows < 5) rows = 5;
   d->DesiredSize.x = s.chromew + cols * step - s.gap;
   d->DesiredSize.y = s.chromeh + rows * step - s.gap;
+}
+
+float TabStripThickness(const GameTexture* set, int count, bool horizontal) {
+  float thick = 0.0f;
+  for (int i = 0; i < count * 2; ++i) {  // [catégorie][actif, inactif], à plat
+    const float v = static_cast<float>(horizontal ? set[i].h : set[i].w);
+    if (v > thick) thick = v;
+  }
+  // 🔴 TOUJOURS `ro::Px` : le strip suit l'échelle de l'interface. C'est le
+  // correctif qui n'avait pas atteint les trois copies.
+  return ro::Px(thick > 0.0f ? thick : kTabStripFallbackPx);
+}
+
+void DrawNameFilter(const char* imgui_id, ImGuiTextFilter* filter, bool visible) {
+  if (visible) {
+    ImGui::SetNextItemWidth(-1.0f);
+    // 1er argument = l'ID du champ, JAMAIS traduit ; seul l'indice l'est.
+    if (ImGui::InputTextWithHint(imgui_id, i18n::Tr("Filtrer..."), filter->InputBuf,
+                                 IM_ARRAYSIZE(filter->InputBuf)))
+      filter->Build();
+  } else if (filter->InputBuf[0]) {
+    filter->Clear();
+  }
+}
+
+Metrics Measure(int footer_lines) {
+  Metrics m;
+  m.line_h   = ImGui::GetTextLineHeight();
+  m.footer_h = footer_lines * m.line_h + kFooterPadPx;
+  m.main_w   = ImGui::GetWindowWidth();
+  m.main_h   = ImGui::GetWindowHeight();
+  m.child_h  = -(m.footer_h + ImGui::GetStyle().ItemSpacing.y);
+  return m;
+}
+
+Grid BeginItemGrid(const char* imgui_id, bool tabs_vertical, const Metrics& m,
+                   const GameTexture& bg) {
+  const ImGuiStyle& style = ImGui::GetStyle();
+  if (tabs_vertical) {
+    ImGui::SameLine(0.0f, 0.0f);
+  } else {
+    // Collée à la rangée d'onglets : on reprend l'ItemSpacing vertical que
+    // l'enfant du strip vient d'insérer.
+    ImGui::SetCursorPosY(ImGui::GetCursorPosY() - style.ItemSpacing.y);
+  }
+  Grid g;
+  g.menu_pad     = style.WindowPadding;
+  g.menu_spacing = style.ItemSpacing;
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+  // En horizontal, la rangée d'onglets a déjà consommé sa hauteur : la grille
+  // prend le reste (hauteur négative = « la place restante moins le bandeau »).
+  ImGui::BeginChild(imgui_id, ImVec2(0.0f, m.child_h), true,
+                    ImGuiWindowFlags_AlwaysVerticalScrollbar);
+  // Cases jointives (sans padding) et À L'ÉCHELLE de l'interface, sinon la
+  // grille reste minuscule pendant que le texte des onglets et du bandeau
+  // grandit autour d'elle. Le pavage de fond suit le même facteur, donc les
+  // tuiles du fond restent alignées sur les cases.
+  g.cell = ro::Px(kCellPx);
+  g.gap  = 0.0f;
+  ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(g.gap, g.gap));
+  const float availw = ImGui::GetContentRegionAvail().x;  // exclut la scrollbar
+  g.avail_h = ImGui::GetContentRegionAvail().y;
+  // Mesure du chrome (fenêtre - zone grille) pour le snap de resize (frame +1).
+  Snap().cell = g.cell;
+  Snap().gap  = g.gap;
+  Snap().chromew = m.main_w - availw;
+  Snap().chromeh = m.main_h - g.avail_h;
+  Snap().valid = true;
+  g.cols = static_cast<int>((availw + g.gap) / (g.cell + g.gap));
+  if (g.cols < 1) g.cols = 1;
+  g.dl = ImGui::GetWindowDrawList();
+  {  // Fond PAVÉ, ALIGNÉ sur la grille des cases (même marge qu'elles).
+    const ImVec2 origin = ImGui::GetCursorScreenPos();  // = la 1re case
+    const ImVec2 mn = ImGui::GetWindowPos();
+    const ImVec2 sz = ImGui::GetWindowSize();
+    DrawTiledBg(g.dl, bg, origin, mn, ImVec2(mn.x + sz.x, mn.y + sz.y));
+  }
+  return g;
+}
+
+void EndItemGrid() {
+  ImGui::PopStyleVar();  // ItemSpacing (cases jointives)
+  ImGui::EndChild();
+  ImGui::PopStyleVar();  // WindowPadding (grille)
+}
+
+void DrawActiveTabBridge(ImDrawList* dl, ImVec2 tab_min, ImVec2 tab_max,
+                         bool tabs_vertical, ImU32 color) {
+  if (tabs_vertical)
+    dl->AddRectFilled(
+        ImVec2(tab_max.x - kBridgeInsetPx, tab_min.y + kBridgeInsetPx),
+        ImVec2(tab_max.x + kBridgeOverlapPx, tab_max.y - kBridgeInsetPx), color);
+  else
+    dl->AddRectFilled(
+        ImVec2(tab_min.x + kBridgeInsetPx, tab_max.y - kBridgeInsetPx),
+        ImVec2(tab_max.x - kBridgeInsetPx, tab_max.y + kBridgeOverlapPx), color);
 }
 
 }  // namespace ro::grid

@@ -266,11 +266,7 @@ float StorageStripWidth() {
 // Hauteur du strip horizontal = hauteur NATIVE des images (repli 22 px). Même
 // principe que TabStripWidth : ne jamais l'étirer, la largeur en découle.
 float TabStripHeight() {
-  float h = 0.0f;
-  for (int c = 0; c < kNumStgCats; ++c)
-    for (int s = 0; s < 2; ++s)
-      if (g_tabh[c][s].h > h) h = static_cast<float>(g_tabh[c][s].h);
-  return ro::Px(h > 0.0f ? h : 22.0f);  // à l'échelle, cf. StorageStripWidth
+  return ro::grid::TabStripThickness(&g_tabh[0][0], kNumStgCats, true);
 }
 
 // Teinte des AddImage d'onglets = luminosité du skin RO (l'opacité vient déjà de
@@ -280,12 +276,13 @@ float TabStripHeight() {
 // Largeur du strip = largeur NATIVE des images d'onglet (repli 22 px). Surtout pas
 // élargie par les libellés : à 60 px de large les .bmp partent en tuiles géantes
 // (l'image est mise à l'échelle de la largeur du strip, hauteur incluse).
+//
+// 🔴 Le corps était recopié ici, dans l'inventaire et dans le chariot, avec la
+// consigne de « corriger les trois ENSEMBLE, à la main ». Elle n'a pas tenu : la
+// mise à l'échelle `ro::Px` a atteint cette copie et celle de l'inventaire, mais
+// pas celle du chariot. Un seul corps depuis, dans `ro::grid`.
 float TabStripWidth() {
-  float w = 0.0f;
-  for (int c = 0; c < kNumStgCats; ++c)
-    for (int s = 0; s < 2; ++s)
-      if (g_tab[c][s].w > w) w = static_cast<float>(g_tab[c][s].w);
-  return ro::Px(w > 0.0f ? w : 22.0f);  // à l'échelle, cf. StorageStripWidth
+  return ro::grid::TabStripThickness(&g_tab[0][0], kNumStgCats, false);
 }
 
 // Largeur du strip en mode TEXTE VERTICAL : le libellé est tourné à 90°, donc sa
@@ -1710,15 +1707,7 @@ void StorageWindow::OnRenderUI() {
     filter.Clear();
     reset_filter_ = false;
   }
-  if (show_filter_) {
-    ImGui::SetNextItemWidth(-1.0f);
-    if (ImGui::InputTextWithHint("##storage_filter", i18n::Tr("Filtrer..."), filter.InputBuf,
-                                 IM_ARRAYSIZE(filter.InputBuf)))
-      filter.Build();
-  } else if (filter.InputBuf[0]) {
-    // Filtre masqué : on le vide pour ne pas cacher silencieusement des items.
-    filter.Clear();
-  }
+  ro::grid::DrawNameFilter("##storage_filter", &filter, show_filter_);
   // ── 🔴 UNE LIGNE PAR CLÉ i18n, JAMAIS LE PAVÉ ENTIER ──────────────────────
   // Ce texte était UNE clé de 1372 caractères. Or **YAML plafonne une clé simple
   // à 1024** — yaml-cpp l'applique comme les autres (simplekey.cpp:116) — et

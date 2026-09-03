@@ -14,6 +14,16 @@
 // de base qui n'avait jamais été écrite. Les défauts ont été comparés un à un
 // avant la fusion — voir les deux ⚠ plus bas, seuls écarts trouvés.
 //
+// 🔴 Mais cette classe n'a longtemps porté que l'ÉTAT, alors que les en-têtes
+// des deux fenêtres annonçaient la factorisation comme faite : le PIPELINE DE
+// RENDU, lui, était resté recopié. 53 % des lignes normalisées du chariot
+// étaient une copie de l'inventaire — le décor de la fenêtre, le placement par
+// défaut, le snap par palier de case, le dialogue de quantité, le routage du
+// glisser, l'aperçu au survol. Le squelette est descendu ici (§ « SQUELETTE de
+// rendu »), sa moitié purement graphique dans `ro::grid` (ui/item_grid_chrome).
+// Ce qui reste chez chacune est ce qui DIFFÈRE vraiment : sa boucle d'onglets,
+// sa boucle de cases, son bandeau du bas et son menu contextuel.
+//
 // ── Ce qui reste chez chacune, et pourquoi ───────────────────────────────────
 //   · `Item`, `kMaxItems`, `items_`, `Extract()` — le POD extrait diffère par
 //     fenêtre (le chariot ignore `drag_type_`, l'entrepôt porte prix et méta).
@@ -36,6 +46,7 @@
 
 #include <cstdint>
 
+#include "features/item_cell.h"  // itemcell::ItemRow : la ligne survolée
 #include "features/plugin.h"
 #include "ui/desc_pending_lock.h"  // ro::DescPendingLock : l'anti-flicker de l'aperçu
 #include "ui/viewer_rect.h"        // ro::ViewerRect : le rect écran, capturé au rendu
@@ -124,6 +135,64 @@ class ItemViewerBase : public Plugin {
   // VTABLE PRÈS. C'est le seul paramètre : `uiwnd::kInventoryWndVTable` d'un
   // côté, `uiwnd::kCartWndVTable` de l'autre.
   void HandleNativeToggle(void* win, uintptr_t expected_vtable);
+
+  // ── Le SQUELETTE de rendu, commun aux fenêtres à grille ───────────────────
+  //
+  // Dans l'ordre où on l'appelle. La moitié purement graphique (mesure du strip
+  // d'onglets, champ de filtre, enfant défilant de la grille, pont de l'onglet
+  // actif) est dans `ro::grid` : elle ne connaît aucun état de viewer.
+
+  // 1. Ce viewer doit-il être dessiné ce frame ? Non => il n'a plus de rect :
+  //    un dépôt lâché sur sa dernière position connue ne doit pas lui être
+  //    routé.
+  bool ShouldRender();
+
+  // 2. Le décor de la fenêtre. Placement et taille par DÉFAUT de première
+  //    ouverture — ils se lisaient sur la fenêtre native, qui ne naît plus —
+  //    puis le redimensionnement par palier de case, la puce de barre de titre
+  //    qui mène aux réglages de CETTE fenêtre, l'épingle, le X, et le bandeau
+  //    rouge qui annonce qu'une composition d'échoppe gèle les transferts.
+  struct WindowChrome {
+    float spawn_x = 0, spawn_y = 0;    // défaut de PREMIÈRE ouverture seulement
+    float spawn_w = 0, spawn_h = 0;
+    const char* title = nullptr;       // DÉJÀ traduit, avec son `###id` ImGui
+    const char* bullet_tip = nullptr;  // DÉJÀ traduit
+    int  iface_section = 0;            // MoonlightUi::kIface* : où la puce mène
+    bool lock_size = false;            // setting : plus de redimensionnement
+  };
+  // True => la fenêtre est ouverte ET dépliée : il reste à la remplir, puis à
+  // appeler `EndViewerWindow`.
+  // 🔴 False => `EndRoWindow` a DÉJÀ été appelé. Rendre la main IMMÉDIATEMENT.
+  bool BeginViewerWindow(const WindowChrome& chrome);
+
+  // 3. La fin de la fenêtre, dans l'ordre qui compte : les raccourcis vers les
+  //    deux sœurs, la fermeture, puis l'aperçu de description. `hovered` = la
+  //    ligne survolée ce frame, nulle si aucune.
+  void EndViewerWindow(Peer self, const itemcell::ItemRow* hovered);
+
+  // 4. L'action en attente, quand elle n'a pas besoin qu'on demande combien :
+  //    arme le dialogue si une PILE est en jeu, sinon rend 1 et purge
+  //    l'attente. À appeler AVANT `PumpQuantityPrompt`, et les deux peuvent
+  //    rendre une quantité dans la même frame — c'était déjà le cas.
+  int TakePendingAmount();
+  // 5. Le dialogue « combien ? » partagé (ui/qty_prompt), habillé RO, identique
+  //    dans les trois fenêtres. À appeler à CHAQUE frame : c'est lui qui décide
+  //    de se dessiner. Rend la quantité validée, ou 0. `verb` = le libellé du
+  //    bouton, DÉJÀ traduit.
+  int PumpQuantityPrompt(const char* verb);
+
+  // 6. Le glisser vient-il d'être RELÂCHÉ ? Tant qu'il court, la position de la
+  //    souris est mémorisée dans `drag_mx_`/`drag_my_` — la frame du relâché,
+  //    ImGui a déjà oublié le payload, et c'est cette dernière position connue
+  //    qui désigne la cible. Rend true UNE fois, et clôt le glisser.
+  bool DragReleased(const char* payload_type);
+  // 7. Arme `action` sur l'objet qui vient d'être lâché ; le dialogue de
+  //    quantité ne s'ouvre que si c'est une PILE.
+  //    ⚠ NE PAS confondre avec `InventoryViewer::ArmDragQuantityPrompt`, qui
+  //    ouvre le dialogue À TOUS LES COUPS. C'est son contrat — l'échange et le
+  //    courrier demandent toujours la quantité, pile ou pas — et les deux
+  //    doivent rester distincts.
+  void ArmDraggedAction(int action);
 
   // ── Cycle de vie ──────────────────────────────────────────────────────────
   bool open_ = false;   // session ouverte ce frame ?
