@@ -89,6 +89,26 @@ void SnapWindowSize(ImGuiSizeCallbackData* d);
 // HAUTEUR de la rangée horizontale.
 float TabStripThickness(const GameTexture* set, int count, bool horizontal);
 
+// ── Les IMAGES d'un onglet de catégorie ─────────────────────────────────────
+//
+// Le client livre deux jeux pour chaque onglet, et le nom de l'un se déduit de
+// l'autre : `tab_use1.bmp` / `tab_use2.bmp` en disposition VERTICALE (actif,
+// inactif), et les mêmes avec un « h » inséré après « tab » —
+// `tabh_use1.bmp` / `tabh_use2.bmp` — en HORIZONTALE.
+//
+// Cette règle de nommage était écrite trois fois, une par fenêtre à onglets, et
+// c'est la sœur de `TabStripThickness` : même famille de copies, même dérive à
+// craindre. Ce qui reste chez l'appelant est ce qui lui appartient — le fond
+// verrouillé de l'inventaire, les boutons de son bandeau, les cadres de coffre
+// de l'entrepôt.
+//
+// `base` nul = onglet sans image (l'appelant garde alors son libellé texte) :
+// les quatre destinations sont laissées intactes.
+//
+// ⚠ À n'appeler que depuis la frame de rendu : la création de texture passe par
+// le renderer.
+void LoadTabTextures(const char* base, GameTexture vert[2], GameTexture horz[2]);
+
 // ── Le champ de FILTRE par nom, au-dessus de la grille ──────────────────────
 //
 // Les trois fenêtres l'écrivaient à l'identique. Masqué (`visible` faux), le

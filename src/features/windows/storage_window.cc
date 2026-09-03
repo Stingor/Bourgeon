@@ -207,22 +207,12 @@ void EnsureTabTextures() {
   }
   if (g_tabs_tried) return;
   g_tabs_tried = true;
-  char path[160], nm[48];
-  for (int c = 0; c < kNumStgCats; ++c) {
-    const char* base = kStgCats[c].img;
-    if (!base) continue;
-    std::snprintf(nm, sizeof(nm), "%s1.bmp", base);
-    ro::grid::BasicInterfacePath(nm, path, sizeof(path)); g_tab[c][0] = ro::TextureFromGameFile(path);
-    std::snprintf(nm, sizeof(nm), "%s2.bmp", base);
-    ro::grid::BasicInterfacePath(nm, path, sizeof(path)); g_tab[c][1] = ro::TextureFromGameFile(path);
-    // Jeu HORIZONTAL : mêmes noms avec un « h » après « tab » (tab_all -> tabh_all).
-    char hbase[40];
-    std::snprintf(hbase, sizeof(hbase), "tabh%s", base + 3);  // saute "tab"
-    std::snprintf(nm, sizeof(nm), "%s1.bmp", hbase);
-    ro::grid::BasicInterfacePath(nm, path, sizeof(path)); g_tabh[c][0] = ro::TextureFromGameFile(path);
-    std::snprintf(nm, sizeof(nm), "%s2.bmp", hbase);
-    ro::grid::BasicInterfacePath(nm, path, sizeof(path)); g_tabh[c][1] = ro::TextureFromGameFile(path);
-  }
+  char path[160];
+  // Les deux jeux d'images de chaque catégorie, vertical et horizontal. La règle
+  // de nommage vit dans `ro::grid` : elle était écrite ici, dans le chariot et
+  // dans l'inventaire.
+  for (int c = 0; c < kNumStgCats; ++c)
+    ro::grid::LoadTabTextures(kStgCats[c].img, g_tab[c], g_tabh[c]);
   // Cadres des onglets de storage (un seul jeu, indépendant des catégories).
   ro::grid::BasicInterfacePath("tab_sto1.bmp", path, sizeof(path));
   g_stg_tab[0] = ro::TextureFromGameFile(path);
@@ -953,16 +943,9 @@ bool StorageWindow::DrawSettings() {
       "— elle suit donc l'onglet, le sous-type et le filtre."));
 
 
-  changed |= ro::RoCheckbox(i18n::Tr("Raccourcis vers les autres fenêtres"),
-                            &peer_buttons());
-  SameLine(); HelpMarker(
-      i18n::Tr("Ajoute dans la barre de titre deux boutons vers les autres "
-      "fenêtres d'objets — inventaire, chariot, entrepôt — pour les ouvrir "
-      "et les refermer sans quitter celle-ci.\n"
-      "Le bouton « Storage » DEMANDE l'entrepôt au serveur, comme @storage : "
-      "il le refuse si votre compte n'en a pas le droit, si vous échangez, ou "
-      "si l'entrepôt de guilde est ouvert.\n"
-      "Le réglage est propre à chaque fenêtre."));
+  // Le SEUL réglage dont le texte soit identique dans les trois fenêtres — les
+  // autres décrivent une TABLE ici, une grille là, et restent donc sur place.
+  changed |= DrawPeerButtonsSetting();
   SeparatorText(i18n::Tr("Colonnes"));
   changed |= ro::RoCheckbox(i18n::Tr("Index"), &show_index_col());
   SameLine(); HelpMarker(

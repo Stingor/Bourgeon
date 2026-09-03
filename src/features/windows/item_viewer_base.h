@@ -194,6 +194,34 @@ class ItemViewerBase : public Plugin {
   //    doivent rester distincts.
   void ArmDraggedAction(int action);
 
+  // ── La section de la fenêtre dans le panneau Moonlight ────────────────────
+  //
+  // Les QUATRE premiers réglages des fenêtres à GRILLE, dans leur ordre
+  // d'affichage : aperçu au survol, champ de filtre, onglets verticaux,
+  // verrouillage de la taille. Rend true si l'un a changé.
+  //
+  // ⚠ L'entrepôt n'en fait PAS partie, et c'est mesuré : c'est une TABLE et non
+  // une grille, et ses infobulles le disent — « au-dessus de la liste » et non
+  // « de la grille », un aperçu sans cartes ni options, une orientation qui
+  // commande aussi ses onglets de coffre. Il n'a pas non plus de verrouillage
+  // de taille. Seuls les raccourcis ci-dessous lui sont communs.
+  //
+  // ⚠ `tabs_tooltip` est un PARAMÈTRE et non un texte en dur : les trois
+  // fenêtres décrivent leurs onglets par TROIS textes différents — l'inventaire
+  // ajoute « comme la fenêtre native », que le chariot n'a pas à évoquer
+  // puisque la sienne ne naît plus. Deux textes distincts sont DEUX entrées de
+  // catalogue, et les fondre en perdrait une.
+  //
+  // ⚠ `lock_size` est un membre de la DÉRIVÉE, pas de la base — l'entrepôt n'a
+  // pas ce réglage — d'où le pointeur.
+  bool DrawViewSettings(const char* tabs_tooltip, bool* lock_size);
+
+  // Le réglage des raccourcis vers les fenêtres sœurs : le SEUL dont le texte
+  // soit identique dans les TROIS. Séparé du bloc ci-dessus parce que
+  // l'inventaire intercale entre les deux son « placement libre », qui dépend
+  // du verrouillage de la taille.
+  bool DrawPeerButtonsSetting();
+
   // ── Cycle de vie ──────────────────────────────────────────────────────────
   bool open_ = false;   // session ouverte ce frame ?
   // Valeur d'`imgui_enabled_` au tick précédent : détecte la BASCULE de mode,

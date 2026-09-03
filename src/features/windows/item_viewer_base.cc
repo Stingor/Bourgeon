@@ -17,8 +17,11 @@
 #include "ragnarok/uiwnd.h"  // uiwnd::kOffVisible
 #include "ui/item_grid_chrome.h"  // ro::grid::Snap : le snap par palier de case
 #include "ui/qty_prompt.h"        // ro::QuantityPrompt (dialogue « combien ? »)
-#include "ui/ro_imgui.h"     // ro::TitleBarButton
+#include "ui/ro_imgui.h"     // ro::TitleBarButton, ro::RoCheckbox
+#include "ui/ro_widgets.h"   // mui::SameLine, mui::HelpMarker
 #include "utils/i18n.h"
+
+using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
 void ItemViewerBase::HandleNativeToggle(void* win, uintptr_t expected_vtable) {
   if (!win || !imgui_enabled_) return;
@@ -279,4 +282,46 @@ void ItemViewerBase::ArmDraggedAction(int action) {
   pend_max_ = drag_amount_ > 0 ? drag_amount_ : 1;
   pend_action_ = action;
   pend_open_prompt_ = (pend_max_ > 1);
+}
+
+// ── La section du panneau Moonlight ──────────────────────────────────────────
+
+bool ItemViewerBase::DrawViewSettings(const char* tabs_tooltip, bool* lock_size) {
+  bool changed = false;
+
+  changed |= ro::RoCheckbox(i18n::Tr("Description au survol"), &show_desc_tooltip_);
+  SameLine(); HelpMarker(
+      i18n::Tr("Survoler un item affiche un aperçu SIMPLIFIÉ (nom, illustration, texte, "
+      "cartes et options) dans un panneau au skin RO, à la place du petit "
+      "tooltip nom + quantité.\n"
+      "La description COMPLÈTE reste accessible au Ctrl + clic droit / menu "
+      "contextuel."));
+
+  changed |= ro::RoCheckbox(i18n::Tr("Champ de filtre"), &show_filter_);
+  SameLine(); HelpMarker(
+      i18n::Tr("Affiche la barre de recherche par nom au-dessus de la grille.\n"
+      "Décoche pour gagner une ligne (le filtre est alors vidé)."));
+
+  changed |= ro::RoCheckbox(i18n::Tr("Onglets verticaux (à gauche)"), &tabs_vertical_);
+  SameLine(); HelpMarker(tabs_tooltip);
+
+  changed |= ro::RoCheckbox(i18n::Tr("Verrouiller la taille"), lock_size);
+  SameLine(); HelpMarker(
+      i18n::Tr("La fenêtre ne peut plus être redimensionnée (elle reste déplaçable)."));
+
+  return changed;
+}
+
+bool ItemViewerBase::DrawPeerButtonsSetting() {
+  const bool changed =
+      ro::RoCheckbox(i18n::Tr("Raccourcis vers les autres fenêtres"), &peer_buttons_);
+  SameLine(); HelpMarker(
+      i18n::Tr("Ajoute dans la barre de titre deux boutons vers les autres "
+      "fenêtres d'objets — inventaire, chariot, entrepôt — pour les ouvrir "
+      "et les refermer sans quitter celle-ci.\n"
+      "Le bouton « Storage » DEMANDE l'entrepôt au serveur, comme @storage : "
+      "il le refuse si votre compte n'en a pas le droit, si vous échangez, ou "
+      "si l'entrepôt de guilde est ouvert.\n"
+      "Le réglage est propre à chaque fenêtre."));
+  return changed;
 }

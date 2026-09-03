@@ -189,22 +189,11 @@ bool   g_assets_tried = false;
 void LoadAssets() {
   if (g_assets_tried) return;
   g_assets_tried = true;
-  char path[160];
-  for (int c = 0; c < kNumCats; ++c) {
-    const char* base = kCats[c].img;
-    if (!base) continue;
-    char nm[48];
-    std::snprintf(nm, sizeof(nm), "%s1.bmp", base);
-    ro::grid::BasicInterfacePath(nm, path, sizeof(path)); g_tab[c][0] = ro::TextureFromGameFile(path);
-    std::snprintf(nm, sizeof(nm), "%s2.bmp", base);
-    ro::grid::BasicInterfacePath(nm, path, sizeof(path)); g_tab[c][1] = ro::TextureFromGameFile(path);
-    char hbase[40];
-    std::snprintf(hbase, sizeof(hbase), "tabh%s", base + 3);  // saute « tab »
-    std::snprintf(nm, sizeof(nm), "%s1.bmp", hbase);
-    ro::grid::BasicInterfacePath(nm, path, sizeof(path)); g_tabh[c][0] = ro::TextureFromGameFile(path);
-    std::snprintf(nm, sizeof(nm), "%s2.bmp", hbase);
-    ro::grid::BasicInterfacePath(nm, path, sizeof(path)); g_tabh[c][1] = ro::TextureFromGameFile(path);
-  }
+  // Les deux jeux d'images de chaque onglet, vertical et horizontal. La règle
+  // de nommage vit dans `ro::grid` : elle était écrite ici, dans l'inventaire et
+  // dans l'entrepôt.
+  for (int c = 0; c < kNumCats; ++c)
+    ro::grid::LoadTabTextures(kCats[c].img, g_tab[c], g_tabh[c]);
 }
 
 // Teinte des AddImage = luminosité + opacité du skin RO (les images du jeu sont
@@ -733,37 +722,15 @@ bool CartViewer::DrawSettings() {
 
   ImGui::BeginDisabled(!imgui_enabled_);
 
-  changed |= ro::RoCheckbox(i18n::Tr("Description au survol"), &desc_tooltip());
-  SameLine(); HelpMarker(
-      i18n::Tr("Survoler un item affiche un aperçu SIMPLIFIÉ (nom, illustration, texte, "
-      "cartes et options) dans un panneau au skin RO, à la place du petit "
-      "tooltip nom + quantité.\n"
-      "La description COMPLÈTE reste accessible au Ctrl + clic droit / menu "
-      "contextuel."));
-
-  changed |= ro::RoCheckbox(i18n::Tr("Champ de filtre"), &show_filter());
-  SameLine(); HelpMarker(
-      i18n::Tr("Affiche la barre de recherche par nom au-dessus de la grille.\n"
-      "Décoche pour gagner une ligne (le filtre est alors vidé)."));
-
-  changed |= ro::RoCheckbox(i18n::Tr("Onglets verticaux (à gauche)"), &tabs_vertical());
-  SameLine(); HelpMarker(
+  // Les quatre réglages communs aux deux fenêtres à grille, puis les raccourcis
+  // vers les sœurs (communs aux TROIS). Seule l'infobulle des onglets est passée
+  // en argument : le chariot n'a pas de fenêtre native à évoquer, l'inventaire
+  // si — deux textes, donc deux entrées de catalogue.
+  changed |= DrawViewSettings(
       i18n::Tr("ON (défaut) : onglets en colonne à gauche de la grille (images tab_*).\n"
-      "OFF : rangée horizontale au-dessus de la grille (images tabh_*)."));
-
-  changed |= ro::RoCheckbox(i18n::Tr("Verrouiller la taille"), &lock_size());
-  SameLine(); HelpMarker(
-      i18n::Tr("La fenêtre ne peut plus être redimensionnée (elle reste déplaçable)."));
-  changed |= ro::RoCheckbox(i18n::Tr("Raccourcis vers les autres fenêtres"),
-                            &peer_buttons());
-  SameLine(); HelpMarker(
-      i18n::Tr("Ajoute dans la barre de titre deux boutons vers les autres "
-      "fenêtres d'objets — inventaire, chariot, entrepôt — pour les ouvrir "
-      "et les refermer sans quitter celle-ci.\n"
-      "Le bouton « Storage » DEMANDE l'entrepôt au serveur, comme @storage : "
-      "il le refuse si votre compte n'en a pas le droit, si vous échangez, ou "
-      "si l'entrepôt de guilde est ouvert.\n"
-      "Le réglage est propre à chaque fenêtre."));
+      "OFF : rangée horizontale au-dessus de la grille (images tabh_*)."),
+      &lock_size());
+  changed |= DrawPeerButtonsSetting();
 
 
   ImGui::EndDisabled();

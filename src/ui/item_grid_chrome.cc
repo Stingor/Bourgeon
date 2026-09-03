@@ -19,6 +19,12 @@ SnapState g_snap;
 
 // Épaisseur de repli du strip quand aucune image d'onglet n'a pu être chargée.
 constexpr float kTabStripFallbackPx = 22.0f;
+// Tampons de composition des chemins d'image (les trois copies employaient déjà
+// ces tailles).
+constexpr size_t kPathMax = 160;
+constexpr size_t kNameMax = 48;
+// « tab » : ce que le nom du jeu horizontal remplace par « tabh ».
+constexpr int kTabPrefixLen = 3;
 // Côté d'une case : la taille NATIVE du client, mise à l'échelle par `ro::Px`.
 constexpr float kCellPx = 32.0f;
 // Ce que le bandeau du bas prend en plus de ses lignes de texte.
@@ -136,6 +142,28 @@ float TabStripThickness(const GameTexture* set, int count, bool horizontal) {
   // 🔴 TOUJOURS `ro::Px` : le strip suit l'échelle de l'interface. C'est le
   // correctif qui n'avait pas atteint les trois copies.
   return ro::Px(thick > 0.0f ? thick : kTabStripFallbackPx);
+}
+
+void LoadTabTextures(const char* base, GameTexture vert[2], GameTexture horz[2]) {
+  if (base == nullptr) return;
+  char path[kPathMax], name[kNameMax];
+  std::snprintf(name, sizeof(name), "%s1.bmp", base);
+  BasicInterfacePath(name, path, sizeof(path));
+  vert[0] = ro::TextureFromGameFile(path);
+  std::snprintf(name, sizeof(name), "%s2.bmp", base);
+  BasicInterfacePath(name, path, sizeof(path));
+  vert[1] = ro::TextureFromGameFile(path);
+  // Jeu HORIZONTAL : le même nom avec un « h » après « tab » (tab_use ->
+  // tabh_use). Les trois copies sautaient les trois premiers caractères ; c'est
+  // la longueur de « tab », et le préfixe est garanti par les tables d'onglets.
+  char hbase[kNameMax];
+  std::snprintf(hbase, sizeof(hbase), "tabh%s", base + kTabPrefixLen);
+  std::snprintf(name, sizeof(name), "%s1.bmp", hbase);
+  BasicInterfacePath(name, path, sizeof(path));
+  horz[0] = ro::TextureFromGameFile(path);
+  std::snprintf(name, sizeof(name), "%s2.bmp", hbase);
+  BasicInterfacePath(name, path, sizeof(path));
+  horz[1] = ro::TextureFromGameFile(path);
 }
 
 void DrawNameFilter(const char* imgui_id, ImGuiTextFilter* filter, bool visible) {
