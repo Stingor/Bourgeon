@@ -7,6 +7,7 @@
 
 #include "imgui.h"
 
+#include "features/fx/cell_style.h"  // la table des trois dessins, partagée
 #include "features/fx/grey_world.h"  // AddScenePainter : le foyer du dessin au sol
 #include "ragnarok/actor.h"          // rag::actor::kJobId
 #include "ragnarok/game_scene.h"     // kGmActorMgr : le gestionnaire d'acteurs
@@ -80,25 +81,16 @@ constexpr int kOffTargetingMode  = 0x408;  // 1 sol, 2 cible, 4 soutien
 constexpr int kOffTargetingSkill = 0x40c;
 constexpr int kOffTargetingLevel = 0x414;
 
-// La cellule sous le curseur, telle que le clic natif la résout. Rend 0 quand
-// le curseur ne désigne pas le sol (ciel, hors carte, fenêtre).
-constexpr uintptr_t kPickGroundCell = 0x00c69a40;
+// La cellule sous le curseur : `gamescene::kPickGroundCellAddr`, partagée avec
+// QuickCast.
 
-// Les trois dessins, les mêmes que GreyWorld — deux textures du client, une à
-// nous. Un texel étiré aux quatre coins donne un aplat de la couleur diffuse,
-// ce qui laisse le joint tracer la bordure.
-struct CellStyle {
-  const char* texture;
-  float u, v;  // < 0 : texture entière
-};
-constexpr CellStyle kCellStyles[] = {
-    {"grid.tga",                -1.0f, -1.0f},  // anneau
-    {"effect\\SquareRange.tga", -1.0f, -1.0f},  // carrelage
-    {"bourgeon_cell.tga",        0.5f,  0.5f},  // carreau plein
-};
-static_assert(sizeof(kCellStyles) / sizeof(kCellStyles[0]) ==
-                  Config::kPatternCount,
-              "kCellStyles doit couvrir exactement Config::Pattern");
+// 🔴 La table des trois textures est COMMUNE avec GreyWorld : elle vit dans
+// features/fx/cell_style.h. Ne restent ici que les deux contrats qui lient notre
+// énumération persistée à cette table.
+static_assert(static_cast<int>(Config::kPatternCount) == cellstyle::kCount,
+              "Config::Pattern doit couvrir exactement cellstyle::kTextures");
+static_assert(static_cast<int>(Config::kPatternSolid) == cellstyle::kSolid,
+              "l'index du carreau plein est persisté dans le yaml : il ne bouge pas");
 
 // `GetSkillScale(id, lv)` -> largeur, hauteur en cases.
 //
@@ -138,7 +130,7 @@ grey_world::PainterStyle PreviewStyle() {
   const int pat = (g_cfg.pattern >= 0 && g_cfg.pattern < Config::kPatternCount)
                       ? g_cfg.pattern
                       : Config::kPatternTile;
-  const CellStyle& s = kCellStyles[pat];
+  const cellstyle::Tex& s = cellstyle::kTextures[pat];
   st.texture = s.texture;
   st.u = s.u;
   st.v = s.v;
@@ -165,7 +157,8 @@ void PaintTargetingPreview(grey_world::CellSink paint) {
     if (skill <= 0 || level <= 0) return;
 
     using PickGround_t = uint8_t(__thiscall*)(void*, int*, int*);
-    visee = (reinterpret_cast<PickGround_t>(kPickGroundCell)(gm, &cx, &cy) &
+    visee = (reinterpret_cast<PickGround_t>(
+                 gamescene::kPickGroundCellAddr)(gm, &cx, &cy) &
              0xff) != 0;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return; }
 
@@ -235,29 +228,15 @@ bool DrawSettings() {
   ImGui::BeginDisabled(!g_cfg.preview);
   ImGui::Indent();
 
-  // 🔴 Libellés NUS : `ro::RoCombo` traduit ses items lui-même, à la lecture.
-  static const char* const kPatterns[] = {"Anneau (curseur du jeu)",
-                                          "Carrelage (cadre de case)",
-                                          "Carreau plein (avec joint)"};
-  ImGui::SetNextItemWidth(ro::Px(220.0f));
-  if (ro::RoCombo(i18n::Tr("Dessin"), &g_cfg.pattern, kPatterns,
-                  IM_ARRAYSIZE(kPatterns))) {
+  // Le combo « Dessin » et le curseur de joint sont communs avec GreyWorld
+  // (features/fx/cell_style.h). Seule l'infobulle du joint nous est propre :
+  // ici, à zéro, c'est la ZONE qui devient un aplat d'un seul tenant.
+  if (cellstyle::DrawPatternSettings(
+          &g_cfg.pattern, &g_cfg.gap,
+          i18n::Tr("Largeur de la bordure, en pourcentage du côté de la case. "
+                   "À zéro, les carreaux se touchent et la zone devient un "
+                   "aplat d'un seul tenant."))) {
     changed = true;
-  }
-  Tooltip(i18n::Tr("L'anneau et le cadre sont des textures du client — celle de "
-                   "ton curseur de destination et celle des sorts de zone.\n"
-                   "« Carreau plein » emploie la nôtre : la case devient un "
-                   "aplat, un peu plus petit qu'elle, et c'est le sol laissé "
-                   "visible tout autour qui trace la bordure."));
-
-  if (g_cfg.pattern == Config::kPatternSolid) {
-    ImGui::SetNextItemWidth(ro::Px(220.0f));
-    if (mui::WheelSliderInt(i18n::Tr("Joint (%)"), &g_cfg.gap, 0, 40, "%d %%")) {
-      changed = true;
-    }
-    Tooltip(i18n::Tr("Largeur de la bordure, en pourcentage du côté de la case. "
-                     "À zéro, les carreaux se touchent et la zone devient un "
-                     "aplat d'un seul tenant."));
   }
 
   if (mui::RoColorSwatch(i18n::Tr("Couleur et opacité"), g_cfg.color)) {

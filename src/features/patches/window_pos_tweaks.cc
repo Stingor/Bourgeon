@@ -54,6 +54,13 @@ using MakeWindow_t = void* (__fastcall*)(void*, void*, int);
 // edge, e.g. x=-93) and MUST restore — an earlier `>= 0` guard wrongly refused
 // them, so such a window saved its position but never came back to it.
 constexpr int kOffscreenFloor = -2000;  // below this = garbage / fully off-screen
+
+// Palier d'enregistrement, partagé par le moteur et par WindowPos_TrackLive.
+// Un glisser produit une position par frame ; sans palier on réécrirait le yaml
+// des dizaines de fois par seconde. À 200 ms l'emplacement final est écrit au
+// plus 200 ms après le lâcher — et le tout premier mouvement part en ~100 ms,
+// le battement d'OnTick.
+constexpr uint32_t kWindowPosSaveThrottleMs = 200;
 inline bool ValidPos(int x, int y) {
   return x != INT_MIN && y != INT_MIN && x > kOffscreenFloor && y > kOffscreenFloor;
 }
@@ -574,9 +581,9 @@ void WindowPosTweaks::OnTick() {
       continue;
     }
 
-    // Persist genuine moves (drag), throttled to 200ms.
+    // Persist genuine moves (drag), throttled (cf. kWindowPosSaveThrottleMs).
     if ((liveX != w.tracked_x || liveY != w.tracked_y) &&
-        GetTickCount() - w.last_save_ms >= 200) {
+        GetTickCount() - w.last_save_ms >= kWindowPosSaveThrottleMs) {
       w.pos_x = liveX;
       w.pos_y = liveY;
       w.tracked_x = liveX;
@@ -644,5 +651,61 @@ int WindowPos_PersistOnMsg(void* self, void* edx, int arg0, int msg, int p2,
     return r;
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     return 0;
+  }
+}
+
+
+// ── Le corps commun des deux suivis au tick ──────────────────────────────────
+// Cf. l'en-tête. Il était écrit deux fois, à l'identique, dans EquipTweaks::
+// OnTick et StatusTweaks::OnTick — et une troisième fois, sous une autre forme,
+// dans le OnTick du moteur ci-dessus. Les deux plugins l'appellent maintenant.
+//
+// ⚠ Ce n'est PAS le OnTick du moteur : celui-ci ne restaure rien (son hook de
+// MakeWindow s'en charge avant le premier rendu), là où les deux « one-off »
+// n'ont pas ce hook et doivent forcer la position depuis le tick.
+void WindowPos_TrackLive(int window_id, WindowPosTracker* tracker,
+                         int* saved_x, int* saved_y, bool* restore_pending) {
+  void* win = uiwnd::FindWindow(window_id);
+  if (!win) return;  // fenêtre fermée : les deux entiers gardent le dernier spot
+
+  // Une position vient d'être lue du yaml : on la force UNE fois sur la fenêtre
+  // vivante, puis on repasse en suivi. Le client rouvre ses fenêtres à leur
+  // emplacement natif en dur, donc sans ce forçage la valeur chargée serait
+  // écrasée par la lecture ci-dessous, puis l'emplacement natif réenregistré
+  // par-dessus. C'est ce qui fait survivre la position à un redémarrage complet.
+  if (*restore_pending) {
+    uiwnd::SetPos(win, *saved_x, *saved_y);
+    tracker->tracked_x = *saved_x;
+    tracker->tracked_y = *saved_y;
+    tracker->baselined = true;
+    *restore_pending = false;
+    return;
+  }
+
+  int live_x = 0, live_y = 0;
+  uiwnd::LivePos(win, &live_x, &live_y);
+
+  // Rien à restaurer : on prend la référence sur l'emplacement courant et on y
+  // amorce la valeur persistée, mais SANS demander d'écriture disque — c'est
+  // l'emplacement natif, pas un choix du joueur. Il ne partira au yaml que si
+  // le joueur déplace la fenêtre, ou à la prochaine écriture provoquée par
+  // autre chose.
+  if (!tracker->baselined) {
+    tracker->tracked_x = live_x;
+    tracker->tracked_y = live_y;
+    *saved_x = live_x;
+    *saved_y = live_y;
+    tracker->baselined = true;
+    return;
+  }
+
+  if ((live_x != tracker->tracked_x || live_y != tracker->tracked_y) &&
+      GetTickCount() - tracker->last_save_ms >= kWindowPosSaveThrottleMs) {
+    *saved_x = live_x;
+    *saved_y = live_y;
+    if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
+    tracker->tracked_x = live_x;
+    tracker->tracked_y = live_y;
+    tracker->last_save_ms = GetTickCount();
   }
 }

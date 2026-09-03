@@ -1,5 +1,8 @@
 #pragma once
 
+#include <climits>   // INT_MIN : sentinelle « position jamais enregistrée »
+#include <cstdint>   // uint32_t : le GetTickCount du limiteur
+
 #include "features/plugin.h"
 
 // Generic UIWindow position persistence (20250716 client, base 0x400000).
@@ -44,21 +47,30 @@ int         WindowPosTweaks_X(int i);     // saved x (INT_MIN = unset)
 int         WindowPosTweaks_Y(int i);     // saved y (INT_MIN = unset)
 void        WindowPosTweaks_SetSavedPos(int i, int x, int y);  // called on load
 
-// ── Persistance par DÉTOUR DU HANDLER : le corps commun des deux « one-off » ──
+// ── Le corps commun des deux « one-off » : Status (0xb) et Equip (0xa) ───────
 //
-// Status (0xb) et Equip (0xa) ont été traités AVANT le moteur table-driven
-// ci-dessus, chacun par un détour de son handler de messages (vtable +0x94).
-// Leur corps était le MÊME à 96 % : capturer la position vivante quand la croix
-// ferme la fenêtre, laisser le natif faire, demander l'écriture ; puis, APRÈS la
-// restauration de disposition du natif, réimposer la position enregistrée.
+// Ces deux fenêtres ont été traitées AVANT le moteur table-driven ci-dessus,
+// chacune dans son propre plugin. Leur persistance a DEUX moitiés, et les deux
+// étaient recopiées mot pour mot d'un plugin à l'autre :
+//   · le DÉTOUR DU HANDLER de messages (vtable +0x94) — capturer la position
+//     vivante quand la croix ferme la fenêtre, puis réimposer la position
+//     enregistrée après la restauration de disposition du natif ;
+//   · le SUIVI AU TICK — forcer une fois la position lue du yaml, puis
+//     enregistrer les déplacements réels.
+// Les deux vivent ici désormais : `WindowPos_PersistOnMsg` et
+// `WindowPos_TrackLive`. Un seul endroit à corriger au lieu de deux.
 //
-// 🔜 LA MIGRATION N'EST PAS FAITE, ET C'EST DÉLIBÉRÉ. Le moteur ci-dessus les
-// remplacerait par une ligne de table chacun, sans détour de handler — mais il
-// changerait les CLÉS du yaml (les joueurs perdraient leur position
-// enregistrée), et la fenêtre d'équipement porte un garde sur son drapeau de
-// mode (+0xb4 : la sienne vs celle d'un autre joueur) que le moteur, qui ne
-// connaît que l'identifiant de fenêtre, n'a pas. En attendant cette décision, le
-// corps commun vit ici : un seul endroit à corriger au lieu de deux.
+// 🔜 LA MIGRATION VERS LA TABLE N'EST PAS FAITE, ET C'EST DÉLIBÉRÉ — mais pour
+// UNE raison, pas deux. Celle qui tient : la fenêtre d'équipement porte un garde
+// sur son drapeau de mode (+0xb4 : la sienne vs celle d'un autre joueur) que le
+// moteur, qui ne connaît que l'identifiant de fenêtre, ne sait pas exprimer.
+//
+// ⚠ L'AUTRE raison, longtemps écrite ici — « le moteur changerait les CLÉS du
+// yaml, les joueurs perdraient leur position » — est FAUSSE. Vérifié le
+// 2026-09-03 : la table écrit « <clé>_pos_x/y », donc {0xa, "equip"} produirait
+// « equip_pos_x/y », très exactement la clé qu'écrit WriteWindowPositions
+// aujourd'hui. Personne ne perdrait rien. Ne pas la ressortir pour refuser la
+// migration une deuxième fois.
 //
 // `orig` = le trampoline du plugin ; `saved_x`/`saved_y` = ses deux entiers
 // persistés (INT_MIN = jamais enregistré) ; `applies` = filtre optionnel, pour
@@ -72,3 +84,31 @@ int WindowPos_PersistOnMsg(void* self, void* edx, int arg0, int msg, int p2,
                            int p3, int p4, int p5, WindowPosMsgFn orig,
                            int* saved_x, int* saved_y,
                            bool (*applies)(void*) = nullptr);
+
+// ── Suivi de la position VIVANTE, au tick ────────────────────────────────────
+//
+// L'état de suivi d'UNE fenêtre. Il existait sous forme de `static` de fonction
+// dans chacun des deux OnTick ; un corps partagé ne peut plus les porter (deux
+// fenêtres, deux états), donc l'appelant en tient un.
+struct WindowPosTracker {
+  int      tracked_x = INT_MIN;   // dernière position effectivement enregistrée
+  int      tracked_y = INT_MIN;
+  uint32_t last_save_ms = 0;      // GetTickCount du dernier enregistrement
+  bool     baselined = false;     // une référence a été prise sur la fenêtre vivante
+};
+
+// Lit la position vivante de la fenêtre `window_id` et persiste les vrais
+// déplacements (limités à un enregistrement par kWindowPosSaveThrottleMs).
+//
+// `saved_x`/`saved_y` = les deux entiers persistés du plugin (INT_MIN = jamais
+// enregistré) ; `restore_pending` = son drapeau one-shot, posé au chargement du
+// yaml et CONSOMMÉ ici : tant qu'il est vrai, la position lue est réimposée à la
+// fenêtre au lieu d'être lue depuis elle. Sans cela le client, qui rouvre ses
+// fenêtres à leur emplacement natif en dur, écraserait la valeur chargée puis la
+// réenregistrerait par-dessus — et la position ne survivrait pas au redémarrage.
+//
+// Sans effet tant que la fenêtre est fermée (FindWindow rend nullptr) : les deux
+// entiers gardent alors le dernier emplacement connu, pour la prochaine
+// restauration.
+void WindowPos_TrackLive(int window_id, WindowPosTracker* tracker,
+                         int* saved_x, int* saved_y, bool* restore_pending);

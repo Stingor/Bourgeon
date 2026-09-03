@@ -31,48 +31,11 @@ constexpr int kMsgWalkToRaw = 0x10;  // idem, variante sans validation client
 // 0x00a471e0) vit dans hotkey_util : elle vaut pour TOUT raccourci global, et une
 // copie par module se serait corrigée une par une le jour où un offset bouge.
 
-// ── Appel de Actor_OnMsg via la vtable (+8) ─────────────────────────────────
-// Signature exacte du natif inconnue côté nettoyage de pile (Ghidra ne récupère
-// que 11 des 13 dwords que les appelants empilent), donc on reproduit l'appel
-// tel quel en asm et on RESTAURE ESP nous-mêmes : correct que la fonction soit
-// __thiscall (ret 0x34) ou __cdecl. Ordre des arguments repris du clic-au-sol :
-//   (0, msg, 0, x, x>>31, y, y>>31, 0, 0, 0, 0, 0, 0)   this = acteur (ECX)
-// Les messages voyagent en 64 bits, d'où les dwords de poids fort.
-// (pas de SEH ici : un __try ne fait pas bon ménage avec un bloc __asm — les
-// appelants encadrent déjà l'appel.)
-__declspec(noinline) void ActorSendWalkMsg(void* actor, int msg, int x, int y) {
-  void** vtbl = *reinterpret_cast<void***>(actor);
-  void* fn = vtbl[2];  // vtable+8 = OnMsg
-  const int xh = x >> 31;
-  const int yh = y >> 31;
-  __asm {
-    push esi
-    mov  esi, esp
-    push 0
-    push 0
-    push 0
-    push 0
-    push 0
-    push 0
-    mov  eax, yh
-    push eax
-    mov  eax, y
-    push eax
-    mov  eax, xh
-    push eax
-    mov  eax, x
-    push eax
-    push 0            // msg (dword de poids fort)
-    mov  eax, msg
-    push eax          // msg (dword de poids faible)
-    push 0            // dword de tête (toujours 0 chez le natif)
-    mov  ecx, actor
-    mov  eax, fn
-    call eax
-    mov  esp, esi
-    pop  esi
-  }
-}
+// « Marche vers (x,y) » passe par `rag::actor::SendMsg` (Actor_OnMsg, vtable +8).
+// Le corps assembleur était écrit ici sous le nom `ActorSendWalkMsg`, et une
+// seconde fois dans quick_cast.cc : celui-ci n'en était que le cas particulier
+// où x/y occupent les deux premiers paramètres et le troisième reste nul.
+// Contrat et pièges de pile documentés dans ragnarok/actor.h.
 
 // Cellule (x,y) occupée par l'acteur.
 bool ActorCell(void* gm, void* actor, int* out_x, int* out_y) {
@@ -167,7 +130,9 @@ void RequestWalk(void* gm, void* actor, int x, int y, bool validate) {
           return;
       }
     }
-    ActorSendWalkMsg(actor, raw ? kMsgWalkToRaw : kMsgWalkTo, x, y);
+    // x et y sont SIGNÉS : le mot haut est leur extension de signe.
+    rag::actor::SendMsg(actor, raw ? kMsgWalkToRaw : kMsgWalkTo,
+                        x, x >> 31, y, y >> 31, 0, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {
   }
 }

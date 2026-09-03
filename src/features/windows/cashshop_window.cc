@@ -5,6 +5,7 @@
 // magenta et l'invalidation au reset de device y sont partagés — ce fichier en
 // gardait sa propre copie, comme cinq autres plugins.
 #include "ui/icon_cache.h"
+#include "ragnarok/packets.h"  // rag::zc::kMapChange
 #include "ragnarok/uiwnd.h"
 #include <Windows.h>
 
@@ -279,7 +280,7 @@ void CashShopWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
     //
     // Pas sur un changement de SERVEUR (0x0092) : la socket est en train d'être
     // défaite, et la session repart de zéro de l'autre côté.
-    if (opcode == Bourgeon::kOpMapChange) {
+    if (opcode == rag::zc::kMapChange) {
       uint16_t op = kOpClose;
       Bourgeon::Instance().SendPacket(reinterpret_cast<uint8_t*>(&op), sizeof(op));
     }

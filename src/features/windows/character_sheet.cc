@@ -1,5 +1,6 @@
 #include "ragnarok/lua.h"
 #include "ragnarok/equip_slots.h"  // rag::equip : les pieces PORTEES
+#include "ragnarok/packets.h"  // rag::cz::kJoinGuildByName
 #include "ragnarok/item_db.h"
 #include "ragnarok/globals.h"
 #include "ragnarok/social.h"  // rag::social::JobName (cache + repli)
@@ -414,7 +415,7 @@ constexpr uint16_t kOpGuildChangePos = 0x0155;  // CZ_REQ_CHANGE_MEMBERPOS {op, 
 // (L'invitation dans le groupe passe par ChatWindow::QueueNameAction : elle est
 // jouée hors frame et par le chemin NATIF, seul moyen de ne pas parier sur
 // l'opcode — `clif_parse_PartyInvite2` est un paquet SHUFFLE côté serveur.)
-constexpr uint16_t kOpGuildInvite    = 0x0916;  // CZ_REQ_JOIN_GUILD2 {op, name[24]}
+// CZ_REQ_JOIN_GUILD2 (0x0916) est aussi emis par la chatbox : chez `rag::cz`.
 constexpr uint16_t kOpGuildNotice    = 0x016E;  // CZ_GUILD_NOTICE {op, gid, sujet[60], texte[120]}
 constexpr uint16_t kOpGuildSetPos    = 0x0161;  // CZ_REG_CHANGE_GUILD_POSITIONINFO (var, 40 o/poste)
 constexpr uint16_t kOpGuildDelRel    = 0x0183;  // CZ_REQ_DELETE_RELATED_GUILD {op, gid.L, relation.L}
@@ -724,7 +725,7 @@ void SendGuildInvite(const char* charName) {
   if (!charName || !charName[0]) return;
   uint8_t pkt[26];
   std::memset(pkt, 0, sizeof(pkt));
-  *reinterpret_cast<uint16_t*>(pkt + 0) = kOpGuildInvite;
+  *reinterpret_cast<uint16_t*>(pkt + 0) = rag::cz::kJoinGuildByName;
   std::strncpy(reinterpret_cast<char*>(pkt + 2), charName, 23);
   Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
 }

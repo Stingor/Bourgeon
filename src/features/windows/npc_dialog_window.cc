@@ -1,5 +1,6 @@
 #include "ragnarok/item_db.h"
 #include "ragnarok/globals.h"
+#include "ragnarok/packets.h"  // rag::zc / rag::cz : les opcodes partages
 #include "features/windows/npc_dialog_window.h"
 
 // Icônes d'item : ro::ItemIcon (ui/icon_cache.h). Le chargement, le colorkey
@@ -65,16 +66,16 @@ constexpr uint16_t kZcEditS      = 0x01d4;
 constexpr uint16_t kZcClear      = 0x08d6;
 constexpr uint16_t kZcSay2       = 0x0972;
 constexpr uint16_t kZcWait2      = 0x0973;
-constexpr uint16_t kZcNpcName    = 0x0adf;  // ZC_ACK_REQNAMEALL_NPC (titre)
-constexpr uint16_t kZcMapChange  = 0x0091;  // ZC_NPCACK_MAPMOVE (warp)
-constexpr uint16_t kZcServerMove = 0x0092;
+// 🔴 Le titre de PNJ (0x0adf) et les deux paquets de warp (0x0091 / 0x0092) sont
+// aussi lus ailleurs : ils vivent chez `rag::zc` (ragnarok/packets.h). Les autres
+// `kZc*` de ce bloc ne sont lus QUE par cette fenêtre et restent donc ici.
 
 // Opcodes envoyés (CZ) — cf. docs/npc_dialog_re.md §8 (opcodes vérifiés en live).
 constexpr uint16_t kCzNext        = 0x00b9;  // CZ_REQ_NEXT_SCRIPT  {op,GID} 6o
 constexpr uint16_t kCzChoose      = 0x00b8;  // CZ_CHOOSE_MENU      {op,GID,choix} 7o
 constexpr uint16_t kCzInputN      = 0x0143;  // CZ_INPUT_EDITDLG    {op,GID,int32} 10o
 constexpr uint16_t kCzInputS      = 0x01d5;  // CZ_INPUT_EDITDLGSTR {op,len,GID,texte} VAR
-constexpr uint16_t kCzCloseDialog = 0x0146;  // CZ_CLOSE_DIALOG     {op,GID} 6o
+// CZ_CLOSE_DIALOG (0x0146) est aussi emis par la boutique NPC : chez `rag::cz`.
 
 // Couleur des liens (bleu, comme le natif — il force cette couleur quel que soit le
 // ^RRGGBB du contexte), en RGBA ImGui.
@@ -374,9 +375,9 @@ NpcDialogWindow::NpcDialogWindow() {
   // Ces trois-là restent OBSERVÉS : leur handler natif fait un travail qui n'est
   // pas le nôtre (le nom du NPC alimente aussi les nameplates ; le changement de
   // map reconstruit tout le HUD). On ne fait que les lire au passage.
-  b.RegisterObserveOpcode(kZcNpcName, 32);// gid:4 + groupId:4 + name[24]
-  b.RegisterObserveOpcode(kZcMapChange, 4);
-  b.RegisterObserveOpcode(kZcServerMove, 4);
+  b.RegisterObserveOpcode(rag::zc::kNpcName, 32);  // gid:4 + groupId:4 + name[24]
+  b.RegisterObserveOpcode(rag::zc::kMapChange, 4);
+  b.RegisterObserveOpcode(rag::zc::kServerMove, 4);
 }
 
 void NpcDialogWindow::Reset() {
@@ -515,12 +516,12 @@ void NpcDialogWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data,
 // SAY rejoué après le MENU qui le suit afficherait le mauvais écran.
 void NpcDialogWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
                                    uint16_t len) {
-  if (opcode == kZcMapChange || opcode == kZcServerMove) {
+  if (opcode == rag::zc::kMapChange || opcode == rag::zc::kServerMove) {
     map_changed_ = true;  // fermé au prochain OnTick (thread principal)
     return;
   }
 
-  if (opcode == kZcNpcName) {
+  if (opcode == rag::zc::kNpcName) {
     if (len < 32) return;
     const uint32_t gid = *reinterpret_cast<const uint32_t*>(data);
     char nm[25] = {0};
@@ -1830,7 +1831,7 @@ bool NpcDialogWindow::ShouldSuppressNativeDialogSend(uint16_t opcode) const {
     case kCzChoose:       // 0x00B8 CZ_CHOOSE_MENU  (dont le « choix 1 » parasite)
     case kCzInputN:       // 0x0143 CZ_INPUT_EDITDLG
     case kCzInputS:       // 0x01D5 CZ_INPUT_EDITDLGSTR
-    case kCzCloseDialog:  // 0x0146 CZ_CLOSE_DIALOG
+    case rag::cz::kCloseDialog:  // 0x0146 CZ_CLOSE_DIALOG
       return true;
     default:
       return false;
@@ -1938,7 +1939,7 @@ void NpcDialogWindow::CloseDialog(bool notify_server) {
       Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
     } else {
       uint8_t pkt[6];
-      *reinterpret_cast<uint16_t*>(pkt + 0) = kCzCloseDialog;
+      *reinterpret_cast<uint16_t*>(pkt + 0) = rag::cz::kCloseDialog;
       *reinterpret_cast<uint32_t*>(pkt + 2) = gid;
       Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
     }

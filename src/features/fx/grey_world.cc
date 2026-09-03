@@ -7,6 +7,7 @@
 
 #include "imgui.h"
 #include "bourgeon.h"                  // chat_window(), IsGameActive, IsMapLoading
+#include "features/fx/cell_style.h"    // la table des trois dessins, partagée
 #include "features/fx/ground_paint.h"  // levier 3 : le sol uni, déjà écrit
 #include "features/systems/login_spectator.h"  // le décor de login n'est pas le jeu
 #include "features/windows/chat_window.h"      // « @refreshmap » : armer, puis suivre son départ
@@ -73,7 +74,7 @@ constexpr uintptr_t kDrawCellQuad = 0x00a63800;
 constexpr uintptr_t kGetCellCorners  = 0x00a62b70;
 constexpr uintptr_t kAcquirePrimRec  = 0x0053add0;
 constexpr uintptr_t kProjectToScreen = 0x00554380;
-constexpr uintptr_t kInsertPrimitive = 0x00550b10;
+// L'insertion : `render::kRenderQueueInsertAddr`, partagée avec EzEffectCapture.
 
 // Un sommet de la file fait 32 octets : x,y,z,rhw écrits par la projection,
 // puis la couleur, le spéculaire, et les coordonnées de texture.
@@ -133,18 +134,14 @@ constexpr uintptr_t kCellQuadDefaultUV = 0x01211c30;
 // ⚠ Si un nom ne résout pas, le client rend son sprite de REPLI plutôt que
 // nullptr (cf. le commentaire IDB de SpriteRes_GetOrLoadByName) : une texture
 // absente se voit donc à l'écran, elle ne se détecte pas en code.
-struct CellStyle {
-  const char* texture;
-  float u, v;  // < 0 : texture entière (UV par défaut du client)
-};
-constexpr CellStyle kCellStyles[] = {
-    {"grid.tga",                -1.0f, -1.0f},  // anneau
-    {"effect\\SquareRange.tga",  -1.0f, -1.0f},  // carrelage
-    {"bourgeon_cell.tga",         0.5f,  0.5f},  // carreau plein : un seul texel
-};
-static_assert(sizeof(kCellStyles) / sizeof(kCellStyles[0]) ==
-                  Config::kPatternCount,
-              "kCellStyles doit couvrir exactement Config::Pattern");
+// 🔴 La table des trois textures est COMMUNE avec SkillRange : elle vit dans
+// features/fx/cell_style.h. Ne restent ici que les deux contrats qui lient notre
+// énumération persistée à cette table — si l'une des deux bouge sans l'autre, la
+// compilation s'arrête au lieu de peindre la mauvaise texture.
+static_assert(static_cast<int>(Config::kPatternCount) == cellstyle::kCount,
+              "Config::Pattern doit couvrir exactement cellstyle::kTextures");
+static_assert(static_cast<int>(Config::kPatternSolid) == cellstyle::kSolid,
+              "l'index du carreau plein est persisté dans le yaml : il ne bouge pas");
 
 // ── Offsets ──────────────────────────────────────────────────────────────────
 // Tout ce qui décrit la scène et le terrain vit dans `gamescene::` — le dessinateur
@@ -642,7 +639,7 @@ void DrawCellShrunk(void* ground, void* scene, int cell_x, int cell_y,
   rec[7] = 6;  // blend destination = INVSRCALPHA
   auto insert =
       reinterpret_cast<void(__fastcall*)(void*, void*, void*, unsigned)>(
-          kInsertPrimitive);
+          render::kRenderQueueInsertAddr);
   insert(queue, nullptr, rec, 1u);
 }
 
@@ -871,7 +868,7 @@ void DrawCellGrid(void* self) {
     const int pat = (g_cfg.pattern >= 0 && g_cfg.pattern < Config::kPatternCount)
                         ? g_cfg.pattern
                         : Config::kPatternCross;
-    const CellStyle& style = kCellStyles[pat];
+    const cellstyle::Tex& style = cellstyle::kTextures[pat];
     auto get_res = reinterpret_cast<SpriteResFn>(kSpriteResGetOrLoad);
     void* grid_res =
         get_res(reinterpret_cast<void*>(render::kSpriteRefCacheAddr), nullptr,
@@ -898,7 +895,7 @@ void DrawCellGrid(void* self) {
     }
 
     // Les quatre coins sur le MÊME point de texture = un seul texel étiré sur
-    // toute la case (cf. kCellStyles). Statique et réécrit à chaque frame : on
+    // toute la case (cf. cellstyle::kTextures). Statique et réécrit à chaque
     // est sur le fil de rendu, seul, et le client garde le pointeur le temps de
     // l'appel seulement.
     static float s_point_uv[8];
@@ -1750,30 +1747,18 @@ bool DrawSettings() {
 
   if (g_cfg.grid) {
     // 🔴 Libellés NUS : `ro::RoCombo` traduit ses items lui-même, à la lecture.
-    static const char* const kPatterns[] = {"Anneau (curseur du jeu)",
-                                            "Carrelage (cadre de case)",
-                                            "Carreau plein (avec joint)"};
     static const char* const kFills[] = {"Toutes les cases",
                                          "Contour des obstacles"};
-    ImGui::SetNextItemWidth(ro::Px(220.0f));
-    if (ro::RoCombo(i18n::Tr("Dessin"), &g_cfg.pattern, kPatterns,
-                    IM_ARRAYSIZE(kPatterns))) {
-      changed = true;
-    }
-    Tooltip(i18n::Tr("L'anneau et le cadre sont des textures du client — celle de "
-                     "ton curseur de destination et celle des sorts de zone.\n"
-                     "« Carreau plein » emploie la nôtre : la case devient un "
-                     "aplat, un peu plus petit qu'elle, et c'est le sol laissé "
-                     "visible tout autour qui trace la bordure."));
 
-    if (g_cfg.pattern == Config::kPatternSolid) {
-      ImGui::SetNextItemWidth(ro::Px(220.0f));
-      if (WheelSliderInt(i18n::Tr("Joint (%)"), &g_cfg.gap, 0, 40, "%d %%")) {
-        changed = true;
-      }
-      Tooltip(i18n::Tr("Largeur de la bordure, en pourcentage du côté de la "
-                       "case. À zéro, les carreaux se touchent et le quadrillage "
-                       "disparaît."));
+    // Le combo « Dessin » et le curseur de joint sont communs avec SkillRange
+    // (features/fx/cell_style.h). Seule l'infobulle du joint nous est propre :
+    // ici, à zéro, c'est le QUADRILLAGE qui disparaît.
+    if (cellstyle::DrawPatternSettings(
+            &g_cfg.pattern, &g_cfg.gap,
+            i18n::Tr("Largeur de la bordure, en pourcentage du côté de la "
+                     "case. À zéro, les carreaux se touchent et le quadrillage "
+                     "disparaît."))) {
+      changed = true;
     }
 
     ImGui::SetNextItemWidth(ro::Px(220.0f));

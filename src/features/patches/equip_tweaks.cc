@@ -115,8 +115,13 @@ constexpr int kModeFlag   = 0xb4;  // own=0, other-player view=1
 using EquipMsg_t = int (__fastcall*)(void*, void*, int, int, int, int, int, int);  // ret 0x18
 
 const auto g_equip_msg_orig = reinterpret_cast<EquipMsg_t>(kMsgOrig);
-int g_posX = INT_MIN, g_posY = INT_MIN;  // saved OWN equip window position (INT_MIN = unset)
-bool g_restorePending = false;           // a freshly-loaded position waiting to be re-applied
+// Position enregistrée de NOTRE fenêtre d'équipement (INT_MIN = jamais écrite).
+int g_saved_x = INT_MIN, g_saved_y = INT_MIN;
+// Drapeau one-shot : une position vient d'être lue du yaml et attend d'être
+// réimposée à la fenêtre vivante. Consommé par WindowPos_TrackLive.
+bool g_restore_pending = false;
+// L'état de suivi au tick (ex-`static` de OnTick, cf. window_pos_tweaks.h).
+WindowPosTracker g_tracker;
 
 inline bool IsOwnEquip(void* self) {
   return *reinterpret_cast<int*>(reinterpret_cast<uint8_t*>(self) + kModeFlag) == 0;
@@ -134,7 +139,8 @@ inline bool IsOwnEquip(void* self) {
 int __fastcall EquipMsgHook(void* self, void* edx, int arg0, int msg, int p2,
                             int p3, int p4, int p5) {
   return WindowPos_PersistOnMsg(self, edx, arg0, msg, p2, p3, p4, p5,
-                                g_equip_msg_orig, &g_posX, &g_posY, &IsOwnEquip);
+                                g_equip_msg_orig, &g_saved_x, &g_saved_y,
+                                &IsOwnEquip);
 }
 
 }  // namespace
@@ -244,53 +250,32 @@ EquipTweaks::EquipTweaks() {
   }
 }
 
-// Saved-position accessors for MoonlightUi's settings yaml (g_posX/g_posY live in
-// the anonymous namespace above; these bridge them to the persistence layer).
-int  EquipTweaks_SavedX() { return g_posX; }
-int  EquipTweaks_SavedY() { return g_posY; }
+// Accès à la position enregistrée pour le yaml de MoonlightUi (les deux entiers
+// vivent dans le namespace anonyme ci-dessus ; ces trois fonctions font le pont
+// vers la couche de persistance). Clés : « equip_pos_x » / « equip_pos_y ».
+int  EquipTweaks_SavedX() { return g_saved_x; }
+int  EquipTweaks_SavedY() { return g_saved_y; }
 void EquipTweaks_SetSavedPos(int x, int y) {
-  g_posX = x;
-  g_posY = y;
-  // See status_tweaks.cc: a newly-loaded on-screen position must be force-applied to the
-  // live window on the next tick, because the client re-opens saved-open windows at their
-  // hardcoded native spot and the ordering vs. our msg-0x22 override is not guaranteed
-  // across a full client restart. This is what survives a restart.
-  g_restorePending = (x != INT_MIN && x >= 0 && y >= 0);
+  g_saved_x = x;
+  g_saved_y = y;
+  // Une position À L'ÉCRAN qu'on vient de lire doit être réimposée à la fenêtre
+  // vivante au tick suivant : le client rouvre à son emplacement natif en dur, et
+  // l'ordre entre cette réouverture et notre écrasement sur msg 0x22 n'est pas
+  // garanti d'un redémarrage à l'autre. C'est ce forçage qui survit au
+  // redémarrage. Les coordonnées négatives sont refusées ici : elles viennent
+  // d'un yaml jamais écrit, pas d'un joueur.
+  g_restore_pending = (x != INT_MIN && x >= 0 && y >= 0);
 }
 
-// Persist the OWN equip window's position when it changes. We read the LIVE
-// position straight from the window each tick via FindWindow(id 0xa) — like the
-// status window it does not redraw every frame, so a draw-time capture would lag.
-// Throttled to once per 200ms (final spot lands within ~200ms of a drag release).
-// Covers drag-end + every close path. While the window is closed FindWindow
-// returns null, so g_posX keeps the last spot for the next restore.
+// Persiste la position de NOTRE fenêtre d'équipement quand elle change. On lit la
+// position VIVANTE directement dans la fenêtre à chaque tick (FindWindow id 0xa) :
+// comme la fenêtre de statut, elle ne se redessine pas à chaque frame, donc une
+// capture au moment du rendu retarderait. Couvre la fin de glisser et TOUS les
+// chemins de fermeture.
+//
+// 🔴 Le corps est chez WindowPos_TrackLive : il était identique, mot pour mot, à
+// celui de StatusTweaks::OnTick. Ne pas le recopier ici pour « simplifier ».
 void EquipTweaks::OnTick() {
-  static int savedX = INT_MIN, savedY = INT_MIN;  // last persisted position
-  static DWORD last_save_ms = 0;                       // GetTickCount of the last save
-  static bool init = false;
-  void* win = uiwnd::FindWindow(uiwnd::kUIEquipWnd);
-  if (!win) return;                               // equip window not open
-
-  // A position was just loaded from the yaml: force the live window onto it once, then
-  // switch to tracking (see status_tweaks.cc for the full rationale). This is what makes
-  // the position survive a full client restart, when the window re-opens at its native spot.
-  if (g_restorePending) {
-    uiwnd::SetPos(win, g_posX, g_posY);
-    savedX = g_posX; savedY = g_posY;
-    g_restorePending = false;
-    init = true;
-    return;
-  }
-
-  int liveX = 0, liveY = 0;
-  uiwnd::LivePos(win, &liveX, &liveY);
-  if (!init) {  // no saved pos to restore: baseline off the current spot
-    savedX = liveX; savedY = liveY; g_posX = liveX; g_posY = liveY; init = true; return;
-  }
-  if ((liveX != savedX || liveY != savedY) && GetTickCount() - last_save_ms >= 200) {
-    g_posX = liveX; g_posY = liveY;
-    if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
-    savedX = liveX; savedY = liveY;
-    last_save_ms = GetTickCount();
-  }
+  WindowPos_TrackLive(uiwnd::kUIEquipWnd, &g_tracker, &g_saved_x, &g_saved_y,
+                      &g_restore_pending);
 }

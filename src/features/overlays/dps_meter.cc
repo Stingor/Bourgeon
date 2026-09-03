@@ -10,6 +10,7 @@
 #include "imgui.h"
 #include "ui/imgui_escape.h"
 #include "ragnarok/ui_window_mgr.h"
+#include "ragnarok/packets.h"  // rag::zc : les paquets de notification de coup
 #include "ui/ro_imgui.h"
 #include "ui/ro_widgets.h"
 #include "utils/log_console.h"
@@ -17,67 +18,10 @@
 #include "utils/text.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
+// Les dispositions des paquets de coup sont partagées avec l'autre lecteur de
+// ces opcodes (cf. ragnarok/packets.h). L'alias garde les points d'appel courts.
+namespace zc = rag::zc;
 
-// ── Packet layouts (after stripping the 2-byte opcode) ───────────────────────
-//
-// ZC_NOTIFY_ACT (0x08c8, PACKETVER >= 20131223) — 32 bytes:
-//   [0..3]  src_id, [4..7] dst_id, [8..11] tick,
-//   [12..15] src_speed, [16..19] dst_speed,
-//   [20..23] damage (int32), [24] is_sp_dmg, [25..26] div,
-//   [27] type  (0=atk,4=endure,8=multi,10=crit,11=miss), [28..31] damage2
-//
-// ZC_NOTIFY_SKILL (0x01de, PACKETVER >= 3) — 31 bytes:
-//   [0..1] skill_id, [2..5] src_id, [6..9] dst_id, [10..13] start_time,
-//   [14..17] attack_mt, [18..21] attacked_mt,
-//   [22..25] damage (int32), [26..27] level, [28..29] count, [30] action
-//
-// ZC_NOTIFY_SKILL legacy (0x0115) — 33 bytes:
-//   [0..1] skill_id, [2..5] src_id, [6..9] dst_id, [10..13] tick,
-//   [14..17] sdelay, [18..21] ddelay, [22..23] dst_x, [24..25] dst_y,
-//   [26..27] damage (int16), [28..29] skill_lv, [30..31] div, [32] type
-
-#pragma pack(push, 1)
-struct NotifyActPayload {
-  int32_t  src_id;
-  int32_t  dst_id;
-  int32_t  tick;
-  int32_t  src_speed;
-  int32_t  dst_speed;
-  int32_t  damage;
-  int8_t   is_sp_damage;
-  uint16_t div;
-  uint8_t  type;
-  int32_t  damage2;
-};
-
-struct NotifySkillPayload {
-  uint16_t skill_id;
-  uint32_t src_id;
-  uint32_t dst_id;
-  uint32_t start_time;
-  int32_t  attack_mt;
-  int32_t  attacked_mt;
-  int32_t  damage;
-  int16_t  level;
-  int16_t  count;
-  int8_t   action;
-};
-
-struct NotifySkill2Payload {
-  uint16_t skill_id;
-  uint32_t src_id;
-  uint32_t dst_id;
-  uint32_t tick;
-  uint32_t sdelay;
-  uint32_t ddelay;
-  uint16_t dst_x;
-  uint16_t dst_y;
-  int16_t  damage;
-  uint16_t skill_lv;
-  uint16_t div;
-  uint8_t  type;
-};
-#pragma pack(pop)
 
 // action bytes that carry real damage (exclude miss, pickup, sit, stand)
 static bool IsDamageAction(uint8_t action) {
@@ -86,9 +30,9 @@ static bool IsDamageAction(uint8_t action) {
 
 DpsMeter::DpsMeter() {
   auto& b = Bourgeon::Instance();
-  b.RegisterObserveOpcode(kOpcodeNotifyAct,    sizeof(NotifyActPayload));
-  b.RegisterObserveOpcode(kOpcodeNotifySkill,  sizeof(NotifySkillPayload));
-  b.RegisterObserveOpcode(kOpcodeNotifySkill2, sizeof(NotifySkill2Payload));
+  b.RegisterObserveOpcode(zc::kNotifyAct,    sizeof(zc::NotifyActPayload));
+  b.RegisterObserveOpcode(zc::kNotifySkill,  sizeof(zc::NotifySkillPayload));
+  b.RegisterObserveOpcode(zc::kNotifySkill2, sizeof(zc::NotifySkill2Payload));
   b.RegisterRecvOpcode(kOpcodeSkillUnitDmg);
 }
 
@@ -112,18 +56,20 @@ void DpsMeter::HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) 
   int      damage = 0;
   uint8_t  action = 0;
 
-  if (opcode == kOpcodeNotifyAct && len >= sizeof(NotifyActPayload)) {
-    const auto* p = reinterpret_cast<const NotifyActPayload*>(data);
+  if (opcode == zc::kNotifyAct && len >= sizeof(zc::NotifyActPayload)) {
+    const auto* p = reinterpret_cast<const zc::NotifyActPayload*>(data);
     src_id = static_cast<uint32_t>(p->src_id);
     damage = p->damage;
     action = p->type;
-  } else if (opcode == kOpcodeNotifySkill && len >= sizeof(NotifySkillPayload)) {
-    const auto* p = reinterpret_cast<const NotifySkillPayload*>(data);
+  } else if (opcode == zc::kNotifySkill &&
+             len >= sizeof(zc::NotifySkillPayload)) {
+    const auto* p = reinterpret_cast<const zc::NotifySkillPayload*>(data);
     src_id = p->src_id;
     damage = p->damage;
     action = static_cast<uint8_t>(p->action);
-  } else if (opcode == kOpcodeNotifySkill2 && len >= sizeof(NotifySkill2Payload)) {
-    const auto* p = reinterpret_cast<const NotifySkill2Payload*>(data);
+  } else if (opcode == zc::kNotifySkill2 &&
+             len >= sizeof(zc::NotifySkill2Payload)) {
+    const auto* p = reinterpret_cast<const zc::NotifySkill2Payload*>(data);
     src_id = p->src_id;
     damage = p->damage;
     action = p->type;

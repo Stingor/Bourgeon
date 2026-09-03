@@ -1509,6 +1509,94 @@ void StorageWindow::OnRenderUI() {
   // du client, posés au-dessus du tableau et ALIGNÉS SUR SON BORD GAUCHE.
   // Contenu = icône d'item choisie par le joueur, sinon le numéro du storage ;
   // le nom entier est en infobulle.
+  // ── UN onglet de storage, dessiné ──────────────────────────────────────────
+  //
+  // Le MÊME corps sert la rangée horizontale et la colonne verticale. Il était
+  // recopié en entier dans les deux — 52 lignes, commentaires compris — pour
+  // TROIS expressions de différence, que `is_strip` porte désormais : l'arrondi
+  // du cadre de repli, le bord par lequel l'onglet inactif se ferme, et le sens
+  // du pont vers la table.
+  //
+  // Ce que l'appelant garde à sa charge, parce que c'est là que les deux
+  // divergent vraiment : le gabarit `sz` (son repli n'est pas le même quand les
+  // .bmp manquent — 27x25 en rangée, la largeur du strip en colonne) et la liste
+  // de dessin `dl` (la colonne dessine dans un enfant, pas dans la fenêtre).
+  auto emit_storage_tab = [&](const StorageTab& tab, bool sel, const BarTex& art,
+                              bool has_art, const ImVec2& sz, const char* label,
+                              ImDrawList* dl, bool is_strip) {
+    const ImVec2 cur = ImGui::GetCursorScreenPos();
+    // Icône EN COULEUR sur l'onglet actif — et au survol d'un inactif, qui
+    // annonce ainsi ce qu'on va activer. Sinon niveaux de gris : c'est le
+    // contenu, pas le cadre, qui distingue l'onglet éteint de l'allumé.
+    // Le survol est testé AVANT l'émission du bouton, la texture devant être
+    // choisie avant d'être dessinée.
+    const bool lit =
+        sel || ImGui::IsMouseHoveringRect(cur, ImVec2(cur.x + sz.x, cur.y + sz.y));
+    const uint32_t icon_id = storage_icon(tab);
+    const ro::IconTex ic = icon_id ? (lit ? ro::ItemIcon(icon_id) : GrayItemIcon(icon_id))
+                                   : ro::IconTex{};
+    const bool use_icon = ic.tex && ic.w > 0 && ic.h > 0;
+    if (ImGui::InvisibleButton("stgsel", sz)) select_storage(tab.id);
+    const bool hov = ImGui::IsItemHovered();
+    // 🔴 GRILLE PIXEL : origine ENTIÈRE. La fenêtre peut être posée sur un
+    // demi-pixel, et un blit dont le coin est fractionnaire échantillonne
+    // entre deux texels — filtre POINT ou pas.
+    const ImVec2 p(std::floor(cur.x), std::floor(cur.y));
+    const ImVec2 pe(p.x + sz.x, p.y + sz.y);
+    if (has_art)
+      dl->AddImage(reinterpret_cast<ImTextureID>(art.tex), p, pe, ImVec2(0, 0),
+                   ImVec2(1, 1), ro::SkinImageTint());
+    else  // .bmp absents : un cadre minimal vaut mieux qu'un onglet invisible
+      dl->AddRect(p, pe, kStgTabBorder, 2.0f,
+                  is_strip ? ImDrawFlags_RoundCornersLeft
+                           : ImDrawFlags_RoundCornersTop,
+                  1.0f);
+    // Intérieur COMMUN aux deux états : l'onglet inactif se ferme 2 px avant le
+    // bord par lequel l'actif, lui, s'ouvre vers la table — le BAS en rangée, la
+    // DROITE en colonne. On centre sur la plus petite des deux boîtes, pour que
+    // le contenu ne saute pas d'un pixel quand l'onglet devient actif.
+    const ImVec2 in_min(p.x + ro::Px(1.0f), p.y + ro::Px(1.0f));
+    const ImVec2 in_max(pe.x - ro::Px(is_strip ? 1.0f + kStgArtClosedInset : 1.0f),
+                        pe.y - ro::Px(is_strip ? 1.0f : 1.0f + kStgArtClosedInset));
+    dl->PushClipRect(in_min, in_max, true);
+    if (use_icon) {
+      // Centrée, à la taille de l'art × l'échelle : l'icône (24) déborde d'un
+      // pixel ou deux du cadre (23/25 utiles), et c'est sa marge transparente
+      // qui est rognée. Elle suit l'échelle comme son cadre — laissée à 24 px
+      // dans un onglet deux fois plus grand, elle flotterait au milieu.
+      const float iw = ro::Px(static_cast<float>(ic.w));
+      const float ih = ro::Px(static_cast<float>(ic.h));
+      const ImVec2 c((in_min.x + in_max.x) * 0.5f, (in_min.y + in_max.y) * 0.5f);
+      const ImVec2 ip(std::floor(c.x - iw * 0.5f), std::floor(c.y - ih * 0.5f));
+      dl->AddImage(reinterpret_cast<ImTextureID>(ic.tex), ip,
+                   ImVec2(ip.x + iw, ip.y + ih), ImVec2(0, 0), ImVec2(1, 1),
+                   ro::SkinImageTint());
+    } else {
+      // Libellé À PLAT, jamais tourné à 90° : en colonne le cadre fait la taille
+      // d'une icône, un nom écrit en hauteur y serait illisible — c'est le
+      // numéro du storage qui tient, et l'infobulle qui porte le nom. Couleur de
+      // texte pour l'actif (et le survolé), gris sinon : même règle que l'icône.
+      const ImVec2 lbl = ImGui::CalcTextSize(label);
+      dl->AddText(ImVec2(std::floor((in_min.x + in_max.x - lbl.x) * 0.5f),
+                         std::floor((in_min.y + in_max.y - lbl.y) * 0.5f)),
+                  lit ? ImGui::GetColorU32(ImGuiCol_Text)
+                      : ImGui::GetColorU32(ImGuiCol_TextDisabled),
+                  label);
+    }
+    dl->PopClipRect();
+    if (hov) storage_tooltip(tab);
+    storage_tab_config(tab);
+    if (sel) {
+      stg_tab_min = p;
+      stg_tab_max = pe;
+      have_stg_tab = true;
+      // Le pont vers la table part du bord GAUCHE quand les onglets sont en
+      // colonne. La rangée n'y touche pas : le drapeau est une locale de frame,
+      // remise à false à chaque passage.
+      if (is_strip) stg_tab_is_strip = true;
+    }
+  };
+
   auto emit_storage_row = [&]() {
     EnsureTabTextures();
     ImDrawList* dl = ImGui::GetWindowDrawList();
@@ -1541,61 +1629,8 @@ void StorageWindow::OnRenderUI() {
       const ImVec2 sz = has_art ? ImVec2(ro::Px(static_cast<float>(art.w)),
                                          ro::Px(static_cast<float>(art.h)))
                                 : ImVec2(ro::Px(27.0f), ro::Px(25.0f));
-      const ImVec2 cur = ImGui::GetCursorScreenPos();
-      // Icône EN COULEUR sur l'onglet actif — et au survol d'un inactif, qui
-      // annonce ainsi ce qu'on va activer. Sinon niveaux de gris : c'est le
-      // contenu, pas le cadre, qui distingue l'onglet éteint de l'allumé.
-      const bool lit =
-          sel || ImGui::IsMouseHoveringRect(cur, ImVec2(cur.x + sz.x, cur.y + sz.y));
-      const uint32_t icon_id = storage_icon(tab);
-      const ro::IconTex ic = icon_id ? (lit ? ro::ItemIcon(icon_id) : GrayItemIcon(icon_id))
-                                     : ro::IconTex{};
-      const bool use_icon = ic.tex && ic.w > 0 && ic.h > 0;
-      if (ImGui::InvisibleButton("stgsel", sz)) select_storage(tab.id);
-      const bool hov = ImGui::IsItemHovered();
-      // 🔴 GRILLE PIXEL : origine ENTIÈRE. La fenêtre peut être posée sur un
-      // demi-pixel, et un blit dont le coin est fractionnaire échantillonne
-      // entre deux texels — filtre POINT ou pas.
-      const ImVec2 p(std::floor(cur.x), std::floor(cur.y));
-      const ImVec2 pe(p.x + sz.x, p.y + sz.y);
-      if (has_art)
-        dl->AddImage(reinterpret_cast<ImTextureID>(art.tex), p, pe, ImVec2(0, 0),
-                     ImVec2(1, 1), ro::SkinImageTint());
-      else  // .bmp absents : un cadre minimal vaut mieux qu'un onglet invisible
-        dl->AddRect(p, pe, kStgTabBorder, 2.0f, ImDrawFlags_RoundCornersTop, 1.0f);
-      // Intérieur COMMUN aux deux états : l'inactif se ferme 2 px avant le bas,
-      // on centre donc sur la plus petite des deux boîtes — le contenu ne saute
-      // pas d'un pixel quand l'onglet devient actif.
-      const ImVec2 in_min(p.x + ro::Px(1.0f), p.y + ro::Px(1.0f));
-      const ImVec2 in_max(pe.x - ro::Px(1.0f),
-                          pe.y - ro::Px(1.0f + kStgArtClosedInset));
-      dl->PushClipRect(in_min, in_max, true);
-      if (use_icon) {
-        // Centrée, à la taille de l'art × l'échelle : l'icône (24) déborde d'un
-        // pixel ou deux du cadre (23/25 utiles), et c'est sa marge transparente
-        // qui est rognée. Elle suit l'échelle comme son cadre — laissée à 24 px
-        // dans un onglet deux fois plus grand, elle flotterait au milieu.
-        const float iw = ro::Px(static_cast<float>(ic.w));
-        const float ih = ro::Px(static_cast<float>(ic.h));
-        const ImVec2 c((in_min.x + in_max.x) * 0.5f, (in_min.y + in_max.y) * 0.5f);
-        const ImVec2 ip(std::floor(c.x - iw * 0.5f), std::floor(c.y - ih * 0.5f));
-        dl->AddImage(reinterpret_cast<ImTextureID>(ic.tex), ip,
-                     ImVec2(ip.x + iw, ip.y + ih), ImVec2(0, 0), ImVec2(1, 1),
-                     ro::SkinImageTint());
-      } else {
-        // Libellé : couleur de texte pour l'actif (et le survolé), gris sinon —
-        // même règle que les icônes.
-        const ImVec2 lbl = ImGui::CalcTextSize(label);
-        dl->AddText(ImVec2(std::floor((in_min.x + in_max.x - lbl.x) * 0.5f),
-                           std::floor((in_min.y + in_max.y - lbl.y) * 0.5f)),
-                    lit ? ImGui::GetColorU32(ImGuiCol_Text)
-                        : ImGui::GetColorU32(ImGuiCol_TextDisabled),
-                    label);
-      }
-      dl->PopClipRect();
-      if (hov) storage_tooltip(tab);
-      storage_tab_config(tab);
-      if (sel) { stg_tab_min = p; stg_tab_max = pe; have_stg_tab = true; }
+      emit_storage_tab(tab, sel, art, has_art, sz, label, dl,
+                       /*is_strip=*/false);
       ImGui::PopID();
     }
     // Rangée COLLÉE au tableau, GRATUITEMENT : l'ItemSpacing poussé pour le
@@ -1641,60 +1676,8 @@ void StorageWindow::OnRenderUI() {
       const ImVec2 sz = has_art ? ImVec2(ro::Px(static_cast<float>(art.w)),
                                          ro::Px(static_cast<float>(art.h)))
                                 : ImVec2(w, ro::Px(27.0f));  // `w` est déjà à l'échelle
-      const ImVec2 cur = ImGui::GetCursorScreenPos();
-      // Couleur sur l'actif et sur le survolé, gris sinon — même règle que la
-      // rangée horizontale. Le survol est testé avant l'émission du bouton, la
-      // texture devant être choisie avant d'être dessinée.
-      const bool lit =
-          sel || ImGui::IsMouseHoveringRect(cur, ImVec2(cur.x + sz.x, cur.y + sz.y));
-      const uint32_t icon_id = storage_icon(tab);
-      const ro::IconTex ic = icon_id ? (lit ? ro::ItemIcon(icon_id) : GrayItemIcon(icon_id))
-                                     : ro::IconTex{};
-      const bool use_icon = ic.tex && ic.w > 0 && ic.h > 0;
-      if (ImGui::InvisibleButton("stgsel", sz)) select_storage(tab.id);
-      const bool hov = ImGui::IsItemHovered();
-      // Grille pixel, comme la rangée horizontale (cf. emit_storage_row).
-      const ImVec2 p(std::floor(cur.x), std::floor(cur.y));
-      const ImVec2 pe(p.x + sz.x, p.y + sz.y);
-      if (has_art)
-        dl->AddImage(reinterpret_cast<ImTextureID>(art.tex), p, pe, ImVec2(0, 0),
-                     ImVec2(1, 1), ro::SkinImageTint());
-      else
-        dl->AddRect(p, pe, kStgTabBorder, 2.0f, ImDrawFlags_RoundCornersLeft, 1.0f);
-      // Intérieur COMMUN aux deux états : ici c'est le bord DROIT que l'inactif
-      // ferme 2 px avant (l'actif s'ouvre par là, vers la table).
-      const ImVec2 in_min(p.x + ro::Px(1.0f), p.y + ro::Px(1.0f));
-      const ImVec2 in_max(pe.x - ro::Px(1.0f + kStgArtClosedInset),
-                          pe.y - ro::Px(1.0f));
-      dl->PushClipRect(in_min, in_max, true);
-      if (use_icon) {
-        const float iw = ro::Px(static_cast<float>(ic.w));
-        const float ih = ro::Px(static_cast<float>(ic.h));
-        const ImVec2 c((in_min.x + in_max.x) * 0.5f, (in_min.y + in_max.y) * 0.5f);
-        const ImVec2 ip(std::floor(c.x - iw * 0.5f), std::floor(c.y - ih * 0.5f));
-        dl->AddImage(reinterpret_cast<ImTextureID>(ic.tex), ip,
-                     ImVec2(ip.x + iw, ip.y + ih), ImVec2(0, 0), ImVec2(1, 1),
-                     ro::SkinImageTint());
-      } else {
-        // Libellé À PLAT (plus tourné à 90°) : le cadre fait la taille d'une
-        // icône, un nom écrit en hauteur y serait illisible — c'est le numéro du
-        // storage qui tient, et l'infobulle qui porte le nom.
-        const ImVec2 lbl = ImGui::CalcTextSize(label);
-        dl->AddText(ImVec2(std::floor((in_min.x + in_max.x - lbl.x) * 0.5f),
-                           std::floor((in_min.y + in_max.y - lbl.y) * 0.5f)),
-                    lit ? ImGui::GetColorU32(ImGuiCol_Text)
-                        : ImGui::GetColorU32(ImGuiCol_TextDisabled),
-                    label);
-      }
-      dl->PopClipRect();
-      if (hov) storage_tooltip(tab);
-      storage_tab_config(tab);
-      if (sel) {
-        stg_tab_min = p;
-        stg_tab_max = pe;
-        have_stg_tab = true;
-        stg_tab_is_strip = true;  // pont HORIZONTAL (vers le bord gauche de la table)
-      }
+      emit_storage_tab(tab, sel, art, has_art, sz, label, dl,
+                       /*is_strip=*/true);
       ImGui::PopID();
     }
     ImGui::PopStyleVar();  // ItemSpacing

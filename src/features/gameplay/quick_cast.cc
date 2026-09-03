@@ -22,9 +22,8 @@
 
 // ── Adresses (client 20250716, no-ASLR : addr Ghidra == live) ────────────────
 namespace {
-// Raycast souris -> cellule sol la plus proche. bool __thiscall(gameMode,
-// int* outX, int* outY) — la fonction même qu'emprunte le clic-sol natif.
-constexpr uintptr_t kPickGroundCellAddr = 0x00c69a40;
+// Le raycast souris -> cellule sol : `gamescene::kPickGroundCellAddr`, partagé
+// avec SkillRange.
 
 // Quadtree de picking des acteurs, reconstruit à chaque frame par le rendu des
 // sprites. QueryPoint : float* __thiscall(tree, float x, float y) -> quad
@@ -74,50 +73,9 @@ constexpr unsigned kJobWarpPortal = 45;  // catégorie 0 mais non ciblable
 // à la souris survenu entre-temps.
 constexpr uint32_t kPendingKeyLifetimeMs = 250;
 
-// ── Appel de Actor_OnMsg via la vtable (+8) ─────────────────────────────────
-// Le natif empile TOUJOURS 13 dwords : un mot de tête à 0, le message en 64 bits,
-// puis CINQ paramètres 64 bits (les inutilisés restent à 0). Vérifié sur les
-// quatre messages employés ici et sur le 0x11 de KeyboardMove.
-// La convention de nettoyage exacte est inconnue (Ghidra ne récupère pas les 13
-// paramètres) : on restaure ESP soi-même, ce qui reste correct que la fonction
-// nettoie ou non. Pas de SEH ici — un __try ne cohabite pas avec un bloc __asm,
-// et l'appelant encadre déjà.
-__declspec(noinline) void ActorSendMsg(void* actor, int msg,
-                                       int p1lo, int p1hi,
-                                       int p2lo, int p2hi,
-                                       int p3lo, int p3hi) {
-  void** vtbl = *reinterpret_cast<void***>(actor);
-  void* fn = vtbl[2];  // vtable+8 = Actor_OnMsg
-  __asm {
-    push esi
-    mov  esi, esp
-    push 0            // params 4 et 5, inutilisés
-    push 0
-    push 0
-    push 0
-    mov  eax, p3hi
-    push eax
-    mov  eax, p3lo
-    push eax
-    mov  eax, p2hi
-    push eax
-    mov  eax, p2lo
-    push eax
-    mov  eax, p1hi
-    push eax
-    mov  eax, p1lo
-    push eax
-    push 0            // message, dword de poids fort
-    mov  eax, msg
-    push eax          // message, dword de poids faible
-    push 0            // mot de tête (toujours 0 chez le natif)
-    mov  ecx, actor
-    mov  eax, fn
-    call eax
-    mov  esp, esi
-    pop  esi
-  }
-}
+// L'appel à Actor_OnMsg (vtable +8) vit chez `rag::actor::SendMsg` : le corps
+// assembleur était écrit ici ET dans keyboard_move.cc. Contrat et pièges de pile
+// documentés dans ragnarok/actor.h.
 
 // Acteur joueur, ou nullptr. La descente elle-même est `rag::OwnActorOf` ; ce
 // qui reste ici, et qui est la RAISON D'ÊTRE de cette enveloppe, c'est la
@@ -279,12 +237,14 @@ bool EmitCast(void* cmode, void* actor, int mode, int skill, int level,
       if (!ground_on || !mouse_on_world) return false;
       int x = -1, y = -1;
       using PickGround_t = uint8_t(__thiscall*)(void*, int*, int*);
-      if ((reinterpret_cast<PickGround_t>(kPickGroundCellAddr)(cmode, &x, &y) &
+      if ((reinterpret_cast<PickGround_t>(
+               gamescene::kPickGroundCellAddr)(cmode, &x, &y) &
            0xff) == 0)
         return false;  // rien de visé (ciel, hors carte) -> ciblage laissé armé
-      ActorSendMsg(actor, kActorMsgCastOnGround, skill, skill >> 31,
-                   x, x >> 31, y, y >> 31);
-      ActorSendMsg(actor, kActorMsgSkillLevel, level, level >> 31, 0, 0, 0, 0);
+      rag::actor::SendMsg(actor, kActorMsgCastOnGround, skill, skill >> 31,
+                          x, x >> 31, y, y >> 31);
+      rag::actor::SendMsg(actor, kActorMsgSkillLevel, level, level >> 31,
+                          0, 0, 0, 0);
       return true;
     }
 
@@ -307,9 +267,10 @@ bool EmitCast(void* cmode, void* actor, int mode, int skill, int level,
       // ⚠ Le GID part en 64 bits avec un mot haut à ZÉRO, pas une extension de
       // signe : c'est ce que fait le natif, et un AID au bit 31 armé deviendrait
       // sinon négatif.
-      ActorSendMsg(actor, kActorMsgCastOnTarget, static_cast<int>(gid), 0,
-                   skill, skill >> 31, 0, 0);
-      ActorSendMsg(actor, kActorMsgSkillLevel, level, level >> 31, 0, 0, 0, 0);
+      rag::actor::SendMsg(actor, kActorMsgCastOnTarget,
+                          static_cast<int>(gid), 0, skill, skill >> 31, 0, 0);
+      rag::actor::SendMsg(actor, kActorMsgSkillLevel, level, level >> 31,
+                          0, 0, 0, 0);
       return true;
     }
 

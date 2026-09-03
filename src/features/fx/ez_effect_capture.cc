@@ -8,6 +8,7 @@
 
 #include "d3d9/d3d9_hook.h"  // D3D9_ExplicitBlendCallback / D3D9_AdditiveBlendCallback
 #include "ragnarok/game_scene.h"
+#include "ragnarok/render.h"  // render::kRenderQueueInsertAddr
 #include "ragnarok/own_actor.h"  // rag::OwnActor / rag::OwnActorOf
 #include "utils/hooking/hook_manager.h"
 
@@ -23,7 +24,8 @@ constexpr uintptr_t kSceneProject      = 0x005541b0;  // Scene_ProjectWorldToScr
 constexpr uintptr_t kDepthScale        = 0x00553e80;  // Effect_DepthToScreenScale(ctx,_,invW) -> float
 
 constexpr uintptr_t kEzEffectDraw      = 0x00b666d0;  // EzEffect_Draw(nœud EZ) — hooké (appartenance)
-constexpr uintptr_t kRenderQueueInsert = 0x00550b10;  // RenderQueue_InsertPrimitive — hooké (capture)
+// RenderQueue_InsertPrimitive — hooké (capture). L'adresse est chez `render`
+// (ragnarok/render.h) : GreyWorld s'y intéresse aussi, pour y POSER ses quads.
 
 constexpr uintptr_t kEzChildVtbl       = 0x01088c48;  // vtable du nœud EZ enfant (celui que Draw dessine)
 constexpr int       kEzParentOff       = 0x140;       // enfant EZ -> nœud PRIMITIF parent
@@ -414,7 +416,7 @@ void EnsureInstalled() {
   using namespace hooking;
   g_orig_insert = reinterpret_cast<RenderInsertFn>(
       HookManager::Instance().SetHook(HookType::kJmpHook,
-          reinterpret_cast<uint8_t*>(kRenderQueueInsert),
+          reinterpret_cast<uint8_t*>(render::kRenderQueueInsertAddr),
           reinterpret_cast<uint8_t*>(&Hooked_Insert)));
   g_orig_ez_draw = reinterpret_cast<EzDrawFn>(
       HookManager::Instance().SetHook(HookType::kJmpHook,

@@ -1,5 +1,6 @@
 #include "features/windows/char_diagnostics.h"
 #include "ragnarok/actor.h"  // rag::actor : les offsets de CActorSprite
+#include "ragnarok/packets.h"  // rag::zc : les paquets de notification de coup
 
 #include <Windows.h>  // SEH autour des déréférencements d'objets natifs
 // 🔴 `timeGetTime` (winmm), pas `GetTickCount` : c'est l'horloge que l'acteur
@@ -27,6 +28,9 @@
 #include "ui/ui_palette.h"  // ro::pal : la palette de l'UI
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
+// Les dispositions des paquets de coup sont partagées avec l'autre lecteur de
+// ces opcodes (cf. ragnarok/packets.h). L'alias garde les points d'appel courts.
+namespace zc = rag::zc;
 
 namespace {
 
@@ -106,42 +110,6 @@ constexpr float kAct_SpeedFallback = 4.0f;
 
 // Le chemin résolu que `UITextureMgr_Load` garde dans toute ressource, à +0x14.
 constexpr int kRes_Path = 0x14;
-
-// ── Opcodes observés ─────────────────────────────────────────────────────────
-// Les mêmes que le DPS meter, et pour la même raison : ce sont les seuls paquets
-// qui portent amotion et dmotion coup par coup. On s'inscrit quand même de notre
-// côté — l'inscription prend le MAXIMUM des longueurs demandées, donc deux
-// modules qui observent le même opcode ne se marchent pas dessus.
-constexpr uint16_t kOpNotifyAct   = 0x08c8;  // ZC_NOTIFY_ACT (PACKETVER >= 20131223)
-constexpr uint16_t kOpNotifySkill = 0x01de;  // ZC_NOTIFY_SKILL
-
-#pragma pack(push, 1)
-struct NotifyActPayload {
-  int32_t  src_id;
-  int32_t  dst_id;
-  int32_t  tick;
-  int32_t  src_speed;   // amotion de l'attaquant
-  int32_t  dst_speed;   // dmotion imposé à la cible
-  int32_t  damage;
-  int8_t   is_sp_damage;
-  uint16_t div;
-  uint8_t  type;
-  int32_t  damage2;
-};
-
-struct NotifySkillPayload {
-  uint16_t skill_id;
-  uint32_t src_id;
-  uint32_t dst_id;
-  uint32_t start_time;
-  int32_t  attack_mt;    // amotion
-  int32_t  attacked_mt;  // dmotion
-  int32_t  damage;
-  int16_t  level;
-  int16_t  count;
-  int8_t   action;
-};
-#pragma pack(pop)
 
 // ── Lectures ─────────────────────────────────────────────────────────────────
 
@@ -523,8 +491,8 @@ CharDiagnostics::CharDiagnostics() {
   // traiter normalement, on ne fait que lire au passage. C'est le seul endroit
   // où amotion et dmotion voyagent coup par coup.
   auto& b = Bourgeon::Instance();
-  b.RegisterObserveOpcode(kOpNotifyAct, sizeof(NotifyActPayload));
-  b.RegisterObserveOpcode(kOpNotifySkill, sizeof(NotifySkillPayload));
+  b.RegisterObserveOpcode(zc::kNotifyAct, sizeof(zc::NotifyActPayload));
+  b.RegisterObserveOpcode(zc::kNotifySkill, sizeof(zc::NotifySkillPayload));
 }
 
 void CharDiagnostics::Open() {
@@ -578,9 +546,9 @@ void CharDiagnostics::HandlePacket(uint16_t opcode, const uint8_t* data,
   Blow blow;
   blow.tick = timeGetTime();
 
-  if (opcode == kOpNotifyAct) {
-    if (len < sizeof(NotifyActPayload)) return;
-    NotifyActPayload p;
+  if (opcode == zc::kNotifyAct) {
+    if (len < sizeof(zc::NotifyActPayload)) return;
+    zc::NotifyActPayload p;
     std::memcpy(&p, data, sizeof(p));
     blow.src_speed = p.src_speed;
     blow.dst_speed = p.dst_speed;
@@ -599,9 +567,9 @@ void CharDiagnostics::HandlePacket(uint16_t opcode, const uint8_t* data,
     return;
   }
 
-  if (opcode == kOpNotifySkill) {
-    if (len < sizeof(NotifySkillPayload)) return;
-    NotifySkillPayload p;
+  if (opcode == zc::kNotifySkill) {
+    if (len < sizeof(zc::NotifySkillPayload)) return;
+    zc::NotifySkillPayload p;
     std::memcpy(&p, data, sizeof(p));
     blow.src_speed = p.attack_mt;
     blow.dst_speed = p.attacked_mt;

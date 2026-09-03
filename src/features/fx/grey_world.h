@@ -77,7 +77,7 @@ struct Config {
   //    de ton curseur de destination ; `SquareRange.tga` est le cadre carré des
   //    sorts de zone — c'est celle qui donne un carrelage. Le carré PLEIN n'a
   //    aucune texture dédiée dans le client : on l'obtient en n'échantillonnant
-  //    qu'un point opaque d'une de ces deux-là (cf. kCellStyles dans le .cc).
+  //    qu'un point opaque d'une de ces deux-là (cf. features/fx/cell_style.h).
   // 2. LESQUELLES on peint : toutes, ou seulement celles qui bordent un
   //    changement de terrain — la silhouette des obstacles.
   //

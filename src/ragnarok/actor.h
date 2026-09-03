@@ -227,4 +227,43 @@ constexpr int kHeadGage    = 0x488;
 constexpr int kGageHp      = 0xa0;  // relatif à la JAUGE, pas à l'acteur
 constexpr int kGageHpMax   = 0xa4;
 
+// ── Envoyer un MESSAGE à un acteur (Actor_OnMsg, vtable +8) ──────────────────
+//
+// Le seul moyen de faire agir un acteur comme le ferait le joueur : marcher vers
+// une cellule, armer une incantation, poser un niveau de sort. Le natif passe par
+// là pour chacun de ces gestes.
+//
+// 🔴 CE CORPS EST EN ASSEMBLEUR ET IL N'EN EXISTE QU'UN. Il a été écrit deux fois
+// — `ActorSendMsg` dans quick_cast.cc, `ActorSendWalkMsg` dans keyboard_move.cc —
+// sous deux signatures dont la seconde n'était qu'un cas particulier de la
+// première (x/y en p1/p2, p3 à zéro). Une divergence entre deux copies
+// d'assembleur écrit à la main ne produit pas un affichage faux : elle
+// déséquilibre la pile. Ne pas en refaire une locale.
+//
+// ── La forme de l'appel ─────────────────────────────────────────────────────
+// Le natif empile TOUJOURS 13 dwords, `this` = l'acteur dans ECX :
+//
+//   (0, msg_lo, msg_hi, p1lo, p1hi, p2lo, p2hi, p3lo, p3hi, 0, 0, 0, 0)
+//
+// c'est-à-dire un mot de tête toujours nul, le message en 64 bits, puis CINQ
+// paramètres 64 bits dont les inutilisés restent à zéro. Vérifié sur les quatre
+// messages de QuickCast et sur le 0x11 de KeyboardMove.
+//
+// ⚠ Les paramètres voyagent en 64 BITS, d'où les dwords de poids fort. Pour un
+// entier signé le mot haut est l'extension de signe (`v >> 31`) ; pour un GID il
+// est ZÉRO — c'est ce que fait le natif, et une extension de signe rendrait
+// négatif tout AID dont le bit 31 est armé.
+//
+// ⚠ La convention de nettoyage de pile du natif est INCONNUE : Ghidra ne
+// récupère pas les 13 paramètres, donc on ne sait pas s'il rend en `ret 0x34` ou
+// laisse l'appelant nettoyer. Le corps restaure donc ESP lui-même, ce qui est
+// correct dans les deux cas.
+//
+// ⚠ Aucun SEH ici : un `__try` ne cohabite pas avec un bloc `__asm`. Les deux
+// appelants encadrent déjà leur appel.
+__declspec(noinline) void SendMsg(void* actor, int msg,
+                                  int p1lo, int p1hi,
+                                  int p2lo, int p2hi,
+                                  int p3lo, int p3hi);
+
 }  // namespace rag::actor

@@ -86,6 +86,7 @@
 #include "features/fx/grey_world.h"
 #include "features/fx/skill_range.h"
 #include "features/fx/item_drop_arc.h"
+#include "ragnarok/packets.h"  // rag::zc::kMapChange / kMapNameLen
 #include "ragnarok/ui_window_mgr.h"
 #include "ragnarok/uiwnd.h"
 #include "utils/game_paths.h"
@@ -1829,7 +1830,8 @@ MoonlightUi::MoonlightUi() {
   // elle que OnRecvPacket recevra dans `len` — jamais le nombre d'octets
   // réellement reçus. Pour un opcode observé, `len` ne prouve donc rien sur ce
   // qui est lisible : borner le champ soi-même (cf. le strnlen côté réception).
-  Bourgeon::Instance().RegisterObserveOpcode(kOpcodeMapMove, kMapNameLen);
+  Bourgeon::Instance().RegisterObserveOpcode(rag::zc::kMapChange,
+                                             rag::zc::kMapNameLen);
   LoadItemNames();
 
   InstallItemDescProbe();
@@ -2617,12 +2619,13 @@ void MoonlightUi::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t le
 
 // Fil PRINCIPAL : le décodage, rejoué à chaque frame, dans l'ordre d'arrivée.
 void MoonlightUi::HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) {
-  if (opcode == kOpcodeMapMove) {
+  if (opcode == rag::zc::kMapChange) {
     // 0x0091 ZC_NPCACK_MAPMOVE : `data` pointe sur mapname[16] (ex. « gonryun.gat »).
     //
     // ⚠ `len` EST la taille de ce qu'on a le droit de lire, et ça n'a pas
     // toujours été vrai. Du temps où `data` pointait dans le buffer recv vivant,
-    // `len` n'était qu'une longueur déclarative et on bornait sur kMapNameLen ;
+    // `len` n'était qu'une longueur déclarative et on bornait sur la largeur du
+    // champ ;
     // depuis le passage par net_inbox, `data` est une COPIE de `len` octets et
     // lire au-delà sort du tampon. On borne donc sur le plus petit des deux.
     //
@@ -2630,7 +2633,8 @@ void MoonlightUi::HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t le
     // compare que ce qu'on a réellement.
     if (!data) return;
     const char* map_name = reinterpret_cast<const char*>(data);
-    const size_t avail = (len < kMapNameLen) ? len : kMapNameLen;
+    const size_t avail =
+        (len < rag::zc::kMapNameLen) ? len : rag::zc::kMapNameLen;
     const size_t name_len = strnlen(map_name, avail);
     constexpr size_t kPrefixLen = sizeof(kDiscordRelayMapPrefix) - 1;
     on_discord_relay_map_ = in_game_ && name_len >= kPrefixLen &&

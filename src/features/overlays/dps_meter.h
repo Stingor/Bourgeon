@@ -47,9 +47,8 @@ class DpsMeter : public Plugin {
   // étaient écrites pendant que le rendu les parcourait. Cf. features/net_inbox.h.
   void HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
 
-  static constexpr uint16_t kOpcodeNotifyAct    = 0x08c8;
-  static constexpr uint16_t kOpcodeNotifySkill  = 0x01de;
-  static constexpr uint16_t kOpcodeNotifySkill2 = 0x0115;
+  // Les trois opcodes de notification de coup, et leurs dispositions, vivent
+  // chez `rag::zc` (ragnarok/packets.h) : char_diagnostics lit les mêmes.
   static constexpr uint16_t kOpcodeSkillUnitDmg = bopcodes::kSkillDmg;  // ZC_BOURGEON_SKILL_DMG
 
   // Maximum ring-buffer size (slots). Actual history = slot_ms_ * kPlotSlots ms.

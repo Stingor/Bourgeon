@@ -254,6 +254,17 @@ constexpr int kPickSpecial    = 4;  // homoncule / mercenaire / élémentaire
 // personnage l'affiche et un correctif de picking l'ajuste.
 constexpr uintptr_t kPickQuadMinSizeAddr = 0x015e5b40;
 
+// ── La CELLULE SOL sous le curseur ───────────────────────────────────────────
+// `GameMode_PickGroundCellUnderMouse` : le raycast que le CLIC-SOL natif emprunte
+// lui-même. `bool __thiscall(gameMode, int* out_x, int* out_y)` — rend 0 quand le
+// curseur ne désigne pas le sol (ciel, hors carte, fenêtre par-dessus).
+//
+// 🔴 Elle était déclarée dans DEUX modules, sous deux noms qui ne se rencontrent
+// pas au relevé (`kPickGroundCell` chez SkillRange, `kPickGroundCellAddr` chez
+// QuickCast) — exactement le défaut que le bandeau de ce fichier décrit pour les
+// cinq noms de `kGmActorMgr`.
+constexpr uintptr_t kPickGroundCellAddr = 0x00c69a40;
+
 // `World_PositionToTile` : une position monde (float) -> la cellule de carte.
 // Employée par le déplacement au clavier (pour viser la case voisine) et par
 // l'inspecteur d'entité (pour dire où se tient un acteur).

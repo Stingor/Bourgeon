@@ -1039,52 +1039,12 @@ bool PartyFrames::DrawSettings() {
       "Ce qui s'affiche ici est donc ce qui est TOMBÉ sous vos yeux, "
       "pas l'état complet du personnage."));
   if (show_buffs_) {
-    // ⚠ PAS dans `changed` : l'aperçu ne se persiste pas.
-    ro::RoCheckbox(i18n::Tr("Aperçu (faux statuts)"), &buff_preview_);
-    SameLine(); HelpMarker(i18n::Tr(
-        "Remplit l'affichage de faux états, aux durées étagées, le "
-        "temps de le régler — sans attendre d'en avoir de "
-        "vrais.\n\nNe se garde pas d'une session à l'autre."));
-
-    // 🔴 PushID : l'identifiant ImGui d'un widget est son LIBELLÉ,
-    // donc sa TRADUCTION. « Taille des icônes » (états) et « Taille
-    // de l'icône » (classe) sont distincts en français et deviennent
-    // tous deux « Icon size » en anglais : deux widgets, un seul
-    // identifiant, et ImGui lève une erreur en plein jeu.
-    //
-    // ⚠ Le code relu en français ne montre RIEN — c'est le catalogue
-    // qui crée la collision, et il peut la recréer demain sur un
-    // autre couple. D'où une isolation par BLOC, pas un libellé
-    // rebaptisé qui ne protégerait que ce cas-ci.
-    ImGui::PushID("status_icons");
-    changed |= WheelSliderInt(i18n::Tr("Taille des icônes"),
-                                   &buff_px(), 6, 28, "%d px");
-    changed |= WheelSliderInt(i18n::Tr("Icônes au plus"),
-                                   &buff_max(), 1, 24, "%d");
-    changed |= WheelSliderInt(i18n::Tr("Lignes d'icônes"),
-                                   &buff_rows(), 1, 4, "%d");
-    SameLine(); HelpMarker(i18n::Tr(
-        "Une rangée unique s'allonge jusqu'à manger la place du nom ; "
-        "en deux lignes, le même nombre d'états tient sur moitié moins "
-        "de largeur.\n\n"
-        "Le compte maximum se répartit entre les lignes — six icônes "
-        "sur deux lignes font trois par ligne."));
-    changed |= ro::RoCheckbox(i18n::Tr("Temps restant sous l'icône"),
-                              &buff_time_);
-    {
-      const char* kSweeps[] = {"Aucun",
-                               "Balayage horaire",
-                               "Voile descendant"};
-      changed |= ro::RoCombo(i18n::Tr("Grisage de la case"),
-                             &buff_sweep(), kSweeps,
-                             IM_ARRAYSIZE(kSweeps));
-    }
-    SameLine(); HelpMarker(i18n::Tr(
-        "La case s'assombrit à mesure que l'état s'écoule.\n\n"
-        "⚠ La durée d'origine n'est portée par AUCUN paquet : elle est "
-        "exacte quand on a vu l'état commencer, et repart de « plein » "
-        "quand on le découvre en route."));
-    ImGui::PopID();
+    // Le bloc est commun avec la fenêtre Groupe/Amis (features/status_cell.h) ;
+    // seules les bornes du curseur de taille nous sont propres — une tuile de
+    // grille tient des icônes plus petites qu'une ligne de liste.
+    changed |= statuscell::DrawSettings({&buff_preview_, &buff_px(), &buff_max(),
+                                         &buff_rows(), &buff_time_, &buff_sweep()},
+                                        /*size_min_px=*/6, /*size_max_px=*/28);
   }
 
   // ── Couleurs ──────────────────────────────────────────────────────

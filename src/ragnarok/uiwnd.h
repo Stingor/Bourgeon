@@ -99,8 +99,7 @@ constexpr int kTradeAcceptPopupWndId       = 32;    // 0x20    popup de requête
 constexpr uintptr_t kTradeAcceptPopupWndIdVTable = 0x01033754;
 constexpr int kUIItemStoreWnd              = 33;    // 0x21    le storage
 constexpr int kUINewSkillListWnd           = 37;    // 0x25    le Grimoire
-constexpr int kUICartWnd                   = 40;    // 0x28
-constexpr uintptr_t kUICartWndVTable       = 0x0103d538;
+constexpr int kUICartWnd                   = 40;    // 0x28  (vtable : kCartWndVTable, plus bas)
 constexpr int kUIMerchantShopMakeWnd       = 41;    // 0x29    « Opening a stall » : composition
 constexpr int kVendingMirrorWndId          = 42;    // 0x2a    UIMerchantMirrorItemWnd — MÊME CLASSE que 179
 constexpr int kUIMerchantItemShopWnd       = 43;    // 0x2b    l'offre du vendeur, côté ACHETEUR
@@ -335,6 +334,9 @@ constexpr uintptr_t kInventoryWndSlot   = 0x0131f6bc;  // inventaire, id 8
 constexpr uintptr_t kInventoryWndVTable = 0x0103d460;
 constexpr uintptr_t kStorageWndSlot     = 0x0131f770;  // UIItemStoreWnd, id 0x21 (slot = mgr+0x288)
 constexpr uintptr_t kStorageWndVTable   = 0x0103ca40;
+// 🔴 LA vtable du chariot, et la seule. Elle était aussi déclarée plus haut sous
+// `kUICartWndVTable`, à côté de `kUICartWnd` — même valeur, deux noms, un seul
+// fichier, et c'est celui-ci que les deux appelants employaient.
 constexpr uintptr_t kCartWndVTable      = 0x0103d538;  // UIMerchantItemWnd, id 0x28
 constexpr uintptr_t kChatWndSlot        = 0x0131f6b0;  // UINewChatWnd
 constexpr uintptr_t kMailWriteWndSlot   = 0x0131f940;  // UIMailWriteWnd (rédaction RODEX)

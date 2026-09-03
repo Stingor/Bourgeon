@@ -587,8 +587,8 @@ void Bourgeon::AddLogLine(std::string log_line) {
 void Bourgeon::ObserveWarpPackets() {
   // 4 octets suffisent : les trois appelants ne lisent pas le contenu, seule la
   // RÉCEPTION les intéresse.
-  RegisterObserveOpcode(kOpMapChange, 4);
-  RegisterObserveOpcode(kOpServerMove, 4);
+  RegisterObserveOpcode(rag::zc::kMapChange, 4);
+  RegisterObserveOpcode(rag::zc::kServerMove, 4);
 }
 
 void Bourgeon::ObserveSkillFail() {

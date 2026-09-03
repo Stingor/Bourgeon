@@ -207,10 +207,12 @@ constexpr uintptr_t kOptionSaveAddr    = 0x00d78970;
 // La déconnexion propre puis l'arrêt du mode courant — les deux gestes du
 // [Apply] natif qui, eux, marchent parfaitement. Sans le drapeau de « relance »
 // qui les accompagnait, l'arrêt est un arrêt : plus de page web.
+//
+// 🔴 Les deux adresses viennent de `rag::` (ragnarok/globals.h), qui les portait
+// DÉJÀ sous ces noms exacts. Elles étaient redéclarées ici à l'identique : deux
+// déclarations d'une même adresse, que rien n'empêchait de diverger.
 using ConnGetInstance_t = void*(__cdecl*)();
-constexpr uintptr_t kConnGetInstanceAddr = 0x00c14d60;
 using ConnDisconnect_t = void(__thiscall*)(void*);
-constexpr uintptr_t kConnDisconnectAddr = 0x00c14320;
 constexpr int kCmdShutdown = 2;
 
 // ⚠ Le mode que le natif interroge dans son [Apply] est ce GLOBAL, pas celui que
@@ -888,9 +890,10 @@ bool ApplyStructural(int system, int adapter_index, int width, int height,
 
 void ShutdownClient() {
   __try {
-    void* connection = reinterpret_cast<ConnGetInstance_t>(kConnGetInstanceAddr)();
+    void* connection =
+        reinterpret_cast<ConnGetInstance_t>(rag::kConnGetInstanceAddr)();
     if (connection)
-      reinterpret_cast<ConnDisconnect_t>(kConnDisconnectAddr)(connection);
+      reinterpret_cast<ConnDisconnect_t>(rag::kConnDisconnectAddr)(connection);
     void* mode = rag::ActiveMode();
     if (mode) rag::ModeSendMsg(mode, kCmdShutdown, 0, 0, 0, 0);
   } __except (EXCEPTION_EXECUTE_HANDLER) {}

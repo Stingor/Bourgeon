@@ -16,6 +16,7 @@
 #include <unordered_map>
 
 #include "ragnarok/game_scene.h"
+#include "ragnarok/packets.h"  // rag::cz::kJoinGuildByName
 #include "yaml-cpp/yaml.h"       // disposition des onglets (SaveData\bourgeon_chat.yaml)
 
 #include "bourgeon.h"            // Bourgeon::Instance().IsGameActive / IsMapLoading
@@ -204,7 +205,8 @@ using FriendAddFn = int(__stdcall*)(const void*);
 // CZ_REQ_JOIN_GUILD2 {op, nom[24]} — invitation en guilde PAR NOM. Le menu du
 // client, lui, n'invite que par AID : sans équivalent natif, on l'envoie
 // nous-mêmes. Sûr : le serveur l'enregistre hors de ses blocs shuffle.
-constexpr uint16_t kOpGuildInviteByName = 0x0916;
+// CZ_REQ_JOIN_GUILD2 (0x0916) est aussi emis par la fiche de personnage : il vit
+// chez `rag::cz` (ragnarok/packets.h).
 
 // ── Messages système masqués ─────────────────────────────────────────────────
 // Liste historique (autrefois `InstallChatMessageFilter` dans bourgeon.cc, migrée
@@ -6847,7 +6849,7 @@ void ChatWindow::FlushNameAction() {
       // revanche enregistré HORS des blocs shuffle du serveur (clif_packetdb.hpp
       // :1538), donc son opcode ne dépend pas de la version.
       uint8_t packet[2 + kNameFieldLen] = {};
-      *reinterpret_cast<uint16_t*>(packet) = kOpGuildInviteByName;
+      *reinterpret_cast<uint16_t*>(packet) = rag::cz::kJoinGuildByName;
       std::memcpy(packet + 2, name, kNameFieldLen);
       Bourgeon::Instance().SendPacket(packet, sizeof(packet));
       return;

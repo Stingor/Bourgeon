@@ -15,6 +15,7 @@
 #include "ragnarok/msgstring.h"
 #include "ui/game_texture.h"
 #include "ui/ro_imgui.h"
+#include "ui/ro_widgets.h"  // mui::WheelSliderInt / HelpMarker / SameLine
 #include "utils/i18n.h"
 
 namespace statuscell {
@@ -646,6 +647,63 @@ bool Draw(const StatusEffects::Entry& e, ImVec2 p0, ImVec2 p1,
     if (t.valid()) links::Gestures(t, true);
   }
   return true;
+}
+
+bool DrawSettings(const SettingsRefs& refs, int size_min_px, int size_max_px) {
+  bool changed = false;
+
+  // ⚠ PAS dans `changed` : l'aperçu ne se persiste pas, et le marquer
+  // réécrirait le fichier de réglages à chaque clic.
+  ro::RoCheckbox(i18n::Tr("Aperçu (faux statuts)"), refs.preview);
+  mui::SameLine();
+  mui::HelpMarker(i18n::Tr(
+      "Remplit l'affichage de faux états, aux durées étagées, le "
+      "temps de le régler — sans attendre d'en avoir de "
+      "vrais.\n\nNe se garde pas d'une session à l'autre."));
+
+  // 🔴 PushID : l'identifiant ImGui d'un widget est son LIBELLÉ, donc sa
+  // TRADUCTION. « Taille des icônes » (états) et « Taille de l'icône » (classe)
+  // sont distincts en français et deviennent tous deux « Icon size » en
+  // anglais : deux widgets, un seul identifiant, et ImGui lève une erreur en
+  // plein jeu.
+  //
+  // ⚠ Le code relu en français ne montre RIEN — c'est le catalogue qui crée la
+  // collision, et il peut la recréer demain sur un autre couple. D'où une
+  // isolation par BLOC, pas un libellé rebaptisé qui ne protégerait que ce
+  // cas-ci.
+  ImGui::PushID("status_icons");
+  changed |= mui::WheelSliderInt(i18n::Tr("Taille des icônes"), refs.size_px,
+                                 size_min_px, size_max_px, "%d px");
+  changed |= mui::WheelSliderInt(i18n::Tr("Icônes au plus"), refs.max_icons,
+                                 1, 24, "%d");
+  changed |= mui::WheelSliderInt(i18n::Tr("Lignes d'icônes"), refs.rows,
+                                 1, 4, "%d");
+  mui::SameLine();
+  mui::HelpMarker(i18n::Tr(
+      "Une rangée unique s'allonge jusqu'à manger la place du nom ; "
+      "en deux lignes, le même nombre d'états tient sur moitié moins "
+      "de largeur.\n\n"
+      "Le compte maximum se répartit entre les lignes — six icônes "
+      "sur deux lignes font trois par ligne."));
+  changed |= ro::RoCheckbox(i18n::Tr("Temps restant sous l'icône"),
+                            refs.show_time);
+  {
+    // 🔴 Libellés NUS : `ro::RoCombo` traduit ses items lui-même, à la lecture.
+    // L'ORDRE est celui de `Sweep`, et c'est un index persisté.
+    const char* kSweeps[] = {"Aucun", "Balayage horaire", "Voile descendant"};
+    static_assert(kSweepVertical == 2,
+                  "un libellé par valeur de Sweep, dans le même ordre");
+    changed |= ro::RoCombo(i18n::Tr("Grisage de la case"), refs.sweep, kSweeps,
+                           IM_ARRAYSIZE(kSweeps));
+  }
+  mui::SameLine();
+  mui::HelpMarker(i18n::Tr(
+      "La case s'assombrit à mesure que l'état s'écoule.\n\n"
+      "⚠ La durée d'origine n'est portée par AUCUN paquet : elle est "
+      "exacte quand on a vu l'état commencer, et repart de « plein » "
+      "quand on le découvre en route."));
+  ImGui::PopID();
+  return changed;
 }
 
 }  // namespace statuscell

@@ -1,5 +1,6 @@
 #include "ragnarok/item_db.h"
 #include "ragnarok/globals.h"
+#include "ragnarok/packets.h"  // rag::zc::kNpcName / rag::cz::kCloseDialog
 #include "ragnarok/item_info.h"  // rag::itemlist : le layout du noeud
 #include "features/windows/npc_shop_window.h"
 
@@ -151,12 +152,14 @@ constexpr uint16_t kOpBuyList  = 0x0b77;  // ZC_PC_PURCHASE_ITEMLIST (var)
 constexpr uint16_t kOpSellList = 0x00c7;  // ZC_PC_SELL_ITEMLIST (var)
 constexpr uint16_t kOpBuyRes   = 0x00ca;  // ZC_PC_PURCHASE_RESULT {result:1}
 constexpr uint16_t kOpSellRes  = 0x00cb;  // ZC_PC_SELL_RESULT {result:1}
-constexpr uint16_t kOpNpcName  = 0x0adf;  // ZC_ACK_REQNAMEALL_NPC {gid:4,groupId:4,name[24],title[24]}
+// ZC_ACK_REQNAMEALL_NPC (0x0adf) est aussi lu par la fenetre de dialogue : il
+// vit chez `rag::zc` (ragnarok/packets.h).
 // Envois (CZ).
 constexpr uint16_t kOpDealAck  = 0x00c5;  // CZ_ACK_SELECT_DEALTYPE {GID:4,type:1}
 constexpr uint16_t kOpBuyReq   = 0x00c8;  // CZ_PC_PURCHASE_ITEMLIST {amount:2,itemId:4}*
 constexpr uint16_t kOpSellReq  = 0x00c9;  // CZ_PC_SELL_ITEMLIST {index:2,amount:2}*
-constexpr uint16_t kOpCloseNpc = 0x0146;  // CZ_CLOSE_DIALOG {GID:4} -> ferme la session NPC serveur
+// CZ_CLOSE_DIALOG (0x0146) : ferme la session NPC serveur. Aussi emis par la
+// fenetre de dialogue -> chez `rag::cz`.
 // CZ_NPC_TRADE_QUIT {op:2} — 2 octets, l'opcode seul. 🔴 C'EST LUI qui débloque le
 // personnage, et rien d'autre : côté serveur clif_parse_NPCShopClosed ne fait qu'une
 // chose, `sd->npc_shopid = 0`, et `pc_cant_act2()` teste `|| sd->npc_shopid` —
@@ -175,7 +178,7 @@ constexpr uintptr_t kShopCartResetAll = 0x00d55f80;
 void SendCloseDialog(uint32_t gid) {
   if (gid == 0) return;
   uint8_t pkt[6];
-  *reinterpret_cast<uint16_t*>(pkt + 0) = kOpCloseNpc;
+  *reinterpret_cast<uint16_t*>(pkt + 0) = rag::cz::kCloseDialog;
   *reinterpret_cast<uint32_t*>(pkt + 2) = gid;
   Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
 }
@@ -208,7 +211,7 @@ NpcShopWindow::NpcShopWindow() {
   Bourgeon::Instance().RegisterObserveOpcode(kOpBuyRes, 1);   // result
   Bourgeon::Instance().RegisterObserveOpcode(kOpSellRes, 1);  // result
   // Nom des NPC (pour le titre) : gid:4 + groupId:4 + name[24] = 32 octets utiles.
-  Bourgeon::Instance().RegisterObserveOpcode(kOpNpcName, 32);
+  Bourgeon::Instance().RegisterObserveOpcode(rag::zc::kNpcName, 32);
   // Changement de map / serveur (@load, warp) : le warp invalide la session shop
   // cote serveur (npc_shopid=0) -> on ferme le viewer pour ne pas laisser une
   // fenetre orpheline. On ne lit pas le payload, juste la reception.
@@ -237,7 +240,7 @@ void NpcShopWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
     return;
   }
 
-  if (opcode == kOpNpcName) {
+  if (opcode == rag::zc::kNpcName) {
     // ZC_ACK_REQNAMEALL_NPC : gid@+0, name[24]@+8. Cache pour le titre.
     if (len < 32) return;
     const uint32_t gid = *reinterpret_cast<const uint32_t*>(data);

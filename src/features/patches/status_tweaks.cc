@@ -85,8 +85,13 @@ using Blit_t   = void (__fastcall*)(void*, void*, int, int, void*, int);
 using StatusMsg_t = int (__fastcall*)(void*, void*, int, int, int, int, int, int);  // FUN_008cb7c0 — SIX stack args (ret 0x18)
 
 const auto g_status_msg_orig = reinterpret_cast<StatusMsg_t>(kMsgOrig);
-int g_posX = INT_MIN, g_posY = INT_MIN;  // saved STATUS window position (INT_MIN = unset)
-bool g_restorePending = false;           // a freshly-loaded position waiting to be re-applied
+// Position enregistrée de la fenêtre de statut (INT_MIN = jamais écrite).
+int g_saved_x = INT_MIN, g_saved_y = INT_MIN;
+// Drapeau one-shot : une position vient d'être lue du yaml et attend d'être
+// réimposée à la fenêtre vivante. Consommé par WindowPos_TrackLive.
+bool g_restore_pending = false;
+// L'état de suivi au tick (ex-`static` de OnTick, cf. window_pos_tweaks.h).
+WindowPosTracker g_tracker;
 
 // ---- session fields ---------------------------------------------------------
 // Les stats, les sous-stats de combat et l'objet guilde viennent de
@@ -275,7 +280,7 @@ void __fastcall DrawContentHook(void* wnd, void* /*edx*/) {
 int __fastcall StatusMsgHook(void* self, void* edx, int arg0, int msg, int p2,
                              int p3, int p4, int p5) {
   return WindowPos_PersistOnMsg(self, edx, arg0, msg, p2, p3, p4, p5,
-                                g_status_msg_orig, &g_posX, &g_posY);
+                                g_status_msg_orig, &g_saved_x, &g_saved_y);
 }
 
 }  // namespace
@@ -342,56 +347,34 @@ StatusTweaks::StatusTweaks() {
   }
 }
 
-// Saved-position accessors for MoonlightUi's settings yaml (g_posX/g_posY live in
-// the anonymous namespace above; these bridge them to the persistence layer).
-int  StatusTweaks_SavedX() { return g_posX; }
-int  StatusTweaks_SavedY() { return g_posY; }
+// Accès à la position enregistrée pour le yaml de MoonlightUi (les deux entiers
+// vivent dans le namespace anonyme ci-dessus ; ces trois fonctions font le pont
+// vers la couche de persistance). Clés : « status_pos_x » / « status_pos_y ».
+int  StatusTweaks_SavedX() { return g_saved_x; }
+int  StatusTweaks_SavedY() { return g_saved_y; }
 void StatusTweaks_SetSavedPos(int x, int y) {
-  g_posX = x;
-  g_posY = y;
-  // A newly-loaded on-screen position must be (re)applied to the live window on the
-  // next tick: the client re-opens saved-open windows at their hardcoded native spot,
-  // and the ordering of that vs. our msg-0x22 override is not guaranteed across a full
-  // client restart, so OnTick force-applies it. This is what survives a restart.
-  g_restorePending = (x != INT_MIN && x >= 0 && y >= 0);
+  g_saved_x = x;
+  g_saved_y = y;
+  // Une position À L'ÉCRAN qu'on vient de lire doit être réimposée à la fenêtre
+  // vivante au tick suivant : le client rouvre ses fenêtres restées ouvertes à
+  // leur emplacement natif en dur, et l'ordre entre cette réouverture et notre
+  // écrasement sur msg 0x22 n'est pas garanti d'un redémarrage à l'autre. C'est
+  // ce forçage, depuis OnTick, qui survit au redémarrage. Les coordonnées
+  // négatives sont refusées ici : elles viennent d'un yaml jamais écrit, pas
+  // d'un joueur.
+  g_restore_pending = (x != INT_MIN && x >= 0 && y >= 0);
 }
 
-// Persist the window position when it changes. We read the LIVE position straight from
-// the window each tick via FindWindow — the status window does NOT redraw every frame
-// (only on stat changes / periodic refresh), so capturing inside DrawContent lagged by
-// up to ~1s. Throttled to once per 200ms: the first move saves within ~100ms, then at
-// most every 200ms during a drag (final spot lands within ~200ms of release). Covers
-// drag-end + every close path (X / Escape / Alt+A toggle / game exit). While the window
-// is closed FindWindow returns null, so g_posX keeps the last spot for the next restore.
+// Persiste la position de la fenêtre quand elle change. On lit la position VIVANTE
+// directement dans la fenêtre à chaque tick (FindWindow) : la fenêtre de statut ne
+// se redessine PAS à chaque frame (seulement sur changement de stat ou rafraîchi
+// périodique), et une capture depuis DrawContent retardait jusqu'à ~1 s. Couvre la
+// fin de glisser et TOUS les chemins de fermeture (croix, Échap, bascule Alt+A,
+// sortie du jeu).
+//
+// 🔴 Le corps est chez WindowPos_TrackLive : il était identique, mot pour mot, à
+// celui d'EquipTweaks::OnTick. Ne pas le recopier ici pour « simplifier ».
 void StatusTweaks::OnTick() {
-  static int savedX = INT_MIN, savedY = INT_MIN;  // last persisted position
-  static DWORD last_save_ms = 0;                       // GetTickCount of the last save
-  static bool init = false;
-  void* win = uiwnd::FindWindow(uiwnd::kUIStatusWnd);
-  if (!win) return;                               // status window not open
-
-  // A position was just loaded from the yaml (fresh launch, or a re-entry into game):
-  // force the live window onto it once, then switch to tracking. The client re-opens the
-  // window at its hardcoded native spot, so without this the loaded value would be
-  // clobbered by the live read below and the native position saved back over it. This is
-  // what makes the position survive a full client restart.
-  if (g_restorePending) {
-    uiwnd::SetPos(win, g_posX, g_posY);
-    savedX = g_posX; savedY = g_posY;
-    g_restorePending = false;
-    init = true;
-    return;
-  }
-
-  int liveX = 0, liveY = 0;
-  uiwnd::LivePos(win, &liveX, &liveY);
-  if (!init) {  // no saved pos to restore: baseline off the current spot
-    savedX = liveX; savedY = liveY; g_posX = liveX; g_posY = liveY; init = true; return;
-  }
-  if ((liveX != savedX || liveY != savedY) && GetTickCount() - last_save_ms >= 200) {
-    g_posX = liveX; g_posY = liveY;
-    if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
-    savedX = liveX; savedY = liveY;
-    last_save_ms = GetTickCount();
-  }
+  WindowPos_TrackLive(uiwnd::kUIStatusWnd, &g_tracker, &g_saved_x, &g_saved_y,
+                      &g_restore_pending);
 }

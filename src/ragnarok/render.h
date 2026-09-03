@@ -81,4 +81,15 @@ constexpr uintptr_t kActionGetFrameAddr = 0x0070f4b0;
 // doivent alors rendre d'autres images.
 constexpr uintptr_t kSpriteRefCacheAddr = 0x0125161c;
 
+// ── L'INSERTION d'une primitive dans la file de rendu ────────────────────────
+// `RenderQueue_InsertPrimitive` — la file en ECX, deux arguments pile, `retn 8`.
+// C'est par elle que passe tout ce que le client soumet au device, et deux
+// modules s'y intéressent pour deux raisons opposées : GreyWorld y POSE ses
+// quads de cellule, EzEffectCapture la DÉTOURNE pour capturer ce qui y entre.
+//
+// 🔴 Ils la déclaraient chacun de leur côté, sous deux noms (`kInsertPrimitive`
+// et `kRenderQueueInsert`) — donc invisibles l'un à l'autre au relevé, alors
+// qu'ils se disputent la même fonction.
+constexpr uintptr_t kRenderQueueInsertAddr = 0x00550b10;
+
 }  // namespace render

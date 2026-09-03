@@ -9,6 +9,7 @@
 #include <cstddef>
 
 #include "features/plugin.h"
+#include "ragnarok/packets.h"  // rag::zc : les opcodes vanilla partages
 #include "ragnarok/ragnarok_client.h"
 
 class DiscordRelay;
@@ -259,21 +260,18 @@ class Bourgeon {
   void RegisterObserveOpcode(uint16_t opcode, uint16_t forward_len);
 
   // ── « Le joueur change de carte » ──────────────────────────────────────
-  // Les deux paquets qui l'annoncent. 🔴 Ce test était écrit QUATRE fois : ici
-  // (le hook de lecture, qui arme `SetMapLoading`) et dans les trois fenêtres
-  // que le serveur ferme en silence quand on quitte la carte — cash shop,
-  // boutique NPC, entrepôt. La copie canonique, celle de `rag_connection`,
-  // l'écrivait en LITTÉRAUX NUS : aucun relevé de `constexpr` ne la voyait.
+  // 🔴 Ce TEST était écrit QUATRE fois : ici (le hook de lecture, qui arme
+  // `SetMapLoading`) et dans les trois fenêtres que le serveur ferme en silence
+  // quand on quitte la carte — cash shop, boutique NPC, entrepôt. La copie
+  // canonique, celle de `rag_connection`, l'écrivait en LITTÉRAUX NUS : aucun
+  // relevé de `constexpr` ne la voyait.
   //
-  // ⚠ NE PAS CONFONDRE AVEC `MapLoadEpoch()`. Ces paquets arrivent AVANT le
-  // chargement — c'est ce qui laisse à une boutique le temps d'émettre sa
-  // fermeture pendant qu'on est encore connecté ; l'époque, elle, s'incrémente
-  // pendant. Les deux signaux disent « la carte change » à des instants
-  // différents, et les échanger changerait le comportement.
-  static constexpr uint16_t kOpMapChange  = 0x0091;  // ZC_NPCACK_MAPMOVE
-  static constexpr uint16_t kOpServerMove = 0x0092;  // ZC_NPCACK_SERVERMOVE
+  // Les deux OPCODES, eux, vivent chez `rag::zc` (ragnarok/packets.h) : ils
+  // étaient déclarés ici, dans MoonlightUi et dans npc_dialog_window, sous trois
+  // noms pour la même valeur. C'est là aussi qu'on lira pourquoi il ne faut pas
+  // les confondre avec `MapLoadEpoch()`.
   static bool IsWarpPacket(uint16_t opcode) {
-    return opcode == kOpMapChange || opcode == kOpServerMove;
+    return opcode == rag::zc::kMapChange || opcode == rag::zc::kServerMove;
   }
   // Observe les deux, avec la longueur que les trois appelants demandaient déjà.
   void ObserveWarpPackets();

@@ -159,4 +159,33 @@ const char* Name(uint16_t efst);
 // tuile de grille, par exemple, dont le survol est testé sur toute la ligne).
 void Tooltip(const StatusEffects::Entry& e);
 
+// ── Le bloc de RÉGLAGE des icônes d'état ────────────────────────────────────
+//
+// Les deux surfaces qui montrent les états d'autres MEMBRES — les tuiles de la
+// grille de groupe (`overlays/party_frames`) et les lignes de la fenêtre
+// Groupe/Amis (`windows/party_friend_window`) — offraient le même bloc de
+// réglage, recopié à l'identique : mêmes libellés, mêmes infobulles, et jusqu'au
+// même commentaire de dix lignes sur la collision d'identifiants ImGui entre
+// traductions. Seules les bornes du curseur de taille différaient.
+//
+// 🔴 Deux copies de la même infobulle, ce sont deux entrées au catalogue de
+// traduction, et une correction d'un seul côté produit deux textes divergents
+// pour un seul réglage. C'est le même raisonnement que pour le DESSIN de la
+// case, plus haut dans ce fichier.
+//
+// ⚠ Reste à l'appelant : la case « Buffs et debuffs » elle-même et son
+// infobulle. Celle-là dit où les icônes se posent — à droite d'une tuile, à
+// gauche d'une pastille — et ce n'est pas la même chose des deux côtés.
+struct SettingsRefs {
+  bool* preview;     // aperçu (faux statuts) : JAMAIS persisté, cf. le corps
+  int*  size_px;
+  int*  max_icons;
+  int*  rows;
+  bool* show_time;
+  int*  sweep;       // une valeur de `Sweep`
+};
+
+// Rend true si un réglage PERSISTANT a changé — l'aperçu n'en fait pas partie.
+bool DrawSettings(const SettingsRefs& refs, int size_min_px, int size_max_px);
+
 }  // namespace statuscell

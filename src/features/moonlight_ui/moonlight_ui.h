@@ -337,13 +337,15 @@ class MoonlightUi : public Plugin {
   static constexpr uint16_t kOpcodeToServer      = bopcodes::kSetting;     // CZ_BOURGEON_SETTING
   static constexpr uint16_t kOpcodePresetList    = bopcodes::kPresetList;  // ZC_BOURGEON_PRESET_LIST
   static constexpr uint16_t kOpcodePresetCmd     = bopcodes::kPresetCmd;   // CZ_BOURGEON_PRESET_CMD
-  // We read the current map name from the STANDARD client packet 0x0091
-  // (ZC_NPCACK_MAPMOVE), which arrives on login and every warp/map change and
-  // carries mapname[16] right after the opcode.  This needs no custom packet
-  // and no server changes, so there is no opcode to collide with the client's
-  // packet-length table (0x0BFC and 0x0BFF both turned out to be reserved).
-  static constexpr uint16_t kOpcodeMapMove    = 0x0091;  // [opcode:2][mapname:16][x:2][y:2]
-  static constexpr uint16_t kMapNameLen       = 16;      // mapname field width in 0x0091
+  // Le nom de la carte courante est lu dans le paquet STANDARD du client
+  // (ZC_NPCACK_MAPMOVE), qui arrive au login et à chaque warp : aucun paquet
+  // maison, aucune modification serveur, donc aucun opcode qui risque de
+  // heurter la table des longueurs du client (0x0BFC et 0x0BFF se sont tous
+  // deux révélés réservés).
+  //
+  // 🔴 L'opcode et la largeur du champ vivent chez `rag::zc`
+  // (ragnarok/packets.h) : ils étaient déclarés ici ET dans deux autres
+  // fichiers, sous trois noms différents.
 
   // Updates both directions of the relay based on current state.
   void UpdateRelay();

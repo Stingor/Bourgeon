@@ -22,6 +22,13 @@ set(BOURGEON_FILES
 	#   minigames/ jeux embarqués
 	"features/plugin.h"
 	"features/staff_gate.h"
+	# La garde de chargement de carte des ecrans plein cadre : deux
+	# invariants qui etaient recopies dans trois OnTick.
+	"features/screen_tick_gate.cc"
+	"features/screen_tick_gate.h"
+	# Le passage du fil RESEAU au fil PRINCIPAL : obligatoire des qu'un
+	# module decode un paquet (cf. docs/source_layout.md).
+	"features/net_inbox.h"
 	"features/item_cell.cc"
 	"features/item_cell.h"
 	# La case d'un ETAT (buff/debuff) : le pendant d'item_cell pour les EFST.
@@ -210,6 +217,10 @@ set(BOURGEON_FILES
 	"features/gameplay/player_jump.h"
 
 	# fx/
+	# Le dessin d'une case au sol : table de textures + bloc de reglage,
+	# communs a grey_world (quadrillage) et skill_range (zone d'un sort).
+	"features/fx/cell_style.cc"
+	"features/fx/cell_style.h"
 	"features/fx/ez_effect_capture.cc"
 	"features/fx/ez_effect_capture.h"
 	"features/fx/ground_paint.cc"
@@ -344,6 +355,9 @@ set(BOURGEON_FILES
 	"ragnarok/uiwnd.h"
 	"ragnarok/globals.h"
 	"ragnarok/game_scene.h"
+	"ragnarok/actor.cc"
+	"ragnarok/actor.h"
+	"ragnarok/job_ids.h"
 	"ragnarok/audio.h"
 	"ragnarok/file_mgr.h"
 	"ragnarok/navigation.h"
@@ -382,6 +396,7 @@ set(BOURGEON_FILES
 	"ragnarok/social.h"
 	"ragnarok/item_info.h"
 	"ragnarok/stl_node.h"
+	"ragnarok/client_string.h"
 	"ragnarok/skill_info.h"
 	"ragnarok/rag_connection.cc"
 	"ragnarok/rag_connection.h"
@@ -406,10 +421,12 @@ set(BOURGEON_FILES
 	"ragnarok/object_layouts/session/layouts.h"
 	"ragnarok/object_layouts/session/macro_utils.h"
 	"ragnarok/object_layouts/session/20250716.h"
+	"ragnarok/object_layouts/session/20260707.h"
 
 	# Utils
 	"utils/byte_pattern.cc"
 	"utils/byte_pattern.h"
+	"utils/memory_patch.h"
 	"utils/frame_profiler.cc"
 	"utils/frame_profiler.h"
 	"utils/game_focus.cc"
