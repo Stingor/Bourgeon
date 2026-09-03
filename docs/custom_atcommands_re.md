@@ -77,7 +77,12 @@ commentaire de `entity_context_menu.cc` explique déjà).
 Le vrai manque est une **omission**, pas un mensonge : le mécanisme
 compte-entier existe et n'a **aucune surface** côté client.
 
-### 3.3 `@storecard` — 🔴 défaut de course vérifié
+### 3.3 `@storecard` — ✅ défaut de course **corrigé le 2026-09-02**
+
+> Le correctif est appliqué côté serveur (`moonlight`, 4 fichiers) : le transfert
+> est désormais différé jusqu'à `storage_premiumStorage_open()`, comme
+> `@storeall N`. ⚠ **Non compilé, non testé en jeu** — voir §3.3 bis.
+> Ce qui suit décrit le défaut tel qu'il était.
 
 Elle charge le stockage premium n°5 (le coffre à cartes) en mode `PUT`, y verse
 toutes les cartes de l'inventaire, puis referme.
@@ -111,6 +116,37 @@ même patron : armer un drapeau, et faire le transfert depuis
 ⚠ Le symptôme n'apparaît qu'au **premier** appel de la session : au second, le
 coffre 5 est déjà en mémoire, `load` prend la branche synchrone et tout marche.
 C'est ce qui rend le défaut discret.
+
+### 3.3 bis. Le correctif appliqué
+
+Quatre fichiers du dépôt `moonlight` :
+
+| fichier | changement |
+|---|---|
+| `src/map/pc.hpp` | `bool pending_storeall_cards_only` à côté de `pending_storeall` |
+| `src/map/storage.hpp` | déclaration de `storage_premiumStorage_storecards()` |
+| `src/map/storage.cpp` | la fonction (miroir de `storeall`, filtre `IT_CARD`, msg 1851) + l'aiguillage dans `storage_premiumStorage_open()` |
+| `src/custom/atcommand.inc` | `@storecard` arme les deux drapeaux **avant** le `load` et retourne ; la boucle et le `close` immédiats sont supprimés |
+
+`pending_storeall` reste **le** drapeau « un rangement est armé » — c'est lui que
+testent les gardes des deux commandes, donc `@storeall` et `@storecard` ne
+peuvent pas s'armer en même temps, et la garde existante de `@storeall` n'a pas
+eu à changer. `pending_storeall_cards_only` dit seulement *lequel* des deux
+transferts exécuter.
+
+Deux ajouts au passage : la constante `STORECARD_STORAGE_ID` remplace le `5` en
+dur, et une garde `storage_exists()` — sans elle, un coffre non déclaré
+laisserait le drapeau armé sans que rien vienne le désarmer, bloquant les deux
+commandes jusqu'à la déconnexion.
+
+⚠ **Limite connue, non traitée** (elle vaut aussi pour `@storeall`) : si le
+char-server ne répond jamais à `intif_storage_request`, le drapeau reste armé
+pour la session. Le corriger demanderait un délai d'expiration ; c'est un autre
+chantier.
+
+⚠ **Ni compilé ni testé.** Le test tient en deux `@storecard` d'affilée après une
+connexion fraîche : avant, le premier ne rangeait rien et ouvrait le coffre ;
+après, il doit ranger et refermer dès le premier.
 
 ### 3.4 `@partybuff` — 🔴 la bascule ne commande RIEN
 
