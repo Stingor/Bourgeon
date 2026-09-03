@@ -1893,6 +1893,94 @@ void ConstrainNextWindowToScreen() {
   ImGui::SetNextWindowSizeConstraints(ImVec2(0.0f, 0.0f), ImVec2(max_w, max_h));
 }
 
+namespace {
+
+// ── La barre de titre RO ────────────────────────────────────────────────────
+//
+// DEUX fonctions la peignent par-dessus le chrome ImGui — `BeginRoWindow` et
+// `BeginRoPopupModal` — et elles en portaient chacune leur copie : le décor
+// 3-slice, la géométrie de la puce et les quatorze lignes qui écrivent le titre,
+// identiques mot pour mot. C'est le TOOLKIT : une divergence ici ne se voit pas
+// sur une fenêtre, elle se voit sur toutes.
+//
+// Ce qui reste propre à chacune est ce qui diffère vraiment : la fenêtre ajoute
+// ses boutons système et sa puce CLIQUABLE, la modale s'arrête au décor.
+
+// Repli visible quand l'art manque (textures pas encore prêtes, échec de
+// création) : une barre bleue pleine, à distinguer d'un coup d'œil du chrome
+// sombre par défaut d'ImGui.
+constexpr ImU32 kTitleFallbackTop    = IM_COL32(126, 158, 224, 255);
+constexpr ImU32 kTitleFallbackBottom = IM_COL32(86, 122, 200, 255);
+// Marge de la puce au bord gauche, et écart entre la puce et le titre.
+constexpr float kBulletMarginPx  = 5.0f;
+constexpr float kBulletTextGapPx = 4.0f;
+// Le titre est remonté d'un poil : centré à la lettre, il paraît trop bas.
+constexpr float kTitleBaselineNudgePx = 1.5f;
+constexpr size_t kTitleBufMax = 128;
+
+// Les QUATRE bitmaps dont les deux ont besoin. (La fenêtre en charge quatre de
+// plus : fermer, minimiser, et les deux états « on ».)
+void EnsureTitleBarTextures() {
+  EnsureTex("basic_interface\\titlebar_left.bmp", skin::kTitlebarLeft, g_tl);
+  EnsureTex("basic_interface\\titlebar_mid.bmp", skin::kTitlebarMid, g_tm);
+  EnsureTex("basic_interface\\titlebar_right.bmp", skin::kTitlebarRight, g_tr);
+  EnsureTex("basic_interface\\sys_base_off.bmp", skin::kSysBaseOff, g_base);
+}
+
+// Où se posent la puce et le titre, une fois le décor peint.
+struct TitleBarSlots {
+  ImVec2 bullet_tl, bullet_br;  // la puce sys_base, carrée
+  float  text_x = 0;            // début du titre, juste après elle
+};
+
+// Le DÉCOR : repli si l'art manque, puis le 3-slice.
+// ⚠ Le clip est à la charge de l'appelant. Après `Begin`, la clip rect du draw
+// list est réduite à la zone de CONTENU, sous le titre : tout dessin dans la
+// barre y serait découpé. Les deux appelants l'élargissent avant d'appeler, et
+// le restaurent à des moments différents — la fenêtre seulement après ses
+// boutons système.
+TitleBarSlots PaintTitleBar(ImDrawList* dl, const ImRect& tb) {
+  const float y0 = tb.Min.y, y1 = tb.Max.y;
+  const float capL = Px((float)g_tl.w), capR = Px((float)g_tr.w);
+  if (!g_tl.tex)
+    dl->AddRectFilledMultiColor(tb.Min, tb.Max, kTitleFallbackTop,
+                                kTitleFallbackTop, kTitleFallbackBottom,
+                                kTitleFallbackBottom);
+  dl->AddCallback(ImCb_PointFilter, nullptr);
+  BlitStretch(dl, g_tl, ImVec2(tb.Min.x, y0), ImVec2(tb.Min.x + capL, y1));
+  BlitStretch(dl, g_tr, ImVec2(tb.Max.x - capR, y0), ImVec2(tb.Max.x, y1));
+  BlitStretch(dl, g_tm, ImVec2(tb.Min.x + capL, y0), ImVec2(tb.Max.x - capR, y1));
+
+  TitleBarSlots s;
+  const float base_sz = Px((float)g_base.w);  // 11
+  const float base_x = tb.Min.x + Px(kBulletMarginPx);
+  const float base_y = y0 + (tb.GetHeight() - base_sz) * 0.5f;
+  s.bullet_tl = ImVec2(base_x, base_y);
+  s.bullet_br = ImVec2(base_x + base_sz, base_y + base_sz);
+  s.text_x = base_x + base_sz + Px(kBulletTextGapPx);
+  return s;
+}
+
+// Le TITRE : couleur configurable qui suit l'opacité, et le « ##id » coupé.
+void PaintTitleBarText(ImDrawList* dl, const ImRect& tb, const char* title,
+                       float text_x) {
+  char nbuf[kTitleBufMax];
+  const char* end = ImGui::FindRenderedTextEnd(title);
+  size_t n = (size_t)(end - title);
+  if (n >= sizeof(nbuf)) n = sizeof(nbuf) - 1;
+  memcpy(nbuf, title, n);
+  nbuf[n] = '\0';
+  const ImU32 title_tx = ImGui::ColorConvertFloat4ToU32(
+      ImVec4(g_cfg.title_text[0], g_cfg.title_text[1], g_cfg.title_text[2],
+             g_cfg.title_text[3] * g_cfg.alpha));  // suit l'opacité
+  const ImVec2 ts = ImGui::CalcTextSize(nbuf);
+  dl->AddText(ImVec2(text_x, tb.Min.y + (tb.GetHeight() - ts.y) * 0.5f -
+                                 Px(kTitleBaselineNudgePx)),
+              title_tx, nbuf);
+}
+
+}  // namespace
+
 bool BeginRoWindow(const char* title, bool* p_open, int imgui_window_flags) {
   // Consommé quoi qu'il arrive : la demande ne doit pas fuiter sur la fenêtre
   // suivante si celle-ci n'est pas peinte (fenêtre masquée…).
@@ -1979,49 +2067,31 @@ bool BeginRoWindow(const char* title, bool* p_open, int imgui_window_flags) {
   // On dessine la barre de titre RO même quand la fenêtre est repliée (Begin
   // renvoie false dans ce cas) — sinon le titre replié garde le chrome ImGui.
   if (w && !w->Hidden) {
-    EnsureTex("basic_interface\\titlebar_left.bmp", skin::kTitlebarLeft, g_tl);
-    EnsureTex("basic_interface\\titlebar_mid.bmp", skin::kTitlebarMid, g_tm);
-    EnsureTex("basic_interface\\titlebar_right.bmp", skin::kTitlebarRight, g_tr);
+    EnsureTitleBarTextures();  // les quatre que la modale charge aussi
     EnsureTex("basic_interface\\sys_close_off.bmp", skin::kSysCloseOff, g_close);
     EnsureTex("basic_interface\\sys_close_on.bmp", skin::kSysCloseOn, g_close_on);
     EnsureTex("basic_interface\\sys_mini_off.bmp", skin::kSysMiniOff, g_mini);
     EnsureTex("basic_interface\\sys_mini_on.bmp", skin::kSysMiniOn, g_mini_on);
-    EnsureTex("basic_interface\\sys_base_off.bmp", skin::kSysBaseOff, g_base);
     if (bullet_btn)
       EnsureTex("basic_interface\\sys_base_on.bmp", skin::kSysBaseOn, g_base_on);
 
     // Repliée : le rect visible EST la barre de titre ; sinon TitleBarRect().
     const ImRect tb = w->Collapsed ? w->Rect() : w->TitleBarRect();
     ImDrawList* dl = w->DrawList;
-    const float y0 = tb.Min.y, y1 = tb.Max.y;
-    const float capL = Px((float)g_tl.w), capR = Px((float)g_tr.w);
+    const float y0 = tb.Min.y;  // les boutons système s'y recalent, plus bas
 
     // Après Begin, la clip rect du draw list est réduite à la zone de contenu
     // (sous le titre) → tout dessin dans la barre de titre serait découpé.
     // On élargit la clip à la barre de titre le temps de la peindre.
     dl->PushClipRect(tb.Min, tb.Max, false);
 
-    if (!g_tl.tex) {
-      // Repli visible : textures pas encore prêtes / échec de création. Barre bleue
-      // pleine (≠ chrome sombre par défaut) pour diagnostiquer d'un coup d'œil.
-      dl->AddRectFilledMultiColor(tb.Min, tb.Max, IM_COL32(126, 158, 224, 255),
-                                  IM_COL32(126, 158, 224, 255),
-                                  IM_COL32(86, 122, 200, 255),
-                                  IM_COL32(86, 122, 200, 255));
-    }
-    dl->AddCallback(ImCb_PointFilter, nullptr);
-    BlitStretch(dl, g_tl, ImVec2(tb.Min.x, y0), ImVec2(tb.Min.x + capL, y1));
-    BlitStretch(dl, g_tr, ImVec2(tb.Max.x - capR, y0), ImVec2(tb.Max.x, y1));
-    BlitStretch(dl, g_tm, ImVec2(tb.Min.x + capL, y0), ImVec2(tb.Max.x - capR, y1));
+    // Le décor et la place de la puce : le même corps sert à la modale.
+    const TitleBarSlots slots = PaintTitleBar(dl, tb);
+    const ImVec2 base_tl = slots.bullet_tl, base_br = slots.bullet_br;
 
     // Bullet sys_base devant le titre : décoratif (comme le natif RO), ou bouton
     // si SetNextWindowTitleBullet a été appelé — art « on » au survol, curseur
     // main, et le clic est remonté à l'appelant via TitleBulletClicked().
-    const float base_sz = Px((float)g_base.w);  // 11
-    const float base_x = tb.Min.x + Px(5.0f);
-    const float base_y = y0 + (tb.GetHeight() - base_sz) * 0.5f;
-    const ImVec2 base_tl(base_x, base_y);
-    const ImVec2 base_br(base_x + base_sz, base_y + base_sz);
     bool bullet_hovered = false;
     if (bullet_btn) {
       // Cible élargie de 2px : 11px est trop petit pour viser confortablement.
@@ -2063,21 +2133,8 @@ bool BeginRoWindow(const char* title, bool* p_open, int imgui_window_flags) {
     const SkinTex& base_tex =
         (bullet_hovered && g_base_on.tex) ? g_base_on : g_base;
     if (base_tex.tex) BlitStretch(dl, base_tex, base_tl, base_br);
-    const float text_x = base_x + base_sz + Px(4.0f);
-
-    // Titre par-dessus (couleur configurable ; coupe le "##id").
-    char nbuf[128];
-    const char* end = ImGui::FindRenderedTextEnd(title);
-    size_t n = (size_t)(end - title);
-    if (n >= sizeof(nbuf)) n = sizeof(nbuf) - 1;
-    memcpy(nbuf, title, n);
-    nbuf[n] = '\0';
-    const ImU32 title_tx = ImGui::ColorConvertFloat4ToU32(
-        ImVec4(g_cfg.title_text[0], g_cfg.title_text[1], g_cfg.title_text[2],
-               g_cfg.title_text[3] * g_cfg.alpha));  // suit l'opacité
-    const ImVec2 ts = ImGui::CalcTextSize(nbuf);
-    dl->AddText(ImVec2(text_x, y0 + (tb.GetHeight() - ts.y) * 0.5f - Px(1.5f)),
-                title_tx, nbuf);
+    // Titre par-dessus.
+    PaintTitleBarText(dl, tb, title, slots.text_x);
 
     // Boutons système à droite : close (seulement si la fenêtre est fermable,
     // p_open != null) collé au bord droit ; puis l'épingle si la fenêtre est
@@ -2529,43 +2586,14 @@ bool BeginRoPopupModal(const char* title, int imgui_window_flags) {
   // boutons système (dialogue modal).
   ImGuiWindow* w = ImGui::GetCurrentWindow();
   if (w && !w->Hidden) {
-    EnsureTex("basic_interface\\titlebar_left.bmp", skin::kTitlebarLeft, g_tl);
-    EnsureTex("basic_interface\\titlebar_mid.bmp", skin::kTitlebarMid, g_tm);
-    EnsureTex("basic_interface\\titlebar_right.bmp", skin::kTitlebarRight, g_tr);
-    EnsureTex("basic_interface\\sys_base_off.bmp", skin::kSysBaseOff, g_base);
+    EnsureTitleBarTextures();
     const ImRect tb = w->TitleBarRect();
     ImDrawList* dl = w->DrawList;
-    const float y0 = tb.Min.y, y1 = tb.Max.y;
-    const float capL = Px((float)g_tl.w), capR = Px((float)g_tr.w);
     dl->PushClipRect(tb.Min, tb.Max, false);
-    if (!g_tl.tex)
-      dl->AddRectFilledMultiColor(tb.Min, tb.Max, IM_COL32(126, 158, 224, 255),
-                                  IM_COL32(126, 158, 224, 255),
-                                  IM_COL32(86, 122, 200, 255),
-                                  IM_COL32(86, 122, 200, 255));
-    dl->AddCallback(ImCb_PointFilter, nullptr);
-    BlitStretch(dl, g_tl, ImVec2(tb.Min.x, y0), ImVec2(tb.Min.x + capL, y1));
-    BlitStretch(dl, g_tr, ImVec2(tb.Max.x - capR, y0), ImVec2(tb.Max.x, y1));
-    BlitStretch(dl, g_tm, ImVec2(tb.Min.x + capL, y0), ImVec2(tb.Max.x - capR, y1));
-    const float base_sz = Px((float)g_base.w);
-    const float base_x = tb.Min.x + Px(5.0f);
-    const float base_y = y0 + (tb.GetHeight() - base_sz) * 0.5f;
-    if (g_base.tex)
-      BlitStretch(dl, g_base, ImVec2(base_x, base_y),
-                  ImVec2(base_x + base_sz, base_y + base_sz));
-    const float text_x = base_x + base_sz + Px(4.0f);
-    char nbuf[128];
-    const char* end = ImGui::FindRenderedTextEnd(title);
-    size_t n = (size_t)(end - title);
-    if (n >= sizeof(nbuf)) n = sizeof(nbuf) - 1;
-    memcpy(nbuf, title, n);
-    nbuf[n] = '\0';
-    const ImU32 title_tx = ImGui::ColorConvertFloat4ToU32(
-        ImVec4(g_cfg.title_text[0], g_cfg.title_text[1], g_cfg.title_text[2],
-               g_cfg.title_text[3] * g_cfg.alpha));
-    const ImVec2 ts = ImGui::CalcTextSize(nbuf);
-    dl->AddText(ImVec2(text_x, y0 + (tb.GetHeight() - ts.y) * 0.5f - Px(1.5f)),
-                title_tx, nbuf);
+    const TitleBarSlots slots = PaintTitleBar(dl, tb);
+    // Puce DÉCORATIVE : un dialogue modal n'a pas de réglages où mener.
+    if (g_base.tex) BlitStretch(dl, g_base, slots.bullet_tl, slots.bullet_br);
+    PaintTitleBarText(dl, tb, title, slots.text_x);
     dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
     dl->PopClipRect();
   }
@@ -2728,29 +2756,13 @@ bool BeginRoDescPanel(const char* id, int imgui_window_flags) {
   const bool open = ImGui::Begin(id, nullptr, imgui_window_flags);
   ImGuiWindow* w = ImGui::GetCurrentWindow();
   if (open && w && !w->Hidden && !w->Collapsed) {
-    EnsureTex("sysbox_lu.bmp", skin::kSysboxLu, g_sb_lu);
-    EnsureTex("sysbox_mu.bmp", skin::kSysboxMu, g_sb_mu);
-    EnsureTex("sysbox_ru.bmp", skin::kSysboxRu, g_sb_ru);
-    EnsureTex("sysbox_lm.bmp", skin::kSysboxLm, g_sb_lm);
-    EnsureTex("sysbox_rm.bmp", skin::kSysboxRm, g_sb_rm);
-    EnsureTex("sysbox_ld.bmp", skin::kSysboxLd, g_sb_ld);
-    EnsureTex("sysbox_md.bmp", skin::kSysboxMd, g_sb_md);
-    EnsureTex("sysbox_rd.bmp", skin::kSysboxRd, g_sb_rd);
+    // Le MÊME cadre que `DrawDescPanelFrame` peint pour ses propres appelants :
+    // les huit chargements et les huit blits étaient recopiés ici, à l'identique.
+    // 🔴 Sans fond : la fenêtre a déjà le sien, blanc et ARRONDI, qu'un rectangle
+    // à angles droits recouvrirait aux coins.
     const ImRect wr = w->Rect();
-    ImDrawList* dl = w->DrawList;
-    const float fx0 = wr.Min.x, fy0 = wr.Min.y, fx1 = wr.Max.x, fy1 = wr.Max.y;
-    dl->PushClipRect(wr.Min, wr.Max, false);
-    dl->AddCallback(ImCb_PointFilter, nullptr);
-    BlitStretch(dl, g_sb_lu, ImVec2(fx0, fy0), ImVec2(fx0 + e, fy0 + e));
-    BlitStretch(dl, g_sb_ru, ImVec2(fx1 - e, fy0), ImVec2(fx1, fy0 + e));
-    BlitStretch(dl, g_sb_ld, ImVec2(fx0, fy1 - e), ImVec2(fx0 + e, fy1));
-    BlitStretch(dl, g_sb_rd, ImVec2(fx1 - e, fy1 - e), ImVec2(fx1, fy1));
-    BlitStretch(dl, g_sb_mu, ImVec2(fx0 + e, fy0), ImVec2(fx1 - e, fy0 + e));
-    BlitStretch(dl, g_sb_md, ImVec2(fx0 + e, fy1 - e), ImVec2(fx1 - e, fy1));
-    BlitStretch(dl, g_sb_lm, ImVec2(fx0, fy0 + e), ImVec2(fx0 + e, fy1 - e));
-    BlitStretch(dl, g_sb_rm, ImVec2(fx1 - e, fy0 + e), ImVec2(fx1, fy1 - e));
-    dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
-    dl->PopClipRect();
+    DrawDescPanelFrame(w->DrawList, wr.Min.x, wr.Min.y, wr.Max.x, wr.Max.y,
+                       /*fill_bg=*/false);
   }
   return open;
 }
