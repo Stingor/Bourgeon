@@ -2847,7 +2847,7 @@ void CharSelect::OnRenderLoginUI() {
         ImGui::Separator();
         for (int f = 0; f < nframes; ++f) {
           char lbl[24];
-          std::snprintf(lbl, sizeof(lbl), "Image %d / %d", f + 1, nframes);
+          std::snprintf(lbl, sizeof(lbl), i18n::Tr("Image %d / %d"), f + 1, nframes);
           if (ImGui::MenuItem(lbl, nullptr, s.frame == f)) {
             s.frame = f;
             charsel::MarkDirty();
