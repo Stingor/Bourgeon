@@ -83,11 +83,9 @@ pouvait que rendre vide, puisqu'elle cherchait la mauvaise chose. Un argument
 positionnel ne se lit pas au jugé. Cf. [[feedback_absence_needs_measurement]] :
 valider le motif avant de croire un zéro.
 
-⚠ Ce qui reste discutable, et qui est une **question de réglage, pas un
-défaut** : 15 secondes, est-ce assez pour lire la liste puis marcher jusqu'à
-l'échoppe ? Allonger ce délai imposerait de passer en type 1 et d'ajouter un
-minuteur serveur qui envoie les retraits — c'est un vrai petit chantier, pas une
-correction.
+✅ **Question tranchée par l'utilisateur le 2026-09-02 : 15 secondes suffisent.**
+Ne pas rouvrir le sujet. Allonger le délai imposerait de passer en type 1 et
+d'ajouter un minuteur serveur qui envoie les retraits — du travail pour rien.
 
 ### 3.2 `@ignore` / `@unignore` / `@ignorelist`
 
