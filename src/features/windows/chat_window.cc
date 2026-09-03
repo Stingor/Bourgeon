@@ -1217,6 +1217,18 @@ constexpr ImU32 kLinkCol    = IM_COL32(0xF4, 0x93, 0x4A, 0xFF);  // liens du cli
 constexpr ImU32 kLinkColSpent = IM_COL32(0x96, 0x70, 0x52, 0xFF);
 constexpr ImU32 kTabTextCol = IM_COL32(0x14, 0x14, 0x14, 255);   // texte des onglets
 constexpr ImU32 kDarkText   = IM_COL32(0x14, 0x14, 0x14, 255);   // sur champ clair
+// Le compteur de place restante se pose sur le CORPS de la fenêtre, pas dans un
+// champ : même gris que le mot laissé à la place de la barre quand un salon la
+// porte, et un rouge sourd quand la limite est dépassée.
+constexpr ImU32 kBudgetCol     = IM_COL32(0xA0, 0xA0, 0xA0, 255);
+constexpr ImU32 kBudgetOverCol = IM_COL32(0xE8, 0x60, 0x60, 255);
+// La rangée de saisie : box « Pseudo », combo de mode, bouton d'emotes, puis le
+// champ, qui laisse une marge à droite. Ces largeurs servent DEUX fois — au
+// dessin, et à `InputFieldWidthFor` qui prédit la largeur du champ avant que la
+// rangée soit dessinée, pour savoir combien de lignes lui réserver.
+constexpr float kWhisperBoxW   = 90.0f;
+constexpr float kModeComboW    = 80.0f;
+constexpr float kFieldRightGap = 4.0f;
 
 // Redimensionnement par RANGÉES, comme le chat natif : il n'affiche jamais une
 // ligne coupée en deux, parce que sa hauteur ne prend que des valeurs « chrome +
@@ -1381,6 +1393,12 @@ bool chatwnd::DrawChatInputRow() {
   if (g_chat_window == nullptr || !g_chat_window->imgui_enabled_) return false;
   g_chat_window->DrawInputRow();
   return true;
+}
+
+float chatwnd::ChatInputRowHeight(float max_h) {
+  if (g_chat_window == nullptr || !g_chat_window->imgui_enabled_)
+    return ImGui::GetFrameHeight();  // la place du message « active la chatbox »
+  return g_chat_window->InputRowHeight(max_h);
 }
 
 bool chatwnd::TargetWhisper(const char* name_wire) {
@@ -3639,6 +3657,35 @@ void ChatWindow::DrawDockedWindow() {
   skin.min_h = 200.0f;
 
   ImGui::SetNextWindowSize(ImVec2(620.0f, 220.0f), ImGuiCond_FirstUseEver);
+  // Le champ de saisie déborde (ou a cessé de déborder) : la fenêtre gagne, ou
+  // rend, la hauteur que la mise en page a chiffrée à la frame précédente — vers
+  // le HAUT, le bas ne bouge pas. Un PAS appliqué une fois, pas une géométrie
+  // imposée à chaque frame : la fenêtre reste déplaçable et redimensionnable
+  // pendant qu'on écrit, et un redimensionnement du joueur à l'état grandi ne
+  // casse rien — on rendra exactement ce qu'on a pris.
+  // 🔴 Le pas est BORNÉ par ce que la contrainte de taille laissera passer.
+  // Sans cette borne, une fenêtre déjà à son maximum ne grandirait pas mais sa
+  // position, elle, monterait quand même — et glisserait d'un cran par frame.
+  // ⚠ ImGui marque son .ini à écrire sur une taille posée par l'API : une
+  // fermeture du jeu en pleine frappe d'un long message conserverait la fenêtre
+  // grandie. Bénin, et la frappe suivante la rend.
+  if (input_grow_step_ != 0.0f) {
+    if (const ImGuiWindow* win = ImGui::FindWindowByName("###bourgeon_chat")) {
+      const ImVec2 display = ImGui::GetIO().DisplaySize;
+      // Les mêmes bornes qu'ApplySizeConstraints — jamais inversées, même sur un
+      // écran minuscule, sans quoi `std::clamp` n'a plus de sens.
+      const float  max_h   = std::max(skin.min_h,
+                                      display.y > 0.0f ? display.y * 0.8f : FLT_MAX);
+      const float  step    = std::clamp(input_grow_step_, skin.min_h - win->Size.y,
+                                        max_h - win->Size.y);
+      if (step != 0.0f) {
+        ImGui::SetNextWindowSize(ImVec2(win->Size.x, win->Size.y + step), ImGuiCond_Always);
+        ImGui::SetNextWindowPos(ImVec2(win->Pos.x, win->Pos.y - step), ImGuiCond_Always);
+        input_grow_px_ += step;
+      }
+    }
+    input_grow_step_ = 0.0f;
+  }
   ApplySizeConstraints(skin);
   if (ro::BeginRoChatWindow("###bourgeon_chat", skin)) {
     DrawTabStrip();
@@ -3669,8 +3716,31 @@ void ChatWindow::DrawDockedWindow() {
 
     // La zone de log prend tout ce qui reste, moins la ligne de saisie.
     float log_h = ImGui::GetContentRegionAvail().y;
-    if (InputRowVisible())
-      log_h -= ImGui::GetFrameHeightWithSpacing();
+    if (InputRowVisible()) {
+      const float spacing_y = ImGui::GetStyle().ItemSpacing.y;
+      // La rangée GRANDIT avec la phrase : c'est elle qui dit sa hauteur, plafonnée
+      // pour que le log garde au moins une ligne. Quand un salon porte la barre,
+      // il ne reste ici qu'un mot à sa place — une rangée standard.
+      float row_h = ImGui::GetFrameHeight();
+      if (DrawsInputRowHere()) {
+        row_h = InputRowHeight(log_h - LogFontSize(previous) - spacing_y);
+        // Ce qui manque au champ (ou ce qu'il a en trop) une fois le log réduit à
+        // sa dernière ligne : la fenêtre le gagnera — ou le rendra — à la frame
+        // suivante, vers le haut (cf. DrawDockedWindow). Compté en lignes de
+        // texte ENTIÈRES, et par rapport au cumul déjà accordé : à l'état grandi
+        // le plafond a monté d'autant, donc l'écart retombe à zéro et la
+        // fenêtre ne bouge plus — pas d'oscillation.
+        const int spare = input_rows_needed_ - input_rows_cap_;  // > 0 : il manque
+        const float wanted =
+            std::max(0.0f, input_grow_px_ + static_cast<float>(spare) * ImGui::GetFontSize());
+        input_grow_step_ = wanted - input_grow_px_;
+      } else {
+        input_grow_step_ = -input_grow_px_;  // la barre n'est plus ici : tout rendre
+      }
+      log_h -= row_h + spacing_y;
+    } else {
+      input_grow_step_ = -input_grow_px_;
+    }
     if (log_h < LogFontSize(previous)) log_h = LogFontSize(previous);  // une ligne de LOG
 
     // Métriques pour la contrainte de taille de la PROCHAINE frame. Le « chrome »
@@ -5386,7 +5456,7 @@ bool ChatWindow::SendTextNow(const char* utf8, const char* whisper_utf8) {
 
 void ChatWindow::DrawInputRow() {
   ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
-  ImGui::SetNextItemWidth(ro::Px(90.0f));
+  ImGui::SetNextItemWidth(ro::Px(kWhisperBoxW));
   if (focus_whisper_next_) {
     ImGui::SetKeyboardFocusHere();
     // Consommée seulement le geste fini, exactement comme pour la saisie plus
@@ -5460,7 +5530,7 @@ void ChatWindow::DrawInputRow() {
   }
   const char* preview =
       channel_selected ? whisper_ : i18n::Tr(kModes[preview_mode]);
-  ImGui::SetNextItemWidth(ro::Px(80.0f));
+  ImGui::SetNextItemWidth(ro::Px(kModeComboW));
   ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
   const bool mode_combo_open    = ro::RoBeginCombo("##chat_mode", preview);
   const bool mode_combo_hovered = ImGui::IsItemHovered();
@@ -5558,12 +5628,22 @@ void ChatWindow::DrawInputRow() {
   ImGui::SameLine();
 
   ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
-  ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 4.0f);
+  ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - kFieldRightGap);
   // Géométrie du champ relevée AVANT sa soumission (le curseur aura avancé au
   // retour) ; le repeint des liens, lui, se fait APRÈS — il RECOUVRE le texte.
   const ImVec2 field_pos = ImGui::GetCursorScreenPos();
   const float  field_w   = ImGui::CalcItemWidth();
-  const float  field_h   = ImGui::GetFrameHeight();
+  // Combien de lignes : celles que la mise en page a réservées CETTE frame
+  // (`InputRowHeight`), sinon — appelant qui n'a rien réservé — le compte sans
+  // plafond. Une seule tant que le champ ne grandit pas ; `wrap_w` nul dit alors
+  // « ligne unique » à tout ce qui suit.
+  const float wrap_w = input_grow_ ? WrapWidthFor(field_w) : 0.0f;
+  int rows = 1;
+  if (wrap_w > 0.0f) {
+    rows = (input_rows_frame_ == ImGui::GetFrameCount()) ? input_rows_
+                                                          : WrapRows(input_, wrap_w);
+  }
+  const float  field_h   = ImGui::GetFrameHeight() + (rows - 1) * ImGui::GetFontSize();
   if (focus_input_next_) {
     ImGui::SetKeyboardFocusHere();
     // 🔴 LA DEMANDE N'EST CONSOMMÉE QU'UNE FOIS LE GESTE TERMINÉ. `SetKeyboardFocusHere`
@@ -5589,10 +5669,69 @@ void ChatWindow::DrawInputRow() {
     }
     return 0;
   };
-  const bool submitted = ImGui::InputText(
-      "##chat_input", input_, sizeof(input_),
-      ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackHistory,
-      history_cb, this);
+  // Le callback du RECTANGLE. Deux rôles : refuser le retour à la ligne (un
+  // message de chat n'en a pas — Ctrl+Entrée et Maj+Entrée, qu'ImGui traduit en
+  // « \n » en multiligne, ne doivent RIEN insérer, et un collage y perd les
+  // siens comme en ligne unique), et relever à chaque frame la ligne où se
+  // trouve le curseur, pour l'historique — voir plus bas pourquoi.
+  const auto grow_cb = [](ImGuiInputTextCallbackData* data) -> int {
+    auto* self = static_cast<ChatWindow*>(data->UserData);
+    if (data->EventFlag == ImGuiInputTextFlags_CallbackCharFilter)
+      return data->EventChar == '\n' ? 1 : 0;
+    if (data->EventFlag == ImGuiInputTextFlags_CallbackAlways)
+      self->input_cursor_rows_ = self->WrapRows(data->Buf, self->input_wrap_w_,
+                                                data->CursorPos, &self->input_cursor_row_);
+    return 0;
+  };
+  // La ligne du curseur AVANT que le widget ne traite les touches de cette
+  // frame : c'est la valeur relevée par le callback à la frame PRÉCÉDENTE. Le
+  // callback tourne après le traitement des touches, donc lire sa valeur après
+  // coup ne dirait pas si ↑ a trouvé une ligne au-dessus ou n'a rien pu faire.
+  const int cursor_row_before  = input_cursor_row_;
+  const int cursor_rows_before = input_cursor_rows_;
+  bool submitted;
+  if (wrap_w <= 0.0f) {
+    submitted = ImGui::InputText(
+        "##chat_input", input_, sizeof(input_),
+        ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackHistory,
+        history_cb, this);
+  } else {
+    // ── Le rectangle à retour à la ligne ─────────────────────────────────────
+    // Le même identifiant que la ligne unique (« ##chat_input », haché dans la
+    // même fenêtre) : l'état d'édition, le focus et `NotifyInputEdited` ne
+    // voient pas la différence. C'est ImGui qui coupe les lignes (WordWrap) ;
+    // nous, on lui donne la hauteur qui les contient toutes.
+    // 🔴 `CtrlEnterForNewLine` : Entrée VALIDE, comme en ligne unique. Sans lui
+    // Entrée insérerait une ligne et il faudrait Ctrl+Entrée pour envoyer.
+    input_wrap_w_ = wrap_w;
+    // 🔴 PAS DE BARRE DE DÉFILEMENT. Le child du multiligne est créé en dur par
+    // ImGui (sans `NoScrollbar` possible) ; la seule prise est la LARGEUR de la
+    // barre, mise à zéro : `ScrollbarEx` renvoie aussitôt sur un cadre de largeur
+    // nulle, et le texte garde toute la largeur du champ — `WrapWidthFor` compte
+    // là-dessus. Le champ montre TOUT ce qu'on écrit (la fenêtre grandit pour
+    // ça) ; quand la hauteur manque malgré tout, il suit le curseur, sans barre.
+    ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, 0.0f);
+    // 🔴🔴 LE CHILD N'HÉRITE PAS DE L'ÉCHELLE DE POLICE DE LA FENÊTRE. La chatbox
+    // applique son « Taille de l'interface » par `SetWindowFontScale` sur SA
+    // fenêtre (BeginRoChatWindow) ; ImGui 1.92 multiplie la taille de police par
+    // `window->FontWindowScale` de la SEULE fenêtre courante, et le child que le
+    // multiligne ouvre naît à 1.0. Dedans, la police valait donc 15 px quand le
+    // parent — et tous nos calculs — comptaient 14 : contenu de 21 px dans un
+    // cadre de 20, défilement interne qui alternait 0/1 px au gré du curseur (le
+    // texte sautait à chaque frappe), et une ligne de plus que prévu dès que la
+    // phrase frôlait le bord. Mesuré le 2026-09-03 par une trace du child. Le child
+    // reprend l'échelle du parent AVANT d'être rouvert ; il n'existe pas encore à
+    // la toute première frame — une frame à 15 px, invisible.
+    if (ImGuiWindow* child = InputChildWindow())
+      child->FontWindowScale = ImGui::GetCurrentWindow()->FontWindowScale;
+    submitted = ImGui::InputTextMultiline(
+        "##chat_input", input_, sizeof(input_), ImVec2(field_w, field_h),
+        ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CtrlEnterForNewLine |
+            ImGuiInputTextFlags_WordWrap | ImGuiInputTextFlags_CallbackCharFilter |
+            ImGuiInputTextFlags_CallbackAlways,
+        grow_cb, this);
+    ImGui::PopStyleVar();
+  }
   // L'id du champ, pour que les Append*Link puissent prévenir ImGui depuis une
   // AUTRE fenêtre qu'on a modifié son buffer (cf. NotifyInputEdited).
   input_field_id_ = ImGui::GetItemID();
@@ -5603,10 +5742,40 @@ void ChatWindow::DrawInputRow() {
   const bool input_hovered     = ImGui::IsItemHovered();
   if (input_active && ImGui::IsKeyPressed(ImGuiKey_Tab, false))
     focus_whisper_next_ = true;
+  if (wrap_w > 0.0f) {
+    // Ctrl+Entrée et Maj+Entrée VALIDENT aussi, comme en ligne unique — Ctrl
+    // tenu à l'envoi, c'est le groupe (cf. ReadSendToggleKeys). En multiligne
+    // ImGui en fait une insertion de « \n », que le filtre vient de refuser : la
+    // touche n'a donc rien fait et le champ est encore actif — c'est ici qu'on
+    // la lit.
+    const ImGuiIO& io = ImGui::GetIO();
+    if (!submitted && input_active && (io.KeyCtrl || io.KeyShift) &&
+        (ImGui::IsKeyPressed(ImGuiKey_Enter, false) ||
+         ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false)))
+      submitted = true;
+    // L'historique, sans le callback qu'ImGui refuse en multiligne (↑/↓ y sont
+    // au curseur). Règle : ↑ rappelle depuis la PREMIÈRE ligne, ↓ depuis la
+    // DERNIÈRE — ailleurs les flèches déplacent le curseur, et ImGui l'a déjà
+    // fait. Une phrase d'une ligne se comporte donc exactement comme avant.
+    // Répétition permise, comme dans le callback : la touche tenue remonte le fil.
+    if (input_active && cursor_row_before >= 0) {
+      if (ImGui::IsKeyPressed(ImGuiKey_UpArrow) && cursor_row_before == 0)
+        RecallHistoryIntoInput(-1);
+      else if (ImGui::IsKeyPressed(ImGuiKey_DownArrow) &&
+               cursor_row_before >= cursor_rows_before - 1)
+        RecallHistoryIntoInput(+1);
+    }
+  }
+  // Champ inactif : plus de ligne de curseur connue. La première frame d'une
+  // activation ne rappelle donc rien — le relevé arrive avec elle.
+  if (!input_active) input_cursor_row_ = -1;
   ImGui::PopStyleColor();
   // Les liens posés reprennent ici leur couleur et leurs crochets, par-dessus le
   // texte que le champ vient de peindre.
-  DrawInputLinkChips(field_pos, field_w, field_h, input_active, input_hovered);
+  DrawInputLinkChips(field_pos, field_w, field_h, input_active, input_hovered, wrap_w);
+  // La place restante, dès que le champ a une deuxième ligne — c'est aussi le
+  // moment où les widgets de gauche laissent, sous eux, la place de l'écrire.
+  if (rows >= 2) DrawInputBudget(field_pos, field_h);
   input_menu_.Draw("##chat_link_menu_input");
   // 🔴 LA PERTE DE FOCUS NE REFERME RIEN. DEUX sorties, toutes deux explicites :
   // Entrée sur un texte VIDE et ÉCHAP. Rien d'autre : ni la combo de mode, ni la
@@ -5663,6 +5832,110 @@ void ChatWindow::DrawInputRow() {
   // que le WndProc interroge entre deux frames — il ne peut pas appeler
   // `IsItemActive` lui-même.
   if (input_active || whisper_active) input_focus_frame_ = ImGui::GetFrameCount();
+}
+
+// ── Le champ qui grandit avec la phrase ──────────────────────────────────────
+// Le découpage en lignes est celui d'ImGui, à la fonction près : `InputTextEx`
+// construit son index de lignes avec `ImFontCalcWordWrapPositionEx(g.Font,
+// g.FontSize, s, end, wrap_width, WrapKeepBlanks)`, un « \n » sauté après chaque
+// coupe (imgui_widgets.cpp, InputTextLineIndexBuild). Le reproduire plutôt que
+// l'approcher : une coupure de différence, et la hauteur réservée n'a plus le
+// même nombre de lignes que le widget — une rangée déborde ou reste vide.
+int ChatWindow::WrapRows(const char* text, float wrap_w, int cursor, int* cursor_row) const {
+  ImFont* font = ImGui::GetFont();
+  const float font_h = ImGui::GetFontSize();
+  const char* const end = text + std::strlen(text);
+  int rows = 0;
+  if (cursor_row != nullptr) *cursor_row = 0;
+  for (const char* s = text; s < end;) {
+    // La ligne qui CONTIENT l'octet du curseur — la dernière dont le début ne
+    // le dépasse pas. Un curseur en fin de texte tombe donc sur la dernière.
+    if (cursor_row != nullptr && cursor >= static_cast<int>(s - text)) *cursor_row = rows;
+    ++rows;
+    const char* next = ImFontCalcWordWrapPositionEx(font, font_h, s, end, wrap_w,
+                                                    ImDrawTextFlags_WrapKeepBlanks);
+    if (next <= s) next = s + 1;  // garde-fou : ne jamais rester sur place
+    s = (next < end && *next == '\n') ? next + 1 : next;
+  }
+  return std::max(rows, 1);  // un texte vide fait une ligne, comme chez ImGui
+}
+
+// Le child qu'ImGui ouvre pour le champ multiligne, s'il existe déjà (il naît à
+// la première frame du rectangle). Son nom est celui que `BeginChildEx` forge :
+// « <fenêtre parente>/<label>_<id> », l'id étant celui du champ, haché dans la
+// fenêtre COURANTE — à appeler depuis la fenêtre qui porte la barre.
+ImGuiWindow* ChatWindow::InputChildWindow() const {
+  ImGuiWindow* win = ImGui::GetCurrentWindow();
+  if (win == nullptr) return nullptr;
+  char child_name[256];
+  std::snprintf(child_name, sizeof(child_name), "%s/%s_%08X", win->Name, "##chat_input",
+                win->GetID("##chat_input"));
+  return ImGui::FindWindowByName(child_name);
+}
+
+float ChatWindow::InputFieldWidthFor(float avail_x) const {
+  const float spacing = ImGui::GetStyle().ItemSpacing.x;
+  return avail_x - (ro::Px(kWhisperBoxW) + spacing) - (ro::Px(kModeComboW) + spacing) -
+         (ImGui::GetFrameHeight() + spacing) - kFieldRightGap;
+}
+
+// `InputTextEx` : `wrap_width = GetContentRegionAvail().x + (ScrollbarY ? 0 :
+// -ScrollbarSize)`, mesuré dans le child après un décalage de FramePadding.x —
+// donc la largeur du cadre moins ce décalage, moins la barre de défilement.
+// 🔴 Celle-ci vaut ZÉRO chez nous : `DrawInputRow` pousse `ScrollbarSize` à 0 le
+// temps du widget, donc rien à retrancher — ni ici, où le style courant n'a pas
+// cette poussée, ni là-bas. Retrancher `style.ScrollbarSize` ici compterait une
+// ligne de moins que le widget dès que le texte frôle le bord.
+float ChatWindow::WrapWidthFor(float field_w) const {
+  return std::max(1.0f, field_w - ImGui::GetStyle().FramePadding.x);
+}
+
+float ChatWindow::InputRowHeight(float max_h) {
+  const float one = ImGui::GetFrameHeight();
+  input_rows_frame_ = ImGui::GetFrameCount();
+  input_rows_       = 1;
+  if (!input_grow_) return one;
+  const float wrap_w = WrapWidthFor(InputFieldWidthFor(ImGui::GetContentRegionAvail().x));
+  const float font_h = ImGui::GetFontSize();
+  // Le plafond, c'est ce que l'appelant peut céder ; au-delà le champ défile en
+  // interne — il en garde la barre. Jamais moins d'une ligne.
+  input_rows_cap_    = std::max(1, 1 + static_cast<int>(std::floor((max_h - one) / font_h)));
+  input_rows_needed_ = WrapRows(input_, wrap_w);
+  input_rows_        = std::clamp(input_rows_needed_, 1, input_rows_cap_);
+  return one + (input_rows_ - 1) * font_h;
+}
+
+int ChatWindow::WireBytesOf(const char* utf8) const {
+  const std::string resolved = ResolveItemLinks(utf8);
+  return static_cast<int>(std::strlen(ro::Utf8ToWireText(resolved.c_str())));
+}
+
+void ChatWindow::DrawInputBudget(const ImVec2& field_pos, float field_h) {
+  const int left = kWireMessageMax - WireBytesOf(input_);
+  char label[48];
+  if (left >= 0)
+    std::snprintf(label, sizeof(label), i18n::Tr("reste %d"), left);
+  else
+    std::snprintf(label, sizeof(label), i18n::Tr("%d de trop"), -left);
+  const ImGuiStyle& style = ImGui::GetStyle();
+  const ImVec2 size = ImGui::CalcTextSize(label);
+  // Calé à droite contre le champ, sur sa DERNIÈRE ligne : sous la combo de mode
+  // et le bouton d'emotes, qui n'occupent que la première.
+  const ImVec2 pos(field_pos.x - style.ItemSpacing.x - size.x,
+                   field_pos.y + field_h - style.FramePadding.y - size.y);
+  ImGui::GetWindowDrawList()->AddText(pos, left >= 0 ? kBudgetCol : kBudgetOverCol, label);
+  if (ImGui::IsMouseHoveringRect(pos, ImVec2(pos.x + size.x, pos.y + size.y))) {
+    ImGui::PushStyleColor(ImGuiCol_Text, kDarkText);
+    char help[384];
+    std::snprintf(help, sizeof(help), i18n::Tr(
+        "Place restante dans le message, en octets tels qu'ils partent au serveur "
+        "(limite %d) : une lettre accentuée compte 1, un emoji 4, un lien d'objet sa "
+        "balise entière.\nAu-delà, le serveur jette le message sans un mot — la barre "
+        "le retient."),
+        kWireMessageMax);
+    ImGui::SetTooltip("%s", help);
+    ImGui::PopStyleColor();
+  }
 }
 
 // ── Persistance de la disposition ────────────────────────────────────────────
@@ -6545,24 +6818,40 @@ void ChatWindow::PushInputHistory(const char* utf8) {
 // Rappel ↑/↓, calqué sur `UIChatEditCtrl::OnMsg` (msg 18/19). L'index vaut `size()`
 // quand on est sur le brouillon — c'est ce qui permet de RESSORTIR de l'historique
 // par le bas et de retrouver la phrase commencée, au lieu d'une ligne vide.
-void ChatWindow::RecallHistory(int direction, ImGuiInputTextCallbackData* data) {
+bool ChatWindow::RecallHistoryText(int direction, const char* current, std::string* out) {
   const int count = static_cast<int>(input_history_.size());
-  if (count == 0) return;
+  if (count == 0) return false;
   if (direction < 0) {  // ↑ : vers le passé
-    if (history_index_ == count) input_draft_ = data->Buf;  // mise de côté
+    if (history_index_ == count) input_draft_ = current;  // mise de côté
     if (history_index_ > 0) --history_index_;
   } else {  // ↓ : vers le présent
-    if (history_index_ >= count) return;
+    if (history_index_ >= count) return false;
     ++history_index_;
   }
-  const std::string& text =
-      (history_index_ >= count) ? input_draft_ : input_history_[history_index_];
+  *out = (history_index_ >= count) ? input_draft_ : input_history_[history_index_];
+  return true;
+}
+
+void ChatWindow::RecallHistory(int direction, ImGuiInputTextCallbackData* data) {
+  std::string text;
+  if (!RecallHistoryText(direction, data->Buf, &text)) return;
   data->DeleteChars(0, data->BufTextLen);
   data->InsertChars(0, text.c_str());
   // Pas de sélection : `InsertChars` laisse le curseur en fin de ligne, donc la
   // phrase rappelée se COMPLÈTE. Une sélection totale la ferait disparaître à la
   // première touche, ce qui est exactement le contraire de l'usage — on rappelle
   // pour corriger une faute de frappe ou changer un mot.
+}
+
+// La même chose pour le rectangle à retour à la ligne, hors callback : on écrit
+// dans `input_` et on prévient le widget, exactement comme les Append*Link.
+// `ReloadUserBufAndMoveToEnd` pose le curseur en fin — le même geste que le
+// callback, pour la même raison.
+void ChatWindow::RecallHistoryIntoInput(int direction) {
+  std::string text;
+  if (!RecallHistoryText(direction, input_, &text)) return;
+  CopyBounded(input_, sizeof(input_), text.c_str());
+  NotifyInputEdited();
 }
 
 // Un destinataire entre dans la liste QUAND ON LUI PARLE, pas quand on tape son
@@ -6693,29 +6982,58 @@ std::string ChatWindow::ResolveItemLinks(const char* utf8) const {
 // défaut, qui est justement le décalage d'un champ inactif). L'ignorer collerait
 // les pastilles sur du texte qui a glissé, d'autant plus visiblement que la
 // saisie est longue — c'est-à-dire précisément quand on pose plusieurs liens.
+//
+// Le RECTANGLE à retour à la ligne (`wrap_w` > 0) ne défile pas à l'horizontale
+// mais coupe le texte en lignes — les mêmes coupures que le widget, par
+// `WrapRows`/`ImFontCalcWordWrapPositionEx` — et un lien peut chevaucher deux
+// lignes : sa pastille se peint alors en deux morceaux. Son défilement, lui, est
+// vertical et vit dans le child qu'ImGui ouvre pour le multiligne, retrouvé par
+// le nom qu'il lui donne (« <fenêtre>/<label>_<id> », imgui.cpp BeginChildEx) ;
+// il n'est non nul que si la mise en page a plafonné le nombre de lignes.
 void ChatWindow::DrawInputLinkChips(const ImVec2& field_pos, float field_w,
                                     float field_h, bool field_active,
-                                    bool field_hovered) {
+                                    bool field_hovered, float wrap_w) {
   if (item_links_.empty() || input_[0] == '\0') return;
   const ImGuiStyle& style = ImGui::GetStyle();
-  float scroll_x = 0.0f;
-  if (ImGuiWindow* win = ImGui::GetCurrentWindow()) {
-    if (const ImGuiInputTextState* st =
-            ImGui::GetInputTextState(win->GetID("##chat_input")))
-      scroll_x = st->Scroll.x;
+  const float font_h = ImGui::GetFontSize();
+  ImVec2 scroll(0.0f, 0.0f);
+  if (wrap_w <= 0.0f) {
+    if (ImGuiWindow* win = ImGui::GetCurrentWindow())
+      if (const ImGuiInputTextState* st = ImGui::GetInputTextState(win->GetID("##chat_input")))
+        scroll.x = st->Scroll.x;
+  } else if (const ImGuiWindow* child = InputChildWindow()) {
+    scroll.y = child->Scroll.y;
   }
   const ImU32 bg = ImGui::GetColorU32(field_active    ? ImGuiCol_FrameBgActive
                                       : field_hovered ? ImGuiCol_FrameBgHovered
                                                       : ImGuiCol_FrameBg);
-  const float x0 = field_pos.x + style.FramePadding.x - scroll_x;
-  const float y0 = field_pos.y + style.FramePadding.y;
+  const float x0 = field_pos.x + style.FramePadding.x - scroll.x;
+  const float y0 = field_pos.y + style.FramePadding.y - scroll.y;
   const ImVec2 clip_min(field_pos.x + 1.0f, field_pos.y + 1.0f);
   const ImVec2 clip_max(field_pos.x + field_w - 1.0f, field_pos.y + field_h - 1.0f);
   const bool over_field = ImGui::IsMouseHoveringRect(clip_min, clip_max);
 
+  // Les lignes du champ : une seule, entière, sans retour à la ligne.
+  const std::string src = input_;
+  const char* const base = src.c_str();
+  const char* const end  = base + src.size();
+  struct Row { const char* begin; const char* end; };
+  std::vector<Row> lines;
+  if (wrap_w <= 0.0f) {
+    lines.push_back({base, end});
+  } else {
+    ImFont* font = ImGui::GetFont();
+    for (const char* s = base; s < end;) {  // même boucle que WrapRows
+      const char* next = ImFontCalcWordWrapPositionEx(font, font_h, s, end, wrap_w,
+                                                      ImDrawTextFlags_WrapKeepBlanks);
+      if (next <= s) next = s + 1;
+      lines.push_back({s, next});
+      s = (next < end && *next == '\n') ? next + 1 : next;
+    }
+  }
+
   ImDrawList* dl = ImGui::GetWindowDrawList();
   dl->PushClipRect(clip_min, clip_max, true);
-  const std::string src = input_;
   size_t from = 0;
   // Même balayage que ResolveItemLinks — de gauche à droite, un lien consommé à
   // la fois : deux exemplaires du même objet gardent chacun leur pastille.
@@ -6724,18 +7042,27 @@ void ChatWindow::DrawInputLinkChips(const ImVec2& field_pos, float field_w,
     const size_t at = src.find(link.display, from);
     if (at == std::string::npos) continue;
     from = at + link.display.size();
-    const char* base = src.c_str();
-    const float pre = ImGui::CalcTextSize(base, base + at).x;
-    const float wdt = ImGui::CalcTextSize(base + at, base + from).x;
-    const ImVec2 p(x0 + pre, y0);
-    const ImVec2 a(p.x - 1.0f, field_pos.y + 2.0f);
-    const ImVec2 b(p.x + wdt + 1.0f, field_pos.y + field_h - 2.0f);
-    dl->AddRectFilled(a, b, bg);  // efface le texte que le champ vient d'écrire
-    dl->AddText(p, kLinkCol, base + at, base + from);
-    // Mêmes gestes que dans le log — et c'est le même code qui les joue. Le
-    // survol, lui, est à nous : ces pastilles sont peintes à la main par-dessus
-    // un `InputText`, ce ne sont pas des items ImGui.
-    const bool hovered = over_field && ImGui::IsMouseHoveringRect(a, b);
+    const char* const link_begin = base + at;
+    const char* const link_end   = base + from;
+    bool hovered = false;
+    for (size_t i = 0; i < lines.size(); ++i) {
+      // La part du lien qui tombe sur CETTE ligne — rien, tout, ou un morceau.
+      const char* seg_begin = std::max(lines[i].begin, link_begin);
+      const char* seg_end   = std::min(lines[i].end, link_end);
+      if (seg_begin >= seg_end) continue;
+      const float pre = ImGui::CalcTextSize(lines[i].begin, seg_begin).x;
+      const float wdt = ImGui::CalcTextSize(seg_begin, seg_end).x;
+      const ImVec2 p(x0 + pre, y0 + static_cast<float>(i) * font_h);
+      const ImVec2 a(p.x - 1.0f, p.y - 1.0f);
+      const ImVec2 b(p.x + wdt + 1.0f, p.y + font_h + 1.0f);
+      dl->AddRectFilled(a, b, bg);  // efface le texte que le champ vient d'écrire
+      dl->AddText(p, kLinkCol, seg_begin, seg_end);
+      // Le survol est à nous : ces pastilles sont peintes à la main par-dessus
+      // un `InputText`, ce ne sont pas des items ImGui.
+      if (over_field && ImGui::IsMouseHoveringRect(a, b)) hovered = true;
+    }
+    // Mêmes gestes que dans le log — et c'est le même code qui les joue. Une
+    // fois par lien, pas par morceau : un lien coupé en deux reste UN lien.
     const links::Target target = TargetOf(link);
     if (hovered) links::HoverPreview(target);
     if (links::Gestures(target, hovered)) input_menu_.Arm(target);
@@ -7397,13 +7724,31 @@ void ChatWindow::QueueSend() {
   // Même condition que le chemin d'envoi : une ligne qui commence par `/` est une
   // commande, la box destinataire n'est PAS consultée — enregistrer le nom alors
   // qu'on n'a chuchoté à personne salirait la liste.
-  if (input_[0] != '/') PushWhisperHistory(whisper_);
   // Les liens d'objets reprennent leur forme longue AVANT la conversion : le
   // `<ITEML>` est de l'ASCII pur, il traverse `Utf8ToWire` inchangé, alors que le
   // NOM qu'il remplace, lui, ne survivrait pas forcément à l'aller-retour.
   // L'historique de saisie, lui, garde la version LISIBLE : c'est ce que le
   // joueur a écrit, et c'est ce qu'il veut retrouver à la flèche du haut.
   const std::string resolved = ResolveItemLinks(input_);
+  // 🔴 TROP LONG = RETENU ICI, texte gardé. Le serveur ne tronque pas : au-delà
+  // de `kWireMessageMax` octets sur le fil, `clif_process_message` JETTE le
+  // message avec un ShowWarning que seul l'admin lit — le joueur, lui, voit sa
+  // ligne partir et rien arriver. Compté sur le texte TEL QU'IL PART (liens
+  // déployés, encodage du fil) : c'est ce nombre-là que le serveur regarde, et
+  // c'est celui que le compteur de la barre affiche. La saisie reste en place
+  // pour être raccourcie ; les liens posés restent posés.
+  const int over = static_cast<int>(std::strlen(ro::Utf8ToWireText(resolved.c_str()))) -
+                   kWireMessageMax;
+  if (over > 0) {
+    char msg[192];
+    std::snprintf(msg, sizeof(msg),
+                  i18n::Tr("Message trop long de %d (limite %d) : le serveur le jetterait "
+                           "sans un mot. Raccourcis-le."),
+                  over, kWireMessageMax);
+    AddLocalLine(msg, kSendErrorRgb);
+    return;
+  }
+  if (input_[0] != '/') PushWhisperHistory(whisper_);
   item_links_.clear();
   // La saisie ImGui est en UTF-8 ; le fil, lui, est en 1252 — sauf quand la
   // phrase contient quelque chose que 1252 ne sait pas écrire (un emoji), auquel
@@ -7599,6 +7944,26 @@ bool ChatWindow::DrawSettings() {
                      "d'« Interface de jeu »."));
   ImGui::BeginDisabled(!ModernInterfaceEnabled());
   changed |= ro::RoCheckbox(i18n::Tr("Ligne de saisie###chatwnd_input"), &input_bar_);
+  // Grisée sans la ligne : le réglage d'un champ qui n'est pas là ne ferait rien.
+  ImGui::BeginDisabled(!input_bar_);
+  changed |= ro::RoCheckbox(
+      i18n::Tr("Agrandir le champ de chat quand le texte est long###chatwnd_input_grow"),
+      &input_grow_);
+  ImGui::SameLine();
+  {
+    char help[640];
+    std::snprintf(help, sizeof(help), i18n::Tr(
+        "Dès que la phrase dépasse la largeur du champ, il gagne des lignes au lieu "
+        "de défiler : tout le message reste sous les yeux, et la place restante "
+        "s'affiche à sa gauche.\n\n"
+        "La limite est celle du serveur : %d octets tels qu'ils partent — une lettre "
+        "accentuée compte 1, un emoji 4, un lien d'objet sa balise entière. Au-delà "
+        "le serveur jette le message sans un mot ; la barre le retient et le dit.\n\n"
+        "Décoché, le champ garde une seule ligne, qui défile."),
+        kWireMessageMax);
+    HelpMarker(help);
+  }
+  ImGui::EndDisabled();
   // ⚠ Le verrouillage de la géométrie N'EST PLUS ICI : il y en a un par fenêtre,
   // et ce panneau ne sait pas de laquelle il parlerait. Il vit dans le menu
   // contextuel d'un onglet ou d'un en-tête — cf. DrawLogOptionsPopup.

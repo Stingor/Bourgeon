@@ -54,6 +54,8 @@
 #include "imgui.h"
 #include "ui/ro_imgui.h"  // ro::RoChatSkin (rendu par valeur par MakeSkin)
 
+struct ImGuiWindow;  // imgui_internal.h : le child du champ multiligne (InputChildWindow)
+
 class ChatWindow : public Plugin {
  public:
   ChatWindow();
@@ -142,6 +144,7 @@ class ChatWindow : public Plugin {
   bool& timestamps()   { return timestamps_; }
   bool& item_icons()   { return item_icons_; }
   bool& input_bar()    { return input_bar_; }
+  bool& input_grow()   { return input_grow_; }
   bool& diagnostic()   { return diagnostic_; }
   int&  history_cap()  { return history_cap_; }
   bool& keep_history() { return keep_history_; }
@@ -237,6 +240,13 @@ class ChatWindow : public Plugin {
   // ligne dans sa propre fenêtre (`chatwnd::DrawChatInputRow`). Elle reste écrite
   // pour être appelée UNE fois par frame, tout en bas d'un conteneur ImGui.
   void DrawInputRow();
+  // La hauteur que `DrawInputRow` prendra CETTE frame dans la fenêtre courante
+  // (sans l'espacement d'item), bornée par `max_h`. À appeler AVANT de
+  // dimensionner ce qui la précède (le log, les volets du salon) : depuis que le
+  // champ grandit avec la phrase, la rangée n'a plus une hauteur fixe, et la
+  // réservation et le dessin doivent parler du même nombre de lignes — d'où la
+  // mise en cache du résultat, que `DrawInputRow` relit dans la même frame.
+  float InputRowHeight(float max_h);
   // Public parce que le pont `chatwnd::ResolveOutgoingLinks` en a besoin : une
   // saisie qui n'est pas la barre principale (celle du salon) doit pouvoir
   // retraduire ses libellés de liens avant d'envoyer. Const, sans effet de bord.
@@ -1117,6 +1127,12 @@ class ChatWindow : public Plugin {
   bool timestamps_  = false;
   bool item_icons_  = true;
   bool input_bar_   = true;
+  // Le champ de saisie GRANDIT en rectangle dès que la phrase déborde de sa
+  // largeur, au lieu de défiler vers la gauche : on voit tout ce qu'on va
+  // envoyer, et la place restante s'affiche à côté. Coché par défaut — c'est le
+  // comportement demandé ; la case existe pour qui préfère la ligne qui défile,
+  // qui ne prend jamais qu'une rangée au log.
+  bool input_grow_  = true;
   // Mode DIAGNOSTIC : affiche tout ce qui est ingéré, sans filtre de canal, en
   // préfixant chaque ligne de son type. C'est la mesure qui tranche « la ligne
   // n'est pas arrivée » contre « la ligne est arrivée et le filtre l'a écartée » —
@@ -1187,6 +1203,14 @@ class ChatWindow : public Plugin {
   void PushInputHistory(const char* utf8);
   // Rappel ↑/↓ : écrit dans le tampon d'ImGui via le callback d'historique.
   void RecallHistory(int direction, ImGuiInputTextCallbackData* data);
+  // Le cœur du rappel, sans widget : déplace l'index, met le brouillon `current`
+  // de côté à l'entrée dans l'historique, et rend faux s'il n'y a rien à
+  // rappeler. Deux appelants, parce que le champ a deux formes : la ligne unique
+  // passe par le callback d'ImGui, le rectangle à retour à la ligne ne PEUT pas
+  // (ImGui refuse `CallbackHistory` en multiligne : ↑/↓ y déplacent le curseur)
+  // et réécrit `input_` lui-même, cf. `RecallHistoryIntoInput`.
+  bool RecallHistoryText(int direction, const char* current, std::string* out);
+  void RecallHistoryIntoInput(int direction);
 
   // Destinataires de chuchotement récents — l'équivalent du bouton natif « Select
   // Receiver » (msg 0xE1), qui liste l'historique tenu par la box destinataire
@@ -1317,8 +1341,74 @@ class ChatWindow : public Plugin {
   // accroche à la sienne. À appeler JUSTE APRÈS avoir soumis le champ, avec sa
   // géométrie et son état : un `InputText` n'a pas de texte riche, la couleur ne
   // s'obtient qu'en RECOUVRANT le fragment (fond du champ) pour le réécrire.
+  // `wrap_w` > 0 : le champ est le rectangle à retour à la ligne, et les
+  // pastilles suivent ses lignes ; 0 : la ligne unique qui défile.
   void DrawInputLinkChips(const ImVec2& field_pos, float field_w, float field_h,
-                          bool field_active, bool field_hovered);
+                          bool field_active, bool field_hovered, float wrap_w);
+
+  // ── Le champ qui GRANDIT avec la phrase (`input_grow_`) ─────────────────────
+  // Tout ce qui découpe le texte en lignes passe par UNE fonction, qui reproduit
+  // le découpage d'ImGui (même `ImFontCalcWordWrapPositionEx`, même drapeau) :
+  // la hauteur réservée, la ligne du curseur et la position des pastilles
+  // doivent tomber sur les mêmes coupures que le widget, sinon tout se décale
+  // d'une rangée. Rend le nombre de lignes (≥ 1) ; `cursor_row`, s'il est
+  // demandé, reçoit la ligne où tombe l'octet `cursor`.
+  int  WrapRows(const char* text, float wrap_w, int cursor = -1,
+                int* cursor_row = nullptr) const;
+  // Le child ImGui du champ multiligne (nullptr avant sa première frame). Il sert
+  // à lui faire hériter l'échelle de police de la fenêtre et à lire son
+  // défilement pour placer les pastilles de liens.
+  ImGuiWindow* InputChildWindow() const;
+  // Largeur que le CHAMP aura pour une rangée disposant de `avail_x` : ce qui
+  // reste après la box « Pseudo », la combo de mode et le bouton d'emotes.
+  float InputFieldWidthFor(float avail_x) const;
+  // Largeur de retour à la ligne d'ImGui pour un champ de `field_w`. Le widget
+  // réserve d'ordinaire la place de sa barre de défilement ; la nôtre a une
+  // largeur NULLE (le champ n'a pas de barre), donc seul FramePadding.x compte.
+  float WrapWidthFor(float field_w) const;
+  // Nombre de lignes décidé par `InputRowHeight` cette frame (1 si le champ ne
+  // grandit pas), et la frame où il l'a été : `DrawInputRow` ne s'en sert que
+  // si c'est la frame courante, sinon il recompte sans plafond.
+  int input_rows_       = 1;
+  int input_rows_frame_ = -1;
+  // Ce que le texte DEMANDE (sans plafond) et ce que la mise en page pouvait
+  // CÉDER (le plafond), relevés par `InputRowHeight` : leur écart dit à la
+  // fenêtre principale de quoi grandir — ou de quoi rendre.
+  int input_rows_needed_ = 1;
+  int input_rows_cap_    = 1;
+  // ── La fenêtre principale pousse vers le HAUT quand le champ déborde ───────
+  // Le champ mange d'abord le log, jusqu'à sa dernière ligne ; au-delà, c'est la
+  // FENÊTRE qui gagne la hauteur manquante, son bas restant où le joueur l'a
+  // posé — et qui la rend dès que le texte raccourcit ou part. Sans ça, une
+  // chatbox basse montrait une barre de défilement avec une seule ligne cachée
+  // dessous : tout l'intérêt du rectangle était perdu, précisément sur les
+  // messages les plus longs.
+  // `input_grow_px_` : la hauteur ajoutée à ce jour (cumul des pas RÉELLEMENT
+  // appliqués, la contrainte de taille pouvant en refuser une partie).
+  // `input_grow_step_` : le pas que la prochaine frame doit appliquer, signé,
+  // décidé par la mise en page une fois le nombre de lignes connu.
+  float input_grow_px_   = 0.0f;
+  float input_grow_step_ = 0.0f;
+  // Relevés par le callback du rectangle à CHAQUE frame où il est actif : la
+  // ligne du curseur et le nombre de lignes. Lus à la frame SUIVANTE, avant que
+  // le widget ne traite ses touches — c'est ce qui permet de savoir si ↑ vient
+  // de la première ligne (⇒ historique) ou d'une autre (⇒ le curseur monte).
+  // -1 : champ inactif, rien de connu.
+  int   input_cursor_row_  = -1;
+  int   input_cursor_rows_ = 1;
+  float input_wrap_w_      = 0.0f;  // la largeur de coupe passée au callback
+  // Le compteur de place restante, sous les widgets de gauche, aligné sur la
+  // dernière ligne du champ — l'espace qu'ils laissent libre dès que le champ
+  // fait deux rangées.
+  void DrawInputBudget(const ImVec2& field_pos, float field_h);
+  // Octets que `utf8` pèsera sur le fil, liens d'objets déployés — c'est CE
+  // nombre que le serveur compare à sa limite, pas la longueur tapée.
+  int  WireBytesOf(const char* utf8) const;
+  // Ce que le serveur accepte : `CHAT_SIZE_MAX - 1` (map.hpp, 255) moins le zéro
+  // terminal que `clif_process_message` compte dans `messageLength`. Au-delà il
+  // JETTE le message avec un simple ShowWarning côté serveur — le joueur ne
+  // voit rien. La limite porte sur le message seul, sans le « Nom : » devant.
+  static constexpr int kWireMessageMax = 254;
   // Ce qu'un fragment DÉSIGNE, dans le vocabulaire commun des liens.
   links::Target TargetOf(const Run& run) const;
   links::Target TargetOf(const PendingLink& link) const;
@@ -1333,7 +1423,14 @@ class ChatWindow : public Plugin {
   links::MenuAnchor input_menu_;  // les pastilles de la barre de saisie
 
   char search_[64] = {};
-  char input_[256] = {};        // ligne de saisie (UTF-8)
+  // 🔴 1024 et pas 256 : la LIMITE est celle du FIL (`kWireMessageMax` octets en
+  // 1252), pas celle du tampon. En UTF-8 une lettre accentuée pèse deux octets
+  // pour un seul sur le fil : à 256 le champ refusait la frappe bien avant que
+  // le message soit plein, et le compteur de place restante aurait menti. Quatre
+  // octets par caractère du fil au pire (un emoji fait basculer le fil en UTF-8,
+  // où il pèse ce qu'il pèse ici) : 1024 ne bride plus jamais avant le serveur.
+  // C'est `QueueSend` qui retient un message trop long, pas le tampon.
+  char input_[1024] = {};       // ligne de saisie (UTF-8)
   char whisper_[32] = {};       // destinataire du chuchotement (UTF-8)
   bool focus_input_next_ = false;
   // TAB fait la navette entre la saisie et le champ « Pseudo ». ImGui ne le fait
@@ -1613,6 +1710,12 @@ std::string ResolveOutgoingLinks(const char* utf8);
 // Renvoie false — et ne dessine rien — si la chatbox moderne est éteinte :
 // l'appelant doit alors le dire, sinon la fenêtre n'a plus de saisie du tout.
 bool DrawChatInputRow();
+// La hauteur que `DrawChatInputRow` prendra cette frame dans la fenêtre courante
+// (sans l'espacement d'item), au plus `max_h`. À appeler AVANT de dimensionner
+// ce qui la précède : la rangée grandit avec la phrase (cf.
+// ChatWindow::InputRowHeight). Rend une rangée standard si la chatbox moderne
+// est éteinte — la place d'un message à sa place.
+float ChatInputRowHeight(float max_h);
 
 // Écrit un nom dans la box destinataire de la barre : la suite part en
 // chuchotement. C'est ce que fait le bouton « Select Receiver » du chat natif, et

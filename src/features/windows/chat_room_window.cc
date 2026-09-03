@@ -1352,8 +1352,6 @@ void ChatRoomWindow::DrawRoom() {
   // ── Les deux volets ────────────────────────────────────────────────────────
   // Le natif donne 20 % de la largeur à la liste des membres (rapport 56/280) ;
   // on garde la proportion, avec un plancher pour qu'un nom tienne toujours.
-  const float footer_h =
-      ImGui::GetFrameHeightWithSpacing() * 2.0f + ImGui::GetStyle().ItemSpacing.y;
   // 🔴 Le volet « Réglages » se RÉSERVE sa place avant que les deux listes ne se
   // partagent le reste. Faire grandir la fenêtre ne suffisait pas : les enfants
   // sont dimensionnés sur `GetContentRegionAvail()`, donc ils absorbaient toute
@@ -1364,6 +1362,15 @@ void ChatRoomWindow::DrawRoom() {
   // bonne taille.
   const float settings_h =
       room_settings_shown_ ? SettingsPaneHeight() : 0.0f;
+  // Le pied : la barre de saisie de la chatbox, puis la rangée de boutons. La
+  // barre GRANDIT avec la phrase (cf. ChatWindow::InputRowHeight) : c'est elle
+  // qui dit sa hauteur, plafonnée pour laisser aux deux volets trois rangées.
+  const float spacing_y = ImGui::GetStyle().ItemSpacing.y;
+  const float buttons_h = ImGui::GetFrameHeightWithSpacing();
+  const float input_max = ImGui::GetContentRegionAvail().y - settings_h - buttons_h -
+                          ImGui::GetFrameHeightWithSpacing() * 3.0f;
+  const float footer_h =
+      chatwnd::ChatInputRowHeight(input_max) + spacing_y + buttons_h + spacing_y;
   // Plancher : le joueur peut rétrécir la fenêtre sous la somme des trois.
   const float avail_h = (std::max)(
       ImGui::GetFrameHeightWithSpacing(),

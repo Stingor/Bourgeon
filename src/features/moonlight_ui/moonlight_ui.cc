@@ -1199,6 +1199,11 @@ const moonlight_ui::SettingDesc kOptInWindowSettings[] = {
      MLUI_LITERAL(bool, true)},
     {"chatwnd_input_bar", SType::kBool, MLUI_FIELD(chat_window, input_bar()),
      MLUI_LITERAL(bool, true)},
+    // Le champ de saisie grandit en rectangle quand la phrase déborde, et montre
+    // la place restante. Défaut VRAI : c'est le comportement demandé ; la case
+    // rend la ligne unique qui défile à qui la préfère.
+    {"chatwnd_input_grow", SType::kBool, MLUI_FIELD(chat_window, input_grow()),
+     MLUI_LITERAL(bool, true)},
     // Aimantation des chatbox entre elles et sur les bords de l'écran. Défaut
     // VRAI : les fenêtres natives du client se rangent déjà comme ça, et une
     // chatbox qu'on pose à trois pixels d'une autre n'est jamais voulue.
