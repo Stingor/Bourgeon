@@ -1,6 +1,6 @@
 #include "features/systems/login_spectator.h"
 
-#include <Windows.h>  // GetTickCount
+#include <Windows.h>  // GetTickCount, mutex de session (jeton du décor)
 
 #include <cstring>
 
@@ -144,6 +144,56 @@ void SetStatus(const char* text) {
   strncpy_s(g_status, sizeof(g_status), text, _TRUNCATE);
 }
 
+// ── Un seul décor VIVANT par machine ─────────────────────────────────────────
+// Le serveur plafonne déjà les sessions par ADRESSE (`spectator_max_per_ip`), et
+// c'est lui l'autorité — il est le seul à voir un inconnu. Mais son refus se
+// PAIE : il arrive par le chemin d'erreur du login natif, donc par une boîte que
+// le joueur n'a pas demandée, sur un écran où il n'a même pas encore tapé son
+// nom, et il faut plusieurs secondes de voile avant qu'on renonce. Un jeton
+// local répond tout de suite, et sans rien montrer.
+//
+// Nommé sans préfixe, donc LOCAL à la session Windows : deux clients lancés par
+// le même joueur se voient — c'est le cas courant, celui du multi-client. Deux
+// machines derrière une même adresse restent l'affaire du serveur, qui les
+// départage (le second y perd le décor, pas sa connexion).
+//
+// 🔴 Windows rend le mutex quand le processus meurt : un client qui plante ne
+// laisse pas le jeton derrière lui, et il n'y a donc rien à réparer.
+constexpr char kLiveSlotName[] = "Bourgeon.LoginBackdrop.Live";
+HANDLE g_live_slot = nullptr;
+
+// Sans effet de bord : appelable à chaque frame, contrairement à la prise.
+bool LiveSlotTaken() {
+  HANDLE h = OpenMutexA(SYNCHRONIZE, FALSE, kLiveSlotName);
+  if (h == nullptr) return false;
+  CloseHandle(h);
+  return true;
+}
+
+// Idempotent. Rend faux si un autre client tient déjà le décor.
+bool ClaimLiveSlot() {
+  if (g_live_slot != nullptr) return true;
+  HANDLE h = CreateMutexA(nullptr, TRUE, kLiveSlotName);
+  // ⚠ Pas de jeton = pas de garde, et surtout pas de refus : on tente, et c'est
+  // le serveur qui tranchera. Une panne de mutex ne doit pas coûter le décor.
+  if (h == nullptr) return true;
+  if (GetLastError() == ERROR_ALREADY_EXISTS) {
+    CloseHandle(h);
+    return false;
+  }
+  g_live_slot = h;
+  return true;
+}
+
+// Rendu dès que la session est rendue, et pas avant : tant que le décor vit, il
+// occupe la seule place que le serveur accorde à cette adresse.
+void ReleaseLiveSlot() {
+  if (g_live_slot == nullptr) return;
+  ReleaseMutex(g_live_slot);
+  CloseHandle(g_live_slot);
+  g_live_slot = nullptr;
+}
+
 // ── Rendre la connexion ──────────────────────────────────────────────────────
 // Le geste central de ce module, et l'idée qui a débloqué tout le reste. Il se
 // joue au moment de PARTIR, juste avant de reprendre le mode de connexion.
@@ -164,6 +214,9 @@ void FreezeDecor() {
   if (g_frozen) return;
   g_frozen = true;
   const bool cut = rag::DisconnectFromServer();
+  // La session rendue, la place est libre : un autre client de cette machine
+  // peut prendre le décor à son tour (cf. ClaimLiveSlot).
+  ReleaseLiveSlot();
   LogDiag("[LoginSpectator] décor coupé du serveur ({}) — la scène est figée",
           cut ? "connexion rendue" : "aucune connexion à rendre");
 }
@@ -195,6 +248,12 @@ bool BackdropPossible() {
   // accesseur de plus dans Bourgeon pour un test défensif d'une ligne. La source
   // de vérité reste son `ParseCommandLine`.
   if (std::strstr(GetCommandLineA(), "--login:") != nullptr) return false;
+  // 🔴 Un autre client de cette machine tient déjà le décor. Testé SANS prendre
+  // le jeton (la prise, elle, attend `Begin`) : ce prédicat tourne à chaque
+  // frame, et un test qui réserve laisserait une place occupée par un décor qui
+  // n'est jamais parti. Le `g_live_slot` de tête est ce qui nous distingue de
+  // l'autre client : une fois le jeton à nous, il est bien pris — par nous.
+  if (g_live_slot == nullptr && LiveSlotTaken()) return false;
   return true;
 }
 
@@ -252,6 +311,9 @@ void Fail(const char* reason) {
     GoTo(Step::kLeaving, i18n::Tr("Fermeture de la session…"));
     return;
   }
+  // Rien n'a été ouvert, ou plus rien ne l'est : la place ne nous sert plus.
+  // (L'abandon EN JEU est passé par ForceLeaveWorld, donc par FreezeDecor.)
+  ReleaseLiveSlot();
   g_step = Step::kFailed;
   g_step_ms = GetTickCount();
   SetStatus(reason);
@@ -540,6 +602,13 @@ bool Pending() {
 
 void Begin() {
   if (Active()) return;
+  // 🔴 Dernière porte, et la seule qui RÉSERVE. Un client qui n'obtient pas le
+  // jeton ne tente rien : pas de voile, pas de séquence, pas de refus serveur à
+  // essuyer — l'écran de connexion s'affiche comme si le décor n'existait pas.
+  if (!ClaimLiveSlot()) {
+    LogDiag("[LoginSpectator] décor cédé : un autre client de cette machine le tient");
+    return;
+  }
   g_service_sent = false;
   g_frozen = false;
   g_leave_reports = 0;
@@ -672,6 +741,16 @@ namespace {
 // moyen d'enfermer le joueur devant une ville sans champ de saisie (cf. l'en-tête).
 void MaybeAutoStart() {
   if (g_auto_tried || g_step != Step::kOff) return;
+  // 🔴 Un autre client de cette machine tient le décor : on renonce POUR DE BON,
+  // et pas seulement pour cette frame. Sans ce marquage, le jour où il rend sa
+  // session — le joueur s'y connecte —, notre séquence partirait ICI, longtemps
+  // après la fenêtre où le voile pouvait la couvrir : le joueur verrait son
+  // propre écran de connexion se remplir tout seul de « moonlight_spectator ».
+  // Un retour au login le rendra à nouveau candidat (Rearm remet le drapeau).
+  if (g_live_slot == nullptr && LiveSlotTaken()) {
+    g_auto_tried = true;
+    return;
+  }
   if (!BackdropPossible()) return;
   // 🔴 On attend la FENÊTRE DE LOGIN, pas seulement « on est dans le mode ».
   // Ce n'est pas une nuance : tant qu'elle n'est pas là, le client est encore au
