@@ -63,6 +63,17 @@ constexpr uint32_t kLoginSettleMs = 400;
 // Cadence des comptes rendus d'une sortie qui s'éternise.
 constexpr uint32_t kLeaveReportMs = 1000;
 
+// Combien de temps le décor reste VIVANT avant de se couper tout seul.
+//
+// 🔴 Cette valeur doit rester STRICTEMENT INFÉRIEURE au `spectator_session_ttl`
+// du serveur (battle_config, 600 s par défaut), et c'est tout l'intérêt d'avoir
+// les deux : le serveur borne ce qui n'est pas un client Bourgeon, nous nous
+// coupons AVANT lui. Une déconnexion subie passe par le chemin de détection de
+// perte de lien, qui affiche une boîte — par-dessus l'écran de connexion, au
+// milieu de la saisie du joueur. Volontaire, elle ne montre rien : la scène se
+// fige, et un joueur qui a laissé son client ouvert ne regarde plus le décor.
+constexpr uint32_t kDecorLifetimeMs = 300000;  // 5 min
+
 // Combien de temps le voile TIENT après l'arrivée dans le monde (cf. le rendu).
 // Assez pour couvrir la mise en place — le pantin, le HUD, la caméra — sans
 // retarder l'apparition du décor au point que le joueur s'en aperçoive.
@@ -380,6 +391,13 @@ void StepSequence() {
       // garantit, en rendant la connexion AVANT de basculer. Les identifiants,
       // eux, ne se marchent plus dessus depuis qu'ils sont pris parmi les libres
       // (login_spectator_pick_id, côté serveur).
+      //
+      // 🔴 Une seule borne : au bout de kDecorLifetimeMs, on rend la connexion
+      // NOUS-MÊMES. Le décor n'y perd que son mouvement — la scène reste à
+      // l'écran, figée — et la session cesse d'occuper le serveur pour un joueur
+      // qui n'est plus devant. Ne PAS attendre que le serveur coupe : sa coupure
+      // à lui se voit (boîte de perte de lien), la nôtre non.
+      if (StepAgeMs() > kDecorLifetimeMs) FreezeDecor();
       return;
 
     case Step::kLeaveWanted:
