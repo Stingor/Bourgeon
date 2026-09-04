@@ -15,19 +15,51 @@
 // Pointer to the game's RagConnection singleton instance
 std::atomic<RagConnection*> RagConnection::g_ragconnection_ptr(nullptr);
 
-// Opcodes registered via RegisterRecvOpcode.
-std::unordered_set<uint16_t> RagConnection::s_registered_opcodes_;
-
 // Opcodes observed via RegisterObserveOpcode (opcode -> forward byte count).
 std::unordered_map<uint16_t, uint16_t> RagConnection::s_observe_opcodes_;
-
-// Opcodes au-dessus de la dispatch table (dispatchés depuis le reader-hook).
-std::unordered_set<uint16_t> RagConnection::s_reader_dispatch_opcodes_;
 
 // Opcodes STANDARD dont on a pris la place (RegisterReplaceOpcode).
 std::unordered_map<uint16_t, std::function<bool(const uint8_t*, uint16_t)>>
     RagConnection::s_replace_opcodes_;
 std::unordered_map<uint16_t, void*> RagConnection::s_native_handlers_;
+
+namespace {
+
+// ── Drapeaux par opcode, en TABLE PLATE ──────────────────────────────────────
+// 🔴 PacketBufReaderHook voit CHAQUE paquet reçu — c'est le chemin le plus
+// fréquenté de tout le module. Il y faisait jusqu'à trois recherches hachées par
+// paquet, dont une littéralement EN DOUBLE : `s_reader_dispatch_opcodes_` était
+// interrogée une première fois pour armer le saut de reset, puis une seconde,
+// pour le même opcode, à l'intérieur de la branche « enregistré ».
+//
+// Un opcode est un `uint16_t` : l'espace des clés tient tout entier en 64 Ko de
+// .bss, à zéro au démarrage et jamais paginé pour la part qu'on ne touche pas.
+// La question « ce paquet nous concerne-t-il ? » — celle que se pose la quasi-
+// totalité du trafic, pour s'entendre répondre non — devient UNE lecture
+// indexée, sans hachage, sans parcours de seau.
+//
+// ⚠ Ces drapeaux ne sont jamais RETIRÉS, à l'image des ensembles qu'ils
+// remplacent : une inscription d'opcode vaut pour la vie du processus.
+enum OpcodeFlag : uint8_t {
+  // Le paquet doit être RECOPIÉ par le reader-hook (RegisterRecvOpcode et
+  // RegisterReplaceOpcode) pour que le handler puisse le lire.
+  kOpcodeRegistered     = 1 << 0,
+  // Opcode au-dessus de la dispatch table : son handler natif n'est jamais
+  // appelé (hors bornes), c'est le reader-hook qui le dispatche lui-même.
+  kOpcodeReaderDispatch = 1 << 1,
+  // Observation passive : la LONGUEUR à transmettre est dans
+  // `s_observe_opcodes_`, que ce drapeau sert à ne consulter qu'au besoin.
+  kOpcodeObserved       = 1 << 2,
+};
+
+uint8_t g_opcode_flags[0x10000] = {};
+
+inline uint8_t OpcodeFlags(uint16_t opcode) { return g_opcode_flags[opcode]; }
+inline void    MarkOpcode(uint16_t opcode, uint8_t flags) {
+  g_opcode_flags[opcode] |= flags;
+}
+
+}  // namespace
 
 // Résolveur de longueur du client (renseigné depuis la config).
 uintptr_t RagConnection::s_packet_len_lookup_ = 0;
@@ -198,8 +230,7 @@ void RagConnection::RegisterRecvOpcode(uint16_t opcode) {
   // client les traite en variable (flag=-1).
   if (recv_dispatch_table_size_ != 0 &&
       idx >= static_cast<int>(recv_dispatch_table_size_)) {
-    s_reader_dispatch_opcodes_.insert(opcode);
-    s_registered_opcodes_.insert(opcode);
+    MarkOpcode(opcode, kOpcodeReaderDispatch | kOpcodeRegistered);
     // LogInfo("RagConnection: recv opcode 0x{:04x} -> reader-hook (au-dessus dispatch table, idx {})",
             // opcode, idx);
     return;
@@ -209,7 +240,7 @@ void RagConnection::RegisterRecvOpcode(uint16_t opcode) {
   VirtualProtect(slot, sizeof(void*), PAGE_READWRITE, &old);
   *slot = reinterpret_cast<void*>(&RagConnection::RecvPacketHandler);
   VirtualProtect(slot, sizeof(void*), old, &old);
-  s_registered_opcodes_.insert(opcode);
+  MarkOpcode(opcode, kOpcodeRegistered);
   // LogInfo("RagConnection: recv opcode 0x{:04x} → dispatch table slot [{}]", opcode, idx);
 }
 
@@ -249,6 +280,8 @@ void RagConnection::RegisterObserveOpcode(uint16_t opcode, uint16_t forward_len)
   // reste. Prendre le maximum est la seule règle qui ne dépende pas de l'ordre.
   uint16_t& len = s_observe_opcodes_[opcode];  // 0 à la première inscription
   if (forward_len > len) len = forward_len;
+  // Le drapeau qui dit au reader-hook d'aller consulter cette table.
+  MarkOpcode(opcode, kOpcodeObserved);
   // LogInfo("RagConnection: observe opcode 0x{:04x} (forward {} bytes)", opcode, len);
 }
 
@@ -288,7 +321,7 @@ void RagConnection::RegisterReplaceOpcode(
   s_replace_opcodes_[opcode] = std::move(claim);
   // Le paquet doit être RECOPIÉ par le reader-hook pour que le handler puisse le
   // lire : c'est ce set qui commande la copie.
-  s_registered_opcodes_.insert(opcode);
+  MarkOpcode(opcode, kOpcodeRegistered);
 
   void** slot = &recv_dispatch_table_[idx];
   // Idempotent : deux appels pour le même opcode ne doivent pas enregistrer NOTRE
@@ -325,9 +358,15 @@ uint16_t RagConnection::PacketBufReaderHook(uint8_t* packet_buf) {
   // appeler RecvBuffer_ResetAll juste après -> on arme le skip pour éviter que le
   // reset vide le buffer et jette le paquet suivant (cf. BufferResetHook). Toujours
   // rafraîchi (faux pour tout autre opcode) : un vrai opcode inconnu garde le reset.
-  g_suppress_buffer_reset = s_reader_dispatch_opcodes_.count(opcode) != 0;
+  // 🔴 UNE lecture indexée pour les trois questions, là où il y avait jusqu'à
+  // trois recherches hachées — dont deux pour le MÊME ensemble et le MÊME
+  // opcode (cf. la table plate en tête de fichier).
+  const uint8_t opcode_flags = OpcodeFlags(opcode);
+  const bool reader_dispatch = (opcode_flags & kOpcodeReaderDispatch) != 0;
 
-  if (s_registered_opcodes_.count(opcode)) {
+  g_suppress_buffer_reset = reader_dispatch;
+
+  if (opcode_flags & kOpcodeRegistered) {
     // Longueur FIXE d'abord : sur ces paquets, `[+2]` n'est pas une taille mais
     // deux octets de données (un GID, un résultat…), et les lire comme une taille
     // donnait une copie de longueur arbitraire.
@@ -344,7 +383,7 @@ uint16_t RagConnection::PacketBufReaderHook(uint8_t* packet_buf) {
       // Opcodes au-dessus de la dispatch table : leur handler natif n'est PAS
       // appelé (hors bornes) -> on déclenche OnRecvPacket ICI (comme
       // RecvPacketHandlerImpl le fait pour les opcodes de la table).
-      if (s_reader_dispatch_opcodes_.count(opcode)) {
+      if (reader_dispatch) {
         const uint16_t data_len = static_cast<uint16_t>(g_saved_packet_len) - 4;
         g_saved_packet_len   = 0;
         g_saved_packet_fixed = false;
@@ -363,9 +402,14 @@ uint16_t RagConnection::PacketBufReaderHook(uint8_t* packet_buf) {
   // Passive observation of standard packets: fire the plugin callback with the
   // bytes right after the opcode.  We do NOT touch the dispatch table, so the
   // game's own handler still runs — we only peek (e.g. mapname from 0x0091).
-  const auto obs = s_observe_opcodes_.find(opcode);
-  if (obs != s_observe_opcodes_.end()) {
-    Bourgeon::Instance().FireRecvPacket(opcode, packet_buf + 2, obs->second);
+  // ⚠ Le drapeau garde la table de hachage : seule la poignée d'opcodes
+  // réellement observés paie un hachage, tout le reste du trafic n'en paie
+  // aucun. La table porte une LONGUEUR, elle ne se réduit donc pas au drapeau.
+  if (opcode_flags & kOpcodeObserved) {
+    const auto obs = s_observe_opcodes_.find(opcode);
+    if (obs != s_observe_opcodes_.end()) {
+      Bourgeon::Instance().FireRecvPacket(opcode, packet_buf + 2, obs->second);
+    }
   }
   return result;
 }

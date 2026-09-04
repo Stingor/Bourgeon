@@ -5,7 +5,6 @@
 #include <functional>
 #include <memory>
 #include <unordered_map>
-#include <unordered_set>
 
 #include "utils/hooking/proxy.h"
 #include "yaml-cpp/yaml.h"
@@ -125,11 +124,16 @@ class RagConnection {
 
   static std::atomic<RagConnection *> g_ragconnection_ptr;
 
-  // Opcodes registered via RegisterRecvOpcode; checked in PacketBufReaderHook.
-  static std::unordered_set<uint16_t> s_registered_opcodes_;
+  // (Les ensembles d'opcodes « enregistré » et « dispatché au reader » ont été
+  //  remplacés par une TABLE PLATE de drapeaux, dans rag_connection.cc : voir
+  //  `OpcodeFlags`. Ce hook voit chaque paquet reçu, et il y faisait jusqu'à
+  //  trois recherches hachées — dont une littéralement en double.)
 
   // Opcodes observed via RegisterObserveOpcode (opcode -> bytes to forward after
   // the 2-byte opcode).  Checked in PacketBufReaderHook; dispatch is untouched.
+  // ⚠ Conservée en table de hachage : c'est la LONGUEUR qu'elle porte, pas un
+  // booléen. La table plate dit s'il faut y aller ; une poignée d'opcodes sont
+  // observés, ils sont donc les seuls à payer un hachage.
   static std::unordered_map<uint16_t, uint16_t> s_observe_opcodes_;
 
   // Opcodes STANDARD dont on a pris la place dans la dispatch table
@@ -141,11 +145,10 @@ class RagConnection {
       s_replace_opcodes_;
   static std::unordered_map<uint16_t, void*> s_native_handlers_;
 
-  // Opcodes ABOVE the dispatch-table bound (can't patch the table without going
-  // out of bounds) — dispatched directly from PacketBufReaderHook instead, which
-  // sees every packet.  Guaranteed-free zone for custom ZC packets (the client's
-  // length parser handles them as unknown/variable).
-  static std::unordered_set<uint16_t> s_reader_dispatch_opcodes_;
+  // (Les opcodes AU-DESSUS de la dispatch table — impossible d'y patcher un slot
+  //  sans écrire hors bornes, donc dispatchés depuis PacketBufReaderHook, qui
+  //  voit tous les paquets — sont eux aussi dans la table plate de
+  //  rag_connection.cc, sous le drapeau `kOpcodeReaderDispatch`.)
 
   // Résolveur de longueur du client (PacketLenTable_Lookup + sa table). STATIQUES
   // comme les tables ci-dessus : les hooks recv sont des méthodes dont le `this`
