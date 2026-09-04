@@ -156,6 +156,28 @@ std::string UpperAscii(const std::string& s) {
   for (char& c : r) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
   return r;
 }
+
+// Vocabulaire RichText du natif (cf. UIRichTextCtrl_WndProc). 🔴 C'est une liste
+// BLANCHE, et elle décide seule de ce qui est une balise : tout autre mot entre
+// chevrons est du TEXTE, pas un marquage. Le parseur consommait auparavant tout
+// ce qui tenait entre '<' et le premier '>', si bien qu'un script écrivant
+// « Enter ^6B9900<Wave Mode - Forest>^000000. » n'affichait que « Enter . » — le
+// natif, lui, rend la phrase entière. Les balises MAISON (<MOBL>, <IMG>…) ne sont
+// PAS ici : elles ont leur propre reconnaissance dans TryOwnTag.
+bool IsRichTextTag(const std::string& up) {
+  static const char* const kTags[] = {
+      "B",     "/B",    "I",      "/I",     "/FONT",  "INFO",   "/INFO",
+      "ITEM",  "/ITEM", "ITEML",  "/ITEML", "URL",    "/URL",   "NAVI",
+      "/NAVI", "NAVIL", "/NAVIL", "QUEST",  "/QUEST", "TIPBOX", "/TIPBOX",
+      "MSG",   "/MSG",
+  };
+  for (const char* t : kTags)
+    if (up == t) return true;
+  // <FONT …> porte des attributs : seul son NOM fait foi. La borne sur l'espace
+  // évite qu'un « <Fontaine de jouvence> » passe pour une balise de police.
+  return up.rfind("FONT", 0) == 0 && (up.size() == 4 || up[4] == ' ');
+}
+
 // Les scripts NPC arrivent par le fil ; ImGui veut de l'UTF-8 (sinon les accents
 // é/à/œ… cassent).
 //
@@ -743,9 +765,9 @@ void NpcDialogWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
 // clients qui ne rendent pas la balise.
 //
 // Une balise mal formée (fermante absente, champs manquants, id nul) n'est PAS
-// consommée ici : elle retombe sur le parseur générique, qui masque les chevrons
-// et laisse le corps en texte. C'est le bon échec — un script fautif se voit,
-// là où l'escamotage complet se cherche pendant une heure.
+// consommée ici : elle retombe sur le parseur générique, qui ne la reconnaît pas
+// davantage et la laisse s'afficher telle quelle, chevrons compris. C'est le bon
+// échec — un script fautif se voit, là où l'escamotage se cherche pendant une heure.
 const char* NpcDialogWindow::TryOwnTag(const char* p, const char* end, Run* out) {
   const char *b = nullptr, *be = nullptr, *after = nullptr;
   std::string f[3];
@@ -921,11 +943,13 @@ void NpcDialogWindow::ParseLine(const std::string& raw, std::vector<Run>* out) {
         continue;
       }
     }
-    // Balises <...>.
+    // Balises <...> du vocabulaire natif. Une séquence entre chevrons qui n'en
+    // fait pas partie retombe sur le texte ordinaire, plus bas : les chevrons et
+    // leur contenu s'affichent tels que le script les a écrits.
     if (*p == '<') {
       const char* gt = static_cast<const char*>(std::memchr(p, '>', end - p));
-      if (gt) {
-        std::string up = UpperAscii(std::string(p + 1, gt));
+      std::string up = gt ? UpperAscii(std::string(p + 1, gt)) : std::string();
+      if (gt && IsRichTextTag(up)) {
         p = gt + 1;
         if (up == "B") { flush(); cur.bold = true; }
         else if (up == "/B") { flush(); cur.bold = false; }
@@ -940,8 +964,9 @@ void NpcDialogWindow::ParseLine(const std::string& raw, std::vector<Run>* out) {
         else if (up == "NAVI" || up == "NAVIL") { flush(); cur.link = 0x1B6; cur.link_arg.clear(); }
         else if (up == "QUEST")                 { flush(); cur.link = 0x21B; cur.link_arg.clear(); }
         else if (up == "TIPBOX" || up == "MSG") { flush(); cur.link = 1;     cur.link_arg.clear(); }
-        else if (!up.empty() && up[0] == '/')   { flush(); cur.link = 0;     cur.link_arg.clear(); }
-        // (balise inconnue : consommée/masquée)
+        // Fermante d'un lien (</ITEM>, </URL>… : la liste blanche a déjà écarté
+        // les autres) — elle rend le texte suivant non cliquable.
+        else if (up[0] == '/')                  { flush(); cur.link = 0;     cur.link_arg.clear(); }
         continue;
       }
     }
