@@ -444,6 +444,10 @@ set(BOURGEON_FILES
 	"utils/log_console.h"
 	"utils/text.cc"
 	"utils/text.h"
+	# Table chaine -> valeur interrogeable par const char* sans allouer :
+	# les caches de textures, d'icones et de sprites y allouaient une
+	# std::string temporaire a chaque interrogation, succes compris.
+	"utils/str_key_map.h"
 	"utils/startup_settings.cc"
 	"utils/startup_settings.h"
 	"utils/tinf_inflate.h"

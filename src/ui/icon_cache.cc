@@ -25,8 +25,15 @@ struct IconKey {
   }
 };
 struct IconKeyHash {
+  // ⚠ Un MÉLANGE, pas un « ou exclusif » sur les bits de poids faible. C'était
+  // `hash(nameid) ^ (identified << 1)` : sur MSVC `hash<uint32_t>` est proche de
+  // l'identité, si bien que la clé (id, 1) tombait dans le même seau que
+  // (id ^ 2, 0) — deux items voisins et leurs deux états se rangeaient à quatre
+  // dans le même seau, pour rien.
   size_t operator()(const IconKey& k) const {
-    return std::hash<uint32_t>{}(k.nameid) ^ (static_cast<size_t>(k.identified) << 1);
+    const uint32_t mixed = k.nameid * 2654435761u +
+                           static_cast<uint32_t>(k.identified);
+    return std::hash<uint32_t>{}(mixed);
   }
 };
 
@@ -107,7 +114,9 @@ IconTex ItemIcon(uint32_t nameid, int identified) {
   char path[192];
   IconTex icon{};
   if (BuildIconPathSafe(nameid, path, identified)) icon = TextureFromGameFile(path);
-  return g_icon_cache[key] = icon;
+  // ⚠ `emplace` et non `cache[key] = icon` : la clé vient d'être cherchée en
+  // vain, la réécrire avec `operator[]` la hachait une seconde fois.
+  return g_icon_cache.emplace(key, icon).first->second;
 }
 
 bool ItemIconPixels(uint32_t nameid, std::vector<uint8_t>* argb, int* w, int* h) {
@@ -132,7 +141,8 @@ IconTex ItemCollectionIcon(uint32_t nameid) {
   }
   // Pas d'art de collection : la petite icône d'inventaire vaut mieux que rien.
   if (!icon.tex) icon = ItemIcon(nameid);
-  return g_collection_cache[nameid] = icon;
+  // ⚠ Même remarque que dans `ItemIcon` : une seule recherche, pas deux.
+  return g_collection_cache.emplace(nameid, icon).first->second;
 }
 
 }  // namespace ro

@@ -13,6 +13,7 @@
 #include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB / ReleaseTexture / DeviceEpoch
 #include "ui/spr_act.h"
 #include "utils/log_console.h"
+#include "utils/str_key_map.h"  // util::StrKeyMap : cache interrogé par const char*
 
 namespace ro {
 namespace {
@@ -83,7 +84,11 @@ struct Entry {
 // usage. Ce qui reste est une coquille de quelques dizaines d'octets par sprite
 // jamais revu. Les pointeurs sont stables parce que la table possède des
 // `unique_ptr` : réhachage ou pas, l'objet ne bouge pas.
-std::unordered_map<std::string, std::unique_ptr<Entry>> g_cache;
+// ⚠ `StrKeyMap` : le cache est interrogé par un `const char*` composé sur la
+// pile (cf. `Acquire`), donc sans construire de `std::string` à chaque frame.
+// Rien n'y est JAMAIS effacé — `Unload` vide la ressource et garde l'entrée —
+// ce qui est exactement le contrat de cette table (voir utils/str_key_map.h).
+util::StrKeyMap<std::unique_ptr<Entry>> g_cache;
 std::deque<std::string> g_cache_order;  // entrées CHARGÉES, du plus ancien au plus récent
 size_t g_cache_bytes = 0;
 
@@ -286,15 +291,18 @@ void TrimFor(size_t incoming) {
   while (g_cache_order.size() > in_use &&
          (g_cache_order.size() >= kMaxCached ||
           g_cache_bytes + incoming > kCacheBudget)) {
-    const std::string victim = g_cache_order.front();
+    // ⚠ `std::move` : la clé sort de la file et n'y est plus lue. La recopier
+    // allouait une chaîne par éviction examinée, et cette boucle en examine
+    // autant qu'il faut pour redescendre sous le plafond.
+    std::string victim = std::move(g_cache_order.front());
     g_cache_order.pop_front();
-    auto vit = g_cache.find(victim);
-    if (vit != g_cache.end() && vit->second->last_frame == frame) {
-      g_cache_order.push_back(victim);
+    auto* vit = g_cache.Find(victim.c_str());
+    if (vit != nullptr && (*vit)->last_frame == frame) {
+      g_cache_order.push_back(std::move(victim));
       ++in_use;
       continue;
     }
-    if (vit != g_cache.end()) Unload(vit->second.get());
+    if (vit != nullptr) Unload(vit->get());
   }
 }
 
@@ -348,21 +356,35 @@ bool EnsureLoaded(Entry* e) {
 
 Entry* Acquire(const char* base_path, const char* act_base) {
   const bool split = act_base && *act_base && std::strcmp(act_base, base_path) != 0;
-  std::string key = base_path;
-  if (split) {
-    key += '|';  // séparateur impossible dans un chemin VFS
-    key += act_base;
-  }
-  auto it = g_cache.find(key);
-  if (it == g_cache.end()) {
+  // 🔴 La clé se compose SUR LA PILE, pas dans une `std::string`. Cette fonction
+  // est appelée pour chaque sprite et à chaque frame — le pantin en demande une
+  // vingtaine par personnage, et douze cadres de groupe les redemandent tous —
+  // et elle allouait une chaîne à chaque appel, juste pour interroger un cache
+  // où l'entrée était déjà.
+  //
+  // 🔴🔴 DEUX FOIS la borne d'un chemin, pas une. `LoadInto` compose
+  // `<base>.spr` dans 352 octets, donc un chemin tient dans 347 ; mais la clé
+  // APPARIÉE en joint DEUX. Taillée sur 352, elle tronquerait — et deux
+  // appariements différents se rangeraient sous la même clé, c'est-à-dire que
+  // l'un porterait le sprite de l'autre. Une troncature ne se voit pas : elle
+  // rendrait juste, un jour, le mauvais sprite.
+  char key[704];
+  if (split)
+    // Le « | » est un séparateur impossible dans un chemin VFS.
+    std::snprintf(key, sizeof(key), "%s|%s", base_path, act_base);
+  else
+    std::snprintf(key, sizeof(key), "%s", base_path);
+
+  auto* slot = g_cache.Find(key);
+  if (slot == nullptr) {
     auto entry = std::make_unique<Entry>();
     entry->base = base_path;
     if (split) entry->act_base = act_base;
     entry->key = key;
     entry->pals.resize(1);
-    it = g_cache.emplace(std::move(key), std::move(entry)).first;
+    slot = &g_cache.Emplace(key, std::move(entry));
   }
-  return EnsureLoaded(it->second.get()) ? it->second.get() : nullptr;
+  return EnsureLoaded(slot->get()) ? slot->get() : nullptr;
 }
 
 // Cadence déclarée par le .act, en ms par image. 0 = absente ou aberrante.

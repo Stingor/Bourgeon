@@ -50,6 +50,7 @@
 #include "ragnarok/social.h"  // rag::social::kFriendListAddByNameAddr
 #include "ragnarok/stl_node.h"  // rag::treenode : le nœud du conteneur
 #include "features/link_gesture.h"
+#include "utils/str_key_map.h"  // util::StrKeyMap (cache de bitmaps par chemin)
 #include "utils/text.h"  // text : comparaisons et décodages ASCII
 #include "ui/ui_palette.h"  // ro::pal : la palette de l'UI
 
@@ -1104,7 +1105,11 @@ ro::GameTexture ChatBitmap(const char* rel_path) {
     unsigned        epoch = 0;
     bool            tried = false;
   };
-  static std::unordered_map<std::string, Entry> cache;
+  // ⚠ `StrKeyMap` : `cache[rel_path]` sur une table à clé `std::string` prend sa
+  // clé PAR VALEUR, donc construisait une chaîne à chaque frame et pour chaque
+  // bouton de la chatbox — y compris quand la texture était déjà là. Voir
+  // utils/str_key_map.h.
+  static util::StrKeyMap<Entry> cache;
   Entry& entry = cache[rel_path];
   const unsigned epoch = Overlay_DeviceEpoch();
   if (entry.tried && entry.epoch == epoch) return entry.tex;

@@ -1493,7 +1493,11 @@ ro::IconTex EmblemPreview(const std::string& name, const std::vector<uint8_t>& b
   if (e != s_epoch) { g_emblem_preview_cache.clear(); s_epoch = e; }
   auto it = g_emblem_preview_cache.find(name);
   if (it != g_emblem_preview_cache.end()) return it->second;
-  return g_emblem_preview_cache[name] = DecodeEmblemBmp(bmp.data(), bmp.size());
+  // ⚠ `emplace` et non `cache[name] = …` : la clé vient d'être cherchée en vain,
+  // et `operator[]` la hachait — et la RECOPIAIT — une seconde fois.
+  return g_emblem_preview_cache
+      .emplace(name, DecodeEmblemBmp(bmp.data(), bmp.size()))
+      .first->second;
 }
 
 // Scanne <jeu>\emblem\*.bmp — le même dossier que la fenêtre native, qui y cherche

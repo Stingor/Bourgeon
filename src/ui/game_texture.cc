@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB / Overlay_DeviceEpoch
+#include "utils/str_key_map.h"  // util::StrKeyMap : cache interrogé par const char*
 
 namespace {
 
@@ -75,8 +76,15 @@ namespace {
 
 // Le cache et son epoch de device, sortis de la fonction pour qu'une seconde —
 // l'invalidation explicite — puisse les atteindre.
-std::unordered_map<std::string, GameTexture>& TexCache() {
-  static std::unordered_map<std::string, GameTexture> s_cache;
+//
+// 🔴 `StrKeyMap` et non `unordered_map<std::string, …>` : ce cache est
+// interrogé par `const char*` à chaque frame, pour chaque texture d'interface
+// dessinée. Une table à clé `std::string` y construisait une chaîne temporaire
+// À CHAQUE APPEL, succès compris — nos chemins dépassent tous la SSO, donc une
+// allocation et une libération par interrogation. Voir utils/str_key_map.h pour
+// le pourquoi du `string_view` et du stockage à adresses stables.
+util::StrKeyMap<GameTexture>& TexCache() {
+  static util::StrKeyMap<GameTexture> s_cache;
   return s_cache;
 }
 unsigned g_cache_epoch = 0;
@@ -92,13 +100,14 @@ GameTexture CachedTextureFromGameFile(const char* path) {
     // ⚠ On JETTE sans relâcher : ces handles appartiennent à un device qui
     // n'existe plus, et les relâcher planterait. C'est l'inverse de
     // InvalidateGameTextures, où le device est toujours là.
-    cache.clear();
+    cache.Clear();
     g_cache_epoch = epoch;
   }
   if (!path || !path[0]) return {};
-  auto found = cache.find(path);
-  if (found != cache.end()) return found->second;
-  return cache[path] = TextureFromGameFile(path);
+  // ⚠ Une seule recherche : `find` puis `cache[path]` en hachait deux fois le
+  // chemin sur un défaut. `Emplace` rend l'entrée en place et n'écrase rien.
+  if (const GameTexture* found = cache.Find(path)) return *found;
+  return cache.Emplace(path, TextureFromGameFile(path));
 }
 
 void InvalidateGameTextures() {
@@ -108,7 +117,7 @@ void InvalidateGameTextures() {
   for (auto& entry : cache) {
     if (entry.second.tex) Overlay_ReleaseTexture(entry.second.tex);
   }
-  cache.clear();
+  cache.Clear();
 }
 
 namespace uipath {

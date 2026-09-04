@@ -17,6 +17,7 @@
 #include "utils/hooking/hook_manager.h"
 #include "utils/i18n.h"
 #include "utils/log_console.h"
+#include "utils/str_key_map.h"  // util::StrKeyMap : recherche par const char*
 
 namespace msgoverride {
 namespace {
@@ -43,7 +44,12 @@ GetById_t g_orig_get_by_id = nullptr;
 //
 // ⚠ Deux entrées de même texte anglais partagent leur traduction. C'est voulu :
 // ce sont les mêmes mots, ils doivent se dire pareil.
-std::unordered_map<std::string, const char*> g_by_text;
+// 🔴 `StrKeyMap` et non `unordered_map<std::string, …>`. Cette table est
+// interrogée par un `const char*` — le texte que le client vient de rendre — sur
+// le chemin le plus fréquenté qui soit : le trampoline traverse CHAQUE message
+// affiché. Une table à clé `std::string` y construisait une chaîne temporaire à
+// chaque appel, succès compris. Voir utils/str_key_map.h.
+util::StrKeyMap<const char*> g_by_text;
 
 // 🔴 STOCKAGE PERSISTANT DES CHAÎNES. `std::deque` et non `vector` : les
 // pointeurs rendus au client doivent rester valides, et un vector qui réalloue
@@ -320,8 +326,8 @@ const char* __cdecl GetByIdHook(unsigned int id) {
   const char* original = g_orig_get_by_id ? g_orig_get_by_id(id) : "";
   if (!original || !*original || g_by_text.empty()) return original ? original : "";
 
-  const auto it = g_by_text.find(original);
-  return (it == g_by_text.end()) ? original : it->second;
+  const char* const* found = g_by_text.Find(original);
+  return found != nullptr ? *found : original;
 }
 
 void InstallHook() {
@@ -338,7 +344,7 @@ void InstallHook() {
 // construire la table `id -> texte`. ⚠ N'est JAMAIS appelée depuis
 // l'initialisation de Bourgeon — voir le commentaire de `GetByIdHook`.
 void LoadCatalogNow() {
-  g_by_text.clear();
+  g_by_text.Clear();
   g_stats.entries = 0;
   g_stats.rejected = 0;
   g_stats.restored = 0;
@@ -388,7 +394,7 @@ void LoadCatalogNow() {
     // ⚠ `emplace` et non `operator[]` : deux clés peuvent porter le MÊME texte
     // anglais, et la première traduction gagne. Écraser reviendrait à laisser le
     // dernier passage décider, sans que rien ne le signale.
-    g_by_text.emplace(english, g_storage.back().c_str());
+    g_by_text.Emplace(english.c_str(), g_storage.back().c_str());
     ++g_stats.entries;
   }
 
@@ -404,8 +410,8 @@ const char* Lookup(int id) {
   if (!g_orig_get_by_id || g_by_text.empty()) return nullptr;
   const char* original = g_orig_get_by_id(static_cast<unsigned>(id));
   if (!original || !*original) return nullptr;
-  const auto it = g_by_text.find(original);
-  return (it == g_by_text.end()) ? nullptr : it->second;
+  const char* const* found = g_by_text.Find(original);
+  return found != nullptr ? *found : nullptr;
 }
 
 void Reload() {
@@ -424,7 +430,7 @@ void Reload() {
   // Rechargement demandé : on repart d'une table vide, et le prochain message
   // relira tout. Les chaînes déjà rendues au client, elles, ne sont pas libérées
   // (cf. `g_storage`) — il peut encore en tenir des pointeurs.
-  g_by_text.clear();
+  g_by_text.Clear();
   g_stats.entries = 0;
   g_stats.rejected = 0;
   g_stats.restored = 0;
