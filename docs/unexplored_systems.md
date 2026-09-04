@@ -10,6 +10,12 @@
 > vivantes s'ouvrent sur un **skill** :
 > [skill_driven_windows_re.md](skill_driven_windows_re.md).
 >
+> 🔴🔴 **Et un QUATRIÈME vecteur, le 2026-09-04** : une fenêtre ouverte par une
+> **touche** n'a ni `feature.*`, ni NPC, ni opcode — invisible aux trois
+> précédents. Il reste **une** fonctionnalité jouable et jamais outillée : les
+> **clans** (Ctrl+G, fenêtre 237, 4 clans et leurs PNJ en base).
+> [local_openers_re.md](local_openers_re.md).
+>
 > ⚠ La révision du 2026-09-02 a **retiré deux candidates sur trois** (reforge,
 > enchantement) et soldé la troisième (fusion d'objets). Elle a ajouté les
 > questions **3** et **4** du §5 — l'ouvreur chargé/atteignable, et la base

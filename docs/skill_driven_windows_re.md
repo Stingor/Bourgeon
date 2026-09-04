@@ -186,6 +186,10 @@ de `case`** ([[feedback_re_method]] §10).
 
 ---
 
+🔴 Ce vecteur non plus n'est pas suffisant : il part encore d'un **paquet**. Une
+fenêtre ouverte par une **touche** lui échappe entièrement — c'est le quatrième
+vecteur, [local_openers_re.md](local_openers_re.md), qui a trouvé les clans.
+
 Voir aussi : [unexplored_systems.md](unexplored_systems.md),
 [native_window_dispatch.md](native_window_dispatch.md),
 [opcode_map.md](opcode_map.md).
