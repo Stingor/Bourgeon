@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "features/link_gesture.h"  // links::MenuAnchor : le menu des lignes
 #include "features/plugin.h"
 
 // ── CraftAtlas ───────────────────────────────────────────────────────────────
@@ -40,13 +41,20 @@
 //                 le produit (cf. craftdata::ArrowRecipe) — d'où son onglet.
 //
 // ── Les gestes : CELLULES, pas liens ─────────────────────────────────────────
-// 🔴 Ici le clic GAUCHE navigue, et c'est le clic DROIT qui ouvre la description.
+// 🔴 Ici le clic GAUCHE navigue, là où il ouvre la description partout ailleurs.
 // C'est la convention des CELLULES (feedback_right_click_opens_description), pas
-// celle des LIENS de chat (`links::`, où le gauche ouvre la description) — et le
-// choix est délibéré : dans un atlas, chaque ligne est une entrée d'index dont
-// l'intérêt premier est d'être SUIVIE. Faire ouvrir une fenêtre de description
-// par le geste le plus courant obligerait à la refermer à chaque saut. Maj+clic
-// pose le lien dans le chat, comme partout ailleurs.
+// celle des LIENS de chat (`links::`) — et le choix est délibéré : dans un atlas,
+// chaque ligne est une entrée d'index dont l'intérêt premier est d'être SUIVIE.
+// Faire ouvrir une fenêtre de description par le geste le plus courant
+// obligerait à la refermer à chaque saut. Maj+clic pose le lien dans le chat,
+// comme partout ailleurs.
+//
+// 🔴 Le clic DROIT ouvre le MENU CONTEXTUEL, et non plus la description toute
+// seule. L'Atlas était la seule surface d'objets à ne pas l'avoir : tout le
+// reste du menu — la base de données du site, le lien de chat, le vote shop,
+// l'alootid, `@iteminfo`, `@whodrops` — n'y était accessible nulle part. C'est
+// le geste de l'inventaire, dont le menu commence justement par
+// « Description » : rien n'est perdu, tout le reste est gagné.
 //
 // ── Ce que l'Atlas ne dit PAS, et pourquoi ───────────────────────────────────
 // Aucune CHANCE DE RÉUSSITE. Elle dépend de ce que le joueur tient au moment de
@@ -164,13 +172,18 @@ class CraftAtlas : public Plugin {
   void DrawArrowList();
   void DrawSheet();
   // Une ligne d'objet cliquable : icône + libellé, avec les gestes de cellule
-  // (gauche = naviguer, droit = description, Maj = lien de chat) et le survol
+  // (gauche = naviguer, droit = menu contextuel, Maj = lien de chat) et le survol
   // mémorisé pour l'aperçu. `selected` grise la ligne comme la sélection
   // courante. Renvoie true si la ligne vient d'être suivie.
   bool DrawItemRow(uint32_t item_id, const char* suffix, bool selected,
                    unsigned int text_color);
 
   // ── État d'affichage ──────────────────────────────────────────────────────
+  // 🔴 L'ancre du menu APPARTIENT à cette fenêtre (cf. links::MenuAnchor) : avec
+  // une ancre partagée entre surfaces, la première fenêtre dessinée ouvrirait le
+  // menu armé par la seconde.
+  links::MenuAnchor item_menu_;
+
   bool     open_ = false;
   uint32_t sel_id_ = 0;          // l'objet dont la fiche est affichée, 0 = aucun
   std::vector<uint32_t> back_;   // pile de navigation (le bouton « Retour »)

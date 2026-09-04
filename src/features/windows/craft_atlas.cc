@@ -345,6 +345,12 @@ void CraftAtlas::OnRenderUI() {
                             ImGuiChildFlags_Borders))
         DrawSheet();
       ImGui::EndChild();
+
+      // 🔴 ICI et pas au clic : l'identifiant d'un popup se hache avec la pile
+      // d'ids courante, et les lignes cliquent sous celle d'un child, d'un
+      // onglet, d'un arbre et d'un `PushID(item_id)`. Les DEUX colonnes arment la
+      // même ancre — la liste comme la fiche montrent les mêmes lignes.
+      item_menu_.Draw("##atlas_item_menu");
     }
   }
   ro::EndRoWindow();
@@ -417,7 +423,7 @@ bool CraftAtlas::DrawItemRow(uint32_t item_id, const char* suffix, bool selected
                                         text_color);
   }
 
-  // 🔴 Gestes de CELLULE, pas de lien : gauche = suivre, droit = description.
+  // 🔴 Gestes de CELLULE, pas de lien : gauche = suivre, droit = le menu.
   // Cf. l'en-tête du .h — dans un index, le geste le plus courant est de SUIVRE
   // l'entrée, pas d'ouvrir une fenêtre qu'il faudra refermer à chaque saut.
   if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
@@ -434,13 +440,17 @@ bool CraftAtlas::DrawItemRow(uint32_t item_id, const char* suffix, bool selected
     }
   }
   if (IsLastItemRightClicked()) {
-    const ImVec2 mouse = ImGui::GetMousePos();
     // ⚠ Par ID : l'objet peut très bien ne pas être en inventaire — c'est même
     // le cas intéressant — donc il n'y a pas toujours d'ItemSkillInfo vivant.
-    // Et DIFFÉRÉ : ouvrir une fenêtre native pendant une frame ImGui est proscrit
-    // (feedback_no_native_cmd_during_imgui_frame).
-    itemcell::DeferDescById(item_id, 0, 0, static_cast<int>(mouse.x),
-                            static_cast<int>(mouse.y));
+    // `FromItemId` désigne l'objet de BASE, et c'est tout ce qu'un index sait
+    // dire : ni refine ni cartes, il ne parle pas d'un exemplaire précis.
+    //
+    // ARMER seulement : le popup s'ouvre dans `Draw`, hors de l'arbre ou de
+    // l'onglet où l'on vient de cliquer. Sa première entrée est « Description »,
+    // qui reste DIFFÉRÉE — ouvrir une fenêtre native pendant une frame ImGui est
+    // proscrit (feedback_no_native_cmd_during_imgui_frame), et c'est le module de
+    // liens qui porte ce détour.
+    item_menu_.Arm(links::FromItemId(item_id, ItemName(item_id)));
   }
   ImGui::PopID();
   return followed;
@@ -578,7 +588,7 @@ void CraftAtlas::DrawSheet() {
     DimNotice(i18n::Tr(
         "Choisissez un objet à gauche.\n\n"
         "Clic gauche : suivre l'objet dans l'Atlas.\n"
-        "Clic droit : ouvrir sa description.\n"
+        "Clic droit : le menu contextuel (description, @whodrops…).\n"
         "Maj + clic : poser son lien dans le chat."));
     return;
   }
