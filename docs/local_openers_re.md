@@ -241,7 +241,37 @@ chemin non testé ici. Trancher **avant** de conclure quoi que ce soit sur 315.
 
 ---
 
-## 5. Refaire la mesure
+## 5. ✅ Et l'exe LIVRÉ ? — WARP n'ajoute aucun ouvreur
+
+Tout ce qui précède est mesuré sur l'IDB, c'est-à-dire sur le **vanilla**
+([[reference_ida_is_vanilla_warp_patches]]). Or c'est exactement ainsi qu'on
+avait manqué l'ouvreur de la file de battleground, injecté par WARP.
+
+Contrôle fait le 2026-09-04 : les deux binaires ont été scannés **de la même
+façon** (tout `E8 rel32` de `.text` + `.xdiff` visant `MakeWindow`,
+`SaveRectAndCloseWindow`, `FindWindow`, `DispatchHotkeyBehavior`,
+`UserHotkey_ResolveBehavior`), puis comparés.
+
+- **Aucun appel à `MakeWindow` n'est ajouté, retiré, ni ne change d'identifiant.**
+- Un seul appel apparaît dans le livré : `0x0171FC37`, `FindWindow(0x24 = 36)`.
+
+🔴 **Témoin positif** — sans lui ce « rien » ne vaudrait rien : la section
+`.xdiff` passe de **799 octets non nuls et 17 appels** (vanilla) à **8903 octets
+et 98 appels** (livré). Le scanner voit donc bien le code injecté ; il n'y trouve
+simplement aucun ouvreur. Ce que ce code appelle vraiment, c'est
+`Lua_ExecuteScriptFile` (46 fois) et le parseur XML du `clientinfo`.
+
+L'unique appel nouveau n'ouvre rien : c'est un détour posé dans
+`CharUserData_LoadShortCutBarState` `0x005C45C0` (retour en `0x005C493F`) qui
+restaure le rectangle de `UIShortCutWnd` (36) depuis `0x0131FC30`, appelle
+`UIWindowMgr_ToggleWindow(36, …)` puis son `OnMsg` avec `cmd 0x22` et `cmd 6`
+(bouton `0x24C` ou `0x24D` selon `0x016024C5`) — le patch WARP de **la barre de
+raccourcis**, sur une fenêtre déjà outillée.
+
+➡ La carte des ouvreurs établie ici vaut donc aussi pour le client livré.
+Détail des patchs : [warp_patch_map.md](warp_patch_map.md).
+
+## 6. Refaire la mesure
 
 Un seul intervenant sur IDA à la fois, et **jamais `decompile` sur une adresse
 de `case`** ([[feedback_re_method]] §10).
@@ -258,7 +288,10 @@ de `case`** ([[feedback_re_method]] §10).
    Lua 5.1, `HOTKEY_2[comportement − 100]`, champs `KEY1` (code) et `KEY2`
    (modificateur), noms dans `KEYNAME` ;
 6. croiser avec la colonne « statut Bourgeon » de
-   [native_window_dispatch.md](native_window_dispatch.md) §15.
+   [native_window_dispatch.md](native_window_dispatch.md) §15 ;
+7. **et vérifier l'exe livré** :
+   [`tools/warp/find_injected_openers.py`](../tools/warp/find_injected_openers.py)
+   — il imprime son propre témoin positif, à lire avant sa conclusion.
 
 ➡ **À refaire à chaque changement de `moonlight.grf`** : c'est lui qui porte
 `hotkey.lub`, donc les touches par défaut.
