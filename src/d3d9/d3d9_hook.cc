@@ -215,6 +215,32 @@ void* D3D9_ExplicitBlendCallback() {
     return reinterpret_cast<void*>(&ExplicitBlendDrawCallback);
 }
 
+// Recopie h lignes de w pixels ARGB vers une surface fraîchement verrouillée.
+//
+// 🔴 UN SEUL memcpy quand la surface est CONTIGUË — c'est-à-dire quand son pas
+// vaut exactement la largeur en octets, ce qui est le cas courant. La boucle
+// ligne à ligne faisait sinon un appel par LIGNE : 24 memcpy de 96 octets pour
+// une icône d'inventaire, 200 memcpy de 1280 octets pour chaque image de DOOM,
+// qui passe ici SOIXANTE FOIS PAR SECONDE. À ces tailles, l'appel coûte plus que
+// la copie elle-même.
+//
+// ⚠ La boucle reste, et n'est pas décorative : un pas PLUS LARGE que la ligne
+// est parfaitement légal — le pilote aligne comme il veut — et copier d'un bloc
+// dans ce cas-là écrirait les lignes les unes sur les autres, décalées.
+static void CopyRowsToLocked(void* dst_bits, int pitch, const void* argb,
+                             int w, int h) {
+    auto* dst = static_cast<unsigned char*>(dst_bits);
+    const auto* src = static_cast<const unsigned char*>(argb);
+    const size_t row = static_cast<size_t>(w) * 4;
+    if (pitch == static_cast<int>(row)) {
+        std::memcpy(dst, src, row * static_cast<size_t>(h));
+        return;
+    }
+    for (int y = 0; y < h; ++y)
+        std::memcpy(dst + static_cast<size_t>(y) * pitch,
+                    src + static_cast<size_t>(y) * row, row);
+}
+
 // Creates a D3D9 texture from a 32-bit A8R8G8B8 buffer (w*h, tightly packed).
 // D3DUSAGE_DYNAMIC + D3DPOOL_DEFAULT so it works on the client's D3D9Ex device
 // (which forbids D3DPOOL_MANAGED). Returns an IDirect3DTexture9* as void*.
@@ -230,12 +256,7 @@ void* D3D9_CreateTextureARGB(const void* argb, int w, int h) {
         tex->Release();
         return nullptr;
     }
-    const auto* src = static_cast<const unsigned char*>(argb);
-    auto* dst = static_cast<unsigned char*>(lr.pBits);
-    for (int y = 0; y < h; ++y)
-        std::memcpy(dst + static_cast<size_t>(y) * lr.Pitch,
-                    src + static_cast<size_t>(y) * w * 4,
-                    static_cast<size_t>(w) * 4);
+    CopyRowsToLocked(lr.pBits, lr.Pitch, argb, w, h);
     tex->UnlockRect(0);
     return tex;
 }
@@ -248,12 +269,7 @@ bool D3D9_UpdateTextureARGB(void* tex, const void* argb, int w, int h) {
     auto* t = static_cast<IDirect3DTexture9*>(tex);
     D3DLOCKED_RECT lr;
     if (FAILED(t->LockRect(0, &lr, nullptr, D3DLOCK_DISCARD))) return false;
-    const auto* src = static_cast<const unsigned char*>(argb);
-    auto* dst = static_cast<unsigned char*>(lr.pBits);
-    for (int y = 0; y < h; ++y)
-        std::memcpy(dst + static_cast<size_t>(y) * lr.Pitch,
-                    src + static_cast<size_t>(y) * w * 4,
-                    static_cast<size_t>(w) * 4);
+    CopyRowsToLocked(lr.pBits, lr.Pitch, argb, w, h);
     t->UnlockRect(0);
     return true;
 }

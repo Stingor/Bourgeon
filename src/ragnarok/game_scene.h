@@ -144,23 +144,46 @@ constexpr uintptr_t kNameDictContainsAddr          = 0x005a18e0;
 // et `NameEntry`) ; l'un des deux gardait `gid == 0`, l'autre non. La garde est
 // reprise ici : demander le nom du GID 0 ne peut rien donner, et c'est un paquet
 // envoyé pour rien.
-inline void* NameDictEntry(void* game_mode, uint32_t gid) {
+// ── Pourquoi le SEH est isolé dans `seh::`, et la garde au-dessus ───────────
+// 🔴 MSVC REFUSE D'INLINER TOUTE FONCTION CONTENANT UN `__try`. Mesuré, pas
+// supposé : un `__forceinline` avec SEH sort en `warning C4714 : marquée comme
+// __forceinline non inlined`, la même fonction sans SEH passe sans un mot. Le
+// refus porte sur la fonction ENTIÈRE — écrire la garde à l'intérieur du `__try`
+// la rendait donc aussi coûteuse que l'appel natif qu'elle protège : un vrai
+// appel, plus le montage d'une trame d'exception, pour découvrir qu'on avait un
+// pointeur nul.
+//
+// Le partage est donc : la GARDE au-dessus, inlinable et gratuite ; le SEH en
+// dessous, autour du seul appel natif, qui est ce qu'il a à couvrir.
+namespace seh {
+
+inline void* NameDictEntry(void* dict, uint32_t gid) {
   __try {
-    if (!game_mode || gid == 0) return nullptr;
-    void* dict = reinterpret_cast<uint8_t*>(game_mode) + kGmNameDict;
     using GetEntryFn = void*(__thiscall*)(void*, uint32_t);
     return reinterpret_cast<GetEntryFn>(kNameDictGetEntryOrRequestAddr)(dict, gid);
   } __except (EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
 }
 
-// Celle qui ne DEMANDE rien — à préférer partout où l'on veut seulement savoir.
-inline bool NameDictContains(void* game_mode, uint32_t gid) {
+inline bool NameDictContains(void* dict, uint32_t gid) {
   __try {
-    if (!game_mode || gid == 0) return false;
-    void* dict = reinterpret_cast<uint8_t*>(game_mode) + kGmNameDict;
     using ContainsFn = bool(__thiscall*)(void*, uint32_t);
     return reinterpret_cast<ContainsFn>(kNameDictContainsAddr)(dict, gid);
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
+}  // namespace seh
+
+inline void* NameDictEntry(void* game_mode, uint32_t gid) {
+  if (!game_mode || gid == 0) return nullptr;
+  return seh::NameDictEntry(reinterpret_cast<uint8_t*>(game_mode) + kGmNameDict,
+                            gid);
+}
+
+// Celle qui ne DEMANDE rien — à préférer partout où l'on veut seulement savoir.
+inline bool NameDictContains(void* game_mode, uint32_t gid) {
+  if (!game_mode || gid == 0) return false;
+  return seh::NameDictContains(
+      reinterpret_cast<uint8_t*>(game_mode) + kGmNameDict, gid);
 }
 
 // Retrouver un acteur par son GID. DEUX portes, et le choix n'est pas
@@ -193,14 +216,24 @@ inline void* FindActorByGid(uint32_t gid) {
 // natif : l'acteur, puis sa vtable en +0xC4. Deux fichiers en portaient une
 // copie mot pour mot, chacun avec sa propre déclaration de l'offset.
 constexpr int kActorVt_GetGuildId = 0xc4;
+namespace seh {
+// ⚠ La LECTURE de la vtable reste ici, pas dans la garde : un acteur détruit
+// entre deux frames a un pointeur non nul mais illisible, et c'est précisément
+// ce déréférencement-là que le SEH doit couvrir. Seul le test de nullité, qui
+// ne lit rien, remonte au-dessus (cf. l'avis sur C4714 plus haut).
 inline uint32_t ActorGuildId(void* actor) {
   __try {
-    if (!actor) return 0;
     using GetGuildIdFn = uint32_t (__thiscall*)(void*);
     void** vtable = *reinterpret_cast<void***>(actor);
     return reinterpret_cast<GetGuildIdFn>(
         vtable[kActorVt_GetGuildId / sizeof(void*)])(actor);
   } __except (EXCEPTION_EXECUTE_HANDLER) { return 0; }
+}
+}  // namespace seh
+
+inline uint32_t ActorGuildId(void* actor) {
+  if (!actor) return 0;
+  return seh::ActorGuildId(actor);
 }
 
 // `PostActorClickAction` __thiscall(gm, aid, flag) : la suite que le client
