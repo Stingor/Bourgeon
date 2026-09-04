@@ -134,6 +134,10 @@ appliquées telles quelles.
 
 ### ✅ 237 `UIClanInfoManageWnd` — **Ctrl+G, VIVANTE, jamais approchée**
 
+➡ **Sujet relevé en détail : [clan_window_re.md](clan_window_re.md)** (structure
+du bloc d'état, découpage des quatre ZC, mise en page, et trois anomalies du
+natif à ne pas reproduire). Ce qui suit en est le résumé.
+
 1. **ouvrable ?** oui, Ctrl+G, sans autre garde que « en jeu » ;
 2. **transport ?** le serveur de map ;
 3. **ouvreur chargé ?** `moon/rathena/other/clans.txt` est dans
