@@ -10,8 +10,15 @@ code dans la section `.xdiff` (nulle dans le vanilla) et detourne des branches d
 (cf. feedback_absence_needs_measurement) -- il pourrait tout aussi bien signifier
 que le scanner ne regarde pas au bon endroit.
 
-Resultat au 2026-09-04 : aucun appel a MakeWindow n'est ajoute, retire, ni ne
-change d'identifiant. Voir docs/local_openers_re.md §5.
+🔴🔴 Scanner MakeWindow SEUL ne suffit pas : les icones de menu ouvrent par
+`UIWindowMgr_ToggleWindowById`, et c'est justement par la que WARP injecte
+l'ouvreur de la file de battleground. Une premiere version, limitee a
+MakeWindow, avait conclu a tort que WARP n'ajoutait aucun ouvreur.
+
+Resultat au 2026-09-04 : trois appels n'existent que dans l'exe livre, dont
+`ToggleWindowById(157)` en 0x0171EB71 -- l'icone `battle` (commande 376), ce que
+docs/entry_queue_re.md avait etabli a la main. C'est le TEMOIN POSITIF NOMME du
+scanner. Voir docs/local_openers_re.md §6.
 """
 import struct
 import sys
@@ -22,7 +29,11 @@ IMGBASE = 0x400000
 SECS = (".text", ".xdiff")
 
 CIBLES = {
+    # les TROIS primitives d'ouverture -- MakeWindow ne suffit pas :
+    # ToggleWindow et ToggleWindowById l'appellent avec l'id en argument.
     0xA39340: "MakeWindow",
+    0xA4BF30: "ToggleWindow",
+    0x812E60: "ToggleWindowById",
     0xA2E770: "SaveRectAndCloseWindow",
     0xA47B90: "FindWindow",
     0xA451E0: "DispatchHotkeyBehavior",

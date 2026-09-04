@@ -12,14 +12,36 @@ Ce document complète les trois précédents :
 | **4. ouvreur local** | ce que le **joueur** ouvre sans qu'aucun paquet ne circule | **ce document** |
 
 Les trois premiers partagent le même angle mort : ils partent tous de quelque
-chose qui **arrive** au client. Une fenêtre ouverte par une **touche** n'a ni
-`feature.*`, ni NPC, ni opcode. Elle est invisible aux trois, et jouable quand
-même — c'est ainsi que l'ouvreur de la file de battleground (icône `battle`
-injectée par WARP) avait dû être trouvé à la main.
+chose qui **arrive** au client. Une fenêtre ouverte par une **touche** ou par une
+**icône de la barre de menu** n'a ni `feature.*`, ni NPC, ni opcode. Elle est
+invisible aux trois, et jouable quand même — c'est ainsi que l'ouvreur de la file
+de battleground (icône `battle`, injectée par WARP) avait dû être trouvé à la
+main.
+
+> ⚠ **Ce document a été corrigé deux fois le jour même de sa rédaction**, et les
+> deux erreurs venaient du même réflexe : conclure d'une mesure faite sur le
+> **vanilla** et sur **une seule** primitive. Les corrections sont laissées
+> visibles aux §1, §5 et §6 — elles valent plus que le résultat.
 
 ---
 
-## 1. La mesure
+## 1. 🔴🔴 Il y a TROIS primitives d'ouverture, pas une
+
+Corrigé le 2026-09-04, après coup. Partir des seuls appels à `MakeWindow` est
+**incomplet** : deux fonctions l'appellent avec l'identifiant **en argument**,
+si bien que leurs propres appelants — les vrais ouvreurs — restent invisibles.
+
+| primitive | adresse | sites | ce qu'elle ajoute |
+|---|---|---:|---|
+| `UIWindowMgr_MakeWindow` | `0x00A39340` | 546 | la base |
+| `UIWindowMgr_ToggleWindow` | `0x00A4BF30` | 48 | **0 identifiant nouveau** (mesuré) |
+| `UIWindowMgr_ToggleWindowById` | `0x00812E60` | 17 | **2** : **303** et **10002** |
+
+`ToggleWindowById` ferme (`SaveRectAndCloseWindow`, qui **détruit**) ou crée.
+Ses 17 sites sont **tous** dans `UIMenuIconWnd_OnMsg` : c'est **la barre
+d'icônes**, seconde racine locale à côté du clavier — voir §4 bis.
+
+## 2. La mesure
 
 Sur les `XrefsTo(UIWindowMgr_MakeWindow 0x00A39340)`, en remontant ≤ 8
 instructions jusqu'au `push <imm>` :
@@ -34,18 +56,30 @@ instructions jusqu'au `push <imm>` :
   **44** marqués « jamais citee » par
   [native_window_dispatch.md](native_window_dispatch.md) §15.
 
+⚠ Ces chiffres sont ceux de `MakeWindow` **seul** ; les deux autres primitives du
+§1 portent le total à **216 identifiants** (+303, +10002).
+
 🔴 Sur ces 44, l'immense majorité sont des **enfants** : une pop-up de
 confirmation ouverte par sa fenêtre mère (`UIGuildNoticeWnd` par
 `UIGuildWnd_OnMsg_Base`, `UIJobListWnd` par `UISeekPartyWnd_OnMsg`…). Le tri
-utile est plus étroit : **quels ouvreurs partent d'une TOUCHE**, seule racine
-qui ne dépende d'aucune autre fenêtre déjà ouverte.
+utile est plus étroit : **quelles racines ne dépendent d'aucune fenêtre déjà
+ouverte ?**
 
-Réponse : **un seul**, `UIWindowMgr_DispatchHotkeyBehavior` `0x00A451E0`,
-appelé par `UIWindowMgr_OnKeyDown` `0x00A471E0`.
+Il y en a **deux**, et il fallait les deux :
+
+1. **le clavier** — `UIWindowMgr_DispatchHotkeyBehavior` `0x00A451E0`, appelé par
+   `UIWindowMgr_OnKeyDown` `0x00A471E0` (§3 et §4) ;
+2. **la barre d'icônes** — `UIMenuIconWnd_OnMsg` `0x00814B00`, qui n'apparaît
+   qu'en scannant `ToggleWindowById` (§4 bis).
+
+Il en existe une **troisième**, plus étroite : la **commande de chat**
+(`Chat_HandleChatMessage` `0x00C7A460`), qui ouvre `{116, 203, 315, 324}`.
+Trois sont déjà atteintes par le clavier ou par une icône ; une seule ne l'est
+pas — **116 `UIAutoMessageWnd`**, « jamais citée », dont c'est l'unique ouvreur.
 
 ---
 
-## 2. 🔴🔴 La touche ne décide pas — le comportement, oui
+## 3. 🔴🔴 La touche ne décide pas — le comportement, oui
 
 `UIWindowMgr_OnKeyDown` ne connaît **aucune** fenêtre. Il compose le combo
 (`sub_A2D450`) puis appelle `DispatchHotkeyBehavior`, qui commence par
@@ -85,7 +119,7 @@ sont **fausses** vis-à-vis de l'EXE livré :
 
 ---
 
-## 3. Les 20 comportements qui ouvrent une fenêtre
+## 4. Les 20 comportements qui ouvrent une fenêtre
 
 Touche = valeur par défaut de `hotkey.lub` (le joueur peut la changer :
 `ChangeUserHotKey`, sauvegarde `SaveUserHotKeys2`). Action = lue dans l'EXE.
@@ -127,7 +161,23 @@ possible**. Il est inatteignable.
 
 ---
 
-## 4. Les trois candidates, triées
+## 4 bis. L'autre racine locale : la barre d'icônes
+
+Les **17** sites de `ToggleWindowById` sont tous dans `UIMenuIconWnd_OnMsg`
+`0x00814B00`, un `switch` sur la **commande d'icône** :
+
+| fenêtre | classe | statut du dépôt |
+|---:|---|---|
+| 8, 10, 11, 37, 69, 140, 155, 198, 263, 270, 324, 346 | inventaire, équipement, statut, skills, groupe, carte, menu, replay, RODEX, hauts faits, party board, réputation | outillées ou déjà tranchées |
+| **303** | `UIHotkeyGuideWnd` | décrite (`docs/`) |
+| **315** | `UITipboxWnd` | **jamais citée** — voir §5 |
+| **10002** | `CUIAdventureGuide` | **jamais citée** — voir §5 |
+| **10008** | `CUI…` (UI de quêtes) | **jamais citée** |
+
+🔴 C'est cette table qu'il fallait lire pour trouver l'ouvreur de la file de
+battleground (157) — il n'y est pas, parce que **WARP l'ajoute** : voir §6.
+
+## 5. Les candidates, triées
 
 Les quatre questions de [unexplored_systems.md](unexplored_systems.md) §1
 appliquées telles quelles.
@@ -219,65 +269,118 @@ n'est jamais franchie. Même piège que la reforge et l'enchantement.
 client est prêt (`0x00D80B30` = skill de mercenaire par index, la fenêtre 126
 `UISkillListWnd` sait déjà l'afficher).
 
-### ⚠ 315 `UITipboxWnd` — Alt+D, **s'ouvre sans garde, mais sans données**
+### ✅ 315 `UITipboxWnd` — Alt+D, **complète, alimentée, et jamais outillée**
 
-Le `case 154:` n'a **aucune** garde, pas même « en jeu ». La fenêtre s'ouvre
-toujours. Ses données viennent de `System\tipbox.lua`, à défaut
-`System\tipbox.lub`, chargés par **`TipBox_RegisterLuaAndLoad` `0x00773CD0`**
-(qui expose à Lua `AddTip`, `AddPage`, `AddPageEx`, `AddImgcoord`, `AddIsTag`),
-appelé sans condition par `CSession_ctor` `0x00D57780`.
+Le `case 154:` n'a **aucune** garde, pas même « en jeu ». Ses données sont
+chargées par **`TipBox_RegisterLuaAndLoad` `0x00773CD0`** (qui expose à Lua
+`AddTip`, `AddPage`, `AddPageEx`, `AddImgcoord`, `AddIsTag`), appelé sans
+condition par `CSession_ctor` `0x00D57780`.
 
-Mesuré : **aucun des deux fichiers n'existe**, ni dans `System\` sur le disque
-(qui contient pourtant `ChangeMaterial.lub`, `achievement_list.lub`,
-`mapInfo.lub`… — témoin positif du bon répertoire), ni dans les trois GRF. En
-revanche `data\tipoftheday.txt` (8995 o, anglais) et **~350 `tip*.bmp`** sont
-bien là : c'est l'**ancien** « tip of the day », pas cette fenêtre-ci.
+> 🔴🔴 **Correction d'une conclusion fausse.** Une première passe avait annoncé
+> « données absentes, la fenêtre s'ouvre vide », en cherchant `System\tipbox.lub`
+> — le chemin que pousse le **vanilla**. Faux, et faux pour la raison même que ce
+> document rappelle : **c'est l'exe LIVRÉ qui décide**. WARP réécrit l'opérande
+> du `push` à **`0x00773DD6`** pour pointer sur une chaîne injectée en
+> `0x0171DBE3` : **`SystemEN\tipbox.lub`**, qui existe et pèse **63 267 octets**.
+> Dix chemins `System\…` sont ainsi redirigés (`iteminfo`, `Achievements`,
+> `Towninfo`, `mapInfo`, `ChangeMaterial`, `CheckAttendance`, `OngoingQuests`,
+> `PrivateAirplane`, `monster_size_effect`, `tipbox`), mécanisme que le dépôt
+> décrivait **déjà** — [warp_patches.md](warp_patches.md) et
+> `src/utils/game_paths.cc`. La leçon n'est pas nouvelle, elle n'avait pas été
+> appliquée.
 
-🔴 **Prédiction à vérifier en jeu** : si le chargeur échoue vraiment,
-`CSession_ctor` affiche au démarrage un `MessageBoxA("TipBox file Init",
-"Error")` (`0x00D5781A`). Cette boîte n'a jamais été signalée — donc **soit**
-elle apparaît et personne ne l'a reliée, **soit** le chargeur réussit par un
-chemin non testé ici. Trancher **avant** de conclure quoi que ce soit sur 315.
+La fenêtre est donc **pleinement fonctionnelle** : ~350 `tip*.bmp` dans
+`data.grf`, des pages en anglais, un champ de recherche. Et elle a **huit**
+ouvreurs, pas un — c'est de loin la fenêtre la plus accessible du lot :
+
+| ouvreur | où | atteint par un paquet ? |
+|---|---|---|
+| **Alt+D** | `DispatchHotkeyBehavior` `0x00A46091` | non |
+| **`/tip`** | `Chat_HandleChatMessage` `0x00C7B764`, **case 42** | non |
+| **icône de menu** | `UIMenuIconWnd_OnMsg` `0x00814E69`, commande **511** | non |
+| **lien rich-text** | `UIRichTextBox_OnMsg` `0x00862B0B` — la balise `<TIPBOX>…<INFO>n</INFO></TIPBOX>` | non |
+| entrée sur la carte | `GameMode_OnEnterMapSetup` `0x00C6C219` | oui |
+| ZC `0x0AE2` | `sub_CF98B0` `0x00CF98DD` | oui (mais jamais émis) |
+| `sub_8042B0`, `sub_858710`, `sub_9E79D0` | — | non |
+
+Le premier conseil du fichier livré le dit lui-même : *« You can open the tip box
+by clicking /tip, Alt+D, or the Tipbox icon. »*
+
+### ⛔ 10002 `CUIAdventureGuide` — icône de menu, **contenu vide**
+
+Trouvée par `ToggleWindowById`. Le cadre est complet :
+`luafiles514\Lua Files\AdventureGuide\AdventureGuide_F.lub` fait **18,6 Ko de
+fonctions**, et les sept onglets existent. Mais leurs sept fichiers de contenu
+(`Guide_Intro`, `Episode`, `Monster`, `Quest`, `Dungeon`, `Weapon`, `Armor`) ne
+portent **qu'un titre et un numéro d'onglet** — ~100 octets utiles chacun,
+**zéro accolade, zéro entrée**.
+
+Encore le gabarit sans contenu, cette fois **côté client**. La 4ᵉ question du tri
+(« la base est-elle peuplée ? ») vaut donc aussi pour les `.lub` du client, pas
+seulement pour les `db/*.yml` et les tables SQL.
 
 ---
 
-## 5. ✅ Et l'exe LIVRÉ ? — WARP n'ajoute aucun ouvreur
+## 6. 🔴 Et l'exe LIVRÉ ? — WARP ajoute EXACTEMENT un ouvreur
 
 Tout ce qui précède est mesuré sur l'IDB, c'est-à-dire sur le **vanilla**
 ([[reference_ida_is_vanilla_warp_patches]]). Or c'est exactement ainsi qu'on
 avait manqué l'ouvreur de la file de battleground, injecté par WARP.
 
-Contrôle fait le 2026-09-04 : les deux binaires ont été scannés **de la même
-façon** (tout `E8 rel32` de `.text` + `.xdiff` visant `MakeWindow`,
-`SaveRectAndCloseWindow`, `FindWindow`, `DispatchHotkeyBehavior`,
-`UserHotkey_ResolveBehavior`), puis comparés.
+Contrôle outillé :
+[`tools/warp/find_injected_openers.py`](../tools/warp/find_injected_openers.py)
+scanne les deux binaires **de la même façon** (tout `E8 rel32` de `.text` et
+`.xdiff` visant l'une des **trois** primitives, plus `FindWindow`,
+`SaveRectAndCloseWindow` et les deux fonctions de raccourci), puis compare.
 
-- **Aucun appel à `MakeWindow` n'est ajouté, retiré, ni ne change d'identifiant.**
-- Un seul appel apparaît dans le livré : `0x0171FC37`, `FindWindow(0x24 = 36)`.
+> 🔴🔴 **Une première passe, limitée à `MakeWindow`, avait conclu « WARP n'ajoute
+> aucun ouvreur ». C'était faux** — et pour la raison du §1 : les icônes de menu
+> n'ouvrent pas par `MakeWindow`, mais par `ToggleWindowById`.
 
-🔴 **Témoin positif** — sans lui ce « rien » ne vaudrait rien : la section
-`.xdiff` passe de **799 octets non nuls et 17 appels** (vanilla) à **8903 octets
-et 98 appels** (livré). Le scanner voit donc bien le code injecté ; il n'y trouve
-simplement aucun ouvreur. Ce que ce code appelle vraiment, c'est
-`Lua_ExecuteScriptFile` (46 fois) et le parseur XML du `clientinfo`.
+Résultat complet — **trois** appels n'existent que dans l'exe livré :
 
-L'unique appel nouveau n'ouvre rien : c'est un détour posé dans
+| adresse | appel | ce que c'est |
+|---|---|---|
+| **`0x0171EB71`** | **`ToggleWindowById(0x9D = 157)`** | **l'ouvreur de la file de battleground** |
+| `0x0171FC37` | `FindWindow(0x24 = 36)` | barre de raccourcis |
+| `0x0171FC74` | `ToggleWindow(36, …)` | idem |
+
+Le premier est le bloc injecté attendu :
+
+```
+0171EB50  cmp   dword ptr [ebp+0x10], 0x178   ; commande d'icône 376 = `battle`
+0171EB57  jne   skip
+0171EB6C  push  0x9D                          ; fenêtre 157 UIEntryQueueWnd
+0171EB71  call  UIWindowMgr_ToggleWindowById
+0171EB76  jmp   0x00A24D70
+```
+
+C'est **exactement** ce que [entry_queue_re.md](entry_queue_re.md) avait dû
+établir à la main. Le scanner le retrouve seul : c'est le **témoin positif nommé**
+de la méthode, bien plus solide qu'un simple décompte.
+
+Les deux autres appels n'ouvrent rien de neuf : un détour posé dans
 `CharUserData_LoadShortCutBarState` `0x005C45C0` (retour en `0x005C493F`) qui
-restaure le rectangle de `UIShortCutWnd` (36) depuis `0x0131FC30`, appelle
-`UIWindowMgr_ToggleWindow(36, …)` puis son `OnMsg` avec `cmd 0x22` et `cmd 6`
-(bouton `0x24C` ou `0x24D` selon `0x016024C5`) — le patch WARP de **la barre de
-raccourcis**, sur une fenêtre déjà outillée.
+restaure le rectangle de `UIShortCutWnd` (36) depuis `0x0131FC30` puis lui envoie
+`cmd 0x22` et `cmd 6` (bouton `0x24C` ou `0x24D` selon `0x016024C5`).
 
-➡ La carte des ouvreurs établie ici vaut donc aussi pour le client livré.
-Détail des patchs : [warp_patch_map.md](warp_patch_map.md).
+🔴 **Second témoin, quantitatif** : la section `.xdiff` passe de **799 octets non
+nuls et 17 appels** (vanilla) à **8903 octets et 98 appels** (livré) — le reste du
+code injecté appelle surtout `Lua_ExecuteScriptFile` (46 fois) et le parseur XML
+du `clientinfo`.
 
-## 6. Refaire la mesure
+➡ Détail des patchs : [warp_patch_map.md](warp_patch_map.md),
+[warp_patches.md](warp_patches.md).
+
+## 7. Refaire la mesure
 
 Un seul intervenant sur IDA à la fois, et **jamais `decompile` sur une adresse
 de `case`** ([[feedback_re_method]] §10).
 
-1. `XrefsTo(0x00A39340)`, remonter ≤ 8 instructions au `push <imm>` (s'arrêter
-   sur un autre `call`) → les couples (fonction, identifiant) ;
+1. `XrefsTo` des **trois** primitives — `0x00A39340` `MakeWindow`,
+   `0x00A4BF30` `ToggleWindow`, `0x00812E60` `ToggleWindowById` — en remontant
+   ≤ 8 instructions au `push <imm>` (s'arrêter sur un autre `call`) → les couples
+   (fonction, identifiant). 🔴 `MakeWindow` seul **manque les icônes de menu** ;
 2. parcours avant depuis `0x00C9DF00`, appels directs, profondeur 3 → l'ensemble
    « atteint par un paquet » ; le complément est local ;
 3. ne garder que les racines qui sont des **touches** :
