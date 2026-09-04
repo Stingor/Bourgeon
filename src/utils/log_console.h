@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <memory>
 #include <mutex>
@@ -25,8 +26,15 @@ struct LogLine {
 // Thread-safe, capacity-bounded ring buffer that mirrors every emitted log line
 // (info/warn/error — whatever passes the active level) so the in-game ImGui log
 // window can display them.  It is fed by an in-memory spdlog sink installed in
-// LogConsole and read (snapshotted) by the Bourgeon window each frame.  spdlog
-// sinks may run on any thread, so all access is mutex-guarded.
+// LogConsole and read by the Bourgeon window each frame.  spdlog sinks may run
+// on any thread, so all access is mutex-guarded.
+//
+// 🔴 LA RÉVISION EST LA SEULE MARQUE DE FRAÎCHEUR VALABLE. La taille n'en est
+// pas une : l'anneau sature à `kCapacity`, et à partir de là chaque nouvelle
+// ligne en chasse une ancienne — `lines_.size()` reste figé à 2000 pendant que
+// le contenu change entièrement. La fenêtre de log, qui se rafraîchissait sur ce
+// critère, cessait donc de se mettre à jour passé la 2000ᵉ ligne. Le même piège
+// est documenté sur `ingest_kept_` dans la chatbox, pour la même raison.
 class LogLineBuffer {
  public:
   static LogLineBuffer& instance() {
@@ -40,8 +48,18 @@ class LogLineBuffer {
   // with the level of the record it came from.
   // Drops the oldest line once the capacity is reached.
   void Push(std::string line, spdlog::level::level_enum level);
-  // Replace |out| with a snapshot of the buffered lines, oldest first.
-  void Snapshot(std::vector<LogLine>* out) const;
+  // Recopie les lignes bufferisées dans |out| (la plus ancienne d'abord), mais
+  // SEULEMENT si le tampon a changé depuis la révision |*revision| — que
+  // l'appelant conserve d'une frame à l'autre, initialisée à zéro. Met alors
+  // |*revision| à jour et rend true ; rend false SANS RIEN COPIER sinon.
+  //
+  // La comparaison se fait sous le même verrou que la copie : lire la révision
+  // par un accesseur séparé laisserait une ligne s'insérer entre les deux, et le
+  // lecteur retiendrait une révision plus récente que le contenu qu'il a pris.
+  //
+  // ⚠ La copie n'est pas gratuite : jusqu'à `kCapacity` `std::string`. C'est
+  // exactement ce que cette garde évite de refaire à chaque frame.
+  bool SnapshotIfChanged(std::vector<LogLine>* out, std::uint64_t* revision) const;
   // Drop every buffered line (« Vider » in the in-game log window). Useful to
   // isolate what a single action logs, without restarting the client.
   void Clear();
@@ -51,6 +69,10 @@ class LogLineBuffer {
 
   mutable std::mutex mutex_;
   std::deque<LogLine> lines_;
+  // Avance à CHAQUE modification du tampon — ajout comme vidage. Elle part de
+  // zéro, comme la révision que l'appelant garde : un tampon jamais écrit n'est
+  // donc jamais recopié, et un tampon vidé l'est (le vidage l'incrémente).
+  std::uint64_t revision_ = 0;
   static constexpr std::size_t kCapacity = 2000;
 };
 

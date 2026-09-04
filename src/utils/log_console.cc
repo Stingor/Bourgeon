@@ -163,14 +163,22 @@ void LogLineBuffer::Push(std::string line, spdlog::level::level_enum level) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (lines_.size() >= kCapacity) lines_.pop_front();
   lines_.push_back(LogLine{std::move(line), level});
+  ++revision_;
 }
 
-void LogLineBuffer::Snapshot(std::vector<LogLine> *out) const {
+bool LogLineBuffer::SnapshotIfChanged(std::vector<LogLine> *out,
+                                      std::uint64_t *revision) const {
   std::lock_guard<std::mutex> lock(mutex_);
+  if (*revision == revision_) return false;
+  *revision = revision_;
   out->assign(lines_.begin(), lines_.end());
+  return true;
 }
 
 void LogLineBuffer::Clear() {
   std::lock_guard<std::mutex> lock(mutex_);
   lines_.clear();
+  // 🔴 Le vidage EST une modification : sans cet incrément, un lecteur qui vient
+  // de recopier l'anneau plein garderait sa copie à l'écran indéfiniment.
+  ++revision_;
 }

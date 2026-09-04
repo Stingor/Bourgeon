@@ -3,6 +3,7 @@
 #include "ragnarok/uiwnd.h"
 #include <Windows.h>
 
+#include <cstdint>  // std::uint64_t (révision du tampon de logs)
 #include <cstdio>  // std::snprintf (compteur de lignes de la fenêtre de logs)
 
 #include "imgui.h"
@@ -1403,8 +1404,9 @@ void Bourgeon::ShowLogWindow() {
     return;
   }
   // Logs: a live mirror of every LogInfo/LogDiag/LogError (fed by the in-memory
-  // spdlog sink), not just the plugin lines pushed via AddLogLine.  Snapshotted
-  // each frame so it stays thread-safe against sinks running on other threads.
+  // spdlog sink), not just the plugin lines pushed via AddLogLine.  La recopie
+  // depuis le tampon partagé se fait sous son verrou, donc à l'abri des sinks qui
+  // tournent sur d'autres fils.
   //
   // ── Pourquoi un InputTextMultiline en lecture seule, et plus un TextUnformatted
   // par ligne ── Le rendu précédent était INCOPIABLE : ImGui ne sait pas
@@ -1420,7 +1422,9 @@ void Bourgeon::ShowLogWindow() {
 
   static std::vector<LogLine> log_lines;
   static std::vector<char> flat;      // tampon NUL-terminé pour ImGui
-  static size_t last_count = static_cast<size_t>(-1);
+  // Révision du tampon partagé que `log_lines` reflète. Zéro = « rien reçu » :
+  // c'est aussi l'état d'un tampon jamais écrit, donc rien à copier.
+  static std::uint64_t log_revision = 0;
   static char   filter[64] = {0};
   static char   last_filter[64] = {0};
   static bool   follow = true;
@@ -1459,14 +1463,25 @@ void Bourgeon::ShowLogWindow() {
     }
   };
 
-  LogLineBuffer::instance().Snapshot(&log_lines);
+  // 🔴 LA RECOPIE ELLE-MÊME EST CONDITIONNELLE, et pas seulement la mise à plat
+  // qui suit. Elle l'était : `Snapshot` recopiait les 2000 lignes — chacune une
+  // `std::string` — à CHAQUE frame, juste au-dessus de la garde qui explique
+  // qu'on ne veut pas « recopier des centaines de kilo-octets pour rien ».
+  // La garde ne protégeait que la seconde moitié du travail.
+  const bool lines_changed =
+      LogLineBuffer::instance().SnapshotIfChanged(&log_lines, &log_revision);
 
   // Le tampon n'est reconstruit que si quelque chose a changé : le remettre à
   // plat à chaque frame recopierait des centaines de kilo-octets pour rien, et
   // ferait sauter la sélection en cours sous la souris du joueur.
+  //
+  // ⚠ Le critère était `log_lines.size() != last_count`, et il MENTAIT : l'anneau
+  // sature à 2000 lignes, après quoi sa taille ne bouge plus jamais alors que son
+  // contenu se renouvelle entièrement. Passé la 2000ᵉ ligne, la fenêtre de log se
+  // figeait donc sur ce qu'elle avait déjà — précisément quand un diagnostic
+  // devient long. C'est la révision du tampon qui répond, désormais.
   const bool filter_changed = std::strcmp(filter, last_filter) != 0;
-  if (log_lines.size() != last_count || filter_changed || mask != last_mask) {
-    last_count = log_lines.size();
+  if (lines_changed || filter_changed || mask != last_mask) {
     last_mask = mask;
     std::strncpy(last_filter, filter, sizeof(last_filter) - 1);
     last_filter[sizeof(last_filter) - 1] = '\0';
@@ -1499,10 +1514,9 @@ void Bourgeon::ShowLogWindow() {
 
   if (ImGui::Button(i18n::Tr("Copier tout"))) ImGui::SetClipboardText(flat.data());
   ImGui::SameLine();
-  if (ImGui::Button(i18n::Tr("Vider"))) {
-    LogLineBuffer::instance().Clear();
-    last_count = static_cast<size_t>(-1);
-  }
+  // Le vidage n'a rien à forcer ici : il fait avancer la révision du tampon, donc
+  // la frame suivante recopie l'anneau vide et remet le texte à plat d'elle-même.
+  if (ImGui::Button(i18n::Tr("Vider"))) LogLineBuffer::instance().Clear();
   ImGui::SameLine();
   ImGui::Checkbox(i18n::Tr("Suivre"), &follow);
   ImGui::SameLine();
