@@ -58,6 +58,7 @@
 #include "ragnarok/stl_node.h"  // rag::listnode : le nœud du conteneur
 #include "ragnarok/skill_info.h"  // rag::skillinfo
 #include "features/craft_data.h"  // craftdata::kMaxRefine
+#include "ui/table_view.h"  // ro::SortedView : le roster de guilde
 #include "ui/ui_palette.h"  // ro::pal : la palette de l'UI
 
 //  Constantes RE (client 20250716, base 0x400000 ; cf. project_character_sheet)
@@ -5315,9 +5316,20 @@ void CharacterSheet::DrawGuildTab() {
               [](const KnownPosition& a, const KnownPosition& b) { return a.id < b.id; });
 
     // Vue triable (indices sur le roster) : le tri suit les en-têtes de colonnes.
-    static std::vector<int> order;
-    order.resize(roster.count);
-    for (int i = 0; i < roster.count; ++i) order[i] = i;
+    //
+    // Mémorisée d'une frame à l'autre (ui/table_view.h). Elle était remise à
+    // l'identité PUIS retriée à chaque frame — roster entier, jusqu'à 76 membres,
+    // soixante fois par seconde, pour un ordre qui ne bouge qu'à un paquet de
+    // guilde. L'empreinte porte tout ce que les six colonnes comparent, puisque
+    // le serveur met ces champs à jour sans changer le nombre de membres.
+    static ro::SortedView s_view;
+    s_view.Begin(static_cast<size_t>(roster.count));
+    for (int i = 0; i < roster.count; ++i) {
+      const GuildMember& m = roster.members[i];
+      s_view.Push(i, ro::Fingerprint(m.cid, m.aid, m.job, m.level,
+                                     m.position_id, m.contribution,
+                                     m.online ? 1 : 0, m.last_login));
+    }
 
     const ImGuiTableFlags table_flags =
         ImGuiTableFlags_Resizable | ImGuiTableFlags_Sortable | ImGuiTableFlags_RowBg |
@@ -5334,31 +5346,34 @@ void CharacterSheet::DrawGuildTab() {
       ImGui::TableSetupColumn(i18n::Tr("Connexion"), ImGuiTableColumnFlags_WidthFixed, ro::Px(104.0f));
       ImGui::TableHeadersRow();
 
-      if (ImGuiTableSortSpecs* specs = ImGui::TableGetSortSpecs()) {
-        if (specs->SpecsCount > 0) {
-          const int  column = specs->Specs[0].ColumnIndex;
-          const bool ascending = specs->Specs[0].SortDirection == ImGuiSortDirection_Ascending;
-          std::sort(order.begin(), order.end(), [&](int lhs, int rhs) {
-            const GuildMember& a = roster.members[lhs];
-            const GuildMember& b = roster.members[rhs];
-            int cmp = 0;
-            switch (column) {
-              case 1: cmp = std::strcmp(JobName(a.job), JobName(b.job)); break;
-              case 2: cmp = a.level - b.level; break;
-              case 3: cmp = a.position_id - b.position_id; break;
-              case 4: cmp = (a.contribution > b.contribution) - (a.contribution < b.contribution);
-                      break;
-              case 5: cmp = (a.online != b.online)
-                                ? (a.online ? 1 : -1)
-                                : ((a.last_login > b.last_login) - (a.last_login < b.last_login));
-                      break;
-              default: cmp = _stricmp(a.name, b.name); break;
-            }
-            if (cmp == 0) cmp = _stricmp(a.name, b.name);
-            return ascending ? cmp < 0 : cmp > 0;
-          });
-        }
+      // ⚠ `End` mémorise la passe : évalué à CHAQUE frame, donc en tête du `&&`.
+      ImGuiTableSortSpecs* specs = ImGui::TableGetSortSpecs();
+      if (s_view.End(ro::TableSortKey(specs)) && specs != nullptr &&
+          specs->SpecsCount > 0) {
+        const int  column = specs->Specs[0].ColumnIndex;
+        const bool ascending = specs->Specs[0].SortDirection == ImGuiSortDirection_Ascending;
+        std::vector<int>& order = s_view.mutable_order();
+        std::sort(order.begin(), order.end(), [&](int lhs, int rhs) {
+          const GuildMember& a = roster.members[lhs];
+          const GuildMember& b = roster.members[rhs];
+          int cmp = 0;
+          switch (column) {
+            case 1: cmp = std::strcmp(JobName(a.job), JobName(b.job)); break;
+            case 2: cmp = a.level - b.level; break;
+            case 3: cmp = a.position_id - b.position_id; break;
+            case 4: cmp = (a.contribution > b.contribution) - (a.contribution < b.contribution);
+                    break;
+            case 5: cmp = (a.online != b.online)
+                              ? (a.online ? 1 : -1)
+                              : ((a.last_login > b.last_login) - (a.last_login < b.last_login));
+                    break;
+            default: cmp = _stricmp(a.name, b.name); break;
+          }
+          if (cmp == 0) cmp = _stricmp(a.name, b.name);
+          return ascending ? cmp < 0 : cmp > 0;
+        });
       }
+      const std::vector<int>& order = s_view.order();
 
       // Comme le natif : ligne teintée en vert et miniature de tête pour les membres
       // CONNECTÉS uniquement (le rendu natif d'une ligne fait les deux sous le même

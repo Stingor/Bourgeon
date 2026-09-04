@@ -690,6 +690,21 @@ class ChatWindow : public Plugin {
     float            cached_wrap = -1.0f;
     float            cached_height = 0.0f;
     uint8_t          cached_flags = 0xFF;  // horodatage + icônes (cf. DrawLines)
+    // ── Résultat du filtre de RECHERCHE, mémorisé ────────────────────────────
+    // 🔴 C'est la seule partie COÛTEUSE du test d'affichage — deux recherches de
+    // sous-chaîne sans casse, sur le texte nu puis sur l'expéditeur — et la
+    // seule qui ne dépende PAS du canal. Elle était refaite pour chaque ligne du
+    // tampon (jusqu'à 5000), pour chaque canal dessiné, à chaque frame : c'est
+    // exactement la forme du gel de chat en combat que `utils/frame_profiler.h`
+    // raconte, et qu'un cache de mesure avait déjà réglé pour le word-wrap.
+    //
+    // L'époque est celle du texte cherché (`search_epoch_`) : elle avance quand
+    // le joueur modifie sa recherche, et zéro — la valeur d'une ligne neuve —
+    // ne peut jamais la valoir, puisqu'elle part de 1 et ne fait que croître.
+    // `plain` et `sender`, eux, sont posés à la construction de la ligne et ne
+    // bougent plus : rien d'autre ne peut périmer le résultat.
+    uint32_t         search_epoch = 0;
+    bool             search_hit = false;
   };
 
   // Analyse une ligne brute (code-page client) en fragments prêts à dessiner.
@@ -1087,6 +1102,17 @@ class ChatWindow : public Plugin {
   // recherche), en texte nu, pour le mode sélection. Ne reconstruit que si le
   // modèle ou le filtrage ont bougé.
   void RefreshSelectBuffer(const Channel& channel);
+  // ── Le filtre de recherche, mémorisé par ligne ──────────────────────────────
+  // `RefreshSearchEpoch` se compare au texte de la frame précédente et fait
+  // avancer `search_epoch_` quand il a changé. Elle est appelée UNE fois par
+  // frame, en tête de `OnRenderUI` : le champ de recherche est un `InputText`
+  // ordinaire, sans callback, et guetter ses écritures site par site serait le
+  // genre de plomberie qu'un futur site oublierait en silence.
+  void RefreshSearchEpoch();
+  // Vrai si la ligne passe la recherche courante. Recalcule et mémorise sur
+  // `line` au besoin (d'où la référence NON const), rend le résultat gardé
+  // sinon. Toujours vrai quand aucune recherche n'est en cours.
+  bool LineMatchesSearch(Line& line) const;
   // Arme l'envoi du contenu de la barre de saisie (joué par FlushPending).
   void QueueSend();
 
@@ -1423,6 +1449,11 @@ class ChatWindow : public Plugin {
   links::MenuAnchor input_menu_;  // les pastilles de la barre de saisie
 
   char search_[64] = {};
+  // Le texte de recherche tel qu'il était à la frame précédente, et l'époque qui
+  // en découle. 🔴 L'époque part à 1 et ne fait que croître : zéro reste ainsi
+  // la marque « jamais calculé » d'une ligne neuve (cf. Line::search_epoch).
+  char     search_seen_[64] = {};
+  uint32_t search_epoch_ = 1;
   // 🔴 1024 et pas 256 : la LIMITE est celle du FIL (`kWireMessageMax` octets en
   // 1252), pas celle du tampon. En UTF-8 une lettre accentuée pèse deux octets
   // pour un seul sur le fil : à 256 le champ refusait la frappe bien avant que

@@ -322,6 +322,9 @@ set(BOURGEON_FILES
 	"ui/palette_ramps.h"
 	"ui/sprite_view.cc"
 	"ui/sprite_view.h"
+	# Vues de table mémorisées : évite de refiltrer et de retrier les neuf tables
+	# triables du projet à chaque frame. En-tête seul.
+	"ui/table_view.h"
 	"ui/mob_sprite.cc"
 	"ui/mob_sprite.h"
 	# Monstres 3D (Emperium, gardiens, drapeau, coffres) : lecture .gr2 via la

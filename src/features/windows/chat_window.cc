@@ -3330,6 +3330,9 @@ void ChatWindow::OnRenderUI() {
   // Relevée ICI, hors de toute fenêtre : c'est la seule taille de police qui ne
   // porte l'échelle d'aucune d'entre elles. Tout le log s'en déduit.
   base_font_size_ = ImGui::GetFontSize();
+  // Une fois par frame, AVANT tout dessin de log : elle décide si les résultats
+  // de recherche mémorisés sur les lignes valent encore (cf. Line::search_epoch).
+  RefreshSearchEpoch();
   // L'aimant vit dans ui/window_clamp : sa passe tourne bien avant nous, en tête
   // de frame. On lui repousse le réglage à chaque frame plutôt qu'au moment où il
   // change — c'est une case, pas un événement, et l'ordre de chargement des
@@ -4526,6 +4529,27 @@ void ChatWindow::InvalidateLineLayout() {
 // rendu normal peint des glyphes dans un ImDrawList, il n'y a rien à sélectionner
 // dedans. Le prix est assumé : plus de couleurs, plus d'icônes, du texte nu — ce
 // qui est de toute façon ce qu'on veut coller ailleurs.
+void ChatWindow::RefreshSearchEpoch() {
+  if (std::strcmp(search_, search_seen_) == 0) return;
+  std::strncpy(search_seen_, search_, sizeof(search_seen_) - 1);
+  search_seen_[sizeof(search_seen_) - 1] = '\0';
+  ++search_epoch_;
+}
+
+bool ChatWindow::LineMatchesSearch(Line& line) const {
+  // Pas de recherche : tout passe, et surtout on ne TOUCHE PAS au cache. Le
+  // remplir de « vrai » ici le rendrait indiscernable d'un vrai résultat si la
+  // recherche revenait sans que l'époque ait bougé — elle bouge, mais s'appuyer
+  // là-dessus pour une écriture inutile serait un piège gratuit.
+  if (search_[0] == '\0') return true;
+  if (line.search_epoch != search_epoch_) {
+    line.search_hit = ContainsNoCase(line.plain, search_) ||
+                      ContainsNoCase(line.sender, search_);
+    line.search_epoch = search_epoch_;
+  }
+  return line.search_hit;
+}
+
 void ChatWindow::RefreshSelectBuffer(const Channel& channel) {
   std::lock_guard<std::mutex> lock(lines_mutex_);
   // Clé de fraîcheur : reconstruire à chaque frame coûterait une concaténation de
@@ -4548,11 +4572,11 @@ void ChatWindow::RefreshSelectBuffer(const Channel& channel) {
   select_key_ = key;
 
   select_buf_.clear();
-  for (const Line& line : lines_) {
+  // ⚠ `Line&` et non `const Line&` : `LineMatchesSearch` mémorise son résultat
+  // sur la ligne. Le modèle, lui, n'est pas touché — seulement son cache.
+  for (Line& line : lines_) {
     if (!ChannelAccepts(channel, line)) continue;
-    if (search_[0] != '\0' && !ContainsNoCase(line.plain, search_) &&
-        !ContainsNoCase(line.sender, search_))
-      continue;
+    if (!LineMatchesSearch(line)) continue;
     if (timestamps_) {
       char stamp[16];
       std::snprintf(stamp, sizeof(stamp), "[%02d:%02d:%02d] ", line.hour, line.minute,
@@ -4644,10 +4668,12 @@ void ChatWindow::DrawLines(const Channel& channel) {
   float x = 0.0f, y = 0.0f;
   std::unique_lock<std::mutex> lock(lines_mutex_);
   for (Line& line : lines_) {
+    // 🔴 L'ORDRE COMPTE : `ChannelAccepts` n'est qu'une poignée de branches,
+    // `LineMatchesSearch` peut avoir à parcourir le texte. Le test cher passe
+    // donc en second, et ne coûte plus, une fois mémorisé, qu'une comparaison
+    // d'entiers.
     if (!ChannelAccepts(channel, line)) continue;
-    if (search_[0] != '\0' && !ContainsNoCase(line.plain, search_) &&
-        !ContainsNoCase(line.sender, search_))
-      continue;
+    if (!LineMatchesSearch(line)) continue;
 
     // Hauteur connue et ligne hors écran : rien à peindre, rien à mesurer.
     if (line.cached_wrap == wrap && line.cached_flags == layout_flags &&

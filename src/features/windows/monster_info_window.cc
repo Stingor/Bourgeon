@@ -24,6 +24,7 @@
 #include "ui/ro_imgui.h"        // ro::BeginRoDescWindow, ro::LocalToUtf8 (CP949)
 #include "ui/ro_widgets.h"      // mui::LastItemWheel (verrou molette anti-défilement)
 #include "ui/sprite_view.h"     // cadence du .act + son du sprite (interaction)
+#include "ui/table_view.h"      // ro::SortedView : les trois tables triables
 #include "utils/i18n.h"
 #include "utils/text.h"  // text::GroupThousands
 #include "ui/ui_palette.h"  // ro::pal : la palette de l'UI
@@ -1594,29 +1595,48 @@ void MonsterInfoWindow::DrawDropsTab(MobInfo& mob) {
 
     // Vue triée : on ne touche PAS au modèle (l'ordre du serveur reste la
     // référence, et le paquet peut le réécrire à tout moment).
-    std::vector<const Drop*> view;
-    view.reserve(mob.drops.size());
-    for (const Drop& d : mob.drops)
-      if (s_filter.PassFilter(d.name.c_str())) view.push_back(&d);
-    if (ImGuiTableSortSpecs* sort = ImGui::TableGetSortSpecs()) {
-      if (sort->SpecsCount > 0) {
-        const ImGuiTableColumnSortSpecs& sp = sort->Specs[0];
-        const bool asc = sp.SortDirection == ImGuiSortDirection_Ascending;
-        std::sort(view.begin(), view.end(), [&](const Drop* a, const Drop* b) {
-          int c;
-          if (sp.ColumnIndex == 1)
-            c = (a->rate < b->rate) ? -1 : (a->rate > b->rate ? 1 : 0);
-          else if (sp.ColumnIndex == 2)
-            c = (a->kind < b->kind) ? -1 : (a->kind > b->kind ? 1 : 0);
-          else
-            c = _stricmp(a->name.c_str(), b->name.c_str());
-          return asc ? c < 0 : c > 0;
-        });
-      }
+    //
+    // Mémorisée d'une frame à l'autre (ui/table_view.h) : filtrage et tri ne
+    // sont refaits que si la liste, le filtre ou la colonne triée changent.
+    // L'empreinte porte les trois champs sur lesquels la table trie et qu'un
+    // paquet peut réécrire sans changer la longueur de la liste ; le nom, lui,
+    // découle du nameid, qui y est déjà.
+    static ro::SortedView s_view;
+    s_view.Begin(mob.drops.size());
+    for (size_t i = 0; i < mob.drops.size(); ++i) {
+      const Drop& d = mob.drops[i];
+      if (s_filter.PassFilter(d.name.c_str()))
+        s_view.Push(static_cast<int>(i),
+                    ro::Fingerprint(d.nameid, d.rate, d.kind));
+    }
+    ImGuiTableSortSpecs* sort = ImGui::TableGetSortSpecs();
+    // 🔴 Le monstre AFFICHÉ fait partie de la clé. Sans lui, deux fiches dont
+    // les listes portent les mêmes indices et les mêmes empreintes — ce qui
+    // arrive entre variantes d'un même monstre — se partageraient un ordre.
+    // ⚠ `End` doit être évalué à chaque frame (il mémorise la passe) : il est
+    // donc en TÊTE du `&&`, jamais après une condition qui pourrait le court-
+    // circuiter.
+    if (s_view.End(ro::Fingerprint(ro::TableSortKey(sort), current_id_)) &&
+        sort != nullptr && sort->SpecsCount > 0) {
+      const ImGuiTableColumnSortSpecs& sp = sort->Specs[0];
+      const bool asc = sp.SortDirection == ImGuiSortDirection_Ascending;
+      std::vector<int>& order = s_view.mutable_order();
+      std::sort(order.begin(), order.end(), [&](int ia, int ib) {
+        const Drop& a = mob.drops[ia];
+        const Drop& b = mob.drops[ib];
+        int c;
+        if (sp.ColumnIndex == 1)
+          c = (a.rate < b.rate) ? -1 : (a.rate > b.rate ? 1 : 0);
+        else if (sp.ColumnIndex == 2)
+          c = (a.kind < b.kind) ? -1 : (a.kind > b.kind ? 1 : 0);
+        else
+          c = _stricmp(a.name.c_str(), b.name.c_str());
+        return asc ? c < 0 : c > 0;
+      });
     }
 
-    for (const Drop* dp : view) {
-      const Drop& d = *dp;
+    for (const int di : s_view.order()) {
+      const Drop& d = mob.drops[di];
       ImGui::TableNextRow();
       ImGui::TableNextColumn();
 
@@ -1672,22 +1692,31 @@ void MonsterInfoWindow::DrawSpawnsTab(MobInfo& mob) {
     ImGui::TableSetupScrollFreeze(0, 1);
     ImGui::TableHeadersRow();
 
-    std::vector<const Spawn*> view;
-    view.reserve(mob.spawns.size());
-    for (const Spawn& s : mob.spawns) view.push_back(&s);
-    if (ImGuiTableSortSpecs* sort = ImGui::TableGetSortSpecs()) {
-      if (sort->SpecsCount > 0) {
-        const ImGuiTableColumnSortSpecs& sp = sort->Specs[0];
-        const bool asc = sp.SortDirection == ImGuiSortDirection_Ascending;
-        std::sort(view.begin(), view.end(), [&](const Spawn* a, const Spawn* b) {
-          const int c = (sp.ColumnIndex == 1)
-                            ? ((a->qty < b->qty) ? -1 : (a->qty > b->qty ? 1 : 0))
-                            : _stricmp(a->map.c_str(), b->map.c_str());
-          return asc ? c < 0 : c > 0;
-        });
-      }
+    // Vue mémorisée, comme celle des drops (ui/table_view.h). L'empreinte porte
+    // la quantité — le seul des deux champs triés qu'un paquet puisse réécrire
+    // sans changer la liste ; le nom de carte, lui, ne change pas sous un
+    // indice donné sans que la liste bouge.
+    static ro::SortedView s_view;
+    s_view.Begin(mob.spawns.size());
+    for (size_t i = 0; i < mob.spawns.size(); ++i)
+      s_view.Push(static_cast<int>(i), ro::Fingerprint(mob.spawns[i].qty));
+    ImGuiTableSortSpecs* sort = ImGui::TableGetSortSpecs();
+    if (s_view.End(ro::Fingerprint(ro::TableSortKey(sort), current_id_)) &&
+        sort != nullptr && sort->SpecsCount > 0) {
+      const ImGuiTableColumnSortSpecs& sp = sort->Specs[0];
+      const bool asc = sp.SortDirection == ImGuiSortDirection_Ascending;
+      std::vector<int>& order = s_view.mutable_order();
+      std::sort(order.begin(), order.end(), [&](int ia, int ib) {
+        const Spawn& a = mob.spawns[ia];
+        const Spawn& b = mob.spawns[ib];
+        const int c = (sp.ColumnIndex == 1)
+                          ? ((a.qty < b.qty) ? -1 : (a.qty > b.qty ? 1 : 0))
+                          : _stricmp(a.map.c_str(), b.map.c_str());
+        return asc ? c < 0 : c > 0;
+      });
     }
-    for (const Spawn* s : view) {
+    for (const int si : s_view.order()) {
+      const Spawn* const s = &mob.spawns[si];
       ImGui::TableNextRow();
       ImGui::TableNextColumn();
 
@@ -1734,29 +1763,35 @@ void MonsterInfoWindow::DrawSkillsTab(MobInfo& mob) {
     ImGui::TableHeadersRow();
 
     // Les noms sont déjà résolus (au décodage du paquet) : il ne reste ici qu'à
-    // trier et à afficher.
-    std::vector<const MobSkill*> view;
-    view.reserve(mob.skills.size());
-    for (const MobSkill& s : mob.skills) view.push_back(&s);
-    if (ImGuiTableSortSpecs* sort = ImGui::TableGetSortSpecs()) {
-      if (sort->SpecsCount > 0) {
-        const ImGuiTableColumnSortSpecs& sp = sort->Specs[0];
-        const bool asc = sp.SortDirection == ImGuiSortDirection_Ascending;
-        std::sort(view.begin(), view.end(),
-                  [&](const MobSkill* a, const MobSkill* b) {
-                    int c;
-                    if (sp.ColumnIndex == 1)
-                      c = (a->lv < b->lv) ? -1 : (a->lv > b->lv ? 1 : 0);
-                    else if (sp.ColumnIndex == 2)
-                      c = (a->id < b->id) ? -1 : (a->id > b->id ? 1 : 0);
-                    else
-                      c = _stricmp(a->name.c_str(), b->name.c_str());
-                    return asc ? c < 0 : c > 0;
-                  });
-      }
+    // trier et à afficher. Vue mémorisée (ui/table_view.h) ; l'empreinte porte
+    // l'id et le niveau, les deux champs triables que le paquet peut réécrire.
+    static ro::SortedView s_view;
+    s_view.Begin(mob.skills.size());
+    for (size_t i = 0; i < mob.skills.size(); ++i)
+      s_view.Push(static_cast<int>(i),
+                  ro::Fingerprint(mob.skills[i].id, mob.skills[i].lv));
+    ImGuiTableSortSpecs* sort = ImGui::TableGetSortSpecs();
+    if (s_view.End(ro::Fingerprint(ro::TableSortKey(sort), current_id_)) &&
+        sort != nullptr && sort->SpecsCount > 0) {
+      const ImGuiTableColumnSortSpecs& sp = sort->Specs[0];
+      const bool asc = sp.SortDirection == ImGuiSortDirection_Ascending;
+      std::vector<int>& order = s_view.mutable_order();
+      std::sort(order.begin(), order.end(), [&](int ia, int ib) {
+        const MobSkill& a = mob.skills[ia];
+        const MobSkill& b = mob.skills[ib];
+        int c;
+        if (sp.ColumnIndex == 1)
+          c = (a.lv < b.lv) ? -1 : (a.lv > b.lv ? 1 : 0);
+        else if (sp.ColumnIndex == 2)
+          c = (a.id < b.id) ? -1 : (a.id > b.id ? 1 : 0);
+        else
+          c = _stricmp(a.name.c_str(), b.name.c_str());
+        return asc ? c < 0 : c > 0;
+      });
     }
 
-    for (const MobSkill* s : view) {
+    for (const int ki : s_view.order()) {
+      const MobSkill* const s = &mob.skills[ki];
       ImGui::TableNextRow();
       ImGui::TableNextColumn();
       // Cliquable = le client a une DESCRIPTION (skilldescript.lub), pas

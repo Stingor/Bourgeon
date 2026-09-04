@@ -40,6 +40,7 @@
 #include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 #include "features/windows/viewer_probes.h"  // etat des fenetres voisines
 #include "ui/item_grid_chrome.h"  // ro::grid : le decor commun aux grilles
+#include "ui/table_view.h"        // ro::SortedView : la table triable
 #include "ui/ui_palette.h"  // ro::pal : la palette de l'UI
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
@@ -1807,6 +1808,22 @@ void StorageWindow::OnRenderUI() {
   long long total_val = 0;
   for (int i : view) total_val += price(items_[i].id) * items_[i].amount;
 
+  // Vue TRIÉE, mémorisée d'une frame à l'autre (ui/table_view.h). Le filtrage
+  // ci-dessus reste refait à chaque frame — il est O(n) et l'onglet, la
+  // sous-catégorie ou le filtre changent la LISTE, qui est comparée en entier.
+  // Ce qui disparaît, c'est le `std::sort` : jusqu'à 600 lignes retriées
+  // soixante fois par seconde alors que rien n'avait bougé.
+  //
+  // 🔴 L'empreinte porte TOUT ce que le comparateur lit et qui peut changer sans
+  // que la liste change : la quantité (un dépôt partiel), le prix (il arrive du
+  // serveur après coup), l'index et l'id. Le nom et le nombre d'emplacements,
+  // eux, découlent de l'id.
+  static ro::SortedView s_view;
+  s_view.Begin(view.size());
+  for (const int i : view)
+    s_view.Push(i, ro::Fingerprint(items_[i].id, items_[i].index,
+                                   items_[i].amount, price(items_[i].id)));
+
   // Valeur estimée : LIGNE À ELLE SEULE. Surtout pas de SameLine ici — le widget
   // précédent est le combo « Sous-type » ou le champ de filtre, tous deux en
   // largeur pleine (SetNextItemWidth(-1)), et le texte se retrouvait dessous.
@@ -1918,41 +1935,43 @@ void StorageWindow::OnRenderUI() {
                             ro::Px(72.0f));
     ImGui::TableHeadersRow();
 
-    if (ImGuiTableSortSpecs* sort = ImGui::TableGetSortSpecs()) { // tri demandé
-      if (sort->SpecsCount > 0) {
-        const ImGuiTableColumnSortSpecs& sp = sort->Specs[0];
-        const bool asc = sp.SortDirection == ImGuiSortDirection_Ascending;
-        std::sort(view.begin(), view.end(), [&](int a, int b) {
-          int c;
-          if (sp.ColumnIndex == kColQte) {
-            c = (items_[a].amount < items_[b].amount) ? -1
-                : (items_[a].amount > items_[b].amount) ? 1 : 0;
-          } else if (sp.ColumnIndex == kColVal) {
-            const long long va = price(items_[a].id) * items_[a].amount;
-            const long long vb = price(items_[b].id) * items_[b].amount;
-            c = (va < vb) ? -1 : (va > vb) ? 1 : 0;
-          } else if (sp.ColumnIndex == kColIdx) {
-            c = (items_[a].index < items_[b].index) ? -1
-                : (items_[a].index > items_[b].index) ? 1 : 0;
-          } else if (sp.ColumnIndex == kColId) {
-            c = (items_[a].id < items_[b].id) ? -1
-                : (items_[a].id > items_[b].id) ? 1 : 0;
-          } else if (sp.ColumnIndex == kColSlots) {
-            const int sa = submeta(items_[a].id).slots;
-            const int sb = submeta(items_[b].id).slots;
-            c = (sa < sb) ? -1 : (sa > sb) ? 1 : 0;
-          } else {
-            c = _stricmp(items_[a].name, items_[b].name);
-          }
-          return asc ? c < 0 : c > 0;
-        });
-      }
+    // ⚠ `End` mémorise la passe : évalué à CHAQUE frame, donc en tête du `&&`.
+    ImGuiTableSortSpecs* sort = ImGui::TableGetSortSpecs();  // tri demandé
+    if (s_view.End(ro::TableSortKey(sort)) && sort != nullptr &&
+        sort->SpecsCount > 0) {
+      const ImGuiTableColumnSortSpecs& sp = sort->Specs[0];
+      const bool asc = sp.SortDirection == ImGuiSortDirection_Ascending;
+      std::vector<int>& order = s_view.mutable_order();
+      std::sort(order.begin(), order.end(), [&](int a, int b) {
+        int c;
+        if (sp.ColumnIndex == kColQte) {
+          c = (items_[a].amount < items_[b].amount) ? -1
+              : (items_[a].amount > items_[b].amount) ? 1 : 0;
+        } else if (sp.ColumnIndex == kColVal) {
+          const long long va = price(items_[a].id) * items_[a].amount;
+          const long long vb = price(items_[b].id) * items_[b].amount;
+          c = (va < vb) ? -1 : (va > vb) ? 1 : 0;
+        } else if (sp.ColumnIndex == kColIdx) {
+          c = (items_[a].index < items_[b].index) ? -1
+              : (items_[a].index > items_[b].index) ? 1 : 0;
+        } else if (sp.ColumnIndex == kColId) {
+          c = (items_[a].id < items_[b].id) ? -1
+              : (items_[a].id > items_[b].id) ? 1 : 0;
+        } else if (sp.ColumnIndex == kColSlots) {
+          const int sa = submeta(items_[a].id).slots;
+          const int sb = submeta(items_[b].id).slots;
+          c = (sa < sb) ? -1 : (sa > sb) ? 1 : 0;
+        } else {
+          c = _stricmp(items_[a].name, items_[b].name);
+        }
+        return asc ? c < 0 : c > 0;
+      });
     }
 
     // Hauteur d'affichage de l'icône, à l'échelle de l'interface : elle est
     // calée sur la rangée, dont la hauteur suit la police.
     const float kIcon = ro::Px(22.0f);
-    for (int idx : view) {
+    for (const int idx : s_view.order()) {
       ImGui::TableNextRow();
       // 🔴 Chaque cellule vise sa colonne par son INDEX, jamais « la suivante » :
       // l'ordre d'affichage appartient au joueur, l'ordre de déclaration au code.

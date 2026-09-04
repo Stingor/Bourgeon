@@ -34,6 +34,7 @@
 #include "imgui.h"
 #include "ui/imgui_escape.h"
 #include "ui/ro_imgui.h"           // BeginRoDescWindow (cadre desc)
+#include "ui/table_view.h"         // ro::SortedView : sources de drop + probas
 #include "features/overlays/basic_info.h"    // aperçu équipement (RenderItemPreviewTooltip)
 #include "features/systems/bourgeon_opcodes.h"
 #include "features/moonlight_ui/moonlight_ui.h"  // API autolootid (bouton +/- réintégré)
@@ -1912,10 +1913,21 @@ void ItemDescWindow::RenderDropTable(const TechData& td, const char* table_id,
   ImGui::SetNextItemWidth(ro::Px(180.0f));
   filter.Draw(flabel);
 
-  std::vector<const DropSrc*> view;
-  view.reserve(td.drops.size());
-  for (const DropSrc& d : td.drops)
-    if (filter.PassFilter(d.name.c_str())) view.push_back(&d);
+  // Vue mémorisée d'une frame à l'autre (ui/table_view.h), et PAR (objet,
+  // section) comme le filtre juste au-dessus : les deux sections partagent cette
+  // fonction et se disputeraient une vue unique à chaque frame. Filtrage et tri
+  // ne sont refaits que si la liste, le filtre ou la colonne triée changent.
+  // L'empreinte porte les champs dont l'ordre dépend et qui peuvent bouger sans
+  // que la longueur de la liste bouge ; le nom découle du mob_id, qui y est.
+  static std::unordered_map<uint32_t, ro::SortedView> s_views;
+  ro::SortedView& view = s_views[filter_key];
+  view.Begin(td.drops.size());
+  for (size_t i = 0; i < td.drops.size(); ++i) {
+    const DropSrc& d = td.drops[i];
+    if (filter.PassFilter(d.name.c_str()))
+      view.Push(static_cast<int>(i),
+                ro::Fingerprint(d.mob_id, d.rate, d.src, d.boss));
+  }
 
   const ImGuiTableFlags tf =
       ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
@@ -1931,29 +1943,34 @@ void ItemDescWindow::RenderDropTable(const TechData& td, const char* table_id,
       ImGui::TableSetupColumn(i18n::Tr("Type"), ImGuiTableColumnFlags_WidthFixed, ro::Px(105.0f));
     ImGui::TableHeadersRow();
 
-    if (ImGuiTableSortSpecs* sort = ImGui::TableGetSortSpecs()) {
-      if (sort->SpecsCount > 0) {
-        const ImGuiTableColumnSortSpecs& sp = sort->Specs[0];
-        const bool asc = sp.SortDirection == ImGuiSortDirection_Ascending;
-        std::sort(view.begin(), view.end(),
-                  [&](const DropSrc* a, const DropSrc* b) {
-                    int c;
-                    if (sp.ColumnIndex == 1) {
-                      c = (a->rate < b->rate) ? -1 : (a->rate > b->rate ? 1 : 0);
-                    } else if (sp.ColumnIndex == 2) {  // Type (mécanisme)
-                      if (a->src != b->src)
-                        c = (a->src < b->src) ? -1 : 1;
-                      else
-                        c = (a->rate < b->rate) ? 1 : (a->rate > b->rate ? -1 : 0);
-                    } else {
-                      c = _stricmp(a->name.c_str(), b->name.c_str());
-                    }
-                    return asc ? c < 0 : c > 0;
-                  });
-      }
+    // ⚠ `End` mémorise la passe : il doit être évalué à CHAQUE frame, donc en
+    // tête du `&&` — jamais derrière une condition qui pourrait l'esquiver.
+    ImGuiTableSortSpecs* sort = ImGui::TableGetSortSpecs();
+    if (view.End(ro::TableSortKey(sort)) && sort != nullptr &&
+        sort->SpecsCount > 0) {
+      const ImGuiTableColumnSortSpecs& sp = sort->Specs[0];
+      const bool asc = sp.SortDirection == ImGuiSortDirection_Ascending;
+      std::vector<int>& order = view.mutable_order();
+      std::sort(order.begin(), order.end(), [&](int ia, int ib) {
+        const DropSrc& a = td.drops[ia];
+        const DropSrc& b = td.drops[ib];
+        int c;
+        if (sp.ColumnIndex == 1) {
+          c = (a.rate < b.rate) ? -1 : (a.rate > b.rate ? 1 : 0);
+        } else if (sp.ColumnIndex == 2) {  // Type (mécanisme)
+          if (a.src != b.src)
+            c = (a.src < b.src) ? -1 : 1;
+          else
+            c = (a.rate < b.rate) ? 1 : (a.rate > b.rate ? -1 : 0);
+        } else {
+          c = _stricmp(a.name.c_str(), b.name.c_str());
+        }
+        return asc ? c < 0 : c > 0;
+      });
     }
 
-    for (const DropSrc* d : view) {
+    for (const int di : view.order()) {
+      const DropSrc* const d = &td.drops[di];
       ImGui::TableNextRow();
       ImGui::TableNextColumn();
       // Badge type de boss avant le nom.
@@ -2035,15 +2052,30 @@ void ItemDescWindow::RenderProbabilityTab(uint32_t item_id) {
   filter.Draw(i18n::Tr("Filtrer (contenu)##prob"));
 
   // Vue à plat : chaque ligne garde son groupe, dont dépend le libellé du tirage.
+  //
+  // 🔴 `rows` est reconstruit à chaque frame et l'ordre mémorisé ne porte que des
+  // POSITIONS dedans, JAMAIS un pointeur : une vue qui survit d'une frame à
+  // l'autre ne peut pas tenir un pointeur dans un vecteur que le modèle
+  // réalloue. Et quand `End` rend false, la passe est identique position pour
+  // position — les positions mémorisées désignent donc bien les mêmes lignes.
   struct Row { const itemprob::Entry* e; const itemprob::Group* g; };
-  std::vector<Row> view;
-  view.reserve(table->entry_count);
+  std::vector<Row> rows;
+  rows.reserve(table->entry_count);
+  static std::unordered_map<uint32_t, ro::SortedView> s_views;
+  ro::SortedView& view = s_views[item_id];
+  view.Begin(table->entry_count);
   for (const itemprob::Group& g : table->groups)
     for (const itemprob::Entry& e : g.entries)
-      if (filter.PassFilter(e.name.c_str())) view.push_back({&e, &g});
+      if (filter.PassFilter(e.name.c_str())) {
+        view.Push(static_cast<int>(rows.size()),
+                  ro::Fingerprint(e.id, e.pct, g.id));
+        rows.push_back({&e, &g});
+      }
 
   ImGui::SameLine();
-  ImGui::TextDisabled(i18n::Tr("%zu / %zu entrée(s)"), view.size(),
+  // ⚠ `rows`, pas la vue : à ce point de la frame l'ordre mémorisé est encore
+  // celui de la frame précédente — `End` n'a pas encore été appelé.
+  ImGui::TextDisabled(i18n::Tr("%zu / %zu entrée(s)"), rows.size(),
                       table->entry_count);
 
   const int columns = many_groups ? 3 : 2;
@@ -2069,22 +2101,25 @@ void ItemDescWindow::RenderProbabilityTab(uint32_t item_id) {
                               ro::Px(60.0f));
     ImGui::TableHeadersRow();
 
-    if (ImGuiTableSortSpecs* sort = ImGui::TableGetSortSpecs()) {
-      if (sort->SpecsCount > 0) {
-        const ImGuiTableColumnSortSpecs& sp = sort->Specs[0];
-        const bool asc = sp.SortDirection == ImGuiSortDirection_Ascending;
-        std::sort(view.begin(), view.end(), [&](const Row& a, const Row& b) {
-          int c;
-          if (sp.ColumnIndex == 1) {
-            c = (a.e->pct < b.e->pct) ? -1 : (a.e->pct > b.e->pct ? 1 : 0);
-          } else if (sp.ColumnIndex == 2) {
-            c = (a.g->id < b.g->id) ? -1 : (a.g->id > b.g->id ? 1 : 0);
-          } else {
-            c = _stricmp(a.e->name.c_str(), b.e->name.c_str());
-          }
-          return asc ? c < 0 : c > 0;
-        });
-      }
+    ImGuiTableSortSpecs* sort = ImGui::TableGetSortSpecs();
+    if (view.End(ro::TableSortKey(sort)) && sort != nullptr &&
+        sort->SpecsCount > 0) {
+      const ImGuiTableColumnSortSpecs& sp = sort->Specs[0];
+      const bool asc = sp.SortDirection == ImGuiSortDirection_Ascending;
+      std::vector<int>& order = view.mutable_order();
+      std::sort(order.begin(), order.end(), [&](int ia, int ib) {
+        const Row& a = rows[static_cast<size_t>(ia)];
+        const Row& b = rows[static_cast<size_t>(ib)];
+        int c;
+        if (sp.ColumnIndex == 1) {
+          c = (a.e->pct < b.e->pct) ? -1 : (a.e->pct > b.e->pct ? 1 : 0);
+        } else if (sp.ColumnIndex == 2) {
+          c = (a.g->id < b.g->id) ? -1 : (a.g->id > b.g->id ? 1 : 0);
+        } else {
+          c = _stricmp(a.e->name.c_str(), b.e->name.c_str());
+        }
+        return asc ? c < 0 : c > 0;
+      });
     }
 
     // Un millier de lignes pour une seule boîte : sans clipper, chaque frame
@@ -2093,8 +2128,9 @@ void ItemDescWindow::RenderProbabilityTab(uint32_t item_id) {
     clipper.Begin(static_cast<int>(view.size()));
     while (clipper.Step()) {
       for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i) {
-        const itemprob::Entry& e = *view[static_cast<size_t>(i)].e;
-        const itemprob::Group& g = *view[static_cast<size_t>(i)].g;
+        const Row& row = rows[static_cast<size_t>(view.order()[static_cast<size_t>(i)])];
+        const itemprob::Entry& e = *row.e;
+        const itemprob::Group& g = *row.g;
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
         // 🔴 Un NOM d'abord, puis le rang : `TableHeadersRow` pose déjà

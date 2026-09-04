@@ -34,7 +34,9 @@
 #include "utils/i18n.h"
 #include "ragnarok/client_string.h"  // rag::clientstr : la std::string du client
 #include "ui/ro_widgets.h"
+#include "ui/table_view.h"  // ro::SortedView : la table des produits
 #include "ui/ui_palette.h"  // ro::pal : la palette de l'UI
+#include "utils/text.h"     // text::ContainsNoCase (filtre de la table)
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -2616,48 +2618,58 @@ void MakeItemWindow::DrawList() {
     ImGui::TableHeadersRow();
 
     // Vue triée : on ne touche JAMAIS à `entries_`, qui reste dans l'ordre du
-    // paquet (c'est lui que le 3e clic doit pouvoir rendre).
-    std::vector<const Entry*> view;
-    view.reserve(entries_.size());
-    for (const Entry& e : entries_) {
+    // paquet (c'est lui que le 3e clic doit pouvoir rendre). Mémorisée d'une
+    // frame à l'autre (ui/table_view.h) : filtrage et tri ne sont refaits que si
+    // la liste, le filtre ou la colonne triée changent. L'empreinte porte les
+    // deux compteurs que l'inventaire fait bouger sans que la liste bouge.
+    static ro::SortedView s_view;
+    s_view.Begin(entries_.size());
+    for (size_t i = 0; i < entries_.size(); ++i) {
+      const Entry& e = entries_[i];
       if (filter_[0]) {
         char hay[160];
         std::snprintf(hay, sizeof(hay), "%s %u", e.name, e.id);
-        std::string h(hay), n(filter_);
-        std::transform(h.begin(), h.end(), h.begin(), ::tolower);
-        std::transform(n.begin(), n.end(), n.begin(), ::tolower);
-        if (h.find(n) == std::string::npos) continue;
+        // ⚠ `ContainsNoCase` et non deux `std::string` minusculées : cette
+        // boucle passe sur TOUTE la liste à chaque frame, et elle y allouait
+        // deux chaînes par produit — pour une comparaison qui n'en demande
+        // aucune.
+        if (!text::ContainsNoCase(hay, filter_)) continue;
       }
-      view.push_back(&e);
+      s_view.Push(static_cast<int>(i),
+                  ro::Fingerprint(e.id, e.owned, e.craftable));
     }
 
-    if (ImGuiTableSortSpecs* specs = ImGui::TableGetSortSpecs()) {
-      if (specs->SpecsCount > 0) {
-        const ImGuiTableColumnSortSpecs& s = specs->Specs[0];
-        std::sort(view.begin(), view.end(),
-                  [&](const Entry* a, const Entry* b) {
-                    int cmp = 0;
-                    switch (s.ColumnIndex) {
-                      case 0: cmp = (a->id < b->id) ? -1 : (a->id > b->id); break;
-                      case 1: cmp = _stricmp(a->name, b->name); break;
-                      case 2: cmp = (a->owned < b->owned) ? -1 : (a->owned > b->owned); break;
-                      case 3: cmp = (a->craftable < b->craftable) ? -1
-                                                                 : (a->craftable > b->craftable); break;
-                      default: break;
-                    }
-                    // ⚠ std::sort n'est PAS stable : sans ce départage par id,
-                    // deux produits homonymes (les quatre « Elemental Converter »)
-                    // échangeraient leur place d'une frame à l'autre et la ligne
-                    // sauterait sous le curseur.
-                    if (cmp == 0) cmp = (a->id < b->id) ? -1 : (a->id > b->id);
-                    return s.SortDirection == ImGuiSortDirection_Ascending ? cmp < 0
-                                                                          : cmp > 0;
-                  });
-      }
+    // ⚠ `End` mémorise la passe : évalué à CHAQUE frame, donc en tête du `&&`.
+    ImGuiTableSortSpecs* specs = ImGui::TableGetSortSpecs();
+    if (s_view.End(ro::TableSortKey(specs)) && specs != nullptr &&
+        specs->SpecsCount > 0) {
+      const ImGuiTableColumnSortSpecs& s = specs->Specs[0];
+      std::vector<int>& order = s_view.mutable_order();
+      std::sort(order.begin(), order.end(), [&](int ia, int ib) {
+        const Entry& a = entries_[ia];
+        const Entry& b = entries_[ib];
+        int cmp = 0;
+        switch (s.ColumnIndex) {
+          case 0: cmp = (a.id < b.id) ? -1 : (a.id > b.id); break;
+          case 1: cmp = _stricmp(a.name, b.name); break;
+          case 2: cmp = (a.owned < b.owned) ? -1 : (a.owned > b.owned); break;
+          case 3: cmp = (a.craftable < b.craftable) ? -1
+                                                    : (a.craftable > b.craftable); break;
+          default: break;
+        }
+        // ⚠ std::sort n'est PAS stable : sans ce départage par id,
+        // deux produits homonymes (les quatre « Elemental Converter »)
+        // échangeraient leur place d'une frame à l'autre et la ligne
+        // sauterait sous le curseur.
+        if (cmp == 0) cmp = (a.id < b.id) ? -1 : (a.id > b.id);
+        return s.SortDirection == ImGuiSortDirection_Ascending ? cmp < 0
+                                                               : cmp > 0;
+      });
     }
 
     int row_index = 0;
-    for (const Entry* e : view) {
+    for (const int ei : s_view.order()) {
+      const Entry* const e = &entries_[ei];
       // ⚠ Pas de hauteur imposée ici : ce sont l'icône et le Selectable qui la
       // donnent, et ils doivent faire EXACTEMENT la même. Forcer la ligne à 26 px
       // en laissant le Selectable à sa hauteur par défaut (une ligne de texte,

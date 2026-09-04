@@ -21,8 +21,20 @@ bool ContainsNoCase(const char* haystack, const char* needle) {
   if (!needle || !*needle) return true;
   if (!haystack || !*haystack) return false;
   const size_t n = std::strlen(needle);
+  // 🔴 Le premier caractère de l'aiguille, minusculé UNE SEULE FOIS, sert de
+  // crible. Sans lui, CHAQUE position du texte entrait dans la boucle interne,
+  // qui reminusculait l'aiguille caractère par caractère — deux appels par
+  // comparaison, refaits autant de fois qu'il y a de positions.
+  //
+  // Ce n'est pas une coquetterie : la recherche du chat appelle cette fonction
+  // sur le texte ET l'expéditeur de chaque ligne du tampon (cf.
+  // ChatWindow::LineMatchesSearch, qui en mémorise désormais le résultat).
+  const char head = LowerAscii(needle[0]);
   for (const char* p = haystack; *p; ++p) {
-    size_t i = 0;
+    if (LowerAscii(*p) != head) continue;
+    // Le premier caractère est acquis : la comparaison reprend au SECOND. Une
+    // aiguille d'un seul caractère sort donc d'ici avec `i == n`, soit trouvée.
+    size_t i = 1;
     while (i < n && p[i] && LowerAscii(p[i]) == LowerAscii(needle[i])) ++i;
     if (i == n) return true;
   }

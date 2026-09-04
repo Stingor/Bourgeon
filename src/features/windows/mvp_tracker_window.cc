@@ -20,6 +20,7 @@
 #include "ui/ro_widgets.h"
 #include "ragnarok/social.h"  // IsFriendByName / IsGuildMemberByName (invitabilité)
 #include "ui/sprite_view.h"    // 🔬 SpriteCacheBytes (diagnostic d'occupation)
+#include "ui/table_view.h"     // ro::SortedView : la table des créneaux
 #include "ui/window_clamp.h"  // ClampWindowPosToScreen (lignes déplacées à la main)
 #include "utils/i18n.h"
 #include "utils/log_console.h"  // 🔬 LogDiag (diagnostic temporaire)
@@ -1291,17 +1292,37 @@ void MvpTrackerWindow::DrawTable() {
   // Un index trié plutôt qu'une copie du catalogue : le tri d'ImGui remplace à
   // la fois l'ORDER BY du prototype et son bricolage de ré-affichage d'en-tête
   // tous les 31 rangs.
-  std::vector<const mvp::Slot*> rows;
-  rows.reserve(state->slots().size());
-  for (const mvp::Slot& slot : state->slots()) {
+  // Vue mémorisée d'une frame à l'autre (ui/table_view.h) : le filtrage reste
+  // refait à chaque frame — il est O(n) et change la LISTE, qui est comparée en
+  // entier — mais le tri, lui, ne l'est que quand quelque chose a bougé.
+  //
+  // 🔴 L'empreinte doit porter les colonnes qui ne sont PAS dans le catalogue :
+  // le favori (réglage local), la borne basse de la fenêtre de retour et la date
+  // de la dernière observation, que le serveur pousse à tout moment. Ce sont
+  // trois lectures de plus par ligne et par frame, contre les O(n log n) que le
+  // tri en faisait — le compte est largement gagnant.
+  const std::vector<mvp::Slot>& catalogue = state->slots();
+  static ro::SortedView s_view;
+  s_view.Begin(catalogue.size());
+  for (size_t i = 0; i < catalogue.size(); ++i) {
+    const mvp::Slot& slot = catalogue[i];
     // Le filtre porte sur le NOM et la CARTE, sans casse : c'est par l'un ou
     // l'autre qu'on cherche un MVP, et exiger de savoir lequel serait pénible.
     if (!MatchesFilter(slot)) continue;
-    rows.push_back(&slot);
+    int64_t window_from = 0;
+    state->Window(slot.slot_id, &window_from, nullptr, nullptr);
+    const mvp::Obs* obs = state->FindObs(slot.slot_id);
+    s_view.Push(static_cast<int>(i),
+                ro::Fingerprint(slot.slot_id, slot.delay1_ms,
+                                state->IsFavorite(slot.slot_id) ? 1 : 0,
+                                window_from,
+                                obs != nullptr ? obs->reported_at : 0));
   }
 
-  if (ImGuiTableSortSpecs* specs = ImGui::TableGetSortSpecs()) {
-    if (specs->SpecsCount > 0) {
+  // ⚠ `End` mémorise la passe : évalué à CHAQUE frame, donc en tête du `&&`.
+  ImGuiTableSortSpecs* specs = ImGui::TableGetSortSpecs();
+  if (s_view.End(ro::TableSortKey(specs)) && specs != nullptr &&
+      specs->SpecsCount > 0) {
       const ImGuiTableColumnSortSpecs& spec = specs->Specs[0];
       const bool asc = spec.SortDirection == ImGuiSortDirection_Ascending;
 
@@ -1319,9 +1340,12 @@ void MvpTrackerWindow::DrawTable() {
       auto by_label = [&](const mvp::Slot* a, const mvp::Slot* b) {
         return std::strcmp(SlotLabel(*a, nullptr), SlotLabel(*b, nullptr));
       };
+      std::vector<int>& order = s_view.mutable_order();
       std::stable_sort(
-          rows.begin(), rows.end(),
-          [&](const mvp::Slot* a, const mvp::Slot* b) {
+          order.begin(), order.end(),
+          [&](int ia, int ib) {
+            const mvp::Slot* const a = &catalogue[ia];
+            const mvp::Slot* const b = &catalogue[ib];
             int cmp = 0;
             switch (spec.ColumnIndex) {
               case 1: {
@@ -1366,8 +1390,10 @@ void MvpTrackerWindow::DrawTable() {
             }
             return asc ? cmp < 0 : cmp > 0;
           });
-    }
   }
+  // L'ordre d'affichage : des INDICES dans le catalogue, jamais des pointeurs
+  // (la vue survit d'une frame à l'autre, cf. ui/table_view.h).
+  const std::vector<int>& rows = s_view.order();
 
   // 🔴🔴 DÉCOUPAGE OBLIGATOIRE, et pas pour la seule vitesse d'affichage.
   //
@@ -1394,7 +1420,7 @@ void MvpTrackerWindow::DrawTable() {
   int focus_row = -1;
   if (focus_slot_ != 0xFFFF && !focus_scrolled_) {
     for (size_t i = 0; i < rows.size(); ++i) {
-      if (rows[i]->slot_id == focus_slot_) {
+      if (catalogue[rows[i]].slot_id == focus_slot_) {
         focus_row = static_cast<int>(i);
         clipper.IncludeItemByIndex(focus_row);
         break;
@@ -1405,7 +1431,7 @@ void MvpTrackerWindow::DrawTable() {
   }
   while (clipper.Step())
   for (int row_index = clipper.DisplayStart; row_index < clipper.DisplayEnd; ++row_index) {
-    const mvp::Slot* slot = rows[row_index];
+    const mvp::Slot* slot = &catalogue[rows[static_cast<size_t>(row_index)]];
     const mvp::Obs* obs = state->FindObs(slot->slot_id);
     ImGui::TableNextRow();
     // 🔴 Les noms de MVP sont dupliqués (Atroce sur quatre cartes) : sans un ID
