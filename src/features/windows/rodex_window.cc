@@ -396,14 +396,12 @@ void RodexTexPath(uintptr_t leaf_string, char* out, size_t cap) {
 
 ro::GameTexture g_ico_zeny, g_ico_item, g_ico_both;
 bool     g_icons_tried = false;
-unsigned g_icons_epoch = 0;
 
 // Les textures vivent en D3DPOOL_DEFAULT : elles meurent à un reset de device
 // (ALT-TAB en plein écran). Les réutiliser après coup ferait planter le rendu.
 void EnsureAttachIcons() {
-  const unsigned epoch = Overlay_DeviceEpoch();
-  if (epoch != g_icons_epoch) {
-    g_icons_epoch = epoch;
+  static Overlay_DeviceEpochWatch s_watch;
+  if (s_watch.Changed()) {
     g_ico_zeny = g_ico_item = g_ico_both = ro::GameTexture{};
     g_icons_tried = false;
   }

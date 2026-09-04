@@ -613,9 +613,8 @@ void* GetIconTex(uint8_t type, uint32_t id) {
   // OBJET -> ItemPath (0x00d5a720 BuildItemIconGrfPath). On tente la bonne source en
   // 1er ; fallback 2-passes + garde LooksUnknown pour les cas limites.
   // Textures D3DPOOL_DEFAULT : mortes après reset/recréation du device -> vider.
-  static unsigned s_epoch = 0;
-  const unsigned dev_e = Overlay_DeviceEpoch();
-  if (dev_e != s_epoch) { g_iconCache.clear(); s_epoch = dev_e; }
+  static Overlay_DeviceEpochWatch s_watch;
+  if (s_watch.Changed()) g_iconCache.clear();
   const uint32_t k = (type == 0 ? 0x80000000u : 0u) | (id & 0x7fffffffu);
   auto it = g_iconCache.find(k);
   if (it != g_iconCache.end()) return it->second;

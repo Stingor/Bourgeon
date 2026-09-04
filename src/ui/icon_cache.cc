@@ -92,12 +92,10 @@ namespace {
 // vidés ensemble — celui de collection retombe sur l'autre, ils ne peuvent pas
 // vivre à des époques différentes.
 void DropCachesOnDeviceReset() {
-  static unsigned s_device_epoch = 0;
-  const unsigned epoch = Overlay_DeviceEpoch();
-  if (epoch == s_device_epoch) return;
+  static Overlay_DeviceEpochWatch s_watch;
+  if (!s_watch.Changed()) return;
   g_icon_cache.clear();
   g_collection_cache.clear();
-  s_device_epoch = epoch;
 }
 
 }  // namespace

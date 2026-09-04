@@ -367,9 +367,8 @@ ButtonTex LoadDiscordBmp() {
 // Discord.bmp est absent (le bouton bascule alors sur un repli texte).
 const ButtonTex& DiscordButtonTex() {
   static ButtonTex s_tex;
-  static unsigned s_epoch = 0;
-  const unsigned e = Overlay_DeviceEpoch();
-  if (e != s_epoch) { s_tex = {}; s_epoch = e; }
+  static Overlay_DeviceEpochWatch s_watch;
+  if (s_watch.Changed()) s_tex = {};
   if (!s_tex.tex) s_tex = LoadDiscordBmp();
   return s_tex;
 }

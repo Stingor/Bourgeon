@@ -754,11 +754,9 @@ void FetchWorker(std::string url) {
 // on jette les handles sans rien libérer (les libérer planterait). Même règle que
 // ro::ItemIcon.
 void DropOnDeviceReset() {
-  static unsigned s_epoch = 0;
-  const unsigned epoch = Overlay_DeviceEpoch();
-  if (epoch == s_epoch) return;
+  static Overlay_DeviceEpochWatch s_watch;
+  if (!s_watch.Changed()) return;
   g_cache.clear();
-  s_epoch = epoch;
 }
 
 }  // namespace

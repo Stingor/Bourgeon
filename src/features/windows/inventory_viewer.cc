@@ -707,11 +707,9 @@ float TabStripHeightH() {
 // brut). b>1 ne peut pas sur-exposer via col -> capé à 1 ; a = style.Alpha du skin.
 
 // Vide les caches de textures quand le device D3D a été reset/recréé (handles morts).
-unsigned g_tex_epoch = 0;
+Overlay_DeviceEpochWatch g_tex_watch;
 void MaybeFlushTextures() {
-  const unsigned e = Overlay_DeviceEpoch();
-  if (e == g_tex_epoch) return;
-  g_tex_epoch = e;
+  if (!g_tex_watch.Changed()) return;
   g_tile_lock = BarTex{};
   for (auto& row : g_tab) for (auto& b : row) b = BarTex{};
   for (auto& row : g_tabh) for (auto& b : row) b = BarTex{};

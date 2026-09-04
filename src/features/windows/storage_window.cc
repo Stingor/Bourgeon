@@ -194,14 +194,12 @@ BarTex g_tabh[kNumStgCats][2];  // onglets HORIZONTAUX : tabh_<x>{1,2}.bmp
 BarTex g_stg_tab[2];   // strip VERTICAL    : tab_sto{1,2}.bmp   (23x27)
 BarTex g_stg_tabh[2];  // rangée HORIZONTALE : tabh_sto{1,2}.bmp (27x25)
 bool   g_tabs_tried = false;
-unsigned g_tab_epoch = 0;
+Overlay_DeviceEpochWatch g_tab_watch;
 
 // Charge (une fois) les onglets images. Les textures sont en D3DPOOL_DEFAULT :
 // mortes après un reset de device -> rechargées quand l'epoch change.
 void EnsureTabTextures() {
-  const unsigned e = Overlay_DeviceEpoch();
-  if (e != g_tab_epoch) {
-    g_tab_epoch = e;
+  if (g_tab_watch.Changed()) {
     for (auto& row : g_tab) for (auto& b : row) b = BarTex{};
     for (auto& row : g_tabh) for (auto& b : row) b = BarTex{};
     g_tabs_tried = false;
@@ -486,9 +484,8 @@ void ImCbPointFilter(const ImDrawList*, const ImDrawCmd*) {
 // quoi on dessinerait des handles morts.
 ro::IconTex GrayItemIcon(uint32_t nameid) {
   static std::unordered_map<uint32_t, ro::IconTex> cache;
-  static unsigned cache_epoch = 0;
-  const unsigned epoch = Overlay_DeviceEpoch();
-  if (epoch != cache_epoch) { cache.clear(); cache_epoch = epoch; }
+  static Overlay_DeviceEpochWatch s_watch;
+  if (s_watch.Changed()) cache.clear();
   auto it = cache.find(nameid);
   if (it != cache.end()) return it->second;
 

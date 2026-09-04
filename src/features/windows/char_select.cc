@@ -529,20 +529,22 @@ struct PendingTexRelease {
 
 void* LoadHallTexture(const char* path) {
   static void* s_tex = nullptr;
-  static unsigned s_epoch = 0xffffffff;
+  // ⚠ Le témoin ne signale RIEN au premier appel, là où la sentinelle qu'il
+  // remplace (0xffffffff) faisait entrer une fois dans le bloc. Sans effet : sur
+  // des statiques neuves, ce bloc réécrit exactement les valeurs qu'elles ont
+  // déjà — pointeur nul, file vide, drapeau faux, chemin vide.
+  static Overlay_DeviceEpochWatch s_watch;
   static std::string s_path;  // chemin de la texture en cache
   static bool s_tried = false;  // ne pas re-tenter en boucle si le .bmp manque
   static PendingTexRelease s_pending[8];
 
   const int frame = ImGui::GetFrameCount();
-  const unsigned e = Overlay_DeviceEpoch();
-  if (e != s_epoch) {  // device (re)créé -> l'ancienne texture est morte
+  if (s_watch.Changed()) {  // device (re)créé -> l'ancienne texture est morte
     s_tex = nullptr;   // (surtout PAS de Release : elle appartient au device parti)
     // Les différées aussi : leurs handles sont morts avec le device.
     for (PendingTexRelease& p : s_pending) p.tex = nullptr;
     s_tried = false;
     s_path.clear();
-    s_epoch = e;
   }
   // Purge des textures dont la dernière frame d'usage est passée.
   for (PendingTexRelease& p : s_pending) {

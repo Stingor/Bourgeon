@@ -246,16 +246,14 @@ constexpr float kAmountInputW  = 120.0f;
 
 ro::GameTexture g_bg;             // fond, chargé paresseusement
 bool     g_bg_tried = false;
-unsigned g_bg_epoch = 0;
+Overlay_DeviceEpochWatch g_bg_watch;
 
 // Le fond, ou une texture nulle s'il est absent du GRF. Rechargé quand le device
 // D3D a été reset (les textures vivent en D3DPOOL_DEFAULT : leurs handles meurent).
 const ro::GameTexture& BackgroundTexture() {
-  const unsigned epoch = Overlay_DeviceEpoch();
-  if (epoch != g_bg_epoch) {
+  if (g_bg_watch.Changed()) {
     g_bg = ro::GameTexture{};
     g_bg_tried = false;
-    g_bg_epoch = epoch;
   }
   if (!g_bg_tried) {
     g_bg_tried = true;

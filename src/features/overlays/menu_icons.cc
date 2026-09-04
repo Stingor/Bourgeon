@@ -705,16 +705,14 @@ void MenuIcons::OnRenderUI() {
   // Textures D3DPOOL_DEFAULT : mortes après reset/recréation du device -> on nulle
   // les handles cachés pour forcer le rechargement paresseux (sinon draw = crash).
   {
-    static unsigned s_epoch = 0;
-    const unsigned e = Overlay_DeviceEpoch();
-    if (e != s_epoch) {
+    static Overlay_DeviceEpochWatch s_watch;
+    if (s_watch.Changed()) {
       for (Icon& ic : icons_) {
         ic.normal = Bitmap();
         ic.pressed = Bitmap();
         ic.badge_normal = Bitmap();
         ic.badge_pressed = Bitmap();
       }
-      s_epoch = e;
     }
   }
 

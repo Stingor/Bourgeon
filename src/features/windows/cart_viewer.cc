@@ -220,11 +220,9 @@ float TabStripHeightH() {
 // (la 1re tuile) pour que le fond et les items partagent la même marge.
 
 // Vide les caches de textures quand le device D3D a été reset/recréé (handles morts).
-unsigned g_tex_epoch = 0;
+Overlay_DeviceEpochWatch g_tex_watch;
 void MaybeFlushTextures() {
-  const unsigned e = Overlay_DeviceEpoch();
-  if (e == g_tex_epoch) return;
-  g_tex_epoch = e;
+  if (!g_tex_watch.Changed()) return;
   for (auto& row : g_tab)  for (auto& b : row) b = BarTex{};
   for (auto& row : g_tabh) for (auto& b : row) b = BarTex{};
   g_assets_tried = false;

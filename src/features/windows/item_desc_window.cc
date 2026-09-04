@@ -1153,14 +1153,12 @@ std::unordered_map<uint32_t, IconTex> g_card_illust_cache;
 // AddImage() sur un handle mort plante dans ddraw. (g_card_desc_cache = data pure,
 // pas de texture -> conservé.) À appeler en tête de chaque résolveur d'icône.
 void IconCachesGuard() {
-  static unsigned s_epoch = 0;
-  const unsigned e = Overlay_DeviceEpoch();
-  if (e == s_epoch) return;
+  static Overlay_DeviceEpochWatch s_watch;
+  if (!s_watch.Changed()) return;
   g_icon_cache.clear();
   g_card_icon_cache.clear();
   g_card_collection_cache.clear();
   g_card_illust_cache.clear();
-  s_epoch = e;
 }
 // L'item et sa collection portent le MÊME resname, dans deux dossiers : « item\ »
 // pour la petite icône d'inventaire, « collection\ » pour l'art de preview. Les

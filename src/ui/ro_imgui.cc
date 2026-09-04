@@ -1149,14 +1149,13 @@ void* LoadClientBmp(const char* rel_path, int* out_w, int* out_h) {
 // widgets, et tenir un registre de tous pour les relâcher coûterait bien plus
 // cher que ce qu'il économise.
 unsigned g_tex_epoch = 0;          // strictement croissant : jamais deux fois la même
-unsigned g_last_device_epoch = 0;
+Overlay_DeviceEpochWatch g_device_watch;
 
 unsigned TexEpoch() {
-  const unsigned dev = Overlay_DeviceEpoch();
-  if (dev != g_last_device_epoch) {
-    g_last_device_epoch = dev;
-    ++g_tex_epoch;
-  }
+  // Un reset de device fait avancer NOTRE époque — celle que les `SkinTex`
+  // comparent. Les deux ne se confondent pas : `InvalidateSkinTextures` la fait
+  // avancer aussi, sans qu'aucun device n'ait bougé.
+  if (g_device_watch.Changed()) ++g_tex_epoch;
   return g_tex_epoch;
 }
 

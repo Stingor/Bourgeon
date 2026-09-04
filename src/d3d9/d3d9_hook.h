@@ -40,6 +40,46 @@ void Overlay_ReleaseTexture(void* tex);
 // memory surfaces that survive a mode change (they are not D3DPOOL_DEFAULT).
 unsigned Overlay_DeviceEpoch();
 
+// ── Le TÉMOIN de ce compteur ─────────────────────────────────────────────────
+// Le paragraphe ci-dessus dit ce qu'un cache DOIT faire ; ceci le fait. Le motif
+// vivait recopié dans une vingtaine de fichiers, toujours sous la même forme :
+//
+//     static unsigned s_epoch = 0;
+//     const unsigned e = Overlay_DeviceEpoch();
+//     if (e != s_epoch) { <vider le cache>; s_epoch = e; }
+//
+// Quatre lignes dont trois sont de la mécanique, et une seule dit quelque chose.
+// Recopiées, elles s'oublient — et un cache SANS garde ne se voit pas : il rend
+// des handles morts, que le backend DX déréférence au premier `AddImage`, à un
+// alt-tab ou un changement de résolution près. C'est-à-dire jamais chez le
+// développeur, et un jour chez le joueur.
+//
+//     static Overlay_DeviceEpochWatch s_watch;
+//     if (s_watch.Changed()) cache.clear();
+//
+// ⚠ `Changed()` CONSOMME le changement : il rend vrai une fois par époque et par
+// témoin. Deux endroits qui doivent réagir au même reset ont donc besoin de deux
+// témoins — ou d'un seul appel dont ils partagent le résultat.
+//
+// ⚠ Et ce qu'on jette ici ne se RELÂCHE pas : ces handles appartiennent à un
+// device qui n'existe plus (cf. Overlay_ReleaseTexture, juste au-dessus).
+class Overlay_DeviceEpochWatch {
+ public:
+  bool Changed() {
+    const unsigned now = Overlay_DeviceEpoch();
+    if (now == seen_) return false;
+    seen_ = now;
+    return true;
+  }
+
+ private:
+  // Zéro comme le compteur au démarrage : un témoin neuf ne signale donc RIEN
+  // tant qu'aucun reset n'a eu lieu. C'est ce qu'on veut — il n'y a rien à vider
+  // avant le premier remplissage, et signaler ici ferait jeter un cache qu'on
+  // vient de construire.
+  unsigned seen_ = 0;
+};
+
 // Returns an ImGui draw callback (cast to ImDrawCallback) that switches the DX9
 // pipeline to ADDITIVE blend for the following draw commands — for glow effects
 // like RO-style explosions. Reset afterwards with ImDrawCallback_ResetRenderState.

@@ -888,9 +888,8 @@ ro::IconTex LoadSkillIcon(int skillId) {
 }
 ro::IconTex ResolveSkillIcon(int skillId) {
   if (skillId <= 0) return {};
-  static unsigned s_epoch = 0;
-  const unsigned e = Overlay_DeviceEpoch();
-  if (e != s_epoch) { g_skill_icon_cache.clear(); s_epoch = e; }
+  static Overlay_DeviceEpochWatch s_watch;
+  if (s_watch.Changed()) g_skill_icon_cache.clear();
   const uint32_t k = static_cast<uint32_t>(skillId);
   auto it = g_skill_icon_cache.find(k);
   if (it != g_skill_icon_cache.end()) return it->second;
@@ -1307,9 +1306,8 @@ bool DrawEmblemBoxed(ImDrawList* dl, const ImVec2& p0, const ImVec2& p1,
 }
 
 ro::IconTex ResolveEmblem(int guildId) {
-  static unsigned s_epoch = 0;
-  const unsigned e = Overlay_DeviceEpoch();
-  if (e != s_epoch) { g_emblem_cache.clear(); s_epoch = e; }
+  static Overlay_DeviceEpochWatch s_watch;
+  if (s_watch.Changed()) g_emblem_cache.clear();
   if (guildId <= 0) return {};
   EmblemCacheEntry& en = g_emblem_cache[guildId];
   // Nouvelle version côté jeu = notre texture est périmée, quel que soit le chemin
@@ -1488,9 +1486,8 @@ std::vector<EmblemCandidate> g_emblem_files;
 // caches de textures du plugin, sinon on dessine des handles morts.
 std::unordered_map<std::string, ro::IconTex> g_emblem_preview_cache;
 ro::IconTex EmblemPreview(const std::string& name, const std::vector<uint8_t>& bmp) {
-  static unsigned s_epoch = 0;
-  const unsigned e = Overlay_DeviceEpoch();
-  if (e != s_epoch) { g_emblem_preview_cache.clear(); s_epoch = e; }
+  static Overlay_DeviceEpochWatch s_watch;
+  if (s_watch.Changed()) g_emblem_preview_cache.clear();
   auto it = g_emblem_preview_cache.find(name);
   if (it != g_emblem_preview_cache.end()) return it->second;
   // ⚠ `emplace` et non `cache[name] = …` : la clé vient d'être cherchée en vain,

@@ -12,8 +12,8 @@ namespace ro::grid {
 namespace {
 
 Chrome   g_chrome;
-bool     g_loaded = false;
-unsigned g_epoch  = 0;
+bool g_loaded = false;
+Overlay_DeviceEpochWatch g_watch;
 
 SnapState g_snap;
 
@@ -46,9 +46,12 @@ const Chrome& Assets() {
   // devaient jusqu'ici penser chacune à purger ces quatre bitmaps-là. Une
   // ressource partagée se recharge toute seule, sinon la première qui oublie
   // laisse l'autre avec un décor vide.
-  const unsigned epoch = Overlay_DeviceEpoch();
-  if (g_loaded && epoch == g_epoch) return g_chrome;
-  g_epoch  = epoch;
+  // ⚠ Le témoin est consulté AVANT le court-circuit, jamais après : `Changed()`
+  // consomme le changement, et le laisser derrière le `&&` le sauterait au tout
+  // premier appel — l'époque ne serait pas relevée, et le tout prochain reset
+  // passerait pour deux.
+  const bool device_changed = g_watch.Changed();
+  if (g_loaded && !device_changed) return g_chrome;
   g_loaded = true;
   g_chrome = Chrome{};
   char path[160];

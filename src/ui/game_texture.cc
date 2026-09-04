@@ -87,7 +87,7 @@ util::StrKeyMap<GameTexture>& TexCache() {
   static util::StrKeyMap<GameTexture> s_cache;
   return s_cache;
 }
-unsigned g_cache_epoch = 0;
+Overlay_DeviceEpochWatch g_cache_watch;
 
 }  // namespace
 
@@ -95,13 +95,11 @@ GameTexture CachedTextureFromGameFile(const char* path) {
   auto& cache = TexCache();
   // Textures en D3DPOOL_DEFAULT : elles meurent au reset du device, et un handle
   // libéré passé à AddImage plante dans ddraw. Même garde que ui/icon_cache.cc.
-  const unsigned epoch = Overlay_DeviceEpoch();
-  if (epoch != g_cache_epoch) {
+  if (g_cache_watch.Changed()) {
     // ⚠ On JETTE sans relâcher : ces handles appartiennent à un device qui
     // n'existe plus, et les relâcher planterait. C'est l'inverse de
     // InvalidateGameTextures, où le device est toujours là.
     cache.Clear();
-    g_cache_epoch = epoch;
   }
   if (!path || !path[0]) return {};
   // ⚠ Une seule recherche : `find` puis `cache[path]` en hachait deux fois le

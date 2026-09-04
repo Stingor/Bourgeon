@@ -264,9 +264,8 @@ bool LoadItemIcon(uint32_t id, IconTex* out) {
 void EnsureTextures() {
   // Textures D3DPOOL_DEFAULT : mortes après reset/recréation du device -> on les
   // réinitialise pour forcer un rechargement (sinon draw d'un handle mort = crash).
-  static unsigned s_epoch = 0;
-  const unsigned e = Overlay_DeviceEpoch();
-  if (e != s_epoch) { g_tex_orange = IconTex{}; g_tex_blue = IconTex{}; s_epoch = e; }
+  static Overlay_DeviceEpochWatch s_watch;
+  if (s_watch.Changed()) { g_tex_orange = IconTex{}; g_tex_blue = IconTex{}; }
   auto attempt = [](IconTex& t, uint32_t id) {
     if (t.tex || t.gave_up) return;
     if (!LoadItemIcon(id, &t) && ++t.attempts >= 240) t.gave_up = true;
