@@ -4,6 +4,12 @@
 > `2025-07-16_Ragexe`, serveur `moonlight` (fork rAthena), configuration de
 > production.
 >
+> 🔴🔴 **Lire d'abord la correction du 2026-09-03, en fin de §5** : la
+> conclusion « il ne reste aucune candidate vivante et vierge » est **fausse**,
+> et les deux vecteurs de ce document ont un angle mort commun. Six fenêtres
+> vivantes s'ouvrent sur un **skill** :
+> [skill_driven_windows_re.md](skill_driven_windows_re.md).
+>
 > ⚠ La révision du 2026-09-02 a **retiré deux candidates sur trois** (reforge,
 > enchantement) et soldé la troisième (fusion d'objets). Elle a ajouté les
 > questions **3** et **4** du §5 — l'ouvreur chargé/atteignable, et la base
@@ -81,9 +87,16 @@ Trois niveaux de preuve, notés dans la colonne « vérifié » :
 | **Boutique « Para » / mileage** | 184, 254, 255, 256, 267 | **S** — pas de boutique cash active (cf. [[project_cashshop_re]], natif mort) |
 
 ⚠ `feature.privateairship: off` est acquis, mais **aucune fenêtre n'a été
-rattachée à l'airship privé** dans ce relevé : la ligne « 308 `UIShowWarpWnd` »
-de la liste §8 du dispatcher n'a pas été vérifiée, et le nom suggère plutôt une
-liste de warps. Non tranché.
+rattachée à l'airship privé** dans ce relevé.
+~~la ligne « 308 `UIShowWarpWnd` » de la liste §8 du dispatcher n'a pas été
+vérifiée, et le nom suggère plutôt une liste de warps. Non tranché.~~
+→ **tranché le 2026-09-03**, voir
+[skill_driven_windows_re.md](skill_driven_windows_re.md) §5 : **308 n'a rien à
+voir avec l'airship**. C'est bien une liste de warps, nourrie par ZC `0x0ABF`
+(`Recv_ZC_WARPLIST_NOSKILL_0x0ABF` `0xd0bff0`, son seul ouvreur) — que **rien
+dans `src/map/` n'émet**. Elle est donc **morte**. 🔴 La liste de warps
+réellement jouée est la fenêtre **39 `UIChooseWarpWnd`**, servie par le `case`
+voisin ZC `0x0ABE` ; les deux formats ne diffèrent que du `skillId.W`.
 
 ### Sans serveur du tout — purement client
 
@@ -257,11 +270,33 @@ qu'au `@warp`.
 déplacer le *Mergician* sur une carte fréquentée — le script porte déjà la
 variante `prontera` en commentaire. **Aucun `feature.*` à activer.**
 
-➡ **Il ne reste plus de candidate « vivante et vierge » à relever.** Les
+➡ ~~**Il ne reste plus de candidate « vivante et vierge » à relever.**~~ Les
 candidates sont soldées (fusion, instance, file de BG, **journal de stockage de
 guilde**) ou retirées (recherche de groupe, reforge, enchantement). Ce qui reste
 demande une décision de l'utilisateur — allumer le barter, peupler une base,
 déplacer un NPC — et non un relevé de plus.
+
+## 🔴🔴 Correction du 2026-09-03 — cette conclusion était FAUSSE
+
+**Six fenêtres vivantes, jouables aujourd'hui et jamais outillées**, ont été
+trouvées le lendemain : voir
+[skill_driven_windows_re.md](skill_driven_windows_re.md). Dont la liste de
+destinations du **Téléport / Warp Portal** (39 `UIChooseWarpWnd`, ZC `0x0ABE`),
+que tout Acolyte utilise plusieurs fois par session.
+
+**La cause n'est pas l'inattention, c'est la MÉTHODE.** Les deux vecteurs de ce
+document — le tri par paquet + `feature.*` (§3) et le balayage des commandes de
+script (§3 bis) — partagent un angle mort : ils ne voient que ce qu'une
+**configuration** ou un **script** déclenche. Une fenêtre ouverte parce que le
+joueur a lancé une **compétence** n'a ni `feature.*`, ni NPC, ni icône de menu :
+elle est invisible aux deux, et vivante quand même.
+
+➡ **Le §3 bis se trompe donc en se déclarant « le bon vecteur ».** Il est
+meilleur que le premier, pas suffisant. Le vecteur **exhaustif** est le
+troisième : partir du dispatcher de paquets et demander, pour chaque opcode,
+**s'il appelle `UIWindowMgr_MakeWindow` et avec quel id** — 3048 cases, 290
+opcodes ouvreurs, 39 lignes réelles vers une fenêtre jamais outillée. Recette
+reproductible en [skill_driven_windows_re.md](skill_driven_windows_re.md) §6.
 
 🔴 **La leçon du 2026-09-02, en une phrase :** la seule fonctionnalité **déjà
 jouable et jamais documentée** de tout ce relevé n'était pas dans la liste des

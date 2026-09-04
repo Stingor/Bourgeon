@@ -1,0 +1,4144 @@
+[
+ {
+  "opcode": "0x0000",
+  "win_ids": [
+   1,
+   15,
+   36,
+   46,
+   51,
+   159,
+   276
+  ],
+  "handlers": [
+   {
+    "addr": "0x771110",
+    "name": "sub_771110"
+   },
+   {
+    "addr": "0xa2e770",
+    "name": "UIWindowMgr_SaveRectAndCloseWindow"
+   },
+   {
+    "addr": "0xa39340",
+    "name": "UIWindowMgr_MakeWindow"
+   },
+   {
+    "addr": "0xa4ad20",
+    "name": "UIWindowMgr_ChatAction"
+   },
+   {
+    "addr": "0xa9ed30",
+    "name": "MsgStringTable_GetById"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0001",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xa4ad20",
+    "name": "UIWindowMgr_ChatAction"
+   },
+   {
+    "addr": "0xa9ed30",
+    "name": "MsgStringTable_GetById"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0002",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0x771110",
+    "name": "sub_771110"
+   },
+   {
+    "addr": "0xa4ad20",
+    "name": "UIWindowMgr_ChatAction"
+   },
+   {
+    "addr": "0xa9ed30",
+    "name": "MsgStringTable_GetById"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0003",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0x771110",
+    "name": "sub_771110"
+   },
+   {
+    "addr": "0xa4ad20",
+    "name": "UIWindowMgr_ChatAction"
+   },
+   {
+    "addr": "0xa9ed30",
+    "name": "MsgStringTable_GetById"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0004",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0x771110",
+    "name": "sub_771110"
+   },
+   {
+    "addr": "0xa4ad20",
+    "name": "UIWindowMgr_ChatAction"
+   },
+   {
+    "addr": "0xa9ed30",
+    "name": "MsgStringTable_GetById"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0080",
+  "win_ids": [
+   155
+  ],
+  "handlers": [
+   {
+    "addr": "0xccdda0",
+    "name": "sub_CCDDA0"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x008D",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcc8310",
+    "name": "GameMode_OnRecv_EntityChat_ZC008D"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x008E",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xccbc60",
+    "name": "GameMode_OnRecv_SelfChat_ZC008E"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0091",
+  "win_ids": [
+   6
+  ],
+  "handlers": [
+   {
+    "addr": "0xccea30",
+    "name": "ZC_MapChange_Handler"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0092",
+  "win_ids": [
+   6
+  ],
+  "handlers": [
+   {
+    "addr": "0xcced10",
+    "name": "sub_CCED10"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x009A",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcb7a40",
+    "name": "sub_CB7A40"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x00A0",
+  "win_ids": [
+   58
+  ],
+  "handlers": [
+   {
+    "addr": "0xcc3430",
+    "name": "Recv_ZC_ITEM_PICKUP_ACK_00A0"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x00A5",
+  "win_ids": [
+   1,
+   15,
+   36,
+   46,
+   51,
+   159,
+   276
+  ],
+  "handlers": [
+   {
+    "addr": "0xa39340",
+    "name": "UIWindowMgr_MakeWindow"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x00A6",
+  "win_ids": [
+   1,
+   15,
+   36,
+   46,
+   51,
+   159,
+   276
+  ],
+  "handlers": [
+   {
+    "addr": "0xa39340",
+    "name": "UIWindowMgr_MakeWindow"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x00B0",
+  "win_ids": [
+   21,
+   49
+  ],
+  "handlers": [
+   {
+    "addr": "0xcceff0",
+    "name": "sub_CCEFF0"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x00B1",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcc6020",
+    "name": "sub_CC6020"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x00B4",
+  "win_ids": [
+   1,
+   15,
+   36,
+   46,
+   51,
+   159,
+   276
+  ],
+  "handlers": [
+   {
+    "addr": "0xa39340",
+    "name": "UIWindowMgr_MakeWindow"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x00B5",
+  "win_ids": [
+   1,
+   15,
+   36,
+   46,
+   51,
+   159,
+   276
+  ],
+  "handlers": [
+   {
+    "addr": "0xa39340",
+    "name": "UIWindowMgr_MakeWindow"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x00B7",
+  "win_ids": [
+   17
+  ],
+  "handlers": [
+   {
+    "addr": "0xcc6a00",
+    "name": "NpcDialog_OnRecv_ZC_MENU_LIST"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x00C4",
+  "win_ids": [
+   1,
+   15,
+   36,
+   46,
+   51,
+   159,
+   276
+  ],
+  "handlers": [
+   {
+    "addr": "0xa2e770",
+    "name": "UIWindowMgr_SaveRectAndCloseWindow"
+   },
+   {
+    "addr": "0xa39340",
+    "name": "UIWindowMgr_MakeWindow"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x00C7",
+  "win_ids": [
+   22,
+   24
+  ],
+  "handlers": [
+   {
+    "addr": "0xcd0f00",
+    "name": "NpcSell_BuildSellableList"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x00CA",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcd0d00",
+    "name": "sub_CD0D00"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x00CD",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0x529850",
+    "name": "Cstr_sprintf"
+   },
+   {
+    "addr": "0xa4ad20",
+    "name": "UIWindowMgr_ChatAction"
+   },
+   {
+    "addr": "0xa9ed30",
+    "name": "MsgStringTable_GetById"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x00D1",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcd4ad0",
+    "name": "sub_CD4AD0"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x00D2",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xa4ad20",
+    "name": "UIWindowMgr_ChatAction"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x00D4",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xa4ad20",
+    "name": "UIWindowMgr_ChatAction"
+   },
+   {
+    "addr": "0xa9ed30",
+    "name": "MsgStringTable_GetById"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x00DA",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcd2700",
+    "name": "sub_CD2700"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x00DB",
+  "win_ids": [
+   28
+  ],
+  "handlers": [
+   {
+    "addr": "0xcbbde0",
+    "name": "sub_CBBDE0"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x00DC",
+  "win_ids": [
+   1,
+   15,
+   36,
+   46,
+   51,
+   159,
+   276
+  ],
+  "handlers": [
+   {
+    "addr": "0x4f08f0",
+    "name": "std_string_dtor"
+   },
+   {
+    "addr": "0x529850",
+    "name": "Cstr_sprintf"
+   },
+   {
+    "addr": "0xa39340",
+    "name": "UIWindowMgr_MakeWindow"
+   },
+   {
+    "addr": "0xa4ad20",
+    "name": "UIWindowMgr_ChatAction"
+   },
+   {
+    "addr": "0xa9ed30",
+    "name": "MsgStringTable_GetById"
+   },
+   {
+    "addr": "0xc994e0",
+    "name": "sub_C994E0"
+   },
+   {
+    "addr": "0xd7fe40",
+    "name": "Own_GetCharName"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x00DF",
+  "win_ids": [
+   28
+  ],
+  "handlers": [
+   {
+    "addr": "0xcba530",
+    "name": "sub_CBA530"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x00E1",
+  "win_ids": [
+   1,
+   15,
+   36,
+   46,
+   51,
+   159,
+   276
+  ],
+  "handlers": [
+   {
+    "addr": "0xa39340",
+    "name": "UIWindowMgr_MakeWindow"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x00E7",
+  "win_ids": [
+   10011
+  ],
+  "handlers": [
+   {
+    "addr": "0xcb1c00",
+    "name": "sub_CB1C00"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x00EA",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcb1570",
+    "name": "Recv_ZC_ACK_ADD_EXCHANGE_ITEM"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x00EE",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xa2e770",
+    "name": "UIWindowMgr_SaveRectAndCloseWindow"
+   },
+   {
+    "addr": "0xa4ad20",
+    "name": "UIWindowMgr_ChatAction"
+   },
+   {
+    "addr": "0xd56190",
+    "name": "sub_D56190"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x00F0",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xa2e770",
+    "name": "UIWindowMgr_SaveRectAndCloseWindow"
+   },
+   {
+    "addr": "0xa4ad20",
+    "name": "UIWindowMgr_ChatAction"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x00F2",
+  "win_ids": [
+   1,
+   15,
+   36,
+   46,
+   51,
+   159,
+   276
+  ],
+  "handlers": [
+   {
+    "addr": "0xa39340",
+    "name": "UIWindowMgr_MakeWindow"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x00FA",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xa4ad20",
+    "name": "UIWindowMgr_ChatAction"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x00FD",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcb2d80",
+    "name": "sub_CB2D80"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0105",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcbb5c0",
+    "name": "sub_CBB5C0"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0109",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcc85f0",
+    "name": "sub_CC85F0"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x010B",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0x59cdf0",
+    "name": "Cstr_snprintf_s"
+   },
+   {
+    "addr": "0xa4ad20",
+    "name": "UIWindowMgr_ChatAction"
+   },
+   {
+    "addr": "0xa9ed30",
+    "name": "MsgStringTable_GetById"
+   },
+   {
+    "addr": "0xe07d51",
+    "name": "memset"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x010D",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xa4ad20",
+    "name": "UIWindowMgr_ChatAction"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0110",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcb3f10",
+    "name": "sub_CB3F10"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x011A",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xd0d3a0",
+    "name": "EffectDispatch_PlayEffectOnActorById"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x011C",
+  "win_ids": [
+   1,
+   15,
+   36,
+   46,
+   51,
+   159,
+   276
+  ],
+  "handlers": [
+   {
+    "addr": "0xa2e770",
+    "name": "UIWindowMgr_SaveRectAndCloseWindow"
+   },
+   {
+    "addr": "0xa39340",
+    "name": "UIWindowMgr_MakeWindow"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0133",
+  "win_ids": [
+   43,
+   44
+  ],
+  "handlers": [
+   {
+    "addr": "0xce4bb0",
+    "name": "sub_CE4BB0"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0135",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xce50c0",
+    "name": "sub_CE50C0"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0137",
+  "win_ids": [
+   257
+  ],
+  "handlers": [
+   {
+    "addr": "0xc9d710",
+    "name": "sub_C9D710"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x013B",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcdf930",
+    "name": "sub_CDF930"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x015A",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcde360",
+    "name": "sub_CDE360"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x015F",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0x529850",
+    "name": "Cstr_sprintf"
+   },
+   {
+    "addr": "0xa4ad20",
+    "name": "UIWindowMgr_ChatAction"
+   },
+   {
+    "addr": "0xa9ed30",
+    "name": "MsgStringTable_GetById"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0169",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xa4ad20",
+    "name": "UIWindowMgr_ChatAction"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x016F",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xce23b0",
+    "name": "GuildNet_OnGuildNotice"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0177",
+  "win_ids": [
+   1,
+   15,
+   36,
+   46,
+   51,
+   159,
+   276
+  ],
+  "handlers": [
+   {
+    "addr": "0xa39340",
+    "name": "UIWindowMgr_MakeWindow"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x017B",
+  "win_ids": [
+   1,
+   15,
+   36,
+   46,
+   51,
+   159,
+   276
+  ],
+  "handlers": [
+   {
+    "addr": "0xa39340",
+    "name": "UIWindowMgr_MakeWindow"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x017D",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcddd80",
+    "name": "Recv_ZC_ACK_ITEMCOMPOSITION_017D"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x017F",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xce1790",
+    "name": "sub_CE1790"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0188",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcde050",
+    "name": "sub_CDE050"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0196",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xd039b0",
+    "name": "EffectDispatch_StatusChangeVisual"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x019A",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xccbf90",
+    "name": "sub_CCBF90"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x01A3",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcbede0",
+    "name": "sub_CBEDE0"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x01A4",
+  "win_ids": [
+   51,
+   88
+  ],
+  "handlers": [
+   {
+    "addr": "0xcbaae0",
+    "name": "GameMode_OnRecv_ZC_CHANGESTATE_PET"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x01A6",
+  "win_ids": [
+   1,
+   15,
+   36,
+   46,
+   51,
+   159,
+   276
+  ],
+  "handlers": [
+   {
+    "addr": "0xa39340",
+    "name": "UIWindowMgr_MakeWindow"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x01AA",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcd13f0",
+    "name": "PetAct_OnPacket"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x01AD",
+  "win_ids": [
+   1,
+   15,
+   36,
+   46,
+   51,
+   159,
+   276
+  ],
+  "handlers": [
+   {
+    "addr": "0xa39340",
+    "name": "UIWindowMgr_MakeWindow"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x01C1",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcd2870",
+    "name": "sub_CD2870"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x01C3",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcb7510",
+    "name": "sub_CB7510"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x01CF",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcbb850",
+    "name": "sub_CBB850"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x01E2",
+  "win_ids": [
+   1,
+   15,
+   36,
+   46,
+   51,
+   159,
+   276
+  ],
+  "handlers": [
+   {
+    "addr": "0xa39340",
+    "name": "UIWindowMgr_MakeWindow"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x01F0",
+  "win_ids": [
+   1,
+   15,
+   36,
+   46,
+   51,
+   159,
+   276
+  ],
+  "handlers": [
+   {
+    "addr": "0xa39340",
+    "name": "UIWindowMgr_MakeWindow"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x01F5",
+  "win_ids": [
+   10011
+  ],
+  "handlers": [
+   {
+    "addr": "0xcb19f0",
+    "name": "Recv_ZC_ACK_EXCHANGE_ITEM"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x01F6",
+  "win_ids": [
+   1,
+   15,
+   36,
+   46,
+   51,
+   159,
+   276
+  ],
+  "handlers": [
+   {
+    "addr": "0xa39340",
+    "name": "UIWindowMgr_MakeWindow"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0205",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0x529850",
+    "name": "Cstr_sprintf"
+   },
+   {
+    "addr": "0xa4ad20",
+    "name": "UIWindowMgr_ChatAction"
+   },
+   {
+    "addr": "0xa9ed30",
+    "name": "MsgStringTable_GetById"
+   },
+   {
+    "addr": "0xd7fe40",
+    "name": "Own_GetCharName"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0206",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xd769f0",
+    "name": "sub_D769F0"
+   },
+   {
+    "addr": "0xd76f00",
+    "name": "sub_D76F00"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0209",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcb5220",
+    "name": "sub_CB5220"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0214",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcb3ce0",
+    "name": "sub_CB3CE0"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0215",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcd3ef0",
+    "name": "sub_CD3EF0"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0223",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcdf6c0",
+    "name": "Recv_ZC_ACK_WEAPONREFINE_0223"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x022E",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcd1b50",
+    "name": "Recv_ZC_PROPERTY_HOMUN_022E"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x022F",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcbede0",
+    "name": "sub_CBEDE0"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0230",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcba900",
+    "name": "Recv_ZC_CHANGESTATE_MER_0230"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0253",
+  "win_ids": [
+   1,
+   15,
+   36,
+   46,
+   51,
+   159,
+   276
+  ],
+  "handlers": [
+   {
+    "addr": "0xa39340",
+    "name": "UIWindowMgr_MakeWindow"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x025A",
+  "win_ids": [
+   1,
+   15,
+   36,
+   46,
+   51,
+   159,
+   276
+  ],
+  "handlers": [
+   {
+    "addr": "0xa39340",
+    "name": "UIWindowMgr_MakeWindow"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0287",
+  "win_ids": [
+   22,
+   23
+  ],
+  "handlers": [
+   {
+    "addr": "0xcd0560",
+    "name": "sub_CD0560"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0289",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcd0720",
+    "name": "sub_CD0720"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0291",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcc7160",
+    "name": "sub_CC7160"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0293",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcb7360",
+    "name": "sub_CB7360"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0294",
+  "win_ids": [
+   106
+  ],
+  "handlers": [
+   {
+    "addr": "0xcd24e0",
+    "name": "sub_CD24E0"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0296",
+  "win_ids": [
+   33
+  ],
+  "handlers": [
+   {
+    "addr": "0xcda580",
+    "name": "sub_CDA580"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0298",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcba3a0",
+    "name": "sub_CBA3A0"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0299",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcba2d0",
+    "name": "sub_CBA2D0"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x029A",
+  "win_ids": [
+   58
+  ],
+  "handlers": [
+   {
+    "addr": "0xcc28d0",
+    "name": "Recv_ZC_ITEM_PICKUP_ACK_029A"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x02B4",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0x4e52a0",
+    "name": "std_string_copy_ctor"
+   },
+   {
+    "addr": "0x4f08f0",
+    "name": "std_string_dtor"
+   },
+   {
+    "addr": "0x645420",
+    "name": "sub_645420"
+   },
+   {
+    "addr": "0x6471b0",
+    "name": "QuestMgr_InvalidateTracker"
+   },
+   {
+    "addr": "0x64c210",
+    "name": "sub_64C210"
+   },
+   {
+    "addr": "0xa4ad20",
+    "name": "UIWindowMgr_ChatAction"
+   },
+   {
+    "addr": "0xa94930",
+    "name": "std_string_from_cstr"
+   },
+   {
+    "addr": "0xa9ed30",
+    "name": "MsgStringTable_GetById"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x02B8",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcc5ce0",
+    "name": "sub_CC5CE0"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x02BB",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcbc420",
+    "name": "sub_CBC420"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x02C1",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcce340",
+    "name": "GameMode_OnRecv_NpcChat_ZC02C1"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x02C2",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcbf310",
+    "name": "sub_CBF310"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x02C5",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcb2d80",
+    "name": "sub_CB2D80"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x02C9",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcd01d0",
+    "name": "sub_CD01D0"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x02CB",
+  "win_ids": [
+   137
+  ],
+  "handlers": [
+   {
+    "addr": "0xcc6900",
+    "name": "Handler_ZC_MEMORIALDUNGEON_SUBSCRIPTION_INFO"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x02CC",
+  "win_ids": [
+   137
+  ],
+  "handlers": [
+   {
+    "addr": "0xcc6970",
+    "name": "Handler_ZC_MEMORIALDUNGEON_SUBSCRIPTION_NOTIFY"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x02CD",
+  "win_ids": [
+   137
+  ],
+  "handlers": [
+   {
+    "addr": "0xcc6790",
+    "name": "Handler_ZC_MEMORIALDUNGEON_INFO"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x02CE",
+  "win_ids": [
+   137
+  ],
+  "handlers": [
+   {
+    "addr": "0xcc6820",
+    "name": "Handler_ZC_MEMORIALDUNGEON_NOTIFY"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x02D1",
+  "win_ids": [
+   33
+  ],
+  "handlers": [
+   {
+    "addr": "0xcda6f0",
+    "name": "sub_CDA6F0"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x02D4",
+  "win_ids": [
+   58
+  ],
+  "handlers": [
+   {
+    "addr": "0xcc2e40",
+    "name": "Recv_ZC_ITEM_PICKUP_ACK_02D4"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x02D7",
+  "win_ids": [
+   139
+  ],
+  "handlers": [
+   {
+    "addr": "0xcbce90",
+    "name": "Recv_ZC_EQUIPWIN_MICROSCOPE_02D7_0859"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x02D9",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcbb0f0",
+    "name": "Recv_ZC_CONFIG_02D9"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x02DA",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcbb220",
+    "name": "Recv_ZC_CONFIG_NOTIFY_02DA"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x02DC",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcb7040",
+    "name": "sub_CB7040"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x02EA",
+  "win_ids": [
+   1,
+   15,
+   36,
+   46,
+   51,
+   159,
+   276
+  ],
+  "handlers": [
+   {
+    "addr": "0xa39340",
+    "name": "UIWindowMgr_MakeWindow"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x07D8",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcd3060",
+    "name": "sub_CD3060"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x07E2",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcc7340",
+    "name": "sub_CC7340"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x07E3",
+  "win_ids": [
+   160,
+   161
+  ],
+  "handlers": [
+   {
+    "addr": "0xcaf0e0",
+    "name": "sub_CAF0E0"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x07E6",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0x529850",
+    "name": "Cstr_sprintf"
+   },
+   {
+    "addr": "0x73a1f0",
+    "name": "Lua_GetSkillName"
+   },
+   {
+    "addr": "0xa4ad20",
+    "name": "UIWindowMgr_ChatAction"
+   },
+   {
+    "addr": "0xa9ed30",
+    "name": "MsgStringTable_GetById"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x07F6",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcc8940",
+    "name": "sub_CC8940"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x07FA",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcbb370",
+    "name": "GameMode_OnRecv_ZC_DELETEITEM_FROM_BODY"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x07FC",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcba7c0",
+    "name": "sub_CBA7C0"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x07FD",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcb8830",
+    "name": "sub_CB8830"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0800",
+  "win_ids": [
+   43,
+   44
+  ],
+  "handlers": [
+   {
+    "addr": "0xce4bb0",
+    "name": "sub_CE4BB0"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0803",
+  "win_ids": [
+   164
+  ],
+  "handlers": [
+   {
+    "addr": "0xccff60",
+    "name": "Handler_ZC_PartyBookingAckRegister"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0810",
+  "win_ids": [
+   174
+  ],
+  "handlers": [
+   {
+    "addr": "0xccee80",
+    "name": "sub_CCEE80"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0812",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcbe9d0",
+    "name": "sub_CBE9D0"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0813",
+  "win_ids": [
+   176
+  ],
+  "handlers": [
+   {
+    "addr": "0xcc7730",
+    "name": "sub_CC7730"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0818",
+  "win_ids": [
+   177,
+   178,
+   179
+  ],
+  "handlers": [
+   {
+    "addr": "0xcb2700",
+    "name": "sub_CB2700"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x081A",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcbeb90",
+    "name": "sub_CBEB90"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x081B",
+  "win_ids": [
+   258
+  ],
+  "handlers": [
+   {
+    "addr": "0xcdbe10",
+    "name": "sub_CDBE10"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x081C",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcc2370",
+    "name": "sub_CC2370"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x081F",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcb8720",
+    "name": "sub_CB8720"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0824",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcbec30",
+    "name": "sub_CBEC30"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0839",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcdcef0",
+    "name": "sub_CDCEF0"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0849",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcd3b70",
+    "name": "Recv_ZC_SE_PC_BUY_CASHITEM_RESULT"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0859",
+  "win_ids": [
+   139
+  ],
+  "handlers": [
+   {
+    "addr": "0xcbce90",
+    "name": "Recv_ZC_EQUIPWIN_MICROSCOPE_02D7_0859"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x08AE",
+  "win_ids": [
+   203
+  ],
+  "handlers": [
+   {
+    "addr": "0xc65370",
+    "name": "sub_C65370"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x08B1",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcc6390",
+    "name": "sub_CC6390"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x08CB",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xd0aaf0",
+    "name": "sub_D0AAF0"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x08CE",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xd00b40",
+    "name": "sub_D00B40"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x08D8",
+  "win_ids": [
+   209
+  ],
+  "handlers": [
+   {
+    "addr": "0xb3a5d0",
+    "name": "Handler_ZC_ACK_ENTRY_QUEUE_APPLY"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x08D9",
+  "win_ids": [
+   209
+  ],
+  "handlers": [
+   {
+    "addr": "0xb3ab80",
+    "name": "Handler_ZC_NOTIFY_ENTRY_QUEUE_APPLY"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x08DB",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xb3a920",
+    "name": "Handler_ZC_ACK_ENTRY_QUEUE_CANCEL"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x08DF",
+  "win_ids": [
+   210
+  ],
+  "handlers": [
+   {
+    "addr": "0xb3af20",
+    "name": "Handler_ZC_NOTIFY_LOBBY_ADMISSION"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x08E2",
+  "win_ids": [
+   203
+  ],
+  "handlers": [
+   {
+    "addr": "0xd058c0",
+    "name": "Handler_ZC_NAVIGATION_ACTIVE"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0904",
+  "win_ids": [
+   1,
+   15,
+   36,
+   46,
+   51,
+   159,
+   276
+  ],
+  "handlers": [
+   {
+    "addr": "0xa39340",
+    "name": "UIWindowMgr_MakeWindow"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0905",
+  "win_ids": [
+   1,
+   15,
+   36,
+   46,
+   51,
+   159,
+   276
+  ],
+  "handlers": [
+   {
+    "addr": "0xa39340",
+    "name": "UIWindowMgr_MakeWindow"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0906",
+  "win_ids": [
+   139
+  ],
+  "handlers": [
+   {
+    "addr": "0xcc6f20",
+    "name": "Recv_ZC_EQUIPWIN_MICROSCOPE_0906"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x096D",
+  "win_ids": [
+   227
+  ],
+  "handlers": [
+   {
+    "addr": "0xd036a0",
+    "name": "ZC_MergeItemOpen_Handler"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x096F",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcfc8c0",
+    "name": "ZC_MergeItemAck_Handler"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0973",
+  "win_ids": [
+   1,
+   15,
+   36,
+   46,
+   51,
+   159,
+   276
+  ],
+  "handlers": [
+   {
+    "addr": "0xa39340",
+    "name": "UIWindowMgr_MakeWindow"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0975",
+  "win_ids": [
+   33
+  ],
+  "handlers": [
+   {
+    "addr": "0xcdb5d0",
+    "name": "sub_CDB5D0"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0976",
+  "win_ids": [
+   33
+  ],
+  "handlers": [
+   {
+    "addr": "0xcdab50",
+    "name": "sub_CDAB50"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x097B",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xd0aaf0",
+    "name": "sub_D0AAF0"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x097D",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcaeb90",
+    "name": "ZC_AckRanking_PrintToChat"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x097E",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcaf9b0",
+    "name": "sub_CAF9B0"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x097F",
+  "win_ids": [
+   95
+  ],
+  "handlers": [
+   {
+    "addr": "0xcf96a0",
+    "name": "sub_CF96A0"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x098E",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcf8860",
+    "name": "sub_CF8860"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0990",
+  "win_ids": [
+   58
+  ],
+  "handlers": [
+   {
+    "addr": "0xcc3b50",
+    "name": "Recv_ZC_ITEM_PICKUP_ACK_0990"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0995",
+  "win_ids": [
+   33
+  ],
+  "handlers": [
+   {
+    "addr": "0xcdb7d0",
+    "name": "sub_CDB7D0"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0996",
+  "win_ids": [
+   33
+  ],
+  "handlers": [
+   {
+    "addr": "0xcdad70",
+    "name": "sub_CDAD70"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0997",
+  "win_ids": [
+   139
+  ],
+  "handlers": [
+   {
+    "addr": "0xcbd0c0",
+    "name": "Recv_ZC_EQUIPWIN_MICROSCOPE_0997"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0999",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcb4a90",
+    "name": "sub_CB4A90"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x099A",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcb3e80",
+    "name": "sub_CB3E80"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x099B",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcaf320",
+    "name": "sub_CAF320"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x09A6",
+  "win_ids": [
+   275
+  ],
+  "handlers": [
+   {
+    "addr": "0xcaefe0",
+    "name": "Recv_ZC_BANKING_CHECK"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x09A8",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcaedc0",
+    "name": "Recv_ZC_ACK_BANKING_DEPOSIT"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x09AA",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcaeed0",
+    "name": "Recv_ZC_ACK_BANKING_WITHDRAW"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x09BB",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcb2b60",
+    "name": "sub_CB2B60"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x09CB",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xd0d3a0",
+    "name": "EffectDispatch_PlayEffectOnActorById"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x09CD",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcc7210",
+    "name": "sub_CC7210"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x09D2",
+  "win_ids": [
+   33
+  ],
+  "handlers": [
+   {
+    "addr": "0xcc0760",
+    "name": "sub_CC0760"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x09D3",
+  "win_ids": [
+   33
+  ],
+  "handlers": [
+   {
+    "addr": "0xcc0080",
+    "name": "sub_CC0080"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x09DA",
+  "win_ids": [
+   253
+  ],
+  "handlers": [
+   {
+    "addr": "0xcb1d50",
+    "name": "ZC_GuildStorageLog_Handler"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x09DF",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xc9d030",
+    "name": "Whisper_DispatchSendResult"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x09E5",
+  "win_ids": [
+   257
+  ],
+  "handlers": [
+   {
+    "addr": "0xc9d710",
+    "name": "sub_C9D710"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x09E6",
+  "win_ids": [
+   258
+  ],
+  "handlers": [
+   {
+    "addr": "0xc9dc30",
+    "name": "sub_C9DC30"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x09E7",
+  "win_ids": [
+   262
+  ],
+  "handlers": [
+   {
+    "addr": "0xd09a70",
+    "name": "Recv_ZC_MailWindows_0x0260"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x09ED",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcfdcc0",
+    "name": "sub_CFDCC0"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x09F2",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcfde00",
+    "name": "sub_CFDE00"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x09F4",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcfbe00",
+    "name": "Recv_ZC_ReadRodex_0x09EB"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x09F9",
+  "win_ids": [
+   143
+  ],
+  "handlers": [
+   {
+    "addr": "0xcb6570",
+    "name": "sub_CB6570"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x09FA",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcdc310",
+    "name": "sub_CDC310"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x09FC",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcd15c0",
+    "name": "GameMode_OnRecv_ZC_PET_EVOLUTION_RESULT"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0A02",
+  "win_ids": [
+   259
+  ],
+  "handlers": [
+   {
+    "addr": "0xcf8030",
+    "name": "ZC_DressRoomOpen_Handler"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0A05",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcfa480",
+    "name": "sub_CFA480"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0A07",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcfd880",
+    "name": "sub_CFD880"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0A0C",
+  "win_ids": [
+   58
+  ],
+  "handlers": [
+   {
+    "addr": "0xcc4240",
+    "name": "Recv_ZC_ITEM_PICKUP_ACK_0A0C"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0A10",
+  "win_ids": [
+   33
+  ],
+  "handlers": [
+   {
+    "addr": "0xcdb110",
+    "name": "sub_CDB110"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0A11",
+  "win_ids": [
+   33
+  ],
+  "handlers": [
+   {
+    "addr": "0xcc03c0",
+    "name": "sub_CC03C0"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0A12",
+  "win_ids": [
+   264
+  ],
+  "handlers": [
+   {
+    "addr": "0xcfcc80",
+    "name": "Recv_ZC_RodexBeginWriteResult"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0A15",
+  "win_ids": [
+   267
+  ],
+  "handlers": [
+   {
+    "addr": "0xcf33a0",
+    "name": "sub_CF33A0"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0A17",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcf32b0",
+    "name": "sub_CF32B0"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0A1A",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcfcb00",
+    "name": "sub_CFCB00"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0A1C",
+  "win_ids": [
+   269
+  ],
+  "handlers": [
+   {
+    "addr": "0xcfda90",
+    "name": "sub_CFDA90"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0A1E",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcfb410",
+    "name": "sub_CFB410"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0A20",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcfb8b0",
+    "name": "sub_CFB8B0"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0A22",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xd0b2b0",
+    "name": "sub_D0B2B0"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0A24",
+  "win_ids": [
+   271
+  ],
+  "handlers": [
+   {
+    "addr": "0xcf9bf0",
+    "name": "Recv_ZC_ACH_UPDATE_0A24"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0A2D",
+  "win_ids": [
+   139
+  ],
+  "handlers": [
+   {
+    "addr": "0xcbd310",
+    "name": "Recv_ZC_EQUIPWIN_MICROSCOPE_0A2D"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0A37",
+  "win_ids": [
+   58
+  ],
+  "handlers": [
+   {
+    "addr": "0xcc4a80",
+    "name": "Recv_ZC_ITEM_PICKUP_ACK_0A37"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0A38",
+  "win_ids": [
+   281,
+   284,
+   286,
+   344
+  ],
+  "handlers": [
+   {
+    "addr": "0xcaf890",
+    "name": "UI_OpenByOutUiType"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0A4A",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcfce10",
+    "name": "sub_CFCE10"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0A4B",
+  "win_ids": [
+   6
+  ],
+  "handlers": [
+   {
+    "addr": "0xd03630",
+    "name": "sub_D03630"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0A4C",
+  "win_ids": [
+   6
+  ],
+  "handlers": [
+   {
+    "addr": "0xd0bd70",
+    "name": "sub_D0BD70"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0A4E",
+  "win_ids": [
+   290
+  ],
+  "handlers": [
+   {
+    "addr": "0xd0b200",
+    "name": "sub_D0B200"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0A51",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xd00010",
+    "name": "Rodex_ApplyRecipientCheckAck"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0A53",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcfdbc0",
+    "name": "sub_CFDBC0"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0A57",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcfb0f0",
+    "name": "sub_CFB0F0"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0A58",
+  "win_ids": [
+   285
+  ],
+  "handlers": [
+   {
+    "addr": "0xcfeff0",
+    "name": "sub_CFEFF0"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0A60",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xd03580",
+    "name": "sub_D03580"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0A6A",
+  "win_ids": [
+   288
+  ],
+  "handlers": [
+   {
+    "addr": "0xcfcd40",
+    "name": "sub_CFCD40"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0A6F",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xd05810",
+    "name": "sub_D05810"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0A7E",
+  "win_ids": [
+   41
+  ],
+  "handlers": [
+   {
+    "addr": "0xd0a090",
+    "name": "RecvHandler_OpenVendingWithPlacement"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0A81",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcfb4e0",
+    "name": "VendingWnd_HandleOpenStoreAck"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0A82",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcdd330",
+    "name": "sub_CDD330"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0A83",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcde6f0",
+    "name": "sub_CDE6F0"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0A8D",
+  "win_ids": [
+   43,
+   44,
+   45
+  ],
+  "handlers": [
+   {
+    "addr": "0xd026b0",
+    "name": "sub_D026B0"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0A91",
+  "win_ids": [
+   176,
+   177,
+   178,
+   179
+  ],
+  "handlers": [
+   {
+    "addr": "0xd01f30",
+    "name": "sub_D01F30"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0A93",
+  "win_ids": [
+   174
+  ],
+  "handlers": [
+   {
+    "addr": "0xd09fb0",
+    "name": "RecvHandler_OpenBuyingStoreWithPlacement"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0A95",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xd005a0",
+    "name": "sub_D005A0"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0A98",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xd1b620",
+    "name": "sub_D1B620"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0A9A",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xd1c1b0",
+    "name": "sub_D1C1B0"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0A9D",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xd1b890",
+    "name": "sub_D1B890"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0AA0",
+  "win_ids": [
+   1,
+   15,
+   36,
+   46,
+   51,
+   159,
+   276
+  ],
+  "handlers": [
+   {
+    "addr": "0xa39340",
+    "name": "UIWindowMgr_MakeWindow"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0AA8",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xd00640",
+    "name": "sub_D00640"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0AA9",
+  "win_ids": [
+   254,
+   255
+  ],
+  "handlers": [
+   {
+    "addr": "0xd09b10",
+    "name": "sub_D09B10"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0AAB",
+  "win_ids": [
+   256
+  ],
+  "handlers": [
+   {
+    "addr": "0xd09cf0",
+    "name": "sub_D09CF0"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0AB4",
+  "win_ids": [
+   302
+  ],
+  "handlers": [
+   {
+    "addr": "0xd0b240",
+    "name": "sub_D0B240"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0AB9",
+  "win_ids": [
+   12
+  ],
+  "handlers": [
+   {
+    "addr": "0xcffe50",
+    "name": "sub_CFFE50"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0ABE",
+  "win_ids": [
+   39
+  ],
+  "handlers": [
+   {
+    "addr": "0xd1b570",
+    "name": "sub_D1B570"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0ABF",
+  "win_ids": [
+   308
+  ],
+  "handlers": [
+   {
+    "addr": "0xd0bff0",
+    "name": "sub_D0BFF0"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0AC7",
+  "win_ids": [
+   6
+  ],
+  "handlers": [
+   {
+    "addr": "0xc9d980",
+    "name": "sub_C9D980"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0ACB",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xd03300",
+    "name": "sub_D03300"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0ACC",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xd05f30",
+    "name": "sub_D05F30"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0ADA",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcff370",
+    "name": "sub_CFF370"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0ADC",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xd006f0",
+    "name": "sub_D006F0"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0AE1",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcd48a0",
+    "name": "sub_CD48A0"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0AE2",
+  "win_ids": [
+   315,
+   328,
+   343
+  ],
+  "handlers": [
+   {
+    "addr": "0xcf98b0",
+    "name": "sub_CF98B0"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0AE7",
+  "win_ids": [
+   326
+  ],
+  "handlers": [
+   {
+    "addr": "0x785e70",
+    "name": "sub_785E70"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0AF0",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcfb390",
+    "name": "sub_CFB390"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0AFA",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcd0210",
+    "name": "sub_CD0210"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0AFB",
+  "win_ids": [
+   99
+  ],
+  "handlers": [
+   {
+    "addr": "0xcff0f0",
+    "name": "sub_CFF0F0"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0AFE",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcdbe50",
+    "name": "Net_ZC_HuntingQuestInfo"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0B03",
+  "win_ids": [
+   139
+  ],
+  "handlers": [
+   {
+    "addr": "0xcbd860",
+    "name": "Recv_ZC_EQUIPWIN_MICROSCOPE_0B03"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0B08",
+  "win_ids": [
+   33
+  ],
+  "handlers": [
+   {
+    "addr": "0xcd8d10",
+    "name": "GameMode_OnRecv_ZC_INVENTORY_START"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0B0C",
+  "win_ids": [
+   143
+  ],
+  "handlers": [
+   {
+    "addr": "0xcb6280",
+    "name": "sub_CB6280"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0B15",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcfc990",
+    "name": "sub_CFC990"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0B17",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcfb800",
+    "name": "sub_CFB800"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0B2E",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xd0b960",
+    "name": "sub_D0B960"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0B2F",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcd20d0",
+    "name": "Recv_ZC_PROPERTY_HOMUN_0B2F"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0B37",
+  "win_ids": [
+   139
+  ],
+  "handlers": [
+   {
+    "addr": "0xcbddc0",
+    "name": "Recv_ZC_EQUIPWIN_MICROSCOPE_0B37"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0B3D",
+  "win_ids": [
+   43,
+   44
+  ],
+  "handlers": [
+   {
+    "addr": "0xd0a170",
+    "name": "sub_D0A170"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0B3E",
+  "win_ids": [
+   253
+  ],
+  "handlers": [
+   {
+    "addr": "0xcfba30",
+    "name": "sub_CFBA30"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0B3F",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcfa1d0",
+    "name": "sub_CFA1D0"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0B41",
+  "win_ids": [
+   58
+  ],
+  "handlers": [
+   {
+    "addr": "0xcc5320",
+    "name": "Recv_ZC_ITEM_PICKUP_ACK_0B41"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0B49",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcfdf10",
+    "name": "sub_CFDF10"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0B4E",
+  "win_ids": [
+   256
+  ],
+  "handlers": [
+   {
+    "addr": "0xcce780",
+    "name": "sub_CCE780"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0B50",
+  "win_ids": [
+   340
+  ],
+  "handlers": [
+   {
+    "addr": "0xd09eb0",
+    "name": "sub_D09EB0"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0B54",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xd0bd00",
+    "name": "sub_D0BD00"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0B56",
+  "win_ids": [
+   341,
+   342
+  ],
+  "handlers": [
+   {
+    "addr": "0xcbe710",
+    "name": "Recv_ZC_NPC_EXPANDED_BARTER_MARKET_ITEMINFO_0B56_legacy"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0B5A",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xd01790",
+    "name": "sub_D01790"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0B5E",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xd00f20",
+    "name": "sub_D00F20"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0B62",
+  "win_ids": [
+   43,
+   44,
+   45
+  ],
+  "handlers": [
+   {
+    "addr": "0xd022c0",
+    "name": "sub_D022C0"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0B63",
+  "win_ids": [
+   265
+  ],
+  "handlers": [
+   {
+    "addr": "0xcfd0c0",
+    "name": "Recv_ZC_AckReadRodex_0x0B63"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0B65",
+  "win_ids": [
+   107
+  ],
+  "handlers": [
+   {
+    "addr": "0xd0b420",
+    "name": "sub_D0B420"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0B67",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xd01bf0",
+    "name": "sub_D01BF0"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0B6E",
+  "win_ids": [
+   318
+  ],
+  "handlers": [
+   {
+    "addr": "0xd0bc80",
+    "name": "Recv_ZC_SE_CASHSHOP_OPEN"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0B77",
+  "win_ids": [
+   22,
+   23
+  ],
+  "handlers": [
+   {
+    "addr": "0xcd09d0",
+    "name": "sub_CD09D0"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0B78",
+  "win_ids": [
+   334,
+   335
+  ],
+  "handlers": [
+   {
+    "addr": "0xcb6c20",
+    "name": "Recv_ZC_NPC_BARTER_MARKET_ITEMINFO_0B78"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0B79",
+  "win_ids": [
+   341,
+   342
+  ],
+  "handlers": [
+   {
+    "addr": "0xcbe3e0",
+    "name": "Recv_ZC_NPC_EXPANDED_BARTER_MARKET_ITEMINFO_0B79"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0B7A",
+  "win_ids": [
+   254,
+   255
+  ],
+  "handlers": [
+   {
+    "addr": "0xcce410",
+    "name": "sub_CCE410"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0B8E",
+  "win_ids": [
+   346
+  ],
+  "handlers": [
+   {
+    "addr": "0xd0d220",
+    "name": "sub_D0D220"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0B8F",
+  "win_ids": [
+   348
+  ],
+  "handlers": [
+   {
+    "addr": "0xd09ee0",
+    "name": "sub_D09EE0"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0B92",
+  "win_ids": [
+   12
+  ],
+  "handlers": [
+   {
+    "addr": "0xd01dc0",
+    "name": "sub_D01DC0"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0B94",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcf97a0",
+    "name": "ZC_CONFIG_0B94_Handler"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0B96",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0x4e5330",
+    "name": "StdString_ctor_cstr"
+   },
+   {
+    "addr": "0xcf8a60",
+    "name": "sub_CF8A60"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0B99",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcf8b10",
+    "name": "Recv_ZC_RodexDeleteResult"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0BA4",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcd1ed0",
+    "name": "Recv_ZC_PROPERTY_HOMUN_0BA4"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0BAE",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcfdb40",
+    "name": "sub_CFDB40"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0BBA",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcb8830",
+    "name": "sub_CB8830"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0BBE",
+  "win_ids": [
+   358
+  ],
+  "handlers": [
+   {
+    "addr": "0xd0c160",
+    "name": "sub_D0C160"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0BC2",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcfbf60",
+    "name": "sub_CFBF60"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0BC9",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xd007b0",
+    "name": "sub_D007B0"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0BD9",
+  "win_ids": [
+   362
+  ],
+  "handlers": [
+   {
+    "addr": "0xcf8490",
+    "name": "sub_CF8490"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0BDB",
+  "win_ids": [
+   359
+  ],
+  "handlers": [
+   {
+    "addr": "0xd03520",
+    "name": "sub_D03520"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0BDE",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcb68a0",
+    "name": "sub_CB68A0"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0BE3",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0x4e5330",
+    "name": "StdString_ctor_cstr"
+   },
+   {
+    "addr": "0xcfd8e0",
+    "name": "sub_CFD8E0"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0C06",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcff170",
+    "name": "sub_CFF170"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0C08",
+  "win_ids": [
+   14
+  ],
+  "handlers": [
+   {
+    "addr": "0x4f1940",
+    "name": "std_string_assign"
+   },
+   {
+    "addr": "0xa2e770",
+    "name": "UIWindowMgr_SaveRectAndCloseWindow"
+   },
+   {
+    "addr": "0xa33810",
+    "name": "sub_A33810"
+   },
+   {
+    "addr": "0xc62e10",
+    "name": "sub_C62E10"
+   },
+   {
+    "addr": "0xcbaf10",
+    "name": "NpcDialog_OnRecv_ZC_CLOSE_DIALOG"
+   }
+  ],
+  "depth": "direct"
+ },
+ {
+  "opcode": "0x0C0C",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xd00e90",
+    "name": "sub_D00E90"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0C17",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xcf9190",
+    "name": "sub_CF9190"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0C2B",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xd0b4d0",
+    "name": "sub_D0B4D0"
+   }
+  ],
+  "depth": "depth1"
+ },
+ {
+  "opcode": "0x0C2C",
+  "win_ids": [
+   51
+  ],
+  "handlers": [
+   {
+    "addr": "0xd0b570",
+    "name": "sub_D0B570"
+   }
+  ],
+  "depth": "depth1"
+ }
+]
