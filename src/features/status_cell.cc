@@ -455,12 +455,43 @@ constexpr ImU32 kTipBg   = IM_COL32(0xF2, 0xF3, 0xF6, 255);
 constexpr ImU32 kTipText = IM_COL32(24, 22, 20, 255);
 constexpr ImU32 kTipDim  = IM_COL32(89, 89, 107, 255);
 
-void Tooltip(const StatusEffects::Entry& e) {
-  // Une altération n'a pas de texte Lua : son nom est le nôtre.
+// ── Le CADRE de l'infobulle ─────────────────────────────────────────────────
+//
+// 🔴 ELLE IMPOSE AUSSI SA GÉOMÉTRIE, et pour la même raison qu'elle impose son
+// fond : une infobulle hérite des `PushStyleVar` de la fenêtre D'OÙ ON SURVOLE.
+// La barre d'états est un `BeginHudFrame`, qui pousse une marge NULLE, aucune
+// bordure et aucun arrondi — ce que veut un cadre HUD collé à son art, mais
+// l'infobulle en héritait : texte collé au bord du panneau, sans filet ni coins.
+// Survolée depuis le chat, la MÊME infobulle était correcte parce que
+// `BeginRoChatWindow` pousse, lui, une marge et un filet.
+//
+// La marge et l'arrondi passent par `ro::Px` : ce sont des longueurs d'écran, et
+// une infobulle à police doublée garderait sinon une marge de 6 px.
+constexpr float kTipPad    = 6.0f;   // marge intérieure, LES DEUX AXES
+constexpr float kTipRound  = 3.0f;   // l'arrondi des fenêtres du toolkit
+constexpr ImU32 kTipBorder = IM_COL32(0xC5, 0xC5, 0xC5, 255);  // filet RO
+
+// 4 couleurs + 3 vars, à dépiler par `PopTipStyle` sur CHAQUE sortie.
+static void PushTipStyle() {
   ImGui::PushStyleColor(ImGuiCol_PopupBg, kTipBg);
   ImGui::PushStyleColor(ImGuiCol_Text, kTipText);
   ImGui::PushStyleColor(ImGuiCol_TextDisabled, kTipDim);
+  ImGui::PushStyleColor(ImGuiCol_Border, kTipBorder);
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,
+                      ImVec2(ro::Px(kTipPad), ro::Px(kTipPad)));
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, ro::Px(kTipRound));
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
+}
 
+static void PopTipStyle() {
+  ImGui::PopStyleVar(3);
+  ImGui::PopStyleColor(4);
+}
+
+void Tooltip(const StatusEffects::Entry& e) {
+  PushTipStyle();
+
+  // Une altération n'a pas de texte Lua : son nom est le nôtre.
   if (const AilmentLook* look = LookupAilment(e.efst)) {
     ImGui::BeginTooltip();
     ImGui::TextUnformatted(i18n::Tr(look->name));
@@ -473,7 +504,7 @@ void Tooltip(const StatusEffects::Entry& e) {
       ImGui::TextDisabled("%s", when);
     }
     ImGui::EndTooltip();
-    ImGui::PopStyleColor(3);
+    PopTipStyle();
     return;
   }
 
@@ -528,7 +559,7 @@ void Tooltip(const StatusEffects::Entry& e) {
       ImGui::TextDisabled("%s", when);
   }
   ImGui::EndTooltip();
-  ImGui::PopStyleColor(3);
+  PopTipStyle();
 }
 
 bool Draw(const StatusEffects::Entry& e, ImVec2 p0, ImVec2 p1,
