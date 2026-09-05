@@ -4000,3 +4000,6 @@
 "(action inconnue)": "(unknown action)"
 "Zone des sorts": "Skill area"
 "(!) ligne à mettre entre guillemets dans tutorial.yaml": "(!) quote this line in tutorial.yaml"
+
+# CraftAtlas - aide du volet de droite.
+"Choisissez un objet à gauche.\n\nClic gauche : suivre l'objet dans l'Atlas.\nClic droit : le menu contextuel (description, @whodrops…).\nMaj + clic : poser son lien dans le chat.": "Pick an item on the left.\n\nLeft click: follow the item in the Atlas.\nRight click: the context menu (description, @whodrops…).\nShift + click: drop its link into the chat."

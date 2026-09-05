@@ -3939,3 +3939,25 @@
 "Montrer la zone des sorts en cours d'incantation": "Mostrar el área de los hechizos que se están lanzando"
 "Celle des JOUEURS — la tienne comprise — pendant qu'ils incantent. C'est le serveur qui l'annonce, et elle est déjà visible par tout le monde autour : tu ne dévoiles rien en l'affichant.\nLes monstres, eux, la montrent déjà et ce réglage n'y change rien : un MVP qui annonce son sort est une information de jeu, pas un confort.": "La de los JUGADORES —la tuya incluida— mientras lanzan. La anuncia el servidor y ya es visible para todos los que están alrededor: mostrarla no revela nada.\nLos monstruos ya muestran la suya y este ajuste no lo cambia: un MVP que anuncia su hechizo es información de juego, no una comodidad."
 "Tous les sorts n'ont pas de zone déclarée : c'est le serveur qui dit lesquels en ont une, et de quelle taille.": "No todos los hechizos tienen un área declarada: el servidor decide cuáles la tienen y de qué tamaño."
+
+# TutorialWindow - la visita guiada de las novedades (features/windows/tutorial_window.cc).
+"Découvrir Bourgeon": "Descubrir Bourgeon"
+"Revoir le tutoriel": "Volver a ver el tutorial"
+"Une visite guidée des nouveautés de Bourgeon, avec une animation par fonctionnalité. Reprend à la page où vous vous étiez arrêté.": "Una visita guiada por las novedades de Bourgeon, con una animación por función. Continúa en la página donde lo dejaste."
+"Le proposer à la première connexion": "Proponerlo en la primera conexión"
+"Page %d sur %d": "Página %d de %d"
+"< Précédent": "< Anterior"
+"Suivant >": "Siguiente >"
+"Astuce": "Consejo"
+"Chargement de l'animation...": "Cargando la animación..."
+"Aucune page de tutoriel n'est installée.": "No hay ninguna página de tutorial instalada."
+"Le fichier ne contient aucune page.": "El archivo no contiene ninguna página."
+"Fichier introuvable : %s": "Archivo no encontrado: %s"
+"Lecture impossible : %s": "No se puede leer: %s"
+"(aucune touche)": "(sin tecla)"
+"(action inconnue)": "(acción desconocida)"
+"(!) ligne à mettre entre guillemets dans tutorial.yaml": "(!) pon esta línea entre comillas en tutorial.yaml"
+"Zone des sorts": "Área de habilidad"
+
+# CraftAtlas - ayuda del panel derecho.
+"Choisissez un objet à gauche.\n\nClic gauche : suivre l'objet dans l'Atlas.\nClic droit : le menu contextuel (description, @whodrops…).\nMaj + clic : poser son lien dans le chat.": "Elige un objeto a la izquierda.\n\nClic izquierdo: seguir el objeto en el Atlas.\nClic derecho: el menú contextual (descripción, @whodrops…).\nMayús + clic: poner su enlace en el chat."
