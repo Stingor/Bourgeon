@@ -102,11 +102,24 @@ constexpr int kMsgEquipOnlyOne = 0x77;
 // chemins qui peuvent atteindre UIWndMgr_ShowMessageBoxModal ; celui-ci ne le
 // peut pas. Quand la chatbox ImGui est active, la ligne ne sort même pas de chez
 // nous (Bourgeon::RouteChatLine la prend au passage).
-void SayEquipOnlyOne() {
-  const char* text = msgstr::Cp949(kMsgEquipOnlyOne);  // CP949 : ce qu'attend le chat
+void SayMsgString(int id) {
+  const char* text = msgstr::Cp949(id);  // CP949 : ce qu'attend le chat
   if (text == nullptr || *text == '\0') return;
   UIWindowMgr::SendMsg(UIMessage::UIM_PUSHINTOCHATHISTORY,
                        reinterpret_cast<int>(text), 0, 0, 0);
+}
+
+void SayEquipOnlyOne() { SayMsgString(kMsgEquipOnlyOne); }
+
+// Verdict d'un achat MARKETSHOP, aux libellés exacts du natif (handler
+// 0x00CCE780 : MsgString 0x36 en succès, 0x0BE3 en échec). La boutique classique
+// n'a rien de tel à faire — ses handlers de résultat 0xca/0xcb restent OBSERVÉS
+// et écrivent ces lignes eux-mêmes ; le marketshop, lui, est remplacé des deux
+// côtés, donc plus personne ne parle si on se tait.
+constexpr int kMsgDealCompleted = 0x36;    // « The deal has successfully completed. »
+constexpr int kMsgMarketFailed  = 0x0be3;
+void SayMarketResult(bool ok) {
+  SayMsgString(ok ? kMsgDealCompleted : kMsgMarketFailed);
 }
 
 // Icône d'item (image d'inventaire).
@@ -152,6 +165,27 @@ constexpr uint16_t kOpBuyList  = 0x0b77;  // ZC_PC_PURCHASE_ITEMLIST (var)
 constexpr uint16_t kOpSellList = 0x00c7;  // ZC_PC_SELL_ITEMLIST (var)
 constexpr uint16_t kOpBuyRes   = 0x00ca;  // ZC_PC_PURCHASE_RESULT {result:1}
 constexpr uint16_t kOpSellRes  = 0x00cb;  // ZC_PC_SELL_RESULT {result:1}
+// ── Marketshop : une AUTRE boutique, avec ses propres paquets ────────────────
+// `shop` à quantité limitée (rAthena NPCTYPE_MARKETSHOP, `npcshopupdate`). Rien
+// de commun avec la boutique classique côté fil : pas de chooser, pas de
+// sélection de deal, un STOCK par article, et son propre trio de fenêtres
+// natives (254/255/256, cf. ragnarok/uiwnd.h).
+constexpr uint16_t kOpMarketOpen = 0x0b7a;  // ZC_NPC_MARKET_OPEN (var), sub 19 o
+constexpr uint16_t kOpMarketRes  = 0x0b4e;  // ZC_NPC_MARKET_PURCHASE_RESULT (var)
+constexpr uint16_t kOpMarketBuy  = 0x09d6;  // CZ_NPC_MARKET_PURCHASE (var), sub 8 o
+// CZ_NPC_MARKET_CLOSE {op:2} — l'opcode seul, comme 0x09D4. 🔴 Il est ENCORE plus
+// indispensable que son cousin : `clif_npc_market_open` pose `sd->state.trading`
+// EN PLUS de `npc_shopid`, et `pc_cant_act2()` teste les deux. Sans lui le joueur
+// reste figé, et 0x09D4 ne le sauverait pas — seul `clif_parse_NPCMarketClosed`
+// éteint l'état d'échange.
+constexpr uint16_t kOpMarketQuit = 0x09d8;
+// Plafond du paquet d'achat marketshop, tel que le client se l'impose (case 262 de
+// CMode::SendMsg : `cmp eax, 800h` / `ja default`, l'envoi est SAUTÉ au-delà).
+constexpr int kMarketPacketMax = 0x800;
+// Verdict d'un achat marketshop, tel que le handler natif 0x00CCE780 le lit :
+// mot à +4, 0 = succès (MsgString 0x36), 0xFFFF = échec (0x0BE3). Le serveur
+// n'envoie que ces deux-là (`res == PURCHASE_SUCCEED ? 0 : -1`).
+constexpr uint16_t kMarketResOk = 0;
 // ZC_ACK_REQNAMEALL_NPC (0x0adf) est aussi lu par la fenetre de dialogue : il
 // vit chez `rag::zc` (ragnarok/packets.h).
 // Envois (CZ).
@@ -205,6 +239,13 @@ NpcShopWindow::NpcShopWindow() {
   Bourgeon::Instance().RegisterReplaceOpcode(kOpChoose, claim);   // {npcId:4}
   Bourgeon::Instance().RegisterReplaceOpcode(kOpBuyList, claim);  // liste achat (var)
   Bourgeon::Instance().RegisterReplaceOpcode(kOpSellList, claim); // liste vente (var)
+  // Marketshop : ses DEUX paquets sont remplacés, pas observés. Le premier ouvre
+  // les fenêtres 254+255, le second (résultat) fabrique le récapitulatif 256 —
+  // trois natives de plus à ne pas laisser naître, pour la raison habituelle :
+  // masquée ou pas, une native garde le clavier. Le message de chat du verdict,
+  // lui, ne se perd pas : on le réémet nous-mêmes (SayMarketResult).
+  Bourgeon::Instance().RegisterReplaceOpcode(kOpMarketOpen, claim);
+  Bourgeon::Instance().RegisterReplaceOpcode(kOpMarketRes, claim);
   // Les deux RÉSULTATS restent OBSERVÉS : leur handler natif affiche les messages
   // d'échec du client (« pas assez de zeny »…), qu'on aurait sinon à réécrire, et
   // son rafraîchissement d'UI ne trouve aucune fenêtre — donc ne fait rien.
@@ -224,7 +265,8 @@ NpcShopWindow::NpcShopWindow() {
 void NpcShopWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data,
                                  uint16_t len) {
   if (!imgui_enabled_) return;
-  if (opcode == kOpBuyList || opcode == kOpSellList)
+  if (opcode == kOpBuyList || opcode == kOpSellList ||
+      opcode == kOpMarketOpen || opcode == kOpMarketRes)
     net_inbox_.PushAnnounced(opcode, data, len);
   else
     net_inbox_.Push(opcode, data, len);
@@ -251,9 +293,10 @@ void NpcShopWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data,
 // la boutique, on effaçait l'identité du script : la fermeture partait au mauvais
 // NPC, npc_scriptcont la rejetait, et le joueur restait bloqué — au clic sur la
 // croix comme au basculement à chaud.
-void NpcShopWindow::BeginSession(uint32_t npc_id, Mode mode) {
+void NpcShopWindow::BeginSession(uint32_t npc_id, Mode mode, bool market) {
   rag::SetNpcInteractionActive(0);
   npc_id_ = npc_id;
+  market_ = market;
   // 🔴 Pas de GID = pas de re-sélection : CZ_ACK_SELECT_DEALTYPE NOMME le marchand.
   // La session ne vaut donc que pour UNE transaction, et l'onglet d'en face n'a
   // personne à qui demander sa liste. Les deux conséquences sont tirées ailleurs
@@ -382,6 +425,88 @@ void NpcShopWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
     if (direct_list_) { want_close_ = true; sell_requested_ = true; buy_requested_ = true; }
     return;
   }
+  // ── Marketshop : la boutique à STOCK LIMITÉ ────────────────────────────────
+  if (opcode == kOpMarketOpen) {
+    // ZC_NPC_MARKET_OPEN : data = [packetLength:2][ {itemId:4, type:1, price:4,
+    // stock:4, weight:2, location:4} * n ] — 19 octets comme 0x0b77, et pourtant
+    // PAS le même gabarit : ici pas de prix remisé (le Discount ne s'applique
+    // pas) et un STOCK à sa place. Découpage relu sur le handler natif
+    // 0x00CCE410, qui fait `(len - 4) / 19` puis lit price@+5, qty@+9,
+    // weight@+13 (÷10 à l'affichage) et location@+15.
+    if (len < 2) return;
+    // 🔴 Aucun 0x00c4 ne précède JAMAIS ce paquet : le marketshop n'a ni chooser
+    // ni sélection de deal. Session sans GID, donc — mais qui SURVIT aux achats,
+    // contrairement à celle d'un callshop classique (cf. SendMarketBuyList).
+    //
+    // ⚠ Une différence assumée avec le natif : BeginSession pose l'état
+    // « interaction NPC » du client (+0x24C), que le handler 0x00CCE410 ne pose
+    // pas. Le natif laisse donc le joueur cliquer pour marcher pendant sa
+    // boutique — mais le serveur, lui, refuse (`state.trading` ET `npc_shopid`
+    // sont posés, `pc_cant_act2` les teste) : le clic ne produisait rien. Poser
+    // le flag rend visible ce qui était déjà vrai, et c'est aussi lui qui
+    // empêche de cliquer À TRAVERS notre fenêtre.
+    BeginSession(0, kBuy, true);
+    const uint16_t plen = *reinterpret_cast<const uint16_t*>(data);
+    const int body = static_cast<int>(plen) - 4;
+    if (body <= 0) return;
+    constexpr int kSub = 19;
+    int count = body / kSub;
+    if (count <= 0) return;
+    if (count > 4096) count = 4096;
+    buy_items_.reserve(count);
+    const uint8_t* p = data + 2;
+    for (int i = 0; i < count; ++i) {
+      BuyItem b;
+      b.id       = *reinterpret_cast<const uint32_t*>(p + 0);
+      b.type     = p[4];
+      b.price    = *reinterpret_cast<const int32_t*>(p + 5);
+      // Pas de remise dans un marketshop : le prix affiché EST le prix payé. On
+      // range donc le même dans `discount`, que toute la moitié achat lit.
+      b.discount = b.price;
+      b.stock    = *reinterpret_cast<const uint32_t*>(p + 9);
+      b.location = *reinterpret_cast<const uint32_t*>(p + 15);
+      buy_items_.push_back(b);
+      p += kSub;
+    }
+    have_buy_ = true;
+    return;
+  }
+
+  if (opcode == kOpMarketRes) {
+    // ZC_NPC_MARKET_PURCHASE_RESULT : data = [packetLength:2][result:2][ {itemId:4,
+    // qty:2, price:4} * n ]. Le natif ne lit ce corps que pour peindre son
+    // récapitulatif (fenêtre 256) ; nous, on s'en sert pour tenir le stock à jour.
+    if (len < 4) return;
+    const uint16_t plen = *reinterpret_cast<const uint16_t*>(data);
+    const uint16_t res  = *reinterpret_cast<const uint16_t*>(data + 2);
+    const bool ok = (res == kMarketResOk);
+    last_result_ = ok ? 0 : static_cast<int>(res);
+    last_result_sell_ = false;
+    SayMarketResult(ok);
+    if (!ok) return;
+    cart_.clear();
+    // 🔴 Le serveur ne renvoie JAMAIS la liste après un achat : c'est au CLIENT
+    // de décrémenter le stock, sinon la fenêtre continue de promettre des
+    // exemplaires qui n'existent plus — et le refus tomberait à l'achat suivant,
+    // sans explication. L'accusé porte exactement ce qu'il faut pour ça.
+    const int body = static_cast<int>(plen) - 6;
+    constexpr int kSub = 10;
+    int count = body / kSub;
+    if (count > 4096) count = 4096;
+    const uint8_t* p = data + 4;
+    for (int i = 0; i < count; ++i) {
+      const uint32_t id  = *reinterpret_cast<const uint32_t*>(p + 0);
+      const uint16_t qty = *reinterpret_cast<const uint16_t*>(p + 4);
+      for (auto& b : buy_items_) {
+        if (b.id != id) continue;
+        b.stock = (b.stock > qty) ? (b.stock - qty) : 0;
+        break;
+      }
+      p += kSub;
+    }
+    return;
+  }
+
   if (opcode == kOpSellList) {
     // ZC_PC_SELL_ITEMLIST : data = [packetLength:2][ {index:2, price:4,
     // overcharge:4} * n ]. C'est le SERVEUR qui décide de ce qui est vendable —
@@ -490,6 +615,33 @@ void NpcShopWindow::SendBuyList(const CartEntry* items, int count) {
   Bourgeon::Instance().SendPacket(pkt.data(), pkt.size());
 }
 
+// CZ_NPC_MARKET_PURCHASE 0x09d6 : [op:2][len:2][ {itemId:4, amount:4} *count ].
+//
+// Un troisième gabarit, et il fallait s'y attendre : les deux autres sont les
+// deux moitiés d'une boutique classique, celui-ci appartient à une autre
+// boutique. Relevé sur le case 262 de CMode::SendMsg (0x00C87A21), qui borne
+// aussi le paquet à 0x800 octets — on garde la borne, elle vient du client.
+//
+// 🔴 AUCUN 0xc5 ici, et c'est voulu : le marketshop n'a pas de sélection de deal,
+// et `clif_parse_NPCMarketPurchase` ne touche PAS à `sd->npc_shopid`. La session
+// survit donc à ses achats — le joueur peut vider la boutique sans la rouvrir.
+void NpcShopWindow::SendMarketBuyList(const CartEntry* items, int count) {
+  if (items == nullptr || count < 1) return;
+  if (4 + 8 * count > kMarketPacketMax) count = (kMarketPacketMax - 4) / 8;
+  const int plen = 4 + 8 * count;
+  std::vector<uint8_t> pkt(plen);
+  uint8_t* p = pkt.data();
+  *reinterpret_cast<uint16_t*>(p + 0) = kOpMarketBuy;
+  *reinterpret_cast<uint16_t*>(p + 2) = static_cast<uint16_t>(plen);
+  uint8_t* it = p + 4;
+  for (int k = 0; k < count; ++k) {
+    *reinterpret_cast<uint32_t*>(it + 0) = items[k].id;
+    *reinterpret_cast<int32_t*>(it + 4) = items[k].amount;
+    it += 8;
+  }
+  Bourgeon::Instance().SendPacket(pkt.data(), pkt.size());
+}
+
 // CZ_PC_SELL_ITEMLIST 0xc9 : [op:2][len:2][ {index:2, amount:2} *count ]
 void NpcShopWindow::SendSellList(const CartEntry* items, int count) {
   if (items == nullptr || count < 1) return;
@@ -510,7 +662,8 @@ void NpcShopWindow::SendSellList(const CartEntry* items, int count) {
 
 void NpcShopWindow::SendBuy() {
   if (cart_.empty()) return;
-  SendBuyList(cart_.data(), static_cast<int>(cart_.size()));
+  if (market_) SendMarketBuyList(cart_.data(), static_cast<int>(cart_.size()));
+  else         SendBuyList(cart_.data(), static_cast<int>(cart_.size()));
 }
 
 void NpcShopWindow::SendSell() {
@@ -520,18 +673,23 @@ void NpcShopWindow::SendSell() {
 
 // Achat IMMEDIAT de `qty` unites de `id` (bypass panier) : le MEME paquet, a un
 // seul item. Le serveur calcule le cout (discount inclus) et valide.
+// ⚠ Aucune garde sur `npc_id_` : elle refusait le Ctrl-clic dans toutes les
+// boutiques qui n'ont pas de GID (marketshop, `callshop <shop>,1`), alors que le
+// paquet d'achat, lui, n'en demande pas. Seul le 0xc5 en avait besoin, et il sait
+// se taire tout seul.
 void NpcShopWindow::QuickBuy(uint32_t id, int qty) {
-  if (npc_id_ == 0 || qty < 1) return;
+  if (qty < 1) return;
   CartEntry e;
   e.id = id;
   e.amount = qty;
-  SendBuyList(&e, 1);
+  if (market_) SendMarketBuyList(&e, 1);
+  else         SendBuyList(&e, 1);
 }
 
 // Vente IMMEDIATE de `qty` unites de l'item a l'index inventaire `index` (bypass
 // panier) : le MEME paquet, a un seul item. Le serveur calcule le gain (overcharge).
 void NpcShopWindow::QuickSell(int index, int qty) {
-  if (npc_id_ == 0 || qty < 1) return;
+  if (qty < 1) return;  // (même raison qu'à l'achat : le 0xc9 ne nomme pas le NPC)
   CartEntry e;
   e.index = index;
   e.amount = qty;
@@ -667,11 +825,7 @@ void NpcShopWindow::CloseNativeShop() {
   //    LE paquet qui débloque le personnage — `pc_cant_act2()` teste ce champ, et
   //    clif_parse_WalkToXY refuse tout déplacement tant qu'il est posé. Il part
   //    d'ABORD, avant toute fermeture de dialogue.
-  {
-    uint8_t pkt[2];
-    *reinterpret_cast<uint16_t*>(pkt) = kOpShopQuit;
-    Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
-  }
+  SendShopQuit();
   // 2. SERVEUR, le script : sans ça, sd->npc_id reste posé et le dialogue qui a mené
   //    à la boutique n'est jamais terminé.
   SendCloseDialog(talk_gid);
@@ -694,12 +848,34 @@ void NpcShopWindow::CloseNativeShop() {
   sell_all_close_ = false;  // desarme la fermeture auto
 }
 
+// Le paquet de SORTIE, celui qui débloque le personnage. Deux boutiques, deux
+// opcodes, et ils ne se remplacent pas : `CZ_NPC_TRADE_QUIT` 0x09D4 ne remet que
+// `sd->npc_shopid` à zéro, tandis que `CZ_NPC_MARKET_CLOSE` 0x09D8 éteint EN PLUS
+// `sd->state.trading`, que `clif_npc_market_open` pose à l'ouverture. Comme
+// `pc_cant_act2()` teste les deux champs, sortir d'un marketshop avec 0x09D4
+// laisserait le joueur figé sans qu'aucune fenêtre ne le montre.
+//
+// ⚠ `market_` ne suffit pas à trancher : une boutique ouverte AVANT l'allumage de
+// l'interface moderne n'est jamais passée par BeginSession. On interroge donc
+// aussi les fenêtres natives à l'écran — même méthode qu'AnyNativeShopWindow, et
+// la seule preuve disponible dans ce cas-là.
+void NpcShopWindow::SendShopQuit() {
+  const bool market = market_ ||
+                      uiwnd::SafeFindWindow(uiwnd::kUIParaItemShopWnd) ||
+                      uiwnd::SafeFindWindow(uiwnd::kUIParaItemPurchaseWnd);
+  uint8_t pkt[2];
+  *reinterpret_cast<uint16_t*>(pkt) = market ? kOpMarketQuit : kOpShopQuit;
+  Bourgeon::Instance().SendPacket(pkt, sizeof(pkt));
+}
+
 bool NpcShopWindow::AnyNativeShopWindow() const {
   return uiwnd::SafeFindWindow(uiwnd::kUIChooseSellBuyWnd) ||
          uiwnd::SafeFindWindow(uiwnd::kUIItemShopWnd) ||
          uiwnd::SafeFindWindow(uiwnd::kUIItemPurchaseWnd) ||
          uiwnd::SafeFindWindow(uiwnd::kUIItemSellWnd) ||
-         uiwnd::SafeFindWindow(uiwnd::kUIItemParamChangeDisplayWnd);
+         uiwnd::SafeFindWindow(uiwnd::kUIItemParamChangeDisplayWnd) ||
+         uiwnd::SafeFindWindow(uiwnd::kUIParaItemShopWnd) ||
+         uiwnd::SafeFindWindow(uiwnd::kUIParaItemPurchaseWnd);
 }
 
 void NpcShopWindow::PurgeNativeShopWindows() {
@@ -715,6 +891,12 @@ void NpcShopWindow::PurgeNativeShopWindows() {
   // chemin ne devrait plus être emprunté ; c'est justement pour ça qu'il doit être
   // correct sans qu'on ait à y repenser.
   uiwnd::SafeCloseWindow(uiwnd::kUIItemParamChangeDisplayWnd);
+  // Le trio du marketshop. Il ne naît plus non plus (ses deux paquets sont
+  // remplacés), et il est ici pour la même raison que le comparateur : le jour où
+  // un chemin le fait apparaître, il ne doit pas rester.
+  uiwnd::SafeCloseWindow(uiwnd::kUIParaItemShopWnd);
+  uiwnd::SafeCloseWindow(uiwnd::kUIParaItemPurchaseWnd);
+  uiwnd::SafeCloseWindow(uiwnd::kUIParaResultWnd);
 }
 
 void NpcShopWindow::HideDetailWindow(void* win) {
@@ -782,12 +964,22 @@ void NpcShopWindow::OnTick() {
       // Nettoyage CLIENT uniquement (pas de paquet : le warp a déjà tout remis à
       // zéro côté serveur), flag d'interaction compris — c'est nous qui l'avons
       // posé, personne d'autre ne l'éteindra.
+      //
+      // 🔴 UNE exception, et elle bloque le personnage pour de bon : le warp ne
+      // défait PAS `sd->state.trading`, que le marketshop pose. `unit_remove_map`
+      // remet bien `npc_shopid` à zéro, mais il ne touche à `trading` qu'en
+      // annulant un ÉCHANGE — or une boutique market n'a pas de partenaire, donc
+      // `trade_tradecancel` n'est jamais appelé. Sans ce paquet, le joueur
+      // ressort de la carte figé (`pc_cant_act2`) jusqu'à la reconnexion.
+      if (market_) SendShopQuit();
       rag::ClearNpcInteractionActive();
       PurgeNativeShopWindows();
       open_ = false;
       was_open_ = false;
       show_panel_ = true;
       npc_id_ = 0;
+      market_ = false;
+      direct_list_ = false;
       buy_items_.clear();
       sell_items_.clear();
       sell_raw_.clear();
@@ -1032,11 +1224,16 @@ void NpcShopWindow::OnRenderUI() {
   // ── Liste (gauche) ──
   ImGui::BeginChild("shop_list", ImVec2(list_w, -footer_h), true);
   if (cur_mode_ == kBuy) {
-    if (ImGui::BeginTable("buytbl", 3,
+    // Le marketshop gagne une colonne : son STOCK. C'est toute sa raison d'être
+    // (un `shop` normal a des réserves infinies), et sans elle le refus du serveur
+    // au-delà du stock n'aurait aucune explication à l'écran.
+    if (ImGui::BeginTable("buytbl", market_ ? 4 : 3,
                           ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY |
                               ImGuiTableFlags_SizingStretchProp)) {
       ImGui::TableSetupColumn(i18n::Tr("Objet"));
       ImGui::TableSetupColumn(i18n::Tr("Prix"), ImGuiTableColumnFlags_WidthFixed, ro::Px(110.0f));
+      if (market_)
+        ImGui::TableSetupColumn(i18n::Tr("Stock"), ImGuiTableColumnFlags_WidthFixed, ro::Px(60.0f));
       ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, ro::Px(150.0f));
       ImGui::TableHeadersRow();
       for (const auto& b : buy_items_) {
@@ -1060,11 +1257,20 @@ void NpcShopWindow::OnRenderUI() {
         // Prix noir si abordable, rouge sombre si trop cher ; "base -> remise" si Discount.
         draw_price(b.price, b.discount,
                    afford ? ro::pal::kBlack : ImVec4(0.75f, 0.15f, 0.15f, 1.0f));
+        if (market_) {
+          ImGui::TableNextColumn();
+          if (b.stock == 0) ImGui::TextDisabled("%s", i18n::Tr("épuisé"));
+          else              ImGui::TextColored(ro::pal::kBlack, "%u", b.stock);
+        }
         ImGui::TableNextColumn();
         // Plafond : la pile du client pour un consommable, UN SEUL exemplaire
         // pour un équipement (cf. BuyStackMax) — il porte la borne du panier et
-        // taille les boutons de quantité.
-        qty_buttons(b.id, -1, b.discount, BuyStackMax(b.type), true);
+        // taille les boutons de quantité. Dans un marketshop le stock passe
+        // devant : le serveur refuse TOUT le paquet dès qu'une ligne le dépasse.
+        int cap = BuyStackMax(b.type);
+        if (market_ && static_cast<int>(b.stock) < cap) cap = static_cast<int>(b.stock);
+        if (cap < 1) { ImGui::PopID(); continue; }  // épuisé : rien à commander
+        qty_buttons(b.id, -1, b.discount, cap, true);
         ImGui::PopID();
       }
       ImGui::EndTable();

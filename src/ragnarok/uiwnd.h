@@ -191,6 +191,18 @@ constexpr int kNpcSay2WndId                = 226;   // 0xe2    second dialogue N
 constexpr int kUINavigationHelpWnd         = 229;   // 0xe5
 constexpr int kItemCompareDescWndId        = 234;   // 0xea    2e instance parallèle à 12 : MÊME layout, vtable et slot distincts
 constexpr uintptr_t kItemCompareDescWndIdVTable = 0x01032c5c;
+// ── Marketshop (« para market ») : le TRIO, relevé le 2026-09-05 ─────────────
+// Le handler de ZC_NPC_MARKET_OPEN 0x0B7A (0x00CCE410) fabrique 254 PUIS 255 et
+// envoie msg 36 puis 23 à chacune ; 256 naît du handler de résultat 0x0B4E
+// (0x00CCE780) et n'est qu'un récapitulatif d'achat. Les trois figurent dans la
+// liste que le CANCEL natif détruit (CMode::SendMsg case 40 : « 0xFE-0x100 »).
+// 255 est PROUVÉ par RTTI : `UIItemDropCntWnd_OnMsg` @0x00950C73 caste le retour
+// de FindWindow(0xFF) en `UIParaItemPurchaseWnd`. 254 s'en déduit — le handler ne
+// crée que ces deux fenêtres, et la seule autre classe « Para » de liste est
+// `UIParaItemShopWnd` (descripteur RTTI @0x0122D614).
+constexpr int kUIParaItemShopWnd           = 254;   // 0xfe    la LISTE du marketshop
+constexpr int kUIParaItemPurchaseWnd       = 255;   // 0xff    son PANIER
+constexpr int kUIParaResultWnd             = 256;   // 0x100   récap d'achat (ZC 0x0B4E)
 constexpr int kUIMerchantItemLogWnd        = 257;   // 0x101   « Item Sell History », côté VENTE
 constexpr uintptr_t kUIMerchantItemLogWndVTable = 0x0103eb50;
 constexpr int kSellLogBuyingWndId          = 258;   // 0x102   le même journal, côté échoppe d'ACHAT

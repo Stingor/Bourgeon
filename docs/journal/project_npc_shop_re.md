@@ -213,6 +213,74 @@ listes l'appellent quand aucune session n'est ouverte, avec `npc_id = 0` :
 
 À jouer pour valider : ouverture, achat, déblocage après fermeture par la croix.
 
+## 2026-09-05 — MARKETSHOP (`para market`) porté en ImGui : une AUTRE boutique
+
+Signalé en jeu sur `Hwaran#plt01` (`callshop "para_plt01"`, sans drapeau) : la
+fenêtre NATIVE s'ouvrait. Ce n'était pas une régression — `para_plt01` est un
+**`marketshop`** (`npc/re/merchants/eden_market.txt:82`), pas un `shop`. Dans
+`BUILDIN_FUNC(callshop)`, ce sous-type saute tout le chemin classique : il pose
+`sd->npc_shopid` et appelle `clif_npc_market_open`. Aucun des trois paquets qu'on
+remplaçait ne passe.
+
+### Le fil, relevé des deux côtés
+
+| sens | opcode | corps | source |
+|---|---|---|---|
+| ZC ouverture | **0x0B7A** | `[len:2][ {itemId:4, type:1, price:4, **stock:4**, weight:2, location:4} × n ]` (19 o) | `PACKET_ZC_NPC_MARKET_OPEN` (`>= 20210203` ⇒ 0x0B7A, pas 0x09D5) + handler natif `0x00CCE410` (`(len-4)/19`, price@+5, qty@+9, weight@+13 ÷10, loc@+15) |
+| CZ achat | **0x09D6** | `[len:2][ {itemId:4, qty:4} × n ]`, plafond **0x800 o** | `CMode::SendMsg` case **262** @0x00C87A21 |
+| ZC résultat | **0x0B4E** | `[len:2][result:2][ {itemId:4, qty:2, price:4} × n ]` — 0 = OK, 0xFFFF = échec | handler `0x00CCE780` |
+| CZ sortie | **0x09D8** | l'opcode seul (2 o) | `CMode::SendMsg` case **292** @0x00C87BA2 |
+
+### 🔴🔴 Ce n'est PAS 0x09D4 qui débloque, ici
+
+`clif_npc_market_open` pose **`sd->state.trading = 1`** en plus de `npc_shopid`, et
+`pc_cant_act2()` teste les deux. Seul `clif_parse_NPCMarketClosed` (0x09D8) éteint
+`trading` ; 0x09D4 n'y touche pas. D'où deux conséquences :
+- `SendShopQuit()` choisit l'opcode — et ne se fie pas au seul drapeau `market_` :
+  une boutique ouverte AVANT l'allumage de l'interface moderne n'est jamais passée
+  par `BeginSession`, donc on interroge aussi les fenêtres natives à l'écran ;
+- 🔴 **le warp ne défait pas `trading`** : `unit_remove_map` remet bien
+  `npc_shopid` à zéro, mais il n'appelle `trade_tradecancel` que s'il y a un
+  PARTENAIRE d'échange — un marketshop n'en a pas. Notre chemin « changement de
+  map » n'envoyait aucun paquet, par principe ; il envoie désormais 0x09D8 quand
+  la session était un market, sans quoi le joueur ressort de la carte figé
+  jusqu'à la reconnexion.
+
+### Les trois fenêtres natives (nouvelles dans `uiwnd.h`)
+
+**254** `UIParaItemShopWnd` (liste) + **255** `UIParaItemPurchaseWnd` (panier),
+fabriquées ensemble par le handler de 0x0B7A ; **256** `UIParaResultWnd`, le
+récapitulatif que fabrique le handler de résultat. 255 est prouvé par RTTI
+(`UIItemDropCntWnd_OnMsg` @0x00950C73 caste `FindWindow(0xFF)`), 254 s'en déduit
+(le handler ne crée que ces deux-là, et la seule autre classe « Para » de liste est
+`UIParaItemShopWnd`). Les trois sont dans la liste que détruit le CANCEL natif
+(`SendMsg` case 40 : « 0xFE-0x100 »), ce qui recoupe le relevé.
+
+### Ce que la fenêtre ImGui en fait
+
+Les DEUX paquets sont **remplacés**, résultat compris — donc le verdict de chat
+n'a plus personne pour l'écrire : `SayMarketResult` réémet les libellés du natif
+(MsgString **0x36** succès / **0x0BE3** échec). Le reste réutilise la moitié ACHAT
+telle quelle, avec trois différences portées par `market_` :
+- une colonne **Stock**, et la quantité commandable bornée par lui (le serveur
+  refuse tout le paquet dès qu'une ligne dépasse) ;
+- **pas de remise** : le paquet ne porte qu'un prix, rangé dans `discount` ;
+- 🔴 **la session survit aux achats** — `clif_parse_NPCMarketPurchase` ne vide pas
+  `npc_shopid`, contrairement à son cousin classique. Pas d'auto-fermeture, donc,
+  et pas de 0xc5 à ré-armer. En revanche **le serveur ne renvoie jamais la liste** :
+  c'est au client de décrémenter le stock avec l'accusé, sinon la fenêtre promet
+  des exemplaires qui n'existent plus.
+
+Au passage : `QuickBuy`/`QuickSell` refusaient de partir quand `npc_id_` était nul,
+ce qui condamnait le Ctrl-clic dans TOUTES les boutiques sans GID (market et
+`callshop <shop>,1`). Le paquet d'achat ne nomme pas le NPC ; seul le 0xc5 en avait
+besoin, et il sait se taire tout seul.
+
+À jouer pour valider : Hwaran (`paramk 116,100`), achat d'un article à stock 50,
+stock décrémenté à l'écran, second achat SANS rouvrir, puis fermeture par la croix
+et déplacement. Et le cas qui fait mal : ouvrir le market, se faire warp (`@go`),
+vérifier qu'on marche encore.
+
 ## Leviers de customisation (voir aussi [[project_item_skill_desc_window_re]], [[project_inventory_window]], [[project_storage_window_re]], [[reference_cashshop_re]])
 - **Overlay ImGui "coût/gain total" & "reste après achat"** : miroir de inventory_tweaks — poll g_PlayerZeny + somme panier (msg 0x17 déjà calcule le total). 0 patch natif.
 - **Boutons quantité rapides (x1/x10/x100/MAX)** : écrire dans l'edit this+0x100 puis envoyer msg 6 / relayout. MAX = min(stackable, zeny/prix).

@@ -132,6 +132,10 @@ class NpcShopWindow : public Plugin {
     uint8_t  type = 0;
     uint16_t view = 0;          // viewSprite (aperçu)
     uint32_t location = 0;      // masque d'équipement (aperçu/filtre)
+    // Exemplaires restants — MARKETSHOP uniquement (ZC_NPC_MARKET_OPEN). Une
+    // boutique classique n'a pas de réserve : le champ n'existe pas dans son
+    // paquet et reste à 0, que rien ne lit hors de `market_`.
+    uint32_t stock = 0;
   };
   // Une entrée de ZC_PC_SELL_ITEMLIST, brute. Le paquet ne dit QUE l'index et les
   // deux prix : ni l'objet, ni la quantité, ni les emplacements — c'est
@@ -183,7 +187,8 @@ class NpcShopWindow : public Plugin {
 
   // Ouvre une session boutique et remet TOUT l'état à zéro. `npc_id` = 0 quand
   // aucun ZC_SELECT_DEALTYPE ne nous a nommé le marchand — cf. `direct_list_`.
-  void BeginSession(uint32_t npc_id, Mode mode);
+  // `market` = boutique à stock limité (cf. `market_`).
+  void BeginSession(uint32_t npc_id, Mode mode, bool market = false);
   // Envoi CZ_ACK_SELECT_DEALTYPE 0xc5 (demande la liste achat/vente).
   void RequestList(Mode mode);
   // Re-arme la selection de deal (CZ 0xc5 ; type 0 = achat, 1 = vente). Le serveur
@@ -208,6 +213,12 @@ class NpcShopWindow : public Plugin {
   // Les fondre derrière un drapeau de sens ferait perdre cette lecture-là.
   void SendBuyList(const CartEntry* items, int count);
   void SendSellList(const CartEntry* items, int count);
+  // …et un TROISIÈME, parce qu'il appartient à une autre boutique :
+  //   market CZ_NPC_MARKET_PURCHASE 0x09d6 — {itemId:4, quantité:4}, 8 octets.
+  void SendMarketBuyList(const CartEntry* items, int count);
+  // Le paquet de SORTIE (0x09D4 boutique classique / 0x09D8 marketshop) : celui
+  // qui débloque réellement le personnage côté serveur.
+  void SendShopQuit();
   // Ferme réellement le shop : débloque l'état dialogue client + prévient le serveur.
   void CloseNativeShop();
   // L'une des quatre fenêtres natives est-elle à l'écran ? Sert à reconnaître une
@@ -247,6 +258,13 @@ class NpcShopWindow : public Plugin {
   // liste ne peut pas être demandée), et la fenêtre se ferme après la transaction
   // (impossible de ré-armer sd->npc_shopid sans nommer le marchand).
   bool     direct_list_ = false;
+  // 🔴 MARKETSHOP (rAthena NPCTYPE_MARKETSHOP, `npcshopupdate`) : une boutique
+  // d'ACHAT à stock limité, qui ne partage RIEN avec la classique sur le fil —
+  // ZC_NPC_MARKET_OPEN 0x0b7a pour la liste, CZ 0x09d6 pour acheter, CZ 0x09d8
+  // pour sortir, et son propre trio de fenêtres natives (254/255/256). C'est
+  // aussi un `direct_list_` (aucun GID ne nous parvient), mais sa session SURVIT
+  // aux achats : le serveur ne vide pas `npc_shopid` derrière un achat market.
+  bool     market_ = false;
   int      cur_mode_ = kBuy;     // onglet actif
   bool     buy_requested_ = false;   // 0xc5(0) déjà envoyé cette session ?
   bool     sell_requested_ = false;  // 0xc5(1) déjà envoyé cette session ?
