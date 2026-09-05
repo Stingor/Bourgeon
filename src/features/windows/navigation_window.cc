@@ -840,6 +840,27 @@ std::string ToUtf8(const char* client_text) {
   return utf8 ? std::string(utf8) : std::string(client_text);
 }
 
+// ── La partie CACHÉE d'un nom de PNJ ────────────────────────────────────────
+//
+// rAthena nomme ses PNJ « Visible#interne » : le dièse et ce qui suit servent à
+// distinguer deux PNJ homonymes dans les scripts, et le client ne les affiche
+// jamais. Mais un lien posé sur un acteur relaie le nom BRUT de sa plaque, donc
+// « Market Group Guide#info » — un terme qu'aucune donnée de navigation ne
+// porte : les `.lub` générés par le serveur ne connaissent que « Market Group
+// Guide ». La recherche ne trouvait rien, et le survol du lien n'avait pas de
+// sprite à montrer.
+//
+// On coupe donc AU dièse, dièse compris, avant toute comparaison. C'est le côté
+// RECEVEUR qui nettoie, et c'est délibéré : ça rattrape aussi bien un lien déjà
+// posté qu'un terme tapé à la main dans la barre de recherche, sans rien
+// supposer de qui a fabriqué la chaîne.
+std::string StripHiddenName(const char* utf8) {
+  if (!utf8) return std::string();
+  const char* hash = std::strchr(utf8, '#');
+  return hash ? std::string(utf8, static_cast<size_t>(hash - utf8))
+              : std::string(utf8);
+}
+
 // ── La classe de sprite d'un PNJ, par son NOM et sa carte ────────────────────
 //
 // Le pendant, pour un lien de chat, de ce que le volet de détail lit dans sa
@@ -854,6 +875,10 @@ std::string ToUtf8(const char* client_text) {
 // Rend 0 quand rien ne correspond. La casse est ignorée : le terme du lien a pu
 // être saisi à la main dans une balise, alors que le nom du nœud vient du `.lub`.
 int NpcSpriteClassOnMap(const char* map_name, const char* npc_name_utf8) {
+  // Même nettoyage que la recherche : le nom vient d'un lien, donc de la plaque
+  // de l'acteur, donc éventuellement avec sa partie cachée (cf. StripHiddenName).
+  const std::string name = StripHiddenName(npc_name_utf8);
+  if (name.empty()) return 0;
   // Le résultat est mémorisé PAR (carte, nom) : un survol dessine à chaque
   // frame, et une carte de ville porte plus de cent PNJ dont la lecture passe
   // par un appel natif chacun. Les données de navigation sont chargées une fois
@@ -861,7 +886,7 @@ int NpcSpriteClassOnMap(const char* map_name, const char* npc_name_utf8) {
   static std::map<std::string, int> cache;
   std::string key = map_name;
   key += '\n';
-  key += npc_name_utf8;
+  key += name;
   const auto cached = cache.find(key);
   if (cached != cache.end()) return cached->second;
 
@@ -881,7 +906,7 @@ int NpcSpriteClassOnMap(const char* map_name, const char* npc_name_utf8) {
     ObjectFacts facts;
     if (!SafeReadObject(objects[i], /*is_mob=*/false, label, sizeof(label), &facts))
       continue;
-    if (_stricmp(ToUtf8(label).c_str(), npc_name_utf8) != 0) continue;
+    if (_stricmp(ToUtf8(label).c_str(), name.c_str()) != 0) continue;
     found = facts.sprite_class;
     break;
   }
@@ -1094,7 +1119,14 @@ void NavigationWindow::RunSearch() {
   // à l'affichage. Deux raisons : changer de pastille devient instantané (aucune
   // relance du moteur), et on ne dépend pas du filtre natif, dont la valeur
   // « carte » construit des groupes que sa propre seconde passe laisse vides.
-  SafeRunSearch(0, pending_term_.c_str(), pending_term_.size());
+  //
+  // 🔴 Le terme est nettoyé de sa partie cachée ICI, au dernier moment avant le
+  // moteur : c'est le seul passage obligé, quelle que soit la porte d'entrée
+  // (barre de recherche, lien de chat, `/navi`). Le moteur natif, lui, découpe la
+  // saisie en mots sur les ESPACES — le dièse n'y sépare rien, donc
+  // « Market Group Guide#info » ne rencontrait aucune entrée des `.lub`.
+  const std::string term = StripHiddenName(pending_term_.c_str());
+  SafeRunSearch(0, term.c_str(), term.size());
 }
 
 void NavigationWindow::ReadOptions() {

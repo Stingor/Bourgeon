@@ -225,6 +225,35 @@ sans bornes il expire). Et se rappeler que le compilateur replie les index :
 plus. Le bon fil était la liste des **xrefs à `g_Navigation`** (170), qui
 contient directement le rendu de scène.
 
+## 2026-09-05 — le dièse d'un nom de PNJ, coupé côté RECHERCHE
+
+Signalé en jeu : « linker un PNJ transmet aussi le `Market Group Guide#info`, or
+chercher `Market Group Guide#info` dans la navigation échoue à trouver
+`Market Group Guide` ».
+
+rAthena nomme ses PNJ **`Visible#interne`** — le dièse distingue deux homonymes
+dans les scripts, et le client n'affiche jamais ce qui suit. Mais le lien de chat
+relaie le nom BRUT de la plaque de l'acteur (`EntityName`,
+`entity_context_menu.cc` → `AppendNaviSearchLink`), et rien ne le tronquait sur
+tout le trajet : ni `links::FromNaviSearch` (qui ne refuse que `<` et `>`), ni la
+fenêtre de navigation. Or le moteur natif découpe la saisie en mots sur les
+**espaces** : le dièse n'y sépare rien, donc le terme ne rencontrait aucune entrée
+des `.lub`, qui ne portent que la partie visible.
+
+Coupe donc au dièse, **dièse compris**, dans `StripHiddenName` — et du côté
+RECEVEUR, délibérément : ça rattrape aussi bien un lien déjà posté qu'un terme
+tapé à la main, sans rien supposer de qui a fabriqué la chaîne. Deux appels, les
+deux seuls passages obligés :
+- `RunSearch()`, au dernier moment avant `SafeRunSearch` — quelle que soit la
+  porte d'entrée (barre de recherche, lien, `/navi`) ;
+- `NpcSpriteClassOnMap`, qui échouait pour la même raison : l'aperçu au survol
+  d'un lien PNJ compare le nom du lien aux objets du nœud de carte, et ne trouvait
+  pas de sprite à montrer.
+
+⚠ Reste NON traité, et c'est un choix : le LIBELLÉ du lien
+(`links::NaviSearchTermShown`, `link_gesture.cc`) affiche encore la partie cachée
+— `[PNJ: Market Group Guide#info (prontera)]`.
+
 Related : [[reference_minimap_re]], [[reference_ui_richtext_link_system]],
 [[reference_native_window_toggle_router]], [[project_mvp_tracker]],
 [[feedback_absence_needs_measurement]]
