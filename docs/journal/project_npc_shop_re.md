@@ -172,6 +172,47 @@ Puisque le flag « cassé » est lu, la ligne de vente passe par `itemcell::Name
 Pied de fenêtre : « Survol : aperçu - Clic droit : description » (les 2 traductions
 suivent la clé, cf. [[project_i18n_language_setting]]).
 
+## 2026-09-05 — `callshop <shop>,1|2` : la liste arrive SANS 0x00c4 (boutique qui ne s'ouvrait pas)
+
+Signalé en jeu sur le marchand de rations de `cmd_fild07` :
+
+```
+-	shop	inf_ration	-1,512:-1,513:-1,515:-1,516:-1
+cmd_fild07,63,268,1	script	Emergency Food Merchant#pa0829_01	4_M_BIBI,{
+	mes "..."; close2; callshop "inf_ration",1; end;
+}
+```
+
+**Ce que fait le serveur** (`BUILDIN_FUNC(callshop)`, script.cpp) : avec un flag,
+il n'appelle PAS `clif_npcbuysell` mais **`npc_buysellsel(sd, nd->id, 0|1)`**
+(npc.cpp), qui pose `sd->npc_shopid` et envoie **directement** `clif_buylist` /
+`clif_selllist`. Donc **ZC_SELECT_DEALTYPE 0x00c4 n'est jamais émis** — et c'était
+notre seul déclencheur d'ouverture. Comme on prend AUSSI la place du handler natif
+de 0x0b77, la fenêtre native ne naissait pas davantage : rien à l'écran, et le
+joueur **bloqué** (`pc_cant_act2()` lit `sd->npc_shopid`, que seul
+`CZ_NPC_TRADE_QUIT 0x09D4` remet à zéro — personne n'était là pour l'envoyer).
+
+Le motif est fréquent dans les scripts officiels (marchands à choix multiples,
+Kafra, tool dealers) : ce n'était pas un cas tordu.
+
+**Correctif** — `BeginSession(npc_id, mode)` factorise l'ouverture, et les DEUX
+listes l'appellent quand aucune session n'est ouverte, avec `npc_id = 0` :
+- ouverture décidée **avant le décodage** : une liste vide doit ouvrir la fenêtre
+  aussi, c'est sa croix qui débloquera le personnage ;
+- `direct_list_` marque la session sans GID. 🔴 **Pas de GID = pas de
+  re-sélection** : `CZ_ACK_SELECT_DEALTYPE` NOMME le marchand, et le seul GID à
+  portée (la CONVERSATION, `CGameMode+0x2DC`) est celui du NPC scripté, pas du shop
+  flottant — `npc_buysellsel` le refuserait (`no such shop npc`) et effacerait
+  `sd->npc_id` au passage. Ne pas essayer ;
+- d'où **un seul onglet** (l'autre liste n'a personne à qui être demandée) et
+  **fermeture après la transaction** : `sd->npc_shopid = 0` est hors du `if` dans
+  `clif_parse_NpcBuy/SellListSend`, la session meurt succès OU échec. Le natif
+  ferme la sienne au même moment ;
+- titre : à défaut de GID marchand, on nomme le NPC de la conversation — c'est
+  celui que le joueur a devant lui.
+
+À jouer pour valider : ouverture, achat, déblocage après fermeture par la croix.
+
 ## Leviers de customisation (voir aussi [[project_item_skill_desc_window_re]], [[project_inventory_window]], [[project_storage_window_re]], [[reference_cashshop_re]])
 - **Overlay ImGui "coût/gain total" & "reste après achat"** : miroir de inventory_tweaks — poll g_PlayerZeny + somme panier (msg 0x17 déjà calcule le total). 0 patch natif.
 - **Boutons quantité rapides (x1/x10/x100/MAX)** : écrire dans l'edit this+0x100 puis envoyer msg 6 / relayout. MAX = min(stackable, zeny/prix).

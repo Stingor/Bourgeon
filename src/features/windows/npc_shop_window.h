@@ -181,6 +181,9 @@ class NpcShopWindow : public Plugin {
     int      max = 30000;
   };
 
+  // Ouvre une session boutique et remet TOUT l'état à zéro. `npc_id` = 0 quand
+  // aucun ZC_SELECT_DEALTYPE ne nous a nommé le marchand — cf. `direct_list_`.
+  void BeginSession(uint32_t npc_id, Mode mode);
   // Envoi CZ_ACK_SELECT_DEALTYPE 0xc5 (demande la liste achat/vente).
   void RequestList(Mode mode);
   // Re-arme la selection de deal (CZ 0xc5 ; type 0 = achat, 1 = vente). Le serveur
@@ -236,6 +239,14 @@ class NpcShopWindow : public Plugin {
   bool     show_panel_ = true;   // détection du clic sur le X
   int      spawn_x_ = 100, spawn_y_ = 100;
   uint32_t npc_id_ = 0;          // GID du NPC courant (pour 0xc5)
+  // 🔴 Boutique ouverte par la LISTE seule, sans ZC_SELECT_DEALTYPE — donc sans
+  // GID. C'est le cas de `callshop "<shop>",1|2`, très employé par les scripts
+  // officiels : npc_buysellsel() pose sd->npc_shopid et envoie la liste sans passer
+  // par le chooser. Trois conséquences, toutes tirées dans le .cc : on ouvre sur la
+  // liste (sinon rien ne s'ouvre et le joueur reste bloqué), un seul onglet (l'autre
+  // liste ne peut pas être demandée), et la fenêtre se ferme après la transaction
+  // (impossible de ré-armer sd->npc_shopid sans nommer le marchand).
+  bool     direct_list_ = false;
   int      cur_mode_ = kBuy;     // onglet actif
   bool     buy_requested_ = false;   // 0xc5(0) déjà envoyé cette session ?
   bool     sell_requested_ = false;  // 0xc5(1) déjà envoyé cette session ?

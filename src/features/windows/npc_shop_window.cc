@@ -230,6 +230,55 @@ void NpcShopWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data,
     net_inbox_.Push(opcode, data, len);
 }
 
+// Ouvre une session boutique : TOUT l'état repart de zéro. Deux appelants, et
+// c'est le sujet de `npc_id` — cf. le champ `direct_list_` plus bas.
+//
+// Ce que le handler remplacé de 0x00c4 écrivait en tête (`mov [edi+24Ch], 1`) : le
+// client doit se savoir en interaction NPC, sinon il laisse le joueur marcher et
+// attaquer pendant la boutique — et CloseNativeShop, qui débloque cet état,
+// n'aurait plus rien à débloquer.
+//
+// 🔴 GID = 0 dans SetNpcInteractionActive : on NE TOUCHE PAS à CGameMode+0x2DC, et
+// c'est tout l'enjeu. Le handler natif (0x00CA0F02) pose le flag, crée le chooser
+// et lui passe le npcId par OnMsg 0x1C (-> fenêtre+0xB4) — il n'écrit JAMAIS
+// +0x2DC. Vérifié à l'échelle du dispatcher : sur les six sites qui posent
+// +0x24C=1 dans RecvLoop_DispatchPackets, seuls quatre écrivent aussi +0x2DC, et
+// ce sont les paquets de DIALOGUE.
+//
+// Ce champ porte le GID de la CONVERSATION en cours, pas celui de la boutique. Une
+// boutique EST une interaction NPC : elle s'ouvre depuis un script, et c'est ce
+// script que le serveur attend de voir fermé (sd->npc_id). En y écrivant le GID de
+// la boutique, on effaçait l'identité du script : la fermeture partait au mauvais
+// NPC, npc_scriptcont la rejetait, et le joueur restait bloqué — au clic sur la
+// croix comme au basculement à chaud.
+void NpcShopWindow::BeginSession(uint32_t npc_id, Mode mode) {
+  rag::SetNpcInteractionActive(0);
+  npc_id_ = npc_id;
+  // 🔴 Pas de GID = pas de re-sélection : CZ_ACK_SELECT_DEALTYPE NOMME le marchand.
+  // La session ne vaut donc que pour UNE transaction, et l'onglet d'en face n'a
+  // personne à qui demander sa liste. Les deux conséquences sont tirées ailleurs
+  // (onglets dans OnRenderUI, fermeture sur 0xca/0xcb).
+  direct_list_ = (npc_id == 0);
+  open_ = true;
+  cur_mode_ = mode;
+  buy_items_.clear();
+  sell_items_.clear();
+  // Les deux moitiés de la liste de vente partent ensemble : garder les entrées
+  // brutes d'une session précédente les ferait resurgir à la prochaine résolution,
+  // avec les index d'un inventaire qui a changé depuis.
+  sell_raw_.clear();
+  sell_dirty_ = false;
+  cart_.clear();
+  have_buy_ = false;
+  // Sans GID, la liste qu'on tient déjà est la seule qu'on aura : ne rien demander,
+  // sinon OnTick rappelle RequestList à chaque tick pour rien.
+  buy_requested_ = direct_list_;
+  sell_requested_ = direct_list_;
+  last_result_ = -1;
+  sell_all_close_ = false;
+  want_close_ = false;
+}
+
 // Fil PRINCIPAL : le décodage, rejoué à chaque frame, dans l'ordre d'arrivée.
 void NpcShopWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
                                  uint16_t len) {
@@ -258,42 +307,7 @@ void NpcShopWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
     // ACHAT, et on demande la liste d'achat tout de suite (skip du chooser natif,
     // qui sera caché à sa création).
     if (len < 4) return;
-    npc_id_ = *reinterpret_cast<const uint32_t*>(data);
-    // Ce que le handler remplacé écrivait en tête (`mov [edi+24Ch], 1`) : le client
-    // doit se savoir en interaction NPC, sinon il laisse le joueur marcher et
-    // attaquer pendant la boutique — et CloseNativeShop, qui débloque cet état,
-    // n'aurait plus rien à débloquer.
-    //
-    // 🔴 GID = 0 : on NE TOUCHE PAS à CGameMode+0x2DC, et c'est tout l'enjeu. Le
-    // handler natif (0x00CA0F02) pose le flag, crée le chooser et lui passe le
-    // npcId par OnMsg 0x1C (-> fenêtre+0xB4) — il n'écrit JAMAIS +0x2DC. Vérifié à
-    // l'échelle du dispatcher : sur les six sites qui posent +0x24C=1 dans
-    // RecvLoop_DispatchPackets, seuls quatre écrivent aussi +0x2DC, et ce sont les
-    // paquets de DIALOGUE.
-    //
-    // Ce champ porte le GID de la CONVERSATION en cours, pas celui de la boutique.
-    // Une boutique EST une interaction NPC : elle s'ouvre depuis un script, et
-    // c'est ce script que le serveur attend de voir fermé (sd->npc_id). En y
-    // écrivant le GID de la boutique, on effaçait l'identité du script : la
-    // fermeture partait au mauvais NPC, npc_scriptcont la rejetait, et le joueur
-    // restait bloqué — au clic sur la croix comme au basculement à chaud.
-    rag::SetNpcInteractionActive(0);
-    open_ = true;
-    cur_mode_ = kBuy;
-    buy_items_.clear();
-    sell_items_.clear();
-    // Les deux moitiés de la liste de vente partent ensemble : garder les entrées
-    // brutes d'une session précédente les ferait resurgir à la prochaine
-    // résolution, avec les index d'un inventaire qui a changé depuis.
-    sell_raw_.clear();
-    sell_dirty_ = false;
-    cart_.clear();
-    have_buy_ = false;
-    buy_requested_ = false;
-    sell_requested_ = false;
-    last_result_ = -1;
-    sell_all_close_ = false;
-    want_close_ = false;
+    BeginSession(*reinterpret_cast<const uint32_t*>(data), kBuy);
     // La requête de liste (0xc5) part de OnTick (thread principal), pas d'ici.
     return;
   }
@@ -303,6 +317,17 @@ void NpcShopWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
     // {itemId:4, price:4, discountPrice:4, itemType:1, viewSprite:2, location:4}
     // = 19 octets (PACKETVER >= 20210203).
     if (len < 2) return;
+    // 🔴 La liste PEUT arriver SANS ZC_SELECT_DEALTYPE, et c'est un cas courant des
+    // scripts officiels : `callshop "<shop>",1` appelle npc_buysellsel() côté
+    // serveur, qui pose sd->npc_shopid et envoie clif_buylist directement — aucun
+    // chooser, donc aucun 0x00c4, donc aucun GID. On n'ouvrait alors rien du tout,
+    // et comme on prend la place du handler natif la fenêtre native ne naissait pas
+    // non plus : le joueur se retrouvait sans boutique ET BLOQUÉ (pc_cant_act2 lit
+    // sd->npc_shopid, qui reste armé tant que personne n'envoie CZ_NPC_TRADE_QUIT).
+    //
+    // L'ouverture est décidée AVANT le décodage : une liste vide doit elle aussi
+    // ouvrir la fenêtre, c'est sa croix qui débloquera le personnage.
+    if (!open_) BeginSession(0, kBuy);
     const uint16_t plen = *reinterpret_cast<const uint16_t*>(data);
     const int body = static_cast<int>(plen) - 4;
     if (body <= 0) return;
@@ -333,6 +358,12 @@ void NpcShopWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
     last_result_ = data[0];
     last_result_sell_ = false;
     if (last_result_ == 0 && cur_mode_ == kBuy) cart_.clear();  // succès -> panier vidé
+    // Session sans GID : elle meurt ICI. Le serveur remet sd->npc_shopid à zéro à
+    // la fin de clif_parse_NpcBuyListSend — succès OU échec, la ligne est hors du
+    // if — et nous n'avons personne à re-sélectionner pour le ré-armer. Garder la
+    // fenêtre ouverte ne promettrait que des « pas assez de zeny » trompeurs ; le
+    // shop natif ferme d'ailleurs le sien au même moment.
+    if (direct_list_) want_close_ = true;
     return;
   }
   if (opcode == kOpSellRes) {
@@ -347,6 +378,8 @@ void NpcShopWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
     // La vente vide npc_shopid côté serveur : re-armer pour re-shopper.
     sell_requested_ = false;
     buy_requested_ = false;
+    // Sans GID il n'y a rien à re-armer : la session est finie (cf. 0xca).
+    if (direct_list_) { want_close_ = true; sell_requested_ = true; buy_requested_ = true; }
     return;
   }
   if (opcode == kOpSellList) {
@@ -357,6 +390,9 @@ void NpcShopWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
     // liste ne peut donc PAS être déduite de l'inventaire : elle se lit ici, et
     // nulle part ailleurs.
     if (len < 2) return;
+    // `callshop "<shop>",2` : la vente aussi peut arriver seule, sans GID — même
+    // chemin serveur (npc_buysellsel type 1), même conséquence si on n'ouvre pas.
+    if (!open_) BeginSession(0, kSell);
     const uint16_t plen = *reinterpret_cast<const uint16_t*>(data);
     const int body = static_cast<int>(plen) - 4;
     if (body <= 0) { sell_raw_.clear(); sell_dirty_ = true; return; }
@@ -814,8 +850,12 @@ void NpcShopWindow::OnRenderUI() {
   ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 6.0f);
 
   // Titre = nom du NPC (observé via 0x0adf) si connu, sinon "Shop".
+  // Boutique ouverte par la liste seule (callshop) : aucun GID de marchand ne nous
+  // est parvenu, mais le NPC dont le script tourne est justement celui que le
+  // joueur a devant lui — c'est son nom qu'il attend en titre.
+  const uint32_t title_gid = npc_id_ != 0 ? npc_id_ : rag::NpcInteractionGid();
   char title[64];
-  auto nit = npc_names_.find(npc_id_);
+  auto nit = npc_names_.find(title_gid);
   std::snprintf(title, sizeof(title), i18n::Tr("%s###bourgeon_shop"),
                 (nit != npc_names_.end() && !nit->second.empty())
                     ? nit->second.c_str()
@@ -838,8 +878,16 @@ void NpcShopWindow::OnRenderUI() {
   // ── Onglets Achat / Vente ──
   int prev_mode = cur_mode_;
   if (ro::RoBeginTabBar("shop_tabs")) {
-    if (ImGui::BeginTabItem(i18n::Tr("Acheter"))) { cur_mode_ = kBuy; ImGui::EndTabItem(); }
-    if (ImGui::BeginTabItem(i18n::Tr("Vendre")))  { cur_mode_ = kSell; ImGui::EndTabItem(); }
+    // Sans GID (callshop), le serveur n'a envoyé QUE la liste demandée et l'autre
+    // onglet n'aurait personne à qui demander la sienne : on ne l'affiche pas
+    // plutôt que de le laisser désespérément vide. C'est aussi ce que le script
+    // demande — `callshop <shop>,1` veut un ACHAT, et rien d'autre.
+    if ((!direct_list_ || cur_mode_ == kBuy) && ImGui::BeginTabItem(i18n::Tr("Acheter"))) {
+      cur_mode_ = kBuy; ImGui::EndTabItem();
+    }
+    if ((!direct_list_ || cur_mode_ == kSell) && ImGui::BeginTabItem(i18n::Tr("Vendre"))) {
+      cur_mode_ = kSell; ImGui::EndTabItem();
+    }
     ro::RoEndTabBar();
   }
   if (cur_mode_ != prev_mode) {
