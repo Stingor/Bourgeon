@@ -18,6 +18,7 @@
 #include "features/systems/bug_report.h"  // la modale du rapport générique
 #include "features/windows/palette_editor.h"
 #include "features/windows/staff_tools.h"
+#include "features/windows/tutorial_window.h"
 #include "imgui.h"
 // 🔴 `ConfigNavWindowingKey*` vit dans `ImGuiContext`, pas dans `ImGuiIO` : sans
 // cet en-tête, le champ n'existe pas de notre côté de la bibliothèque.
@@ -116,6 +117,10 @@ const Action kActions[] = {
     // la même clé de catalogue — c'est voulu : le joueur qui cherche « Écran de
     // veille » doit tomber sur le même mot aux deux endroits.
     {"tool_afk",         "Écran de veille",         ActionGroup::kTools,   0, {}},
+    // La visite guidée des nouveautés. Aucun défaut : elle s'ouvre d'elle-même à
+    // la première connexion, et se rouvre depuis le panneau — lui donner une
+    // touche d'office prendrait une frappe au jeu pour un écran qu'on lit une fois.
+    {"tool_tutorial",    "Découvrir Bourgeon",     ActionGroup::kTools,   0, {}},
     // Établi du staff. Le seul membre du catalogue à être gaté : il ne s'affiche
     // même pas dans l'écran des raccourcis d'un joueur ordinaire.
     {"tool_staff",       "Staff Tools",             ActionGroup::kTools,   0, {}, true},
@@ -269,6 +274,10 @@ bool Invoke(const char* id) {
   }
   if (std::strcmp(id, "tool_craft_atlas") == 0) {
     if (auto* atlas = bourgeon.craft_atlas()) { atlas->Toggle(); return true; }
+    return false;
+  }
+  if (std::strcmp(id, "tool_tutorial") == 0) {
+    if (auto* tutorial = bourgeon.tutorial_window()) { tutorial->Toggle(); return true; }
     return false;
   }
   if (std::strcmp(id, "tool_palette") == 0) {

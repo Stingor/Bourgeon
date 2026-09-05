@@ -93,6 +93,7 @@
 #include "features/windows/make_item_window.h"
 #include "features/windows/weapon_refine_window.h"
 #include "features/windows/trade_window.h"
+#include "features/windows/tutorial_window.h"
 #include "features/windows/chat_window.h"
 #include "features/windows/rodex_window.h"
 #include "features/windows/npc_dialog_window.h"
@@ -159,6 +160,7 @@ WeaponRefineWindow* Bourgeon::weapon_refine_window() { return weapon_refine_wind
 MakeItemWindow* Bourgeon::make_item_window() { return make_item_window_; }
 CraftAtlas* Bourgeon::craft_atlas() { return craft_atlas_; }
 TradeWindow* Bourgeon::trade_window() { return trade_window_; }
+TutorialWindow* Bourgeon::tutorial_window() { return tutorial_window_; }
 ChatWindow* Bourgeon::chat_window() { return chat_window_; }
 RodexWindow* Bourgeon::rodex_window() { return rodex_window_; }
 NpcDialogWindow* Bourgeon::npc_dialog_window() { return npc_dialog_window_; }
@@ -1111,6 +1113,13 @@ void Bourgeon::LoadPlugins() {
     auto craft_atlas = std::make_unique<CraftAtlas>();
     craft_atlas_ = craft_atlas.get();
     plugins_.emplace_back(std::move(craft_atlas));
+  }
+  {
+    // Visite guidée des nouveautés de Bourgeon. Ne remplace aucune fenêtre native
+    // et ne touche à rien : son contenu est un yaml livré dans data\\bourgeon.
+    auto tutorial_window = std::make_unique<TutorialWindow>();
+    tutorial_window_ = tutorial_window.get();
+    plugins_.emplace_back(std::move(tutorial_window));
   }
   {
     auto trade_window = std::make_unique<TradeWindow>();

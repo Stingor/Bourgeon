@@ -2,7 +2,6 @@
 
 #include <Windows.h>
 #include <winhttp.h>
-#include <wincodec.h>  // WIC : le décodeur d'images de Windows (PNG/JPEG/GIF/BMP)
 
 #include <algorithm>
 #include <cstring>
@@ -11,11 +10,11 @@
 #include <unordered_map>
 
 #include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB / _DeviceEpoch
+#include "utils/img_decode.h"  // imgdec:: — WIC, composition des gifs, réduction
 #include "utils/log_console.h"
 #include "utils/text.h"  // text::ToLowerAscii / ContainsNoCase
 
 #pragma comment(lib, "winhttp.lib")
-#pragma comment(lib, "windowscodecs.lib")
 
 namespace imgprev {
 namespace {
@@ -29,7 +28,7 @@ constexpr int    kMaxSourceDim  = 16384;  // garde-fou d'en-tête (image « zip 
 constexpr int    kMaxPreviewDim = 512;
 constexpr size_t kMaxCached     = 24;  // aperçus gardés en mémoire
 constexpr int    kMaxInFlight   = 3;   // téléchargements simultanés
-// (Les plafonds propres à l'animation sont posés plus bas, avec DecodeAnimation.)
+// (Les plafonds passés au décodeur sont posés plus bas, avec imgdec::Limits.)
 
 // ── La liste blanche ─────────────────────────────────────────────────────────
 // Par défaut, les hébergeurs sur lesquels les joueurs postent réellement. Un
@@ -399,325 +398,22 @@ bool FetchImage(const std::string& start_url, std::vector<uint8_t>* out) {
   return false;
 }
 
-// ── Décodage (thread worker) ─────────────────────────────────────────────────
-// WIC gère PNG/JPEG/GIF/BMP/WebP sans ajouter la moindre dépendance. Le
-// redimensionnement est fait PAR WIC : on n'alloue jamais la pleine résolution.
-bool DecodeToBgra(const std::vector<uint8_t>& bytes, std::vector<uint8_t>* out,
-                  int* out_w, int* out_h) {
-  IWICImagingFactory* factory = nullptr;
-  if (FAILED(CoCreateInstance(CLSID_WICImagingFactory, nullptr,
-                              CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&factory))))
-    return false;
+// ── Décodage (thread worker) ────────────────────────────────────
+// Le décodage lui-même vit dans `utils/img_decode` : WIC, la composition des
+// images d'un gif animé et la réduction y sont écrits UNE fois, pour ici et pour
+// le tutoriel. Ne reste ici que ce qui est propre à l'aperçu — ses BORNES, plus
+// serrées que celles d'un gif qu'on livre soi-même, parce que ce qu'on décode
+// vient d'un tiers.
 
-  bool ok = false;
-  IWICStream*         stream  = nullptr;
-  IWICBitmapDecoder*  decoder = nullptr;
-  IWICBitmapFrameDecode* frame = nullptr;
-  IWICBitmapScaler*   scaler  = nullptr;
-  IWICFormatConverter* conv   = nullptr;
+// Image fixe : réduite à la taille d'affichage. Une capture 4K devient 512 px
+// sans qu'on ait jamais alloué 4K.
+// (Les deux derniers champs de `Limits` ne concernent que l'animation.)
+const imgdec::Limits kStillLimits = {kMaxSourceDim, kMaxPreviewDim, 0, 0};
 
-  if (SUCCEEDED(factory->CreateStream(&stream)) &&
-      SUCCEEDED(stream->InitializeFromMemory(
-          const_cast<BYTE*>(bytes.data()), static_cast<DWORD>(bytes.size()))) &&
-      SUCCEEDED(factory->CreateDecoderFromStream(
-          stream, nullptr, WICDecodeMetadataCacheOnDemand, &decoder)) &&
-      SUCCEEDED(decoder->GetFrame(0, &frame))) {  // GIF animé : première image
-    UINT sw = 0, sh = 0;
-    if (SUCCEEDED(frame->GetSize(&sw, &sh)) && sw > 0 && sh > 0 &&
-        sw <= static_cast<UINT>(kMaxSourceDim) &&
-        sh <= static_cast<UINT>(kMaxSourceDim)) {
-      // Réduction à la taille d'affichage, ratio préservé. Jamais d'agrandissement.
-      double scale = 1.0;
-      const UINT big = (sw > sh) ? sw : sh;
-      if (big > static_cast<UINT>(kMaxPreviewDim))
-        scale = static_cast<double>(kMaxPreviewDim) / static_cast<double>(big);
-      UINT dw = static_cast<UINT>(sw * scale);
-      UINT dh = static_cast<UINT>(sh * scale);
-      if (dw == 0) dw = 1;
-      if (dh == 0) dh = 1;
-
-      IWICBitmapSource* source = frame;
-      if (scale < 1.0 && SUCCEEDED(factory->CreateBitmapScaler(&scaler)) &&
-          SUCCEEDED(scaler->Initialize(frame, dw, dh,
-                                       WICBitmapInterpolationModeFant))) {
-        source = scaler;
-      } else {
-        dw = sw;
-        dh = sh;
-      }
-      // BGRA32 : l'ordre d'octets qu'attend Overlay_CreateTextureARGB.
-      // ⚠ Alpha DROIT (BGRA), surtout pas prémultiplié (PBGRA) : l'overlay mélange
-      // en SRCALPHA/INVSRCALPHA, et du prémultiplié y ressortirait assombri sur
-      // tout ce qui est semi-transparent — typiquement un PNG à bords adoucis.
-      if (SUCCEEDED(factory->CreateFormatConverter(&conv)) &&
-          SUCCEEDED(conv->Initialize(source, GUID_WICPixelFormat32bppBGRA,
-                                     WICBitmapDitherTypeNone, nullptr, 0.0,
-                                     WICBitmapPaletteTypeCustom))) {
-        const size_t stride = static_cast<size_t>(dw) * 4u;
-        out->resize(stride * dh);
-        if (SUCCEEDED(conv->CopyPixels(nullptr, static_cast<UINT>(stride),
-                                       static_cast<UINT>(out->size()),
-                                       out->data()))) {
-          *out_w = static_cast<int>(dw);
-          *out_h = static_cast<int>(dh);
-          ok = true;
-        }
-      }
-    }
-  }
-
-  if (conv)    conv->Release();
-  if (scaler)  scaler->Release();
-  if (frame)   frame->Release();
-  if (decoder) decoder->Release();
-  if (stream)  stream->Release();
-  factory->Release();
-  return ok;
-}
-
-// ── GIF ANIMÉ ────────────────────────────────────────────────────────────────
-//
-// 🔴 UN GIF NE STOCKE PAS N IMAGES COMPLÈTES. Le plus souvent chaque image n'est
-// qu'un RECTANGLE de différences, posé à une position donnée, avec une consigne
-// d'effacement pour la suivante. Décoder « l'image n » et l'afficher telle quelle
-// donnerait des fragments sur fond transparent — il faut les COMPOSER sur un
-// canevas persistant, dans l'ordre, en respectant ces consignes.
-//
-// Coût : N textures en VRAM. D'où les plafonds, et le repli sur l'image fixe
-// quand ils sont dépassés — un aperçu figé vaut mieux qu'un client à court de
-// mémoire vidéo.
-constexpr int    kMaxFrames    = 60;
-constexpr size_t kMaxAnimBytes = 12u * 1024u * 1024u;
-// 🔴 TAILLE DE SORTIE D'UNE ANIMATION. On compose à la taille NATIVE (il le faut,
-// les images ne sont que des rectangles de différences), mais on RÉDUIT avant de
-// garder — sans quoi le budget partait en fumée : un gif de 498x280 pèse 558 Ko
-// par image, soit 21 images seulement dans 12 Mio. La plupart en ont 30 à 60,
-// donc ils dépassaient et retombaient tous sur l'image fixe. Seuls les gifs
-// courts s'animaient, ce qui donnait un comportement incompréhensible.
-//
-// À 256 px, la même animation coûte 262 Ko par image : 45 images tiennent. Et
-// c'est bien assez — l'aperçu s'affiche dans une infobulle, la vignette fait la
-// hauteur d'une ligne de chat.
-constexpr int    kMaxAnimDim   = 256;
-
-// Réduction par MOYENNE DE BLOC, en place sur nos propres pixels BGRA. Pas de
-// WIC ici : il faudrait recréer un bitmap et un scaler PAR IMAGE, alors que la
-// moyenne d'un bloc tient en quinze lignes et travaille sur un tampon qu'on a
-// déjà sous la main.
-void DownscaleBgra(const std::vector<uint8_t>& src, int sw, int sh,
-                   std::vector<uint8_t>* dst, int dw, int dh) {
-  dst->assign(static_cast<size_t>(dw) * dh * 4u, 0);
-  for (int y = 0; y < dh; ++y) {
-    const int y0 = y * sh / dh, y1 = std::max(y0 + 1, (y + 1) * sh / dh);
-    for (int x = 0; x < dw; ++x) {
-      const int x0 = x * sw / dw, x1 = std::max(x0 + 1, (x + 1) * sw / dw);
-      unsigned acc[4] = {0, 0, 0, 0};
-      unsigned n = 0;
-      for (int sy = y0; sy < y1 && sy < sh; ++sy) {
-        for (int sx = x0; sx < x1 && sx < sw; ++sx) {
-          const uint8_t* p = &src[(static_cast<size_t>(sy) * sw + sx) * 4u];
-          // Prémultiplier par l'alpha pendant la moyenne : sans ça, un pixel
-          // transparent (dont la couleur est arbitraire) déteindrait sur ses
-          // voisins et cernerait les bords d'un halo.
-          acc[0] += p[0] * p[3]; acc[1] += p[1] * p[3];
-          acc[2] += p[2] * p[3]; acc[3] += p[3];
-          ++n;
-        }
-      }
-      uint8_t* d = &(*dst)[(static_cast<size_t>(y) * dw + x) * 4u];
-      if (n == 0 || acc[3] == 0) { d[0] = d[1] = d[2] = d[3] = 0; continue; }
-      d[0] = static_cast<uint8_t>(acc[0] / acc[3]);
-      d[1] = static_cast<uint8_t>(acc[1] / acc[3]);
-      d[2] = static_cast<uint8_t>(acc[2] / acc[3]);
-      d[3] = static_cast<uint8_t>(acc[3] / n);
-    }
-  }
-}
-constexpr int    kMinFrameMs   = 20;   // délai 0 = « aussi vite que possible »
-constexpr int    kDefaultFrameMs = 100;
-
-UINT MetaUint(IWICMetadataQueryReader* reader, const wchar_t* name, UINT def) {
-  if (reader == nullptr) return def;
-  PROPVARIANT v;
-  PropVariantInit(&v);
-  UINT out = def;
-  if (SUCCEEDED(reader->GetMetadataByName(name, &v))) {
-    if      (v.vt == VT_UI1) out = v.bVal;
-    else if (v.vt == VT_UI2) out = v.uiVal;
-    else if (v.vt == VT_UI4) out = v.ulVal;
-  }
-  PropVariantClear(&v);
-  return out;
-}
-
-// Décode toutes les images et rend des canevas COMPLETS, prêts à téléverser.
-// false = pas animable (une seule image, trop grand, budget dépassé) : l'appelant
-// retombe alors sur le chemin fixe.
-bool DecodeAnimation(const std::vector<uint8_t>& bytes,
-                     std::vector<std::vector<uint8_t>>* frames,
-                     std::vector<int>* delays, int* out_w, int* out_h) {
-  IWICImagingFactory* factory = nullptr;
-  if (FAILED(CoCreateInstance(CLSID_WICImagingFactory, nullptr,
-                              CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&factory))))
-    return false;
-
-  bool ok = false;
-  IWICStream*        stream  = nullptr;
-  IWICBitmapDecoder* decoder = nullptr;
-  IWICMetadataQueryReader* global = nullptr;
-
-  if (SUCCEEDED(factory->CreateStream(&stream)) &&
-      SUCCEEDED(stream->InitializeFromMemory(
-          const_cast<BYTE*>(bytes.data()), static_cast<DWORD>(bytes.size()))) &&
-      SUCCEEDED(factory->CreateDecoderFromStream(
-          stream, nullptr, WICDecodeMetadataCacheOnDemand, &decoder))) {
-    UINT count = 0;
-    decoder->GetFrameCount(&count);
-    if (count > 1) {
-      // Le canevas est celui du LOGICAL SCREEN, pas de la première image : une
-      // image peut être plus petite que la surface d'animation.
-      UINT cw = 0, ch = 0;
-      if (SUCCEEDED(decoder->GetMetadataQueryReader(&global))) {
-        cw = MetaUint(global, L"/logscrdesc/Width", 0);
-        ch = MetaUint(global, L"/logscrdesc/Height", 0);
-      }
-      IWICBitmapFrameDecode* f0 = nullptr;
-      if ((cw == 0 || ch == 0) && SUCCEEDED(decoder->GetFrame(0, &f0))) {
-        f0->GetSize(&cw, &ch);
-      }
-      if (f0) f0->Release();
-
-      const size_t canvas_bytes = static_cast<size_t>(cw) * ch * 4u;
-      const UINT   big = (cw > ch) ? cw : ch;
-      // Taille de SORTIE : réduite pour tenir dans le budget. Le gabarit d'entrée
-      // n'est plus limité qu'au garde-fou d'en-tête — un gif de 800 px s'anime
-      // désormais, réduit, au lieu d'être refusé.
-      double ascale = 1.0;
-      if (big > static_cast<UINT>(kMaxAnimDim))
-        ascale = static_cast<double>(kMaxAnimDim) / static_cast<double>(big);
-      const int ow = std::max(1, static_cast<int>(cw * ascale));
-      const int oh = std::max(1, static_cast<int>(ch * ascale));
-      const size_t out_bytes = static_cast<size_t>(ow) * oh * 4u;
-      if (cw > 0 && ch > 0 && big <= static_cast<UINT>(kMaxSourceDim) &&
-          out_bytes > 0 && out_bytes * 2u <= kMaxAnimBytes) {
-        if (count > static_cast<UINT>(kMaxFrames))
-          count = static_cast<UINT>(kMaxFrames);
-
-        std::vector<uint8_t> canvas(canvas_bytes, 0);
-        std::vector<uint8_t> saved;   // pour la consigne « restaurer le précédent »
-        size_t budget = 0;
-        bool   failed = false;
-
-        for (UINT i = 0; i < count && !failed; ++i) {
-          IWICBitmapFrameDecode*   fr = nullptr;
-          IWICFormatConverter*     cv = nullptr;
-          IWICMetadataQueryReader* md = nullptr;
-          if (FAILED(decoder->GetFrame(i, &fr))) { failed = true; break; }
-
-          UINT fw = 0, fh = 0;
-          fr->GetSize(&fw, &fh);
-          fr->GetMetadataQueryReader(&md);
-          const UINT left  = MetaUint(md, L"/imgdesc/Left", 0);
-          const UINT top   = MetaUint(md, L"/imgdesc/Top", 0);
-          // Délai en centièmes de seconde. 0 = « le plus vite possible » : les
-          // navigateurs y substituent 100 ms, on fait pareil (sinon le gif
-          // clignote à la fréquence de rendu).
-          UINT delay_cs = MetaUint(md, L"/grctlext/Delay", 0);
-          const UINT disposal = MetaUint(md, L"/grctlext/Disposal", 0);
-          int delay_ms = static_cast<int>(delay_cs) * 10;
-          if (delay_ms <= 0) delay_ms = kDefaultFrameMs;
-          if (delay_ms < kMinFrameMs) delay_ms = kMinFrameMs;
-
-          if (disposal == 3) saved = canvas;  // à restaurer APRÈS cette image
-
-          std::vector<uint8_t> px;
-          if (fw > 0 && fh > 0 &&
-              SUCCEEDED(factory->CreateFormatConverter(&cv)) &&
-              SUCCEEDED(cv->Initialize(fr, GUID_WICPixelFormat32bppBGRA,
-                                       WICBitmapDitherTypeNone, nullptr, 0.0,
-                                       WICBitmapPaletteTypeCustom))) {
-            px.resize(static_cast<size_t>(fw) * fh * 4u);
-            if (FAILED(cv->CopyPixels(nullptr, fw * 4,
-                                      static_cast<UINT>(px.size()), px.data())))
-              failed = true;
-          } else {
-            failed = true;
-          }
-
-          if (!failed) {
-            // Report sur le canevas. La transparence GIF est binaire : un pixel
-            // à alpha 0 LAISSE VOIR ce qui est dessous, il ne l'efface pas.
-            for (UINT y = 0; y < fh; ++y) {
-              const UINT cy = top + y;
-              if (cy >= ch) break;
-              for (UINT x = 0; x < fw; ++x) {
-                const UINT cx = left + x;
-                if (cx >= cw) break;
-                const uint8_t* s = &px[(static_cast<size_t>(y) * fw + x) * 4u];
-                if (s[3] == 0) continue;
-                uint8_t* d = &canvas[(static_cast<size_t>(cy) * cw + cx) * 4u];
-                d[0] = s[0]; d[1] = s[1]; d[2] = s[2]; d[3] = s[3];
-              }
-            }
-            budget += out_bytes;  // ce qu'on GARDE, pas ce qu'on compose
-            if (budget > kMaxAnimBytes) failed = true;
-          }
-
-          if (!failed) {
-            // Instantané du canevas complet, RÉDUIT à la taille de sortie.
-            if (ascale < 1.0) {
-              // ⚠ PAS `small` : Windows.h en fait une macro (`#define small
-              // char`), et la déclaration devenait « std::vector<uint8_t> char ».
-              // Même famille que min/max/near/far.
-              std::vector<uint8_t> reduced;
-              DownscaleBgra(canvas, static_cast<int>(cw), static_cast<int>(ch),
-                            &reduced, ow, oh);
-              frames->push_back(std::move(reduced));
-            } else {
-              frames->push_back(canvas);
-            }
-            delays->push_back(delay_ms);
-
-            // Consigne d'effacement, appliquée pour l'image SUIVANTE.
-            if (disposal == 2) {  // remettre le rectangle au fond (transparent)
-              for (UINT y = 0; y < fh; ++y) {
-                const UINT cy = top + y;
-                if (cy >= ch) break;
-                for (UINT x = 0; x < fw; ++x) {
-                  const UINT cx = left + x;
-                  if (cx >= cw) break;
-                  uint8_t* d = &canvas[(static_cast<size_t>(cy) * cw + cx) * 4u];
-                  d[0] = d[1] = d[2] = d[3] = 0;
-                }
-              }
-            } else if (disposal == 3 && !saved.empty()) {
-              canvas = saved;
-            }
-          }
-
-          if (md) md->Release();
-          if (cv) cv->Release();
-          fr->Release();
-        }
-
-        if (!failed && frames->size() > 1) {
-          *out_w = ow;  // la taille RÉDUITE : c'est celle des pixels rendus
-          *out_h = oh;
-          ok = true;
-        } else {
-          frames->clear();
-          delays->clear();
-        }
-      }
-    }
-  }
-
-  if (global)  global->Release();
-  if (decoder) decoder->Release();
-  if (stream)  stream->Release();
-  factory->Release();
-  return ok;
-}
+// Animation : 256 px et 12 Mio de pixels gardés. L'aperçu s'affiche dans une
+// infobulle — la vignette fait la hauteur d'une ligne de chat, et payer plus
+// large en VRAM n'achèterait rien de visible.
+const imgdec::Limits kAnimLimits = {kMaxSourceDim, 256, 60, 12u * 1024u * 1024u};
 
 // Le thread de travail d'UNE adresse. Rien de D3D ici : il ne produit que des
 // pixels, que `Tick` transformera en texture sur le thread principal.
@@ -732,10 +428,18 @@ void FetchWorker(std::string url) {
     // Animé d'abord ; sinon l'image fixe, qui elle sait aussi RÉDUIRE les grandes
     // images — d'où l'ordre : un GIF trop grand pour être animé y retombe et
     // s'affiche quand même, figé, plutôt que d'échouer.
-    done.ok = DecodeAnimation(bytes, &done.frames, &done.delays, &done.w, &done.h);
+    imgdec::Animation anim;
+    if (imgdec::DecodeAnimation(bytes.data(), bytes.size(), kAnimLimits, &anim)) {
+      done.frames = std::move(anim.frames);
+      done.delays = std::move(anim.delays_ms);
+      done.w      = anim.w;
+      done.h      = anim.h;
+      done.ok     = true;
+    }
     if (!done.ok) {
       std::vector<uint8_t> single;
-      if (DecodeToBgra(bytes, &single, &done.w, &done.h)) {
+      if (imgdec::DecodeStill(bytes.data(), bytes.size(), kStillLimits, &single,
+                              &done.w, &done.h)) {
         done.frames.push_back(std::move(single));
         done.delays.push_back(0);
         done.ok = true;

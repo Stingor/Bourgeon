@@ -61,6 +61,7 @@
 #include "features/windows/pet_window.h"
 #include "features/windows/weapon_refine_window.h"
 #include "features/windows/trade_window.h"
+#include "features/windows/tutorial_window.h"
 #include "features/windows/chat_window.h"
 #include "features/windows/rodex_window.h"
 #include "features/windows/npc_dialog_window.h"
@@ -533,6 +534,21 @@ const moonlight_ui::SettingDesc kItemDescSettings[] = {
      MLUI_LITERAL(int, 12)},
     {"itemdesc_off_y",  SType::kInt, MLUI_FIELD(item_desc, desc_offset_y()),
      MLUI_LITERAL(int, 12)},
+};
+
+// Le tutoriel : ce que le joueur a déjà vu, et où il s'est arrêté.
+//
+// « tutorial_seen_version » porte la VERSION du contenu, pas un booléen : c'est
+// elle qui fait rouvrir la visite chez ceux qui l'avaient déjà vue le jour où le
+// yaml gagne des pages. Un simple « déjà vu » ne saurait pas dire « déjà vu,
+// mais pas la suite ».
+const moonlight_ui::SettingDesc kTutorialSettings[] = {
+    {"tutorial_seen_version", SType::kInt, MLUI_FIELD(tutorial_window, seen_version()),
+     MLUI_LITERAL(int, 0)},
+    {"tutorial_last_page", SType::kString, MLUI_FIELD(tutorial_window, last_page()),
+     MLUI_LITERAL(std::string, std::string())},
+    {"tutorial_auto_open", SType::kBool, MLUI_FIELD(tutorial_window, auto_open()),
+     MLUI_LITERAL(bool, true)},
 };
 
 // Deux interrupteurs isolés, chacun chez son plugin.
@@ -2253,6 +2269,7 @@ void MoonlightUi::LoadSettings() {
     moonlight_ui::ReadSettings(ui, kItemObtainToastSettings);
     moonlight_ui::ReadSettings(ui, kGraphicsSettings);
     moonlight_ui::ReadSettings(ui, kZoneRecorderSettings);
+    moonlight_ui::ReadSettings(ui, kTutorialSettings);
     moonlight_ui::ReadSettings(ui, kEntityNameSettings);
     moonlight_ui::ReadSettings(ui, kChatBalloonSettings);
     moonlight_ui::ReadSettings(ui, kCastBarSettings);
@@ -2414,6 +2431,8 @@ void MoonlightUi::WriteSettingsFile() {
   moonlight_ui::WriteSettings(out, kGraphicsSettings);
 
   moonlight_ui::WriteSettings(out, kZoneRecorderSettings);
+
+  moonlight_ui::WriteSettings(out, kTutorialSettings);
 
   moonlight_ui::WriteSettings(out, kEntityNameSettings);
   moonlight_ui::WriteSettings(out, kChatBalloonSettings);

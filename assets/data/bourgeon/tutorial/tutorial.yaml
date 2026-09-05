@@ -1,0 +1,208 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  Découvrir Bourgeon — le contenu de la visite guidée
+#
+#  Lu en jeu par TutorialWindow (src/features/windows/tutorial_window.cc), et
+#  destiné à être relu tel quel par le site pour publier la même visite en page
+#  web : une seule source, deux rendus.
+#
+#  ── Où ce fichier doit vivre chez le joueur ─────────────────────────────────
+#      <jeu>\data\bourgeon\tutorial\tutorial.yaml
+#  avec ses gifs dans le même dossier. C'est de la donnée de client, livrée par
+#  le patcher — pas un réglage utilisateur.
+#
+#  ── version ─────────────────────────────────────────────────────────────────
+#  À INCRÉMENTER dès qu'on ajoute une page. C'est ce nombre, comparé à celui que
+#  le joueur a déjà vu, qui fait rouvrir la visite chez ceux qui l'avaient déjà
+#  parcourue. Corriger une faute de frappe ne le justifie pas ; ajouter une
+#  nouveauté, si.
+#
+#  ── Le balisage d'un texte ──────────────────────────────────────────────────
+#      **gras**              met en avant, rien de plus
+#      {touche:id_action}    le raccourci RÉEL de ce joueur pour cette action,
+#                            relu à chaque frame (ids : src/features/hotkey_actions.cc)
+#      {perso}               le nom du personnage connecté
+#  Un id d'action inconnu s'affiche « (action inconnue) » : c'est visible en
+#  jeu, donc ça se corrige.
+#
+#  🔴 TOUTE VALEUR DE TEXTE SE MET ENTRE GUILLEMETS. Ce n'est pas une
+#  coquetterie : sans eux, YAML lit du BALISAGE dans nos phrases, et de deux
+#  façons qui n'échouent pas pareil — les deux ont été payées le 2026-09-05.
+#
+#      - **Recherche** par nom       ❌ « * » en tête = un ALIAS. Le fichier
+#                                       ENTIER est refusé : plus une page.
+#      - Tout est **traduit** : ...  ❌ « : » = une PAIRE clé/valeur. La puce
+#                                       devient une map, et s'affiche VIDE.
+#      - "Tout est **traduit** : ..."  ✅
+#
+#  Le second cas est le plus traître : il ne casse rien, il efface. Les blocs
+#  « body: | », eux, n'ont pas besoin de guillemets — tout y est du texte.
+#  Le rendu recolle leurs retours simples ; c'est la ligne VIDE qui sépare
+#  deux paragraphes.
+#
+#  ── Les gifs ────────────────────────────────────────────────────────────────
+#  Ils se tournent AVEC LE JEU, par l'enregistreur de zone de Bourgeon (panneau
+#  Bourgeon > Gameplay > Enregistreur de zone) : tracer la zone, viser la
+#  fenêtre à montrer, enregistrer. Ses réglages d'usine — 6 s, 10 images/s,
+#  640 px — passent entiers. Au-delà de 6,4 s (64 images) le clip est tronqué ;
+#  la TAILLE, elle, s'ajuste toute seule pour tenir dans la mémoire allouée
+#  (~320 à 360 px de côté long selon le cadrage). Cadrer serré reste donc payant :
+#  moins de décor autour = plus de définition là où ça compte.
+#  Une page dont le gif manque reste lisible : seul le texte s'affiche.
+# ─────────────────────────────────────────────────────────────────────────────
+
+version: 1
+
+pages:
+  - id: "bienvenue"
+    title: "Bienvenue dans Bourgeon"
+    gif: "01_panneau.gif"
+    body: |
+      Bonjour {perso} — ce client n'est pas tout à fait celui de Ragnarok.
+      Bourgeon **réécrit l'interface** par-dessus le jeu d'origine : les fenêtres
+      sont redessinées, redimensionnables, traduites, et beaucoup de gestes qui
+      demandaient trois clics n'en demandent plus qu'un.
+
+      Cette visite fait le tour des principales nouveautés. Chaque page montre le
+      geste en image ; vous pouvez la garder ouverte et essayer derrière.
+    bullets:
+      - "Le **panneau Bourgeon** rassemble tous les réglages ajoutés. Il s'ouvre par la touche Échap, puis « Moonlight Settings »."
+      - "Tout est **traduit** : le français est la langue par défaut, l'anglais et l'espagnol se choisissent dans le panneau."
+      - "Chaque fenêtre garde **sa position et sa taille** d'une session à l'autre."
+    tip: |
+      Vous pouvez rouvrir cette visite à tout moment depuis le panneau Bourgeon,
+      section « Découvrir Bourgeon » — ou lui donner une touche : {touche:tool_tutorial}.
+
+  - id: "chat"
+    title: "La chatbox"
+    gif: "02_chat.gif"
+    body: |
+      Le chat est entièrement réécrit. Il garde le comportement du jeu — les
+      commandes, les canaux, les chuchotements — et lui ajoute ce qui lui
+      manquait depuis toujours.
+    bullets:
+      - "Des **onglets** que l'on crée, renomme, réordonne et **détache** en fenêtres séparées."
+      - "Un **filtre par onglet** : le commerce d'un côté, le groupe de l'autre."
+      - "Les **icônes d'objets** apparaissent dans les lignes qui en citent, et le survol en montre la fiche."
+      - "Les **emoji en couleur** et les accents passent enfin sur le fil."
+    tip: "Un clic droit sur un onglet ouvre ses réglages — filtre, couleurs, police."
+
+  - id: "fiche"
+    title: "La fiche de personnage"
+    gif: "03_fiche.gif"
+    body: |
+      Caractéristiques, équipement, compétences et apparence dans **une seule
+      fenêtre**, au lieu des quatre du client d'origine.
+      Elle s'ouvre avec {touche:win_sheet_stats}.
+    bullets:
+      - "Un **avatar animé** qui porte votre équipement réel, effets de couvre-chef compris."
+      - "Des **presets d'équipement** : une touche, un jeu de pièces complet."
+      - "Le détail des statistiques calculées, sans passer par une commande."
+    tip: "L'avatar se tourne à la souris, et se met en pose avec les boutons du bas."
+
+  - id: "sacs"
+    title: "Inventaire, entrepôt et charrette"
+    gif: "04_inventaire.gif"
+    body: |
+      Les trois fenêtres de rangement partagent la même grille moderne :
+      inventaire {touche:win_inventory}, entrepôt {touche:win_storage},
+      charrette {touche:win_cart}.
+    bullets:
+      - "**Recherche** par nom et filtres par type, au lieu des onglets figés."
+      - "**Glisser-déposer** entre les trois fenêtres, et transfert par lot."
+      - "La **fiche d'objet** au survol, avec ses effets lisibles et ses cartes."
+    tip: |
+      Le clic droit sur une pile ouvre son menu : utiliser, jeter, mettre en
+      vente, ou l'ajouter à la liste de ramassage automatique.
+
+  - id: "barre"
+    title: "La barre d'action"
+    gif: "05_barre.gif"
+    body: |
+      La barre de raccourcis devient **trois barres** : deux onglets de
+      compétences, plus une barre d'**objets** que le client d'origine ne savait
+      pas conserver.
+    bullets:
+      - "Les compétences restent synchronisées avec le serveur, comme avant."
+      - "La barre d'objets suit le **personnage**, pas l'installation."
+      - "Chaque barre se déplace, se verrouille et change de nombre de cases."
+    tip: "Le verrou évite de vider une case d'un glissement maladroit en plein combat."
+
+  - id: "carte"
+    title: "Minimap et navigation"
+    gif: "06_carte.gif"
+    body: |
+      La minimap est redessinée, et la **navigation** {touche:win_navigation}
+      trace l'itinéraire jusqu'à une ville, un NPC ou un monstre.
+    bullets:
+      - "Marqueurs de groupe, de guilde et **repères posés à la main**."
+      - "Le point d'arrivée d'une Fly Wing reste marqué sur la carte."
+      - "La carte du monde {touche:win_worldmap} ouvre le trajet complet."
+    tip: "Un clic sur un repère de la minimap recentre la caméra dessus."
+
+  - id: "chasse"
+    title: "Chasse — MVP, dégâts, monstres"
+    gif: "07_chasse.gif"
+    body: |
+      Trois outils qui n'existent nulle part dans le client d'origine, et qui se
+      complètent : ce que le groupe a vu, ce qu'il a infligé, ce que le monstre
+      vaut.
+    bullets:
+      - "Le **carnet de chasse MVP** {touche:win_mvp_tracker} note les morts observées et le retour prévu."
+      - "Le **compteur de dégâts** mesure le DPS du groupe, par personne et par compétence."
+      - "La **fiche de monstre** donne stats, résistances, drops et cartes de spawn."
+    tip: |
+      Le carnet ne montre QUE ce que votre groupe a vu — le tirage du respawn ne
+      sort du serveur que par un Convex Mirror.
+
+  - id: "metiers"
+    title: "Fabrication et style"
+    gif: "08_metiers.gif"
+    body: |
+      L'**atlas des recettes** {touche:tool_craft_atlas} rassemble tout ce qui se
+      fabrique, avec les ingrédients et le rendement. Le **style du personnage**
+      {touche:tool_palette} compose vos couleurs.
+    bullets:
+      - "Les recettes se cherchent par objet **produit** ou par ingrédient possédé."
+      - "Les palettes se composent teinte par teinte, et se gardent par personnage."
+      - "Le rendu est immédiat : ce que vous voyez est ce que les autres verront."
+    tip: "Les couleurs choisies sont enregistrées côté serveur — elles vous suivent d'un PC à l'autre."
+
+  - id: "groupe"
+    title: "Le groupe : grille et fenêtre"
+    gif: "09_groupe.gif"
+    body: |
+      Le client empile les membres du groupe dans une petite liste où il faut
+      chercher qui perd ses points de vie. Bourgeon ajoute une **grille de
+      tuiles** — la forme des « raid frames » — qui se lit d'un coup d'œil, et
+      remplace la fenêtre **Groupe / Amis** par sa version moderne.
+
+      La grille se règle entièrement dans le panneau Bourgeon, section
+      « Groupe (grille) » : colonnes, taille des tuiles, contenu et couleurs.
+    bullets:
+      - "**Cliquer une tuile** cible le membre ; le clic droit ouvre chuchoter, nommer chef, expulser."
+      - "**Soigner au survol** : un sort de soutien lancé sur une tuile touche ce membre-là, sans avoir à le retrouver à l'écran."
+      - "Chaque tuile porte ce que vous choisissez : classe, niveau, barres de **PV et de SP**, buffs et debuffs en cours."
+      - "Une tuile pâle DIT « hors de portée » au lieu d'afficher une barre vide : le jeu ne connaît les PV que des membres dont le personnage est chargé."
+      - "La fenêtre **Groupe / Amis** garde ses deux onglets, en plus lisible — et le SP des membres, que le client ne demandait jamais."
+    tip: |
+      « Verrouiller la position » fige la grille une fois placée : en plein combat,
+      un glissement involontaire déplace la seule chose que vous regardez.
+
+  - id: "outils"
+    title: "Confort et outils"
+    gif: "10_outils.gif"
+    body: |
+      Une poignée de gestes qui ne se voient pas sur une capture d'écran mais se
+      sentent dès la première heure, et de quoi nous aider à corriger le jeu.
+      Chacun se coupe séparément dans le panneau Bourgeon : rien n'est imposé.
+    bullets:
+      - "**Déplacement au clavier**, en plus du clic au sol."
+      - "**Cast en une action** : viser et lancer d'un seul geste, sans le clic de confirmation."
+      - "**Ciblage clavier** : {touche:target_nearest} prend la cible la plus proche, {touche:target_cycle_next} passe à la suivante."
+      - "**Zoom de caméra** élargi, et vue dégagée sous les toits."
+      - "**Signaler un bug** {touche:tool_bug_report} envoie la description avec la capture et le contexte."
+      - "L'**enregistreur de zone** filme une portion de l'écran en gif — c'est l'outil qui a servi à faire les images de cette visite."
+      - "L'**écran de veille** {touche:tool_afk} affiche proprement une absence."
+    tip: |
+      Les gifs de l'enregistreur atterrissent dans le dossier « screenshot » du
+      jeu, et peuvent être copiés directement dans le presse-papier.

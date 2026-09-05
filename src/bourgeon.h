@@ -46,6 +46,7 @@ class WeaponRefineWindow;
 class MakeItemWindow;
 class CraftAtlas;
 class TradeWindow;
+class TutorialWindow;
 class ChatWindow;
 class RodexWindow;
 class CharacterSheet;
@@ -128,6 +129,7 @@ class Bourgeon {
   MakeItemWindow* make_item_window();
   CraftAtlas* craft_atlas();
   TradeWindow* trade_window();
+  TutorialWindow* tutorial_window();
   ChatWindow* chat_window();
   RodexWindow* rodex_window();
   NpcDialogWindow* npc_dialog_window();
@@ -395,6 +397,7 @@ class Bourgeon {
   MakeItemWindow* make_item_window_ = nullptr;  // non-owning, lifetime tied to plugins_
   CraftAtlas* craft_atlas_ = nullptr;            // non-owning, lifetime tied to plugins_
   TradeWindow* trade_window_ = nullptr;        // non-owning, lifetime tied to plugins_
+  TutorialWindow* tutorial_window_ = nullptr;  // non-owning, lifetime tied to plugins_
   ChatWindow* chat_window_ = nullptr;          // non-owning, lifetime tied to plugins_
   RodexWindow* rodex_window_ = nullptr;        // non-owning, lifetime tied to plugins_
   NpcDialogWindow* npc_dialog_window_ = nullptr;  // non-owning, lifetime tied to plugins_

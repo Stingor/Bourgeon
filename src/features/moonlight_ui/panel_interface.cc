@@ -48,6 +48,7 @@
 #include "features/windows/party_friend_window.h"
 #include "features/overlays/target_frame.h"
 #include "features/windows/storage_window.h"
+#include "features/windows/tutorial_window.h"
 
 using namespace mui;  // enveloppes ImGui du toolkit (ui/ro_widgets.h)
 
@@ -102,6 +103,7 @@ constexpr NavEntry kIfaceSections[] = {
     {MoonlightUi::kIfaceCart,        "cart",         "Cart"},
     {MoonlightUi::kIfaceMvpTracker,  "mvp_tracker",  "Carnet de chasse MVP"},
     {MoonlightUi::kIfaceChat,        "chat",         "Chat"},
+    {MoonlightUi::kIfaceTutorial,    "tutorial",     "Découvrir Bourgeon"},
     {MoonlightUi::kIfaceDesc,        "desc",         "Descriptions"},
     {MoonlightUi::kIfaceMakeItem,    "make_item",    "Fabrication"},
     {MoonlightUi::kIfaceTargetFrame, "target_frame", "Fenêtre de cible"},
@@ -454,6 +456,17 @@ void MoonlightUi::DrawInterfacePanel() {
       }
 
       // ── Chat Settings ────────────────────────────────────────────────────
+      // ── Découvrir Bourgeon (TutorialWindow) ─────────────────────
+      // La visite guidée des nouveautés. Ici, seulement de quoi la rouvrir et
+      // régler son apparition — le contenu, lui, est un yaml de data\bourgeon.
+      if (iface_nav == kIfaceTutorial) {
+        if (auto* tw = Bourgeon::Instance().tutorial_window()) {
+          if (tw->DrawSettings()) SaveSettings();
+        } else {
+          ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
+        }
+      }
+
       if (iface_nav == kIfaceChat) {
         bool changed = false;
         // Deux propriétaires dans cette section, et c'est assumé : le relais
