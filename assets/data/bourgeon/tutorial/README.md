@@ -5,6 +5,22 @@ texte de la visite guidée (`tutorial.yaml`) et ses animations (`*.gif`).
 
 La fenêtre qui les affiche est `src/features/windows/tutorial_window.cc`.
 
+## Dans le GRF ou sur le disque, indifféremment
+
+La fenêtre lit ces fichiers **par le VFS du client**, celui-là même qui charge
+les sprites : il regarde le **disque d'abord**, puis les **GRF montés**. Le
+patcher peut donc packer le dossier dans `moonlight.grf` — c'est ce qui arrive
+chez le joueur — sans que rien ne change pour qui travaille avec le dossier
+ouvert sur son disque, qui garde la priorité.
+
+Deux conséquences pour les noms de fichiers :
+
+- **minuscules et ASCII.** Une entrée de GRF est stockée en minuscules ; le
+  reste du VFS est en CP949 quand nos sources sont en UTF-8, donc un `é` dans un
+  nom de gif ne désignerait la même entrée dans aucun des deux.
+- **le `gif:` d'une page est un nom, pas un chemin.** Il est résolu dans ce
+  dossier-ci.
+
 ## Tourner un GIF
 
 Les animations se filment **avec le jeu**, par l'enregistreur de zone de

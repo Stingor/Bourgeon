@@ -15,7 +15,10 @@
 //
 // ── LE CONTENU EST UNE DONNÉE, PAS DU CODE ───────────────────────────────────
 // Les pages vivent dans `data\bourgeon\tutorial\tutorial.yaml`, à côté de leurs
-// gifs, et sont LIVRÉES PAR LE PATCHER comme le reste des données de client.
+// gifs, et sont LIVRÉES PAR LE PATCHER comme le reste des données de client —
+// donc DANS LE GRF chez le joueur, et en fichiers libres chez l'auteur. Les deux
+// se lisent par le VFS du client (`ro::spract::ReadFile`, disque puis archives),
+// jamais par `fopen` : cf. le commentaire de `kTutorialDir` dans le .cc.
 // Trois raisons, dans l'ordre où elles comptent :
 //   1. ajouter une page ne demande pas de recompiler la DLL — donc le tutoriel
 //      suit les nouveautés au rythme où elles sortent, pas au rythme des builds ;
@@ -62,8 +65,9 @@ class TutorialWindow : public Plugin {
   void OnTick() override;
   void OnModeSwitch(ModeMgr::ModeType mode_type, const char* map_name) override;
 
-  // Ouvre la fenêtre (et relit le contenu du disque : un auteur qui vient de
-  // corriger son yaml n'a pas à relancer le jeu).
+  // Ouvre la fenêtre (et relit le contenu : un auteur qui vient de corriger son
+  // yaml n'a pas à relancer le jeu — le VFS regarde le disque avant le GRF, donc
+  // son fichier posé dans `data\` prime sur celui de l'archive).
   void Open();
   void Close();
   // Bascule : c'est ce qu'attend un raccourci clavier, qui doit aussi refermer.

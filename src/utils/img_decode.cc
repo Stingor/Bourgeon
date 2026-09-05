@@ -5,7 +5,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
 
 #pragma comment(lib, "windowscodecs.lib")
 
@@ -66,32 +65,6 @@ UINT MetaUint(IWICMetadataQueryReader* reader, const wchar_t* name, UINT def) {
   }
   PropVariantClear(&v);
   return out;
-}
-
-// Lit un fichier entier, plafonné. `out_error` reçoit la raison d'un refus.
-bool ReadWholeFile(const std::string& path, std::vector<uint8_t>* out,
-                   std::string* out_error) {
-  std::FILE* f = std::fopen(path.c_str(), "rb");
-  if (!f) {
-    if (out_error) *out_error = "fichier introuvable";
-    return false;
-  }
-  std::fseek(f, 0, SEEK_END);
-  const long size = std::ftell(f);
-  std::fseek(f, 0, SEEK_SET);
-  if (size <= 0 || static_cast<size_t>(size) > kMaxFileBytes) {
-    std::fclose(f);
-    if (out_error) *out_error = "fichier vide ou trop gros";
-    return false;
-  }
-  out->resize(static_cast<size_t>(size));
-  const size_t read = std::fread(out->data(), 1, out->size(), f);
-  std::fclose(f);
-  if (read != out->size()) {
-    if (out_error) *out_error = "lecture interrompue";
-    return false;
-  }
-  return true;
 }
 
 }  // namespace
@@ -378,15 +351,21 @@ bool DecodeAnimation(const uint8_t* data, size_t size, const Limits& limits,
   return ok;
 }
 
-bool DecodeFile(const std::string& path, const Limits& limits, Animation* out,
-                std::string* out_error) {
-  std::vector<uint8_t> bytes;
-  if (!ReadWholeFile(path, &bytes, out_error)) return false;
+bool DecodeBytes(const uint8_t* data, size_t size, const Limits& limits,
+                 Animation* out, std::string* out_error) {
+  if (data == nullptr || size == 0) {
+    if (out_error) *out_error = "fichier vide ou introuvable";
+    return false;
+  }
+  if (size > kMaxFileBytes) {
+    if (out_error) *out_error = "fichier trop gros";
+    return false;
+  }
 
   // Animé d'abord ; sinon l'image fixe, qui elle sait aussi RÉDUIRE les grandes
   // images — d'où l'ordre : un gif trop long pour être animé y retombe et
   // s'affiche quand même, figé, plutôt que de ne rien montrer.
-  if (DecodeAnimation(bytes.data(), bytes.size(), limits, out)) {
+  if (DecodeAnimation(data, size, limits, out)) {
     if (out_error) out_error->clear();
     return true;
   }
@@ -398,7 +377,7 @@ bool DecodeFile(const std::string& path, const Limits& limits, Animation* out,
 
   std::vector<uint8_t> single;
   int w = 0, h = 0;
-  if (DecodeStill(bytes.data(), bytes.size(), limits, &single, &w, &h)) {
+  if (DecodeStill(data, size, limits, &single, &w, &h)) {
     out->frames.clear();
     out->delays_ms.clear();
     out->frames.push_back(std::move(single));

@@ -41,33 +41,47 @@ GifAnim::~GifAnim() {
     if (p.tex) Overlay_ReleaseTexture(p.tex);
 }
 
-void GifAnim::Load(const std::string& path, const imgdec::Limits& limits) {
-  if (path.empty()) return;
-  // Déjà chargé, en cours, ou déjà refusé : appeler à chaque frame ne relance rien.
-  // 🔴 `pixels_` compte autant que `textures_` : après une perte de device les
-  // textures sont lâchées mais les pixels restent, et c'est justement d'eux que
-  // `Pump` va les remonter — redécoder le fichier serait du travail pour rien.
-  if (path == path_ &&
-      (job_ || !textures_.empty() || !pixels_.frames.empty() || !error_.empty()))
-    return;
+// Déjà chargé, en cours, ou déjà refusé.
+// 🔴 `pixels_` compte autant que `textures_` : après une perte de device les
+// textures sont lâchées mais les pixels restent, et c'est justement d'eux que
+// `Pump` va les remonter — redécoder serait du travail pour rien.
+bool GifAnim::Holds(const std::string& key) const {
+  return !key.empty() && key == key_ &&
+         (job_ || !textures_.empty() || !pixels_.frames.empty() ||
+          !error_.empty());
+}
+
+void GifAnim::Load(const std::string& key, std::vector<uint8_t> bytes,
+                   const imgdec::Limits& limits) {
+  if (key.empty()) return;
+  if (Holds(key)) return;
 
   Unload();
-  path_   = path;
+  key_    = key;
   limits_ = limits;
   error_.clear();
+
+  // L'appelant n'a rien trouvé à lire. On le NOMME au lieu de laisser un cadre
+  // vide : ces images-là sont les nôtres, et un fichier absent du patch se
+  // découvre par cette ligne-ci.
+  if (bytes.empty()) {
+    error_ = "fichier introuvable (ni sur le disque, ni dans un GRF)";
+    return;
+  }
 
   auto job = std::make_shared<Job>();
   job_ = job;
 
-  // ⚠ La copie du chemin et des limites part DANS le thread : le GifAnim peut
-  // mourir avant lui.
-  std::thread([job, path, limits]() {
+  // ⚠ Les octets et les limites partent DANS le thread — déplacés, pas copiés,
+  // un gif pesant quelques mégaoctets. Le GifAnim, lui, peut mourir avant lui.
+  std::thread([job, bytes = std::move(bytes), limits]() {
     // WIC est du COM : chaque thread doit l'initialiser pour lui-même.
     const HRESULT co = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
 
     imgdec::Animation anim;
     std::string       error;
-    const bool ok = imgdec::DecodeFile(path, limits, &anim, &error);
+    const bool ok =
+        imgdec::DecodeBytes(bytes.data(), bytes.size(), limits, &anim, &error);
 
     if (SUCCEEDED(co)) CoUninitialize();
 
@@ -85,7 +99,7 @@ void GifAnim::Unload() {
   pixels_.delays_ms.clear();
   pixels_.w = pixels_.h = 0;
   job_.reset();
-  path_.clear();
+  key_.clear();
   error_.clear();
   width_ = height_ = 0;
   total_ms_ = 0;

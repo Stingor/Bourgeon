@@ -1,10 +1,11 @@
 #include "features/windows/tutorial_window.h"
 
-#include <Windows.h>
-
 #include <algorithm>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <utility>
+#include <vector>
 
 #include "bourgeon.h"
 #include "features/hotkey_actions.h"
@@ -14,7 +15,7 @@
 #include "imgui.h"
 #include "ui/ro_imgui.h"
 #include "ui/ro_widgets.h"
-#include "utils/game_paths.h"
+#include "ui/spr_act.h"  // ReadFile : le VFS du client (disque PUIS les GRF)
 #include "utils/i18n.h"
 #include "utils/log_console.h"
 #include "yaml-cpp/yaml.h"
@@ -60,28 +61,50 @@ constexpr ImU32 kTipBorder  = IM_COL32(110, 150, 110, 200);
 
 // Le dossier du tutoriel : données de CLIENT, livrées par le patcher auprès des
 // autres données de jeu — pas un réglage utilisateur, donc pas dans SaveData.
-std::string TutorialDir() {
-  return paths::InGameDir("data\\bourgeon\\tutorial\\");
+//
+// 🔴 C'EST UN CHEMIN DU VFS, PAS UN CHEMIN DE DISQUE, et il fut l'inverse. Le
+// patcher range ce dossier DANS le GRF de Moonlight comme le reste des données
+// de client : chez l'auteur, qui a `data\bourgeon\tutorial\` en fichiers
+// libres, un `fopen` trouvait tout ; chez le JOUEUR il ne trouvait rien, et le
+// tutoriel s'ouvrait sur « Fichier introuvable ». La panne ne pouvait donc se
+// voir qu'après livraison.
+//
+// `ro::spract::ReadFile` est le lecteur du client lui-même, celui qui résout le
+// disque D'ABORD et les GRF ensuite (cf. reference_grf_loading_patcher) : un
+// fichier déposé à la main dans `data\` prime toujours sur l'archive, donc
+// corriger une page sans repacker marche exactement comme avant.
+//
+// ⚠ Les entrées d'un GRF sont en MINUSCULES et en antislashs (le VFS normalise
+// ce qu'on lui donne, mais l'entrée, elle, est ce que le packeur y a mis). Les
+// noms de gifs écrits dans le yaml suivent donc la même règle, et restent en
+// ASCII — le reste du VFS est en CP949, nos sources en UTF-8, et un nom accentué
+// ne désignerait la même entrée dans aucun des deux.
+const char* const kTutorialDir = "data\\bourgeon\\tutorial\\";
+
+std::string TutorialPath(const std::string& name) {
+  return std::string(kTutorialDir) + name;
 }
 
-bool FileExists(const std::string& path) {
-  const DWORD attrs = GetFileAttributesA(path.c_str());
-  return attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY) == 0;
+// Octets d'un fichier du tutoriel. `out` vide si le nom n'existe ni sur le
+// disque ni dans une archive montée.
+bool ReadTutorialFile(const std::string& name, std::vector<uint8_t>* out) {
+  return ro::spract::ReadFile(TutorialPath(name).c_str(), out);
 }
 
-// Le fichier de contenu de la langue courante, avec repli sur le français.
+// Le fichier de contenu de la langue courante, avec repli sur le français. Rend
+// le NOM retenu (pour le message d'erreur) et ses octets.
 //
 // Le catalogue i18n ne convient pas pour ce texte-là : il traduit des LITTÉRAUX
 // du code, et une page de tutoriel est une donnée. Traduire, ici, c'est déposer
 // `tutorial.en.yaml` à côté de `tutorial.yaml`.
-std::string ContentPath() {
-  const std::string dir = TutorialDir();
+bool ReadContent(std::string* out_name, std::vector<uint8_t>* out) {
   const std::string& lang = i18n::LanguageCode();
   if (lang != "fr") {
-    const std::string localized = dir + "tutorial." + lang + ".yaml";
-    if (FileExists(localized)) return localized;
+    *out_name = "tutorial." + lang + ".yaml";
+    if (ReadTutorialFile(*out_name, out)) return true;
   }
-  return dir + "tutorial.yaml";
+  *out_name = "tutorial.yaml";
+  return ReadTutorialFile(*out_name, out);
 }
 
 // Le libellé du raccourci que CE joueur a posé sur une action de Bourgeon.
@@ -234,16 +257,22 @@ bool TutorialWindow::LoadContent() {
   load_error_.clear();
   content_lang_ = i18n::LanguageCode();
 
-  const std::string path = ContentPath();
-  if (!FileExists(path)) {
+  std::string          name;
+  std::vector<uint8_t> bytes;
+  if (!ReadContent(&name, &bytes) || bytes.empty()) {
     char msg[512];
-    std::snprintf(msg, sizeof(msg), i18n::Tr("Fichier introuvable : %s"), path.c_str());
+    std::snprintf(msg, sizeof(msg), i18n::Tr("Fichier introuvable : %s"),
+                  TutorialPath(name).c_str());
     load_error_ = msg;
     return false;
   }
 
   try {
-    const YAML::Node root = YAML::LoadFile(path);
+    // ⚠ `YAML::Load` sur une chaîne, et non `LoadFile` : les octets viennent du
+    // VFS, pas d'un descripteur de fichier. Un éventuel BOM UTF-8 en tête est
+    // reconnu par yaml-cpp, qui détecte l'encodage de son flux.
+    const YAML::Node root = YAML::Load(
+        std::string(reinterpret_cast<const char*>(bytes.data()), bytes.size()));
     content_version_ = root["version"].as<int>(1);
 
     const YAML::Node pages = root["pages"];
@@ -327,7 +356,17 @@ void TutorialWindow::ShowPage(int index) {
     anim_.Unload();
     anim_page_ = page_;
     const std::string& gif = pages_[page_].gif;
-    if (!gif.empty()) anim_.Load(TutorialDir() + gif, kGifLimits);
+    if (!gif.empty()) {
+      // 🔴 La lecture se fait ICI, sur le thread du jeu, et pas dans le thread
+      // de décodage de GifAnim. Le VFS est du code natif du client — liste
+      // chaînée des archives, allocateur maison — dont rien ne dit qu'il
+      // supporte deux appelants ; tout le reste du projet ne l'appelle que
+      // depuis ce thread-ci. Ce sont donc les OCTETS qu'on confie au thread. Le
+      // coût payé ici est d'une lecture par CHANGEMENT DE PAGE, pas par frame.
+      std::vector<uint8_t> bytes;
+      ReadTutorialFile(gif, &bytes);  // vide : GifAnim le dira à l'écran
+      anim_.Load(TutorialPath(gif), std::move(bytes), kGifLimits);
+    }
   }
 }
 

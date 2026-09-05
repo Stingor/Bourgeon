@@ -74,19 +74,28 @@ bool DecodeStill(const uint8_t* data, size_t size, const Limits& limits,
 bool DecodeAnimation(const uint8_t* data, size_t size, const Limits& limits,
                      Animation* out);
 
-// ── Depuis un FICHIER du disque ──────────────────────────────────────────────
-// Lit `path` puis tente l'animation, et à défaut l'image fixe — une `Animation`
-// d'une seule image, de délai nul. L'appelant n'a donc qu'un chemin de code.
+// ── Le point d'entrée des appelants : animé, à défaut fixe ───────────────────
+// Tente l'animation, et à défaut l'image fixe — une `Animation` d'une seule
+// image, de délai nul. L'appelant n'a donc qu'un chemin de code.
+//
+// 🔴 CE MODULE N'OUVRE AUCUN FICHIER, ET C'EST VOULU. Il portait un
+// `DecodeFile(path)` bâti sur `fopen`, qui ne voyait donc que le DISQUE : chez
+// l'auteur les gifs du tutoriel sont dans `data\`, chez le JOUEUR ils sont dans
+// un GRF, où une lecture disque ne trouve rien. L'aperçu d'image du chat, lui,
+// décode un tampon reçu du réseau, qui n'a jamais de fichier. Un lecteur disque
+// ici condamnait le premier cas et ne servait pas au second : LIRE EST L'AFFAIRE
+// DE L'APPELANT — par le VFS du client (`ro::spract::ReadFile`, qui résout le
+// disque PUIS les GRF) ou par où il veut.
 //
 // `out_error` (facultatif) reçoit une phrase FRANÇAISE disant ce qui a échoué :
-// fichier introuvable, trop gros, format refusé. Elle est destinée à être
-// MONTRÉE — pour des gifs qu'on livre soi-même, un échec muet se paie en heures
-// de recherche.
-bool DecodeFile(const std::string& path, const Limits& limits, Animation* out,
-                std::string* out_error = nullptr);
+// tampon vide, trop gros, format refusé. Elle est destinée à être MONTRÉE —
+// pour des gifs qu'on livre soi-même, un échec muet se paie en heures de
+// recherche.
+bool DecodeBytes(const uint8_t* data, size_t size, const Limits& limits,
+                 Animation* out, std::string* out_error = nullptr);
 
-// Plafond de lecture d'un fichier, en octets. Au-delà, `DecodeFile` renonce sans
-// allouer : un fichier de cette taille n'est pas un gif d'interface.
+// Plafond d'un fichier image, en octets. Au-delà, `DecodeBytes` renonce sans
+// rien décoder : un fichier de cette taille n'est pas un gif d'interface.
 constexpr size_t kMaxFileBytes = 32u * 1024u * 1024u;
 
 }  // namespace imgdec

@@ -2,9 +2,16 @@
 
 // ── ro::GifAnim — un gif animé, joué dans une fenêtre ImGui ──────────────────
 //
-// Charge un fichier image du disque et rend, à chaque frame, la texture de
-// l'instant. Écrit pour le tutoriel (des captures de l'interface Bourgeon), mais
-// il ne sait rien de lui : `ui/` ne connaît pas `features/`.
+// Décode des octets d'image et rend, à chaque frame, la texture de l'instant.
+// Écrit pour le tutoriel (des captures de l'interface Bourgeon), mais il ne sait
+// rien de lui : `ui/` ne connaît pas `features/`.
+//
+// 🔴 IL NE LIT PAS LE FICHIER LUI-MÊME, ET C'EST LA RAISON DE SON API EN OCTETS.
+// Le contenu qu'il affiche vit chez le joueur DANS UN GRF, que seul le VFS du
+// client sait ouvrir (`ro::spract::ReadFile`) — et ce VFS est du code natif du
+// client, qu'on n'appelle pas depuis un thread de travail. L'appelant lit donc
+// dans SA frame, et ne confie ici que des octets, que le thread peut mâcher
+// tranquillement.
 //
 // Le décodage est dans `utils/img_decode` ; ce qui est ICI, c'est tout ce qu'un
 // décodeur ne peut pas savoir — les trois contraintes du rendu :
@@ -31,7 +38,7 @@
 //    (cf. feedback_imgui_no_texture_release_mid_frame).
 //
 // ── L'ordre d'appel ──────────────────────────────────────────────────────────
-//     anim.Load(chemin, limites);       // une fois
+//     anim.Load(chemin, octets, limites);  // une fois
 //     anim.Pump();                      // AU DÉBUT de chaque frame
 //     if (anim.Ready()) ImGui::Image(anim.Frame(), ...);
 //
@@ -55,9 +62,21 @@ class GifAnim {
   GifAnim(const GifAnim&) = delete;
   GifAnim& operator=(const GifAnim&) = delete;
 
-  // Demande le chargement de `path`. Sans effet si c'est déjà le fichier chargé
-  // (ou en cours de chargement) : appeler à chaque frame ne relance rien.
-  void Load(const std::string& path, const imgdec::Limits& limits);
+  // Demande le décodage de `bytes`, désigné par `key` — en pratique le chemin
+  // VFS d'où l'appelant les a lus. Sans effet si `key` est déjà chargé, en cours
+  // de chargement ou déjà refusé : appeler à chaque frame ne relance rien.
+  //
+  // ⚠ La garde ne dispense PAS l'appelant de la lecture, qu'il a déjà payée
+  // avant d'arriver ici. Interroger `Holds()` d'abord est ce qui l'en dispense —
+  // et c'est ce qu'il faut faire si l'appel est dans une frame.
+  //
+  // `bytes` vide n'est pas silencieux : c'est un échec nommé dans `Error()`,
+  // parce que « rien ne s'affiche » est précisément ce qu'on ne veut pas.
+  void Load(const std::string& key, std::vector<uint8_t> bytes,
+            const imgdec::Limits& limits);
+
+  // true si `key` est ce que ce GifAnim porte déjà (chargé, en cours, ou refusé).
+  bool Holds(const std::string& key) const;
 
   // Rend la mémoire et la VRAM. Les textures partent en libération différée —
   // appeler depuis une frame ImGui est donc sûr.
@@ -97,7 +116,7 @@ class GifAnim {
   void ReleaseTextures();        // -> file différée
   void FlushPendingReleases();   // libère ce qui a passé une frame
 
-  std::string        path_;
+  std::string        key_;
   imgdec::Limits     limits_;
   std::shared_ptr<Job> job_;
 
