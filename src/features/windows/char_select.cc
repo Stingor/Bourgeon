@@ -1142,16 +1142,13 @@ void charsel::DriveNativeCtrl(int ctrl, int slot) {
   }
 }
 
-void CharSelect::DriveModeCmd(int cmd) {
-  // Sortie d'écran (retour au login / fermeture du jeu) : on grave la mise en page
-  // avant de partir. C'est indispensable ICI et pas seulement dans OnModeSwitch :
-  // un retour au login ne CHANGE PAS de mode (le client reste en CLoginMode, seul
-  // son état bouge), OnModeSwitch ne repasserait donc jamais et le travail du
-  // joueur serait perdu.
-  seat_edit_ = false;
-  charsel::SaveIfDirty();
-  // Envoie une commande au MODE courant — le même point d'entrée que ReadSlot
-  // (cmd 8) et que le natif quand il quitte l'écran. Aucun paramètre ne sert ici.
+namespace {
+// Envoie une commande au MODE courant — le même point d'entrée que ReadSlot
+// (cmd 8) et que le natif quand il quitte l'écran. Aucun paramètre ne sert ici.
+//
+// ⚠ `rag::ActiveMode` et non le getter GATÉ : celui-ci rend zéro hors état 1,
+// c'est-à-dire précisément sur l'écran d'où l'on veut partir.
+void SendModeCmd(int cmd) {
   __try {
     void* d = rag::ActiveMode();
     if (!d) {
@@ -1162,6 +1159,25 @@ void CharSelect::DriveModeCmd(int cmd) {
   } __except (EXCEPTION_EXECUTE_HANDLER) {
     LogError("[CharSelect] exception sur la commande de mode {}", cmd);
   }
+}
+}  // namespace
+
+void charsel::DriveBackToLogin() {
+  // La mise en page se grave ici aussi : ce retour-là ne change pas de mode, donc
+  // OnModeSwitch ne repassera pas (même raison que DriveModeCmd ci-dessous).
+  charsel::SaveIfDirty();
+  SendModeCmd(kCmdBackToLogin);
+}
+
+void CharSelect::DriveModeCmd(int cmd) {
+  // Sortie d'écran (retour au login / fermeture du jeu) : on grave la mise en page
+  // avant de partir. C'est indispensable ICI et pas seulement dans OnModeSwitch :
+  // un retour au login ne CHANGE PAS de mode (le client reste en CLoginMode, seul
+  // son état bouge), OnModeSwitch ne repasserait donc jamais et le travail du
+  // joueur serait perdu.
+  seat_edit_ = false;
+  charsel::SaveIfDirty();
+  SendModeCmd(cmd);
 }
 
 void CharSelect::OnRecvPacket(uint16_t opcode, const uint8_t* /*data*/,

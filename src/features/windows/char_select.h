@@ -26,6 +26,21 @@ struct Seat;
 // adresses en dur — l'emplacement sélectionné, la vtable de garde et le OnMsg —
 // c'est-à-dire trois occasions de les corriger à moitié au prochain client.
 void DriveNativeCtrl(int ctrl, int slot);
+
+// Renvoie le client du char-select à l'ÉCRAN DE CONNEXION — le geste du bouton
+// « Revenir au login » (commande de mode 10011 : déconnexion du char-server puis
+// état 3), sans l'écran ni sa confirmation.
+//
+// 🔴 Libre pour la même raison que ci-dessus : la séquence du décor
+// (features/systems/login_spectator) doit pouvoir REFERMER un char-select resté
+// ouvert sur le compte du décor — c'est sa seule sortie quand elle abandonne
+// APRÈS l'authentification, et la seule adresse en jeu est celle du dispatcher
+// de mode.
+//
+// ⚠ Le client reste en CLoginMode : aucun changement de mode n'est annoncé.
+// L'appelant doit donc réarmer lui-même ce qui est branché sur cette annonce —
+// `MoonlightAuth::RearmWebLogin`, et le décor s'il y a lieu.
+void DriveBackToLogin();
 }  // namespace charsel
 
 // CharSelect — remplacement ImGui de l'écran de sélection de personnage.

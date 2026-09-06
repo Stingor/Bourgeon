@@ -56,6 +56,12 @@ constexpr uint32_t kLoginTimeoutMs   = 8000;   // trouver la fenêtre de login
 constexpr uint32_t kAuthTimeoutMs    = 25000;  // login -> char-select
 constexpr uint32_t kEnterTimeoutMs   = 25000;  // char-select -> monde
 constexpr uint32_t kLeaveTimeoutMs   = 15000;  // décor -> écran de connexion
+// Abandon APRÈS l'authentification : le temps qu'on laisse au client pour
+// refermer le char-select du décor et rendre l'écran de connexion.
+constexpr uint32_t kAbandonTimeoutMs = 8000;
+// Et la cadence à laquelle on rejoue la commande de retour, tant qu'elle n'a pas
+// pris. Rejouer un retour au login est sans danger : il est idempotent.
+constexpr uint32_t kAbandonRetryMs   = 2000;
 // 🔴 Avant ce délai, la réapparition de la fenêtre de login ne prouve RIEN :
 // elle est encore là au moment où l'on vient d'appuyer sur « Start », et elle
 // n'est détruite qu'au passage à l'écran suivant. Sans ce sursis, on conclurait
@@ -67,6 +73,12 @@ constexpr uint32_t kAuthGraceMs = 2500;
 // d'erreur — qu'on supprime. « Injoignable » et « refusé » sont donc
 // indiscernables d'ici, et prétendre trancher serait mentir au journal.
 constexpr uint32_t kUnreachableMs = 4000;
+
+// 🔴 Le char-select est ENCORE LÀ quand on tire « entrer en jeu » — le client ne
+// le détruit qu'en partant vers l'écran de chargement (mesuré : ~200 ms). Sa
+// présence ne veut donc « l'entrée a été refusée » qu'une fois ce sursis passé,
+// exactement comme kAuthGraceMs pour la fenêtre de login.
+constexpr uint32_t kEnterGraceMs = 3000;
 
 // Le temps qu'on laisse à la fenêtre de login pour finir de s'initialiser avant
 // d'écrire dedans (cf. kLogin).
@@ -105,6 +117,13 @@ enum class Step {
   // frame comme tout le reste de la séquence.
   kLeaveWanted,
   kLeaving,   // bascule demandée : on attend l'écran de connexion
+  // 🔴 Abandon EN COURS, et l'étape existe pour une seule raison : un abandon
+  // qui survient APRÈS l'authentification laisse le client devant le char-select
+  // DU DÉCOR. Passer directement à kFailed y rend la main au joueur — le voile
+  // tombe, notre char-select se dessine sur la liste du compte du décor, et une
+  // Entrée résiduelle l'y fait entrer en jeu. On referme donc d'abord, et on
+  // n'abandonne à découvert qu'une fois l'écran de connexion revenu.
+  kAbandoning,
   kFailed,    // abandon ; le motif est dans g_status
 };
 
@@ -151,6 +170,22 @@ int g_leave_retries = 0;
 constexpr int kMaxLeaveRetries = 3;
 
 char g_status[160] = {0};
+
+// Le motif d'abandon mis de côté le temps de refermer le char-select du décor
+// (cf. kAbandoning) : c'est lui qu'on affichera une fois l'écran de connexion là,
+// et non le « Fermeture de la session… » qui couvre l'opération.
+char g_fail_reason[160] = {0};
+
+// Commandes de retour déjà rejouées pour l'abandon en cours.
+int g_abandon_retries = 0;
+
+// 🔴 L'abandon a été tenté et le client n'a PAS rendu son écran de connexion.
+// Sans ce drapeau, la garde permanente (EjectManualSpectatorSession) verrait
+// toujours le char-select du décor et relancerait l'abandon, indéfiniment : un
+// voile toutes les huit secondes, sur un client dont le joueur ne peut plus rien
+// faire. On renonce donc une fois pour toutes — la session, elle, a été coupée,
+// et un char-select sans connexion ne fait plus entrer personne en jeu.
+bool g_abandon_given_up = false;
 
 void SetStatus(const char* text) {
   strncpy_s(g_status, sizeof(g_status), text, _TRUNCATE);
@@ -282,6 +317,7 @@ const char* StepName(Step step) {
     case Step::kInWorld:     return "en session";
     case Step::kLeaveWanted: return "sortie demandée";
     case Step::kLeaving:     return "sortie en cours";
+    case Step::kAbandoning:  return "abandon en cours";
     case Step::kFailed:      return "échec";
   }
   return "?";
@@ -305,6 +341,31 @@ bool ForceLeaveWorld() {
   return rag::RequestModeSwitch(0 /* login */, "login");
 }
 
+// ── Refermer le char-select du décor avant d'abandonner ──────────────────────
+// Le geste du bouton « Revenir au login » du char-select, tiré sans son écran :
+// le client se déconnecte du char-server et reconstruit sa fenêtre de connexion.
+//
+// 🔴 Et le voile TIENT pendant ce temps, puisque `kAbandoning` compte encore
+// comme `Connecting()`. C'est tout l'intérêt d'en faire une étape plutôt qu'un
+// appel isolé : entre la commande et l'écran de connexion, il s'écoule plusieurs
+// frames pendant lesquelles le char-select du décor est bel et bien à l'écran.
+// Rend FAUX si elle n'a rien tenté — l'appelant doit alors conclure lui-même.
+bool AbandonToLoginScreen(const char* reason) {
+  if (g_abandon_given_up) return false;  // déjà tenté, et le client n'a pas suivi
+  strncpy_s(g_fail_reason, sizeof(g_fail_reason), reason, _TRUNCATE);
+  g_abandon_retries = 0;
+  charsel::DriveBackToLogin();
+  // ⚠ Aucun changement de mode n'est annoncé (le client reste en CLoginMode,
+  // seul son état bouge) : le formulaire Moonlight ne se réarmerait donc pas
+  // tout seul, et le joueur retomberait sur l'écran de login NATIF. Même raison,
+  // et même geste, qu'au bouton « Revenir au login » (cf. char_select.cc).
+  if (auto* auth = Bourgeon::Instance().moonlight_auth()) {
+    auth->RearmWebLogin(/*service_select_pending=*/false);
+  }
+  GoTo(Step::kAbandoning, i18n::Tr("Fermeture de la session…"));
+  return true;
+}
+
 void Fail(const char* reason) {
   // 🔴🔴 JAMAIS d'abandon qui laisse le client DANS LE MONDE. Relâcher l'état
   // pendant qu'une session spectateur tourne, c'est en faire la partie du
@@ -322,6 +383,23 @@ void Fail(const char* reason) {
     g_leave_retries = 0;
     GoTo(Step::kLeaving, i18n::Tr("Fermeture de la session…"));
     return;
+  }
+  // 🔴🔴 Ni d'abandon qui laisse le client AUTHENTIFIÉ sur le compte du décor.
+  // Hors du monde, il ne reste qu'un écran capable de le montrer, et c'est le
+  // pire : le char-select. Relâcher là fait tomber le voile sur la liste du
+  // compte du décor — « Spectator », en toutes lettres, avec son bouton
+  // « Jouer » — et le joueur n'a qu'un clic (ou une Entrée résiduelle) à donner
+  // pour entrer en jeu sur une session qui n'est à personne.
+  //
+  // Mesuré : l'entrée en jeu n'aboutit pas, le char-select reste là, kEntering
+  // expire, et le char-select du spectateur s'affiche. C'est le seul chemin par
+  // lequel cet écran ait jamais été rendu au joueur.
+  if (native_login::CharSelectWindowPresent() ||
+      native_login::MakeCharWindowPresent()) {
+    LogError("[LoginSpectator] abandon AU CHAR-SELECT ({}) — session rendue", reason);
+    if (AbandonToLoginScreen(reason)) return;
+    // Le retour au login a déjà été tenté sans succès : on ne le rejoue pas, on
+    // relâche. La session, elle, est coupée depuis cette tentative-là.
   }
   // Rien n'a été ouvert, ou plus rien ne l'est : la place ne nous sert plus.
   // (L'abandon EN JEU est passé par ForceLeaveWorld, donc par FreezeDecor.)
@@ -448,6 +526,16 @@ void StepSequence() {
       // L'arrivée se constate dans `NotifyModeSwitch`, pas ici : c'est le client
       // qui annonce le changement de mode, et l'attendre autrement reviendrait à
       // deviner. Il ne reste qu'à renoncer si elle ne vient jamais.
+      //
+      // 🔴 Le char-select TOUJOURS LÀ passé le sursis dit l'échec bien avant le
+      // délai plein : l'entrée en jeu n'a pas pris (map-server injoignable, ou
+      // entrée refusée), et le client est resté sur l'écran du décor. Vingt-cinq
+      // secondes de voile pour apprendre ce qu'on sait au bout de trois, c'est
+      // vingt-deux secondes de plus à tenir un écran qui n'est à personne.
+      if (StepAgeMs() > kEnterGraceMs && native_login::CharSelectWindowPresent()) {
+        Fail(i18n::Tr("L'entrée en jeu n'a pas abouti."));
+        return;
+      }
       if (StepAgeMs() > kEnterTimeoutMs) {
         Fail(i18n::Tr("Le monde ne s'est pas chargé."));
       }
@@ -550,6 +638,46 @@ void StepSequence() {
       }
       return;
 
+    case Step::kAbandoning:
+      // 🔴 LA SEULE fin de l'abandon : la fenêtre de connexion est là. Même règle
+      // que la sortie du décor — on conclut sur l'EFFET de la commande, jamais
+      // sur son envoi.
+      if (native_login::LoginWindowPresent()) {
+        // Filet : la place du décor est rendue même si la déconnexion du
+        // char-server a été faite par le client lui-même (commande 10011).
+        FreezeDecor();
+        g_step = Step::kFailed;
+        g_step_ms = GetTickCount();
+        SetStatus(g_fail_reason);
+        LogError("[LoginSpectator] abandon : {} (session rendue, écran de "
+                 "connexion retrouvé)", g_fail_reason);
+        return;
+      }
+      if (StepAgeMs() > kAbandonRetryMs * (g_abandon_retries + 1) &&
+          StepAgeMs() < kAbandonTimeoutMs) {
+        ++g_abandon_retries;
+        LogError("[LoginSpectator] retour au login rejoué ({}) — charsel_wnd={} "
+                 "login_wnd={}", g_abandon_retries,
+                 native_login::CharSelectWindowPresent(),
+                 native_login::LoginWindowPresent());
+        charsel::DriveBackToLogin();
+        return;
+      }
+      // 🔴 Garde-fou, et non paresse : rester coincé ici tiendrait le voile pour
+      // toujours, donc le client entier. On relâche — mais après avoir COUPÉ, ce
+      // qui est le seul geste qui ne dépende de personne : sans session, le
+      // char-select du décor ne peut plus faire entrer qui que ce soit en jeu.
+      if (StepAgeMs() > kAbandonTimeoutMs) {
+        FreezeDecor();
+        g_abandon_given_up = true;
+        g_step = Step::kFailed;
+        g_step_ms = GetTickCount();
+        SetStatus(g_fail_reason);
+        LogError("[LoginSpectator] abandon : {} — le client n'a pas rendu son "
+                 "écran de connexion, session coupée d'office", g_fail_reason);
+      }
+      return;
+
     case Step::kOff:
     case Step::kFailed:
       return;
@@ -624,6 +752,8 @@ void Begin() {
   g_service_sent = false;
   g_frozen = false;
   g_leave_reports = 0;
+  g_abandon_retries = 0;
+  g_abandon_given_up = false;
   GoTo(Step::kService, i18n::Tr("Ouverture de la session spectateur…"));
   LogDiag("[LoginSpectator] séquence armée");
 }
@@ -809,25 +939,46 @@ void MaybeAutoStart() {
 // laisser le joueur dans un monde où il ne peut rien faire est pire que de le
 // ramener à son écran de connexion.
 //
-// ⚠ En jeu SEULEMENT. L'identifiant de compte est un global que le client pose
-// à l'acceptation du login et n'efface jamais : au retour à l'écran de
-// connexion, il porte encore celui de la session précédente — donc celui du
-// décor qui vient de se fermer. S'y fier là reviendrait à éjecter le joueur de
-// son propre login. En jeu, il est celui de la session en cours, sans ambiguïté.
+// ⚠ L'identifiant de compte est un global que le client pose à l'acceptation du
+// login et n'efface jamais : à l'écran de connexion, il porte encore celui de la
+// session précédente — donc celui du décor qui vient de se fermer. S'y fier là
+// reviendrait à éjecter le joueur de son propre login. On ne l'interroge donc
+// que sur les deux écrans où il est forcément CELUI DE LA SESSION EN COURS :
+//   · en jeu, sans ambiguïté ;
+//   · au char-select, qui n'existe qu'après une acceptation de login — laquelle
+//     vient de le réécrire.
+//
+// 🔴 Le char-select compte autant que le monde, et c'est la leçon de l'incident :
+// c'est l'écran qui PROPOSE d'entrer en jeu sur le compte du décor. Le laisser
+// au joueur, c'est lui laisser un bouton « Jouer ». Cette garde-ci rattrape tout
+// ce que `Fail` n'aurait pas prévu — un abandon relâché ailleurs, ou une arrivée
+// au char-select après coup — et la connexion À LA MAIN, qui n'a pas de séquence
+// derrière elle.
 void EjectManualSpectatorSession() {
   if (spectator::Active()) return;  // notre décor : c'est son travail
-  if (!Bourgeon::Instance().IsGameActive()) return;
   if (!IsSpectatorAccountId(rag::OwnAccountIdSafe())) return;
 
-  LogError("[LoginSpectator] session spectateur ouverte À LA MAIN (AID {}) — "
-           "fermeture", rag::OwnAccountIdSafe());
-  ForceLeaveWorld();
-  g_leave_reports = 0;
-  g_leave_retries = 0;
-  // Le même retour que celui d'un décor : voile posé le temps de la bascule,
-  // puis l'écran de connexion. Le motif s'affiche dessus.
-  GoTo(Step::kLeaving,
-       i18n::Tr("Ce compte est réservé au décor de l'écran de connexion."));
+  if (Bourgeon::Instance().IsGameActive()) {
+    LogError("[LoginSpectator] session spectateur ouverte À LA MAIN (AID {}) — "
+             "fermeture", rag::OwnAccountIdSafe());
+    ForceLeaveWorld();
+    g_leave_reports = 0;
+    g_leave_retries = 0;
+    // Le même retour que celui d'un décor : voile posé le temps de la bascule,
+    // puis l'écran de connexion. Le motif s'affiche dessus.
+    GoTo(Step::kLeaving,
+         i18n::Tr("Ce compte est réservé au décor de l'écran de connexion."));
+    return;
+  }
+
+  if (!native_login::CharSelectWindowPresent() &&
+      !native_login::MakeCharWindowPresent()) {
+    return;
+  }
+  LogError("[LoginSpectator] char-select du compte du décor (AID {}) hors "
+           "séquence — fermeture", rag::OwnAccountIdSafe());
+  AbandonToLoginScreen(
+      i18n::Tr("Ce compte est réservé au décor de l'écran de connexion."));
 }
 
 }  // namespace
