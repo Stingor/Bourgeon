@@ -57,7 +57,12 @@ class UiCaps : public Plugin {
     // montrés. Éteint, le serveur cesse de nous les diffuser — mais nos kills
     // continuent d'ALIMENTER le groupe. Ce n'est donc pas un cas dégradé.
     kMvpTracker = 1u << 2,
-    // Prochain bit libre : 1u << 3.
+    // L'album de cartes est disponible dans cette interface. Sans ce bit le
+    // serveur REFUSE toute commande d'album — et c'est voulu : le sacrifice
+    // d'une carte est irréversible, et un client natif n'a aucune surface pour
+    // montrer au joueur ce qu'il vient de payer.
+    kCardAlbum = 1u << 3,
+    // Prochain bit libre : 1u << 4.
   };
 
   void OnTick() override;

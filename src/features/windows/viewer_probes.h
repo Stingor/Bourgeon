@@ -31,6 +31,10 @@ namespace viewers {
 bool InventoryOpen();
 bool CartOpen();
 bool StorageOpen();
+// L'album de cartes n'est pas un viewer d'objets — il ne lit rien de la
+// session — mais l'inventaire lui glisse des cartes comme à l'entrepôt, et se
+// pose donc les mêmes deux questions à son sujet.
+bool AlbumOpen();
 
 // Une composition d'échoppe est-elle en cours ? Elle gèle les transferts (le
 // serveur refuserait), sans empêcher d'utiliser ni d'équiper.
@@ -41,5 +45,6 @@ bool VendingComposing();
 bool MouseOverInventory(float x, float y);
 bool MouseOverCart(float x, float y);
 bool MouseOverStorage(float x, float y);
+bool MouseOverAlbum(float x, float y);
 
 }  // namespace viewers

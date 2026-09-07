@@ -56,6 +56,7 @@ class MonsterInfoWindow;
 class ViewEquipWindow;
 class MvpTracker;
 class MvpTrackerWindow;
+class CardAlbumWindow;
 class NavigationWindow;
 class PetWindow;
 class PartyFriendWindow;
@@ -151,6 +152,10 @@ class Bourgeon {
   // par la couche de tombes de la minimap et par le masque UiCaps.
   MvpTracker* mvp_tracker();
   MvpTrackerWindow* mvp_tracker_window();
+  // Album de cartes. Lu par le masque UiCaps : sans son bit, le serveur refuse
+  // les commandes d'album — c'est ainsi que la fonctionnalité reste réservée à
+  // l'interface moderne.
+  CardAlbumWindow* card_album_window();
   // Navigation ImGui. Exposée pour l'action de raccourci `win_navigation`, pour
   // le hook qui route la native 203, et pour les liens de lieu du chat.
   NavigationWindow* navigation_window();
@@ -420,6 +425,7 @@ class Bourgeon {
   ViewEquipWindow* view_equip_window_ = nullptr;  // non-owning, lifetime tied to plugins_
   MvpTracker* mvp_tracker_ = nullptr;               // non-owning, idem
   MvpTrackerWindow* mvp_tracker_window_ = nullptr;  // non-owning, idem
+  CardAlbumWindow* card_album_window_ = nullptr;    // non-owning, idem
   NavigationWindow* navigation_window_ = nullptr;  // non-owning, idem
   PetWindow* pet_window_ = nullptr;            // non-owning, lifetime tied to plugins_
   PartyFriendWindow* party_friend_window_ = nullptr;  // idem

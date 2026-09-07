@@ -31,6 +31,7 @@ set(BOURGEON_FILES
 	"features/net_inbox.h"
 	"features/item_cell.cc"
 	"features/item_cell.h"
+	"features/equip_slot.h"
 	# La case d'un ETAT (buff/debuff) : le pendant d'item_cell pour les EFST.
 	# Trois surfaces la dessinaient chacune de leur cote.
 	"features/status_cell.cc"
@@ -114,6 +115,8 @@ set(BOURGEON_FILES
 	"features/windows/monster_info_window.h"
 	"features/systems/mvp_tracker.cc"
 	"features/systems/mvp_tracker.h"
+	"features/windows/card_album_window.cc"
+	"features/windows/card_album_window.h"
 	"features/windows/mvp_tracker_window.cc"
 	"features/windows/mvp_tracker_window.h"
 	"features/windows/navigation_window.cc"
@@ -312,6 +315,8 @@ set(BOURGEON_FILES
 	"ui/gif_anim.h"
 	"ui/qty_prompt.cc"
 	"ui/qty_prompt.h"
+	"ui/card_thumb.cc"
+	"ui/card_thumb.h"
 	"ui/align_grid.cc"
 	"ui/align_grid.h"
 	"ui/window_clamp.cc"

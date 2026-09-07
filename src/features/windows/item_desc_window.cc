@@ -2413,6 +2413,29 @@ void DrawScriptCode(const char* box_id, const std::string& raw) {
 // quel id d'item, pas seulement les cartes.
 namespace itemdesc {
 
+// Nom de base d'une carte. Simple porte publique sur GetCardDesc(), qui vit dans
+// le namespace anonyme de ce fichier avec son cache — l'album de cartes en a
+// besoin pour nommer et filtrer un catalogue de cartes qu'il ne possède pas.
+const char* CardName(uint32_t id) {
+  const CardDesc* cd = GetCardDesc(id);
+  return cd != nullptr ? cd->name : "";
+}
+
+const char* CardIllustPath(uint32_t id) {
+  const CardDesc* cd = GetCardDesc(id);
+  return cd != nullptr ? cd->illust_path : "";
+}
+
+void RenderCardTooltipFull(uint32_t id) {
+  // Même cadre que RenderCardTooltip : fond crème translucide, texte noir.
+  ImGui::PushStyleColor(ImGuiCol_PopupBg, ro::pal::kDescPopupBg);
+  ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32_BLACK);
+  ImGui::BeginTooltip();
+  RenderCardDescBody(id, "##cardtipfull", 340.0f);
+  ImGui::EndTooltip();
+  ImGui::PopStyleColor(2);
+}
+
 // Page « base de données » du site. Format confirmé en live : c'est exactement
 // l'URL du lien natif `<URL>..<INFO>url</INFO>` de la ligne 0 de la description.
 void OpenItemDbPage(uint32_t item_id) {

@@ -241,6 +241,7 @@ class MoonlightUi : public Plugin {
     kIfacePartyFrames,
     kIfacePartyFriend,
     kIfaceMvpTracker,
+    kIfaceCardAlbum,
     kIfaceTutorial,
     kIfaceCount,
   };

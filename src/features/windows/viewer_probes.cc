@@ -1,6 +1,7 @@
 #include "features/windows/viewer_probes.h"
 
 #include "bourgeon.h"
+#include "features/windows/card_album_window.h"
 #include "features/windows/cart_viewer.h"
 #include "features/windows/inventory_viewer.h"
 #include "features/windows/storage_window.h"
@@ -35,6 +36,11 @@ bool StorageOpen() {
   return storage && storage->IsOpen();
 }
 
+bool AlbumOpen() {
+  auto* album = Bourgeon::Instance().card_album_window();
+  return album && album->IsOpen();
+}
+
 bool VendingComposing() {
   auto* vending = Bourgeon::Instance().vending_window();
   return vending && vending->IsComposing();
@@ -50,6 +56,11 @@ bool MouseOverCart(float x, float y) {
 
 bool MouseOverStorage(float x, float y) {
   return Over(Bourgeon::Instance().storage_window(), x, y);
+}
+
+bool MouseOverAlbum(float x, float y) {
+  auto* album = Bourgeon::Instance().card_album_window();
+  return album && album->PointOverWindow(static_cast<int>(x), static_cast<int>(y));
 }
 
 }  // namespace viewers

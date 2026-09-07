@@ -28,6 +28,7 @@
 #include "features/windows/item_desc_window.h"  // itemdesc::RenderSimpleDesc (aperçu au survol)
 #include "features/moonlight_ui/moonlight_ui.h"  // API alootid (IsAlootId/AddAlootId/RemoveAlootId) + DrawSortModeCombo
 #include "features/windows/storage_window.h"  // PointOverViewer (dépôt par glisser vers le viewer storage)
+#include "features/windows/card_album_window.h"  // OfferFromInventory (« Vers l'album », glisser sur le classeur)
 #include "features/windows/cart_viewer.h"     // PointOverViewer (dépôt par glisser vers le viewer cart)
 #include "features/windows/vending_window.h"  // IsComposing (échoppe en cours -> transferts figés)
 #include "d3d9/d3d9_hook.h"  // Overlay_CreateTextureARGB
@@ -1671,6 +1672,11 @@ void InventoryViewer::OnRenderUI() {
         else if (viewers::StorageOpen() && viewers::MouseOverCart(drag_mouse.x, drag_mouse.y))
           ImGui::TextColored(ImVec4(0.85f, 0.15f, 0.15f, 1.0f),
                              "%s", i18n::Tr("Storage ouvert : vers le cart impossible"));
+        // Au-dessus de l'album : seule une carte de monstre y entre. Le dire
+        // pendant le glisser évite un refus muet au relâché.
+        else if (it.type != 6 && viewers::MouseOverAlbum(drag_mouse.x, drag_mouse.y))
+          ImGui::TextColored(ImVec4(0.85f, 0.15f, 0.15f, 1.0f),
+                             "%s", i18n::Tr("Seules les cartes entrent dans l'album"));
         ImGui::EndDragDropSource();
       }
       ImGui::PopStyleVar();  // WindowPadding (marge du fantôme de drag)
@@ -1828,6 +1834,15 @@ void InventoryViewer::OnRenderUI() {
                 "%s", i18n::Tr("Figé pendant la composition d'un shop, pour que le stock\n"
                       "ne bouge pas sous la fenêtre en cours."));
         }
+        // Album de cartes ouvert : une CARTE peut y aller. C'est l'album qui
+        // décide de la suite (dépôt, ou confirmation du sacrifice si sa
+        // pochette est scellée) et qui demande la quantité — d'où l'absence de
+        // prompt ici, contrairement aux entrées voisines.
+        if (it.type == 6 && viewers::AlbumOpen()) {
+          if (auto* album = Bourgeon::Instance().card_album_window()) {
+            if (ImGui::MenuItem(i18n::Tr("Vers l'album"))) album->OfferFromInventory(it.index);
+          }
+        }
         // Échange joueur-joueur : stack -> prompt quantité (comme « Jeter... »),
         // sinon ajout direct d'1 unité.
         if (TradeOpen()) {
@@ -1897,6 +1912,12 @@ void InventoryViewer::OnRenderUI() {
       if (!viewers::StorageOpen()) action = kPendToCart;
     }
     else if (viewers::MouseOverStorage(drag_mx_, drag_my_)) action = kPendToStorage;
+    // L'album de cartes : lui seul sait si c'est un dépôt ou un sacrifice, et il
+    // demande lui-même la quantité — rien à armer ici.
+    else if (viewers::MouseOverAlbum(drag_mx_, drag_my_)) {
+      if (auto* album = Bourgeon::Instance().card_album_window())
+        album->OfferFromInventory(drag_index_);
+    }
     // (over_self est déjà écarté plus haut : ici on est forcément HORS de la
     // fenêtre.) Verrou drop actif -> pas de jet au sol.
     else if (!ImGui::GetIO().WantCaptureMouse && !ReadLock(kDropLockGlobal))

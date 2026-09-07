@@ -4,6 +4,7 @@
 #include <cstring>
 
 #include "bourgeon.h"
+#include "features/windows/card_album_window.h"
 #include "features/windows/chat_window.h"
 #include "features/systems/mvp_tracker.h"
 #include "features/windows/npc_dialog_window.h"
@@ -45,6 +46,13 @@ uint32_t UiCaps::Current() {
   // est ce qui la rendra juste à sa réouverture.
   if (MvpTracker* mt = b.mvp_tracker()) {
     if (mt->config().enabled) caps |= kMvpTracker;
+  }
+  // L'album : la SURFACE existe-t-elle, pas la fenêtre est-elle ouverte. Le
+  // serveur ne diffuse rien de lui-même — il répond à des commandes — donc ce
+  // bit n'a qu'un rôle : dire qu'il y a bien de quoi montrer le résultat d'un
+  // sacrifice avant d'en accepter un.
+  if (CardAlbumWindow* ca = b.card_album_window()) {
+    if (ca->imgui_enabled()) caps |= kCardAlbum;
   }
   return caps;
 }

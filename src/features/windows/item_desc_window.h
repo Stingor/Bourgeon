@@ -65,6 +65,35 @@ void RenderSimpleDesc(uint32_t id, float wrap, const uint32_t* cards = nullptr,
                       int opt_count = 0, int refine = 0,
                       const char* display_name = nullptr, bool damaged = false);
 
+// Nom de base d'une CARTE, résolu depuis la DB carte du client (la même que celle
+// des illustrations cardBmp). Rend une chaîne vide — jamais nullptr — si l'id
+// n'est pas une carte, la DB rendant alors sa fiche « nil ».
+//
+// 🔴 C'est le SEUL chemin sûr pour nommer un item qu'on ne possède pas :
+// rag::Session::GetItemNameById() fait planter ce client (elle parcourt une
+// liste dont l'offset est faux, cf. ragnarok/session.h). L'album de cartes doit
+// nommer 912 cartes dont le joueur n'a presque aucune — d'où cette porte.
+//
+// Le pointeur vise un cache interne valide jusqu'au prochain reset de device :
+// à consommer dans la frame, pas à conserver.
+const char* CardName(uint32_t id);
+
+// Chemin CP949 de l'illustration `cardBmp` d'une carte, RELATIF au dossier
+// texture (« 유저인터페이스\cardBmp\<resname>.bmp »), tel que le client le
+// construit. Vide — jamais nullptr — si l'id n'est pas une carte. Même cache et
+// même durée de vie que CardName. L'album de cartes s'en sert pour fabriquer ses
+// propres vignettes (ui/card_thumb.h) au lieu de passer par GetCardIllust, dont
+// le cache garde chaque illustration en pleine taille pour toujours.
+const char* CardIllustPath(uint32_t id);
+
+// Le tooltip COMPLET d'une carte : nom, illustration cardBmp à sa taille
+// native et description colorée — ce que montre le survol du panneau
+// « Cartes » d'une description, sans son rappel de gestes (ceux de l'appelant
+// ne sont pas ceux d'un lien). BeginTooltip/EndTooltip compris. L'album de
+// cartes s'en sert : son survol doit montrer la carte en grand, pas la vignette
+// réduite de l'aperçu simple.
+void RenderCardTooltipFull(uint32_t id);
+
 // Ouvre la page « base de données » du site pour cet item, dans le navigateur.
 // L'URL est celle du lien natif `<URL>…<INFO>url</INFO>` de la ligne 0 des
 // descriptions (`index.php?page=itemdb&itemid=<id>`), vérifiée en jeu — elle est

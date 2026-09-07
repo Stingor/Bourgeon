@@ -89,6 +89,8 @@ constexpr uint16_t kMvpCmd         = 0x0F30;  // CZ_BOURGEON_MVP_CMD (carnet de 
 constexpr uint16_t kMvpState       = 0x0F31;  // ZC_BOURGEON_MVP_STATE (catalogue / instantané / delta / favoris)
 constexpr uint16_t kMvpGroup       = 0x0F32;  // ZC_BOURGEON_MVP_GROUP (membres, invitation, refus)
 constexpr uint16_t kPartyShare     = 0x0F35;  // ZC_BOURGEON_PARTY_SHARE (qui est hors du partage d'EXP, et pourquoi)
+constexpr uint16_t kCardAlbum      = 0x0F33;  // ZC_BOURGEON_CARD_ALBUM (catalogue COMPLET + réserve + bit débloqué)
+constexpr uint16_t kCardAlbumCmd   = 0x0F34;  // CZ_BOURGEON_CARD_ALBUM_CMD (rafraîchir / sacrifier / déposer / retirer)
 
 // --- PROCHAIN OPCODE LIBRE : la valeur de kNextFree ci-dessous ---------------
 // Pour ajouter un opcode custom : prendre la valeur ci-dessous, l'incrémenter,

@@ -45,6 +45,7 @@
 #include "features/overlays/skill_bar.h"
 #include "features/overlays/status_icon_bar.h"
 #include "features/overlays/party_frames.h"
+#include "features/windows/card_album_window.h"
 #include "features/windows/party_friend_window.h"
 #include "features/overlays/target_frame.h"
 #include "features/windows/storage_window.h"
@@ -109,6 +110,7 @@ constexpr NavEntry kIfaceSections[] = {
     {MoonlightUi::kIfaceTargetFrame, "target_frame", "Fenêtre de cible"},
     {MoonlightUi::kIfacePartyFrames, "party_frames", "Groupe (grille)"},
     {MoonlightUi::kIfacePartyFriend, "party_friend", "Groupe / Amis"},
+    {MoonlightUi::kIfaceCardAlbum,   "card_album",   "Album de cartes"},
     {MoonlightUi::kIfaceNpc,         "npc",          "Fenêtre NPC"},
     {MoonlightUi::kIfaceMonsterInfo, "monster_info", "Fiche de monstre"},
     {MoonlightUi::kIfacePet,         "pet",          "Fiche de pet"},
@@ -426,6 +428,19 @@ void MoonlightUi::DrawInterfacePanel() {
       if (iface_nav == kIfacePartyFriend) {
         if (auto* pfw = Bourgeon::Instance().party_friend_window()) {
           if (pfw->DrawSettings()) SaveSettings();
+        } else {
+          ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
+        }
+      }
+
+      // ── Album de cartes ───────────────────────────────────────────────────
+      // Éteindre ce réglage ne masque pas seulement la fenêtre : le bit UiCaps
+      // tombe et le SERVEUR cesse d'accepter les commandes d'album. C'est voulu —
+      // un sacrifice de carte est irréversible et n'a pas à partir d'un client
+      // qui n'a plus de quoi en montrer le résultat.
+      if (iface_nav == kIfaceCardAlbum) {
+        if (auto* album = Bourgeon::Instance().card_album_window()) {
+          if (album->DrawSettings()) SaveSettings();
         } else {
           ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
         }

@@ -57,6 +57,7 @@
 #include "features/windows/view_equip_window.h"
 #include "features/windows/navigation_window.h"
 #include "features/overlays/party_frames.h"
+#include "features/windows/card_album_window.h"
 #include "features/windows/party_friend_window.h"
 #include "features/windows/pet_window.h"
 #include "features/windows/weapon_refine_window.h"
@@ -826,6 +827,19 @@ const moonlight_ui::SettingDesc kTargetStatusSettings[] = {
      MLUI_FIELD(target_frame, st_col_sweep_), MLUI_LITERAL_ARGB(0x8C000000)},
 };
 
+
+// Album de cartes. ⚠ Défaut à TRUE, contrairement aux bascules des viewers
+// (storage_imgui, cart_imgui… toutes à false) — et la différence est de fond :
+// celles-là choisissent entre notre fenêtre et une fenêtre NATIVE équivalente,
+// donc rester en natif est un défaut légitime. L'album n'a pas de natif : à
+// false il n'existerait pour personne, et le réglage ne servirait qu'à éteindre.
+const moonlight_ui::SettingDesc kCardAlbumSettings[] = {
+    {"card_album_imgui", SType::kBool,
+     MLUI_FIELD(card_album_window, imgui_enabled()), MLUI_LITERAL(bool, true)},
+    // Opt-in, OFF : ce réglage AGIT (il consomme une carte sans demander).
+    {"card_album_auto_sacrifice", SType::kBool,
+     MLUI_FIELD(card_album_window, auto_sacrifice()), MLUI_LITERAL(bool, false)},
+};
 
 const moonlight_ui::SettingDesc kPartyFriendSettings[] = {
     {"partyfriend_imgui", SType::kBool,
@@ -2231,6 +2245,7 @@ void MoonlightUi::LoadSettings() {
     moonlight_ui::ReadSettings(ui, kStorageSettings);
     moonlight_ui::ReadSettings(ui, kBankSettings);
     moonlight_ui::ReadSettings(ui, kPartyFriendSettings);
+    moonlight_ui::ReadSettings(ui, kCardAlbumSettings);
     moonlight_ui::ReadSettings(ui, kPartyFramesSettings);
     moonlight_ui::ReadSettings(ui, kTargetStatusSettings);
     moonlight_ui::ReadSettings(ui, kChatRoomSettings);
@@ -2445,6 +2460,7 @@ void MoonlightUi::WriteSettingsFile() {
   moonlight_ui::WriteSettings(out, kStorageSettings);
   moonlight_ui::WriteSettings(out, kBankSettings);
   moonlight_ui::WriteSettings(out, kPartyFriendSettings);
+  moonlight_ui::WriteSettings(out, kCardAlbumSettings);
   moonlight_ui::WriteSettings(out, kPartyFramesSettings);
   moonlight_ui::WriteSettings(out, kTargetStatusSettings);
   moonlight_ui::WriteSettings(out, kChatRoomSettings);

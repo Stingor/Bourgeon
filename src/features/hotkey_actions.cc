@@ -12,6 +12,7 @@
 #include "features/windows/craft_atlas.h"
 #include "features/windows/game_menu.h"
 #include "features/windows/hotkey_settings.h"
+#include "features/windows/card_album_window.h"
 #include "features/windows/mvp_tracker_window.h"
 #include "features/windows/navigation_window.h"
 #include "features/staff_gate.h"  // IsStaff (actions réservées)
@@ -70,6 +71,10 @@ const Action kActions[] = {
     // client) ni de défaut proposé : toute touche libre est déjà prise par
     // quelqu'un, le joueur choisit la sienne.
     {"win_mvp_tracker",  "Carnet de chasse MVP",    ActionGroup::kWindows, 0, {}},
+    // Album de cartes. Comme le carnet : aucune fenêtre native n'existe pour ça,
+    // donc rien à router, et pas de touche par défaut à voler à un raccourci déjà
+    // en place.
+    {"win_card_album",   "Album de cartes",         ActionGroup::kWindows, 0, {}},
     {"tool_craft_atlas", "Atlas des recettes",      ActionGroup::kTools,   0, {}},
     {"tool_palette",     "Style du personnage",     ActionGroup::kTools,   0, {}},
     // Ciblage clavier. 🔴 AUCUN défaut n'est proposé (`{}`), et c'est délibéré :
@@ -261,6 +266,13 @@ bool Invoke(const char* id) {
   if (std::strcmp(id, "win_navigation") == 0) {
     if (auto* navigation = bourgeon.navigation_window()) {
       navigation->Toggle();
+      return true;
+    }
+    return false;
+  }
+  if (std::strcmp(id, "win_card_album") == 0) {
+    if (auto* album = bourgeon.card_album_window()) {
+      album->Toggle();
       return true;
     }
     return false;

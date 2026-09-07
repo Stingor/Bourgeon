@@ -78,6 +78,7 @@
 #include "features/windows/monster_info_window.h"
 #include "features/windows/view_equip_window.h"
 #include "features/systems/mvp_tracker.h"
+#include "features/windows/card_album_window.h"
 #include "features/windows/mvp_tracker_window.h"
 #include "features/windows/navigation_window.h"
 #include "features/fx/style_sync.h"
@@ -174,6 +175,7 @@ MonsterInfoWindow* Bourgeon::monster_info() { return monster_info_; }
 ViewEquipWindow* Bourgeon::view_equip_window() { return view_equip_window_; }
 MvpTracker* Bourgeon::mvp_tracker() { return mvp_tracker_; }
 MvpTrackerWindow* Bourgeon::mvp_tracker_window() { return mvp_tracker_window_; }
+CardAlbumWindow* Bourgeon::card_album_window() { return card_album_window_; }
 NavigationWindow* Bourgeon::navigation_window() { return navigation_window_; }
 PetWindow* Bourgeon::pet_window() { return pet_window_; }
 PartyFriendWindow* Bourgeon::party_friend_window() { return party_friend_window_; }
@@ -1330,6 +1332,14 @@ void Bourgeon::LoadPlugins() {
     auto mvp_tracker_window = std::make_unique<MvpTrackerWindow>();
     mvp_tracker_window_ = mvp_tracker_window.get();
     plugins_.emplace_back(std::move(mvp_tracker_window));
+  }
+  {
+    // Album de cartes : un conteneur qui vit hors du système de storage, donc
+    // sans le plafond de 600 slots. Sa liste ne vient QUE du serveur (ZC 0x0F33),
+    // jamais du modèle de session natif.
+    auto card_album_window = std::make_unique<CardAlbumWindow>();
+    card_album_window_ = card_album_window.get();
+    plugins_.emplace_back(std::move(card_album_window));
   }
   {
     auto item_obtain_toast = std::make_unique<ItemObtainToast>();
