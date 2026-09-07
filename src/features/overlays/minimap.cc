@@ -245,6 +245,13 @@ constexpr unsigned kVpBlinkMs    = 1000;
 
 constexpr int kMaxMarkers = 64;
 
+// Le canevas de secours quand la carte n'a PAS de bitmap. 512 n'est pas un
+// nombre choisi : c'est la taille de 823 des 877 images du client (§4 bis de
+// docs/minimap_re.md), donc le repère dans lequel le reste du calcul raisonne
+// déjà. Seul son RAPPORT compte ici — il rend la zone de dessin carrée, comme
+// une vraie image l'aurait fait.
+constexpr float kFallbackCanvas = 512.0f;
+
 // Quelle famille d'arbre on parcourt : les trois n'ont pas la même charge utile
 // derrière la clé.
 enum class TreeKind { kPosColor, kQuest, kViewpoint };
@@ -968,7 +975,17 @@ void Minimap::OnRenderUI() {
     if (!(zoom >= kZoomMin)) zoom = kZoomMin;  // attrape aussi un NaN du YAML
     if (zoom > kZoomMax) zoom = kZoomMax;
 
-    if (tex.tex && tex.w > 0 && tex.h > 0) {
+    // 🔴 Le cadrage et les marqueurs ne dépendent PAS du bitmap de carte. Le
+    // natif ne teste jamais le retour de `SpriteRes_GetOrLoadByName`
+    // (`GameMode_DrawMiniMap` 0x00c66ab0) : il pose son quad, puis la flèche du
+    // joueur, puis `GameMode_DrawMiniMapPartyGuildQuestMarkers`, image ou pas.
+    // Les avoir imbriqués dans le test de texture vidait la minimap ENTIÈRE sur
+    // toute carte sans bitmap — dont 30 des 39 cartes d'instance de Moonlight
+    // (Endless Tower, Orc Memory, Bio Lab…, relevé sur les 877 images du
+    // client) : plus de carte, mais plus de coéquipiers non plus, précisément
+    // là où on les cherche.
+    const bool have_tex = tex.tex && tex.w > 0 && tex.h > 0;
+    {
       // ── Cadrage ──────────────────────────────────────────────────────────
       // u part de la gauche ; v part du HAUT, et la ligne 0 du bitmap est la
       // cellule de plus grand Y — d'où l'inversion, celle du natif.
@@ -1000,8 +1017,10 @@ void Minimap::OnRenderUI() {
       // soit la forme de la carte. Le contenu est donc ÉTIRÉ pour remplir un
       // canevas carré, et c'est cet étirement que `u = cellX/largeur` défait.
       // Le calcul ci-dessous ne sert qu'au cas du zoom en bord de carte.
-      const float sub_w = tex.w * (u1 - u0);
-      const float sub_h = tex.h * (v1 - v0);
+      const float canvas_w = have_tex ? static_cast<float>(tex.w) : kFallbackCanvas;
+      const float canvas_h = have_tex ? static_cast<float>(tex.h) : kFallbackCanvas;
+      const float sub_w = canvas_w * (u1 - u0);
+      const float sub_h = canvas_h * (v1 - v0);
       const float scale = (sub_w >= sub_h) ? side / sub_w : side / sub_h;
       const float draw_w = sub_w * scale;
       const float draw_h = sub_h * scale;
@@ -1014,9 +1033,31 @@ void Minimap::OnRenderUI() {
       if (map_a > 100) map_a = 100;
       const ImU32 tint = IM_COL32(255, 255, 255, (map_a * 255) / 100);
 
+      // Le filtre est posé dans les DEUX cas : les marqueurs qui suivent sont
+      // eux aussi des bitmaps, et l'état ambiant d'une draw list dépend de ce
+      // qui a été dessiné avant elle.
       dl->AddCallback(ImCb_MapFilter, nullptr);
-      dl->AddImage(static_cast<ImTextureID>(reinterpret_cast<uintptr_t>(tex.tex)),
-                   p0, p1, ImVec2(u0, v0), ImVec2(u1, v1), tint);
+      if (have_tex) {
+        dl->AddImage(static_cast<ImTextureID>(reinterpret_cast<uintptr_t>(tex.tex)),
+                     p0, p1, ImVec2(u0, v0), ImVec2(u1, v1), tint);
+      } else {
+        // Le fond de remplacement, dessiné AVANT les marqueurs : il dit ce qui
+        // manque sans rien cacher de ce qu'on est venu lire.
+        //
+        // Deux cas distincts, pas un gabarit commun : « carte inconnue » n'a pas
+        // de `%s` à remplir, et lui passer `map` quand même serait un format qui
+        // ment sur ses arguments.
+        char line[128];
+        if (have_map)
+          _snprintf_s(line, sizeof(line), _TRUNCATE, "%s\n%s",
+                      i18n::Tr("Pas d'image pour"), map);
+        else
+          strncpy_s(line, sizeof(line), i18n::Tr("Carte inconnue"), _TRUNCATE);
+        const ImVec2 sz = ImGui::CalcTextSize(line);
+        dl->AddText(ImVec2(origin.x + (side - sz.x) * 0.5f,
+                           origin.y + (side - sz.y) * 0.5f),
+                    ImGui::GetColorU32(ImGuiCol_TextDisabled), line);
+      }
       if (snap.ok) {
         float half = static_cast<float>(g_cfg.marker_px);
         if (half < 2.0f) half = 2.0f;
@@ -1452,20 +1493,6 @@ void Minimap::OnRenderUI() {
 
       dl->AddCallback(ImCb_RestorePoint, nullptr);
       dl->AddRect(p0, p1, IM_COL32(0, 0, 0, 160));
-    } else {
-      // Deux cas distincts, pas un gabarit commun : « carte inconnue » n'a pas
-      // de `%s` à remplir, et lui passer `map` quand même serait un format qui
-      // ment sur ses arguments.
-      char line[128];
-      if (have_map)
-        _snprintf_s(line, sizeof(line), _TRUNCATE, "%s\n%s",
-                    i18n::Tr("Pas d'image pour"), map);
-      else
-        strncpy_s(line, sizeof(line), i18n::Tr("Carte inconnue"), _TRUNCATE);
-      const ImVec2 sz = ImGui::CalcTextSize(line);
-      dl->AddText(ImVec2(origin.x + (side - sz.x) * 0.5f,
-                         origin.y + (side - sz.y) * 0.5f),
-                  ImGui::GetColorU32(ImGuiCol_TextDisabled), line);
     }
 
     // « carte,x,y » — la forme sous laquelle un joueur de RO lit et annonce une

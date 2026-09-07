@@ -244,6 +244,28 @@ miroir d'une inversion, et ce qui permet de trancher sans debugger.
 À reprendre : l'**angle** du natif (`θ = 180 − acteur+0x4C`), mais une rotation
 d'écran normale. Constaté en jeu le 2026-08-15 sur la minimap Bourgeon.
 
+### 2.3 bis 🔴 Le bitmap de carte manquant n'arrête RIEN
+
+`GameMode_DrawMiniMap` ne teste **jamais** le retour de
+`SpriteRes_GetOrLoadByName` : il passe le handle tel quel à `sub_A74E90` (quad
+vide si nul), puis dessine la flèche du joueur et appelle
+`GameMode_DrawMiniMapPartyGuildQuestMarkers` **inconditionnellement**. Sur une
+carte sans image, le radar natif est donc vide de fond mais garde ses marqueurs.
+
+Ça compte parce que le cas est fréquent : sur les 39 cartes d'instance de
+`db/import/instance_db.yml`, **30 n'ont aucun bitmap** dans les GRF du client
+(relevé 2026-09-07 sur les 877 images de `data\texture\유저인터페이스\map\`) —
+`1@tower`, `1@orcs`, `1@lhz`, `1@cata`, `1@face`, `1@ecl`, `1@ma_*`… Seules
+`1@nyd`, `1@mist`, `1@sara`, `1@pump`, `1@glast`, `1@gl_k`, `1@mcd`, `1@cash` et
+`1@new` en ont une. Le client reçoit bien le nom de la carte SOURCE
+(`map_mapid2mapname` résout l'instance côté rAthena), pas le nom interne
+`mapid#instance`, donc c'est un vrai manque d'art, pas un nom mal formé.
+
+⚠ La minimap Bourgeon imbriquait tous ses marqueurs dans son test de texture :
+elle était donc entièrement muette dans ces instances, groupe compris. Corrigé
+le 2026-09-07 — le cadrage part d'un canevas carré de convention quand l'image
+manque, et le message « Pas d'image pour … » devient un fond sous les marqueurs.
+
 ### 2.4 Ce que la fonction dessine, dans l'ordre
 
 | # | source | genre | demi | bitmap / couleur |
