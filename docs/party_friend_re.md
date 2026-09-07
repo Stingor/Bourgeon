@@ -434,3 +434,106 @@ rejeu à chaque map. Le drapeau est disponible pour eux le jour où le symptôme
 | `0x015FF908/90C` = « mes coords écran » | **`g_Own_Hp` / `g_Own_MaxHp`** |
 
 Leçon : les deux venaient d'un **nom de symbole faux** (`g_SkillInfoMgr`) propagé sans mesure.
+
+## 10. Qui est HORS du partage d'EXP — ZC 0x0F35 (2026-09-07)
+
+**Le symptôme.** Un joueur signale que « l'expérience à partage égal ne fonctionne pas » : deux
+personnages niveau 57 dans le même groupe, `@showexp` actif sur l'un, et seule l'EXP de **ses
+propres** kills s'affiche. Rien de ce que gagne l'autre n'apparaît.
+
+**Ce n'était pas l'interface.** Le partage passe par `party_exp_share` (moonlight
+`src/map/party.cpp`), qui écarte des membres avant de diviser :
+
+```c
+if( (sd[c] = p->data[i].sd) == nullptr || sd[c]->m != src->m || party_share_reason( *sd[c] ) != 0 )
+    continue;
+```
+
+Un membre écarté ne reçoit **aucun** appel à `pc_gainexp` — donc pas d'EXP, et pas davantage la
+ligne `@showexp`, qui n'est émise qu'à la toute fin de `pc_gainexp`. L'absence de message est la
+**conséquence**, jamais la cause : la chaîne d'affichage est strictement la même que pour ses
+propres kills.
+
+🔴 **La cause était dans la configuration, et pas celle qu'on lit d'abord.** `conf/battle/party.conf`
+porte `idle_no_share: no`, mais `conf/import/battle_conf.txt` l'écrase — et c'est l'import qui fait
+foi :
+
+| Réglage | Valeur effective | Effet |
+|---|---|---|
+| `idle_no_share` | **15** | exclu du partage après 15 s d'inactivité |
+| `idletime_option` | **0x1F** | seuls marche / skill / objet / attaque comptent comme activité (défaut rAthena : `0x7C1F`) |
+
+Avec `0x1F`, parler dans le chat, s'asseoir, faire une émote ou taper une commande ne réarment
+**pas** le compteur. Le cas du double-client — un personnage qui accompagne sans rien faire — franchit
+les 15 s en permanence. À noter : quand le passif est écarté, `c` retombe à 1 et l'actif encaisse
+100 % ; le joueur ne perd rien, il ne partage simplement pas.
+
+### Ce que le client ne peut pas savoir
+
+`sd->idletime` n'est écrit que par les handlers de paquets du map-server : un client ne voit rien de
+ce que font les autres, et ne connaît pas non plus le seuil configuré. D'où un paquet dédié.
+
+**ZC_BOURGEON_PARTY_SHARE (0x0F35)** — `[type:2][len:2][idle_secs:2][count:2]` puis
+`count × { aid:4, flags:1 }`.
+
+| Bit | Nom | Sens |
+|---|---|---|
+| 0x01 | `BOURGEON_PSHARE_IDLE` | inactif depuis ≥ `idle_no_share` secondes |
+| 0x02 | `BOURGEON_PSHARE_DEAD` | mort |
+| 0x04 | `BOURGEON_PSHARE_BUSY` | salon de discussion, échoppe, achat automatique |
+
+`idle_secs` porte la valeur **effective** de `battle_config.idle_no_share` : le client écrit
+« inactif depuis plus de 15 s » sans jamais recopier ce 15, qui vit dans `conf/import/`. À zéro, la
+règle est éteinte côté serveur et le client ne dit rien de l'inactivité de personne.
+
+🔴 **La carte n'est pas dans le paquet, et c'est voulu.** `party_exp_share` compare la carte de
+chaque membre à celle du **monstre** : la condition n'existe pas hors d'un kill donné, le serveur ne
+peut donc pas l'annoncer d'avance. Le client, lui, porte déjà la carte de chacun dans sa liste et la
+compare à la sienne (bit local `kShareOtherMap = 0x80`, choisi au-dessus des bits serveur). Chacun
+dit ce qu'il sait.
+
+🔴 **Une seule source de vérité.** `party_share_reason` n'est pas une copie du test faite pour
+l'affichage : c'est le test lui-même, sorti de la boucle, et `party_exp_share` l'appelle. Deux
+lectures séparées auraient fini par diverger, et l'écran aurait alors annoncé le contraire de ce que
+fait le partage.
+
+### Émission et réception
+
+Le paquet est poussé par `party_send_share_state`, greffé sur `party_send_xy_timer` (déjà à
+`party_update_interval`, 1 s), et **uniquement quand l'état change** : un groupe dont tout le monde
+tape n'émet rien. Le vecteur mémorisé (`party_data::share_seen`) porte le `char_id` à côté du
+drapeau, si bien qu'une arrivée, un départ ou une déconnexion suffisent à déclencher un renvoi —
+rien à câbler dans les chemins de join/leave. Quand aucun membre n'est un client Bourgeon, on
+ressort **sans** mémoriser, pour que le premier à rejoindre reçoive l'état au tour suivant.
+
+⚠ **Deux régimes de réception dans le même `HandlePacket`.** `RegisterReplaceOpcode` (les deux
+demandes reçues) cadre `data` après les 2 octets d'opcode ; `RegisterRecvOpcode` (ce paquet-ci) le
+cadre après `[opcode:2][longueur:2]`. Lire l'un avec le cadrage de l'autre décale tout de deux
+octets, et le premier champ y ressemble encore à une valeur plausible : rien ne planterait, l'écran
+mentirait. D'où le traitement séparé, en tête de la méthode.
+
+⚠ Ce paquet porte l'état **complet** du groupe et **remplace** ce qu'on savait — à l'inverse
+d'`EntityLooks`, qui accumule. Un membre absent de la liste reçue n'est pas « inconnu » : il n'est
+plus dans le groupe.
+
+### Ce qui s'affiche
+
+Trois endroits, et seulement quand l'option EXP du groupe est sur **Partagée** (en « chacun pour
+soi », personne n'est écarté de quoi que ce soit) :
+
+1. une marque **`-EXP`** orangée sur la ligne du membre, à gauche de la pastille de statut, avec la
+   raison en infobulle. Dessinée au draw list et non posée comme widget : `DrawStatusBadge` a déjà
+   consommé toute la place restante de la ligne, un second appel déborderait du bord droit. Les
+   icônes d'état se rangent à sa gauche ;
+2. une ligne dans l'infobulle de la ligne ;
+3. la liste nominative sous « Réglages du groupe », **hors** du grisage des non-chefs : c'est un
+   constat, pas un réglage, et un simple membre a autant besoin de savoir qu'il ne touche rien.
+
+Une seule raison est montrée, la plus actionnable d'abord — un inactif n'a qu'à jouer, un vendeur
+qu'à fermer son échoppe, un mort n'a rien à corriger.
+
+### Non touché
+
+`party_share_loot` et `party_sub_count` répètent le même test d'inactivité pour le **butin** et le
+comptage. Ils sont hors sujet ici et n'ont pas été branchés sur `party_share_reason` : le rapport
+portait sur l'EXP, et élargir aurait changé du comportement sans qu'on l'ait demandé.

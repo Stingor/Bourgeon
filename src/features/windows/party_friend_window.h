@@ -412,6 +412,49 @@ class PartyFriendWindow : public Plugin {
   // rien annoncer (ce n'est pas un changement, c'est une prise de connaissance).
   bool opts_known_  = false;
 
+  // ── Qui, dans le groupe, est HORS du partage d'EXP (ZC 0x0F35) ────────────
+  //
+  // 🔴 LE CLIENT NE PEUT PAS LE DÉDUIRE, ET C'EST TOUT LE PROBLÈME. Le serveur
+  // écarte silencieusement du partage les membres inactifs, morts ou en échoppe
+  // (`party_exp_share`) ; un membre écarté ne reçoit AUCUN gain — donc pas non
+  // plus la ligne de `@showexp`, qui n'est émise qu'au bout de `pc_gainexp`.
+  // Rien nulle part ne le disait, et le joueur en concluait que le partage à
+  // parts égales était cassé (rapport de bug du 2026-09-07). L'inactivité se
+  // mesure sur `sd->idletime`, que seul le map-server tient, et le seuil vit
+  // dans sa configuration : les deux ARRIVENT par ce paquet, aucun des deux ne
+  // se recopie ici.
+  //
+  // ⚠ Le paquet porte l'état COMPLET du groupe et REMPLACE ce qu'on savait —
+  // à l'inverse d'EntityLooks, qui accumule. Un membre absent de la liste reçue
+  // n'est pas « inconnu » : il n'est plus dans le groupe.
+  void HandleShareState(const uint8_t* data, uint16_t len);
+
+  struct ShareRow {
+    uint32_t aid   = 0;
+    uint8_t  flags = 0;  // miroir de e_bourgeon_party_share (serveur)
+  };
+  std::vector<ShareRow> share_;
+  // Le seuil d'inactivité EN SECONDES, tel que le serveur l'applique.
+  // 🔴 0 = la règle est ÉTEINTE côté serveur : ne rien dire alors de
+  // l'inactivité de qui que ce soit, sous peine d'annoncer une exclusion qui
+  // n'a pas lieu.
+  int  share_idle_secs_ = 0;
+  // Faux tant qu'aucun paquet n'est arrivé. Une fenêtre muette vaut mieux
+  // qu'une fenêtre qui affirme « tout le monde reçoit sa part » sans en rien
+  // savoir.
+  bool share_known_     = false;
+
+  // Les raisons qui écartent CE membre, ou 0 s'il reçoit bien sa part. Ajoute
+  // la CARTE aux raisons venues du serveur : elle ne voyage pas dans le paquet
+  // (cf. le .cc), et c'est ici qu'on la connaît.
+  uint8_t ShareFlagsFor(const rag::social::Entry& row) const;
+  // Compose la raison en toutes lettres. Rend false s'il n'y en a aucune.
+  bool ShareReasonText(uint8_t flags, char* out, size_t n) const;
+  // La marque « -EXP », posée à GAUCHE de la pastille de statut. Rend la largeur
+  // qu'elle occupe, marge comprise (0 si rien n'est dessiné) : les icônes
+  // d'état viennent se ranger à sa gauche.
+  float DrawShareMark(float right, float top, uint8_t flags, bool* hovered);
+
   // Lignes de chat en attente. Comme les actions, elles partent HORS de la frame
   // ImGui (FlushPending) — écrire dans le chat rejoue du code natif.
   std::vector<std::string> chat_queue_;

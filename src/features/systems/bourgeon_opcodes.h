@@ -88,6 +88,7 @@ constexpr uint16_t kLooks          = 0x0F2F;  // ZC_BOURGEON_LOOKS (aid + job + 
 constexpr uint16_t kMvpCmd         = 0x0F30;  // CZ_BOURGEON_MVP_CMD (carnet de chasse MVP : toutes les commandes)
 constexpr uint16_t kMvpState       = 0x0F31;  // ZC_BOURGEON_MVP_STATE (catalogue / instantané / delta / favoris)
 constexpr uint16_t kMvpGroup       = 0x0F32;  // ZC_BOURGEON_MVP_GROUP (membres, invitation, refus)
+constexpr uint16_t kPartyShare     = 0x0F35;  // ZC_BOURGEON_PARTY_SHARE (qui est hors du partage d'EXP, et pourquoi)
 
 // --- PROCHAIN OPCODE LIBRE : la valeur de kNextFree ci-dessous ---------------
 // Pour ajouter un opcode custom : prendre la valeur ci-dessous, l'incrémenter,
@@ -95,5 +96,5 @@ constexpr uint16_t kMvpGroup       = 0x0F32;  // ZC_BOURGEON_MVP_GROUP (membres,
 // Aucune vérification de collision nécessaire : toute la plage 0x0F00..0x0FFF
 // est hors de la table du client (garantie flag=-1 = variable). Champ libre.
 // (0x0F00/0x0F01 libérés — anciennes valeurs tech data avant regroupement.)
-constexpr uint16_t kNextFree    = 0x0F33;
+constexpr uint16_t kNextFree    = 0x0F36;
 }  // namespace bopcodes

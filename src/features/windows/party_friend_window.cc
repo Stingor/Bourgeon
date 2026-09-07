@@ -14,6 +14,7 @@
 #include "features/overlays/party_frames.h"      // le cache de SP, partagé
 #include "features/overlays/target_frame.h"      // cibler par le chemin clavier
 #include "features/status_cell.h"                // le rendu d'UNE case d'état
+#include "features/systems/bourgeon_opcodes.h"  // ZC 0x0F35 : l'état du partage d'EXP
 #include "features/systems/entity_looks.h"       // l'apparence, hors de portée
 #include "features/systems/status_effects.h"     // les buffs, lus au fil du réseau
 #include "features/windows/entity_context_menu.h"  // le menu du personnage
@@ -82,6 +83,24 @@ constexpr int kMsgPickEach    = 0x121;  // « Each Take »
 constexpr int kMsgPickShared  = 0x122;  // « Party Share »
 constexpr int kMsgDivEach     = 0x2e3;  // « Individual »
 constexpr int kMsgDivShared   = 0x2e4;  // « Shared »
+
+// ── Qui est HORS du partage d'EXP (ZC 0x0F35) ────────────────────────────────
+//
+// ⚠ Miroir EXACT de `e_bourgeon_party_share` (moonlight packets_struct.hpp).
+constexpr uint16_t kOpPartyShare = bopcodes::kPartyShare;
+constexpr int kShareEntryBytes = 5;  // { aid:4, flags:1 }
+constexpr uint8_t kShareIdle = 0x01;  // inactif depuis >= idle_no_share secondes
+constexpr uint8_t kShareDead = 0x02;
+constexpr uint8_t kShareBusy = 0x04;  // salon, échoppe ou achat automatique
+// 🔴 CELUI-CI NE VIENT PAS DU SERVEUR, ET C'EST VOULU. `party_exp_share` compare
+// la carte de chaque membre à celle du MONSTRE : la condition n'existe pas hors
+// d'un kill donné, le serveur ne peut donc pas l'annoncer d'avance. Nous, nous
+// avons la carte de chacun sous les yeux, et nous la comparons à la NÔTRE — ce
+// qui est précisément la question que se pose le joueur (« est-ce qu'il touche
+// quelque chose quand JE tue ? »).
+// Bit choisi au-dessus de ceux du serveur pour qu'un ajout de son côté ne vienne
+// pas le percuter.
+constexpr uint8_t kShareOtherMap = 0x80;
 
 // Les deux paquets qui DEMANDENT quelque chose au joueur.
 // ⚠ 0x02C6 et non 0x00FE : le serveur bascule dès PACKETVER >= 20070821.
@@ -198,6 +217,12 @@ PartyFriendWindow::PartyFriendWindow() {
   const auto claim = [this] { return imgui_enabled_; };
   Bourgeon::Instance().RegisterReplaceOpcode(kOpPartyJoinReq, claim);
   Bourgeon::Instance().RegisterReplaceOpcode(kOpFriendReq, claim);
+
+  // L'état du partage d'EXP, lui, est un opcode À NOUS : au-dessus de l'opcode
+  // max du client, donc hors de sa table de dispatch, et livré par le
+  // reader-hook. Pas de prédicat : il n'y a aucun handler natif à qui rendre la
+  // main, et le serveur ne l'envoie de toute façon qu'aux clients Bourgeon.
+  Bourgeon::Instance().RegisterRecvOpcode(kOpPartyShare);
 }
 
 // 🔴 FIL RÉSEAU : on ne fait que copier. Le décodage a lieu dans HandlePacket,
@@ -209,7 +234,21 @@ void PartyFriendWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data,
 
 void PartyFriendWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
                                      uint16_t len) {
-  // `data` commence APRÈS les 2 octets d'opcode (régime RegisterReplaceOpcode).
+  // 🔴🔴 DEUX RÉGIMES DE RÉCEPTION DANS LA MÊME MÉTHODE, ET ILS NE CADRENT PAS
+  // `data` AU MÊME ENDROIT.
+  //   · RegisterReplaceOpcode (les deux demandes reçues) : `data` commence après
+  //     les 2 octets d'OPCODE — la longueur, quand il y en a une, fait partie du
+  //     corps.
+  //   · RegisterRecvOpcode (notre 0x0F35) : `data` commence après
+  //     [opcode:2][longueur:2] — la longueur est déjà consommée.
+  // Lire l'un avec le cadrage de l'autre décale tout de deux octets, et le
+  // premier champ y ressemble encore à une valeur plausible : rien ne planterait,
+  // l'écran mentirait. D'où le traitement séparé, ici, en tête.
+  if (opcode == kOpPartyShare) {
+    HandleShareState(data, len);
+    return;
+  }
+
   char name[32] = {0};
   if (opcode == kOpPartyJoinReq) {
     // ZC_PARTY_JOIN_REQ { partyid:4, groupName[24] } — le nom est celui du
@@ -242,6 +281,145 @@ void PartyFriendWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
   // parce que quelqu'un vous invite serait plus intrusif que ce qu'on remplace.
 }
 
+// ── L'état du partage d'EXP, poussé par le serveur ───────────────────────────
+//
+// [idle_secs:2][count:2] puis count × { aid:4, flags:1 }.
+//
+// ⚠ Cet état REMPLACE le précédent, il ne s'y ajoute pas : le serveur envoie le
+// groupe entier à chaque fois, et un membre disparu de la liste a quitté le
+// groupe. C'est l'inverse d'EntityLooks, dont chaque réponse ne parle que des
+// GID qu'elle mentionne.
+void PartyFriendWindow::HandleShareState(const uint8_t* data, uint16_t len) {
+  if (data == nullptr || len < 4) return;
+
+  const int idle = static_cast<int>(data[0]) | (static_cast<int>(data[1]) << 8);
+  const int announced =
+      static_cast<int>(data[2]) | (static_cast<int>(data[3]) << 8);
+  // Le compte ANNONCÉ ne commande pas la lecture : c'est la longueur réellement
+  // reçue qui borne, et l'annonce ne fait que la raccourcir. Un paquet tronqué
+  // par le réseau donne alors moins d'entrées, jamais une lecture hors tampon.
+  int available = (len - 4) / kShareEntryBytes;
+  if (available > announced) available = announced;
+
+  share_.clear();
+  const uint8_t* p = data + 4;
+  for (int i = 0; i < available; ++i) {
+    const uint8_t* e = p + i * kShareEntryBytes;
+    ShareRow r;
+    r.aid = static_cast<uint32_t>(e[0]) |
+            (static_cast<uint32_t>(e[1]) << 8) |
+            (static_cast<uint32_t>(e[2]) << 16) |
+            (static_cast<uint32_t>(e[3]) << 24);
+    r.flags = e[4];
+    if (r.aid == 0) continue;
+    share_.push_back(r);
+  }
+  share_idle_secs_ = idle;
+  share_known_ = true;
+}
+
+// ── Ce qui écarte CE membre du partage ──────────────────────────────────────
+//
+// Deux sources, et c'est assumé : le serveur pour ce que lui seul sait
+// (inactivité, mort, échoppe), nous pour la carte, qu'il ne peut pas annoncer
+// d'avance (cf. kShareOtherMap). Chacun dit ce qu'il sait.
+uint8_t PartyFriendWindow::ShareFlagsFor(const rag::social::Entry& row) const {
+  // Hors ligne, la question ne se pose pas : la pastille « OFF » dit déjà tout,
+  // et le serveur n'envoie pas d'entrée pour une session qui n'existe plus.
+  if (!share_known_ || row.offline) return 0;
+
+  uint8_t flags = 0;
+  for (const ShareRow& r : share_) {
+    if (r.aid == row.gid) {
+      flags = r.flags;
+      break;
+    }
+  }
+
+  // La carte : comparée à la NÔTRE, lue sur notre propre ligne — la liste la
+  // porte pour tout le monde, y compris pour soi, donc rien à aller chercher
+  // ailleurs.
+  //
+  // ⚠ Ce n'est pas « il ne gagne rien » mais « il ne gagne rien sur MES kills » :
+  // à l'autre bout du monde, il partage très bien avec qui se bat à côté de lui.
+  // Le libellé de ShareReasonText le dit dans ces termes.
+  if (!row.map.empty() && row.gid != rag::social::OwnAid()) {
+    for (const rag::social::Entry& mine : party_) {
+      if (mine.gid != rag::social::OwnAid()) continue;
+      if (!mine.map.empty() && mine.map != row.map) flags |= kShareOtherMap;
+      break;
+    }
+  }
+  return flags;
+}
+
+// UNE raison, la plus actionnable d'abord : un inactif n'a qu'à jouer, un
+// vendeur qu'à fermer son échoppe, un mort n'a rien à corriger du tout. Les
+// empiler noierait celle sur laquelle le joueur peut agir.
+bool PartyFriendWindow::ShareReasonText(uint8_t flags, char* out,
+                                        size_t n) const {
+  if (out == nullptr || n == 0) return false;
+  out[0] = '\0';
+  if (flags == 0) return false;
+
+  if (flags & kShareIdle) {
+    // 🔴 LE SEUIL VIENT DU PAQUET, il n'est pas écrit ici. Il vit dans la
+    // configuration du serveur (conf/import/battle_conf.txt, `idle_no_share`) :
+    // le recopier ferait mentir cette phrase le jour où il change, et c'est
+    // exactement le genre d'écart qu'on ne remarque pas.
+    std::snprintf(out, n, i18n::Tr("inactif depuis plus de %d s"),
+                  share_idle_secs_);
+  } else if (flags & kShareBusy) {
+    std::snprintf(out, n, "%s",
+                  i18n::Tr("en salon, en échoppe ou en achat automatique"));
+  } else if (flags & kShareDead) {
+    std::snprintf(out, n, "%s", i18n::Tr("mort"));
+  } else if (flags & kShareOtherMap) {
+    std::snprintf(out, n, "%s", i18n::Tr("sur une autre carte que vous"));
+  }
+  return out[0] != '\0';
+}
+
+// ── La marque « -EXP » ──────────────────────────────────────────────────────
+//
+// Dessinée au draw list, et non posée comme un widget : la pastille de statut a
+// déjà mangé toute la place restante de la ligne (elle se cale sur ce qui reste,
+// cf. DrawStatusBadge), si bien qu'un second appel déborderait du bord droit.
+// Même ancrage que les icônes d'état, qui se rangent déjà de droite à gauche.
+//
+// ⚠ Pas de glyphe au-delà de U+00FF : la police de l'interface ne les porte pas
+// toutes et un glyphe manquant se rend en carré. « -EXP » tient en ASCII pur et
+// se lit tout de suite comme « ne reçoit pas d'EXP ».
+float PartyFriendWindow::DrawShareMark(float right, float top, uint8_t flags,
+                                       bool* hovered) {
+  if (hovered) *hovered = false;
+
+  char why[160];
+  if (!ShareReasonText(flags, why, sizeof(why))) return 0.0f;
+
+  const char* txt = "-EXP";
+  const ImVec2 ts = ImGui::CalcTextSize(txt);
+  const float pad_x = ro::Px(5.0f);
+  const float pad_y = ro::Px(1.0f);
+  const ImVec2 size(ts.x + pad_x * 2.0f, ts.y + pad_y * 2.0f);
+  // Arrondi au pixel, comme la pastille : un rectangle posé sur une demi-frame
+  // bave exactement de la même façon.
+  const ImVec2 p(static_cast<float>(static_cast<int>(right - size.x)),
+                 static_cast<float>(static_cast<int>(top)));
+  const ImVec2 q(p.x + size.x, p.y + size.y);
+
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+  dl->AddRectFilled(p, q, IM_COL32(184, 112, 36, 255), ro::Px(3.0f));
+  dl->AddText(ImVec2(p.x + pad_x, p.y + pad_y), IM_COL32_WHITE, txt);
+
+  const bool over = ImGui::IsMouseHoveringRect(p, q);
+  if (over) {
+    ImGui::SetTooltip("%s\n%s", i18n::Tr("Ne reçoit pas d'EXP de vos kills"),
+                      why);
+  }
+  if (hovered) *hovered = over;
+  return size.x + ro::Px(4.0f);
+}
 // ── Lecture des listes ───────────────────────────────────────────────────────
 
 void PartyFriendWindow::ReadList(bool party, std::vector<rag::social::Entry>& out) {
@@ -563,6 +741,17 @@ void PartyFriendWindow::OnTick() {
   // Les réglages du groupe peuvent changer sans nous : c'est ici qu'on s'en
   // aperçoit, fenêtre ouverte ou non.
   PollPartyOptions();
+
+  // 🔴 L'état du partage est de la matière PÉRIMABLE. Quitter un groupe ne
+  // provoque aucun paquet — le serveur n'a plus personne à qui l'envoyer — et
+  // ces raisons-là ne valent plus rien dès l'instant où le groupe n'existe plus.
+  // On les jette donc ici, plutôt que de les laisser attendre un groupe suivant
+  // auquel elles ne se rapportent pas.
+  if (share_known_ && rag::social::PartyMemberCount() <= 0) {
+    share_.clear();
+    share_known_ = false;
+    share_idle_secs_ = 0;
+  }
 }
 
 // ── Rendu ────────────────────────────────────────────────────────────────────
@@ -1051,18 +1240,34 @@ void PartyFriendWindow::DrawPartyRow(const rag::social::Entry& row) {
                   : is_me     ? i18n::Tr("Votre personnage")
                               : i18n::Tr("En ligne"));
 
-  // ── Les buffs, à gauche de la pastille ───────────────────────────────────
-  // Sa position se lit sur l'item qui vient d'être posé (`DrawStatusBadge` finit
-  // par un `Dummy`) : pas de largeur à supposer, donc rien à corriger le jour où
-  // le libellé de la pastille change.
+  // Le coin de la pastille, lu UNE fois : c'est le point d'ancrage de tout ce
+  // qui se range à sa gauche (la marque de partage, puis les icônes d'état).
+  // `DrawStatusBadge` finit par un `Dummy`, donc rien à supposer de sa largeur.
+  const float badge_left = ImGui::GetItemRectMin().x;
+  const float badge_top  = ImGui::GetItemRectMin().y;
+
+  // ── « -EXP » : ce membre est hors du partage ──────────────────────────────
+  //
+  // 🔴 SEULEMENT quand l'EXP du groupe est en PARTAGE. En « chacun pour soi »,
+  // personne n'est écarté de quoi que ce soit : la marque annoncerait une perte
+  // qui n'existe pas. `seen_exp_` est l'état COURANT lu chez le client, pas la
+  // case que le joueur serait en train de cocher sans l'avoir appliquée.
+  bool share_hovered = false;
+  float share_w = 0.0f;
+  const uint8_t share_flags = (seen_exp_ == 1) ? ShareFlagsFor(row) : 0;
+  if (share_flags != 0) {
+    share_w = DrawShareMark(badge_left - ro::Px(4.0f), badge_top, share_flags,
+                            &share_hovered);
+  }
+
+  // ── Les buffs, à gauche de tout le reste ─────────────────────────────────
   bool state_hovered = false;
   if (show_buffs_ && !row.offline) {
     // Le registre ne sonde que si QUELQU'UN affiche : on redemande a chaque
     // ligne dessinee, la demande etant vivante d'un tick a l'autre.
     if (auto* fx = Bourgeon::Instance().status_effects()) fx->RequestPolling();
-    state_hovered =
-        DrawRowEffects(row.gid, ImGui::GetItemRectMin().x - ro::Px(4.0f),
-                       ImGui::GetItemRectMin().y);
+    state_hovered = DrawRowEffects(row.gid, badge_left - ro::Px(4.0f) - share_w,
+                                   badge_top);
   }
 
   // Sépare les lignes comme le natif, qui peint une bande par entrée. La largeur
@@ -1118,7 +1323,9 @@ void PartyFriendWindow::DrawPartyRow(const rag::social::Entry& row) {
   // confirmation méritent la même paix.
   // ⚠ `!state_hovered` : sur une icône d'état, c'est SON infobulle qui parle.
   // Les deux se déclencheraient sinon au même endroit, l'une par-dessus l'autre.
-  if (show_tooltip_ && row_hovered && !state_hovered &&
+  // ⚠ `!share_hovered` pour la même raison que `!state_hovered` : sur la marque
+  // « -EXP », c'est SA phrase qui parle, pas l'infobulle de la ligne.
+  if (show_tooltip_ && row_hovered && !state_hovered && !share_hovered &&
       !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId |
                                        ImGuiPopupFlags_AnyPopupLevel)) {
     DrawRowTooltip(row);
@@ -1238,6 +1445,33 @@ void PartyFriendWindow::DrawPartyOptions() {
   }
 
   if (!leader) ImGui::EndDisabled();
+
+  // ── Qui ne reçoit pas sa part, et pourquoi ────────────────────────────────
+  //
+  // 🔴 C'EST LA RAISON D'ÊTRE DE CE BLOC. Le serveur écarte du partage les
+  // membres inactifs, morts ou en échoppe, et il le fait EN SILENCE : l'écarté
+  // ne reçoit ni EXP ni la ligne de `@showexp` (elle est émise au bout de
+  // `pc_gainexp`, qui n'est jamais appelé pour lui), et le chef ne voit rien non
+  // plus. On l'écrit donc juste sous « Expérience : Partagée » — c'est là que le
+  // joueur se demande pourquoi elle ne l'est pas.
+  //
+  // HORS du grisage des non-chefs : c'est un constat, pas un réglage. Un simple
+  // membre a autant besoin de savoir qu'il ne touche rien.
+  if (seen_exp_ != 1 || !share_known_) return;
+
+  ImGui::Spacing();
+
+  int excluded = 0;
+  for (const rag::social::Entry& row : party_) {
+    char why[160];
+    if (!ShareReasonText(ShareFlagsFor(row), why, sizeof(why))) continue;
+    if (excluded == 0)
+      ImGui::TextDisabled("%s", i18n::Tr("Ne reçoivent pas d'EXP de vos kills :"));
+    ImGui::BulletText("%s (%s)", ro::LocalToUtf8(row.name.c_str()), why);
+    excluded++;
+  }
+  if (excluded == 0)
+    ImGui::TextDisabled("%s", i18n::Tr("Tout le groupe reçoit sa part."));
 }
 
 // ── Le menu contextuel d'une ligne ──────────────────────────────────────────
@@ -1422,6 +1656,15 @@ void PartyFriendWindow::DrawRowTooltip(const rag::social::Entry& row) {
     ImGui::Text("%s %d/%d", i18n::Tr("PV"), row.hp, row.max_hp);
   } else {
     ImGui::TextDisabled("%s", i18n::Tr("PV inconnus : hors de portée"));
+  }
+
+  // Le partage d'EXP, quand il est en jeu. La marque « -EXP » porte déjà sa
+  // propre phrase, mais elle est petite et on ne la survole pas forcément : la
+  // ligne complète la redit ici, à l'endroit où l'on vient chercher le détail.
+  if (seen_exp_ == 1) {
+    char why[160];
+    if (ShareReasonText(ShareFlagsFor(row), why, sizeof(why)))
+      ImGui::TextDisabled("%s %s", i18n::Tr("Hors du partage d'EXP :"), why);
   }
 
   // ── La mini-carte ────────────────────────────────────────────────────────
