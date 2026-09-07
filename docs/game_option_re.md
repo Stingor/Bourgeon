@@ -1465,18 +1465,51 @@ du handler clavier et ouvre une modale bloquante. Un panneau ImGui tient déjà
 données, avec sa propre popup — en rejouant les deux règles ci-dessus (exemption
 0↔3, et effacement de l'ancienne affectation avant d'écrire la nouvelle).
 
-#### ✅ Écrire par `ChangeUserHotKey` SUFFIT à la synchro web (vérifié 2026-08-14)
+#### 🔴🔴 Écrire par `ChangeUserHotKey` NE SUFFIT PAS : il faut lever `mgr+8` (corrigé 2026-09-07)
 
-Question posée par le `++*(g_UserHotkeyMgr+8)` du bouton OK : faut-il lever un
-drapeau pour que le raccourci parte au serveur ? **Non.** `UserHotkey_SaveToTable`
-(`0x0059EEF0`, le sérialiseur de la charge `/userconfig/save`) commence par
-`UserHotkey_RebuildOverrideListFromLua` (`0x005D5150`), qui **vide puis reconstruit**
-la liste des surcharges en interrogeant le Lua ligne par ligne
-(`GetUserHotKeyInfo(cat+1, cmdIdx)`, fmt `"dd>ddss"`) et ne garde que celles dont le
-nom de touche est non vide. La charge est donc **rebâtie depuis le Lua à chaque
-sauvegarde** : ce que `ChangeUserHotKey` a écrit s'y retrouve, sans état
-intermédiaire à entretenir. (L'ordre de parcours y est celui des ONGLETS — 0, 3, 1,
-2 — d'où les clés `SkillBar_1Tab`, `SkillBar_2Tab`, `InterfaceTab`, `EmotionTab`.)
+Ce qui suit corrige une conclusion de 2026-08-14 (« aucun drapeau à lever »), qui
+a coûté un bug remonté par un joueur : *« Ctrl+D pour les succès s'enlève à chaque
+déconnexion »*. L'analyse s'était arrêtée au CONTENU de la charge sans regarder la
+GARDE qui décide de la produire.
+
+**Ce qui restait vrai** : `UserHotkey_SaveToTable` (`0x0059EEF0`, le sérialiseur de
+la charge `/userconfig/save`) commence par `UserHotkey_RebuildOverrideListFromLua`
+(`0x005D5150`), qui **vide puis reconstruit** la liste des surcharges en interrogeant
+le Lua ligne par ligne (`GetUserHotKeyInfo(cat+1, cmdIdx)`, fmt `"dd>ddss"`) et ne
+garde que celles dont le nom de touche est non vide. La charge est donc **rebâtie
+depuis le Lua**, sans état intermédiaire à entretenir. (L'ordre de parcours y est
+celui des ONGLETS — 0, 3, 1, 2 — d'où les clés `SkillBar_1Tab`, `SkillBar_2Tab`,
+`InterfaceTab`, `EmotionTab`.)
+
+**Ce qui manquait** : `UserSettings_SaveJson` (`0x0059E950`) n'appelle ce
+sérialiseur que sous une garde —
+
+```c
+if (sub_5D4C90(g_UserHotkeyMgr) == 1) UserHotkey_SaveToTable(...);
+// sub_5D4C90 : *(int*)(mgr+8) > 0 || (!*(BYTE*)(mgr+12) && sub_5D4CB0() == 1)
+```
+
+* `mgr+8` = compteur de modifications, incrémenté **par le seul bouton OK natif**
+  (`UIHotKeyWnd_OnMsg` cmd 184) ;
+* `mgr+12` = « une charge serveur a été appliquée à ce login », posé par
+  `UserHotkey_LoadFromTable` ;
+* `sub_5D4CB0` (`0x005D4CB0`) = « existe-t-il au moins une surcharge locale ? »
+  (compare `GetUserHotKeyInfo` à `GetOriginalHotKeyInfo` ligne par ligne).
+
+Et l'autre moitié du piège, `UserHotkey_LoadFromTable` (`0x0059E2C0`), appelée sur
+la réponse de `/userconfig/load` : si le JSON porte un `UserHotkey_V2` non vide,
+elle pose `mgr+12 = 1`, appelle **`UserHotkey_Lua_ClearUserHotKeys`**
+(`0x005D4910`), recharge les quatre onglets depuis le serveur, puis **réécrit
+`UserKeys.lua`** (`SaveUserHotKeys2`).
+
+**Le cycle de perte, donc** : un compte neuf téléverse son premier réglage (branche
+`mgr+12 == 0`) — et devient dès lors un compte « connu du serveur ». À partir de
+là, toute écriture faite sans lever `mgr+8` reste locale, n'est jamais téléversée,
+et le login suivant l'efface du disque. Un test unique ne le montre pas.
+
+⇒ **Après une rafale d'écritures, faire `++*(int*)(g_UserHotkeyMgr + 8)`** —
+`userhotkey::MarkDirty()`, appelée à côté de `Save()`. `g_UserHotkeyMgr`
+(`0x012517C4`) **porte le pointeur**, ce n'est pas l'objet.
 
 ⚠ **Un devoir caché, tout de même** : `CommitPendingBindings` appelle
 `UIWindowMgr_RefreshGameSettingsHotkeyLabels` (`0x00A4CCD0`) après chaque écriture

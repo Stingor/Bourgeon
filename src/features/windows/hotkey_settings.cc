@@ -227,10 +227,16 @@ void HotkeySettings::OnTick() {
     }
     // 🔴 Le fichier n'est PAS le seul destinataire : `UserHotkey_SaveToTable`
     // (0x0059EEF0) rebâtit la charge `/userconfig/save` DEPUIS LE LUA à la
-    // sortie propre. Écrire par ce pont suffit donc à se retrouver dans la
-    // synchro par compte — aucun drapeau « modifié » à lever. UNE fois pour la
-    // rafale : c'est un fichier disque.
-    if (wrote) userhotkey::Save();
+    // sortie propre. Écrire par ce pont suffit donc à s'y retrouver — mais
+    // ENCORE FAUT-IL QUE LA SÉRIALISATION AIT LIEU : `UserSettings_SaveJson` la
+    // saute tant que le compteur `g_UserHotkeyMgr+8` est à zéro, et le login
+    // suivant réécrit `UserKeys.lua` depuis la charge serveur. D'où `MarkDirty`,
+    // qui rejoue le geste du bouton OK natif. UNE fois pour la rafale : l'une
+    // grave un fichier disque, l'autre lève un drapeau.
+    if (wrote) {
+      userhotkey::Save();
+      userhotkey::MarkDirty();
+    }
     rows_dirty_ = true;
     return;
   }

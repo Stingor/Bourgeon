@@ -48,6 +48,12 @@ constexpr int kOutSize     = 0x38;
 constexpr uintptr_t kChangeHotKeyAddr = 0x005d56d0;
 // UserHotkey_Lua_SaveUserHotKeys2 : AUCUN argument, fabrique son chemin lui-même.
 constexpr uintptr_t kSaveUserKeysAddr = 0x005d54c0;
+// g_UserHotkeyMgr : la globale qui PORTE LE POINTEUR vers CUserHotkeyMgr.
+// `+8` = le compteur de modifications à téléverser, lu par `sub_5D4C90`
+// (0x005D4C90) pour décider de sérialiser ou non la charge `/userconfig/save`.
+// Voir `MarkDirty` dans l'entête pour la conséquence de ne pas le lever.
+constexpr uintptr_t kUserHotkeyMgrAddr      = 0x012517c4;
+constexpr int       kOffPendingUploadCount  = 8;
 // std_string_assign __thiscall(str, src, len) : gère SSO et tas avec l'allocateur
 // du jeu — indispensable, un libellé peut dépasser les 15 caractères du SSO.
 
@@ -257,6 +263,23 @@ bool Save() {
     reinterpret_cast<SaveUserKeys_t>(kSaveUserKeysAddr)();
     return true;
   } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+
+void MarkDirty() {
+  __try {
+    // La globale CONTIENT le pointeur (`mov ecx, g_UserHotkeyMgr` dans
+    // `UserSettings_SaveJson`), elle n'est pas l'objet. Nulle tant que
+    // `CUserHotkeyMgr_CreateInstance` (0x005D4B20) n'a pas tourné, et remise à
+    // zéro par `sub_5D4C30` à l'arrêt : ne rien faire alors, il n'y a de toute
+    // façon plus personne pour téléverser.
+    uint8_t* mgr = *reinterpret_cast<uint8_t**>(kUserHotkeyMgrAddr);
+    if (!mgr) return;
+    // Le même geste que le bouton OK du natif : un compteur, pas un booléen —
+    // rien ne le remet à zéro de notre côté, et sa seule lecture est le `> 0`
+    // de `sub_5D4C90`.
+    ++*reinterpret_cast<int*>(mgr + kOffPendingUploadCount);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+  }
 }
 
 }  // namespace userhotkey

@@ -108,6 +108,30 @@ bool WriteBinding(int category, int command_index, int key1, int key2,
 // Grave `SaveData\UserKeys.lua`. Une fois, après les écritures.
 bool Save();
 
+// 🔴🔴 LÈVE LE DRAPEAU « À TÉLÉVERSER » DU GESTIONNAIRE. Sans lui, le raccourci
+// tient la session… et disparaît au relog — c'est le bug remonté le 2026-09-07
+// (« Ctrl+D pour les succès s'enlève à chaque déconnexion »).
+//
+// Le fichier n'est PAS le dernier mot. À la sortie propre et au retour au
+// char-select, `UserSettings_SaveJson` (0x0059E950) téléverse les raccourcis par
+// COMPTE (`/userconfig/save`) — mais seulement si `sub_5D4C90(g_UserHotkeyMgr)`
+// rend 1, c'est-à-dire `*(int*)(mgr+8) > 0` (des modifications à pousser) OU
+// `mgr+12 == 0` (aucune charge serveur reçue à ce login) avec au moins une
+// surcharge locale. Et au login suivant, `UserHotkey_LoadFromTable`
+// (0x0059E2C0) appelle `ClearUserHotKeys()`, recharge les quatre onglets DEPUIS
+// LE SERVEUR puis RÉÉCRIT `UserKeys.lua` : ce que le serveur ignore est effacé
+// du disque, sans un mot.
+//
+// `mgr+8` est le compteur qu'incrémente le bouton OK de la fenêtre native
+// (`UIHotKeyWnd_OnMsg` cmd 184). Notre écran ne l'incrémentait pas : sur un
+// compte neuf le tout premier réglage partait quand même (branche `mgr+12 == 0`
+// — ce qui rend le compte « connu » du serveur), et TOUS les suivants étaient
+// écrasés au login d'après. D'où un bug qui ne se voit pas chez qui vient de
+// tester une fois.
+//
+// À appeler une fois par rafale d'écritures, comme `Save()`.
+void MarkDirty();
+
 // ── Le pont C brut, pour qui ne peut pas passer par l'API ci-dessus ─────────
 // `UserHotkey_Lua_GetHotKey(out, catégorie, index)` — le Lua `GetHotKey(cat+1,
 // idx)`, qui remplit une struct de 0x38 octets au format « dd>ddss ».
