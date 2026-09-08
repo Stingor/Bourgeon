@@ -347,6 +347,11 @@ void EntityInspector::Refresh(Snapshot* out) {
 
 void EntityInspector::ReadActor(Snapshot* out) {
   void* actor = gamescene::FindActorByGid(gid_);
+  // 🔴 MOI à part : `FindActorByGid` descend dans la LISTE d'acteurs du mode, et
+  // le joueur local n'y est pas — il occupe l'emplacement dédié du gestionnaire
+  // (own_actor.h). Sans ce repli, inspecter son propre personnage rendait
+  // toujours « aucun acteur vivant », avec en prime une explication fausse.
+  if (!actor && gid_ == rag::OwnAccountIdSafe()) actor = rag::OwnActor();
   if (!actor) return;
   out->actor_found = true;
   out->actor_addr  = reinterpret_cast<uint32_t>(actor);
