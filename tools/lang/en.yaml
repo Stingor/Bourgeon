@@ -4003,3 +4003,105 @@
 
 # CraftAtlas - aide du volet de droite.
 "Choisissez un objet à gauche.\n\nClic gauche : suivre l'objet dans l'Atlas.\nClic droit : le menu contextuel (description, @whodrops…).\nMaj + clic : poser son lien dans le chat.": "Pick an item on the left.\n\nLeft click: follow the item in the Atlas.\nRight click: the context menu (description, @whodrops…).\nShift + click: drop its link into the chat."
+
+# SpriteSoundTweaks - sounds buried in the sprites' first frame.
+"sprites": "sprites"
+"sprite": "sprite"
+"Rétablir les sons manquants": "Restore the missing sounds"
+"(le client n'a pas la forme attendue à cet endroit — le correctif ne sera pas posé)": "(the client does not have the expected shape at that spot — the patch will not be applied)"
+"Un son de trop ? Coche-le pour le taire. Le silence vaut pour tout le jeu, que le rétablissement ci-dessus soit actif ou non.": "One sound too many? Tick it to silence it. The silence applies to the whole game, whether the restoration above is on or off."
+"Sons de mort": "Death sounds"
+"Sons de coup reçu": "Hit sounds"
+"nom du fichier .wav": "name of the .wav file"
+"Taire ce son": "Silence this sound"
+"Le nom tel qu'il est dans les données du client, par exemple « doppleganger_die.wav ». Un chemin fonctionne aussi.": "The name as it stands in the client's data, for example « doppleganger_die.wav ». A path works too."
+"Ajoutés à la main :": "Added by hand:"
+"retirer": "remove"
+
+# Spectator session.
+"L'entrée en jeu n'a pas abouti.": "Entering the game did not go through."
+
+# Card album - the binder outside the storage.
+"Vers l'album": "To the album"
+"C'est fait.": "Done."
+"Seules les cartes de monstre entrent dans l'album.": "Only monster cards go into the album."
+"Cet emplacement n'est pas encore débloqué : sacrifiez d'abord une carte.": "This slot is not unlocked yet: sacrifice a card first."
+"Cet emplacement est déjà débloqué.": "This slot is already unlocked."
+"Il n'y en a pas autant en réserve.": "There are not that many in reserve."
+"Votre inventaire est plein.": "Your inventory is full."
+"Impossible pendant un échange ou avec un entrepôt ouvert.": "Impossible during a trade or with a storage open."
+"Une carte liée ou en location ne peut pas être rangée.": "A bound or rented card cannot be filed away."
+"La réserve de cette carte est pleine.": "This card's reserve is full."
+"Ce compte de jeu n'est rattaché à aucun compte Moonlight : l'album ne peut pas être enregistré.": "This game account is not linked to any Moonlight account: the album cannot be saved."
+"L'album est déjà ouvert sur un autre de vos comptes de jeu. Fermez-le là-bas d'abord.": "The album is already open on another of your game accounts. Close it there first."
+"L'album n'est pas ouvert : rouvrez la fenêtre.": "The album is not open: reopen the window."
+"Le serveur a refusé l'opération.": "The server refused the operation."
+"Album de cartes": "Card album"
+"Options de l'album": "Album settings"
+"Rechercher une carte": "Search for a card"
+"Ordre": "Order"
+"Cette carte": "This card"
+"%s : pochette DÉBLOQUÉE, mais les copies restantes n'ont pas été rangées : %s": "%s: sleeve UNLOCKED, but the remaining copies were not filed away: %s"
+"Album mis à jour : %lld copie(s) rangée(s), %d pochette(s) ouverte(s).": "Album updated: %lld copy(ies) filed, %d sleeve(s) opened."
+"%s : pochette DÉBLOQUÉE. Vous pouvez désormais y ranger vos copies.": "%s: sleeve UNLOCKED. You can now file your copies into it."
+"%s : pochette DÉBLOQUÉE, et %d copie(s) rangée(s).": "%s: sleeve UNLOCKED, and %d copy(ies) filed."
+"%s : %d rangée(s) dans l'album.": "%s: %d filed into the album."
+"%s : %d reprise(s) de l'album.": "%s: %d taken back from the album."
+"Sacrifier sans confirmation": "Sacrifice without confirmation"
+"Réglages de l'album...": "Album settings..."
+"%d / %d cartes acquises": "%d / %d cards obtained"
+"%d / %d cartes  ·  %.1f %%": "%d / %d cards  ·  %.1f %%"
+"%s : %d / %d  ·  %.1f %%": "%s: %d / %d  ·  %.1f %%"
+"En réserve : %lld": "In reserve: %lld"
+"Aucune donnée. Cliquez sur Rafraîchir.": "No data. Click Refresh."
+"Aucune carte ne correspond.": "No card matches."
+"scellée": "sealed"
+"Lâcher sur l'inventaire pour reprendre": "Drop on the inventory to take it back"
+"Voir dans la base de données": "View in the database"
+"Depuis l'inventaire (1 sur %d)": "From the inventory (1 of %d)"
+"Depuis l'inventaire (tout : %d)": "From the inventory (all: %d)"
+"Depuis l'inventaire...": "From the inventory..."
+"Sacrifier une copie...": "Sacrifice a copy..."
+"Sacrifier cette carte ?###album_confirm": "Sacrifice this card?###album_confirm"
+"Les %d autres copies seront rangées ensuite.": "The %d other copies will be filed afterwards."
+"Elle sera CONSOMMÉE et débloquera définitivement sa pochette dans l'album. Les copies suivantes pourront alors y être rangées et reprises librement. Ce sacrifice ne peut pas être annulé.": "It will be CONSUMED and will permanently unlock its sleeve in the album. Later copies can then be filed there and taken back freely. This sacrifice cannot be undone."
+"Sacrifier": "Sacrifice"
+"Album de cartes (interface moderne)": "Card album (modern interface)"
+"La première copie d'une carte est sacrifiée dès qu'elle est offerte à l'album (glisser, menu « Vers l'album »), sans la question « Sacrifier cette carte ? ». Le sacrifice reste irréversible : la pochette débloquée et le message le disent après coup.": "The first copy of a card is sacrificed as soon as it is offered to the album (drag, « To the album » menu), without the « Sacrifice this card? » question. The sacrifice stays irreversible: the unlocked sleeve and the message say so after the fact."
+
+# Inventory viewer - dragging onto the album.
+"Seules les cartes entrent dans l'album": "Only cards go into the album"
+
+# NPC shop - barter stock.
+"épuisé": "sold out"
+
+# Party window - who is outside EXP sharing.
+"inactif depuis plus de %d s": "idle for more than %d s"
+"en salon, en échoppe ou en achat automatique": "in a chat room, vending or running a buying store"
+"sur une autre carte que vous": "on a different map than you"
+"Ne reçoit pas d'EXP de vos kills": "Gets no EXP from your kills"
+"Ne reçoivent pas d'EXP de vos kills :": "Get no EXP from your kills:"
+"Tout le groupe reçoit sa part.": "The whole party gets its share."
+"Hors du partage d'EXP :": "Outside EXP sharing:"
+
+# Card album - combo items (French-bare tables, translated by RoCombo).
+"Catalogue": "Catalogue"
+"Réserve": "Reserve"
+"Emplacement": "Slot"
+"Toutes": "All"
+"Débloquées": "Unlocked"
+"Scellées": "Sealed"
+
+# SpriteSoundTweaks - who carries the sound (constexpr table, translated where used).
+"Baphomet d'event": "Event Baphomet"
+"chair": "flesh"
+"champignons, plantes": "mushrooms, plants"
+"Angeling et la famille Poring": "Angeling and the Poring family"
+"Anacondaq et les reptiles": "Anacondaq and the reptiles"
+"Ant Egg et les carapaces": "Ant Egg and the shelled ones"
+"les squelettes": "the skeletons"
+
+# SpriteSoundTweaks - panel wording (rewritten).
+"Quand un monstre meurt, le client saute la première image de son animation — et avec elle le son qui y est posé. Quarante-sept monstres meurent ainsi en silence, dont tout le Bio Lab et le Doppelganger, qui partagent le même cri.": "When a monster dies, the client skips the first frame of its animation — and with it the sound sitting on that frame. Forty-seven monsters die in silence that way, among them the whole Bio Lab and the Doppelganger, which share the same cry."
+"Rend audibles les 47 sons de mort que le client porte sans jamais les jouer.\nLes sons de coup reçu et d'attaque, eux, s'entendent déjà dès le deuxième coup d'affilée : le réglage ne leur rattrape que le premier, ce qui ne s'entend pas.\nPrend effet aussitôt, sans relancer le jeu. Rien n'est envoyé au serveur : le réglage n'est que pour toi.": "Makes audible the 47 death sounds the client carries without ever playing them.\nHit and attack sounds, on the other hand, are already heard from the second blow in a row: the setting only catches up their first one, which goes unnoticed.\nTakes effect at once, without restarting the game. Nothing is sent to the server: the setting is yours alone."
+"Ceux-là, le jeu les joue déjà — dès le deuxième coup encaissé par le même monstre, et donc en boucle pendant un combat. Rien à rétablir ici : ils sont là pour être tus.": "These the game already plays — from the second hit taken by the same monster, and therefore on a loop during a fight. Nothing to restore here: they are listed so you can silence them."

@@ -3961,3 +3961,105 @@
 
 # CraftAtlas - ayuda del panel derecho.
 "Choisissez un objet à gauche.\n\nClic gauche : suivre l'objet dans l'Atlas.\nClic droit : le menu contextuel (description, @whodrops…).\nMaj + clic : poser son lien dans le chat.": "Elige un objeto a la izquierda.\n\nClic izquierdo: seguir el objeto en el Atlas.\nClic derecho: el menú contextual (descripción, @whodrops…).\nMayús + clic: poner su enlace en el chat."
+
+# SpriteSoundTweaks - sonidos enterrados en el primer frame de los sprites.
+"sprites": "sprites"
+"sprite": "sprite"
+"Rétablir les sons manquants": "Restaurar los sonidos que faltan"
+"(le client n'a pas la forme attendue à cet endroit — le correctif ne sera pas posé)": "(el cliente no tiene la forma esperada en ese punto — el parche no se aplicará)"
+"Un son de trop ? Coche-le pour le taire. Le silence vaut pour tout le jeu, que le rétablissement ci-dessus soit actif ou non.": "¿Un sonido de más? Márcalo para silenciarlo. El silencio vale para todo el juego, esté activa o no la restauración de arriba."
+"Sons de mort": "Sonidos de muerte"
+"Sons de coup reçu": "Sonidos de golpe recibido"
+"nom du fichier .wav": "nombre del archivo .wav"
+"Taire ce son": "Silenciar este sonido"
+"Le nom tel qu'il est dans les données du client, par exemple « doppleganger_die.wav ». Un chemin fonctionne aussi.": "El nombre tal cual está en los datos del cliente, por ejemplo « doppleganger_die.wav ». También funciona una ruta."
+"Ajoutés à la main :": "Añadidos a mano:"
+"retirer": "quitar"
+
+# Sesion espectador.
+"L'entrée en jeu n'a pas abouti.": "La entrada al juego no ha llegado a buen puerto."
+
+# Album de cards - el archivador fuera del storage.
+"Vers l'album": "Al álbum"
+"C'est fait.": "Hecho."
+"Seules les cartes de monstre entrent dans l'album.": "Solo las cards de monstruo entran en el álbum."
+"Cet emplacement n'est pas encore débloqué : sacrifiez d'abord une carte.": "Esta ranura todavía no está desbloqueada: sacrifica antes una card."
+"Cet emplacement est déjà débloqué.": "Esta ranura ya está desbloqueada."
+"Il n'y en a pas autant en réserve.": "No hay tantas en reserva."
+"Votre inventaire est plein.": "Tu inventario está lleno."
+"Impossible pendant un échange ou avec un entrepôt ouvert.": "Imposible durante un trade o con un storage abierto."
+"Une carte liée ou en location ne peut pas être rangée.": "Una card ligada o alquilada no se puede guardar."
+"La réserve de cette carte est pleine.": "La reserva de esta card está llena."
+"Ce compte de jeu n'est rattaché à aucun compte Moonlight : l'album ne peut pas être enregistré.": "Esta cuenta de juego no está vinculada a ninguna cuenta Moonlight: el álbum no se puede guardar."
+"L'album est déjà ouvert sur un autre de vos comptes de jeu. Fermez-le là-bas d'abord.": "El álbum ya está abierto en otra de tus cuentas de juego. Ciérralo allí primero."
+"L'album n'est pas ouvert : rouvrez la fenêtre.": "El álbum no está abierto: vuelve a abrir la ventana."
+"Le serveur a refusé l'opération.": "El servidor ha rechazado la operación."
+"Album de cartes": "Álbum de cards"
+"Options de l'album": "Opciones del álbum"
+"Rechercher une carte": "Buscar una card"
+"Ordre": "Orden"
+"Cette carte": "Esta card"
+"%s : pochette DÉBLOQUÉE, mais les copies restantes n'ont pas été rangées : %s": "%s: funda DESBLOQUEADA, pero las copias restantes no se han guardado: %s"
+"Album mis à jour : %lld copie(s) rangée(s), %d pochette(s) ouverte(s).": "Álbum actualizado: %lld copia(s) guardada(s), %d funda(s) abierta(s)."
+"%s : pochette DÉBLOQUÉE. Vous pouvez désormais y ranger vos copies.": "%s: funda DESBLOQUEADA. Ya puedes guardar ahí tus copias."
+"%s : pochette DÉBLOQUÉE, et %d copie(s) rangée(s).": "%s: funda DESBLOQUEADA, y %d copia(s) guardada(s)."
+"%s : %d rangée(s) dans l'album.": "%s: %d guardada(s) en el álbum."
+"%s : %d reprise(s) de l'album.": "%s: %d recuperada(s) del álbum."
+"Sacrifier sans confirmation": "Sacrificar sin confirmación"
+"Réglages de l'album...": "Ajustes del álbum..."
+"%d / %d cartes acquises": "%d / %d cards conseguidas"
+"%d / %d cartes  ·  %.1f %%": "%d / %d cards  ·  %.1f %%"
+"%s : %d / %d  ·  %.1f %%": "%s: %d / %d  ·  %.1f %%"
+"En réserve : %lld": "En reserva: %lld"
+"Aucune donnée. Cliquez sur Rafraîchir.": "Sin datos. Haz clic en Actualizar."
+"Aucune carte ne correspond.": "Ninguna card coincide."
+"scellée": "sellada"
+"Lâcher sur l'inventaire pour reprendre": "Suéltala sobre el inventario para recuperarla"
+"Voir dans la base de données": "Ver en la base de datos"
+"Depuis l'inventaire (1 sur %d)": "Del inventario (1 de %d)"
+"Depuis l'inventaire (tout : %d)": "Del inventario (todo: %d)"
+"Depuis l'inventaire...": "Del inventario..."
+"Sacrifier une copie...": "Sacrificar una copia..."
+"Sacrifier cette carte ?###album_confirm": "¿Sacrificar esta card?###album_confirm"
+"Les %d autres copies seront rangées ensuite.": "Las otras %d copias se guardarán después."
+"Elle sera CONSOMMÉE et débloquera définitivement sa pochette dans l'album. Les copies suivantes pourront alors y être rangées et reprises librement. Ce sacrifice ne peut pas être annulé.": "Se CONSUMIRÁ y desbloqueará para siempre su funda en el álbum. Las copias siguientes podrán guardarse ahí y recuperarse libremente. Este sacrificio no se puede deshacer."
+"Sacrifier": "Sacrificar"
+"Album de cartes (interface moderne)": "Álbum de cards (interfaz moderna)"
+"La première copie d'une carte est sacrifiée dès qu'elle est offerte à l'album (glisser, menu « Vers l'album »), sans la question « Sacrifier cette carte ? ». Le sacrifice reste irréversible : la pochette débloquée et le message le disent après coup.": "La primera copia de una card se sacrifica en cuanto se ofrece al álbum (arrastrar, menú « Al álbum »), sin la pregunta « ¿Sacrificar esta card? ». El sacrificio sigue siendo irreversible: la funda desbloqueada y el mensaje lo dicen después."
+
+# Visor de inventario - arrastrar al album.
+"Seules les cartes entrent dans l'album": "Solo las cards entran en el álbum"
+
+# Tienda NPC - stock del barter.
+"épuisé": "agotado"
+
+# Ventana de party - quien queda fuera del reparto de EXP.
+"inactif depuis plus de %d s": "inactivo desde hace más de %d s"
+"en salon, en échoppe ou en achat automatique": "en una sala de chat, vendiendo o con una tienda de compra"
+"sur une autre carte que vous": "en un mapa distinto al tuyo"
+"Ne reçoit pas d'EXP de vos kills": "No recibe EXP de tus kills"
+"Ne reçoivent pas d'EXP de vos kills :": "No reciben EXP de tus kills:"
+"Tout le groupe reçoit sa part.": "Toda la party recibe su parte."
+"Hors du partage d'EXP :": "Fuera del reparto de EXP:"
+
+# Album de cards - items de los combos (tablas en frances nudo, traducidas por RoCombo).
+"Catalogue": "Catálogo"
+"Réserve": "Reserva"
+"Emplacement": "Ranura"
+"Toutes": "Todas"
+"Débloquées": "Desbloqueadas"
+"Scellées": "Selladas"
+
+# SpriteSoundTweaks - quien lleva el sonido (tabla constexpr, traducida en su uso).
+"Baphomet d'event": "Baphomet de evento"
+"chair": "carne"
+"champignons, plantes": "setas, plantas"
+"Angeling et la famille Poring": "Angeling y la familia Poring"
+"Anacondaq et les reptiles": "Anacondaq y los reptiles"
+"Ant Egg et les carapaces": "Ant Egg y los caparazones"
+"les squelettes": "los esqueletos"
+
+# SpriteSoundTweaks - textos del panel (reescritos).
+"Quand un monstre meurt, le client saute la première image de son animation — et avec elle le son qui y est posé. Quarante-sept monstres meurent ainsi en silence, dont tout le Bio Lab et le Doppelganger, qui partagent le même cri.": "Cuando un monstruo muere, el cliente se salta el primer frame de su animación — y con él el sonido que está puesto ahí. Cuarenta y siete monstruos mueren así en silencio, entre ellos todo el Bio Lab y el Doppelganger, que comparten el mismo grito."
+"Rend audibles les 47 sons de mort que le client porte sans jamais les jouer.\nLes sons de coup reçu et d'attaque, eux, s'entendent déjà dès le deuxième coup d'affilée : le réglage ne leur rattrape que le premier, ce qui ne s'entend pas.\nPrend effet aussitôt, sans relancer le jeu. Rien n'est envoyé au serveur : le réglage n'est que pour toi.": "Hace audibles los 47 sonidos de muerte que el cliente lleva sin llegar a reproducirlos nunca.\nLos sonidos de golpe recibido y de ataque, en cambio, ya se oyen desde el segundo golpe seguido: el ajuste solo les recupera el primero, y eso no se nota.\nSurte efecto de inmediato, sin reiniciar el juego. No se envía nada al servidor: el ajuste es solo para ti."
+"Ceux-là, le jeu les joue déjà — dès le deuxième coup encaissé par le même monstre, et donc en boucle pendant un combat. Rien à rétablir ici : ils sont là pour être tus.": "Estos el juego ya los reproduce — desde el segundo golpe recibido por el mismo monstruo, y por tanto en bucle durante un combate. Aquí no hay nada que restaurar: están para que los silencies."
