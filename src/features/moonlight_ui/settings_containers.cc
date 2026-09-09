@@ -24,6 +24,7 @@
 #include "features/moonlight_ui/settings_table.h"  // ReadArgbKey / WriteArgbKey
 #include "features/overlays/skill_bar.h"
 #include "features/patches/status_tweaks.h"
+#include "features/patches/sprite_sound_tweaks.h"
 #include "features/windows/storage_window.h"
 #include "features/patches/window_pos_tweaks.h"
 #include "ui/color_codec.h"
@@ -262,6 +263,30 @@ void WriteBlockedNpcs(YAML::Emitter& out) {
       out << YAML::Key << "name" << YAML::Value << entry.second;
       out << YAML::EndMap;
     }
+  }
+  out << YAML::EndSeq;
+}
+
+void ReadMutedWavs(const YAML::Node& ui) {
+  auto* sprite_sounds = Bourgeon::Instance().sprite_sound_tweaks();
+  if (!sprite_sounds) return;
+  const YAML::Node muted = ui["spritesound_muted"];
+  if (!muted) return;
+  sprite_sounds->muted_wavs_.clear();
+  for (const YAML::Node& entry : muted) {
+    const std::string wav = entry.as<std::string>("");
+    if (!wav.empty()) sprite_sounds->muted_wavs_.insert(wav);
+  }
+}
+
+void WriteMutedWavs(YAML::Emitter& out) {
+  auto* sprite_sounds = Bourgeon::Instance().sprite_sound_tweaks();
+  // Le std::set est deja ordonne : le fichier est stable d'une sauvegarde a
+  // l'autre sans tri supplementaire.
+  out << YAML::Key << "spritesound_muted" << YAML::Value << YAML::Flow
+      << YAML::BeginSeq;
+  if (sprite_sounds) {
+    for (const std::string& wav : sprite_sounds->muted_wavs_) out << wav;
   }
   out << YAML::EndSeq;
 }

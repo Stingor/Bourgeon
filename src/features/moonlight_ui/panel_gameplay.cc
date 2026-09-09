@@ -31,6 +31,7 @@
 #include "features/gameplay/quick_cast.h"
 #include "features/hotkey_util.h"   // capture d'un combo en cours (touche de saut)
 #include "features/patches/pick_quad_tweaks.h"
+#include "features/patches/sprite_sound_tweaks.h"
 #include "features/staff_gate.h"    // IsStaff : les réglages fins des trois arcs
 #include "imgui.h"
 #include "ui/mob_sprite.h"
@@ -76,6 +77,9 @@ enum GameplaySection {
   // La zone des sorts au sol : ce que le sort tenu en main touchera, et ce que
   // ceux des autres touchent. C'est de la lecture du combat, comme GreyWorld.
   kGpSkillRange,
+  // Les sons que les sprites portent sans que le client les joue. Un reglage
+  // du MONDE sonore, au meme titre que GreyWorld l'est du monde visible.
+  kGpSpriteSounds,
   kGpCount,
 };
 
@@ -90,6 +94,7 @@ constexpr iface::NavEntry kGameplaySections[] = {
     {kGpGreyWorld,    "greyworld",     "GreyWorld"},
     {kGpTargeting,    "targeting",     "Précision du ciblage"},
     {kGpQuickCast,    "quick_cast",    "Quick cast"},
+    {kGpSpriteSounds, "sprite_sounds", "Sons des monstres"},
     {kGpSkillRange,   "skill_range",   "Zone des sorts"},
     {kGpJump,         "jump",          "Saut"},
 };
@@ -285,6 +290,14 @@ void MoonlightUi::DrawGameplayPanel() {
 
   if (gameplay_nav == kGpGreyWorld) {
     if (grey_world::DrawSettings()) SaveSettings();
+  }
+
+  if (gameplay_nav == kGpSpriteSounds) {
+    if (auto* sprite_sounds = Bourgeon::Instance().sprite_sound_tweaks()) {
+      if (sprite_sounds->DrawSettings()) SaveSettings();
+    } else {
+      ImGui::TextDisabled("%s", i18n::Tr(kPluginUnavailable));
+    }
   }
 
   PopItemWidth();

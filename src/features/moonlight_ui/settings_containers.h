@@ -48,6 +48,11 @@ void WriteMvpTrackerLines(YAML::Emitter& out);
 void ReadBlockedNpcs(const YAML::Node& ui);
 void WriteBlockedNpcs(YAML::Emitter& out);
 
+// La liste des .wav tus (spritesound_muted). Une sequence, donc hors table de
+// descripteurs : celle-ci ne decrit que des scalaires.
+void ReadMutedWavs(const YAML::Node& ui);
+void WriteMutedWavs(YAML::Emitter& out);
+
 // Raccourcis des actions BOURGEON : séquence d'objets { id, vk, ctrl, alt, shift }.
 // La clé est l'identifiant STABLE de l'action (features/hotkey_actions.h), jamais
 // son index — réordonner le catalogue ne doit déplacer aucun raccourci. Seules

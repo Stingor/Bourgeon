@@ -31,6 +31,7 @@
 #include "features/patches/status_tweaks.h"
 #include "features/patches/damage_name_fix.h"
 #include "features/patches/berserk_chat_unlock.h"
+#include "features/patches/sprite_sound_tweaks.h"
 #include "features/patches/pick_quad_tweaks.h"
 #include "features/patches/inventory_tweaks.h"
 #include "features/windows/inventory_viewer.h"
@@ -185,6 +186,9 @@ EntityContextMenu* Bourgeon::entity_context_menu() {
   return entity_context_menu_;
 }
 EntityInspector* Bourgeon::entity_inspector() { return entity_inspector_; }
+SpriteSoundTweaks* Bourgeon::sprite_sound_tweaks() {
+  return sprite_sound_tweaks_;
+}
 EntityNames* Bourgeon::entity_names() { return entity_names_; }
 ChatBalloon* Bourgeon::chat_balloon() { return chat_balloon_; }
 CastBar* Bourgeon::cast_bar() { return cast_bar_; }
@@ -998,6 +1002,14 @@ void Bourgeon::LoadPlugins() {
   plugins_.emplace_back(std::make_unique<StatusTweaks>());
   plugins_.emplace_back(std::make_unique<DamageNameFix>());
   plugins_.emplace_back(std::make_unique<BerserkChatUnlock>());
+  {
+    // Les sons de sprite. Il pose un detour permanent sur Sound_Play3D, donc
+    // il est enregistre ici et non construit a la demande ; son correctif de
+    // la premiere image, lui, attend le premier tick pour que le yaml soit lu.
+    auto sprite_sound_tweaks = std::make_unique<SpriteSoundTweaks>();
+    sprite_sound_tweaks_ = sprite_sound_tweaks.get();
+    plugins_.emplace_back(std::move(sprite_sound_tweaks));
+  }
   plugins_.emplace_back(std::make_unique<SkillRangePatch>());
   plugins_.emplace_back(std::make_unique<PickQuadTweaks>());
   plugins_.emplace_back(std::make_unique<InventoryTweaks>());

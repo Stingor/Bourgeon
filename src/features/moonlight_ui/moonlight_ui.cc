@@ -82,6 +82,7 @@
 #include "features/patches/window_pos_tweaks.h"
 #include "features/fx/weapon_dual_sprites.h"
 #include "features/patches/pick_quad_tweaks.h"
+#include "features/patches/sprite_sound_tweaks.h"
 #include "features/windows/char_diagnostics.h"
 #include "features/fx/spr_effect_lab.h"
 #include "features/fx/ground_paint.h"
@@ -1611,6 +1612,20 @@ const moonlight_ui::SettingDesc kGreyWorldSettings[] = {
 // montrer la zone d'un sort change ce que le joueur voit du combat. Celui qui la
 // veut la demande. Les MONSTRES ne sont dans aucune des deux : leur zone est
 // native, et on n'y touche pas.
+// Sons de sprite (features/patches/sprite_sound_tweaks.h).
+//
+// Le defaut est un LITTERAL et non MLUI_DEFAULT : celui-ci construirait une
+// instance du plugin pour lire son champ, et ce constructeur-la pose un detour
+// sur Sound_Play3D. La valeur reste celle du header, ecrite une seule fois ici.
+//
+// La LISTE des sons tus n'est pas dans cette table : une sequence ne se decrit
+// pas dans une table de scalaires. Elle a ses Read/WriteMutedWavs.
+const moonlight_ui::SettingDesc kSpriteSoundSettings[] = {
+    {"spritesound_first_frame", SType::kBool,
+     MLUI_FIELD(sprite_sound_tweaks, first_frame_enabled_),
+     MLUI_LITERAL(bool, false)},
+};
+
 const moonlight_ui::SettingDesc kSkillRangeSettings[] = {
     {"skillrange_preview", SType::kBool,
      []() -> void* { return &skill_range::cfg().preview; },
@@ -2263,6 +2278,8 @@ void MoonlightUi::LoadSettings() {
     moonlight_ui::ReadSettings(ui, kPetWindowSettings);
     moonlight_ui::ReadSettings(ui, kEntityContextMenuSettings);
     moonlight_ui::ReadBlockedNpcs(ui);
+    moonlight_ui::ReadSettings(ui, kSpriteSoundSettings);
+    moonlight_ui::ReadMutedWavs(ui);
     moonlight_ui::ReadStorageFavorites(ui);
     moonlight_ui::ReadStorageTabCustom(ui);
     moonlight_ui::ReadSettings(ui, kOptInWindowSettings);
@@ -2478,6 +2495,8 @@ void MoonlightUi::WriteSettingsFile() {
   moonlight_ui::WriteSettings(out, kPetWindowSettings);
   moonlight_ui::WriteSettings(out, kEntityContextMenuSettings);
   moonlight_ui::WriteBlockedNpcs(out);
+  moonlight_ui::WriteSettings(out, kSpriteSoundSettings);
+  moonlight_ui::WriteMutedWavs(out);
   moonlight_ui::WriteStorageFavorites(out);
   moonlight_ui::WriteStorageTabCustom(out);
   moonlight_ui::WriteSettings(out, kOptInWindowSettings);

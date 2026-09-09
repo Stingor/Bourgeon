@@ -161,6 +161,8 @@ set(BOURGEON_FILES
 	"features/patches/damage_name_fix.h"
 	"features/patches/berserk_chat_unlock.cc"
 	"features/patches/berserk_chat_unlock.h"
+	"features/patches/sprite_sound_tweaks.cc"
+	"features/patches/sprite_sound_tweaks.h"
 	"features/patches/pick_quad_tweaks.cc"
 	"features/patches/pick_quad_tweaks.h"
 	"features/patches/chat.cc"

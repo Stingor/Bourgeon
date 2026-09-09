@@ -65,6 +65,7 @@ class PaletteEditor;
 class EntityContextMenu;
 class EntityInspector;
 class FpsView;
+class SpriteSoundTweaks;
 class AfkScreen;
 class ItemDropArc;
 class PlayerJump;
@@ -171,6 +172,10 @@ class Bourgeon {
   EntityContextMenu* entity_context_menu();
   EntityInspector* entity_inspector();
   FpsView* fps_view();
+  // Sons de sprite : le correctif de la premiere image et la liste des sons
+  // tus. Expose parce que son detour de Sound_Play3D l'interroge a chaque son
+  // joue, et que le panneau Gameplay pilote ses deux reglages.
+  SpriteSoundTweaks* sprite_sound_tweaks();
   // Jaillissement des objets lâchés au sol. Exposé pour ses réglages.
   ItemDropArc* item_drop_arc();
   PlayerJump* player_jump();
@@ -433,6 +438,7 @@ class Bourgeon {
   PaletteEditor* palette_editor_ = nullptr;    // idem
   EntityContextMenu* entity_context_menu_ = nullptr;  // idem
   EntityInspector* entity_inspector_ = nullptr;       // idem
+  SpriteSoundTweaks* sprite_sound_tweaks_ = nullptr;  // idem
   WeaponDualSprites* weapon_dual_sprites_ = nullptr;  // non-owning, lifetime tied to plugins_
   EntityNames* entity_names_ = nullptr;  // non-owning, lifetime tied to plugins_
   ChatBalloon* chat_balloon_ = nullptr;  // non-owning, lifetime tied to plugins_
