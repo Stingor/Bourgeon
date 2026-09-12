@@ -155,17 +155,30 @@ const char* const kShowLabels[] = {"Toutes", "Débloquées", "Scellées"};
 constexpr int kShowCount = static_cast<int>(sizeof(kShowLabels) / sizeof(kShowLabels[0]));
 constexpr int kShowAll = 0, kShowUnlocked = 1, kShowSealed = 2;
 
-// Le nom d'une carte SANS son suffixe d'emplacement : le client nomme
-// « Poring Card [Armor] », et sous une pochette de 120 pixels le crochet ne
-// laisse plus de place au nom. L'emplacement est déjà dit par l'intercalaire et
-// par le tooltip. Coupe au premier « [ » précédé d'une espace, ou au premier
-// « [ » tout court.
+// Le nom d'une carte réduit à ce qui la DISTINGUE : le client nomme
+// « Poring Card [Armor] », et sous une pochette de 120 pixels ni le crochet ni
+// le mot « Card » ne laissent de place au nom. Deux coupes, dans cet ordre :
+//
+//   1. l'emplacement, au premier « [ » (les espaces qui le précèdent avec) —
+//      il est déjà dit par l'intercalaire et par le tooltip ;
+//   2. le suffixe « Card », que TOUTES les entrées portent : dans un album de
+//      cartes il ne distingue rien, et il vole cinq caractères aux noms longs.
+//
+// Les deux coupes se refusent à rendre une chaîne vide : mieux vaut un nom
+// bizarre qu'une pochette anonyme.
 const char* DisplayName(const char* nm, char* buf, size_t cap) {
   if (nm == nullptr || nm[0] == '\0') return "(?)";
   const char* br = std::strchr(nm, '[');
   size_t n = br != nullptr ? static_cast<size_t>(br - nm) : std::strlen(nm);
   while (n > 0 && nm[n - 1] == ' ') --n;
   if (n == 0) n = std::strlen(nm);  // « [Armor] » seul : mieux vaut tout que rien
+
+  static const char kSuffix[] = " Card";
+  const size_t suflen = sizeof(kSuffix) - 1;
+  if (n > suflen && _strnicmp(nm + n - suflen, kSuffix, static_cast<int>(suflen)) == 0) {
+    n -= suflen;
+  }
+
   if (n >= cap) n = cap - 1;
   std::memcpy(buf, nm, n);
   buf[n] = '\0';
