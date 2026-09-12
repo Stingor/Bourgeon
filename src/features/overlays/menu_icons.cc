@@ -22,6 +22,11 @@
 #include "features/systems/bourgeon_opcodes.h"
 #include "features/moonlight_ui/moonlight_ui.h"  // shared AlignGrid (snap)
 #include "features/systems/mvp_tracker.h"        // le signalement de l'icone du carnet
+// Les trois fenêtres que nos icônes basculent : leur `IsOpen()` choisit lequel
+// des deux bitmaps se peint (cf. BourgeonIconOpen).
+#include "features/windows/card_album_window.h"
+#include "features/windows/craft_atlas.h"
+#include "features/windows/mvp_tracker_window.h"
 #include "ui/window_clamp.h"  // ClampWindowPosToScreen (icônes déplacées à la main)
 #include "utils/log_console.h"
 #include "utils/i18n.h"
@@ -216,9 +221,45 @@ struct BourgeonIconDef {
   const char* label_fr;
 };
 const BourgeonIconDef kBourgeonIcons[] = {
+    {"album", "win_card_album", "Album de cartes"},
     {"atlas", "tool_craft_atlas", "Atlas des recettes"},
     {"tracker", "win_mvp_tracker", "Carnet de chasse MVP"},
 };
+
+// 🔴 DEUX BITMAPS, DEUX ÉTATS : FERMÉ ET OUVERT. Pour une icône du CLIENT, le
+// « _press » est une animation de clic — il ne dure que le temps où le doigt
+// appuie. Nos trois boutons, eux, sont des BASCULES : la même icône ouvre et
+// referme la fenêtre, et son second bitmap dit donc lequel des deux le prochain
+// clic fera. Sans ça, rien à l'écran ne distingue une fenêtre ouverte cachée
+// derrière une autre d'une fenêtre jamais ouverte.
+//
+// L'état enfoncé du doigt reste peint par-dessus (cf. le rendu) : un bouton qui
+// ne bouge pas sous le clic passe pour un bouton mort.
+// Le clic sur cette icône peut-il aboutir ? Vrai pour tout ce qui n'est pas à
+// nous — les icônes du client ont leur propre filtre (`IconShown`).
+//
+// Un seul cas aujourd'hui : l'album, qui n'existe qu'en interface moderne. Le
+// carnet et l'Atlas s'ouvrent dans les deux modes, et le carnet éteint s'ALLUME
+// en s'ouvrant (cf. son panneau) — leur icône n'a donc jamais rien à cacher.
+bool BourgeonIconUsable(const MenuIcons::Icon& ic) {
+  if (ic.action_id == nullptr) return true;
+  if (std::strcmp(ic.action_id, "win_card_album") == 0) {
+    auto* w = Bourgeon::Instance().card_album_window();
+    return w != nullptr && w->imgui_enabled();
+  }
+  return true;
+}
+
+bool BourgeonIconOpen(const MenuIcons::Icon& ic) {
+  if (ic.action_id == nullptr) return false;
+  if (std::strcmp(ic.action_id, "win_card_album") == 0)
+    if (auto* w = Bourgeon::Instance().card_album_window()) return w->IsOpen();
+  if (std::strcmp(ic.action_id, "tool_craft_atlas") == 0)
+    if (auto* w = Bourgeon::Instance().craft_atlas()) return w->IsOpen();
+  if (std::strcmp(ic.action_id, "win_mvp_tracker") == 0)
+    if (auto* w = Bourgeon::Instance().mvp_tracker_window()) return w->IsOpen();
+  return false;
+}
 
 // Le raccourci qui ouvre CETTE icône, prêt à afficher — chaîne vide s'il n'y en
 // a pas. Les deux systèmes de raccourcis du projet y répondent chacun pour les
@@ -719,6 +760,12 @@ void MenuIcons::OnRenderUI() {
   for (int i = 0; i < static_cast<int>(icons_.size()); ++i) {
     Icon& ic = icons_[i];
     if (ic.hidden) continue;  // user-hidden via the MoonlightUi list
+    // 🔴 Une icône dont le clic ne peut RIEN faire ne se dessine pas. L'album
+    // n'existe qu'en interface moderne (son drapeau tombe avec le groupe, et le
+    // serveur refuse alors ses commandes) : la laisser là donnerait un bouton qui
+    // ne répond pas, sans rien pour l'expliquer. Testé à la FRAME et non à la
+    // construction — le joueur bascule l'interface sans relancer le jeu.
+    if (!BourgeonIconUsable(ic)) continue;
     EnsureBitmap(ic.normal, ic.dir, ic.name, "");  // lazy/retry
     if (!ic.normal.tex) continue;
 
@@ -787,13 +834,18 @@ void MenuIcons::OnRenderUI() {
     // l'état enfoncé y serait un mensonge (rien ne s'ouvrira), et le surlignage
     // jaune dit déjà ce qui se passe.
     const bool held = !edit_mode_ && ImGui::IsItemActive();
+    // Le second bitmap se montre aussi quand la FENÊTRE est ouverte : nos boutons
+    // sont des bascules, et leurs deux images sont deux états (cf.
+    // BourgeonIconOpen). En mode édition on ne le fait pas — on y range des
+    // icônes, l'état des fenêtres n'a rien à y dire.
+    const bool down = held || (!edit_mode_ && BourgeonIconOpen(ic));
     // Le bitmap à peindre. 🔴 Chaque état a un REPLI vers l'état voisin qui
     // existe, jamais rien : une icône sans « _press » (le bouton du cash shop, à
     // qui un seul bitmap sert les trois états) doit rester dessinée quand on
     // appuie dessus, pas disparaître.
     const MenuIcons::Bitmap& drawn =
-        badge ? (held && ic.badge_pressed.tex ? ic.badge_pressed : ic.badge_normal)
-              : (held && ic.pressed.tex ? ic.pressed : ic.normal);
+        badge ? (down && ic.badge_pressed.tex ? ic.badge_pressed : ic.badge_normal)
+              : (down && ic.pressed.tex ? ic.pressed : ic.normal);
     ImDrawList* dl = ImGui::GetWindowDrawList();
     dl->AddImage((ImTextureID)(uintptr_t)drawn.tex, p0, p1);
 
