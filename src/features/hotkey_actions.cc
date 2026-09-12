@@ -39,96 +39,118 @@ namespace {
 // CLIENT, et un défaut qui écrase silencieusement un raccourci du jeu serait
 // exactement le genre de panne qu'on ne relie jamais à sa cause.
 //
-// 🔴 LA SEULE EXCEPTION EST LE RAPPORT DE BUG, et c'est un défaut CONSTATÉ, pas
-// choisi : Ctrl+Alt+B était déjà livré, câblé en dur dans `BugReport`. Le porter
-// ici sans son combo l'aurait RETIRÉ aux joueurs qui s'en servent
+// 🔴 LES DEUX SEULES EXCEPTIONS SONT LE RAPPORT DE BUG (Ctrl+Alt+B) ET LE CYCLAGE
+// DES FENÊTRES (Ctrl+Tab), et ce sont des défauts CONSTATÉS, pas choisis : les
+// deux combos étaient déjà livrés, câblés en dur ailleurs. Les porter ici sans
+// leur combo les aurait RETIRÉS aux joueurs qui s'en servent
 // (feedback_ui_conventions : changer un défaut livré demanderait de renommer la
-// clé — ici on le préserve, justement pour n'avoir rien à renommer).
+// clé — ici on les préserve, justement pour n'avoir rien à renommer).
+
+// 🔴 ORDRE ALPHABÉTIQUE DU LIBELLÉ FRANÇAIS, comme la nav des réglages
+// (`panel_interface.cc`). C'est une liste qu'on PARCOURT DES YEUX pour y trouver
+// UNE action ; l'ordre d'arrivée des chantiers ne veut rien dire pour le joueur,
+// et chaque ajout éloignait un peu plus « Album de cartes » du A. Les en-têtes
+// « Fenêtres » / « Sans équivalent natif » qui découpaient la table ont disparu
+// avec : la distinction se lit déjà entrée par entrée, dans `native_window_id`.
+//
+// ⚠ L'ordre se REVÉRIFIE à chaque insertion, rien dans la compilation ne dit
+// qu'une entrée est mal placée. Réordonner, en revanche, est SANS RISQUE : l'index
+// de ce tableau n'est la clé de rien (la persistance va par `id`).
+//
+// ⚠ Les huit lignes de déplacement et celle du saut ne sont PAS ici et passent
+// AVANT tout ce tableau à l'écran : ce sont les seules qui touchent au
+// personnage, et `hotkey_settings.cc` les met en tête exprès.
 const Action kActions[] = {
-    // ── Fenêtres ────────────────────────────────────────────────────────────
-    {"win_inventory",    "Inventaire",              ActionGroup::kWindows, uiwnd::kUIInventoryWnd,    {}},
-    {"win_cart",         "Cart",                    ActionGroup::kWindows, uiwnd::kUICartWnd,         {}},
-    {"win_storage",      "Storage",                 ActionGroup::kWindows, uiwnd::kUIItemStoreWnd,    {}},
-    {"win_sheet_stats",  "Fiche : caractéristiques", ActionGroup::kWindows, uiwnd::kUIStatusWnd,      {}},
-    {"win_sheet_equip",  "Fiche : équipement",      ActionGroup::kWindows, uiwnd::kUIEquipWnd,        {}},
-    {"win_sheet_skills", "Fiche : compétences",     ActionGroup::kWindows, uiwnd::kUINewSkillListWnd, {}},
-    {"win_rodex",        "Courrier",                ActionGroup::kWindows, uiwnd::kUIRodexWnd,        {}},
-    {"win_achievements", "Succès",                  ActionGroup::kWindows, uiwnd::kUIAchievementWnd,  {}},
-    {"win_quests",       "Journal de quêtes",       ActionGroup::kWindows, uiwnd::kQuestJournalWndId, {}},
-    {"win_worldmap",     "Carte du monde",          ActionGroup::kWindows, uiwnd::kUIRoMapWnd,        {}},
-    // ── Sans équivalent natif : traitées dans Invoke ────────────────────────
-    {"win_bank",         "Banque",                  ActionGroup::kWindows, 0, {}},
-    {"win_game_menu",    "Menu du jeu",             ActionGroup::kWindows, 0, {}},
-    {"win_hotkeys",      "Raccourcis clavier",      ActionGroup::kTools,   0, {}},
-    // Navigation. ⚠ Elle reste à 0 alors que sa native (203) EST routée, et ce
-    // n'est pas un oubli : `native_window_id` passe par `MakeWindow`, dont notre
-    // hook fait une BASCULE. Or le panneau ne s'ouvre que si l'interface moderne
-    // est active ; éteinte, `MakeWindow(203)` rendrait la fenêtre native, et ce
-    // raccourci-ci n'a alors rien à ouvrir. Le chemin direct marche dans les deux
-    // cas — cf. `Invoke`, qui refuse proprement quand le panneau est absent.
-    {"win_navigation",   "Navigation",              ActionGroup::kWindows, 0, {}},
+    // Album de cartes : aucune fenêtre native n'existe pour ça, donc rien à router,
+    // et pas de touche par défaut à voler à un raccourci déjà en place.
+    {"win_card_album",    "Album de cartes",          ActionGroup::kWindows, 0,                         {}},
+    {"tool_craft_atlas",  "Atlas des recettes",       ActionGroup::kTools,   0,                         {}},
+    {"win_bank",          "Banque",                   ActionGroup::kWindows, 0,                         {}},
+
     // Carnet de chasse MVP. Pas de native à router (rien de tel n'existe dans le
     // client) ni de défaut proposé : toute touche libre est déjà prise par
     // quelqu'un, le joueur choisit la sienne.
-    {"win_mvp_tracker",  "Carnet de chasse MVP",    ActionGroup::kWindows, 0, {}},
-    // Album de cartes. Comme le carnet : aucune fenêtre native n'existe pour ça,
-    // donc rien à router, et pas de touche par défaut à voler à un raccourci déjà
-    // en place.
-    {"win_card_album",   "Album de cartes",         ActionGroup::kWindows, 0, {}},
-    {"tool_craft_atlas", "Atlas des recettes",      ActionGroup::kTools,   0, {}},
-    {"tool_palette",     "Style du personnage",     ActionGroup::kTools,   0, {}},
-    // Ciblage clavier. 🔴 AUCUN défaut n'est proposé (`{}`), et c'est délibéré :
-    // la touche qui vient à l'esprit — Tab — sert déjà au client (bascule du
-    // chat), et poser un défaut qui vole une touche du jeu est le genre de cadeau
-    // qu'on passe sa vie à retirer. Le joueur choisit.
-    {"target_cycle_next", "Cible suivante",         ActionGroup::kTools,   0, {}},
-    {"target_cycle_prev", "Cible précédente",       ActionGroup::kTools,   0, {}},
-    // Et l'action qu'on refait trente fois par combat : engager le plus proche,
-    // sans rien parcourir. Le cyclage sert à EXPLORER, celle-ci à ENGAGER — les
-    // confondre obligeait à deviner où le cycle en était resté.
-    {"target_nearest",    "Cible la plus proche",   ActionGroup::kTools,   0, {}},
-    // Et son inverse : LÂCHER la cible. Aucun défaut non plus — la touche qui
-    // vient à l'esprit, Échap, ouvre le menu du jeu depuis toujours ; elle a son
-    // réglage à elle dans le panneau du HUD de cible, où le joueur la donne
-    // explicitement (cf. `TargetFrame::escape_clears_`).
-    {"target_clear",      "Effacer la cible",       ActionGroup::kTools,   0, {}},
-    // Rapport de bug. 🔴 SEULE ACTION À PORTER UN DÉFAUT : Ctrl+Alt+B est le combo
-    // sous lequel elle a été livrée, et le catalogue le reprend tel quel plutôt que
-    // de le laisser en dur dans `BugReport` — invisible à l'écran des raccourcis,
-    // donc introuvable et surtout impossible à déplacer quand il tombe sur la
-    // touche d'autre chose. Le contrôle de collision le voit maintenant comme
-    // n'importe quelle autre liaison.
-    {"tool_bug_report",   "Signaler un bug",       ActionGroup::kTools,   0,
-     {'B', /*ctrl=*/true, /*alt=*/true, /*shift=*/false}},
+    {"win_mvp_tracker",   "Carnet de chasse MVP",     ActionGroup::kWindows, 0,                         {}},
+    {"win_cart",          "Cart",                     ActionGroup::kWindows, uiwnd::kUICartWnd,         {}},
+    {"win_worldmap",      "Carte du monde",           ActionGroup::kWindows, uiwnd::kUIRoMapWnd,        {}},
+
+    // Ciblage clavier, les trois lignes qui suivent. 🔴 AUCUN défaut n'est
+    // proposé (`{}`), et c'est délibéré : la touche qui vient à l'esprit — Tab —
+    // sert déjà au client (bascule du chat), et poser un défaut qui vole une touche
+    // du jeu est le genre de cadeau qu'on passe sa vie à retirer. Le joueur choisit.
+    //
+    // Engager le plus proche sans rien parcourir est l'action qu'on refait trente
+    // fois par combat. Le cyclage sert à EXPLORER, celle-ci à ENGAGER — les confondre
+    // obligeait à deviner où le cycle en était resté.
+    {"target_nearest",    "Cible la plus proche",     ActionGroup::kTools,   0,                         {}},
+    {"target_cycle_prev", "Cible précédente",         ActionGroup::kTools,   0,                         {}},
+    {"target_cycle_next", "Cible suivante",           ActionGroup::kTools,   0,                         {}},
+    {"win_rodex",         "Courrier",                 ActionGroup::kWindows, uiwnd::kUIRodexWnd,        {}},
+
     // Cyclage des fenêtres de Bourgeon. 🔴 SECONDE ACTION À DÉFAUT, et pour la même
     // raison que le rapport de bug : Ctrl+Tab est un combo LIVRÉ, pas choisi. ImGui
     // le tenait en dur (`NavUpdateWindowing`, actif même sans `NavEnableKeyboard`),
     // donc invisible dans l'écran des raccourcis, exclu du contrôle de collision et
-    // impossible à déplacer. Le reprendre tel quel ne change rien pour qui s'en
-    // sert, et rend enfin la touche effaçable à qui la subit
-    // (feedback_ui_conventions : c'est justement pour n'avoir aucune clé à renommer).
+    // impossible à déplacer. Le reprendre tel quel ne change rien pour qui s'en sert,
+    // et rend enfin la touche effaçable à qui la subit (feedback_ui_conventions :
+    // c'est justement pour n'avoir aucune clé à renommer).
     //
     // 🔴 Elle n'est pas exécutée par `Invoke` : `imgui_windowing` dit que son combo
     // repart chez ImGui (cf. `ApplyImGuiWindowingChord`). Maj inverse le sens du
     // cycle, ce qui est le geste d'origine et n'a donc pas de ligne à lui.
-    {"ui_cycle_windows", "Cycler entre les fenêtres", ActionGroup::kTools, 0,
+    {"ui_cycle_windows",  "Cycler entre les fenêtres", ActionGroup::kTools,  0,
      {VK_TAB, /*ctrl=*/true, /*alt=*/false, /*shift=*/false}, /*staff_only=*/false,
      /*imgui_windowing=*/true},
+
+    // La visite guidée des nouveautés. Aucun défaut : elle s'ouvre d'elle-même à la
+    // première connexion, et se rouvre depuis le panneau — lui donner une touche
+    // d'office prendrait une frappe au jeu pour un écran qu'on lit une fois.
+    {"tool_tutorial",     "Découvrir Bourgeon",       ActionGroup::kTools,   0,                         {}},
+
     // Écran de veille, lancé à la main. 🔴 AUCUN défaut, comme le ciblage : la
-    // touche évidente (Pause) sert déjà, et poser un défaut qui vole une touche du
-    // jeu est le genre de cadeau qu'on passe sa vie à retirer.
+    // touche évidente (Pause) sert déjà.
     //
     // ⚠ Le libellé est le MÊME que le titre de la sous-section des réglages, donc
     // la même clé de catalogue — c'est voulu : le joueur qui cherche « Écran de
     // veille » doit tomber sur le même mot aux deux endroits.
-    {"tool_afk",         "Écran de veille",         ActionGroup::kTools,   0, {}},
-    // La visite guidée des nouveautés. Aucun défaut : elle s'ouvre d'elle-même à
-    // la première connexion, et se rouvre depuis le panneau — lui donner une
-    // touche d'office prendrait une frappe au jeu pour un écran qu'on lit une fois.
-    {"tool_tutorial",    "Découvrir Bourgeon",     ActionGroup::kTools,   0, {}},
+    {"tool_afk",          "Écran de veille",          ActionGroup::kTools,   0,                         {}},
+
+    // LÂCHER la cible, l'inverse de « Cible la plus proche ». Aucun défaut non plus
+    // — la touche qui vient à l'esprit, Échap, ouvre le menu du jeu depuis toujours ;
+    // elle a son réglage à elle dans le panneau du HUD de cible, où le joueur la
+    // donne explicitement (cf. `TargetFrame::escape_clears_`).
+    {"target_clear",      "Effacer la cible",         ActionGroup::kTools,   0,                         {}},
+    {"win_sheet_stats",   "Fiche : caractéristiques", ActionGroup::kWindows, uiwnd::kUIStatusWnd,       {}},
+    {"win_sheet_skills",  "Fiche : compétences",      ActionGroup::kWindows, uiwnd::kUINewSkillListWnd, {}},
+    {"win_sheet_equip",   "Fiche : équipement",       ActionGroup::kWindows, uiwnd::kUIEquipWnd,        {}},
+    {"win_inventory",     "Inventaire",               ActionGroup::kWindows, uiwnd::kUIInventoryWnd,    {}},
+    {"win_quests",        "Journal de quêtes",        ActionGroup::kWindows, uiwnd::kQuestJournalWndId, {}},
+    {"win_game_menu",     "Menu du jeu",              ActionGroup::kWindows, 0,                         {}},
+
+    // Navigation. ⚠ Elle reste à 0 alors que sa native (203) EST routée, et ce
+    // n'est pas un oubli : `native_window_id` passe par `MakeWindow`, dont notre hook
+    // fait une BASCULE. Or le panneau ne s'ouvre que si l'interface moderne est
+    // active ; éteinte, `MakeWindow(203)` rendrait la fenêtre native, et ce
+    // raccourci-ci n'a alors rien à ouvrir. Le chemin direct marche dans les deux cas
+    // — cf. `Invoke`, qui refuse proprement quand le panneau est absent.
+    {"win_navigation",    "Navigation",               ActionGroup::kWindows, 0,                         {}},
+    {"win_hotkeys",       "Raccourcis clavier",       ActionGroup::kTools,   0,                         {}},
+
+    // Rapport de bug. 🔴 PREMIÈRE DES DEUX ACTIONS À PORTER UN DÉFAUT (l'autre est
+    // « Cycler entre les fenêtres ») : Ctrl+Alt+B est le combo sous lequel elle a été
+    // livrée, et le catalogue le reprend tel quel plutôt que de le laisser en dur
+    // dans `BugReport` — invisible à l'écran des raccourcis, donc introuvable et
+    // surtout impossible à déplacer quand il tombe sur la touche d'autre chose. Le
+    // contrôle de collision le voit maintenant comme n'importe quelle autre liaison.
+    {"tool_bug_report",   "Signaler un bug",          ActionGroup::kTools,   0,
+     {'B', /*ctrl=*/true, /*alt=*/true, /*shift=*/false}},
+
     // Établi du staff. Le seul membre du catalogue à être gaté : il ne s'affiche
     // même pas dans l'écran des raccourcis d'un joueur ordinaire.
-    {"tool_staff",       "Staff Tools",             ActionGroup::kTools,   0, {}, true},
+    {"tool_staff",        "Staff Tools",              ActionGroup::kTools,   0,                         {}, true},
+    {"win_storage",       "Storage",                  ActionGroup::kWindows, uiwnd::kUIItemStoreWnd,    {}},
+    {"tool_palette",      "Style du personnage",      ActionGroup::kTools,   0,                         {}},
+    {"win_achievements",  "Succès",                   ActionGroup::kWindows, uiwnd::kUIAchievementWnd,  {}},
 };
 
 constexpr int kActionCount = static_cast<int>(sizeof(kActions) / sizeof(kActions[0]));

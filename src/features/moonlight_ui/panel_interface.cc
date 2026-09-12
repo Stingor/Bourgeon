@@ -89,8 +89,14 @@ using iface::NavEntry;
 // 🔴 ORDRE ALPHABÉTIQUE DU LIBELLÉ FRANÇAIS, et c'est un ordre FIGÉ, pas un tri.
 // La liste s'était construite par ordre d'arrivée des chantiers : personne ne
 // pouvait deviner où chercher « Fiche de pet », et chaque nouvelle section
-// empirait le cas. Ranger la table une fois suffit — rien n'indexe ce tableau, ni
+// empirait le cas. Ranger la table ne coûte rien — rien n'indexe ce tableau, ni
 // la persistance (qui va par `key`) ni le rendu du contenu (qui va par `id`).
+//
+// ⚠ L'ordre se REVÉRIFIE à chaque insertion, il ne se maintient pas tout seul :
+// une section ajoutée à la place que suggère l'enum (« Album de cartes » s'était
+// posé entre « Groupe / Amis » et « Fenêtre NPC ») se retrouve introuvable, et
+// rien dans la compilation ne le dit. Lire la ligne du dessus et celle du dessous
+// avant d'écrire la sienne.
 //
 // ⚠ L'ordre suit le FRANÇAIS, y compris pour un joueur en anglais ou en espagnol,
 // où la liste n'est donc alphabétique qu'à peu près (« Cast bar » se lit sous
@@ -98,22 +104,22 @@ using iface::NavEntry;
 // demanderait une comparaison qui plie les accents et respecte la locale, pour un
 // gain qui ne concerne pas la langue de référence.
 constexpr NavEntry kIfaceSections[] = {
+    {MoonlightUi::kIfaceCardAlbum,   "card_album",   "Album de cartes"},
     {MoonlightUi::kIfaceSkillBar,    "skill_bar",    "Barre d'action"},
     {MoonlightUi::kIfaceCastBar,     "cast_bar",     "Barre de Cast"},
     {MoonlightUi::kIfaceBasicInfo,   "basic_info",   "Basic Info"},
-    {MoonlightUi::kIfaceCart,        "cart",         "Cart"},
     {MoonlightUi::kIfaceMvpTracker,  "mvp_tracker",  "Carnet de chasse MVP"},
+    {MoonlightUi::kIfaceCart,        "cart",         "Cart"},
     {MoonlightUi::kIfaceChat,        "chat",         "Chat"},
     {MoonlightUi::kIfaceTutorial,    "tutorial",     "Découvrir Bourgeon"},
     {MoonlightUi::kIfaceDesc,        "desc",         "Descriptions"},
     {MoonlightUi::kIfaceMakeItem,    "make_item",    "Fabrication"},
     {MoonlightUi::kIfaceTargetFrame, "target_frame", "Fenêtre de cible"},
-    {MoonlightUi::kIfacePartyFrames, "party_frames", "Groupe (grille)"},
-    {MoonlightUi::kIfacePartyFriend, "party_friend", "Groupe / Amis"},
-    {MoonlightUi::kIfaceCardAlbum,   "card_album",   "Album de cartes"},
     {MoonlightUi::kIfaceNpc,         "npc",          "Fenêtre NPC"},
     {MoonlightUi::kIfaceMonsterInfo, "monster_info", "Fiche de monstre"},
     {MoonlightUi::kIfacePet,         "pet",          "Fiche de pet"},
+    {MoonlightUi::kIfacePartyFrames, "party_frames", "Groupe (grille)"},
+    {MoonlightUi::kIfacePartyFriend, "party_friend", "Groupe / Amis"},
     {MoonlightUi::kIfaceStatusIcons, "status_icons", "Icônes de statut"},
     {MoonlightUi::kIfaceMenuIcons,   "menu_icons",   "Icônes du menu"},
     {MoonlightUi::kIfaceInventory,   "inventory",    "Inventaire"},
