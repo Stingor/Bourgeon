@@ -440,7 +440,11 @@ void MoonlightUi::DrawInterfacePanel() {
       }
 
       // ── Album de cartes ───────────────────────────────────────────────────
-      // Éteindre ce réglage ne masque pas seulement la fenêtre : le bit UiCaps
+      // Membre du groupe « Interface moderne » : le grisage et le bouton
+      // « Activer l'interface moderne » viennent du bloc commun ci-dessus, il n'y
+      // a rien à écrire ici pour ça.
+      //
+      // 🔴 Éteindre le groupe ne masque pas seulement la fenêtre : le bit UiCaps
       // tombe et le SERVEUR cesse d'accepter les commandes d'album. C'est voulu —
       // un sacrifice de carte est irréversible et n'a pas à partir d'un client
       // qui n'a plus de quoi en montrer le résultat.

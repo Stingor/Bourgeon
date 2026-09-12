@@ -108,6 +108,27 @@ int CaptureActionVk();
 // Libellé lisible du combo : « Ctrl+Maj+F1 », « Espace », « (aucun) ».
 void Label(int vkey, bool ctrl, bool alt, bool shift, char* out, int cap);
 
+// ── Le bouton « Ouvrir … » d'un panneau de réglages ──────────────────────────
+//
+// Une fenêtre que RIEN du jeu n'ouvre (l'album, le carnet de chasse, l'Atlas) se
+// trouve par ses réglages ou par une touche — et la touche, personne ne l'a
+// puisqu'aucune n'est proposée par défaut. Le panneau doit donc porter les deux :
+// de quoi l'ouvrir tout de suite, et le nom de l'action à lier pour ne plus
+// repasser par là.
+//
+// 🔴 LA TOUCHE EST RELUE À CHAQUE FRAME, jamais mémorisée : le joueur peut la
+// changer dans l'onglet d'à côté sans refermer les réglages, et un libellé mis en
+// cache annoncerait alors une touche qui n'ouvre plus rien.
+//
+// `action_id` est l'identifiant du catalogue (`hotkey_actions.cc`), pas son
+// libellé : le libellé se traduit, l'identifiant est la clé. Inconnu, le bouton
+// se dessine quand même — c'est l'indication de touche qui disparaît, pas le seul
+// moyen d'ouvrir la fenêtre.
+//
+// Rend true AU CLIC, à l'appelant d'ouvrir : lui seul sait si ouvrir allume aussi
+// un interrupteur qu'il faut enregistrer.
+bool OpenButton(const char* button_label, const char* action_id);
+
 // Le combo est-il déjà attribué ? Renvoie true et décrit son propriétaire dans
 // `what` (au plus `cap` octets, toujours terminé).
 bool Conflict(int vkey, bool ctrl, bool alt, bool shift, Owner self, int self_index,

@@ -9,6 +9,7 @@
 
 #include "bourgeon.h"
 #include "features/craft_data.h"
+#include "features/hotkey_util.h"  // hotkeys::OpenButton (bouton + touche liée)
 #include "features/item_cell.h"
 #include "features/link_gesture.h"
 #include "features/moonlight_ui/moonlight_ui.h"
@@ -852,7 +853,21 @@ bool CraftAtlas::DrawSettings() {
             "n'envoie une liste qu'après un lancement de compétence."));
   ImGui::Separator();
 
-  if (ro::RoCheckbox(i18n::Tr("Ouvrir l'Atlas"), &open_)) changed = true;
+  // ⚠ L'Atlas n'est PAS du groupe « Interface moderne » (cf. panel_interface.cc) :
+  // il n'agit sur rien, il lit un fichier. Ce bouton s'ouvre donc en interface
+  // native aussi, et rien ne le grise.
+  //
+  // C'était une case cochée sur `open_`, l'état ouvert/fermé de la fenêtre. Elle
+  // se décochait toute seule dès qu'on fermait l'Atlas par sa croix, et elle
+  // taisait la seule information utile : la touche qui l'ouvre sans repasser par
+  // les réglages.
+  if (hotkeys::OpenButton(i18n::Tr("Ouvrir l'Atlas"), "tool_craft_atlas")) {
+    Open();
+    changed = true;  // `open_` est persisté : la fenêtre se retrouve au lancement
+  }
+
+  ImGui::Spacing();
+
   if (ro::RoCheckbox(i18n::Tr("Aperçu de l'objet au survol"), &desc_tooltip_))
     changed = true;
   if (ro::RoCheckbox(i18n::Tr("Ne montrer que ce qui est réalisable"), &only_craftable_))

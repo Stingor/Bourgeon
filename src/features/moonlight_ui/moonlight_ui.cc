@@ -829,14 +829,25 @@ const moonlight_ui::SettingDesc kTargetStatusSettings[] = {
 };
 
 
-// Album de cartes. ⚠ Défaut à TRUE, contrairement aux bascules des viewers
-// (storage_imgui, cart_imgui… toutes à false) — et la différence est de fond :
-// celles-là choisissent entre notre fenêtre et une fenêtre NATIVE équivalente,
-// donc rester en natif est un défaut légitime. L'album n'a pas de natif : à
-// false il n'existerait pour personne, et le réglage ne servirait qu'à éteindre.
+// Album de cartes. ⚠ Cette clé ne se règle PLUS à la main : l'album est entré
+// dans le groupe « Interface moderne » (`kModernGroup`), qui l'écrit avec les
+// autres. Elle reste persistée pour que l'état survive au redémarrage, pas pour
+// offrir un choix — la section n'a plus de case à cocher.
+//
+// 🔴 DÉFAUT REPASSÉ À FALSE, et c'est la conséquence directe de l'entrée dans le
+// groupe : tout le reste du groupe part à false (inventory_imgui, cart_imgui,
+// storage_imgui…). Un défaut à true laissait une installation neuve dans l'état
+// exact qu'on cherche à rendre impossible — un album allumé, ouvrable au
+// raccourci, dans une interface par ailleurs native, et dont la section de
+// réglages se grise en annonçant que l'interface moderne est éteinte.
+//
+// ⚠ Il ne VOTE pas dans la réconciliation en OU de `LoadSettings` : il n'a eu sa
+// case isolée que le temps d'une version, avec true pour défaut, donc un `true`
+// lu dans un yaml ne distingue pas un choix d'un défaut. Le compter aurait
+// basculé tout le monde en interface moderne au premier chargement.
 const moonlight_ui::SettingDesc kCardAlbumSettings[] = {
     {"card_album_imgui", SType::kBool,
-     MLUI_FIELD(card_album_window, imgui_enabled()), MLUI_LITERAL(bool, true)},
+     MLUI_FIELD(card_album_window, imgui_enabled()), MLUI_LITERAL(bool, false)},
     // Opt-in, OFF : ce réglage AGIT (il consomme une carte sans demander).
     {"card_album_auto_sacrifice", SType::kBool,
      MLUI_FIELD(card_album_window, auto_sacrifice()), MLUI_LITERAL(bool, false)},
@@ -1963,6 +1974,22 @@ constexpr ModernMember kModernGroup[] = {
     {"Storage (Kafra, guilde, premium)", MoonlightUi::kIfaceStorage,
      [](bool on) {
        if (auto* p = Bourgeon::Instance().storage_window()) p->imgui_enabled_ = on;
+     }},
+    // L'album reçoit ses cartes DE l'inventaire, par glisser comme par son menu :
+    // même dépendance que le cart, donc même groupe.
+    //
+    // 🔴 Il est le seul membre dont l'extinction coupe aussi le SERVEUR : le bit
+    // UiCaps tombe avec le drapeau et les commandes d'album sont refusées. C'est
+    // voulu — un sacrifice de carte est irréversible et n'a pas à partir d'un
+    // client qui n'a plus de quoi en montrer le résultat. D'où le `Close()` :
+    // laisser la fenêtre ouverte sur un serveur qui ne répond plus donnerait un
+    // album gelé, sans rien pour l'expliquer.
+    {"Album de cartes", MoonlightUi::kIfaceCardAlbum,
+     [](bool on) {
+       if (auto* p = Bourgeon::Instance().card_album_window()) {
+         p->imgui_enabled() = on;
+         if (!on) p->Close();
+       }
      }},
     {"Barres d'action", MoonlightUi::kIfaceSkillBar,
      [](bool on) {

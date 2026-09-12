@@ -12,6 +12,7 @@
 #include "bourgeon.h"                           // Bourgeon::Instance()
 #include "d3d9/d3d9_hook.h"                     // Overlay_SetTextureFilter (POINT sur les illustrations)
 #include "features/equip_slot.h"                // equipslot : bits et libellé d'emplacement
+#include "features/hotkey_util.h"               // hotkeys::OpenButton (bouton + touche liée)
 #include "features/item_cell.h"                 // itemcell::ExtractList, ItemRow
 #include "features/windows/item_desc_window.h"  // itemdesc::CardName / CardIllustPath / RenderSimpleDesc
 #include "features/moonlight_ui/moonlight_ui.h"  // OpenInterfaceSection / SaveSettings (menu de la puce)
@@ -1566,14 +1567,22 @@ void CardAlbumWindow::DrawConfirmModal() {
 
 bool CardAlbumWindow::DrawSettings() {
   bool changed = false;
-  if (ro::RoCheckbox(i18n::Tr("Album de cartes (interface moderne)"),
-                     &imgui_enabled_)) {
-    changed = true;
-    // Éteint, la fenêtre disparaît ET le serveur cesse d'accepter nos commandes
-    // (le bit UiCaps tombe) : les deux vont ensemble, sinon on garderait une
-    // fenêtre qui ne peut plus rien faire.
-    if (!imgui_enabled_) Close();
-  }
+
+  // 🔴 PLUS DE CASE « Album de cartes (interface moderne) » ICI. Elle disait deux
+  // choses à la fois — le nom de la section qu'on lit déjà dans la nav, et
+  // l'appartenance au groupe — sans dire la seule qui compte : que l'éteindre
+  // coupe aussi le SERVEUR (le bit UiCaps tombe, les commandes d'album sont
+  // refusées). L'album est désormais un membre ordinaire du groupe « Interface
+  // moderne » (`kModernGroup`, moonlight_ui.cc) : sa section se grise et propose
+  // le bouton commun quand le groupe est éteint, comme les treize autres.
+  //
+  // Rien ne l'ouvre depuis le jeu : ni fenêtre native, ni icône de menu. Le
+  // bouton et le nom de l'action à lier sont donc les DEUX seules portes, et
+  // elles doivent être ici.
+  if (hotkeys::OpenButton(i18n::Tr("Ouvrir l'album"), "win_card_album")) Open();
+
+  ImGui::Spacing();
+
   if (ro::RoCheckbox(i18n::Tr("Sacrifier sans confirmation"), &auto_sacrifice_)) {
     changed = true;
   }

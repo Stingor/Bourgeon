@@ -16,6 +16,7 @@
 #include "features/gameplay/keyboard_move.h"    // déplacement ZQSD
 #include "features/gameplay/player_jump.h"      // touche de saut
 #include "features/fx/zone_recorder.h"          // touche d'enregistrement de zone
+#include "ui/ro_imgui.h"                        // ro::RoButton (le bouton « Ouvrir … »)
 #include "utils/i18n.h"
 
 namespace hotkeys {
@@ -147,6 +148,33 @@ void Label(int vkey, bool ctrl, bool alt, bool shift, char* out, int cap) {
   if (vkey == VK_SPACE) { std::snprintf(out, cap, i18n::Tr("%sEspace"), mods); return; }
   const char* key_name = ImGui::GetKeyName(VkToImGuiKey(vkey));
   std::snprintf(out, cap, "%s%s", mods, (key_name && key_name[0]) ? key_name : "?");
+}
+
+bool OpenButton(const char* button_label, const char* action_id) {
+  const bool clicked = ro::RoButton(button_label);
+
+  char hint[160];
+  const int index = IndexOf(action_id);
+  const Binding& binding = BindingAt(index);  // hors bornes = « aucune touche »
+  if (binding.vk != 0) {
+    char combo[64];
+    Label(binding.vk, binding.ctrl, binding.alt, binding.shift, combo, sizeof(combo));
+    std::snprintf(hint, sizeof(hint), i18n::Tr("ou la touche %s"), combo);
+  } else if (const Action* action = FindAction(action_id)) {
+    // Le NOM de l'action, tel qu'il s'écrit dans l'écran des raccourcis : c'est
+    // la ligne qu'on va y chercher. Traduit, parce que c'est ainsi qu'elle s'y
+    // affiche.
+    std::snprintf(hint, sizeof(hint), i18n::Tr("ou une touche à lier : « %s »"),
+                  i18n::Tr(action->label_fr));
+  } else {
+    hint[0] = '\0';  // action inconnue : le bouton suffit, on n'invente rien
+  }
+
+  if (hint[0] != '\0') {
+    ImGui::SameLine();
+    ImGui::TextDisabled("%s", hint);
+  }
+  return clicked;
 }
 
 // Ajoute un propriétaire à la liste. Le compteur avance MÊME quand la liste est

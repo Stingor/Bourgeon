@@ -93,6 +93,15 @@ class CraftAtlas : public Plugin {
   // joueur sur sa fenêtre, elle doit se retrouver au lancement suivant.
   void Toggle() { open_ = !open_; open_dirty_ = true; }
 
+  // Ouvrir SANS basculer, pour le bouton des réglages : on y clique en voulant
+  // voir l'Atlas, jamais en voulant le refermer — la fenêtre est derrière le
+  // panneau, et un clic qui la ferme ressemble alors à un clic sans effet.
+  void Open() {
+    if (open_) return;
+    open_ = true;
+    open_dirty_ = true;
+  }
+
   // Pour qui doit OUVRIR sans basculer : une commande tapée (`/atlas`, cf.
   // features/systems/chat_commands.cc) est une demande à sens unique, là où un
   // raccourci fait l'aller et le retour sur la même touche.

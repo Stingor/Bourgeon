@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "bourgeon.h"
+#include "features/hotkey_util.h"                // hotkeys::OpenButton (bouton + touche liée)
 #include "features/link_gesture.h"               // links:: (le lien de monstre COMPLET)
 #include "features/moonlight_ui/moonlight_ui.h"  // HelpMarker, SameLine, section de nav
 #include "features/systems/mvp_tracker.h"
@@ -270,12 +271,15 @@ bool MvpTrackerWindow::DrawSettings() {
 
   // HORS du BeginDisabled : ouvrir allume la fonction, ce bouton ne peut donc
   // pas dépendre d'elle sans redevenir le clic mort qu'on vient de supprimer.
-  if (ro::RoButton(i18n::Tr("Ouvrir le carnet"))) {
+  //
+  // La touche s'affiche à côté quand il y en a une. Elle était annoncée en dur
+  // (« ou une touche à lier : « Carnet de chasse MVP » »), ce qui restait écrit
+  // mot pour mot même une fois la touche posée — le joueur lisait qu'il lui
+  // manquait ce qu'il venait de régler.
+  if (hotkeys::OpenButton(i18n::Tr("Ouvrir le carnet"), "win_mvp_tracker")) {
     Open();
     changed = true;  // Open() a pu allumer l'interrupteur
   }
-  SameLine();
-  ImGui::TextDisabled("%s", i18n::Tr("ou une touche à lier : « Carnet de chasse MVP »"));
 
   ImGui::BeginDisabled(!cfg.enabled);
 

@@ -212,7 +212,10 @@ class CardAlbumWindow : public Plugin {
   static const char* ResultText(uint8_t result);
 
   bool open_ = false;
-  bool imgui_enabled_ = true;
+  // 🔴 Écrit par le groupe « Interface moderne » (`kModernGroup`, moonlight_ui.cc),
+  // jamais par une case à lui. False comme tout le groupe : l'album n'existe pas
+  // en interface native — il reçoit ses cartes de l'inventaire MODERNE.
+  bool imgui_enabled_ = false;
   bool auto_sacrifice_ = false;
   // Le serveur a refusé de nous donner l'album : un autre compte de jeu du même
   // compte Moonlight le tient. Les pages restent vides et le disent, plutôt que
