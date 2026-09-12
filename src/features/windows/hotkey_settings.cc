@@ -93,16 +93,26 @@ const int kTabMsgIds[userhotkey::kCategoryCount] = {
 const char* kTabFallback[userhotkey::kCategoryCount] = {
     "Skill Bar", "Hotkey Bar 2", "Interface", "Macros"};
 
-// L'onglet des actions Bourgeon porte le nom du projet : ce n'est pas un mot à
-// traduire, et c'est ce qui le distingue au premier coup d'œil des quatre
-// onglets du client.
-constexpr const char* kBourgeonTabLabel = "Bourgeon";
+// Les onglets des actions Bourgeon portent le nom du projet : ce n'est pas un mot
+// à traduire, et c'est ce qui les distingue au premier coup d'œil des quatre
+// onglets du client. « UI » et « Gameplay » non plus ne se traduisent pas — ce
+// sont les deux mots que les joueurs emploient déjà.
+constexpr const char* kBourgeonUiTabLabel   = "Bourgeon UI";
+constexpr const char* kBourgeonPlayTabLabel = "Bourgeon Gameplay";
 
 const char* TabLabel(int tab) {
-  if (tab == HotkeySettings::kTabBourgeon) return kBourgeonTabLabel;
+  if (tab == HotkeySettings::kTabBourgeonUi) return kBourgeonUiTabLabel;
+  if (tab == HotkeySettings::kTabBourgeonPlay) return kBourgeonPlayTabLabel;
   if (tab < 0 || tab >= userhotkey::kCategoryCount) return "";
   const char* s = msgstr::Utf8(kTabMsgIds[tab]);
   return (s && *s) ? s : kTabFallback[tab];
+}
+
+// L'onglet d'une action, lu dans son `ActionGroup`. Un seul point de traduction :
+// ajouter une valeur au groupe se voit ici, et nulle part ailleurs.
+int TabForGroup(hotkeys::ActionGroup group) {
+  return group == hotkeys::ActionGroup::kGameplay ? HotkeySettings::kTabBourgeonPlay
+                                                  : HotkeySettings::kTabBourgeonUi;
 }
 
 // Commandes du client RETIRÉES de la table, parce que leur touche ne nous
@@ -258,7 +268,7 @@ void HotkeySettings::RefreshRows() {
   rows_dirty_ = false;
 
   const bool all = (tab_ == kTabAll);
-  if (all || tab_ != kTabBourgeon) {
+  if (all || (tab_ != kTabBourgeonUi && tab_ != kTabBourgeonPlay)) {
     const int first = all ? 0 : tab_;
     const int last  = all ? userhotkey::kCategoryCount - 1 : tab_;
     for (int tab = first; tab <= last; ++tab) {
@@ -282,7 +292,7 @@ void HotkeySettings::RefreshRows() {
     }
   }
 
-  if (!all && tab_ != kTabBourgeon) return;
+  if (!all && tab_ != kTabBourgeonUi && tab_ != kTabBourgeonPlay) return;
 
   // Les lignes de Bourgeon, rendues dans la MÊME struct que les commandes du
   // client : le libellé traduit prend la place du champ EXE, le libellé de combo
@@ -290,10 +300,16 @@ void HotkeySettings::RefreshRows() {
   // Le défaut est un `hotkeys::Binding` et non une simple touche : le rapport de
   // bug est livré sur Ctrl+Alt+B, et la colonne « touche d'origine » doit montrer
   // le combo entier — un VK seul y aurait affiché « B », c'est-à-dire faux.
-  auto add_own = [this](RowKind kind, int index, const char* label,
-                        hotkeys::Binding fallback = {}) {
+  //
+  // `tab` est porté par CHAQUE ligne, et le filtrage se fait ici : en mode
+  // « Tout » les deux onglets défilent ensemble (la colonne « Onglet » dit
+  // lequel), sinon seul l'onglet courant s'ajoute. Filtrer au site d'appel aurait
+  // demandé le même test sur trois boucles.
+  auto add_own = [this, all](int tab, RowKind kind, int index, const char* label,
+                             hotkeys::Binding fallback = {}) {
+    if (!all && tab != tab_) return;
     Row entry;
-    entry.tab   = kTabBourgeon;
+    entry.tab   = tab;
     entry.kind  = kind;
     entry.index = index;
     entry.binding.command_index = index;
@@ -317,15 +333,17 @@ void HotkeySettings::RefreshRows() {
     rows_.push_back(entry);
   };
 
-  // 🔴 LE JEU D'ABORD, LES FENÊTRES ENSUITE. Le saut et le déplacement sont les
-  // deux seules lignes qui touchent au personnage : les mettre APRÈS quinze
-  // ouvertures de fenêtres les enterrait sous la ligne de flottaison, et on ne
-  // trouve pas ce qu'on ne voit pas.
+  // 🔴 LE JEU D'ABORD, LES FENÊTRES ENSUITE — c'est ce qui a fini par donner
+  // l'onglet Gameplay. Le saut et le déplacement touchent au PERSONNAGE ; les
+  // mettre après vingt ouvertures de fenêtres les enterrait sous la ligne de
+  // flottaison, et on ne trouve pas ce qu'on ne voit pas. Ils ouvrent donc leur
+  // onglet, avant le ciblage qui vient du catalogue.
   //
   // Le saut se réglait jusqu'ici dans un coin du panneau « Fun », loin de tous les
   // autres raccourcis. Il est ici AUSSI — même valeur, deux endroits pour
   // l'atteindre.
-  if (Bourgeon::Instance().player_jump()) add_own(RowKind::kJump, 0, i18n::Tr("Saut"));
+  if (Bourgeon::Instance().player_jump())
+    add_own(kTabBourgeonPlay, RowKind::kJump, 0, i18n::Tr("Saut"));
 
   // ⚠ MONTRÉES MÊME QUAND LE DÉPLACEMENT EST ÉTEINT. Les cacher paraissait propre
   // — un réglage qui ne pilote rien — mais il est OFF par défaut : personne ne les
@@ -343,16 +361,20 @@ void HotkeySettings::RefreshRows() {
     // écrits UNE seule fois, dans keyboard_move.h, jamais recopiés ici.
     static const KeyboardMove kDefaults;
     for (int slot = 0; slot < KeyboardMove::kMoveKeyCount; ++slot)
-      add_own(RowKind::kMove, slot, i18n::Tr(kMoveLabels[slot]),
+      add_own(kTabBourgeonPlay, RowKind::kMove, slot, i18n::Tr(kMoveLabels[slot]),
               hotkeys::Binding{kDefaults.keys_[slot]});
   }
 
   for (int i = 0; i < hotkeys::ActionCount(); ++i) {
+    const hotkeys::Action& action = hotkeys::ActionAt(i);
     // Une action réservée ne se montre PAS à qui ne peut pas s'en servir : une
     // ligne réglable qui ne déclenche rien vaut moins qu'une ligne absente.
-    if (hotkeys::ActionAt(i).staff_only && !IsStaff()) continue;
-    add_own(RowKind::kAction, i, i18n::Tr(hotkeys::ActionAt(i).label_fr),
-            hotkeys::ActionAt(i).default_binding);
+    if (action.staff_only && !IsStaff()) continue;
+    // 🔴 L'ONGLET VIENT DU CATALOGUE, pas d'une liste tenue ici : `ActionGroup`
+    // est écrit à côté de l'action, donc une action neuve arrive dans le bon
+    // onglet sans que personne ait à y penser.
+    add_own(TabForGroup(action.group), RowKind::kAction, i,
+            i18n::Tr(action.label_fr), action.default_binding);
   }
 }
 
@@ -853,8 +875,10 @@ void HotkeySettings::OnRenderUI() {
   // Les quatre onglets du client, plus « Tout » qui les fusionne en une seule
   // liste — vue que le natif n'a pas, et qui prend tout son sens avec la
   // recherche : chercher une touche sans savoir dans quelle catégorie elle vit.
-  // « Tout » en TÊTE, puis les quatre onglets du client dans leur ordre à eux.
-  const int tab_order[] = {kTabAll, 0, 1, 2, 3, kTabBourgeon};
+  // « Tout » en TÊTE, puis les quatre onglets du client dans leur ordre à eux, et
+  // les deux de Bourgeon en fin de barre — UI avant Gameplay, comme le nombre de
+  // lignes qu'ils portent.
+  const int tab_order[] = {kTabAll, 0, 1, 2, 3, kTabBourgeonUi, kTabBourgeonPlay};
   if (ro::RoBeginTabBar("hotkey_tabs")) {
     for (int tab : tab_order) {
       // Identifiant d'onglet TECHNIQUE et stable : le libellé vient du client et
@@ -913,7 +937,10 @@ void HotkeySettings::OnRenderUI() {
         ImGui::CalcTextSize(msgstr::Utf8(kMsgUnspecified)).x +
         ImGui::GetFontSize() * 2.0f;
     if (all_mode) {
-      float tab_col_w = ImGui::CalcTextSize(TabLabel(kTabBourgeon)).x;
+      // Le plus long des deux onglets Bourgeon sert d'étalon — « Bourgeon
+      // Gameplay » aujourd'hui, mais on mesure les deux plutôt que de parier.
+      float tab_col_w = (std::max)(ImGui::CalcTextSize(TabLabel(kTabBourgeonUi)).x,
+                                   ImGui::CalcTextSize(TabLabel(kTabBourgeonPlay)).x);
       for (int tab = 0; tab < userhotkey::kCategoryCount; ++tab)
         tab_col_w = (std::max)(tab_col_w, ImGui::CalcTextSize(TabLabel(tab)).x);
       ImGui::TableSetupColumn(i18n::Tr("Onglet"), ImGuiTableColumnFlags_WidthFixed,

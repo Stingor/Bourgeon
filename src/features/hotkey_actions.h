@@ -32,11 +32,20 @@
 
 namespace hotkeys {
 
-// Regroupement d'affichage, sans effet sur le comportement.
+// L'ONGLET où la ligne se range dans l'écran des raccourcis. Sans effet sur le
+// comportement de l'action — seulement sur l'endroit où le joueur la trouve.
+//
+// 🔴 DEUX VALEURS, ET LA FRONTIÈRE EST « EST-CE QUE ÇA TOUCHE AU PERSONNAGE ».
+// C'était `kWindows / kOverlays / kTools`, trois valeurs que PERSONNE ne lisait :
+// le champ existait, chaque entrée le remplissait, et aucun code ne s'en servait.
+// Une distinction que rien ne consomme finit par ne plus vouloir dire grand-chose.
+//
+// La coupe utile n'était pas celle-là. Le joueur qui ouvre cet écran cherche soit
+// une FENÊTRE à ouvrir, soit un GESTE de jeu à mettre sous la main — et les
+// seconds sont une poignée noyée dans une trentaine des premiers.
 enum class ActionGroup {
-  kWindows,   // fenêtres de l'interface moderne
-  kOverlays,  // surcouches (barres, compteurs)
-  kTools,     // outils et confort
+  kUi,        // ouvrir une fenêtre, un outil, un écran
+  kGameplay,  // agir dans le monde : viser, lâcher sa cible
 };
 
 // Ce que le joueur a choisi, par-dessus le catalogue. `vk == 0` = aucune touche.

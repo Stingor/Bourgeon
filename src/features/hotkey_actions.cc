@@ -57,22 +57,27 @@ namespace {
 // qu'une entrée est mal placée. Réordonner, en revanche, est SANS RISQUE : l'index
 // de ce tableau n'est la clé de rien (la persistance va par `id`).
 //
-// ⚠ Les huit lignes de déplacement et celle du saut ne sont PAS ici et passent
-// AVANT tout ce tableau à l'écran : ce sont les seules qui touchent au
-// personnage, et `hotkey_settings.cc` les met en tête exprès.
+// ⚠ L'ordre alphabétique vaut DANS UN ONGLET. `ActionGroup` range chaque ligne
+// sous « Bourgeon UI » ou « Bourgeon Gameplay » (cf. hotkey_settings.cc), et la
+// table alterne donc les deux — c'est le tri qui les sépare à l'écran, pas la
+// disposition ici.
+//
+// ⚠ Les huit lignes de déplacement et celle du saut ne sont PAS dans ce tableau :
+// elles appartiennent à leurs features (KeyboardMove, PlayerJump) et
+// `hotkey_settings.cc` les pose en tête de l'onglet Gameplay.
 const Action kActions[] = {
     // Album de cartes : aucune fenêtre native n'existe pour ça, donc rien à router,
     // et pas de touche par défaut à voler à un raccourci déjà en place.
-    {"win_card_album",    "Album de cartes",          ActionGroup::kWindows, 0,                         {}},
-    {"tool_craft_atlas",  "Atlas des recettes",       ActionGroup::kTools,   0,                         {}},
-    {"win_bank",          "Banque",                   ActionGroup::kWindows, 0,                         {}},
+    {"win_card_album",    "Album de cartes",           ActionGroup::kUi,       0,                         {}},
+    {"tool_craft_atlas",  "Atlas des recettes",        ActionGroup::kUi,       0,                         {}},
+    {"win_bank",          "Banque",                    ActionGroup::kUi,       0,                         {}},
 
     // Carnet de chasse MVP. Pas de native à router (rien de tel n'existe dans le
     // client) ni de défaut proposé : toute touche libre est déjà prise par
     // quelqu'un, le joueur choisit la sienne.
-    {"win_mvp_tracker",   "Carnet de chasse MVP",     ActionGroup::kWindows, 0,                         {}},
-    {"win_cart",          "Cart",                     ActionGroup::kWindows, uiwnd::kUICartWnd,         {}},
-    {"win_worldmap",      "Carte du monde",           ActionGroup::kWindows, uiwnd::kUIRoMapWnd,        {}},
+    {"win_mvp_tracker",   "Carnet de chasse MVP",      ActionGroup::kUi,       0,                         {}},
+    {"win_cart",          "Cart",                      ActionGroup::kUi,       uiwnd::kUICartWnd,         {}},
+    {"win_worldmap",      "Carte du monde",            ActionGroup::kUi,       uiwnd::kUIRoMapWnd,        {}},
 
     // Ciblage clavier, les trois lignes qui suivent. 🔴 AUCUN défaut n'est
     // proposé (`{}`), et c'est délibéré : la touche qui vient à l'esprit — Tab —
@@ -82,10 +87,10 @@ const Action kActions[] = {
     // Engager le plus proche sans rien parcourir est l'action qu'on refait trente
     // fois par combat. Le cyclage sert à EXPLORER, celle-ci à ENGAGER — les confondre
     // obligeait à deviner où le cycle en était resté.
-    {"target_nearest",    "Cible la plus proche",     ActionGroup::kTools,   0,                         {}},
-    {"target_cycle_prev", "Cible précédente",         ActionGroup::kTools,   0,                         {}},
-    {"target_cycle_next", "Cible suivante",           ActionGroup::kTools,   0,                         {}},
-    {"win_rodex",         "Courrier",                 ActionGroup::kWindows, uiwnd::kUIRodexWnd,        {}},
+    {"target_nearest",    "Cible la plus proche",      ActionGroup::kGameplay, 0,                         {}},
+    {"target_cycle_prev", "Cible précédente",          ActionGroup::kGameplay, 0,                         {}},
+    {"target_cycle_next", "Cible suivante",            ActionGroup::kGameplay, 0,                         {}},
+    {"win_rodex",         "Courrier",                  ActionGroup::kUi,       uiwnd::kUIRodexWnd,        {}},
 
     // Cyclage des fenêtres de Bourgeon. 🔴 SECONDE ACTION À DÉFAUT, et pour la même
     // raison que le rapport de bug : Ctrl+Tab est un combo LIVRÉ, pas choisi. ImGui
@@ -98,14 +103,14 @@ const Action kActions[] = {
     // 🔴 Elle n'est pas exécutée par `Invoke` : `imgui_windowing` dit que son combo
     // repart chez ImGui (cf. `ApplyImGuiWindowingChord`). Maj inverse le sens du
     // cycle, ce qui est le geste d'origine et n'a donc pas de ligne à lui.
-    {"ui_cycle_windows",  "Cycler entre les fenêtres", ActionGroup::kTools,  0,
+    {"ui_cycle_windows",  "Cycler entre les fenêtres", ActionGroup::kUi,       0,
      {VK_TAB, /*ctrl=*/true, /*alt=*/false, /*shift=*/false}, /*staff_only=*/false,
      /*imgui_windowing=*/true},
 
     // La visite guidée des nouveautés. Aucun défaut : elle s'ouvre d'elle-même à la
     // première connexion, et se rouvre depuis le panneau — lui donner une touche
     // d'office prendrait une frappe au jeu pour un écran qu'on lit une fois.
-    {"tool_tutorial",     "Découvrir Bourgeon",       ActionGroup::kTools,   0,                         {}},
+    {"tool_tutorial",     "Découvrir Bourgeon",        ActionGroup::kUi,       0,                         {}},
 
     // Écran de veille, lancé à la main. 🔴 AUCUN défaut, comme le ciblage : la
     // touche évidente (Pause) sert déjà.
@@ -113,19 +118,19 @@ const Action kActions[] = {
     // ⚠ Le libellé est le MÊME que le titre de la sous-section des réglages, donc
     // la même clé de catalogue — c'est voulu : le joueur qui cherche « Écran de
     // veille » doit tomber sur le même mot aux deux endroits.
-    {"tool_afk",          "Écran de veille",          ActionGroup::kTools,   0,                         {}},
+    {"tool_afk",          "Écran de veille",           ActionGroup::kUi,       0,                         {}},
 
     // LÂCHER la cible, l'inverse de « Cible la plus proche ». Aucun défaut non plus
     // — la touche qui vient à l'esprit, Échap, ouvre le menu du jeu depuis toujours ;
     // elle a son réglage à elle dans le panneau du HUD de cible, où le joueur la
     // donne explicitement (cf. `TargetFrame::escape_clears_`).
-    {"target_clear",      "Effacer la cible",         ActionGroup::kTools,   0,                         {}},
-    {"win_sheet_stats",   "Fiche : caractéristiques", ActionGroup::kWindows, uiwnd::kUIStatusWnd,       {}},
-    {"win_sheet_skills",  "Fiche : compétences",      ActionGroup::kWindows, uiwnd::kUINewSkillListWnd, {}},
-    {"win_sheet_equip",   "Fiche : équipement",       ActionGroup::kWindows, uiwnd::kUIEquipWnd,        {}},
-    {"win_inventory",     "Inventaire",               ActionGroup::kWindows, uiwnd::kUIInventoryWnd,    {}},
-    {"win_quests",        "Journal de quêtes",        ActionGroup::kWindows, uiwnd::kQuestJournalWndId, {}},
-    {"win_game_menu",     "Menu du jeu",              ActionGroup::kWindows, 0,                         {}},
+    {"target_clear",      "Effacer la cible",          ActionGroup::kGameplay, 0,                         {}},
+    {"win_sheet_stats",   "Fiche : caractéristiques",  ActionGroup::kUi,       uiwnd::kUIStatusWnd,       {}},
+    {"win_sheet_skills",  "Fiche : compétences",       ActionGroup::kUi,       uiwnd::kUINewSkillListWnd, {}},
+    {"win_sheet_equip",   "Fiche : équipement",        ActionGroup::kUi,       uiwnd::kUIEquipWnd,        {}},
+    {"win_inventory",     "Inventaire",                ActionGroup::kUi,       uiwnd::kUIInventoryWnd,    {}},
+    {"win_quests",        "Journal de quêtes",         ActionGroup::kUi,       uiwnd::kQuestJournalWndId, {}},
+    {"win_game_menu",     "Menu du jeu",               ActionGroup::kUi,       0,                         {}},
 
     // Navigation. ⚠ Elle reste à 0 alors que sa native (203) EST routée, et ce
     // n'est pas un oubli : `native_window_id` passe par `MakeWindow`, dont notre hook
@@ -133,8 +138,8 @@ const Action kActions[] = {
     // active ; éteinte, `MakeWindow(203)` rendrait la fenêtre native, et ce
     // raccourci-ci n'a alors rien à ouvrir. Le chemin direct marche dans les deux cas
     // — cf. `Invoke`, qui refuse proprement quand le panneau est absent.
-    {"win_navigation",    "Navigation",               ActionGroup::kWindows, 0,                         {}},
-    {"win_hotkeys",       "Raccourcis clavier",       ActionGroup::kTools,   0,                         {}},
+    {"win_navigation",    "Navigation",                ActionGroup::kUi,       0,                         {}},
+    {"win_hotkeys",       "Raccourcis clavier",        ActionGroup::kUi,       0,                         {}},
 
     // Rapport de bug. 🔴 PREMIÈRE DES DEUX ACTIONS À PORTER UN DÉFAUT (l'autre est
     // « Cycler entre les fenêtres ») : Ctrl+Alt+B est le combo sous lequel elle a été
@@ -142,15 +147,15 @@ const Action kActions[] = {
     // dans `BugReport` — invisible à l'écran des raccourcis, donc introuvable et
     // surtout impossible à déplacer quand il tombe sur la touche d'autre chose. Le
     // contrôle de collision le voit maintenant comme n'importe quelle autre liaison.
-    {"tool_bug_report",   "Signaler un bug",          ActionGroup::kTools,   0,
+    {"tool_bug_report",   "Signaler un bug",           ActionGroup::kUi,       0,
      {'B', /*ctrl=*/true, /*alt=*/true, /*shift=*/false}},
 
     // Établi du staff. Le seul membre du catalogue à être gaté : il ne s'affiche
     // même pas dans l'écran des raccourcis d'un joueur ordinaire.
-    {"tool_staff",        "Staff Tools",              ActionGroup::kTools,   0,                         {}, true},
-    {"win_storage",       "Storage",                  ActionGroup::kWindows, uiwnd::kUIItemStoreWnd,    {}},
-    {"tool_palette",      "Style du personnage",      ActionGroup::kTools,   0,                         {}},
-    {"win_achievements",  "Succès",                   ActionGroup::kWindows, uiwnd::kUIAchievementWnd,  {}},
+    {"tool_staff",        "Staff Tools",               ActionGroup::kUi,       0,                         {}, true},
+    {"win_storage",       "Storage",                   ActionGroup::kUi,       uiwnd::kUIItemStoreWnd,    {}},
+    {"tool_palette",      "Style du personnage",       ActionGroup::kUi,       0,                         {}},
+    {"win_achievements",  "Succès",                    ActionGroup::kUi,       uiwnd::kUIAchievementWnd,  {}},
 };
 
 constexpr int kActionCount = static_cast<int>(sizeof(kActions) / sizeof(kActions[0]));

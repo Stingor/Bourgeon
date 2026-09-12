@@ -94,11 +94,24 @@ class HotkeySettings : public Plugin {
 
   bool IsOpen() const { return open_; }
 
-  // Onglets qui n'existent pas chez le client : « Tout » fusionne tout, et
-  // « Bourgeon » porte nos propres actions. Publics parce que le rendu des
+  // Onglets qui n'existent pas chez le client : « Tout » fusionne tout, et les
+  // deux derniers portent nos propres actions. Publics parce que le rendu des
   // libellés d'onglet vit dans une fonction libre du .cc.
-  static constexpr int kTabAll      = userhotkey::kCategoryCount;      // = 4
-  static constexpr int kTabBourgeon = userhotkey::kCategoryCount + 1;  // = 5
+  //
+  // 🔴 DEUX ONGLETS BOURGEON, ET PAS UN. Il n'y en avait qu'un, qui alignait les
+  // huit touches de déplacement, le saut, le ciblage et une vingtaine
+  // d'ouvertures de fenêtres — trente-six lignes où les quelques gestes de JEU se
+  // perdaient au milieu des fenêtres. La coupe suit `hotkeys::ActionGroup` : ce
+  // qui ouvre quelque chose d'un côté, ce qui agit sur le personnage de l'autre.
+  //
+  // ⚠ Le déplacement et le saut ne viennent PAS du catalogue d'actions (ils
+  // appartiennent à KeyboardMove et PlayerJump) : `RefreshRows` les range à la
+  // main sous Gameplay, en tête.
+  static constexpr int kTabAll = userhotkey::kCategoryCount;      // = 4
+  // Ouvrir une fenêtre, un outil, un écran.
+  static constexpr int kTabBourgeonUi = userhotkey::kCategoryCount + 1;  // = 5
+  // Agir dans le monde : se déplacer, sauter, viser.
+  static constexpr int kTabBourgeonPlay = userhotkey::kCategoryCount + 2;  // = 6
 
   // ── Settings PERSISTANTS (bourgeon_settings.yaml, via MoonlightUi) ──────────
   // 🔴 « hotkeywnd_imgui » : ON PAR DÉFAUT, et HORS du groupe « Interface
@@ -156,11 +169,15 @@ class HotkeySettings : public Plugin {
   // Les deux mondes partagent la même struct de rendu : une action Bourgeon
   // remplit `binding.label` / `binding.key_name` comme le ferait le client. Une
   // seule boucle de dessin, un seul chemin de recherche.
-  // D'où vient la ligne — et donc où sa touche se lit et s'écrit. L'onglet
-  // « Bourgeon » en réunit trois : le catalogue d'actions, le saut, et les huit
-  // touches du déplacement clavier. Aucun de ces trois ne partage un stockage
-  // avec les autres, et c'est très bien : ce sont des réglages de features, pas
-  // des entrées d'une table commune. L'écran, lui, les montre ensemble.
+  // D'où vient la ligne — et donc où sa touche se lit et s'écrit. Les deux
+  // onglets Bourgeon en réunissent trois : le catalogue d'actions, le saut, et
+  // les huit touches du déplacement clavier. Aucun de ces trois ne partage un
+  // stockage avec les autres, et c'est très bien : ce sont des réglages de
+  // features, pas des entrées d'une table commune. L'écran, lui, les montre
+  // ensemble.
+  //
+  // ⚠ `RowKind` n'est PAS l'onglet : le saut et le déplacement vont toujours sous
+  // Gameplay, mais une action du catalogue va où son `ActionGroup` la range.
   enum class RowKind { kClient, kAction, kJump, kMove };
 
   struct Row {
