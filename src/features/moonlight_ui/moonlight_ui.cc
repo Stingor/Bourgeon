@@ -3102,8 +3102,9 @@ void MoonlightUi::OnRenderUI() {
   if (grid_.show) grid_.Draw();
 
   // SPR Effect Lab : reconcile spawn + overlay au centre (foreground drawlist, indépendant
-  // de la fenêtre principale). Inerte tant qu'aucun effet n'est demandé.
-  // spr_lab::RenderFrame();
+  // de la fenêtre principale). Inerte tant qu'aucun effet n'est demandé — les contrôles
+  // vivent sous « SPR Effect Lab » dans Staff Tools.
+  spr_lab::RenderFrame();
 
   // Persist bars geometry once, the frame after the user finishes a drag.
   if (auto* basic_info = Bourgeon::Instance().basic_info();

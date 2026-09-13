@@ -2,6 +2,7 @@
 
 #include "bourgeon.h"
 #include "features/fx/ground_paint.h"
+#include "features/fx/spr_effect_lab.h"
 #include "features/fx/weapon_dual_sprites.h"
 #include "features/fx/zone_recorder.h"
 #include "features/gameplay/quick_cast.h"
@@ -191,6 +192,13 @@ void StaffTools::OnRenderUI() {
   // sans toucher à sa géométrie (l'occlusion reste correcte).
   mui::SeparatorText(i18n::Tr("Fond de capture"));
   if (ground_paint::DrawSettings()) Persist();
+
+  // ── SPR Effect Lab ─────────────────────────────────────────────
+  // Banc d'essai des « hat effects » .spr/EZ : catalogue NATIF des ordinaux avec
+  // leur id concret et leur ressource, spawn au clic, rendu au centre de l'écran
+  // et sonde des puits de dessin. Long et bruyant : replié par défaut. L'overlay,
+  // lui, est dessiné par MoonlightUi — il survit à la fermeture de cette fenêtre.
+  if (ImGui::CollapsingHeader(i18n::Tr("SPR Effect Lab"))) spr_lab::DrawDebugControls();
 
   // ── Sprites d'armes doubles ────────────────────────────────────────────────
   // ⚠ CE N'EST PLUS UN RÉGLAGE DE JOUEUR. Le comportement est devenu le défaut —
