@@ -2,6 +2,8 @@
 
 #include <windows.h>
 
+#include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -863,6 +865,15 @@ void NameText(const char* utf8, bool damaged) {
   ImGui::TextUnformatted(utf8);
 }
 
+namespace {
+// Le corps du badge de tuile, en fraction de la police courante, et le plancher
+// sous lequel on ne rétrécit plus (en fraction de ce corps-là). 0.80 est le
+// rapport relevé sur le natif entre sa police de quantités et celle de ses
+// libellés ; 0.65 laisse encore sept chiffres lisibles dans une case de 32 px.
+constexpr float kBadgeScale    = 0.80f;
+constexpr float kBadgeMinScale = 0.65f;
+}  // namespace
+
 void DrawTile(ImDrawList* draw_list, const ImVec2& p0, const ImVec2& p1,
               float cell, const ro::IconTex& icon, int refine, int amount,
               bool damaged) {
@@ -894,11 +905,42 @@ void DrawTile(ImDrawList* draw_list, const ImVec2& p0, const ImVec2& p1,
   if (refine > 0)      std::snprintf(badge, sizeof(badge), "+%d", refine);
   else if (amount > 1) std::snprintf(badge, sizeof(badge), "%d", amount);
   if (badge[0]) {
-    const ImVec2 ts = ImGui::CalcTextSize(badge);
-    const ImVec2 bp(p1.x - ts.x - ro::Px(2.0f), p1.y - ts.y - ro::Px(1.0f));
+    // 🔴 Le badge a SA police, plus petite que le texte courant — comme le
+    // natif, qui écrit ses quantités dans une police à part et loge ainsi sept
+    // chiffres dans une case de 32 px. À la taille du texte courant, un total à
+    // six chiffres débordait de sa case PAR LA GAUCHE : il chevauchait les
+    // badges voisins (« 053049118135 » d'affilée, sans savoir où l'un finit) et
+    // se faisait couper net au bord de la fenêtre.
+    //
+    // Et la petite police ne suffit pas seule : on rétrécit encore tant que le
+    // nombre déborde, jusqu'à un plancher — sous lequel un chiffre ne se lit
+    // plus, mieux vaut alors couper. Le pas d'un pixel après l'estimation n'est
+    // pas du zèle : la largeur n'est pas proportionnelle à la taille (les
+    // avances sont arrondies au pixel), l'estimation seule rate d'un poil.
+    ImFont* const font = ImGui::GetFont();
+    const float base = ImGui::GetFontSize() * kBadgeScale;
+    const float pad_x = ro::Px(2.0f), pad_y = ro::Px(1.0f);
+    const float avail = cell - pad_x;  // la case, moins la marge de droite
+    float fsz = base;
+    ImVec2 ts = font->CalcTextSizeA(fsz, FLT_MAX, 0.0f, badge);
+    if (ts.x > avail && ts.x > 0.0f && avail > 0.0f) {
+      const float min_sz = std::max(1.0f, base * kBadgeMinScale);
+      fsz = std::max(min_sz, std::floor(base * avail / ts.x));
+      for (;;) {
+        ts = font->CalcTextSizeA(fsz, FLT_MAX, 0.0f, badge);
+        if (ts.x <= avail || fsz <= min_sz) break;
+        fsz -= 1.0f;
+      }
+    }
+    // Aligné à droite, mais JAMAIS avant le bord gauche de sa case, et coupé à
+    // la case : un nombre démesuré reste chez lui au lieu d'aller brouiller le
+    // voisin.
+    const ImVec2 bp(std::max(p0.x, p1.x - ts.x - pad_x), p1.y - ts.y - pad_y);
     const ImU32 white = IM_COL32_WHITE;
+    draw_list->PushClipRect(p0, p1, true);
     // Cerne blanc, texte noir dessus : lisible sur n'importe quelle icône.
-    ro::AddTextHalo(draw_list, bp, IM_COL32_BLACK, badge, white);
+    ro::AddTextHalo(draw_list, font, fsz, bp, IM_COL32_BLACK, badge, white);
+    draw_list->PopClipRect();
   }
 }
 
