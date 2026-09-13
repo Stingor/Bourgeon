@@ -174,6 +174,10 @@ class CardAlbumWindow : public Plugin {
   const Row* Find(uint32_t id) const;
   const InvCard* FindInHand(uint32_t id) const;
 
+  // La carte passe-t-elle la recherche ? Le champ accepte le NOM ou l'ID de
+  // l'item : un filtre vide laisse tout passer.
+  bool MatchesFilter(uint32_t card_id) const;
+
   // Reconstruit `order_` : filtrage puis tri. Appelée seulement quand quelque
   // chose a changé — pas à chaque frame, le catalogue faisant ~900 lignes.
   void RebuildOrder();

@@ -4038,7 +4038,7 @@
 "Le serveur a refusé l'opération.": "The server refused the operation."
 "Album de cartes": "Card album"
 "Options de l'album": "Album settings"
-"Rechercher une carte": "Search for a card"
+"Rechercher une carte : nom ou id": "Search for a card: name or id"
 "Ordre": "Order"
 "Cette carte": "This card"
 "%s : pochette DÉBLOQUÉE, mais les copies restantes n'ont pas été rangées : %s": "%s: sleeve UNLOCKED, but the remaining copies were not filed away: %s"

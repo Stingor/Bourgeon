@@ -3996,7 +3996,7 @@
 "Le serveur a refusé l'opération.": "El servidor ha rechazado la operación."
 "Album de cartes": "Álbum de cards"
 "Options de l'album": "Opciones del álbum"
-"Rechercher une carte": "Buscar una card"
+"Rechercher une carte : nom ou id": "Buscar una card: nombre o id"
 "Ordre": "Orden"
 "Cette carte": "Esta card"
 "%s : pochette DÉBLOQUÉE, mais les copies restantes n'ont pas été rangées : %s": "%s: funda DESBLOQUEADA, pero las copias restantes no se han guardado: %s"

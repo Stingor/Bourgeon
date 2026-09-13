@@ -27,7 +27,7 @@
 #include "ui/ro_widgets.h"     // mui::IsLastItemRightClicked
 #include "ui/ui_palette.h"     // ro::pal
 #include "utils/i18n.h"        // i18n::Tr
-#include "utils/text.h"        // text::ContainsNoCase (la recherche par nom)
+#include "utils/text.h"        // text::ContainsNoCase (la recherche par nom ou par id)
 
 namespace {
 
@@ -528,6 +528,26 @@ void CardAlbumWindow::OnTick() {
 
 // ── Filtrage et tri ─────────────────────────────────────────────────────────
 
+// La recherche porte sur le NOM ou sur l'ID, dans le même champ — celui qui
+// arrive de la base d'items du site tape « 4001 », celui qui joue tape
+// « Poring ». C'est déjà le geste de l'atlas de fabrication (CraftAtlas::Matches),
+// et l'id y est comparé comme du TEXTE : « 40 » ramène donc 4001 comme 1940,
+// ce qui se resserre en tapant l'id entier.
+//
+// 🔴 L'id sauve au passage les cartes dont le client n'a pas le nom : un nom
+// vide n'a rien à comparer, et la pochette disparaissait en silence dès qu'un
+// filtre était tapé. Elle reste maintenant trouvable par son id.
+bool CardAlbumWindow::MatchesFilter(uint32_t card_id) const {
+  if (filter_[0] == '\0') return true;
+
+  const char* nm = itemdesc::CardName(card_id);
+  if (nm[0] != '\0' && text::ContainsNoCase(nm, filter_)) return true;
+
+  char id_text[16];
+  std::snprintf(id_text, sizeof(id_text), "%u", card_id);
+  return text::ContainsNoCase(id_text, filter_);
+}
+
 void CardAlbumWindow::RebuildOrder() {
   order_dirty_ = false;
   order_.clear();
@@ -553,12 +573,7 @@ void CardAlbumWindow::RebuildOrder() {
     if (show_filter_ == kShowUnlocked && !r.unlocked) continue;
     if (show_filter_ == kShowSealed && r.unlocked) continue;
 
-    if (filter_[0] != '\0') {
-      const char* nm = itemdesc::CardName(r.id);
-      // Un nom vide (id absent de la DB carte du client) ne doit pas disparaître
-      // en silence dès qu'un filtre est tapé : il n'a simplement rien à comparer.
-      if (nm[0] == '\0' || !text::ContainsNoCase(nm, filter_)) continue;
-    }
+    if (!MatchesFilter(r.id)) continue;
     order_.push_back(static_cast<int>(i));
   }
 
@@ -864,10 +879,13 @@ void CardAlbumWindow::OnRenderUI() {
 }
 
 void CardAlbumWindow::DrawHeader() {
-  ImGui::SetNextItemWidth(ro::Px(180.0f));
+  // Assez large pour que le texte d'aide tienne en entier : c'est lui qui
+  // apprend au joueur que l'id marche aussi.
+  ImGui::SetNextItemWidth(ro::Px(215.0f));
   // Chaque changement de VUE ramène en page 1 : c'est le seul endroit qui ait
   // encore un sens quand le contenu des pages change.
-  if (ImGui::InputTextWithHint("##album_filter", i18n::Tr("Rechercher une carte"),
+  if (ImGui::InputTextWithHint("##album_filter",
+                               i18n::Tr("Rechercher une carte : nom ou id"),
                                filter_, sizeof(filter_))) {
     order_dirty_ = true;
     first_ = 0;
