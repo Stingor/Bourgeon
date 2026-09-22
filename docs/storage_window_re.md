@@ -79,6 +79,18 @@ Format : `[op:2][amount:2][max_amount:2]`, fixe 6 octets
   crash. C'est ce test de nullité qui rend tout le remplacement possible.
 - **`ZC_INVENTORY_END` (0x0b0b)** → `sub_CD8C90` : même garde
   `if (g_StorageWnd_ptr)`. Inoffensif.
+- 🔴🔴 **Ses SATELLITES survivent aussi — et eux, ils PLANTENT.** Les onglets de
+  catégorie `UIItemStoreSubWnd` (**146..152**, **309**) et la petite fenêtre de
+  filtre `UIItemStoreFindWnd` (**153**) naissent du `OnMsg` de la 33
+  (`MakeWindow(0x99)` en 0x009548C8 et 0x00954AA5) et ne sont fermés **que** par
+  lui, en bloc (0x00954690). L'entrepôt parti autrement — `@storage`, ou le filet
+  de `OnTick` — le filtre reste seul à l'écran, et sa croix (commande 201) fait
+  `FindWindow(33)` puis `mov [eax+0x140], 0` **sans test** (0x00953BFC) : access
+  violation. Crash observé en jeu (2026-09, `hu_in01`, rapport joueur).
+  Des **trois** `FindWindow(33)` du binaire (mesurés), c'est le seul non testé —
+  les deux autres, dans `sub_CB1790`, testent.
+  ⇒ `StorageWindow::OnTick` purge ces neuf identifiants dès que la 33 est
+  absente (masquer puis fermer : la destruction est mise en file).
 
 ## 4. Les devoirs du handler natif qu'il fallait reprendre
 

@@ -167,6 +167,23 @@ constexpr int kHomunSkillWndId             = 114;   // 0x72    UISkillListWnd en
 constexpr int kChatLogOptionWndId          = 132;   // 0x84    options du journal de chat
 constexpr int kUIRoMapWnd                  = 140;   // 0x8c    la carte du monde, plein écran
 constexpr uintptr_t kUIRoMapWndVTable      = 0x01038140;
+// ── Les SATELLITES de l'entrepôt (33) : 146..152, 153, 309 ──────────────────
+//
+// UIItemStoreSubWnd ×7 (les onglets de catégorie) et UIItemStoreFindWnd (la
+// petite fenêtre de filtre). Ce ne sont PAS des fenêtres de plein droit : elles
+// ne naissent que depuis `UIItemStoreWnd_OnMsg` (MakeWindow(0x99) en 0x009548C8
+// et 0x00954AA5) et ne meurent qu'avec lui (0x00954690 les ferme EN BLOC).
+//
+// 🔴🔴 ORPHELINES, ELLES PLANTENT LE CLIENT. La croix du filtre exécute :
+//   0x00953BEB  SaveRectAndCloseWindow(153)
+//   0x00953BF7  FindWindow(33)                 <- rend 0 si l'entrepôt n'est plus là
+//   0x00953BFC  mov [eax+140h], 0              <- écriture à 0x140, ACCESS VIOLATION
+// C'est le SEUL des trois `FindWindow(33)` du binaire à déréférencer sans test
+// (mesuré sur les 3 sites). Or Bourgeon tue la 33 : tout satellite qui lui
+// survit est une mine. D'où la purge de `StorageWindow::OnTick`.
+constexpr int kUIItemStoreSubWndFirst      = 146;   // 0x92    UIItemStoreSubWnd, 7 onglets
+constexpr int kUIItemStoreSubWndLast       = 152;   // 0x98    (bornes INCLUSES)
+constexpr int kUIItemStoreFindWnd          = 153;   // 0x99    le filtre ; sa croix = cmd 201
 constexpr int kUIEscOptionWnd              = 155;   // 0x9b    le menu Échap ; objet 0xD8
 constexpr uintptr_t kUIEscOptionWndVTable  = 0x010384a0;
 constexpr int kUIHotKeyWnd                 = 156;   // 0x9c    objet 0x120, cache mgr+0x404
@@ -227,6 +244,7 @@ constexpr int kUINewMakeCharWnd            = 278;   // 0x116   ⚠ PAS `kUIMakeC
 constexpr int kUIMiniPartyWnd              = 301;   // 0x12d   conteneur du HUD de groupe (NON fabricable)
 constexpr int kUINavigationroadiconWnd     = 306;   // 0x132   sic : la casse est celle du client
 constexpr int kMenuIconWndId               = 307;   // 0x133   la grille d'icônes ; UIMenuIconWnd
+constexpr int kUIItemStoreSubWndExtra      = 309;   // 0x135   le 8e satellite de l'entrepôt (cf. 146)
 constexpr int kUINavigationRuideWnd        = 314;   // 0x13a   sic
 constexpr int kUICashShopWnd               = 318;   // 0x13e
 constexpr uintptr_t kUICashShopWndVTable   = 0x0101ca18;

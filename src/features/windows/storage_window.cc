@@ -780,6 +780,36 @@ void StorageWindow::Extract() {
 }
 
 void StorageWindow::OnTick() {
+  // 🔴🔴 LES SATELLITES ORPHELINS DE L'ENTREPÔT TUENT LE CLIENT.
+  //
+  // Les onglets de catégorie (146..152, 309) et la petite fenêtre de filtre
+  // (153) naissent depuis le OnMsg de l'entrepôt natif et ne sont fermés QUE par
+  // lui, EN BLOC (0x00954690). Dès que la 33 s'en va sans que ce OnMsg tourne —
+  // une session close par @storage, ou la native que le filet plus bas détruit —
+  // ils restent seuls à l'écran, et le premier clic sur la croix du filtre
+  // exécute `FindWindow(33)` puis `mov [eax+0x140], 0` SANS TEST (0x00953BFC) :
+  // access violation. Crash remonté par un joueur (hu_in01, 2026-09).
+  //
+  // La purge est donc gouvernée par l'ABSENCE de la 33, pas par notre mode : en
+  // mode natif ces satellites sont légitimes tant que l'entrepôt vit, et en mode
+  // ImGui la destruction de la 33 est MISE EN FILE — `FindWindow` la rend encore
+  // ce tick-ci, la purge prend donc le suivant, ce qui convient.
+  //
+  // MASQUER PUIS FERMER : la destruction étant en file, une frame native peut
+  // encore prendre le clic entre l'appel et la disparition — c'est-à-dire
+  // exactement le crash qu'on referme.
+  if (!uiwnd::SafeFindWindow(uiwnd::kUIItemStoreWnd)) {
+    const auto kill = [](int id) {
+      if (void* sat = uiwnd::SafeFindWindow(id)) {
+        uiwnd::SafeSetVisible(sat, false);
+        uiwnd::SafeCloseWindow(id);
+      }
+    };
+    for (int id = uiwnd::kUIItemStoreSubWndFirst; id <= uiwnd::kUIItemStoreSubWndLast; ++id) kill(id);
+    kill(uiwnd::kUIItemStoreFindWnd);
+    kill(uiwnd::kUIItemStoreSubWndExtra);
+  }
+
   // `open_` n'est PLUS déduit de la présence de la fenêtre native : elle ne naît
   // plus. Il est posé par le paquet d'ouverture et levé par CloseLocal.
   //
@@ -814,6 +844,7 @@ void StorageWindow::OnTick() {
     if (!open_) { open_ = true; need_pos_ = true; show_panel_ = true; }
     uiwnd::SafeCloseWindow(uiwnd::kUIItemStoreWnd);
   }
+
 
   // BASCULE en vol : on ne lit PAS le modèle. Entre la demande et l'arrivée du
   // nouveau storage, il contient encore l'ancien contenu (jusqu'au ZC 0x00f8 qui

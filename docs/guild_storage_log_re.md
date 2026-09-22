@@ -137,7 +137,28 @@ ctor `0x00934ae0`). Preuve directe — un même `OnMsg` les ferme **en bloc** :
 
 Or `UIItemStoreWnd` est précisément la fenêtre que Bourgeon a remplacée — « la
 fenêtre native ne naît plus » (`src/features/windows/storage_window.cc:53`).
-⇒ **Aucun chantier** : ce sont les entrailles d'une native déjà morte.
+
+🔴🔴 **« Entrailles d'une native déjà morte » ⇒ « aucun chantier » était FAUX, et
+le prix a été un crash en jeu** (2026-09, rapport d'un joueur sur `hu_in01`).
+Une native morte laisse ses satellites VIVANTS : ils ne naissent que de son
+`OnMsg`, mais lui seul les ferme, en bloc, en `0x00954690`. Quand l'entrepôt
+s'en va autrement — `@storage`, ou la native que le filet de `OnTick` détruit —
+la petite fenêtre de filtre reste à l'écran, et sa croix (commande **201**)
+exécute :
+
+```
+0x00953BEB  SaveRectAndCloseWindow(153)      ; elle se ferme elle-même
+0x00953BF7  FindWindow(33)                   ; l'entrepôt n'est plus là -> 0
+0x00953BFC  mov dword ptr [eax+140h], 0      ; ACCESS VIOLATION
+```
+
+C'est le **seul** des trois `FindWindow(33)` du binaire à déréférencer sans test
+(les trois sites mesurés ; les deux autres, dans `sub_CB1790`, testent). Purge
+livrée en tête de `StorageWindow::OnTick`, gouvernée par l'absence de la 33.
+
+⇒ **La leçon** : « la native est morte » ne clôt pas un dossier de fenêtre — il
+faut encore demander *qui ferme ses enfants*, et ce que leurs handlers supposent
+d'elle. Cf. [[reference_native_window_toggle_router]].
 
 ⚠ Piège de nommage : `UIItemStore*` désigne l'**entrepôt**, pas une boutique,
 malgré le voisinage de `UIItemShopWnd` / `UIItemSellWnd` dans le binaire.
