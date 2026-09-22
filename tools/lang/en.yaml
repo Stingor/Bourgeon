@@ -4049,6 +4049,8 @@
 "%s : %d rangée(s) dans l'album.": "%s: %d filed into the album."
 "%s : %d reprise(s) de l'album.": "%s: %d taken back from the album."
 "Sacrifier sans confirmation": "Sacrifice without confirmation"
+"Icône de la carte devant son nom": "Card icon before its name"
+"Ajoute la petite icône d'inventaire de la carte devant son nom, sous chaque pochette. Le nom se réduit d'autant : sur des pochettes étroites, gagner l'icône coûte quelques lettres.": "Adds the card's small inventory icon before its name, under every sleeve. The name shrinks accordingly: on narrow sleeves, gaining the icon costs a few letters."
 "Réglages de l'album...": "Album settings..."
 "%d / %d cartes acquises": "%d / %d cards obtained"
 "%d / %d cartes  ·  %.1f %%": "%d / %d cards  ·  %.1f %%"

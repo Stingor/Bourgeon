@@ -92,6 +92,8 @@ constexpr float kPocketRounding = 5.0f;
 constexpr float kArtRounding = 4.0f;
 constexpr float kBarH = 9.0f;          // barre de complétion
 constexpr float kNameMinScale = 0.70f; // la police d'un nom ne descend pas plus bas
+constexpr float kNameIconGap  = 3.0f;  // entre l'icône de la carte et son nom
+constexpr float kNameIconSize = 24.0f; // sa taille NATIVE : les icônes d'item font 24×24
 constexpr uint32_t kFlipFadeMs = 140;  // fondu d'une page tournée
 constexpr float kDefaultW = 960.0f;
 constexpr float kDefaultH = 700.0f;
@@ -240,25 +242,49 @@ ImU32 F4(const float* c, float alpha = 1.0f) {
   return ImGui::ColorConvertFloat4ToU32(ImVec4(c[0], c[1], c[2], c[3] * alpha));
 }
 
+// Le côté, en PIXELS, de l'icône dessinée devant un nom de carte. Entier : une
+// icône d'item est une texture de 24×24 et se pose texel sur pixel.
+float NameIconPx() { return std::floor(ro::Px(kNameIconSize)); }
+
 // Un texte sur UNE ligne, centré dans [x0..x1], en réduisant la police pour
 // tenir — jusqu'à un plancher, au-delà duquel on coupe : un nom illisible ne
 // vaut pas mieux qu'un nom tronqué. Repris du cash shop, qui fait de même dans
 // le bandeau de ses cartes.
+//
+// `icon` (facultatif) se dessine DEVANT le texte, dans un carré de
+// `NameIconPx()` — 24 points, la taille NATIVE de l'icône d'inventaire, qui
+// passe donc 1:1. L'ensemble icône + écart + nom est centré d'un bloc, et c'est
+// la place restante qui borne la police : sans cela une icône posée après coup
+// décentrerait le nom ou mordrait dessus. L'icône étant plus haute qu'une
+// ligne de texte, la bande vaut la plus grande des deux — c'est la même
+// hauteur que `BookLayout::name_h` réserve sous la pochette.
 void DrawFittedText(ImDrawList* dl, float x0, float x1, float y, ImU32 col,
-                    const char* text) {
+                    const char* text, void* icon = nullptr, ImU32 icon_tint = 0) {
   ImFont* font = ImGui::GetFont();
   const float base = ImGui::GetFontSize();
   const float avail = x1 - x0;
   if (avail <= 1.0f) return;
+  const float isz = icon != nullptr ? NameIconPx() : 0.0f;
+  const float gap = icon != nullptr ? ro::Px(kNameIconGap) : 0.0f;
+  const float band = std::max(base, isz);
+  const float room = std::max(1.0f, avail - isz - gap);
   float tw = font->CalcTextSizeA(base, FLT_MAX, 0.0f, text).x;
   float fsz = base;
-  if (tw > avail && tw > 0.0f) {
-    fsz = std::max(base * kNameMinScale, base * avail / tw);
+  if (tw > room && tw > 0.0f) {
+    fsz = std::max(base * kNameMinScale, base * room / tw);
     tw = font->CalcTextSizeA(fsz, FLT_MAX, 0.0f, text).x;
   }
-  const float x = x0 + std::max(0.0f, (avail - tw) * 0.5f);
-  dl->PushClipRect(ImVec2(x0, y - 1.0f), ImVec2(x1, y + base + 2.0f), true);
-  dl->AddText(font, fsz, ImVec2(x, y + (base - fsz) * 0.5f), col, text);
+  float x = x0 + std::max(0.0f, (avail - (isz + gap + tw)) * 0.5f);
+  dl->PushClipRect(ImVec2(x0, y - 1.0f), ImVec2(x1, y + band + 2.0f), true);
+  if (icon != nullptr) {
+    // Sur des coordonnées entières : une icône d'inventaire est une petite
+    // texture, la poser sur un demi-pixel la rend floue.
+    const ImVec2 i0(std::floor(x), std::floor(y + (band - isz) * 0.5f));
+    dl->AddImage(reinterpret_cast<ImTextureID>(icon), i0, ImVec2(i0.x + isz, i0.y + isz),
+                 ImVec2(0, 0), ImVec2(1, 1), icon_tint);
+    x += isz + gap;
+  }
+  dl->AddText(font, fsz, ImVec2(x, y + (band - fsz) * 0.5f), col, text);
   dl->PopClipRect();
 }
 
@@ -1102,7 +1128,10 @@ void CardAlbumWindow::DrawBook(float height) {
   const float footer_h = ImGui::GetFrameHeight() + ro::Px(6.0f);
   lay.page_w = std::floor((avail.x - spine) * 0.5f);
   lay.page_h = avail.y;
-  lay.name_h = ImGui::GetTextLineHeight() + ro::Px(3.0f);
+  // L'icône devant le nom est plus haute qu'une ligne de texte : la bande la
+  // loge, sinon elle déborderait sur la pochette d'en dessous.
+  lay.name_h = std::max(ImGui::GetTextLineHeight(), name_icon_ ? NameIconPx() : 0.0f) +
+               ro::Px(3.0f);
   const float inner_w = lay.page_w - 2.0f * pad;
   const float inner_h = lay.page_h - 2.0f * pad - footer_h;
 
@@ -1353,10 +1382,16 @@ void CardAlbumWindow::DrawPocket(ImDrawList* dl, const ImVec2& pos, const BookLa
                 WithAlpha(kHighlight, pulse * alpha), pr, 0, ro::Px(2.5f));
   }
 
-  // Le nom, sous la pochette.
+  // Le nom, sous la pochette — précédé de l'icône d'inventaire de la carte si
+  // le joueur l'a demandée. Elle garde ses couleurs même sous une pochette
+  // scellée : c'est la SILHOUETTE de la pochette qui dit ce qu'on n'a pas, et
+  // l'icône ne sert qu'à reconnaître la carte d'un coup d'œil.
   const ImU32 name_col = r.unlocked ? ImGui::GetColorU32(ImGuiCol_Text)
                                     : ImGui::ColorConvertFloat4ToU32(ro::pal::kLabel);
-  DrawFittedText(dl, pk0.x, pk1.x, pk1.y + ro::Px(2.0f), WithAlpha(name_col, alpha), shown);
+  void* name_icon = nullptr;
+  if (name_icon_) name_icon = ro::ItemIcon(r.id).tex;
+  DrawFittedText(dl, pk0.x, pk1.x, pk1.y + ro::Px(2.0f), WithAlpha(name_col, alpha), shown,
+                 name_icon, WithAlpha(ro::SkinImageTint(), alpha));
 
   // ── Une carte de l'inventaire passe au-dessus de SA pochette ─────────────
   // Le dépôt lui-même est routé par l'inventaire au relâché (viewer_probes) ;
@@ -1600,6 +1635,15 @@ bool CardAlbumWindow::DrawSettings() {
   if (hotkeys::OpenButton(i18n::Tr("Ouvrir l'album"), "win_card_album")) Open();
 
   ImGui::Spacing();
+
+  if (ro::RoCheckbox(i18n::Tr("Icône de la carte devant son nom"), &name_icon_)) {
+    changed = true;
+  }
+  ImGui::SameLine();
+  mui::HelpMarker(i18n::Tr(
+      "Ajoute la petite icône d'inventaire de la carte devant son nom, sous "
+      "chaque pochette. Le nom se réduit d'autant : sur des pochettes étroites, "
+      "gagner l'icône coûte quelques lettres."));
 
   if (ro::RoCheckbox(i18n::Tr("Sacrifier sans confirmation"), &auto_sacrifice_)) {
     changed = true;

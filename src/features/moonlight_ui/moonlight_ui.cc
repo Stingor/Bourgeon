@@ -851,6 +851,9 @@ const moonlight_ui::SettingDesc kCardAlbumSettings[] = {
     // Opt-in, OFF : ce réglage AGIT (il consomme une carte sans demander).
     {"card_album_auto_sacrifice", SType::kBool,
      MLUI_FIELD(card_album_window, auto_sacrifice()), MLUI_LITERAL(bool, false)},
+    // Purement visuel, OFF : l'illustration de la pochette dit déjà la carte.
+    {"card_album_name_icon", SType::kBool,
+     MLUI_FIELD(card_album_window, name_icon()), MLUI_LITERAL(bool, false)},
 };
 
 const moonlight_ui::SettingDesc kPartyFriendSettings[] = {

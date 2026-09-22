@@ -115,6 +115,11 @@ class CardAlbumWindow : public Plugin {
   // c'est un réglage qui AGIT, et sur un geste irréversible.
   bool& auto_sacrifice() { return auto_sacrifice_; }
 
+  // L'icône d'inventaire de la carte devant son nom, sous la pochette. OFF par
+  // défaut : la pochette montre déjà l'illustration, et l'icône prend sur la
+  // largeur du nom.
+  bool& name_icon() { return name_icon_; }
+
   // Section du panneau Moonlight. Rend true si un réglage a changé.
   bool DrawSettings();
 
@@ -221,6 +226,7 @@ class CardAlbumWindow : public Plugin {
   // en interface native — il reçoit ses cartes de l'inventaire MODERNE.
   bool imgui_enabled_ = false;
   bool auto_sacrifice_ = false;
+  bool name_icon_ = false;
   // Le serveur a refusé de nous donner l'album : un autre compte de jeu du même
   // compte Moonlight le tient. Les pages restent vides et le disent, plutôt que
   // de montrer une réserve qui n'est pas la nôtre à manipuler.
