@@ -2702,13 +2702,25 @@ bool BeginRoDescWindow(const char* title, bool* p_open, int imgui_window_flags,
 
     // Bouton close (seulement si fermable), collé au bord droit du titre.
     bool close_clicked = false;
+    float sys_left = tb.Max.x - Px(5.0f);  // sans croix : le bord droit du titre
     if (p_open) {
       EnsureTex("basic_interface\\sys_close_off.bmp", skin::kSysCloseOff, g_close);
       EnsureTex("basic_interface\\sys_close_on.bmp", skin::kSysCloseOn, g_close_on);
       const float by = y0 + (tb.GetHeight() - Px((float)g_close.h)) * 0.5f;
       ImVec2 ctl(tb.Max.x - Px((float)g_close.w) - Px(5.0f), by);
       close_clicked = SysButton(dl, g_close, g_close_on, ctl);
+      sys_left = ctl.x - Px(2.0f);
     }
+    // 🔴 LE REPÈRE DE `TitleBarButton` SE RÉÉCRIT ICI, CHAQUE FRAME, comme le fait
+    // `BeginRoWindow`. Il MANQUAIT, et c'est ce qui faisait disparaître le bouton
+    // « Signaler un bug » du dialogue PNJ et des descriptions : `TitleBarButton`
+    // pose le bord gauche de SON bouton comme nouvelle butée (pour qu'un second
+    // bouton se range à sa gauche), en comptant sur le Begin suivant pour remettre
+    // la butée au bord droit. Sans cette remise à zéro, le bouton reculait d'une
+    // largeur par frame jusqu'à buter sur le titre — où `TitleBarButton` renonce à
+    // dessiner plutôt que de le recouvrir. Quelques dizaines de frames, et plus
+    // rien.
+    RememberTitleBar(w->ID, sys_left, tb.Min.y, tb.GetHeight());
     // Grip de resize RO dans le coin bas-droite (si redimensionnable). Le grip
     // ImGui natif reste actif pour le drag (rendu transparent) ; on peint l'image.
     if (!w->Collapsed && !(w->Flags & ImGuiWindowFlags_NoResize) &&
