@@ -1416,6 +1416,13 @@ void CardAlbumWindow::DrawPocket(ImDrawList* dl, const ImVec2& pos, const BookLa
   if (sources_) ImGui::SetNextItemAllowOverlap();
   const bool pressed = ImGui::InvisibleButton("pk", ImVec2(lay.cell_w, lay.cell_h));
   const bool hovered = ImGui::IsItemHovered();
+  // 🔴 Le clic DROIT se lit ICI, avec les deux autres, et pas au moment de s'en
+  // servir : `IsLastItemRightClicked` passe par `IsItemClicked`, qui interroge
+  // `g.LastItemData` — le DERNIER item soumis. Les macarons de provenance sont
+  // soumis plus bas, et le test posé après eux interrogeait le macaron : le menu
+  // contextuel d'une pochette portant un macaron ne s'ouvrait plus. C'est le
+  // même mécanisme que le piège de `BeginDragDropSource`, plus bas.
+  const bool rclicked = mui::IsLastItemRightClicked();
   const bool dragging = ImGui::GetDragDropPayload() != nullptr;
 
   const ImVec2 pk0 = pos;
@@ -1547,6 +1554,7 @@ void CardAlbumWindow::DrawPocket(ImDrawList* dl, const ImVec2& pos, const BookLa
   // plus haut aurait volé à la pochette sa source de glisser, et c'est lui
   // qu'on aurait promené vers l'inventaire.
   bool on_chip = false;
+  bool chip_rclick = false;
   if (sources_) {
     const float chip = ro::Px(kSrcChip);
     float cx = pk0.x + ro::Px(3.0f);
@@ -1562,6 +1570,10 @@ void CardAlbumWindow::DrawPocket(ImDrawList* dl, const ImVec2& pos, const BookLa
       const bool ho = ImGui::IsItemHovered();
       ImGui::PopID();
       on_chip = on_chip || ho;
+      // Le macaron ne mange que le clic GAUCHE. Le clic DROIT sur ces quinze
+      // pixels reste celui de la POCHETTE — c'est la carte qu'on visait, et un
+      // menu contextuel qui s'ouvre partout sauf sur un coin est un défaut.
+      if (ho && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) chip_rclick = true;
 
       const ImVec2 c(cx + chip * 0.5f, cy + chip * 0.5f);
       const float rad = chip * 0.5f;
@@ -1615,7 +1627,7 @@ void CardAlbumWindow::DrawPocket(ImDrawList* dl, const ImVec2& pos, const BookLa
   // Clic DROIT : Ctrl -> description directe ; Alt/Maj -> tout retirer ;
   // sinon le menu. Sur enfoncement et non relâchement — sortir de la zone doit
   // pouvoir annuler un menu, pas le déclencher ailleurs.
-  if (mui::IsLastItemRightClicked()) {
+  if (rclicked || chip_rclick) {
     const ImGuiIO& io = ImGui::GetIO();
     if (io.KeyCtrl) {
       POINT pt;
