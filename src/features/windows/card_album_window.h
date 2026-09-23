@@ -120,6 +120,13 @@ class CardAlbumWindow : public Plugin {
   // largeur du nom.
   bool& name_icon() { return name_icon_; }
 
+  // Les macarons « O » / « M » au coin d'une pochette : la carte se trouve dans
+  // l'Old Card Album (616) ou le Mystical Card Album (12246). ON par défaut —
+  // c'est une information PURE (aucune commande ne part d'un macaron, il ouvre
+  // une description) et c'est la réponse à « comment j'obtiens celle-là ? », la
+  // question que pose une pochette scellée.
+  bool& sources() { return sources_; }
+
   // Section du panneau Moonlight. Rend true si un réglage a changé.
   bool DrawSettings();
 
@@ -227,6 +234,7 @@ class CardAlbumWindow : public Plugin {
   bool imgui_enabled_ = false;
   bool auto_sacrifice_ = false;
   bool name_icon_ = false;
+  bool sources_ = true;
   // Le serveur a refusé de nous donner l'album : un autre compte de jeu du même
   // compte Moonlight le tient. Les pages restent vides et le disent, plutôt que
   // de montrer une réserve qui n'est pas la nôtre à manipuler.

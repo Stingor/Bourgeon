@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <unordered_map>
 
 #include "bourgeon.h"                           // Bourgeon::Instance()
 #include "d3d9/d3d9_hook.h"                     // Overlay_SetTextureFilter (POINT sur les illustrations)
@@ -15,6 +16,7 @@
 #include "features/hotkey_util.h"               // hotkeys::OpenButton (bouton + touche liée)
 #include "features/item_cell.h"                 // itemcell::ExtractList, ItemRow
 #include "features/windows/item_desc_window.h"  // itemdesc::CardName / CardIllustPath / RenderSimpleDesc
+#include "features/windows/item_probability.h"  // itemprob : d'où tombe une carte (packageitem.lub)
 #include "features/moonlight_ui/moonlight_ui.h"  // OpenInterfaceSection / SaveSettings (menu de la puce)
 #include "features/windows/inventory_viewer.h"  // DraggedItemNameId (la pochette visée par un glisser)
 #include "features/windows/viewer_probes.h"     // viewers::MouseOverInventory (retrait par glisser)
@@ -119,6 +121,16 @@ constexpr ImU32 kDropOk       = IM_COL32(40, 150, 60, 255);
 constexpr ImU32 kBarTrack     = IM_COL32(0, 0, 0, 30);
 constexpr ImU32 kBarFill      = IM_COL32(222, 178, 54, 255);
 constexpr ImU32 kBarEdge      = IM_COL32(0, 0, 0, 60);
+
+// Les macarons de PROVENANCE, au coin de la pochette. Deux teintes franchement
+// distinctes : à quinze pixels c'est la COULEUR qui se lit, la lettre ne fait
+// que confirmer.
+constexpr ImU32 kSrcOldFill    = IM_COL32(196, 138, 58, 255);   // Old Card Album
+constexpr ImU32 kSrcMysticFill = IM_COL32(124, 100, 196, 255);  // Mystical Card Album
+constexpr ImU32 kSrcText       = IM_COL32(255, 248, 238, 255);
+constexpr ImU32 kSrcEdge       = IM_COL32(0, 0, 0, 100);
+constexpr float kSrcChip       = 15.0f;  // son diamètre, en pixels logiques
+constexpr float kSrcChipGap    = 2.0f;
 
 // ── Emplacement CIBLE d'une carte : les INTERCALAIRES ───────────────────────
 //
@@ -304,6 +316,88 @@ ImVec2 DrawPill(ImDrawList* dl, const ImVec2& pos, const ImVec2& anchor,
   dl->AddRectFilled(p0, p1, WithAlpha(fill, alpha), size.y * 0.5f);
   dl->AddText(font, fsz, ImVec2(p0.x + px, p0.y + py), WithAlpha(text_col, alpha), text);
   return size;
+}
+
+// ── D'OÙ TOMBE UNE CARTE : les deux albums d'objets ─────────────────────────
+//
+// 🔴 Aucune donnée n'est inventée ici, et le serveur n'est pas interrogé : le
+// CLIENT porte déjà la table de tirage de l'Old Card Album (616) et du Mystical
+// Card Album (12246). C'est `CNeoPackageItemMgr`, alimenté au démarrage par
+// `data\luafiles514\lua files\probabilityinfo\packageitem.lub` — lui-même
+// engendré depuis `db/import/item_group_db.yml` du serveur (gen_packageitem.py
+// du dépôt client). La même table alimente l'onglet « Probabilités » d'une
+// description ; on la lit par features/windows/item_probability.h.
+//
+// Elle est retournée UNE fois en index carte -> chance. Neuf cents pochettes ne
+// peuvent pas parcourir chacune, à chaque frame, les ~690 entrées des deux
+// albums — et `itemprob::Get` prévient lui-même qu'il n'est pas fait pour ça.
+constexpr uint32_t kOldAlbumId    = 616;
+constexpr uint32_t kMysticAlbumId = 12246;
+
+// Ce que l'index retient d'une carte pour UN album. `total` vaut 0 quand le
+// dénominateur n'est pas unique (plusieurs tirages) : la mention « N chances sur
+// M » se tait alors, plutôt que de citer un M qui ne vaut que pour une partie
+// des chances. Les deux albums livrés n'ont qu'un seul groupe, mais rien dans
+// le format du lub ne l'impose.
+struct SrcChance {
+  double pct    = 0.0;
+  int    weight = 0;
+  int    total  = 0;
+};
+
+struct AlbumSource {
+  uint32_t    item_id;
+  const char* letter;    // la lettre du macaron
+  const char* fallback;  // le nom, si itemInfoMerged.lua ne connaît pas l'objet
+  ImU32       fill;
+  bool        built = false;
+  std::unordered_map<uint32_t, SrcChance> chance;
+};
+
+AlbumSource g_sources[] = {
+    {kOldAlbumId,    "O", "Old Card Album",      kSrcOldFill},
+    {kMysticAlbumId, "M", "Mystical Card Album", kSrcMysticFill},
+};
+constexpr int kSrcCount = static_cast<int>(sizeof(g_sources) / sizeof(g_sources[0]));
+
+// Retourne la table une fois. ⚠ `built` ne se pose QUE sur un succès : la base
+// du client est créée paresseusement, et `itemprob::Get` MET EN CACHE le vide
+// qu'il trouverait avant le chargement du lub. `Has` (une recherche dans un
+// arbre, sans allocation) est le garde-fou qui empêche ce cache empoisonné.
+void BuildSources() {
+  for (AlbumSource& s : g_sources) {
+    if (s.built) continue;
+    if (!itemprob::Has(s.item_id)) continue;
+    const itemprob::Table* t = itemprob::Get(s.item_id);
+    if (t == nullptr) continue;
+    for (const itemprob::Group& g : t->groups) {
+      for (const itemprob::Entry& e : g.entries) {
+        // Un album rend des OBJETS ; une branche invoquerait des monstres, et
+        // c'est l'URL du libellé qui tranche — pas la plage d'identifiants.
+        if (e.is_mob || e.id == 0) continue;
+        SrcChance& c = s.chance[e.id];
+        const bool first = (c.weight == 0 && c.pct == 0.0);
+        c.pct += e.pct;
+        c.weight += e.weight;
+        c.total = first ? g.total : (c.total == g.total ? c.total : 0);
+      }
+    }
+    s.built = true;
+  }
+}
+
+const SrcChance* SourceChance(const AlbumSource& s, uint32_t card_id) {
+  const auto it = s.chance.find(card_id);
+  return it == s.chance.end() ? nullptr : &it->second;
+}
+
+// Le nom de l'album, tel que le client le nomme (donc traduit comme le reste du
+// jeu). Le repli n'est pas décoratif : `ItemName` rend nullptr tant que
+// itemInfoMerged.lua n'est pas chargé, et un macaron sans nom ne dit rien.
+const char* SourceName(const AlbumSource& s) {
+  const MoonlightUi* ui = Bourgeon::Instance().moonlight_ui();
+  const char* n = ui != nullptr ? ui->ItemName(s.item_id) : nullptr;
+  return (n != nullptr && n[0] != '\0') ? n : s.fallback;
 }
 
 }  // namespace
@@ -838,6 +932,11 @@ void CardAlbumWindow::OnRenderUI() {
   // été recréé). UNE fois, avant toute pochette.
   ro::cardthumb::BeginFrame();
 
+  // L'index des provenances, retourné une fois pour toutes (deux drapeaux à
+  // tester quand il est prêt). Ici et pas au constructeur : la base de tirage du
+  // client est créée paresseusement, la construire trop tôt fixerait du vide.
+  if (sources_) BuildSources();
+
   ImGui::SetNextWindowSize(ImVec2(ro::Px(kDefaultW), ro::Px(kDefaultH)),
                            ImGuiCond_FirstUseEver);
   // Le snap par pochette dès que le chrome est mesuré (frame précédente) ; avant
@@ -1309,7 +1408,12 @@ void CardAlbumWindow::DrawPocket(ImDrawList* dl, const ImVec2& pos, const BookLa
 
   // Un seul item ImGui pour toute la cellule (pochette + nom) : c'est lui qui
   // porte survol, clics, menu et dépôt. Tout le reste est dessiné.
+  //
+  // ⚠ SetNextItemAllowOverlap : sans lui, un item soumis PAR-DESSUS cette
+  // cellule (les macarons de provenance, plus bas) ne recevrait jamais le
+  // survol — ImGui donne la main au premier item soumis, pas au dernier.
   ImGui::SetCursorScreenPos(pos);
+  if (sources_) ImGui::SetNextItemAllowOverlap();
   const bool pressed = ImGui::InvisibleButton("pk", ImVec2(lay.cell_w, lay.cell_h));
   const bool hovered = ImGui::IsItemHovered();
   const bool dragging = ImGui::GetDragDropPayload() != nullptr;
@@ -1432,10 +1536,71 @@ void CardAlbumWindow::DrawPocket(ImDrawList* dl, const ImVec2& pos, const BookLa
     ImGui::EndDragDropSource();
   }
 
+  // ── Les MACARONS de provenance ───────────────────────────────────────────
+  // « O » et « M » : la carte se trouve dans l'Old Card Album, dans le Mystical
+  // Card Album, ou dans les deux. Cliquer ouvre la description de l'album —
+  // laquelle porte l'onglet « Probabilités », c'est-à-dire la liste complète
+  // dont ce macaron n'est qu'un extrait.
+  //
+  // 🔴 Soumis APRÈS le glisser, et ce n'est pas un détail de rangement :
+  // `BeginDragDropSource()` s'attache au DERNIER item soumis. Un macaron posé
+  // plus haut aurait volé à la pochette sa source de glisser, et c'est lui
+  // qu'on aurait promené vers l'inventaire.
+  bool on_chip = false;
+  if (sources_) {
+    const float chip = ro::Px(kSrcChip);
+    float cx = pk0.x + ro::Px(3.0f);
+    const float cy = pk0.y + ro::Px(3.0f);
+    for (int s = 0; s < kSrcCount; ++s) {
+      const AlbumSource& src = g_sources[s];
+      const SrcChance* ch = SourceChance(src, r.id);
+      if (ch == nullptr) continue;
+
+      ImGui::SetCursorScreenPos(ImVec2(cx, cy));
+      ImGui::PushID(s);
+      const bool hit = ImGui::InvisibleButton("src", ImVec2(chip, chip));
+      const bool ho = ImGui::IsItemHovered();
+      ImGui::PopID();
+      on_chip = on_chip || ho;
+
+      const ImVec2 c(cx + chip * 0.5f, cy + chip * 0.5f);
+      const float rad = chip * 0.5f;
+      dl->AddCircleFilled(ImVec2(c.x, c.y + ro::Px(1.0f)), rad,
+                          WithAlpha(kPocketShadow, alpha));
+      dl->AddCircleFilled(c, rad, WithAlpha(src.fill, alpha));
+      if (ho) dl->AddCircleFilled(c, rad, ro::pal::kHoverTint);
+      dl->AddCircle(c, rad, WithAlpha(kSrcEdge, alpha));
+      ImFont* font = ImGui::GetFont();
+      const float fsz = ImGui::GetFontSize() * 0.85f;
+      const ImVec2 ts = font->CalcTextSizeA(fsz, FLT_MAX, 0.0f, src.letter);
+      dl->AddText(font, fsz, ImVec2(std::floor(c.x - ts.x * 0.5f), std::floor(c.y - ts.y * 0.5f)),
+                  WithAlpha(kSrcText, alpha), src.letter);
+
+      if (ho && !dragging) {
+        ImGui::BeginTooltip();
+        ImGui::Text("%s : %.4f%%", SourceName(src), ch->pct);
+        if (ch->total > 0) {
+          ImGui::TextColored(ro::pal::kLabel, i18n::Tr("%d chances sur %d"), ch->weight,
+                             ch->total);
+        }
+        ImGui::TextColored(ro::pal::kLabel, "%s",
+                           i18n::Tr("Clic : ouvrir sa description et sa table de tirage"));
+        ImGui::EndTooltip();
+      }
+      if (hit) {
+        // ⚠ DIFFÉRÉE comme partout ailleurs : OpenDesc* rejoue un OnMsg NATIF,
+        // proscrit entre NewFrame() et Render().
+        POINT pt;
+        if (GetCursorPos(&pt)) itemcell::DeferDescById(src.item_id, 0, 0, pt.x, pt.y);
+      }
+      cx += chip + ro::Px(kSrcChipGap);
+    }
+  }
+
   // ── Survol : la description, avec la carte EN GRAND ──────────────────────
   // L'aperçu simple réduit l'illustration à une vignette ; ici on regarde des
   // cartes, la carte entière est ce qu'on veut voir.
-  if (hovered && !dragging) itemdesc::RenderCardTooltipFull(r.id);
+  if (hovered && !dragging && !on_chip) itemdesc::RenderCardTooltipFull(r.id);
 
   // ── Gestes : ceux de l'entrepôt, à la lettre ─────────────────────────────
   // Clic GAUCHE : Maj -> tout retirer ; une seule copie -> retrait direct ;
@@ -1644,6 +1809,17 @@ bool CardAlbumWindow::DrawSettings() {
       "Ajoute la petite icône d'inventaire de la carte devant son nom, sous "
       "chaque pochette. Le nom se réduit d'autant : sur des pochettes étroites, "
       "gagner l'icône coûte quelques lettres."));
+
+  if (ro::RoCheckbox(i18n::Tr("Macarons « où la trouver »"), &sources_)) {
+    changed = true;
+  }
+  ImGui::SameLine();
+  mui::HelpMarker(i18n::Tr(
+      "Pose « O » et « M » au coin d'une pochette quand la carte figure dans "
+      "l'Old Card Album ou le Mystical Card Album. Le survol donne sa chance "
+      "exacte, le clic ouvre la description de l'album — et sa table de tirage "
+      "complète. La donnée est celle du client, la même que l'onglet "
+      "« Probabilités » d'une description."));
 
   if (ro::RoCheckbox(i18n::Tr("Sacrifier sans confirmation"), &auto_sacrifice_)) {
     changed = true;

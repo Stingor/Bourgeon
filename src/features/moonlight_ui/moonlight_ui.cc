@@ -854,6 +854,10 @@ const moonlight_ui::SettingDesc kCardAlbumSettings[] = {
     // Purement visuel, OFF : l'illustration de la pochette dit déjà la carte.
     {"card_album_name_icon", SType::kBool,
      MLUI_FIELD(card_album_window, name_icon()), MLUI_LITERAL(bool, false)},
+    // ON : les macarons de provenance ne commandent rien (ils ouvrent une
+    // description) et répondent à la question que pose une pochette scellée.
+    {"card_album_sources", SType::kBool,
+     MLUI_FIELD(card_album_window, sources()), MLUI_LITERAL(bool, true)},
 };
 
 const moonlight_ui::SettingDesc kPartyFriendSettings[] = {
