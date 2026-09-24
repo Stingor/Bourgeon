@@ -200,6 +200,9 @@ class CardAlbumWindow : public Plugin {
   // La carte passe-t-elle la recherche ? Le champ accepte le NOM ou l'ID de
   // l'item : un filtre vide laisse tout passer.
   bool MatchesFilter(uint32_t card_id) const;
+  // La carte passe-t-elle le filtre de NATURE (boutons à droite des
+  // intercalaires) ? Aucun bouton enclenché laisse tout passer.
+  bool PassNature(const Row& r) const;
 
   // Reconstruit `order_` : filtrage puis tri. Appelée seulement quand quelque
   // chose a changé — pas à chaque frame, le catalogue faisant ~900 lignes.
@@ -388,5 +391,7 @@ class CardAlbumWindow : public Plugin {
 
   int  slot_filter_ = 0;  // 0 = tous ; sinon index dans kSlotFilterMasks
   int  show_filter_ = 0;  // 0 toutes, 1 débloquées, 2 scellées, 3-5 par provenance
+  uint8_t nature_mask_ = 0;  // bits 1 << boss (kNatureFilters) ; 0 = toutes natures
+  bool boss_known_ = false;  // le serveur envoie l'octet de nature (entrée de 12 octets)
   char filter_[64] = {};
 };

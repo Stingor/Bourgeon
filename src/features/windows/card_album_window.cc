@@ -210,6 +210,25 @@ constexpr int kShowAll = 0, kShowUnlocked = 1, kShowSealed = 2;
 constexpr int kShowSrcFirst = 3;   // + l'index dans g_sources
 constexpr int kShowNoSource = 5;
 
+// La NATURE du monstre qui lâche la carte, en boutons à droite des
+// intercalaires. Un bit par nature (1 << boss) ; aucun bit = toutes. Elle se
+// COMBINE avec l'intercalaire (« les cartes d'armure de MVP ») et compte comme
+// lui dans la complétion : c'est une famille de la collection, pas une vue.
+// Libellés = termes du jeu, non traduits, comme les emplacements.
+struct NatureFilter { const char* label; uint8_t boss; };
+const NatureFilter kNatureFilters[] = {
+    {"Normal", kBossNone},
+    {"Boss",   kBossMini},
+    {"MVP",    kBossMvp},
+};
+constexpr int kNatureFilterCount =
+    static_cast<int>(sizeof(kNatureFilters) / sizeof(kNatureFilters[0]));
+constexpr float kNatureGap = 3.0f;     // entre deux boutons de nature
+constexpr float kNatureMinGap = 8.0f;  // marge minimale avec le dernier onglet
+constexpr float kNatureInset = 1.0f;   // le bouton tient DANS la hauteur d'onglet
+constexpr uint8_t kNatureAll =
+    (1u << kBossNone) | (1u << kBossMini) | (1u << kBossMvp);
+
 // Le nom d'une carte réduit à ce qui la DISTINGUE : le client nomme
 // « Poring Card [Armor] », et sous une pochette de 120 pixels ni le crochet ni
 // le mot « Card » ne laissent de place au nom. Deux coupes, dans cet ordre :
@@ -553,6 +572,9 @@ void CardAlbumWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
     const size_t measured = (static_cast<size_t>(len) - 3) / count;
     if (measured >= static_cast<size_t>(kEntrySize)) stride = measured;
   }
+  // Sans l'octet de nature, tout paraîtrait « Normal » : les boutons de nature
+  // se cachent plutôt que de montrer un « MVP » toujours vide.
+  boss_known_ = stride >= static_cast<size_t>(kEntryWithBoss);
 
   for (uint16_t i = 0; i < count; ++i) {
     const size_t off = 3 + static_cast<size_t>(i) * stride;
@@ -565,7 +587,7 @@ void CardAlbumWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
     r.amount   = *reinterpret_cast<const uint16_t*>(data + off + 4);
     r.unlocked = (data[off + 6] & 1) != 0;
     r.equip    = *reinterpret_cast<const uint32_t*>(data + off + 7);
-    r.boss     = stride >= kEntryWithBoss ? data[off + 11] : kBossNone;
+    r.boss     = boss_known_ ? data[off + 11] : kBossNone;
 
     if (r.unlocked) {
       unlocked_count_++;
@@ -737,6 +759,12 @@ bool CardAlbumWindow::MatchesFilter(uint32_t card_id) const {
   return text::ContainsNoCase(id_text, filter_);
 }
 
+bool CardAlbumWindow::PassNature(const Row& r) const {
+  if (!boss_known_ || nature_mask_ == 0) return true;
+  // Une nature inconnue (serveur plus neuf que nous) ne tient dans aucun bit.
+  return r.boss < kNatureFilterCount && (nature_mask_ & (1u << r.boss)) != 0;
+}
+
 void CardAlbumWindow::RebuildOrder() {
   order_dirty_ = false;
   order_.clear();
@@ -753,6 +781,7 @@ void CardAlbumWindow::RebuildOrder() {
   for (size_t i = 0; i < rows_.size(); ++i) {
     const Row& r = rows_[i];
     if (mask != 0 && (r.equip & mask) == 0) continue;
+    if (!PassNature(r)) continue;
 
     // La complétion de l'intercalaire se mesure AVANT la recherche et le
     // filtre « débloquées » : c'est la collection, pas la vue.
@@ -1214,8 +1243,15 @@ void CardAlbumWindow::DrawHeader() {
 }
 
 // Les intercalaires : un onglet par emplacement d'équipement. Le survol d'un
-// onglet dit combien de cartes de cette famille sont acquises.
+// onglet dit combien de cartes de cette famille sont acquises. À droite, sur la
+// même ligne, les boutons de NATURE (Normal / Boss / MVP), qui se combinent avec
+// l'onglet — un onglet de plus aurait forcé à choisir entre emplacement et
+// nature.
 void CardAlbumWindow::DrawTabs() {
+  const ImVec2 row0 = ImGui::GetCursorScreenPos();
+  float tabs_right = row0.x;
+  float tab_h = ImGui::GetFrameHeight();
+
   if (!ro::RoBeginTabBar("album_tabs")) return;
   for (int i = 0; i < kSlotFilterCount; ++i) {
     const char* label = (i == 0) ? i18n::Tr("Tous") : kSlotFilters[i].label;
@@ -1227,11 +1263,14 @@ void CardAlbumWindow::DrawTabs() {
       }
       ImGui::EndTabItem();
     }
+    tabs_right = ImGui::GetItemRectMax().x;
+    tab_h = ImGui::GetItemRectSize().y;
     if (ImGui::IsItemHovered() && !rows_.empty()) {
       int tot = 0, got = 0;
       const uint32_t mask = kSlotFilters[i].mask;
       for (const Row& r : rows_) {
         if (mask != 0 && (r.equip & mask) == 0) continue;
+        if (!PassNature(r)) continue;
         tot++;
         if (r.unlocked) got++;
       }
@@ -1241,6 +1280,54 @@ void CardAlbumWindow::DrawTabs() {
     }
   }
   ro::RoEndTabBar();
+
+  if (!boss_known_) return;
+
+  // Calés à droite de la ligne des onglets s'il y a la place, sinon sur leur
+  // propre ligne dessous — jamais par-dessus un onglet.
+  const ImVec2 after = ImGui::GetCursorScreenPos();
+  const float right = after.x + ImGui::GetContentRegionAvail().x;
+  const float gap = ro::Px(kNatureGap);
+  float w = gap * (kNatureFilterCount - 1);
+  for (const NatureFilter& n : kNatureFilters) w += ro::SmallButtonWidth(n.label);
+  const bool same_row = right - w >= tabs_right + ro::Px(kNatureMinGap);
+  const float btn_h = same_row ? tab_h - 2.0f * ro::Px(kNatureInset) : 0.0f;
+  ImGui::SetCursorScreenPos(
+      ImVec2(right - w, same_row ? row0.y + ro::Px(kNatureInset) : after.y));
+
+  for (int i = 0; i < kNatureFilterCount; ++i) {
+    const NatureFilter& n = kNatureFilters[i];
+    const uint8_t bit = static_cast<uint8_t>(1u << n.boss);
+    if (i > 0) ImGui::SameLine(0.0f, gap);
+    ImGui::PushID(i);
+    if (ro::RoSmallToggleButton(n.label, (nature_mask_ & bit) != 0, 0.0f, btn_h)) {
+      nature_mask_ ^= bit;
+      // Les trois enclenchés = aucun : on revient à l'état neutre, sinon plus
+      // aucun bouton ne paraît « relâché » alors que rien n'est filtré.
+      if (nature_mask_ == kNatureAll) nature_mask_ = 0;
+      order_dirty_ = true;
+      first_ = 0;
+    }
+    ImGui::PopID();
+    if (ImGui::IsItemHovered() && !rows_.empty()) {
+      const uint32_t mask =
+          slot_filter_ > 0 ? kSlotFilters[slot_filter_].mask : 0;
+      int tot = 0, got = 0;
+      for (const Row& r : rows_) {
+        if (mask != 0 && (r.equip & mask) == 0) continue;
+        if (r.boss != n.boss) continue;
+        tot++;
+        if (r.unlocked) got++;
+      }
+      char tip[160];
+      std::snprintf(tip, sizeof(tip),
+                    i18n::Tr("%d / %d cartes acquises\nClic : filtrer (cumulable)"),
+                    got, tot);
+      ImGui::SetTooltip("%s", tip);
+    }
+  }
+
+  if (same_row) ImGui::SetCursorScreenPos(after);
 }
 
 // La barre de complétion de l'intercalaire actif, et le total en réserve.
@@ -1251,14 +1338,32 @@ void CardAlbumWindow::DrawCompletion() {
   const float lh = ImGui::GetTextLineHeight();
   const float bar_h = ro::Px(kBarH);
 
-  char left[128];
+  // La famille mesurée : l'intercalaire, puis les natures retenues (« Armor ·
+  // Boss + MVP »). Sans ça, la barre d'un filtre MVP se lirait comme celle de
+  // toute la collection.
+  char family[96] = {};
+  if (slot_filter_ != 0) {
+    std::snprintf(family, sizeof(family), "%s", kSlotFilters[slot_filter_].label);
+  }
+  if (boss_known_ && nature_mask_ != 0) {
+    bool first = true;
+    for (const NatureFilter& n : kNatureFilters) {
+      if ((nature_mask_ & (1u << n.boss)) == 0) continue;
+      const size_t at = std::strlen(family);
+      std::snprintf(family + at, sizeof(family) - at, "%s%s",
+                    first ? (at > 0 ? " · " : "") : " + ", n.label);
+      first = false;
+    }
+  }
+
+  char left[160];
   const float pct = cat_total_ > 0 ? 100.0f * cat_unlocked_ / cat_total_ : 0.0f;
-  if (slot_filter_ == 0) {
+  if (family[0] == '\0') {
     std::snprintf(left, sizeof(left), i18n::Tr("%d / %d cartes  ·  %.1f %%"),
                   cat_unlocked_, cat_total_, pct);
   } else {
     std::snprintf(left, sizeof(left), i18n::Tr("%s : %d / %d  ·  %.1f %%"),
-                  kSlotFilters[slot_filter_].label, cat_unlocked_, cat_total_, pct);
+                  family, cat_unlocked_, cat_total_, pct);
   }
   char right[96];
   std::snprintf(right, sizeof(right), i18n::Tr("En réserve : %lld"),

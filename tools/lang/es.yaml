@@ -4036,6 +4036,7 @@
 "Liseré selon la nature du monstre": "Borde según la naturaleza del monstruo"
 "Colore le bord de la pochette d'après le monstre qui lâche la carte : BLEU pour un mini-boss, ORANGE pour un MVP, noir pour tous les autres. Quand plusieurs monstres lâchent la même carte, c'est le plus coriace qui donne la couleur. La donnée vient du serveur, avec le catalogue.": "Colorea el borde de la funda según el monstruo que suelta la card: AZUL para un mini-jefe, NARANJA para un MVP, negro para todos los demás. Cuando varios monstruos sueltan la misma card, el más duro da el color. El dato viene del servidor, con el catálogo."
 "%d / %d cartes acquises": "%d / %d cards conseguidas"
+"%d / %d cartes acquises\nClic : filtrer (cumulable)": "%d / %d cards conseguidas\nClic: filtrar (acumulable)"
 "%d / %d cartes  ·  %.1f %%": "%d / %d cards  ·  %.1f %%"
 "%s : %d / %d  ·  %.1f %%": "%s: %d / %d  ·  %.1f %%"
 "En réserve : %lld": "En reserva: %lld"
