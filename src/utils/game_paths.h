@@ -97,6 +97,17 @@ std::string PaletteCachePath();
 // ⚠ Corollaire de « côté client » : la barre ne suit pas le joueur d'un PC à
 // l'autre. C'est le prix d'un stockage qui ne demande aucun opcode.
 std::string ItemBarPath();
+// Intentions d'édition des albums de cartes posées EN JEU par le staff :
+// `SaveData\bourgeon_card_album_delta.yaml`. Le dossier est créé au besoin.
+//
+// 🔴 Ce fichier n'est pas une donnée de jeu, c'est un BON DE TRAVAIL. Il ne dit
+// pas ce qu'un album contient — la vérité est `db/import/item_group_db.yml` du
+// serveur — mais ce qu'un membre du staff veut y ajouter ou en retirer. Il est
+// consommé par `apply_card_album_delta.py` du dépôt client, qui patche ce YAML
+// serveur puis régénère `packageitem.lub` depuis lui. Le sens de la synchro
+// reste donc serveur -> client ; ce qui remonte, c'est une intention, jamais un
+// fichier engendré.
+std::string CardAlbumDeltaPath();
 // Recettes de fabrication, générées depuis les DB serveur par
 // moonlight/tools/gen_metalprocess.py.
 //

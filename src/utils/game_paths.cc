@@ -62,6 +62,12 @@ std::string ItemBarPath() {
   return dir + "\\bourgeon_itembar.yaml";
 }
 
+std::string CardAlbumDeltaPath() {
+  const std::string dir = GameDir() + "SaveData";
+  CreateDirectoryA(dir.c_str(), nullptr);
+  return dir + "\\bourgeon_card_album_delta.yaml";
+}
+
 std::string RecipesPath() {
   // Le premier chemin QUI EXISTE, sinon SystemEN\ par défaut — ainsi le message
   // d'erreur du chargeur nomme l'emplacement attendu plutôt qu'un chemin au

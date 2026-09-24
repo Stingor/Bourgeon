@@ -204,6 +204,21 @@ class CardAlbumWindow : public Plugin {
                   int order_index, float alpha);
   void PocketMenu(const Row& r, const char* nm);
   void DrawConfirmModal();
+
+  // ── Édition STAFF des deux albums d'objets (IsStaff, gestes au macaron) ───
+  // Maintenir Ctrl fait apparaître « +O » / « +M » sur les albums où la carte
+  // N'EST PAS ; maintenir Maj change les macarons présents en « −O » / « −M ».
+  // Le clic pose un BON DE TRAVAIL (features/windows/card_album_delta.h) : rien
+  // ne change dans le jeu, c'est un script qui portera l'intention au YAML
+  // serveur puis régénérera le fichier de tirage du client. Un macaron en
+  // attente se dessine donc AUTREMENT qu'un macaron acquis — confondre les deux
+  // ferait promettre au joueur une carte que l'album ne donne pas encore.
+  void DrawRateModal();
+  // Écrit le bon de travail et prépare le message qui le dira. `remove` vrai
+  // ignore `rate`.
+  void PostIntent(uint32_t album, uint32_t card, int rate, bool remove);
+  // Annule l'intention posée sur ce couple.
+  void ClearIntent(uint32_t album, uint32_t card);
   // Une carte de l'inventaire est offerte à l'album : dépôt si sa pochette est
   // ouverte, sinon le sacrifice.
   void OfferCard(const Offer& c);
@@ -340,6 +355,23 @@ class CardAlbumWindow : public Plugin {
   uint32_t pend_card_id_ = 0;
   int      pend_max_ = 0;
   bool     pend_open_prompt_ = false;
+
+  // ── Bon de travail staff en cours de saisie ──────────────────────────────
+  // Le poids de tirage (`Rate` du groupe serveur) se demande à l'ajout : une
+  // carte commune et une carte de MVP ne se posent pas au même tarif. La modale
+  // est déclarée au niveau de la FENÊTRE, jamais dans la boucle de pochettes —
+  // ouverte de l'intérieur, un popup se repositionne au curseur de l'élément
+  // courant et saute d'une frame à l'autre.
+  bool     rate_open_ = false;   // demande d'ouverture, consommée par DrawRateModal
+  uint32_t rate_album_ = 0;
+  uint32_t rate_card_ = 0;
+  int      rate_value_ = 1;
+  // Ce que le dernier geste staff a donné. À part du compte rendu serveur :
+  // ici, ce n'est pas le serveur qui a répondu, c'est un fichier qui a été
+  // écrit — ou qui ne l'a pas été.
+  char     staff_msg_[160] = {};
+  uint32_t staff_msg_tick_ = 0;
+  bool     staff_msg_ok_ = true;
 
   int  slot_filter_ = 0;  // 0 = tous ; sinon index dans kSlotFilterMasks
   int  show_filter_ = 0;  // 0 = toutes, 1 = débloquées, 2 = scellées

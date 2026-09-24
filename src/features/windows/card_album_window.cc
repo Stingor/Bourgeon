@@ -18,6 +18,8 @@
 #include "features/windows/item_desc_window.h"  // itemdesc::CardName / CardIllustPath / RenderSimpleDesc
 #include "features/windows/item_probability.h"  // itemprob : d'où tombe une carte (packageitem.lub)
 #include "features/moonlight_ui/moonlight_ui.h"  // OpenInterfaceSection / SaveSettings (menu de la puce)
+#include "features/staff_gate.h"                 // IsStaff : l'édition des albums d'objets
+#include "features/windows/card_album_delta.h"   // albumdelta : les bons de travail du staff
 #include "features/windows/inventory_viewer.h"  // DraggedItemNameId (la pochette visée par un glisser)
 #include "features/windows/viewer_probes.h"     // viewers::MouseOverInventory (retrait par glisser)
 #include "imgui.h"
@@ -129,6 +131,10 @@ constexpr ImU32 kSrcOldFill    = IM_COL32(196, 138, 58, 255);   // Old Card Albu
 constexpr ImU32 kSrcMysticFill = IM_COL32(124, 100, 196, 255);  // Mystical Card Album
 constexpr ImU32 kSrcText       = IM_COL32(255, 248, 238, 255);
 constexpr ImU32 kSrcEdge       = IM_COL32(0, 0, 0, 100);
+// Liserés de l'édition staff : ce qu'on demande d'ajouter, ce qu'on demande de
+// retirer. Vifs et larges — ils disent « travail en attente », pas « état ».
+constexpr ImU32 kSrcPendAdd    = IM_COL32(80, 210, 100, 255);
+constexpr ImU32 kSrcPendRm     = IM_COL32(226, 80, 74, 255);
 constexpr float kSrcChip       = 15.0f;  // son diamètre, en pixels logiques
 constexpr float kSrcChipGap    = 2.0f;
 
@@ -351,6 +357,11 @@ struct AlbumSource {
   const char* fallback;  // le nom, si itemInfoMerged.lua ne connaît pas l'objet
   ImU32       fill;
   bool        built = false;
+  // Le poids DOMINANT de l'album (10 dans l'Old Card Album, 1 dans le Mystical) :
+  // la valeur que propose la modale quand le staff y ajoute une carte. Mesurée
+  // sur la table plutôt qu'écrite en dur — c'est la table qui fait foi, et elle
+  // bougera.
+  int         typical_rate = 0;
   std::unordered_map<uint32_t, SrcChance> chance;
 };
 
@@ -382,6 +393,15 @@ void BuildSources() {
         c.total = first ? g.total : (c.total == g.total ? c.total : 0);
       }
     }
+    // Le poids dominant, par simple comptage : la table est déjà en mémoire et
+    // ne bougera plus.
+    std::unordered_map<int, int> tally;
+    int best = 0, best_n = 0;
+    for (const auto& kv : s.chance) {
+      const int n = ++tally[kv.second.weight];
+      if (n > best_n) { best_n = n; best = kv.second.weight; }
+    }
+    s.typical_rate = best;
     s.built = true;
   }
 }
@@ -994,6 +1014,7 @@ void CardAlbumWindow::OnRenderUI() {
     // ce qui empêche le modal de se repositionner sur le curseur à chaque frame,
     // et ce qui met le prompt de quantité dans la bonne pile d'ID.
     DrawConfirmModal();
+    DrawRateModal();
     PumpQuantityPrompt();
   } else {
     win_rect_.Invalidate();
@@ -1036,6 +1057,14 @@ void CardAlbumWindow::DrawHeader() {
 
   ImGui::SameLine();
   if (ro::RoButton(i18n::Tr("Rafraîchir"))) RequestRefresh();
+
+  // Le dernier geste STAFF, à part du compte rendu serveur : ici ce n'est pas le
+  // serveur qui a répondu, c'est un fichier qui a été écrit — ou qui ne l'a pas
+  // été, et ça doit se voir.
+  if (staff_msg_tick_ != 0 && GetTickCount() - staff_msg_tick_ < kResultShowMs) {
+    ImGui::SameLine();
+    ImGui::TextColored(staff_msg_ok_ ? ro::pal::kWarn : ro::pal::kRed, "%s", staff_msg_);
+  }
 
   // Le compte rendu de la dernière commande, le temps d'être lu, à droite de la
   // rangée — là où l'œil va après avoir cliqué.
@@ -1553,6 +1582,21 @@ void CardAlbumWindow::DrawPocket(ImDrawList* dl, const ImVec2& pos, const BookLa
   // `BeginDragDropSource()` s'attache au DERNIER item soumis. Un macaron posé
   // plus haut aurait volé à la pochette sa source de glisser, et c'est lui
   // qu'on aurait promené vers l'inventaire.
+  // ── ÉDITION STAFF, au geste ──────────────────────────────────────────────
+  // Maj : les macarons présents deviennent « −O » / « −M » — cliquer demande le
+  // RETRAIT de la carte de ce pool. Ctrl : des macarons « +O » / « +M »
+  // apparaissent pour les albums où elle n'est PAS — cliquer demande son ajout,
+  // après avoir demandé son poids de tirage.
+  //
+  // 🔴 Ces deux gestes n'écrivent RIEN dans le jeu : ils posent un bon de travail
+  // que le script portera au YAML serveur (cf. card_album_delta.h). Un macaron
+  // en attente se dessine donc autrement qu'un macaron acquis.
+  const bool staff = sources_ && IsStaff();
+  const ImGuiIO& mods = ImGui::GetIO();
+  const bool want_remove = staff && mods.KeyShift;
+  const bool want_add = staff && mods.KeyCtrl;
+  const bool editing = want_remove || want_add;
+
   bool on_chip = false;
   bool chip_rclick = false;
   if (sources_) {
@@ -1562,11 +1606,52 @@ void CardAlbumWindow::DrawPocket(ImDrawList* dl, const ImVec2& pos, const BookLa
     for (int s = 0; s < kSrcCount; ++s) {
       const AlbumSource& src = g_sources[s];
       const SrcChance* ch = SourceChance(src, r.id);
-      if (ch == nullptr) continue;
+      // L'intention posée sur ce couple, si le staff en a posé une. Lue
+      // seulement sous IsStaff : le fichier n'existe que sur un poste d'auteur,
+      // et un joueur qui s'en fabriquerait un ne doit rien voir changer.
+      const albumdelta::Entry* intent =
+          staff ? albumdelta::Find(src.item_id, r.id) : nullptr;
+      const bool pending_add = intent != nullptr && !intent->remove;
+      const bool pending_rm = intent != nullptr && intent->remove;
+
+      // Ce qui décide de l'existence du macaron. L'ordre compte : une intention
+      // en attente se montre TOUJOURS (c'est du travail à faire, il ne doit pas
+      // se perdre), un fantôme « + » ne s'invite que sous Ctrl.
+      const bool ghost = (ch == nullptr) && !pending_add;
+      if (ghost && !want_add) continue;
+
+      // Le geste que ce macaron-ci offre à cette frame. Annuler prime : sur une
+      // intention déjà posée, le modificateur sert à la RETIRER, sinon il n'y
+      // aurait aucun moyen de revenir en arrière.
+      enum Act { kActOpen, kActAdd, kActRemove, kActCancel };
+      Act act = kActOpen;
+      if (editing && intent != nullptr) act = kActCancel;
+      else if (want_add && ch == nullptr) act = kActAdd;
+      else if (want_remove && ch != nullptr) act = kActRemove;
+
+      // En mode édition le macaron devient une PASTILLE « signe + lettre » :
+      // le signe dit ce que le clic fera, la lettre et la teinte disent de quel
+      // album on parle. Hors édition, un simple rond.
+      const char* glyph = src.letter;
+      char gbuf[8];
+      if (act == kActAdd) std::snprintf(gbuf, sizeof(gbuf), "+%s", src.letter);
+      // ⚠ Le vrai signe moins U+2212 n'est PAS garanti dans la police
+      // d'interface (rien au-dessus de U+00FF ne l'est) : trait d'union ASCII,
+      // comme les « < » « > » de la pagination. « × » (U+00D7) passe, lui, et
+      // sert déjà à la pastille de réserve.
+      else if (act == kActRemove) std::snprintf(gbuf, sizeof(gbuf), "-%s", src.letter);
+      else if (act == kActCancel) std::snprintf(gbuf, sizeof(gbuf), "\xC3\x97%s", src.letter);
+      else gbuf[0] = '\0';
+      if (gbuf[0] != '\0') glyph = gbuf;
+
+      ImFont* font = ImGui::GetFont();
+      const float fsz = ImGui::GetFontSize() * 0.85f;
+      const ImVec2 ts = font->CalcTextSizeA(fsz, FLT_MAX, 0.0f, glyph);
+      const float w = std::max(chip, ts.x + ro::Px(8.0f));
 
       ImGui::SetCursorScreenPos(ImVec2(cx, cy));
       ImGui::PushID(s);
-      const bool hit = ImGui::InvisibleButton("src", ImVec2(chip, chip));
+      const bool hit = ImGui::InvisibleButton("src", ImVec2(w, chip));
       const bool ho = ImGui::IsItemHovered();
       ImGui::PopID();
       on_chip = on_chip || ho;
@@ -1575,37 +1660,84 @@ void CardAlbumWindow::DrawPocket(ImDrawList* dl, const ImVec2& pos, const BookLa
       // menu contextuel qui s'ouvre partout sauf sur un coin est un défaut.
       if (ho && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) chip_rclick = true;
 
-      const ImVec2 c(cx + chip * 0.5f, cy + chip * 0.5f);
+      // Un fantôme est CREUX : il ne dit pas « cette carte tombe de là », il dit
+      // « elle pourrait ». Une intention en attente garde sa teinte pleine mais
+      // prend un liseré vif — le travail est décidé, pas encore appliqué.
+      const ImVec2 c0(cx, cy), c1(cx + w, cy + chip);
       const float rad = chip * 0.5f;
-      dl->AddCircleFilled(ImVec2(c.x, c.y + ro::Px(1.0f)), rad,
-                          WithAlpha(kPocketShadow, alpha));
-      dl->AddCircleFilled(c, rad, WithAlpha(src.fill, alpha));
-      if (ho) dl->AddCircleFilled(c, rad, ro::pal::kHoverTint);
-      dl->AddCircle(c, rad, WithAlpha(kSrcEdge, alpha));
-      ImFont* font = ImGui::GetFont();
-      const float fsz = ImGui::GetFontSize() * 0.85f;
-      const ImVec2 ts = font->CalcTextSizeA(fsz, FLT_MAX, 0.0f, src.letter);
-      dl->AddText(font, fsz, ImVec2(std::floor(c.x - ts.x * 0.5f), std::floor(c.y - ts.y * 0.5f)),
-                  WithAlpha(kSrcText, alpha), src.letter);
+      const float body = (ghost || pending_rm) ? 0.45f : 1.0f;
+      dl->AddRectFilled(ImVec2(c0.x, c0.y + ro::Px(1.0f)), ImVec2(c1.x, c1.y + ro::Px(1.0f)),
+                        WithAlpha(kPocketShadow, alpha * body), rad);
+      dl->AddRectFilled(c0, c1, WithAlpha(src.fill, alpha * body), rad);
+      if (ho) dl->AddRectFilled(c0, c1, ro::pal::kHoverTint, rad);
+      const ImU32 rim = pending_add ? kSrcPendAdd
+                        : pending_rm ? kSrcPendRm
+                        : act == kActAdd ? kSrcPendAdd
+                        : act == kActRemove ? kSrcPendRm
+                                            : kSrcEdge;
+      const float rim_w = (rim == kSrcEdge) ? 1.0f : ro::Px(2.0f);
+      dl->AddRect(c0, c1, WithAlpha(rim, alpha), rad, 0, rim_w);
+      dl->AddText(font, fsz,
+                  ImVec2(std::floor((c0.x + c1.x - ts.x) * 0.5f),
+                         std::floor((c0.y + c1.y - ts.y) * 0.5f)),
+                  WithAlpha(kSrcText, alpha * (body < 1.0f ? 0.8f : 1.0f)), glyph);
 
       if (ho && !dragging) {
         ImGui::BeginTooltip();
-        ImGui::Text("%s : %.4f%%", SourceName(src), ch->pct);
-        if (ch->total > 0) {
-          ImGui::TextColored(ro::pal::kLabel, i18n::Tr("%d chances sur %d"), ch->weight,
-                             ch->total);
+        if (ch != nullptr) {
+          ImGui::Text("%s : %.4f%%", SourceName(src), ch->pct);
+          if (ch->total > 0) {
+            ImGui::TextColored(ro::pal::kLabel, i18n::Tr("%d chances sur %d"), ch->weight,
+                               ch->total);
+          }
+        } else {
+          ImGui::Text("%s", SourceName(src));
+          ImGui::TextColored(ro::pal::kLabel, "%s",
+                             i18n::Tr("Cette carte n'y est pas."));
         }
-        ImGui::TextColored(ro::pal::kLabel, "%s",
-                           i18n::Tr("Clic : ouvrir sa description et sa table de tirage"));
+        // 🔴 Dire que c'est un BON DE TRAVAIL, pas un changement. Un macaron
+        // d'attente qui se lirait comme un fait ferait croire l'album modifié.
+        if (pending_add) {
+          ImGui::TextColored(ro::pal::kWarn, i18n::Tr("À AJOUTER (poids %d) — en attente du script"),
+                             intent->rate);
+        } else if (pending_rm) {
+          ImGui::TextColored(ro::pal::kWarn, "%s",
+                             i18n::Tr("À RETIRER — en attente du script"));
+        }
+        const char* tip = i18n::Tr("Clic : ouvrir sa description et sa table de tirage");
+        if (act == kActAdd) tip = i18n::Tr("Clic : demander son AJOUT à cet album");
+        else if (act == kActRemove) tip = i18n::Tr("Clic : demander son RETRAIT de cet album");
+        else if (act == kActCancel) tip = i18n::Tr("Clic : annuler cette demande");
+        ImGui::TextColored(ro::pal::kLabel, "%s", tip);
+        if (staff && !editing) {
+          ImGui::TextColored(ro::pal::kLabel, "%s",
+                             i18n::Tr("Staff — Ctrl : ajouter · Maj : retirer"));
+        }
         ImGui::EndTooltip();
       }
+
       if (hit) {
-        // ⚠ DIFFÉRÉE comme partout ailleurs : OpenDesc* rejoue un OnMsg NATIF,
-        // proscrit entre NewFrame() et Render().
-        POINT pt;
-        if (GetCursorPos(&pt)) itemcell::DeferDescById(src.item_id, 0, 0, pt.x, pt.y);
+        switch (act) {
+          case kActAdd:
+            // Le poids se demande : la modale est déclarée au niveau de la
+            // fenêtre, on ne fait qu'armer.
+            rate_album_ = src.item_id;
+            rate_card_ = r.id;
+            rate_value_ = src.typical_rate > 0 ? src.typical_rate : albumdelta::kRateMin;
+            rate_open_ = true;
+            break;
+          case kActRemove: PostIntent(src.item_id, r.id, 0, true); break;
+          case kActCancel: ClearIntent(src.item_id, r.id); break;
+          case kActOpen: {
+            // ⚠ DIFFÉRÉE comme partout ailleurs : OpenDesc* rejoue un OnMsg
+            // NATIF, proscrit entre NewFrame() et Render().
+            POINT pt;
+            if (GetCursorPos(&pt)) itemcell::DeferDescById(src.item_id, 0, 0, pt.x, pt.y);
+            break;
+          }
+        }
       }
-      cx += chip + ro::Px(kSrcChipGap);
+      cx += w + ro::Px(kSrcChipGap);
     }
   }
 
@@ -1705,6 +1837,118 @@ void CardAlbumWindow::PocketMenu(const Row& r, const char* nm) {
 }
 
 // ── La confirmation du sacrifice ────────────────────────────────────────────
+
+// ── Les bons de travail du staff ────────────────────────────────────────────
+// 🔴 Ces deux fonctions n'envoient RIEN au serveur et ne touchent pas la table
+// de tirage du client : elles écrivent un fichier que `apply_card_album_delta.py`
+// consommera. C'est la seule façon honnête de le faire — le lub du client est
+// ENGENDRÉ depuis le YAML serveur, l'éditer se perdrait à la régénération
+// suivante et mentirait au joueur entre-temps. Cf. card_album_delta.h.
+
+void CardAlbumWindow::PostIntent(uint32_t album, uint32_t card, int rate, bool remove) {
+  const bool ok = albumdelta::Set(album, card, rate, remove);
+  char nbuf[96];
+  const char* nm = itemdesc::CardName(card);
+  nm = nm[0] != '\0' ? DisplayName(nm, nbuf, sizeof(nbuf)) : i18n::Tr("Cette carte");
+  const char* alb = i18n::Tr("l'album");
+  for (const AlbumSource& s : g_sources) {
+    if (s.item_id == album) { alb = SourceName(s); break; }
+  }
+  if (ok) {
+    std::snprintf(staff_msg_, sizeof(staff_msg_),
+                  remove ? i18n::Tr("Demandé : RETIRER %s de %s. Reste à lancer le script.")
+                         : i18n::Tr("Demandé : AJOUTER %s à %s. Reste à lancer le script."),
+                  nm, alb);
+  } else {
+    // 🔴 Le dire. `albumdelta::Set` a défait ce qu'il venait de poser, donc le
+    // macaron d'attente n'apparaîtra pas — sans message, le geste aurait l'air
+    // d'avoir été ignoré.
+    std::snprintf(staff_msg_, sizeof(staff_msg_), "%s",
+                  i18n::Tr("Bon de travail NON écrit : voir le dossier SaveData et le journal."));
+  }
+  staff_msg_ok_ = ok;
+  staff_msg_tick_ = GetTickCount();
+}
+
+void CardAlbumWindow::ClearIntent(uint32_t album, uint32_t card) {
+  const bool ok = albumdelta::Clear(album, card);
+  std::snprintf(staff_msg_, sizeof(staff_msg_), "%s",
+                ok ? i18n::Tr("Demande annulée.")
+                   : i18n::Tr("Annulation NON écrite : voir le dossier SaveData et le journal."));
+  staff_msg_ok_ = ok;
+  staff_msg_tick_ = GetTickCount();
+}
+
+// Le POIDS de tirage d'une carte qu'on ajoute. Il se demande parce qu'il est la
+// seule chose que le geste ne peut pas deviner : dans l'Old Card Album une
+// commune pèse 10 et une carte de MVP 1, et poser tout à 1 diluerait la table
+// sans que personne s'en aperçoive avant des semaines de drops.
+void CardAlbumWindow::DrawRateModal() {
+  const char* const kRateTitle = i18n::Tr("Poids de tirage###album_rate");
+
+  if (rate_open_) {
+    ImGui::OpenPopup(kRateTitle);
+    rate_open_ = false;
+  }
+
+  const ImVec2 origin = ImGui::GetWindowPos();
+  const ImVec2 size = ImGui::GetWindowSize();
+  const float modal_w = ro::Px(400.0f);
+  ro::SetNextRoModalPos(origin.x + (size.x - modal_w) * 0.5f,
+                        origin.y + size.y * 0.5f - ro::Px(70.0f), true);
+  ImGui::SetNextWindowSize(ImVec2(modal_w, 0.0f), ImGuiCond_Appearing);
+
+  if (!ro::BeginRoPopupModal(kRateTitle)) {
+    rate_card_ = 0;
+    return;
+  }
+  ro::SuppressEscapeStack();
+
+  const AlbumSource* src = nullptr;
+  for (const AlbumSource& s : g_sources) {
+    if (s.item_id == rate_album_) { src = &s; break; }
+  }
+  char nbuf[96];
+  const char* nm = itemdesc::CardName(rate_card_);
+  nm = nm[0] != '\0' ? DisplayName(nm, nbuf, sizeof(nbuf)) : i18n::Tr("Cette carte");
+
+  ImGui::Text(i18n::Tr("Ajouter %s à %s"), nm,
+              src != nullptr ? SourceName(*src) : i18n::Tr("l'album"));
+  ImGui::Separator();
+  ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + ro::Px(360.0f));
+  ImGui::TextWrapped("%s", i18n::Tr(
+      "Le poids est le « Rate » du groupe serveur : une part sur le total du "
+      "tirage, pas un pourcentage. Plus il est haut, plus la carte sort "
+      "souvent."));
+  ImGui::PopTextWrapPos();
+  if (src != nullptr && src->typical_rate > 0) {
+    ImGui::TextColored(ro::pal::kLabel, i18n::Tr("Poids dominant de cet album : %d"),
+                       src->typical_rate);
+  }
+  ImGui::Spacing();
+
+  const bool appearing = ImGui::IsWindowAppearing();
+  if (appearing) ImGui::SetKeyboardFocusHere();
+  ImGui::SetNextItemWidth(ro::Px(110.0f));
+  ImGui::InputInt("##album_rate_v", &rate_value_, 0, 0);
+  rate_value_ = std::clamp(rate_value_, albumdelta::kRateMin, albumdelta::kRateMax);
+
+  ImGui::Spacing();
+  const bool enter = ImGui::IsKeyPressed(ImGuiKey_Enter) ||
+                     ImGui::IsKeyPressed(ImGuiKey_KeypadEnter);
+  if (ro::RoButton(i18n::Tr("Demander l'ajout")) || enter) {
+    PostIntent(rate_album_, rate_card_, rate_value_, false);
+    rate_card_ = 0;
+    ImGui::CloseCurrentPopup();
+  }
+  ImGui::SameLine();
+  if (ro::RoButton(i18n::Tr("Annuler"))) {
+    rate_card_ = 0;
+    ImGui::CloseCurrentPopup();
+  }
+
+  ro::EndRoPopupModal();
+}
 
 void CardAlbumWindow::DrawConfirmModal() {
   // ⚠ EXACTEMENT la même chaîne que BeginPopupModal ci-dessous : ImGui dérive

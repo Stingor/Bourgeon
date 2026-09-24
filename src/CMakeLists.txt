@@ -115,6 +115,8 @@ set(BOURGEON_FILES
 	"features/windows/monster_info_window.h"
 	"features/systems/mvp_tracker.cc"
 	"features/systems/mvp_tracker.h"
+	"features/windows/card_album_delta.cc"
+	"features/windows/card_album_delta.h"
 	"features/windows/card_album_window.cc"
 	"features/windows/card_album_window.h"
 	"features/windows/mvp_tracker_window.cc"
