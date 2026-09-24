@@ -127,6 +127,12 @@ class CardAlbumWindow : public Plugin {
   // question que pose une pochette scellée.
   bool& sources() { return sources_; }
 
+  // Le liseré de la pochette dit la NATURE du monstre qui lâche la carte :
+  // bleu mini-boss, orange MVP, noir les autres. ON par défaut, comme les
+  // macarons, et pour la même raison : ça ne coûte rien et ça répond à une
+  // question qu'on se pose devant le classeur.
+  bool& rim_boss() { return rim_boss_; }
+
   // Section du panneau Moonlight. Rend true si un réglage a changé.
   bool DrawSettings();
 
@@ -139,6 +145,11 @@ class CardAlbumWindow : public Plugin {
     uint16_t amount;   // copies en réserve, retirables
     bool     unlocked; // l'emplacement a été payé d'un sacrifice
     uint32_t equip;    // masque de l'emplacement CIBLE (le client n'a pas d'item_db)
+    // Nature du monstre le plus coriace qui lâche cette carte, miroir de
+    // e_mob_bosstype : 0 ordinaire, 1 mini-boss, 2 MVP. Le client n'a pas plus
+    // de mob_db que d'item_db ; c'est le catalogue qui l'apporte. Vaut 0 quand
+    // le serveur est d'avant ce champ.
+    uint8_t  boss;
   };
 
   // Une carte trouvée dans l'inventaire, candidate au sacrifice ou au dépôt.
@@ -226,7 +237,6 @@ class CardAlbumWindow : public Plugin {
   // joueur a choisi de s'en passer. Aucun autre chemin n'émet kCmdUnlock.
   // `rest` = les copies de la pile à ranger dans la pochette une fois ouverte.
   void RequestSacrifice(int client_index, uint32_t card_id, int rest);
-  void DrawBulletMenu();
   // Le glisser d'une pochette vers l'inventaire, relâché : retrait. Même
   // mécanique que les viewers — au relâché, ImGui a déjà oublié le payload, et
   // c'est la dernière position connue qui désigne la cible.
@@ -250,6 +260,9 @@ class CardAlbumWindow : public Plugin {
   bool auto_sacrifice_ = false;
   bool name_icon_ = false;
   bool sources_ = true;
+  // Le liseré de nature (bleu mini-boss, orange MVP). Séparé des macarons : l'un
+  // dit où ACHETER sa chance, l'autre ce qu'il faut aller TUER.
+  bool rim_boss_ = true;
   // Le serveur a refusé de nous donner l'album : un autre compte de jeu du même
   // compte Moonlight le tient. Les pages restent vides et le disent, plutôt que
   // de montrer une réserve qui n'est pas la nôtre à manipuler.
@@ -374,6 +387,6 @@ class CardAlbumWindow : public Plugin {
   bool     staff_msg_ok_ = true;
 
   int  slot_filter_ = 0;  // 0 = tous ; sinon index dans kSlotFilterMasks
-  int  show_filter_ = 0;  // 0 = toutes, 1 = débloquées, 2 = scellées
+  int  show_filter_ = 0;  // 0 toutes, 1 débloquées, 2 scellées, 3-5 par provenance
   char filter_[64] = {};
 };

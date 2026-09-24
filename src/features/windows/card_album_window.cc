@@ -17,7 +17,7 @@
 #include "features/item_cell.h"                 // itemcell::ExtractList, ItemRow
 #include "features/windows/item_desc_window.h"  // itemdesc::CardName / CardIllustPath / RenderSimpleDesc
 #include "features/windows/item_probability.h"  // itemprob : d'où tombe une carte (packageitem.lub)
-#include "features/moonlight_ui/moonlight_ui.h"  // OpenInterfaceSection / SaveSettings (menu de la puce)
+#include "features/moonlight_ui/moonlight_ui.h"  // OpenInterfaceSection (puce de la barre de titre)
 #include "features/staff_gate.h"                 // IsStaff : l'édition des albums d'objets
 #include "features/windows/card_album_delta.h"   // albumdelta : les bons de travail du staff
 #include "features/windows/inventory_viewer.h"  // DraggedItemNameId (la pochette visée par un glisser)
@@ -59,8 +59,21 @@ constexpr uint8_t kResNoAccount       = 10;
 constexpr uint8_t kResInUse           = 11;  // tenu par un autre compte de jeu du même compte Moonlight
 constexpr uint8_t kResNotOpen         = 12;
 
-// Taille d'une CARD_ALBUM_ENTRY sur le fil : [id:4][amount:2][flags:1][equip:4].
-constexpr int kEntrySize = 11;
+// Taille d'une CARD_ALBUM_ENTRY sur le fil : [id:4][amount:2][flags:1][equip:4],
+// puis [boss:1] — ajouté après coup pour le liseré de nature.
+//
+// 🔴 La taille réelle se DÉDUIT du paquet reçu, elle n'est pas écrite en dur :
+// client et serveur ne sont jamais déployés à la même seconde. Un client neuf
+// devant un serveur d'avant lirait tout le catalogue de travers — chaque entrée
+// décalée d'un octet de plus que la précédente — au lieu de perdre la seule
+// couleur qu'il ne pouvait pas connaître.
+constexpr int kEntrySize     = 11;  // le socle, jamais plus court
+constexpr int kEntryWithBoss = 12;  // + la nature du monstre qui lâche la carte
+
+// Miroir de e_mob_bosstype (src/map/mob.hpp), tel que le catalogue l'envoie.
+constexpr uint8_t kBossNone = 0;
+constexpr uint8_t kBossMini = 1;
+constexpr uint8_t kBossMvp  = 2;
 
 // Le type d'objet « carte » tel que le client le range dans ItemRow::type.
 constexpr int kItemTypeCard = 6;
@@ -111,6 +124,14 @@ constexpr float kMinH = 480.0f;
 constexpr ImU32 kPocketBg     = IM_COL32(58, 50, 44, 255);    // le plastique de la pochette
 constexpr ImU32 kPocketEdge   = IM_COL32(255, 255, 255, 28);  // son reflet
 constexpr ImU32 kPocketShadow = IM_COL32(0, 0, 0, 55);
+
+// Le liseré de la pochette dit la NATURE du monstre qui lâche la carte. Noir
+// pour un monstre ordinaire — c'est déjà ce que la pochette paraissait avoir ;
+// bleu pour un mini-boss (Class: Boss), orange pour un MVP (Mvp: true).
+constexpr ImU32 kRimNone  = IM_COL32(0, 0, 0, 180);
+constexpr ImU32 kRimMini  = IM_COL32(92, 158, 242, 255);
+constexpr ImU32 kRimMvp   = IM_COL32(240, 150, 48, 255);
+constexpr float kRimWidth = 2.0f;  // seulement pour les deux liserés de couleur
 constexpr ImU32 kArtMissing   = IM_COL32(96, 88, 80, 255);    // fond quand l'illustration manque
 constexpr ImU32 kPageEdge     = IM_COL32(0, 0, 0, 45);
 constexpr ImU32 kSpineDark    = IM_COL32(0, 0, 0, 80);
@@ -172,9 +193,22 @@ constexpr int kSortCount = static_cast<int>(sizeof(kSortLabels) / sizeof(kSortLa
 
 // Ce que les pages montrent : tout, les pochettes ouvertes, ou les scellées —
 // celles qu'il reste à conquérir.
-const char* const kShowLabels[] = {"Toutes", "Débloquées", "Scellées"};
+//
+// Les trois dernières entrées filtrent par PROVENANCE, sur la table de tirage
+// que le client porte déjà (voir les macarons, plus bas). Elles vivent dans le
+// même combo parce qu'elles sont du même ordre : ce que la page montre. Un
+// second combo aurait laissé croire qu'on peut croiser « scellées » et « Old
+// Card Album », ce que ce filtre ne fait pas.
+//
+// 🔴 L'ordre des deux entrées d'album suit celui de `g_sources` : le filtre s'y
+// indexe. Les libellés sont les noms d'objets du jeu, qui ne se traduisent pas.
+const char* const kShowLabels[] = {"Toutes", "Débloquées", "Scellées",
+                                   "Old Card Album", "Mystical Card Album",
+                                   "Hors des albums"};
 constexpr int kShowCount = static_cast<int>(sizeof(kShowLabels) / sizeof(kShowLabels[0]));
 constexpr int kShowAll = 0, kShowUnlocked = 1, kShowSealed = 2;
+constexpr int kShowSrcFirst = 3;   // + l'index dans g_sources
+constexpr int kShowNoSource = 5;
 
 // Le nom d'une carte réduit à ce qui la DISTINGUE : le client nomme
 // « Poring Card [Armor] », et sous une pochette de 120 pixels ni le crochet ni
@@ -375,7 +409,10 @@ constexpr int kSrcCount = static_cast<int>(sizeof(g_sources) / sizeof(g_sources[
 // du client est créée paresseusement, et `itemprob::Get` MET EN CACHE le vide
 // qu'il trouverait avant le chargement du lub. `Has` (une recherche dans un
 // arbre, sans allocation) est le garde-fou qui empêche ce cache empoisonné.
-void BuildSources() {
+// Rend true si un album vient d'entrer dans l'index : l'appelant sait alors que
+// le filtre par provenance, qui a pu tourner à vide jusque-là, doit être rejoué.
+bool BuildSources() {
+  bool fresh = false;
   for (AlbumSource& s : g_sources) {
     if (s.built) continue;
     if (!itemprob::Has(s.item_id)) continue;
@@ -403,7 +440,9 @@ void BuildSources() {
     }
     s.typical_rate = best;
     s.built = true;
+    fresh = true;
   }
+  return fresh;
 }
 
 const SrcChance* SourceChance(const AlbumSource& s, uint32_t card_id) {
@@ -506,17 +545,27 @@ void CardAlbumWindow::HandlePacket(uint16_t opcode, const uint8_t* data,
   unlocked_count_ = 0;
   total_reserve_ = 0;
 
+  // La taille d'une entrée telle que CE serveur l'envoie. Un serveur d'avant le
+  // liseré de nature tient en 11 octets, et le catalogue se lit quand même — les
+  // pochettes sont alors toutes bordées de noir.
+  size_t stride = kEntrySize;
+  if (count > 0) {
+    const size_t measured = (static_cast<size_t>(len) - 3) / count;
+    if (measured >= static_cast<size_t>(kEntrySize)) stride = measured;
+  }
+
   for (uint16_t i = 0; i < count; ++i) {
-    const size_t off = 3 + static_cast<size_t>(i) * kEntrySize;
+    const size_t off = 3 + static_cast<size_t>(i) * stride;
     // Se fier au `count` annoncé et non à la taille reçue produirait une lecture
     // hors paquet si l'un des deux mentait.
-    if (off + kEntrySize > len) break;
+    if (off + stride > len) break;
 
     Row r;
     r.id       = *reinterpret_cast<const uint32_t*>(data + off);
     r.amount   = *reinterpret_cast<const uint16_t*>(data + off + 4);
     r.unlocked = (data[off + 6] & 1) != 0;
     r.equip    = *reinterpret_cast<const uint32_t*>(data + off + 7);
+    r.boss     = stride >= kEntryWithBoss ? data[off + 11] : kBossNone;
 
     if (r.unlocked) {
       unlocked_count_++;
@@ -712,6 +761,21 @@ void CardAlbumWindow::RebuildOrder() {
 
     if (show_filter_ == kShowUnlocked && !r.unlocked) continue;
     if (show_filter_ == kShowSealed && r.unlocked) continue;
+
+    // Provenance. « Hors des albums » est la question qui a motivé le filtre :
+    // ce sont ces cartes-là qu'aucun des deux albums ne rend, et qu'il faut donc
+    // aller chercher sur le monstre.
+    if (show_filter_ >= kShowSrcFirst) {
+      if (show_filter_ == kShowNoSource) {
+        bool anywhere = false;
+        for (const AlbumSource& s : g_sources) {
+          if (SourceChance(s, r.id) != nullptr) { anywhere = true; break; }
+        }
+        if (anywhere) continue;
+      } else if (SourceChance(g_sources[show_filter_ - kShowSrcFirst], r.id) == nullptr) {
+        continue;
+      }
+    }
 
     if (!MatchesFilter(r.id)) continue;
     order_.push_back(static_cast<int>(i));
@@ -955,7 +1019,10 @@ void CardAlbumWindow::OnRenderUI() {
   // L'index des provenances, retourné une fois pour toutes (deux drapeaux à
   // tester quand il est prêt). Ici et pas au constructeur : la base de tirage du
   // client est créée paresseusement, la construire trop tôt fixerait du vide.
-  if (sources_) BuildSources();
+  // 🔴 Sans condition sur `sources_` : le filtre par provenance du combo
+  // « Afficher » lit le même index, et l'éteindre les macarons ne doit pas vider
+  // la page. La fonction se garde elle-même (un seul passage par album).
+  if (BuildSources()) order_dirty_ = true;
 
   ImGui::SetNextWindowSize(ImVec2(ro::Px(kDefaultW), ro::Px(kDefaultH)),
                            ImGuiCond_FirstUseEver);
@@ -980,14 +1047,20 @@ void CardAlbumWindow::OnRenderUI() {
                 i18n::Tr("Album de cartes"), unlocked_count_,
                 static_cast<int>(rows_.size()));
 
-  // La puce de la barre de titre ouvre les options de CETTE fenêtre.
+  // La puce de la barre de titre ouvre la section de CETTE fenêtre dans les
+  // réglages, comme partout ailleurs. Plus de menu intermédiaire : il n'offrait
+  // qu'une partie des réglages et prenait du retard à chaque case ajoutée
+  // (« Rafraîchir » a son bouton dans l'en-tête).
   ro::SetNextWindowTitleBullet(i18n::Tr("Options de l'album"));
 
   bool open = open_;
   const bool begun = ro::BeginRoWindow(title, &open);
   if (begun) {
-    if (ro::TitleBulletClicked()) ImGui::OpenPopup("album_opts");
-    DrawBulletMenu();
+    if (ro::TitleBulletClicked()) {
+      if (auto* mu = Bourgeon::Instance().moonlight_ui()) {
+        mu->OpenInterfaceSection(MoonlightUi::kIfaceCardAlbum);
+      }
+    }
 
     if (order_dirty_) RebuildOrder();
 
@@ -1049,7 +1122,7 @@ void CardAlbumWindow::DrawHeader() {
   ImGui::SameLine();
   ImGui::TextUnformatted(i18n::Tr("Afficher"));
   ImGui::SameLine();
-  ImGui::SetNextItemWidth(ro::Px(110.0f));
+  ImGui::SetNextItemWidth(ro::Px(150.0f));
   if (ro::RoCombo("##album_show", &show_filter_, kShowLabels, kShowCount)) {
     order_dirty_ = true;
     first_ = 0;
@@ -1138,26 +1211,6 @@ void CardAlbumWindow::DrawHeader() {
   }
   ImGui::SameLine();
   ImGui::TextColored(ro::pal::kGreen, "%s", msg);
-}
-
-// Le menu de la puce : les réglages qui AGISSENT, à portée de main, et le
-// chemin vers le panneau pour le reste. Un réglage changé ici est sauvé tout de
-// suite, comme depuis le panneau.
-void CardAlbumWindow::DrawBulletMenu() {
-  if (!ImGui::BeginPopup("album_opts")) return;
-  bool changed = false;
-  if (ro::RoCheckbox(i18n::Tr("Sacrifier sans confirmation"), &auto_sacrifice_)) changed = true;
-  ImGui::Separator();
-  if (ImGui::MenuItem(i18n::Tr("Rafraîchir"))) RequestRefresh();
-  if (ImGui::MenuItem(i18n::Tr("Réglages de l'album..."))) {
-    if (auto* mu = Bourgeon::Instance().moonlight_ui()) {
-      mu->OpenInterfaceSection(MoonlightUi::kIfaceCardAlbum);
-    }
-  }
-  ImGui::EndPopup();
-  if (changed) {
-    if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
-  }
 }
 
 // Les intercalaires : un onglet par emplacement d'équipement. Le survol d'un
@@ -1464,7 +1517,17 @@ void CardAlbumWindow::DrawPocket(ImDrawList* dl, const ImVec2& pos, const BookLa
   dl->AddRectFilled(ImVec2(pk0.x, pk0.y + ro::Px(2.0f)), ImVec2(pk1.x, pk1.y + ro::Px(2.0f)),
                     WithAlpha(kPocketShadow, alpha), pr);
   dl->AddRectFilled(pk0, pk1, WithAlpha(kPocketBg, alpha), pr);
-  dl->AddRect(pk0, pk1, WithAlpha(kPocketEdge, alpha), pr);
+
+  // Le liseré de nature. Le reflet ne se pose QUE sur une pochette ordinaire :
+  // posé par-dessus un liseré de couleur, il en délaverait le milieu.
+  const bool rare = rim_boss_ && r.boss != kBossNone;
+  if (rare) {
+    dl->AddRect(pk0, pk1, WithAlpha(r.boss == kBossMvp ? kRimMvp : kRimMini, alpha), pr,
+                0, ro::Px(kRimWidth));
+  } else {
+    dl->AddRect(pk0, pk1, WithAlpha(kRimNone, alpha), pr);
+    dl->AddRect(pk0, pk1, WithAlpha(kPocketEdge, alpha), pr);
+  }
 
   // L'illustration — en couleur si la pochette est ouverte, en silhouette
   // sinon. Le chemin n'est lu qu'à la première demande de cette clé.
@@ -2076,6 +2139,16 @@ bool CardAlbumWindow::DrawSettings() {
       "exacte, le clic ouvre la description de l'album — et sa table de tirage "
       "complète. La donnée est celle du client, la même que l'onglet "
       "« Probabilités » d'une description."));
+
+  if (ro::RoCheckbox(i18n::Tr("Liseré selon la nature du monstre"), &rim_boss_)) {
+    changed = true;
+  }
+  ImGui::SameLine();
+  mui::HelpMarker(i18n::Tr(
+      "Colore le bord de la pochette d'après le monstre qui lâche la carte : "
+      "BLEU pour un mini-boss, ORANGE pour un MVP, noir pour tous les autres. "
+      "Quand plusieurs monstres lâchent la même carte, c'est le plus coriace qui "
+      "donne la couleur. La donnée vient du serveur, avec le catalogue."));
 
   if (ro::RoCheckbox(i18n::Tr("Sacrifier sans confirmation"), &auto_sacrifice_)) {
     changed = true;

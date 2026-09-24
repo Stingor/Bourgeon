@@ -52,7 +52,9 @@ uint32_t UiCaps::Current() {
   // bit n'a qu'un rôle : dire qu'il y a bien de quoi montrer le résultat d'un
   // sacrifice avant d'en accepter un.
   if (CardAlbumWindow* ca = b.card_album_window()) {
-    if (ca->imgui_enabled()) caps |= kCardAlbum;
+    // Les deux bits ensemble, toujours : le second ne dit pas un réglage mais ce
+    // que ce parseur sait lire, et il le sait dès que la surface existe.
+    if (ca->imgui_enabled()) caps |= kCardAlbum | kCardAlbumBoss;
   }
   return caps;
 }

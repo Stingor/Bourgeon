@@ -62,7 +62,15 @@ class UiCaps : public Plugin {
     // d'une carte est irréversible, et un client natif n'a aucune surface pour
     // montrer au joueur ce qu'il vient de payer.
     kCardAlbum = 1u << 3,
-    // Prochain bit libre : 1u << 4.
+    // Cette build sait lire l'octet de NATURE du catalogue d'album (0 ordinaire,
+    // 1 mini-boss, 2 MVP), qui donne au liséré de la pochette sa couleur.
+    //
+    // 🔴 Une CAPACITÉ DE LECTURE, pas une préférence : le joueur peut éteindre le
+    // liséré, le bit reste. Il dit ce que cette build SAIT LIRE sur le fil, et
+    // s'éteindre ferait envoyer par le serveur des entrées plus courtes que ce
+    // que le parseur attend déjà — une préférence n'a rien à faire là.
+    kCardAlbumBoss = 1u << 4,
+    // Prochain bit libre : 1u << 5.
   };
 
   void OnTick() override;

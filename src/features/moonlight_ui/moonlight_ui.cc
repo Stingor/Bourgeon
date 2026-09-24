@@ -858,6 +858,8 @@ const moonlight_ui::SettingDesc kCardAlbumSettings[] = {
     // description) et répondent à la question que pose une pochette scellée.
     {"card_album_sources", SType::kBool,
      MLUI_FIELD(card_album_window, sources()), MLUI_LITERAL(bool, true)},
+    {"card_album_rim_boss", SType::kBool,
+     MLUI_FIELD(card_album_window, rim_boss()), MLUI_LITERAL(bool, true)},
 };
 
 const moonlight_ui::SettingDesc kPartyFriendSettings[] = {
