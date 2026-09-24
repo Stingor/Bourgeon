@@ -4164,3 +4164,11 @@
 "HUD caméra": "Camera HUD"
 "Affiche en valeurs tous les réglages de la caméra du monde : tilt (élévation), rotation et zoom, courants et cibles — le moteur lisse la pose courante vers la cible —, le point visé et la position de l'œil.\n\nPuis les bornes que le moteur applique au glisser et à la molette (y compris celles d'une ligne viewpointtable), la mémoire du zoom par genre de carte, et l'état de /camera et /zoom.\n\nLecture seule. Le HUD se déplace à la souris ; clic droit pour copier les valeurs.": "Shows every setting of the world camera as numbers: tilt (elevation), rotation and zoom, current and target — the engine smooths the current pose toward the target —, the look-at point and the eye position.\n\nThen the limits the engine applies to dragging and to the mouse wheel (including those of a viewpointtable row), the zoom memory per map kind, and the state of /camera and /zoom.\n\nRead only. Drag the HUD with the mouse; right-click to copy the values."
 "Copier les valeurs": "Copy the values"
+
+# Staff Tools - camera HUD (camera_hud.cc).
+"%.1f (vanilla %.1f, patché)": "%.1f (vanilla %.1f, patched)"
+"Écart de tilt extérieur": "Outdoor tilt span"
+"Écart de tilt intérieur": "Indoor tilt span"
+"Centre du tilt": "Tilt center"
+"Décalage du plafond": "Ceiling offset"
+"Décalage du plafond (Ctrl)": "Ceiling offset (Ctrl)"

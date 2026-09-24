@@ -2,6 +2,7 @@
 
 #include <Windows.h>  // SEH autour de la lecture des objets natifs
 
+#include <cmath>  // NAN
 #include <cstdarg>
 #include <cstdint>
 #include <cstdio>
@@ -62,14 +63,49 @@ constexpr const char* kViewpointNames[kViewpointCount] = {
 constexpr int kFlagFixedCamera = 0x36;  // /camera : point visé collé, sans lissage
 constexpr int kFlagZoomOut     = 0xf1;  // /zoom   : plafond extérieur élargi
 
-// Écarts du tilt autour de -45, tels que `Camera_DragControl` les code en dur.
-constexpr float kTiltRest          = -45.0f;
-constexpr float kTiltSpanOutdoor   = 20.0f;
-constexpr float kTiltSpanIndoor    = 10.0f;
-constexpr float kTiltCeilOffset    = 70.0f;  // plafond = écart - 70
-constexpr float kYawSpanIndoor     = 20.0f;  // intérieur : ancre ± 20
+// ── Les constantes des bornes, LUES DANS LE CODE et pas recopiées ────────────
+// `Camera_DragControl` 0x00c79f90 borne le tilt à [centre - écart, écart - 70]
+// (écart - 45 Ctrl tenu), écart 20 dehors / 10 dedans, et la rotation en
+// intérieur à ancre ± 20. Ces nombres sont des floats de .rdata que chaque
+// instruction désigne par une adresse absolue.
+//
+// 🔴 Les recopier en constantes était FAUX sur l'exe livré : le patch WARP
+// `HighCamAngle` (IncrCamAngle.qjs) redirige l'opérande de l'écart DEHORS vers
+// un float neuf à 65 dans sa zone d'allocation — l'IDB, vanilla, dit 20. On lit
+// donc l'adresse DANS l'instruction, puis le float qu'elle désigne : ce que le
+// client exécute, patché ou non.
+//
+// Les six sites, tous `F3 0F <op> <modrm> <adresse 32 bits>` : l'adresse est à
+// +4. L'opcode attendu est revérifié avant de suivre le pointeur.
+struct CodeFloat {
+  uintptr_t site;
+  uint8_t   opcode;   // 0x10 movss, 0x5C subss
+  float     vanilla;  // la valeur de l'IDB, pour signaler un patch
+};
+constexpr uint8_t kMovss = 0x10;
+constexpr uint8_t kSubss = 0x5C;
+constexpr CodeFloat kTiltSpanIndoor  = {0x00c7a191, kMovss, 10.0f};
+constexpr CodeFloat kTiltSpanOutdoor = {0x00c7a1ae, kMovss, 20.0f};  // HighCamAngle
+constexpr CodeFloat kTiltCenter      = {0x00c7a219, kMovss, -45.0f};
+constexpr CodeFloat kTiltCeilCtrl    = {0x00c7a256, kSubss, 45.0f};  // plafond = écart - x
+constexpr CodeFloat kTiltCeil        = {0x00c7a265, kSubss, 70.0f};
+constexpr CodeFloat kYawSpanIndoor   = {0x00c7a106, kSubss, 20.0f};  // ancre ± x
 
 bool g_enabled = false;
+
+// Le float désigné par l'instruction, ou NaN si le site n'a plus la forme
+// attendue (un autre patch l'a réécrit) : le HUD l'affiche alors comme tel
+// plutôt que d'inventer une borne.
+float ReadCodeFloat(const CodeFloat& c) {
+  __try {
+    const uint8_t* p = reinterpret_cast<const uint8_t*>(c.site);
+    if (p[0] != 0xF3 || p[1] != 0x0F || p[2] != c.opcode) return NAN;
+    const uintptr_t addr = *reinterpret_cast<const uint32_t*>(p + 4);
+    return *reinterpret_cast<const float*>(addr);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    return NAN;
+  }
+}
 
 // Tout ce que le HUD affiche, relu d'un bloc chaque frame.
 struct Snapshot {
@@ -87,6 +123,10 @@ struct Snapshot {
   float zoom_min, zoom_max_out, zoom_max_in;
   float tilt_work, zoom_work;
   float tilt_saved_in, zoom_saved_in, tilt_saved_out, zoom_saved_out;
+
+  // Lues dans le code (cf. CodeFloat) : NaN si le site est méconnaissable.
+  float tilt_span_in, tilt_span_out, tilt_center, tilt_ceil, tilt_ceil_ctrl;
+  float yaw_span_in;
 };
 
 float G(uintptr_t addr) { return *reinterpret_cast<const float*>(addr); }
@@ -108,6 +148,12 @@ bool Capture(Snapshot* s) {
   s->zoom_saved_in  = G(kZoomSavedIndoorAddr);
   s->tilt_saved_out = G(kTiltSavedOutdoorAddr);
   s->zoom_saved_out = G(kZoomSavedOutdoorAddr);
+  s->tilt_span_in   = ReadCodeFloat(kTiltSpanIndoor);
+  s->tilt_span_out  = ReadCodeFloat(kTiltSpanOutdoor);
+  s->tilt_center    = ReadCodeFloat(kTiltCenter);
+  s->tilt_ceil      = ReadCodeFloat(kTiltCeil);
+  s->tilt_ceil_ctrl = ReadCodeFloat(kTiltCeilCtrl);
+  s->yaw_span_in    = ReadCodeFloat(kYawSpanIndoor);
 
   void* cam = ro::camera::Get();
   if (!cam) return false;
@@ -184,18 +230,32 @@ void BuildRows(const Snapshot& s, std::vector<Row>* rows) {
       row(i18n::Tr("Tilt"),     Fmt("[%d, %d]", v[7], v[6]));
       row(i18n::Tr("Rotation"), Fmt("[%d, %d]", v[3], v[4]));
     } else {
-      const float span = s.outdoor ? kTiltSpanOutdoor : kTiltSpanIndoor;
+      // NaN se propage : un site méconnaissable s'affiche « nan », pas faux.
+      const float span = s.outdoor ? s.tilt_span_out : s.tilt_span_in;
       const float max  = s.outdoor ? s.zoom_max_out : s.zoom_max_in;
       row(i18n::Tr("Zoom"), Fmt("[%.0f, %.0f]", s.zoom_min, max));
       row(i18n::Tr("Tilt"), Fmt(i18n::Tr("[%.0f, %.0f] (Ctrl : %.0f)"),
-                                kTiltRest - span, span - kTiltCeilOffset,
-                                span + kTiltRest));
+                                s.tilt_center - span, span - s.tilt_ceil,
+                                span - s.tilt_ceil_ctrl));
       if (s.outdoor)
         row(i18n::Tr("Rotation"), i18n::Tr("libre"));
       else
-        row(i18n::Tr("Rotation"), Fmt("%.0f ± %.0f", s.indoor_yaw, kYawSpanIndoor));
+        row(i18n::Tr("Rotation"), Fmt("%.0f ± %.0f", s.indoor_yaw, s.yaw_span_in));
     }
   }
+  // Les constantes elles-mêmes, et l'écart à l'IDB vanilla quand un patch de
+  // l'exe les a changées : c'est ce qui dit POURQUOI une borne surprend.
+  auto code_row = [&](const char* label, float live, const CodeFloat& c) {
+    if (live == c.vanilla)
+      row(label, Fmt("%.1f", live));
+    else
+      row(label, Fmt(i18n::Tr("%.1f (vanilla %.1f, patché)"), live, c.vanilla));
+  };
+  code_row(i18n::Tr("Écart de tilt extérieur"), s.tilt_span_out, kTiltSpanOutdoor);
+  code_row(i18n::Tr("Écart de tilt intérieur"), s.tilt_span_in, kTiltSpanIndoor);
+  code_row(i18n::Tr("Centre du tilt"), s.tilt_center, kTiltCenter);
+  code_row(i18n::Tr("Décalage du plafond"), s.tilt_ceil, kTiltCeil);
+  code_row(i18n::Tr("Décalage du plafond (Ctrl)"), s.tilt_ceil_ctrl, kTiltCeilCtrl);
   row(i18n::Tr("Zoom min"), Fmt("%.2f", s.zoom_min));
   row(i18n::Tr("Zoom max extérieur"), Fmt("%.2f", s.zoom_max_out));
   row(i18n::Tr("Zoom max intérieur"), Fmt("%.2f", s.zoom_max_in));
