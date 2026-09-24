@@ -188,6 +188,8 @@ set(BOURGEON_FILES
 	"features/overlays/dps_meter.h"
 	"features/overlays/cast_bar.cc"
 	"features/overlays/cast_bar.h"
+	"features/overlays/camera_hud.cc"
+	"features/overlays/camera_hud.h"
 	"features/overlays/chat_balloon.cc"
 	"features/overlays/chat_balloon.h"
 	"features/overlays/entity_names.cc"

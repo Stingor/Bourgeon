@@ -7,6 +7,7 @@
 #include "features/fx/zone_recorder.h"
 #include "features/gameplay/quick_cast.h"
 #include "features/moonlight_ui/moonlight_ui.h"
+#include "features/overlays/camera_hud.h"
 #include "features/windows/char_diagnostics.h"
 #include "features/overlays/entity_names.h"
 #include "features/patches/pick_quad_tweaks.h"
@@ -44,6 +45,10 @@ void StaffTools::Toggle() {
 }
 
 void StaffTools::OnRenderUI() {
+  // Le HUD caméra vit HORS de la fenêtre : on referme l'établi, il reste à
+  // l'écran. Il porte ses propres gardes (IsStaff, en jeu).
+  camera_hud::Draw();
+
   // 🔴 Droit revérifié À CHAQUE FRAME, jamais mémorisé : le niveau de groupe
   // arrive au login et peut changer en cours de session. Un `open_` hérité du
   // yaml d'un compte devenu ordinaire n'ouvre donc rien.
@@ -187,6 +192,10 @@ void StaffTools::OnRenderUI() {
   if (auto* quick_cast = Bourgeon::Instance().quick_cast()) {
     if (quick_cast->DrawSettings()) Persist();
   }
+
+  // Les réglages de la caméra en valeurs, dans un HUD à part.
+  mui::SeparatorText(i18n::Tr("Caméra"));
+  if (camera_hud::DrawSettings()) Persist();
 
   // Fond neutre pour les captures d'écran : repeint le terrain d'une couleur unie
   // sans toucher à sa géométrie (l'occlusion reste correcte).

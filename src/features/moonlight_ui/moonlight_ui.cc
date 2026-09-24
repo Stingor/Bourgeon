@@ -37,6 +37,7 @@
 #include "features/overlays/cast_bar.h"
 #include "features/overlays/chat_balloon.h"
 #include "features/overlays/entity_names.h"
+#include "features/overlays/camera_hud.h"
 #include "features/overlays/skill_bar.h"
 #include "features/windows/storage_window.h"
 #include "features/windows/inventory_viewer.h"
@@ -1683,7 +1684,7 @@ struct MoonlightUiOwnSettings {
   using SType = moonlight_ui::SettingType;
 
   // En-tête du fichier : état de la fenêtre + journalisation + overlay alootid.
-  static const moonlight_ui::SettingDesc kHeader[7];
+  static const moonlight_ui::SettingDesc kHeader[8];
   // Réglages de chat portés par MoonlightUi (ils déménageront chez ChatTweaks à
   // l'étape C — c'est ce qui débloquera le déplacement du panneau « Chat »).
   static const moonlight_ui::SettingDesc kChat[5];
@@ -1693,7 +1694,7 @@ struct MoonlightUiOwnSettings {
   static const moonlight_ui::SettingDesc kGrid[4];
 };
 
-const moonlight_ui::SettingDesc MoonlightUiOwnSettings::kHeader[7] = {
+const moonlight_ui::SettingDesc MoonlightUiOwnSettings::kHeader[8] = {
     // ⚠ Défaut VISIBLE : au premier lancement, rien n'indiquerait qu'un panneau de
     // réglages existe. Le joueur le ferme quand il l'a compris, et c'est CE
     // choix-là qui est persisté.
@@ -1736,6 +1737,10 @@ const moonlight_ui::SettingDesc MoonlightUiOwnSettings::kHeader[7] = {
     // comme établi. Le rendu revérifie IsStaff à chaque frame, donc un `true`
     // hérité chez un compte devenu ordinaire n'ouvre rien.
     {"staff_tools_open", SType::kBool, MLUI_FIELD(staff_tools, open_),
+     MLUI_LITERAL(bool, false)},
+    // HUD caméra des Staff Tools : même règle, IsStaff() revérifié au dessin.
+    {"staff_camera_hud", SType::kBool,
+     []() -> void* { return &camera_hud::enabled(); },
      MLUI_LITERAL(bool, false)},
 };
 
