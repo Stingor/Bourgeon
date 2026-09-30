@@ -21,3 +21,4 @@ bourgeon_moonlight_pw.bin
 # Cache Python des outils de tools/
 __pycache__/
 *.pyc
+warp_patch_map.json
