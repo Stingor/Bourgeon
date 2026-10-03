@@ -70,7 +70,13 @@ class UiCaps : public Plugin {
     // s'éteindre ferait envoyer par le serveur des entrées plus courtes que ce
     // que le parseur attend déjà — une préférence n'a rien à faire là.
     kCardAlbumBoss = 1u << 4,
-    // Prochain bit libre : 1u << 5.
+    // RÉSERVÉS côté serveur pour le client moonclient, et JAMAIS annoncés par
+    // cette DLL — elle n'enregistre pas leurs opcodes, et un opcode inconnu
+    // viderait le tampon de réception du client :
+    //   1u << 5 (0x20) : ZC_BOURGEON_FLAG_GRAFFITI 0x0F36 ;
+    //   1u << 6 (0x40) : ZC_BOURGEON_UNIT_MASTER 0x0F37, le maître d'un monstre
+    //                    invoqué (voir bopcodes::kUnitMaster).
+    // Prochain bit libre : 1u << 7.
   };
 
   void OnTick() override;

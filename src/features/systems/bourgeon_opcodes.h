@@ -96,6 +96,14 @@ constexpr uint16_t kCardAlbumCmd   = 0x0F34;  // CZ_BOURGEON_CARD_ALBUM_CMD (raf
 // cette DLL ne l'annonce pas, et ne le reçoit donc jamais. Réservé ici pour qu'aucun
 // autre paquet ne prenne ce numéro.
 constexpr uint16_t kFlagGraffiti   = 0x0F36;
+// ZC_BOURGEON_UNIT_MASTER (le maître d'un monstre invoqué, client moonclient). Le
+// serveur ne l'envoie qu'aux sessions qui annoncent le bit 0x40 de CZ_BOURGEON_UI_CAPS :
+// cette DLL ne l'annonce pas, et ne le reçoit donc jamais. Réservé ici pour qu'aucun
+// autre paquet ne prenne ce numéro. Pour l'adopter : annoncer le bit, enregistrer
+// l'opcode, et lire [opcode:2][len:2][GID:4][master_id:4] (len = 12), envoyé après
+// l'apparition du monstre chaque fois que le serveur le montre ; master_id = 0 dit
+// que le monstre n'a plus de maître.
+constexpr uint16_t kUnitMaster     = 0x0F37;
 
 // --- PROCHAIN OPCODE LIBRE : la valeur de kNextFree ci-dessous ---------------
 // Pour ajouter un opcode custom : prendre la valeur ci-dessous, l'incrémenter,
@@ -103,5 +111,5 @@ constexpr uint16_t kFlagGraffiti   = 0x0F36;
 // Aucune vérification de collision nécessaire : toute la plage 0x0F00..0x0FFF
 // est hors de la table du client (garantie flag=-1 = variable). Champ libre.
 // (0x0F00/0x0F01 libérés — anciennes valeurs tech data avant regroupement.)
-constexpr uint16_t kNextFree    = 0x0F37;
+constexpr uint16_t kNextFree    = 0x0F38;
 }  // namespace bopcodes
