@@ -91,6 +91,11 @@ constexpr uint16_t kMvpGroup       = 0x0F32;  // ZC_BOURGEON_MVP_GROUP (membres,
 constexpr uint16_t kPartyShare     = 0x0F35;  // ZC_BOURGEON_PARTY_SHARE (qui est hors du partage d'EXP, et pourquoi)
 constexpr uint16_t kCardAlbum      = 0x0F33;  // ZC_BOURGEON_CARD_ALBUM (catalogue COMPLET + réserve + bit débloqué)
 constexpr uint16_t kCardAlbumCmd   = 0x0F34;  // CZ_BOURGEON_CARD_ALBUM_CMD (rafraîchir / sacrifier / déposer / retirer)
+// ZC_BOURGEON_FLAG_GRAFFITI (emblème de guilde peint au sol, client moonclient). Le
+// serveur ne l'envoie qu'aux sessions qui annoncent le bit 0x20 de CZ_BOURGEON_UI_CAPS :
+// cette DLL ne l'annonce pas, et ne le reçoit donc jamais. Réservé ici pour qu'aucun
+// autre paquet ne prenne ce numéro.
+constexpr uint16_t kFlagGraffiti   = 0x0F36;
 
 // --- PROCHAIN OPCODE LIBRE : la valeur de kNextFree ci-dessous ---------------
 // Pour ajouter un opcode custom : prendre la valeur ci-dessous, l'incrémenter,
@@ -98,5 +103,5 @@ constexpr uint16_t kCardAlbumCmd   = 0x0F34;  // CZ_BOURGEON_CARD_ALBUM_CMD (raf
 // Aucune vérification de collision nécessaire : toute la plage 0x0F00..0x0FFF
 // est hors de la table du client (garantie flag=-1 = variable). Champ libre.
 // (0x0F00/0x0F01 libérés — anciennes valeurs tech data avant regroupement.)
-constexpr uint16_t kNextFree    = 0x0F36;
+constexpr uint16_t kNextFree    = 0x0F37;
 }  // namespace bopcodes
