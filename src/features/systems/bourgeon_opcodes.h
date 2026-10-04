@@ -104,6 +104,14 @@ constexpr uint16_t kFlagGraffiti   = 0x0F36;
 // l'apparition du monstre chaque fois que le serveur le montre ; master_id = 0 dit
 // que le monstre n'a plus de maître.
 constexpr uint16_t kUnitMaster     = 0x0F37;
+// ZC_BOURGEON_SERVER_RULES (les réglages du serveur utiles au client moonclient). Le
+// serveur ne l'envoie qu'aux sessions qui annoncent le bit 0x80 de CZ_BOURGEON_UI_CAPS :
+// cette DLL ne l'annonce pas, et ne le reçoit donc jamais. Réservé ici pour qu'aucun
+// autre paquet ne prenne ce numéro. Pour l'adopter : annoncer le bit, enregistrer
+// l'opcode, et lire [opcode:2][len:2] puis N × [key:2][value:4], envoyé dès l'annonce
+// du bit et après @reloadbattleconf. Clés : 1 area_size (cases), 2 hom_max_level,
+// 3 hom_S_max_level, 4 homunc_teleport_acd (ms) ; une clé inconnue s'ignore.
+constexpr uint16_t kServerRules    = 0x0F38;
 
 // --- PROCHAIN OPCODE LIBRE : la valeur de kNextFree ci-dessous ---------------
 // Pour ajouter un opcode custom : prendre la valeur ci-dessous, l'incrémenter,
@@ -111,5 +119,5 @@ constexpr uint16_t kUnitMaster     = 0x0F37;
 // Aucune vérification de collision nécessaire : toute la plage 0x0F00..0x0FFF
 // est hors de la table du client (garantie flag=-1 = variable). Champ libre.
 // (0x0F00/0x0F01 libérés — anciennes valeurs tech data avant regroupement.)
-constexpr uint16_t kNextFree    = 0x0F38;
+constexpr uint16_t kNextFree    = 0x0F39;
 }  // namespace bopcodes

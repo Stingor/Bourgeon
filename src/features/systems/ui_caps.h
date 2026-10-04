@@ -75,8 +75,10 @@ class UiCaps : public Plugin {
     // viderait le tampon de réception du client :
     //   1u << 5 (0x20) : ZC_BOURGEON_FLAG_GRAFFITI 0x0F36 ;
     //   1u << 6 (0x40) : ZC_BOURGEON_UNIT_MASTER 0x0F37, le maître d'un monstre
-    //                    invoqué (voir bopcodes::kUnitMaster).
-    // Prochain bit libre : 1u << 7.
+    //                    invoqué (voir bopcodes::kUnitMaster) ;
+    //   1u << 7 (0x80) : ZC_BOURGEON_SERVER_RULES 0x0F38, les réglages du serveur
+    //                    utiles au client (voir bopcodes::kServerRules).
+    // Prochain bit libre : 1u << 8.
   };
 
   void OnTick() override;
