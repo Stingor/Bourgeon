@@ -77,8 +77,16 @@ class UiCaps : public Plugin {
     //   1u << 6 (0x40) : ZC_BOURGEON_UNIT_MASTER 0x0F37, le maître d'un monstre
     //                    invoqué (voir bopcodes::kUnitMaster) ;
     //   1u << 7 (0x80) : ZC_BOURGEON_SERVER_RULES 0x0F38, les réglages du serveur
-    //                    utiles au client (voir bopcodes::kServerRules).
-    // Prochain bit libre : 1u << 8.
+    //                    utiles au client (voir bopcodes::kServerRules) ;
+    //   1u << 8 (0x100) : BOURGEON_UI_MVP_TRACKER_EXT, le carnet MVP étendu. Pas
+    //                    d'opcode neuf : le serveur ajoute des QUEUES à
+    //                    ZC 0x0F32 (notre user_id derrière le groupe, l'origine
+    //                    derrière l'invitation, l'identifiant de commande derrière
+    //                    le résultat), pousse la présence des membres, et rend
+    //                    les codes de résultat 14 à 17, que `ResultText` ne
+    //                    connaît pas. Sans ce bit, cette DLL reçoit les trames
+    //                    d'avant, octet pour octet.
+    // Prochain bit libre : 1u << 9.
   };
 
   void OnTick() override;
