@@ -45,7 +45,7 @@ import sys
 import yaml
 
 RACINE_SERVEUR = r"D:\Mes documents\GitHub\moonlight"
-RACINE_CLIENT = r"D:\Mes documents\GitHub\Moonlight-Client"
+RACINE_CLIENT = r"D:\Mes documents\GitHub\bourgeon-client"
 CLIENT_LIVE = r"E:\Nouveau dossier\Moonlight-Destiny"
 
 SKILL_DB = os.path.join(RACINE_SERVEUR, "db", "pre-re", "skill_db.yml")
