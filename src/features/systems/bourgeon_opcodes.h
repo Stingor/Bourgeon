@@ -110,7 +110,8 @@ constexpr uint16_t kUnitMaster     = 0x0F37;
 // autre paquet ne prenne ce numéro. Pour l'adopter : annoncer le bit, enregistrer
 // l'opcode, et lire [opcode:2][len:2] puis N × [key:2][value:4], envoyé dès l'annonce
 // du bit et après @reloadbattleconf. Clés : 1 area_size (cases), 2 hom_max_level,
-// 3 hom_S_max_level, 4 homunc_teleport_acd (ms) ; une clé inconnue s'ignore.
+// 3 hom_S_max_level, 4 homunc_teleport_acd (ms), 5 vending_tax (dix-millièmes),
+// 6 vending_tax_min (zeny) ; une clé inconnue s'ignore.
 constexpr uint16_t kServerRules    = 0x0F38;
 // --- RÉSERVÉS au client moonclient, NON ANNONCÉS PAR LA DLL -------------------
 // Cette DLL ne les envoie ni ne les reçoit : le serveur ne les adresse qu'aux
