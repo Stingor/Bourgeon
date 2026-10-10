@@ -86,7 +86,16 @@ class UiCaps : public Plugin {
     //                    les codes de résultat 14 à 17, que `ResultText` ne
     //                    connaît pas. Sans ce bit, cette DLL reçoit les trames
     //                    d'avant, octet pour octet.
-    // Prochain bit libre : 1u << 9.
+    //   1u << 9 (0x200) : ZC_BOURGEON_CHAT_AUTHOR 0x0F3A, l'auteur de la ligne
+    //                    de parole qui suit (voir bopcodes::kChatAuthor) ;
+    //   1u << 10 (0x400) : ZC_BOURGEON_QUEST_END 0x0F3B, pourquoi une quête
+    //                    quitte le journal (voir bopcodes::kQuestEnd) ;
+    //   1u << 11 (0x800) : ZC_BOURGEON_DISCORD_RICH 0x0F3C, le relais Discord
+    //                    riche, à la place de 0x0F08 (voir bopcodes::kDiscordRich) ;
+    //   1u << 12 (0x1000) : le maître des COMPAGNONS dans ZC_BOURGEON_UNIT_MASTER
+    //                    0x0F37 — homoncule, mercenaire, familier, élémentaire.
+    //                    Sans ce bit, 0x0F37 ne décrit que des monstres.
+    // Prochain bit libre : 1u << 13.
   };
 
   void OnTick() override;

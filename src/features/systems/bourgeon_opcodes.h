@@ -112,6 +112,22 @@ constexpr uint16_t kUnitMaster     = 0x0F37;
 // du bit et après @reloadbattleconf. Clés : 1 area_size (cases), 2 hom_max_level,
 // 3 hom_S_max_level, 4 homunc_teleport_acd (ms) ; une clé inconnue s'ignore.
 constexpr uint16_t kServerRules    = 0x0F38;
+// --- RÉSERVÉS au client moonclient, NON ANNONCÉS PAR LA DLL -------------------
+// Cette DLL ne les envoie ni ne les reçoit : le serveur ne les adresse qu'aux
+// sessions qui annoncent un bit de CZ_BOURGEON_UI_CAPS que la DLL n'annonce pas
+// (cf. UiCaps::Cap). Réservés ici pour qu'aucun autre paquet ne prenne ces numéros.
+// CZ_MOONCLIENT_INTEGRITY : la poignée de main de moonclient, à la place de
+// CZ_BOURGEON_INTEGRITY.
+constexpr uint16_t kMoonclientIntegrity = 0x0F39;
+// ZC_BOURGEON_CHAT_AUTHOR (bit 0x200) : l'auteur de la ligne de parole qui suit.
+constexpr uint16_t kChatAuthor          = 0x0F3A;
+// ZC_BOURGEON_QUEST_END (bit 0x400) : pourquoi une quête quitte le journal.
+constexpr uint16_t kQuestEnd            = 0x0F3B;
+// ZC_BOURGEON_DISCORD_RICH (bit 0x800) : le relais Discord entier et décrit, à
+// la place de kDiscordMsg.
+constexpr uint16_t kDiscordRich         = 0x0F3C;
+// Le bit 0x1000 (maître des compagnons) n'a pas d'opcode à lui : il élargit
+// kUnitMaster aux homoncules, mercenaires, familiers et élémentaires.
 
 // --- PROCHAIN OPCODE LIBRE : la valeur de kNextFree ci-dessous ---------------
 // Pour ajouter un opcode custom : prendre la valeur ci-dessous, l'incrémenter,
@@ -119,5 +135,5 @@ constexpr uint16_t kServerRules    = 0x0F38;
 // Aucune vérification de collision nécessaire : toute la plage 0x0F00..0x0FFF
 // est hors de la table du client (garantie flag=-1 = variable). Champ libre.
 // (0x0F00/0x0F01 libérés — anciennes valeurs tech data avant regroupement.)
-constexpr uint16_t kNextFree    = 0x0F39;
+constexpr uint16_t kNextFree    = 0x0F3D;
 }  // namespace bopcodes
