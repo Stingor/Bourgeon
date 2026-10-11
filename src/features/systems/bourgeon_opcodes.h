@@ -132,6 +132,11 @@ constexpr uint16_t kDiscordRich         = 0x0F3C;
 // ZC_MOONLIGHT_EQUIP_ATTRIBUTES (bit 0x2000, moonclient seul) : ce qu'apporte
 // une pièce ou un ensemble posé ou retiré. Réservé ici pour ne pas être repris.
 constexpr uint16_t kEquipAttributes     = 0x0F3D;
+// CZ_MOONLIGHT_REQ_CHAT_BLOCKS / ZC_MOONLIGHT_CHAT_BLOCKS (moonclient seul) : le
+// journal des @mute / @unmute d'un joueur, pour le staff. Réservés ici pour ne
+// pas être repris.
+constexpr uint16_t kReqChatBlocks       = 0x0F3E;
+constexpr uint16_t kChatBlocks          = 0x0F3F;
 
 // --- PROCHAIN OPCODE LIBRE : la valeur de kNextFree ci-dessous ---------------
 // Pour ajouter un opcode custom : prendre la valeur ci-dessous, l'incrémenter,
@@ -139,5 +144,5 @@ constexpr uint16_t kEquipAttributes     = 0x0F3D;
 // Aucune vérification de collision nécessaire : toute la plage 0x0F00..0x0FFF
 // est hors de la table du client (garantie flag=-1 = variable). Champ libre.
 // (0x0F00/0x0F01 libérés — anciennes valeurs tech data avant regroupement.)
-constexpr uint16_t kNextFree    = 0x0F3E;
+constexpr uint16_t kNextFree    = 0x0F40;
 }  // namespace bopcodes
