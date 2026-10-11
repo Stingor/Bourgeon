@@ -141,6 +141,12 @@ class CharacterSheet : public Plugin {
   // icônes 24 px agrandies restent nettes.
   bool& skill_bilinear() { return skill_bilinear_; }
 
+  // Vue grille / liste du Grimoire et des compétences de guilde (yaml
+  // « charsheet_grimoire_grid » / « charsheet_guild_skill_grid ») : le choix du
+  // joueur survit à la fermeture de la feuille et à la relance du client.
+  bool& skill_grid()       { return skill_grid_; }
+  bool& guild_skill_grid() { return guild_skill_grid_; }
+
   // Section « Compétences » de l'onglet Homoncule dépliée ou non (yaml
   // « charsheet_homun_skills »). Une fois les points dépensés et les compétences
   // posées dans la barre, il n'y a plus rien à y faire : on veut pouvoir la replier
