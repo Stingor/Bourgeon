@@ -262,12 +262,6 @@ int ReadInventoryLite(InvItemLite* out, int cap) {
   } __except (EXCEPTION_EXECUTE_HANDLER) {}
   return n;
 }
-//  Cartes/grade d'un item d'inventaire par index (pour completer l'identite au save).
-bool FindInvLiteByIndex(const InvItemLite* inv, int n, int index, InvItemLite* out) {
-  for (int i = 0; i < n; ++i)
-    if (inv[i].index == index) { if (out) *out = inv[i]; return true; }
-  return false;
-}
 //  Lit un slot du tableau equip (session+0x17d0+slot*0xf8, meme layout ItemSkillInfo) dans une
 //  InvItemLite. Sert a AJOUTER les items PORTES aux candidats de resolution : la liste inventaire
 //  ne restitue pas toujours les items equipes -> un item commun deja porte serait declare
@@ -305,20 +299,24 @@ bool KindMatches(PresetKind kind, const InvItemLite& it) {
     default:                   return (loc & (rag::equip::kEqpCostumeMask | rag::equip::kEqpAmmo)) == 0;
   }
 }
-//  Resout un item de preset -> index inventaire courant (-1 si absent). Priorite au match
-//  EXACT (refine+cartes+grade) ; a defaut, 1er item de meme nameid.
-int ResolvePresetItem(const EquipPresetItem& pi, const InvItemLite* inv, int n) {
-  int fallback = -1;
+//  Resout un item de preset -> POSITION dans inv[] (-1 si absent), en sautant les candidats
+//  deja attribues a un autre item du meme preset (`taken`). 🔴 Sans cette exclusion, deux
+//  exemplaires d'un meme objet (deux anneaux identiques, ou que seules les options aleatoires
+//  distinguent) se resolvaient sur le MEME item : le second exemplaire porte, absent des
+//  cibles, etait desequipe. `exact_only` : passe 1 = match EXACT (refine+cartes+grade),
+//  passe 2 = 1er item de meme nameid encore libre.
+int ResolvePresetItem(const EquipPresetItem& pi, const InvItemLite* inv, int n,
+                      const bool* taken, bool exact_only) {
+  if (pi.nameid == 0) return -1;
   for (int i = 0; i < n; ++i) {
-    if (inv[i].nameid != pi.nameid || pi.nameid == 0) continue;
+    if (taken[i] || inv[i].nameid != pi.nameid) continue;
     if (!KindMatches(pi.kind, inv[i])) continue;
     const bool exact = inv[i].refine == pi.refine && inv[i].grade == pi.grade &&
                        inv[i].cards[0] == pi.cards[0] && inv[i].cards[1] == pi.cards[1] &&
                        inv[i].cards[2] == pi.cards[2] && inv[i].cards[3] == pi.cards[3];
-    if (exact) return inv[i].index;
-    if (fallback < 0) fallback = inv[i].index;
+    if (exact || !exact_only) return i;
   }
-  return fallback;
+  return -1;
 }
 
 //  Lecture de toutes les stats en un bloc (SEH)
@@ -3189,19 +3187,35 @@ void CharacterSheet::ApplyPreset(const EquipPreset& p) {
     if (ReadEquippedAmmo(&am)) worn_ammo = am.invIndex;
   }
 
-  // 2) Resoudre chaque item du preset -> index cible + position EQP a envoyer (non deja porte).
+  // 2) Resoudre chaque item du preset -> un candidat d'inventaire DISTINCT. Deux passes : tous
+  //    les matchs exacts d'abord, puis le repli par nameid — sinon le repli d'un item pourrait
+  //    prendre la copie exacte qu'un item suivant attendait.
+  // Un preset qui ne pilote pas les costumes ignore les siens de bout en bout : ni
+  // rééquipés, ni comptés manquants. Sans ce filtre, une apparence rangée dans le
+  // storage ferait apparaître « 2 items manquants » sur un preset de combat.
+  auto skipped = [&](const EquipPresetItem& pi) {
+    return pi.kind == PresetKind::kCostume && !p.with_costumes;
+  };
+  bool taken[512] = {};
+  std::vector<int> pick(p.items.size(), -1);  // position dans inv[] de chaque item du preset
+  for (bool exact_only : {true, false})
+    for (size_t k = 0; k < p.items.size(); ++k) {
+      if (pick[k] >= 0 || skipped(p.items[k])) continue;
+      pick[k] = ResolvePresetItem(p.items[k], inv, n, taken, exact_only);
+      if (pick[k] >= 0) taken[pick[k]] = true;
+    }
+
+  // 3) Index cible + position EQP a envoyer (non deja porte).
   int targets[48]; int nt = 0;          // pieces d'EQUIPEMENT a garder sur soi
   int costume_targets[8]; int nct = 0;  // idem, costumes
   struct ToEquip { int index; uint32_t pos; } toEquip[48]; int neq = 0;
   int missing = 0;
-  for (const EquipPresetItem& pi : p.items) {
-    // Un preset qui ne pilote pas les costumes ignore les siens de bout en bout : ni
-    // rééquipés, ni comptés manquants. Sans ce filtre, une apparence rangée dans le
-    // storage ferait apparaître « 2 items manquants » sur un preset de combat.
-    if (pi.kind == PresetKind::kCostume && !p.with_costumes) continue;
-
-    const int idx = ResolvePresetItem(pi, inv, n);
-    if (idx < 0) { ++missing; continue; }
+  for (size_t k = 0; k < p.items.size(); ++k) {
+    const EquipPresetItem& pi = p.items[k];
+    if (skipped(pi)) continue;
+    if (pick[k] < 0) { ++missing; continue; }
+    const InvItemLite& li = inv[pick[k]];
+    const int idx = li.index;
     if (pi.kind == PresetKind::kCostume) {
       if (nct < 8) costume_targets[nct++] = idx;
     } else if (pi.kind == PresetKind::kEquip) {
@@ -3211,23 +3225,21 @@ void CharacterSheet::ApplyPreset(const EquipPreset& p) {
     // un slot du tableau equip.
     bool eq = (pi.kind == PresetKind::kAmmo) ? (worn_ammo == idx) : false;
     if (pi.kind == PresetKind::kEquip)
-      for (int k = 0; k < ne; ++k) if (equipped[k] == idx) eq = true;
+      for (int w = 0; w < ne; ++w) if (equipped[w] == idx) eq = true;
     if (pi.kind == PresetKind::kCostume)
-      for (int k = 0; k < nwc; ++k) if (worn_costume[k] == idx) eq = true;
+      for (int w = 0; w < nwc; ++w) if (worn_costume[w] == idx) eq = true;
 
     if (!eq && neq < 48) {
-      InvItemLite li{};
-      if (FindInvLiteByIndex(inv, n, idx, &li)) {
-        // Position = masque EQP de l'item (info+8, comme le natif) ; forcee a la main GAUCHE
-        // pour une arme dual-wield (sinon le serveur pre-renewal la remettrait a droite).
-        // Les costumes et la munition portent DEJA leur position dans ce masque (bits
-        // EQP_COSTUME_*, 0x8000) : le serveur route dessus, rien de special a faire.
-        const uint32_t pos = pi.left_hand ? rag::equip::kEqpShield : static_cast<uint32_t>(li.loc);
-        toEquip[neq++] = {idx, pos};
-      }
+      // Position = masque EQP de l'item (info+8, comme le natif) ; forcee a la main GAUCHE
+      // pour une arme dual-wield (sinon le serveur pre-renewal la remettrait a droite).
+      // Les costumes et la munition portent DEJA leur position dans ce masque (bits
+      // EQP_COSTUME_*, 0x8000) : le serveur route dessus, rien de special a faire. Un
+      // accessoire porte EQP_ACC (les deux cotes) : le serveur prend le cote libre.
+      const uint32_t pos = pi.left_hand ? rag::equip::kEqpShield : static_cast<uint32_t>(li.loc);
+      toEquip[neq++] = {idx, pos};
     }
   }
-  // 3) Tout en PAQUETS BRUTS, envoyes d'un coup (le serveur traite le lot) : desequips d'abord
+  // 4) Tout en PAQUETS BRUTS, envoyes d'un coup (le serveur traite le lot) : desequips d'abord
   //    (0x00AB), puis equips (0x0998). Comme le desequip de masse, c'est instantane.
   for (int k = 0; k < ne; ++k) {
     bool keep = false;
@@ -3736,8 +3748,10 @@ void CharacterSheet::DrawSkillsTab() {
   ImGui::InputTextWithHint("##skfilter", i18n::Tr("Rechercher…"), skill_filter_buf_,
                            sizeof(skill_filter_buf_));
   ImGui::SameLine();
-  if (ro::RoButton(skill_grid_ ? i18n::Tr("Grille") : i18n::Tr("Liste"), 58.0f, 0.0f))
+  if (ro::RoButton(skill_grid_ ? i18n::Tr("Grille") : i18n::Tr("Liste"), 58.0f, 0.0f)) {
     skill_grid_ = !skill_grid_;
+    if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
+  }
   mui::Tooltip(i18n::Tr("Bascule entre la grille d'icônes (vue « moderne » du client) et la\n"
                "liste détaillée (niveau, SP, portée, prérequis)."));
 
@@ -5996,8 +6010,10 @@ void CharacterSheet::DrawGuildSkillsTab() {
 
   ImGui::Text(i18n::Tr("Points de compétence : %d"), guild_skill_points_);
   ImGui::SameLine();
-  if (ro::RoButton(guild_skill_grid_ ? i18n::Tr("Grille") : i18n::Tr("Liste"), 58.0f, 0.0f))
+  if (ro::RoButton(guild_skill_grid_ ? i18n::Tr("Grille") : i18n::Tr("Liste"), 58.0f, 0.0f)) {
     guild_skill_grid_ = !guild_skill_grid_;
+    if (auto* mu = Bourgeon::Instance().moonlight_ui()) mu->SaveSettings();
+  }
   mui::Tooltip(i18n::Tr("Bascule entre la grille d'icônes et la liste détaillée\n"
                "(niveau, SP, lancer, monter) — comme le Grimoire."));
   ImGui::SameLine();
