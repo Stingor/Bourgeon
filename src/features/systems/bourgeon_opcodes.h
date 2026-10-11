@@ -129,6 +129,9 @@ constexpr uint16_t kQuestEnd            = 0x0F3B;
 constexpr uint16_t kDiscordRich         = 0x0F3C;
 // Le bit 0x1000 (maître des compagnons) n'a pas d'opcode à lui : il élargit
 // kUnitMaster aux homoncules, mercenaires, familiers et élémentaires.
+// ZC_MOONLIGHT_EQUIP_ATTRIBUTES (bit 0x2000, moonclient seul) : ce qu'apporte
+// une pièce ou un ensemble posé ou retiré. Réservé ici pour ne pas être repris.
+constexpr uint16_t kEquipAttributes     = 0x0F3D;
 
 // --- PROCHAIN OPCODE LIBRE : la valeur de kNextFree ci-dessous ---------------
 // Pour ajouter un opcode custom : prendre la valeur ci-dessous, l'incrémenter,
@@ -136,5 +139,5 @@ constexpr uint16_t kDiscordRich         = 0x0F3C;
 // Aucune vérification de collision nécessaire : toute la plage 0x0F00..0x0FFF
 // est hors de la table du client (garantie flag=-1 = variable). Champ libre.
 // (0x0F00/0x0F01 libérés — anciennes valeurs tech data avant regroupement.)
-constexpr uint16_t kNextFree    = 0x0F3D;
+constexpr uint16_t kNextFree    = 0x0F3E;
 }  // namespace bopcodes
