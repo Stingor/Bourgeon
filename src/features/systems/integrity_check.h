@@ -48,10 +48,11 @@ class IntegrityCheck : public Plugin {
   bool SendChecksum();
 
   // Locates rpatchur next to the game executable and reads its patch level.
-  // Discovery follows rpatchur's own convention (patcher/mod.rs get_patcher_name
-  // + core.rs get_instance_asset_file_name): the patcher is the `<name>.exe` that
-  // has a sibling `<name>.yml` config, and its cache is `<name>.dat`. Nothing is
-  // hardcoded, so renaming the patcher keeps working.
+  // The patcher ships as `patcher.exe`, and rpatchur names its cache after its
+  // own executable: `patcher.dat`. The name is fixed rather than guessed from
+  // any `<name>.yml` + `<name>.exe` pair, because other programs in the game
+  // directory follow that same layout (moonclient.yml + MoonClient.exe).
+  static constexpr const wchar_t* kPatcherStem = L"patcher";
   void DiscoverPatcher();
 
   // Promotes a staged patcher self-update: a THOR patch cannot overwrite the

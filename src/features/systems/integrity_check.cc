@@ -95,41 +95,28 @@ void IntegrityCheck::DiscoverPatcher() {
     return;
   }
 
-  // rpatchur names its config, cache and lock after its own executable stem, so
-  // any `<stem>.yml` with a matching `<stem>.exe` identifies it.
-  WIN32_FIND_DATAW fd;
-  const HANDLE h = FindFirstFileW((dir + L"*.yml").c_str(), &fd);
-  if (h == INVALID_HANDLE_VALUE) return;
-  do {
-    if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
-    std::wstring stem(fd.cFileName);
-    const size_t dot = stem.find_last_of(L'.');
-    if (dot == std::wstring::npos) continue;
-    stem.resize(dot);
+  // rpatchur names its config, cache and lock after its own executable stem.
+  const std::wstring stem = kPatcherStem;
+  const std::wstring exe = dir + stem + L".exe";
+  if (GetFileAttributesW(exe.c_str()) == INVALID_FILE_ATTRIBUTES) {
+    LogError("[Integrity] patcher.exe not found in the game directory");
+    return;
+  }
 
-    const std::wstring exe = dir + stem + L".exe";
-    if (GetFileAttributesW(exe.c_str()) == INVALID_FILE_ATTRIBUTES) continue;
+  // rpatchur cannot update its own running executable (Windows locks it), so a
+  // cosmetic patch ships the new build alongside as `<stem>.exe.new` and we
+  // promote it here, before recording anything or launching it.
+  SwapPendingPatcherUpdate(exe);
 
-    // rpatchur cannot update its own running executable (Windows locks it), so a
-    // cosmetic patch ships the new build alongside as `<stem>.exe.new` and we
-    // promote it here, before recording anything or launching it.
-    SwapPendingPatcherUpdate(exe);
-
-    patcher_exe_ = exe;
-    // Missing cache file is normal on a fresh install: the patcher only writes it
-    // after applying its first patch. patch_index_ stays -1.
-    ReadJsonInt(dir + stem + L".dat", "last_patch_index", patch_index_);
-    break;
-  } while (FindNextFileW(h, &fd));
-  FindClose(h);
+  patcher_exe_ = exe;
+  // Missing cache file is normal on a fresh install: the patcher only writes it
+  // after applying its first patch. patch_index_ stays -1.
+  ReadJsonInt(dir + stem + L".dat", "last_patch_index", patch_index_);
 }
 
 void IntegrityCheck::SwapPendingPatcherUpdate(const std::wstring& exe) {
   const std::wstring pending = exe + L".new";  // staged by a THOR patch
   const std::wstring backup  = exe + L".old";  // previous build, kept aside
-
-  // A `.new`/`.old` suffix keeps these files from matching the `*.yml`->`<stem>.exe`
-  // discovery above, and from being picked up as a second patcher.
 
   // Drop the backup left by an earlier swap. It can still be locked if the old
   // patcher happens to be running; ignore the failure and retry next launch.
