@@ -1221,7 +1221,7 @@ void RodexWindow::CloseCompose() {
 }
 
 // Oublie la rédaction côté UI, sans rien émettre. Utilisé par l'annulation (après
-// son paquet) comme par l'accusé d'envoi réussi (où annuler serait un contresens).
+// son paquet) comme par l'accusé d'envoi réussi (qui émet lui-même le 0x0A03).
 void RodexWindow::ClearComposeState() {
   compose_open_ = false;
   compose_items_.clear();
@@ -1273,7 +1273,17 @@ void RodexWindow::HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t le
   if (opcode == kZcSendResult) {
     if (len < 1) return;
     if (data[0] == 0) {
-      ClearComposeState();  // surtout PAS CloseCompose : ce serait annuler après coup
+      // 🔴 Le serveur ne clôt PAS la rédaction après un envoi réussi :
+      // `sd->state.mail_writing` reste vrai, et il interdit de marcher
+      // (unit_can_move) et d'utiliser un objet (pc_useitem) jusqu'à un CZ 0x0A03
+      // ou une téléportation — @refresh n'y fait rien. Le client natif l'émettait
+      // en refermant sa fenêtre d'écriture après l'envoi ; on l'émet donc nous-mêmes.
+      // Sans risque après coup : côté serveur, 0x0A03 ne fait QUE baisser ce
+      // drapeau (clif_parse_Mail_cancelwrite), les objets envoyés sont déjà partis.
+      uint8_t packet[2] = {0};
+      *reinterpret_cast<uint16_t*>(packet) = kCzCancelWrite;
+      Bourgeon::Instance().SendPacket(packet, sizeof(packet));
+      ClearComposeState();
     } else {
       send_error_ = i18n::Tr("Le serveur a refusé l'envoi.");
     }
