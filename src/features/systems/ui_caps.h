@@ -70,6 +70,11 @@ class UiCaps : public Plugin {
     // s'éteindre ferait envoyer par le serveur des entrées plus courtes que ce
     // que le parseur attend déjà — une préférence n'a rien à faire là.
     kCardAlbumBoss = 1u << 4,
+    // Cette build sait lire ZC_MOONLIGHT_INSTANCE_INFO 0x0F40 (bopcodes::
+    // kInstanceInfo) : la difficulté, le mode turbo et les droits d'une
+    // instance, que montre le panneau InstanceInfo. Une CAPACITÉ DE LECTURE :
+    // annoncée dès que le plugin existe.
+    kInstanceInfo = 1u << 14,
     // RÉSERVÉS côté serveur pour le client moonclient, et JAMAIS annoncés par
     // cette DLL — elle n'enregistre pas leurs opcodes, et un opcode inconnu
     // viderait le tampon de réception du client :
@@ -95,7 +100,9 @@ class UiCaps : public Plugin {
     //   1u << 12 (0x1000) : le maître des COMPAGNONS dans ZC_BOURGEON_UNIT_MASTER
     //                    0x0F37 — homoncule, mercenaire, familier, élémentaire.
     //                    Sans ce bit, 0x0F37 ne décrit que des monstres.
-    // Prochain bit libre : 1u << 13.
+    //   1u << 13 (0x2000) : ZC_MOONLIGHT_EQUIP_ATTRIBUTES 0x0F3D (voir
+    //                    bopcodes::kEquipAttributes).
+    // Prochain bit libre : 1u << 15.
   };
 
   void OnTick() override;

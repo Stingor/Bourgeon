@@ -13,6 +13,7 @@
 #include "ragnarok/ragnarok_client.h"
 
 class DiscordRelay;
+class InstanceInfo;
 class DpsMeter;
 class TargetFrame;
 class BasicInfo;
@@ -95,6 +96,7 @@ class Bourgeon {
 
   RagnarokClient& client();
   DiscordRelay* discord_relay();
+  InstanceInfo* instance_info();
   DpsMeter* dps_meter();
   TargetFrame* target_frame();
   BasicInfo* basic_info();
@@ -374,6 +376,7 @@ class Bourgeon {
 
   std::vector<std::unique_ptr<Plugin>> plugins_;
   DiscordRelay* discord_relay_ = nullptr;  // non-owning, lifetime tied to plugins_
+  InstanceInfo* instance_info_ = nullptr;  // non-owning, lifetime tied to plugins_
   DpsMeter*     dps_meter_     = nullptr;  // non-owning, lifetime tied to plugins_
   TargetFrame*  target_frame_  = nullptr;  // non-owning, lifetime tied to plugins_
   BasicInfo* basic_info_ = nullptr;  // non-owning, lifetime tied to plugins_

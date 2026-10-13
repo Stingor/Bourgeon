@@ -19,6 +19,7 @@
 #include "features/patches/chat.h"
 #include "features/systems/cheat_detector.h"
 #include "features/systems/discord_relay.h"
+#include "features/overlays/instance_info.h"
 #include "features/systems/image_preview.h"
 #include "features/overlays/basic_info.h"
 #include "features/overlays/dps_meter.h"
@@ -119,6 +120,7 @@ Bourgeon::Bourgeon()
 
 RagnarokClient& Bourgeon::client() { return client_; }
 DiscordRelay* Bourgeon::discord_relay() { return discord_relay_; }
+InstanceInfo* Bourgeon::instance_info() { return instance_info_; }
 DpsMeter*     Bourgeon::dps_meter()     { return dps_meter_; }
 TargetFrame*  Bourgeon::target_frame()  { return target_frame_; }
 BasicInfo* Bourgeon::basic_info() { return basic_info_; }
@@ -1397,6 +1399,11 @@ void Bourgeon::LoadPlugins() {
     auto relay = std::make_unique<DiscordRelay>();
     discord_relay_ = relay.get();
     plugins_.emplace_back(std::move(relay));
+  }
+  {
+    auto instance_info = std::make_unique<InstanceInfo>();
+    instance_info_ = instance_info.get();
+    plugins_.emplace_back(std::move(instance_info));
   }
   {
     auto entity_names = std::make_unique<EntityNames>();

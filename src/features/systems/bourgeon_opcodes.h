@@ -137,6 +137,12 @@ constexpr uint16_t kEquipAttributes     = 0x0F3D;
 // pas être repris.
 constexpr uint16_t kReqChatBlocks       = 0x0F3E;
 constexpr uint16_t kChatBlocks          = 0x0F3F;
+// ZC_MOONLIGHT_INSTANCE_INFO (bit 0x4000, ANNONCÉ par la DLL) : la difficulté,
+// le mode turbo, le propriétaire et les droits de destruction d'une instance.
+// [opcode:2][len:2] server_time:4 duration:4 idle_timeout:4 hardmode:2 turbo:1
+// mode:1 destroyable:1 may_destroy:1 on_instance_map:1 players_inside:2
+// owner_name:24. Lu par features/overlays/instance_info.
+constexpr uint16_t kInstanceInfo        = 0x0F40;
 
 // --- PROCHAIN OPCODE LIBRE : la valeur de kNextFree ci-dessous ---------------
 // Pour ajouter un opcode custom : prendre la valeur ci-dessous, l'incrémenter,
@@ -144,5 +150,5 @@ constexpr uint16_t kChatBlocks          = 0x0F3F;
 // Aucune vérification de collision nécessaire : toute la plage 0x0F00..0x0FFF
 // est hors de la table du client (garantie flag=-1 = variable). Champ libre.
 // (0x0F00/0x0F01 libérés — anciennes valeurs tech data avant regroupement.)
-constexpr uint16_t kNextFree    = 0x0F40;
+constexpr uint16_t kNextFree    = 0x0F41;
 }  // namespace bopcodes

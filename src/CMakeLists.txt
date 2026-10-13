@@ -204,6 +204,8 @@ set(BOURGEON_FILES
 	"features/overlays/minimap.h"
 	"features/overlays/party_frames.cc"
 	"features/overlays/party_frames.h"
+	"features/overlays/instance_info.cc"
+	"features/overlays/instance_info.h"
 	"features/overlays/quest_tracker.cc"
 	"features/overlays/quest_tracker.h"
 	"features/overlays/skill_bar.cc"

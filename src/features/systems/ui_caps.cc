@@ -4,6 +4,7 @@
 #include <cstring>
 
 #include "bourgeon.h"
+#include "features/overlays/instance_info.h"
 #include "features/windows/card_album_window.h"
 #include "features/windows/chat_window.h"
 #include "features/systems/mvp_tracker.h"
@@ -56,6 +57,8 @@ uint32_t UiCaps::Current() {
     // que ce parseur sait lire, et il le sait dès que la surface existe.
     if (ca->imgui_enabled()) caps |= kCardAlbum | kCardAlbumBoss;
   }
+  // Le détail d'instance : le plugin sait lire 0x0F40 dès qu'il existe.
+  if (b.instance_info() != nullptr) caps |= kInstanceInfo;
   return caps;
 }
 
