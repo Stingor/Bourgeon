@@ -143,6 +143,15 @@ constexpr uint16_t kChatBlocks          = 0x0F3F;
 // mode:1 destroyable:1 may_destroy:1 on_instance_map:1 players_inside:2
 // owner_name:24. Lu par features/overlays/instance_info.
 constexpr uint16_t kInstanceInfo        = 0x0F40;
+// CZ_MOONLIGHT_MARKET_REQ / ZC_MOONLIGHT_MARKET (bit 0x8000, moonclient seul) :
+// le Marché. Réservés ici pour ne pas être repris.
+constexpr uint16_t kMarketReq           = 0x0F41;
+constexpr uint16_t kMarket              = 0x0F42;
+// CZ_MOONLIGHT_GM_OUTFIT / ZC_MOONLIGHT_GM_OUTFIT (bit 0x10000, moonclient
+// seul) : l'habit du GM d'un administrateur. Réservés ici pour ne pas être
+// repris.
+constexpr uint16_t kGmOutfitReq         = 0x0F43;
+constexpr uint16_t kGmOutfit            = 0x0F44;
 
 // --- PROCHAIN OPCODE LIBRE : la valeur de kNextFree ci-dessous ---------------
 // Pour ajouter un opcode custom : prendre la valeur ci-dessous, l'incrémenter,
@@ -150,5 +159,5 @@ constexpr uint16_t kInstanceInfo        = 0x0F40;
 // Aucune vérification de collision nécessaire : toute la plage 0x0F00..0x0FFF
 // est hors de la table du client (garantie flag=-1 = variable). Champ libre.
 // (0x0F00/0x0F01 libérés — anciennes valeurs tech data avant regroupement.)
-constexpr uint16_t kNextFree    = 0x0F41;
+constexpr uint16_t kNextFree    = 0x0F45;
 }  // namespace bopcodes
