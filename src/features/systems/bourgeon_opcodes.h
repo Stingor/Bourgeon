@@ -152,6 +152,14 @@ constexpr uint16_t kMarket              = 0x0F42;
 // repris.
 constexpr uint16_t kGmOutfitReq         = 0x0F43;
 constexpr uint16_t kGmOutfit            = 0x0F44;
+// CZ_MOONCLIENT_MAP_EDIT_PUT / _RESULT / _DOC / _REVISION / _GET (bit 0x20000,
+// moonclient seul) : les éditions de carte que le serveur tient. Réservés ici
+// pour ne pas être repris.
+constexpr uint16_t kMapEditPut          = 0x0F45;
+constexpr uint16_t kMapEditResult       = 0x0F46;
+constexpr uint16_t kMapEditDoc          = 0x0F47;
+constexpr uint16_t kMapEditRevision     = 0x0F48;
+constexpr uint16_t kMapEditGet          = 0x0F49;
 
 // --- PROCHAIN OPCODE LIBRE : la valeur de kNextFree ci-dessous ---------------
 // Pour ajouter un opcode custom : prendre la valeur ci-dessous, l'incrémenter,
@@ -159,5 +167,5 @@ constexpr uint16_t kGmOutfit            = 0x0F44;
 // Aucune vérification de collision nécessaire : toute la plage 0x0F00..0x0FFF
 // est hors de la table du client (garantie flag=-1 = variable). Champ libre.
 // (0x0F00/0x0F01 libérés — anciennes valeurs tech data avant regroupement.)
-constexpr uint16_t kNextFree    = 0x0F45;
+constexpr uint16_t kNextFree    = 0x0F4A;
 }  // namespace bopcodes
