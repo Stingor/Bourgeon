@@ -1215,6 +1215,14 @@ void CharSelect::OnModeSwitch(ModeMgr::ModeType mode_type, const char*) {
     // joueur a pu double-cliquer un personnage en pleine personnalisation).
     seat_edit_ = false;
     charsel::SaveIfDirty();
+    // Le fondu « Entrée en jeu… » a fini son office : la carte se charge, et le
+    // chargement ne dessine aucun ImGui. Le laisser armé, c'était le ressortir EN
+    // PLEINE PARTIE : `IsGameActive()` repasse à faux dès que le battement de
+    // CGameMode a plus d'une seconde (gel, fenêtre en arrière-plan…), RenderUI
+    // redispatche alors OnRenderLoginUI, et `entering_` y dessinait un écran noir
+    // opaque (enter_tick_ ancien = fondu à 100 %) par-dessus la ville.
+    entering_ = false;
+    quitting_ = false;
     // On quitte le login (entrée en jeu) : notre scène ne couvre plus rien. Sans ce
     // reset, g_cover_active reste collé à true — OnRenderLoginUI, seul endroit qui
     // le remettait à false, n'est plus appelé une fois en jeu. Voir Detour_ShowModal.
