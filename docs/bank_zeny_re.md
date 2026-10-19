@@ -440,7 +440,10 @@ plutôt que réécrit à la main.
 
 Ce que la version ImGui ajoute par rapport au natif :
 
-- ligne « Total » (banque + poche) et jauge de remplissage du plafond `INT32` —
+- ligne « Total » (banque + poche) et jauge de remplissage du plafond de la banque
+  — celui qu'annonce le serveur par ZC 0x0F38 (clés 9 et 10, les deux moitiés de
+  `MAX_BANK_ZENY` en int64), repli `INT32_MAX` ; la poche reste plafonnée à
+  `INT32_MAX` et une demande 0x09A7 / 0x09A9 porte au plus `INT32_MAX` —
   le natif ne dit rien jusqu'à ce qu'on bute dedans ;
 - « Tout déposer » / « Tout retirer » explicites, là où le natif n'a qu'un bouton
   `MAX` dont le sens dépend du bouton cliqué ensuite ;

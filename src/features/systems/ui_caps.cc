@@ -5,6 +5,7 @@
 
 #include "bourgeon.h"
 #include "features/overlays/instance_info.h"
+#include "features/windows/bank_window.h"
 #include "features/windows/card_album_window.h"
 #include "features/windows/chat_window.h"
 #include "features/systems/mvp_tracker.h"
@@ -59,6 +60,8 @@ uint32_t UiCaps::Current() {
   }
   // Le détail d'instance : le plugin sait lire 0x0F40 dès qu'il existe.
   if (b.instance_info() != nullptr) caps |= kInstanceInfo;
+  // Les règles du serveur : la banque enregistre 0x0F38 dès qu'elle existe.
+  if (b.bank_window() != nullptr) caps |= kServerRules;
   return caps;
 }
 

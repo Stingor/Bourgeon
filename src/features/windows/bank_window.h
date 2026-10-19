@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 
 #include "features/plugin.h"
@@ -63,6 +64,7 @@ class BankWindow : public Plugin {
   void OnRenderUI() override;  // dessine la fenêtre ImGui si la banque est ouverte
   // ZC_BANKING_CHECK 0x09A6 : c'est LUI qui ouvre (et referme) la banque. Reprend
   // aussi l'écriture de g_BankVault que faisait le handler natif remplacé.
+  // ZC_BOURGEON_SERVER_RULES 0x0F38 : le plafond de la banque (bank_cap_).
   void OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) override;
 
   // Ouvre — ou referme — la banque, exactement comme Ctrl+B. C'est le chemin du
@@ -83,6 +85,10 @@ class BankWindow : public Plugin {
   // par SetModernInterface, jamais isolément. Défaut OFF, comme tout le groupe.
   bool imgui_enabled_ = false;
 
+  // Plafond de la banque quand le serveur ne l'annonce pas : celui d'une banque
+  // tenue en int32.
+  static constexpr long long kBankCapFallback = 2147483647LL;
+
  private:
   // Ferme la SESSION banque côté client : notre fenêtre, plus une native résiduelle
   // s'il en traîne une. Aucun paquet — le serveur ne tient aucun état de banque
@@ -96,6 +102,9 @@ class BankWindow : public Plugin {
   // pour afficher EXACTEMENT le libellé que le client afficherait.
   void SetStatusFromMsgString(int msg_id, bool is_error);
   void SetStatus(const char* utf8, bool is_error);
+  // Décode ZC_BOURGEON_SERVER_RULES 0x0F38 : n'en retient que le plafond de la
+  // banque. Fil réseau.
+  void ReadServerRules(const uint8_t* data, uint16_t len);
 
   // (Plus de `quick_amounts_` ni de `show_total_` : le fond de cette fenêtre est un
   // bitmap du client à hauteur FIXE, donc rien de son contenu ne peut être masqué
@@ -111,12 +120,20 @@ class BankWindow : public Plugin {
   bool need_pos_ = false;  // (re)placer la fenêtre à l'ouverture
   bool show_panel_ = true; // transitoire : détection du clic sur le X
 
+  // Plafond de la BANQUE, tel que l'annonce ZC_BOURGEON_SERVER_RULES 0x0F38 (clés
+  // 9 et 10 : les deux moitiés de MAX_BANK_ZENY), ou kBankCapFallback. Écrit par le
+  // fil réseau, lu par le rendu, d'où l'atomique. Remis au repli à chaque session
+  // de zone : le serveur renvoie ses règles dès qu'on lui réannonce le bit.
+  std::atomic<long long> bank_cap_{kBankCapFallback};
+
   // Soldes lus dans les globales (rafraîchis chaque tick par les paquets ZC).
   long long vault_ = 0;  // g_BankVault  (s64)
   int       zeny_  = 0;  // g_PlayerZeny (s32)
 
   // Montant saisi. En s64 pour absorber une saisie hors bornes sans déborder ;
-  // clampé à [0, INT32_MAX] à chaque édition, comme UIBankWnd_ApplyAmountDelta.
+  // clampé à [0, INT32_MAX] à chaque édition, comme UIBankWnd_ApplyAmountDelta :
+  // c'est la borne du champ `Money` (int32) de 0x09A7 / 0x09A9, un transfert ne
+  // déplace donc jamais plus de INT32_MAX à la fois, quel que soit le plafond.
   long long amount_ = 0;
 
   // Message d'état (bas de fenêtre), équivalent de la std::string this+0xB8 du natif.

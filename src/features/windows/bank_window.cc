@@ -12,6 +12,7 @@
 #include "d3d9/d3d9_hook.h"        // Overlay_DeviceEpoch (invalidation du fond)
 #include "imgui.h"
 #include "features/moonlight_ui/moonlight_ui.h"  // HelpMarker
+#include "features/systems/bourgeon_opcodes.h"   // bopcodes::kServerRules
 #include "ragnarok/msgstring.h"    // msgstr::Utf8 (libellés natifs du client)
 #include "ragnarok/uiwnd.h"        // uiwnd::FindWindow
 #include "ui/game_texture.h"       // ro::TextureFromGameFile (fond bg_bank_moon.bmp)
@@ -30,11 +31,31 @@ namespace {
 // (Plus de kOffWidth/kOffHeight : ils ne servaient qu'à poser notre fenêtre à côté
 // de la native, qui ne naît plus.)
 
-// Globales des soldes. g_BankVault est un s64 côté client alors que le serveur
-// stocke un int32 (MAX_BANK_ZENY = SINT32_MAX) : on lit bien les 8 octets, mais
-// tous les plafonds restent à INT32_MAX.
+// Globales des soldes. g_BankVault est un s64, la poche g_PlayerZeny un s32.
 constexpr uintptr_t kBankVault  = 0x015fffc0;  // s64
-constexpr long long kZenyMax    = 2147483647LL;  // INT32_MAX = plafond client ET serveur
+
+// Trois bornes distinctes, à ne pas confondre :
+//   · le plafond de la BANQUE, celui que le serveur annonce (BankWindow::bank_cap_,
+//     repli INT32_MAX) — MAX_BANK_ZENY, un int64 ;
+//   · le plafond de la POCHE, INT32_MAX — MAX_ZENY, et g_PlayerZeny est un s32 ;
+//   · la borne d'une DEMANDE, INT32_MAX — le champ `Money` de 0x09A7 / 0x09A9 est
+//     un int32 : un dépôt ou un retrait déplace au plus cela à la fois.
+constexpr long long kPocketZenyMax    = 2147483647LL;
+constexpr long long kRequestAmountMax = 2147483647LL;
+
+// ZC_BOURGEON_SERVER_RULES 0x0F38 (data = après [opcode:2][len:2]) : N entrées
+// [key:2][value:4]. Le plafond de la banque, un int64, y tient en DEUX clés envoyées
+// ensemble, chacune portant le motif brut de sa moitié de 32 bits. Toute autre clé
+// s'ignore, et une trame qui n'en porte qu'une des deux laisse le plafond en place.
+constexpr uint16_t kOpServerRules     = bopcodes::kServerRules;
+constexpr int      kRuleEntryBytes    = 6;
+constexpr int      kRuleValueOff      = 2;
+constexpr uint16_t kRuleBankZenyMaxLow  = 9;   // MAX_BANK_ZENY, bits 0 à 31
+constexpr uint16_t kRuleBankZenyMaxHigh = 10;  // MAX_BANK_ZENY, bits 32 à 63
+constexpr int      kHalfBits          = 32;
+
+// ZC_ACCEPT_ENTER : une session de zone commence, ses règles restent à recevoir.
+constexpr uint16_t kOpAcceptEnter     = 0x02eb;
 
 // Formateurs à séparateurs de milliers du client (ceux qu'emploie la fenêtre
 // native) : 64 bits pour la banque, 32 bits pour les zeny en poche.
@@ -211,18 +232,22 @@ struct BankCheckWire {
 static_assert(sizeof(BankCheckWire) == 6, "CZ_REQ_BANKING_CHECK fait 6 octets");
 
 // Montants maximaux transférables, mêmes formules que UIBankWnd_ValidateAmount en
-// mode MAX : le plafond INT32 s'applique à la DESTINATION.
-long long MaxDeposit(long long vault, int zeny) {
-  const long long room = kZenyMax - vault;
-  return (std::max)(0LL, (std::min)(static_cast<long long>(zeny), room));
+// mode MAX : le plafond s'applique à la DESTINATION — celui de la banque pour un
+// dépôt, celui de la poche pour un retrait —, et une demande ne dépasse jamais sa
+// borne int32. La place restante se calcule par soustraction : `vault + montant`
+// pourrait déborder un int64 sous un plafond proche de INT64_MAX.
+long long MaxDeposit(long long vault, int zeny, long long bank_cap) {
+  const long long room = bank_cap - vault;
+  return (std::max)(0LL, (std::min)({static_cast<long long>(zeny), room,
+                                     kRequestAmountMax}));
 }
 long long MaxWithdraw(long long vault, int zeny) {
-  const long long room = kZenyMax - zeny;
-  return (std::max)(0LL, (std::min)(vault, room));
+  const long long room = kPocketZenyMax - zeny;
+  return (std::max)(0LL, (std::min)({vault, room, kRequestAmountMax}));
 }
 
 inline long long ClampAmount(long long v) {
-  return (std::max)(0LL, (std::min)(v, kZenyMax));
+  return (std::max)(0LL, (std::min)(v, kRequestAmountMax));
 }
 
 // ── Fond de fenêtre : le bg_bank.bmp du serveur ───────────────────────────────
@@ -283,9 +308,34 @@ BankWindow::BankWindow() {
   // client qui le fait savoir au reader-hook (RagConnection::NativeFixedPacketLen).
   Bourgeon::Instance().RegisterReplaceOpcode(kOpBankCheck,
                                              [this] { return imgui_enabled_; });
+  // Les règles du serveur, et le début de session qui les périme. Indépendants de
+  // l'interrupteur : le plafond doit être juste dès que la fenêtre s'allume.
+  Bourgeon::Instance().RegisterRecvOpcode(kOpServerRules);
+  Bourgeon::Instance().RegisterObserveOpcode(kOpAcceptEnter, 0);
+}
+
+void BankWindow::ReadServerRules(const uint8_t* data, uint16_t len) {
+  bool has_low = false, has_high = false;
+  uint32_t low = 0, high = 0;
+  for (int off = 0; off + kRuleEntryBytes <= len; off += kRuleEntryBytes) {
+    uint16_t key;
+    uint32_t value;
+    std::memcpy(&key, data + off, sizeof(key));
+    std::memcpy(&value, data + off + kRuleValueOff, sizeof(value));
+    if (key == kRuleBankZenyMaxLow)  { low = value;  has_low = true; }
+    if (key == kRuleBankZenyMaxHigh) { high = value; has_high = true; }
+  }
+  if (!has_low || !has_high) return;
+  const long long cap = static_cast<long long>(
+      (static_cast<uint64_t>(high) << kHalfBits) | static_cast<uint64_t>(low));
+  // Un plafond nul ou négatif ne peut venir que d'un serveur mal réglé : on garde
+  // celui qu'on avait plutôt que de griser tout dépôt.
+  if (cap > 0) bank_cap_.store(cap);
 }
 
 void BankWindow::OnRecvPacket(uint16_t opcode, const uint8_t* data, uint16_t len) {
+  if (opcode == kOpServerRules) { ReadServerRules(data, len); return; }
+  if (opcode == kOpAcceptEnter) { bank_cap_.store(kBankCapFallback); return; }
   if (opcode != kOpBankCheck || !imgui_enabled_) return;
   if (len < kCheckDataLen) return;
   const long long money =
@@ -418,16 +468,28 @@ void BankWindow::SendTransfer(bool deposit) {
   // affiche le MÊME libellé que la fenêtre native.
   if (TransferBlocked())      { SetStatusFromMsgString(kMsgProhibit, true);  return; }
   if (amount_ <= 0)           { SetStatusFromMsgString(kMsgMinMoney, true);  return; }
-  if (amount_ > kZenyMax)     { SetStatusFromMsgString(kMsgMaxMoney, true);  return; }
+  if (amount_ > kRequestAmountMax) { SetStatusFromMsgString(kMsgMaxMoney, true); return; }
 
+  // Place restante par soustraction, jamais `solde + montant` : cf. MaxDeposit.
   if (deposit) {
+    const long long bank_room = bank_cap_.load() - vault_;
     if (zeny_ <= 0)              { SetStatusFromMsgString(kMsgZeroMoney, true); return; }
     if (amount_ > zeny_)         { SetStatusFromMsgString(kMsgDepositNoMoney, true); return; }
-    if (vault_ + amount_ > kZenyMax) { SetStatusFromMsgString(kMsgOverIntMax, true); return; }
+    if (amount_ > bank_room) {
+      // Pas MSI_BANK_OVER_INT_MAX : ce libellé nomme le plafond de la POCHE, alors
+      // que celui de la banque est celui que le serveur annonce.
+      char cap_text[64];
+      char line[sizeof(status_)];
+      std::snprintf(line, sizeof(line), i18n::Tr("La banque ne peut pas dépasser %s z"),
+                    Grouped64(bank_cap_.load(), cap_text, sizeof(cap_text)));
+      SetStatus(line, true);
+      return;
+    }
   } else {
+    const long long pocket_room = kPocketZenyMax - zeny_;
     if (vault_ <= 0)             { SetStatusFromMsgString(kMsgZeroMoney, true); return; }
     if (amount_ > vault_)        { SetStatusFromMsgString(kMsgWithdrawNoMoney, true); return; }
-    if (zeny_ + amount_ > kZenyMax) { SetStatusFromMsgString(kMsgOverIntMax, true); return; }
+    if (amount_ > pocket_room)   { SetStatusFromMsgString(kMsgOverIntMax, true); return; }
   }
 
   const uint32_t aid = Bourgeon::Instance().client().session().aid();
@@ -515,6 +577,8 @@ void BankWindow::OnRenderUI() {
   const Balances live = ReadBalances();
   vault_ = live.vault;
   zeny_  = live.zeny;
+  // Lu une fois par frame : la jauge et les boutons jugent sur le même plafond.
+  const long long bank_cap = bank_cap_.load();
 
   char buf[64];
 
@@ -537,18 +601,28 @@ void BankWindow::OnRenderUI() {
     // 🔴 INCONDITIONNEL, et ce n'est pas un oubli : le fond de cette fenêtre est
     // un bitmap du client pré-composé à hauteur FIXE. Un contenu qu'on peut
     // masquer ferait glisser tout ce qui suit hors du fond peint. Cf. DrawSettings.
+    // Sans débordement : le serveur garantit MAX_BANK_ZENY <= INT64_MAX - MAX_ZENY.
     const long long total = vault_ + static_cast<long long>(zeny_);
     ImGui::TextUnformatted(i18n::Tr("Total"));
     ImGui::SameLine(value_col);
     ImGui::Text("%s z", Grouped64(total, buf, sizeof(buf)));
-    SameLine(); HelpMarker(
-        i18n::Tr("La banque est plafonnée à 2 147 483 647 z (INT32), côté client comme "
-        "côté serveur (MAX_BANK_ZENY). Un dépôt qui ferait dépasser ce plafond "
-        "est refusé en bloc, pas tronqué."));
-    // Jauge de remplissage de la banque vis-à-vis du plafond INT32 : le natif ne
-    // dit rien tant qu'on ne bute pas dessus, et l'erreur tombe alors sans prévenir.
-    const float ratio = static_cast<float>(static_cast<double>(vault_) /
-                                           static_cast<double>(kZenyMax));
+    SameLine();
+    {
+      char cap_text[64];
+      char help[512];
+      std::snprintf(help, sizeof(help),
+                    i18n::Tr("La banque est plafonnée à %s z, le plafond qu'annonce le "
+                             "serveur (MAX_BANK_ZENY). La poche l'est à 2 147 483 647 z, "
+                             "et un dépôt ou un retrait déplace au plus 2 147 483 647 z à "
+                             "la fois. Un transfert qui ferait dépasser un plafond est "
+                             "refusé en bloc, pas tronqué."),
+                    Grouped64(bank_cap, cap_text, sizeof(cap_text)));
+      HelpMarker(help);
+    }
+    // Jauge de remplissage de la banque vis-à-vis de son plafond : le natif ne dit
+    // rien tant qu'on ne bute pas dessus, et l'erreur tombe alors sans prévenir.
+    const float ratio = static_cast<float>((std::min)(
+        1.0, static_cast<double>(vault_) / static_cast<double>(bank_cap)));
     std::snprintf(buf, sizeof(buf), i18n::Tr("%.1f %% du plafond"), ratio * 100.0f);
     // Hauteur 0 = hauteur de cadre standard (police + 2×FramePadding.y) : c'est la
     // seule qui laisse ImGui centrer verticalement le texte du calque. Une barre
@@ -601,7 +675,7 @@ void BankWindow::OnRenderUI() {
                        "%s", banner);
   }
 
-  const long long max_deposit  = MaxDeposit(vault_, zeny_);
+  const long long max_deposit  = MaxDeposit(vault_, zeny_, bank_cap);
   const long long max_withdraw = MaxWithdraw(vault_, zeny_);
 
   {

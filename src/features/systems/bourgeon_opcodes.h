@@ -104,14 +104,15 @@ constexpr uint16_t kFlagGraffiti   = 0x0F36;
 // l'apparition du monstre chaque fois que le serveur le montre ; master_id = 0 dit
 // que le monstre n'a plus de maître.
 constexpr uint16_t kUnitMaster     = 0x0F37;
-// ZC_BOURGEON_SERVER_RULES (les réglages du serveur utiles au client moonclient). Le
-// serveur ne l'envoie qu'aux sessions qui annoncent le bit 0x80 de CZ_BOURGEON_UI_CAPS :
-// cette DLL ne l'annonce pas, et ne le reçoit donc jamais. Réservé ici pour qu'aucun
-// autre paquet ne prenne ce numéro. Pour l'adopter : annoncer le bit, enregistrer
-// l'opcode, et lire [opcode:2][len:2] puis N × [key:2][value:4], envoyé dès l'annonce
-// du bit et après @reloadbattleconf. Clés : 1 area_size (cases), 2 hom_max_level,
-// 3 hom_S_max_level, 4 homunc_teleport_acd (ms), 5 vending_tax (dix-millièmes),
-// 6 vending_tax_min (zeny) ; une clé inconnue s'ignore.
+// ZC_BOURGEON_SERVER_RULES (les réglages du serveur utiles au client). Le serveur ne
+// l'envoie qu'aux sessions qui annoncent le bit 0x80 de CZ_BOURGEON_UI_CAPS
+// (UiCaps::kServerRules), que cette DLL annonce : BankWindow enregistre l'opcode et y
+// lit le plafond de la banque. [opcode:2][len:2] puis N × [key:2][value:4], envoyé
+// dès l'annonce du bit et après @reloadbattleconf. Clés : 1 area_size (cases),
+// 2 hom_max_level, 3 hom_S_max_level, 4 homunc_teleport_acd (ms), 5 vending_tax
+// (dix-millièmes), 6 vending_tax_min (zeny), 7 area_size du jeu (cases),
+// 8 max_walk_path (pas), 9 et 10 les moitiés basse et haute de MAX_BANK_ZENY (int64,
+// motif brut de 32 bits chacune, toujours ensemble) ; une clé inconnue s'ignore.
 constexpr uint16_t kServerRules    = 0x0F38;
 // --- RÉSERVÉS au client moonclient, NON ANNONCÉS PAR LA DLL -------------------
 // Cette DLL ne les envoie ni ne les reçoit : le serveur ne les adresse qu'aux
