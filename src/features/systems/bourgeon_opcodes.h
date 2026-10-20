@@ -161,6 +161,9 @@ constexpr uint16_t kMapEditResult       = 0x0F46;
 constexpr uint16_t kMapEditDoc          = 0x0F47;
 constexpr uint16_t kMapEditRevision     = 0x0F48;
 constexpr uint16_t kMapEditGet          = 0x0F49;
+// ZC_MOONLIGHT_ATTACK_ELEMENT (bit 0x40000, moonclient seul) : l'élément
+// d'attaque normale d'un joueur. Réservé ici pour ne pas être repris.
+constexpr uint16_t kAttackElement       = 0x0F4A;
 
 // --- PROCHAIN OPCODE LIBRE : la valeur de kNextFree ci-dessous ---------------
 // Pour ajouter un opcode custom : prendre la valeur ci-dessous, l'incrémenter,
@@ -168,5 +171,5 @@ constexpr uint16_t kMapEditGet          = 0x0F49;
 // Aucune vérification de collision nécessaire : toute la plage 0x0F00..0x0FFF
 // est hors de la table du client (garantie flag=-1 = variable). Champ libre.
 // (0x0F00/0x0F01 libérés — anciennes valeurs tech data avant regroupement.)
-constexpr uint16_t kNextFree    = 0x0F4A;
+constexpr uint16_t kNextFree    = 0x0F4B;
 }  // namespace bopcodes

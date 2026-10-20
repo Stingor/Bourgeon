@@ -104,7 +104,12 @@ class UiCaps : public Plugin {
     //                    Sans ce bit, 0x0F37 ne décrit que des monstres.
     //   1u << 13 (0x2000) : ZC_MOONLIGHT_EQUIP_ATTRIBUTES 0x0F3D (voir
     //                    bopcodes::kEquipAttributes).
-    // Prochain bit libre : 1u << 15.
+    // Bits que seul moonclient annonce, réservés pour ne pas être repris :
+    //   1u << 15 (0x8000) : le marché (bopcodes::kMarket) ;
+    //   1u << 16 (0x10000) : l'habit du GM (bopcodes::kGmOutfit) ;
+    //   1u << 17 (0x20000) : les éditions de carte (bopcodes::kMapEditPut…) ;
+    //   1u << 18 (0x40000) : l'élément d'attaque (bopcodes::kAttackElement).
+    // Prochain bit libre : 1u << 19.
   };
 
   void OnTick() override;
