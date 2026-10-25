@@ -167,6 +167,17 @@ constexpr uint16_t kAttackElement       = 0x0F4A;
 // CZ_MOONLIGHT_MINIGAME_TROPHY (sans bit, moonclient seul) : un trophée de
 // mini-jeu, qui achève son succès. Réservé ici pour ne pas être repris.
 constexpr uint16_t kMinigameTrophy      = 0x0F4B;
+// CZ/ZC_MOONLIGHT_SURVIVORS_* (bit 0x80000, moonclient seul) : le classement du
+// mode survivors. 0x0F52 (JOURNAL) est réservé sans emploi. Réservés ici pour
+// ne pas être repris.
+constexpr uint16_t kSurvivorsBegin      = 0x0F4C;
+constexpr uint16_t kSurvivorsTicket     = 0x0F4D;
+constexpr uint16_t kSurvivorsEnd        = 0x0F4E;
+constexpr uint16_t kSurvivorsResult     = 0x0F4F;
+constexpr uint16_t kSurvivorsBoardReq   = 0x0F50;
+constexpr uint16_t kSurvivorsBoard      = 0x0F51;
+constexpr uint16_t kSurvivorsJournal    = 0x0F52;
+constexpr uint16_t kSurvivorsService    = 0x0F53;
 
 // --- PROCHAIN OPCODE LIBRE : la valeur de kNextFree ci-dessous ---------------
 // Pour ajouter un opcode custom : prendre la valeur ci-dessous, l'incrémenter,
@@ -174,5 +185,5 @@ constexpr uint16_t kMinigameTrophy      = 0x0F4B;
 // Aucune vérification de collision nécessaire : toute la plage 0x0F00..0x0FFF
 // est hors de la table du client (garantie flag=-1 = variable). Champ libre.
 // (0x0F00/0x0F01 libérés — anciennes valeurs tech data avant regroupement.)
-constexpr uint16_t kNextFree    = 0x0F4C;
+constexpr uint16_t kNextFree    = 0x0F54;
 }  // namespace bopcodes

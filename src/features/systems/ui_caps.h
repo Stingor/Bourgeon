@@ -108,8 +108,9 @@ class UiCaps : public Plugin {
     //   1u << 15 (0x8000) : le marché (bopcodes::kMarket) ;
     //   1u << 16 (0x10000) : l'habit du GM (bopcodes::kGmOutfit) ;
     //   1u << 17 (0x20000) : les éditions de carte (bopcodes::kMapEditPut…) ;
-    //   1u << 18 (0x40000) : l'élément d'attaque (bopcodes::kAttackElement).
-    // Prochain bit libre : 1u << 19.
+    //   1u << 18 (0x40000) : l'élément d'attaque (bopcodes::kAttackElement) ;
+    //   1u << 19 (0x80000) : le classement survivors (bopcodes::kSurvivorsBegin…).
+    // Prochain bit libre : 1u << 20.
   };
 
   void OnTick() override;
