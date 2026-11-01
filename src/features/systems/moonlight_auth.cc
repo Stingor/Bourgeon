@@ -69,9 +69,9 @@ constexpr const char* kDefaultBaseUrl = "https://moonlight-destiny.fr";
 
 // Origine « usine » de l'API de connexion (game_login + Discord). 🔴 PAS celle
 // du forum : l'endpoint a été repris par le nouveau site (dépôt moonlight-web),
-// même contrat, servi sur son sous-domaine. Les liens de PAGE (bestiaire, DB
-// d'objets, avatar, fusion de comptes) restent sur `kDefaultBaseUrl` tant que
-// le forum les porte.
+// même contrat, servi sur son sous-domaine, avec la fusion de comptes. Les
+// autres liens de PAGE (bestiaire, DB d'objets, avatar) restent sur
+// `kDefaultBaseUrl` tant que le forum les porte.
 constexpr const char* kDefaultApiUrl = "https://site.moonlight-destiny.fr";
 
 // L'adresse RETENUE, publiée par LoadConfig pour `SiteBaseUrl` (cf. l'en-tête).
@@ -1291,13 +1291,13 @@ void MoonlightAuth::DrawWebLogin() {
   }
 
   // Plusieurs comptes Moonlight à regrouper ? Lien vers le service de fusion de
-  // comptes du site (ouvre le navigateur). URL bâtie sur base_url_ : la fusion vit
-  // encore sur le forum, PAS sur l'origine de l'API — pas d'hôte hardcodé.
+  // comptes du site (ouvre le navigateur). URL bâtie sur api_url_ : la fusion a
+  // été reprise par le nouveau site, comme l'API — pas d'hôte hardcodé.
   ImGui::Spacing();
   ImGui::TextDisabled("%s", i18n::Tr("Plusieurs comptes à regrouper ?"));
   ImGui::SameLine();
   HyperlinkOpen(i18n::Tr("Fusionner mes comptes"),
-                base_url_ + "/ucp.php?i=moonlight&mode=merge");
+                api_url_ + "/compte/rapatriement");
 
   // Option secondaire : se connecter directement à un compte RO via le login
   // natif (login site oublié, préférence, etc.). Discrète, sous le bouton
