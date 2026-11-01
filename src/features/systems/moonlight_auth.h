@@ -352,3 +352,8 @@ class MoonlightAuth : public Plugin {
 //     `groq_service.py` : il ne suit pas notre config, et le commentaire du chat
 //     le dit déjà.
 const char* SiteBaseUrl();
+
+// L'origine du NOUVEAU site (`api_url`), pour ses pages : bestiaire
+// (/monstres/<id>), DB d'objets (/objets/<id>), fusion de comptes. Mêmes
+// règles que `SiteBaseUrl` : jamais vide, adresse d'usine avant LoadConfig.
+const char* SiteApiUrl();

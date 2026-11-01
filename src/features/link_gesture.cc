@@ -1,5 +1,5 @@
 #include "features/link_gesture.h"
-#include "features/systems/moonlight_auth.h"  // SiteBaseUrl
+#include "features/systems/moonlight_auth.h"  // SiteApiUrl
 
 #include <Windows.h>
 #include <shellapi.h>  // ShellExecuteA (site, bestiaire, adresses du chat)
@@ -63,8 +63,7 @@ void DimText(const char* fmt, ...) {
 void OpenMobDbPage(uint32_t mob_id) {
   if (mob_id == 0) return;
   char url[256];
-  std::snprintf(url, sizeof(url), "%s/index.php?page=bestiary&mobid=%u",
-                SiteBaseUrl(), mob_id);
+  std::snprintf(url, sizeof(url), "%s/monstres/%u", SiteApiUrl(), mob_id);
   ShellExecuteA(nullptr, "open", url, nullptr, nullptr, SW_SHOWNORMAL);
 }
 

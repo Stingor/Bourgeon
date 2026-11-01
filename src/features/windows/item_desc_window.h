@@ -94,11 +94,10 @@ const char* CardIllustPath(uint32_t id);
 // réduite de l'aperçu simple.
 void RenderCardTooltipFull(uint32_t id);
 
-// Ouvre la page « base de données » du site pour cet item, dans le navigateur.
-// L'URL est celle du lien natif `<URL>…<INFO>url</INFO>` de la ligne 0 des
-// descriptions (`index.php?page=itemdb&itemid=<id>`), vérifiée en jeu — elle est
-// écrite ICI, une fois, pour que les appelants (cartes de la description, menu
-// contextuel d'un lien de chat) n'aient pas chacun leur copie à corriger.
+// Ouvre la page « base de données » du nouveau site pour cet item
+// (`/objets/<id>`), dans le navigateur. L'URL est écrite ICI, une fois, pour que
+// les appelants (cartes de la description, menu contextuel d'un lien de chat)
+// n'aient pas chacun leur copie à corriger.
 void OpenItemDbPage(uint32_t item_id);
 
 // ⚠️ Une fenêtre qui ouvre une description n'a RIEN à faire pour le z-order.

@@ -69,15 +69,17 @@ constexpr const char* kDefaultBaseUrl = "https://moonlight-destiny.fr";
 
 // Origine « usine » de l'API de connexion (game_login + Discord). 🔴 PAS celle
 // du forum : l'endpoint a été repris par le nouveau site (dépôt moonlight-web),
-// même contrat, servi sur son sous-domaine, avec la fusion de comptes. Les
-// autres liens de PAGE (bestiaire, DB d'objets, avatar) restent sur
-// `kDefaultBaseUrl` tant que le forum les porte.
+// même contrat, servi sur son sous-domaine, avec la fusion de comptes, le
+// bestiaire et la DB d'objets (`SiteApiUrl`). L'aide « avatar Discord » reste
+// sur `kDefaultBaseUrl` tant que le forum la porte.
 constexpr const char* kDefaultApiUrl = "https://site.moonlight-destiny.fr";
 
 // L'adresse RETENUE, publiée par LoadConfig pour `SiteBaseUrl` (cf. l'en-tête).
 // Vide tant que la config n'a pas été lue : l'accesseur retombe alors sur
 // l'adresse d'usine ci-dessus.
 std::string g_site_base;
+// Idem pour `SiteApiUrl` : l'origine du nouveau site.
+std::string g_site_api;
 
 // Délai au-delà duquel « mode login SANS fenêtre de login » vaut service-select,
 // quand le nombre de connexions n'a pas pu être déterminé. Assez long pour couvrir
@@ -567,10 +569,12 @@ void MoonlightAuth::LoadConfig() {
   while (!base_url_.empty() && base_url_.back() == '/') base_url_.pop_back();
   while (!api_url_.empty() && api_url_.back() == '/') api_url_.pop_back();
 
-  // 🔴 Publiée pour les liens de PAGE (bestiaire, DB d'objets, avatar), qui
-  // vivent hors de ce module. Posée même quand `enabled_` est faux : effacer
-  // `base_url` désactive le login WEB, ça ne veut pas dire « plus de site ».
+  // 🔴 Publiées pour les liens de PAGE (avatar sur le forum ; bestiaire et DB
+  // d'objets sur le nouveau site), qui vivent hors de ce module. Posées même
+  // quand `enabled_` est faux : effacer `base_url` désactive le login WEB, ça
+  // ne veut pas dire « plus de site ».
   g_site_base = base_url_;
+  g_site_api = api_url_;
 
   // Identifiant mémorisé (fichier dédié, non le yaml).
   if (remember_) {
@@ -1748,4 +1752,8 @@ void MoonlightAuth::HandleSelectResponse(const HttpResult& r) {
 // l'adresse retenue ; avant elle, c'est l'adresse d'usine.
 const char* SiteBaseUrl() {
   return g_site_base.empty() ? kDefaultBaseUrl : g_site_base.c_str();
+}
+
+const char* SiteApiUrl() {
+  return g_site_api.empty() ? kDefaultApiUrl : g_site_api.c_str();
 }

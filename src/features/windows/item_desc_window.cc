@@ -1,5 +1,5 @@
 #include "ragnarok/lua.h"
-#include "features/systems/moonlight_auth.h"  // SiteBaseUrl
+#include "features/systems/moonlight_auth.h"  // SiteApiUrl
 #include "ragnarok/item_db.h"
 #include "ragnarok/navigation.h"
 #include "ui/game_texture.h"
@@ -2436,13 +2436,13 @@ void RenderCardTooltipFull(uint32_t id) {
   ImGui::PopStyleColor(2);
 }
 
-// Page « base de données » du site. Format confirmé en live : c'est exactement
-// l'URL du lien natif `<URL>..<INFO>url</INFO>` de la ligne 0 de la description.
+// Page « base de données » du nouveau site (/objets/<id>). Le lien natif
+// `<URL>..<INFO>url</INFO>` des descriptions vise encore l'ancienne page du
+// forum : c'est une donnée du GRF, que le site redirigera à la bascule.
 void OpenItemDbPage(uint32_t item_id) {
   if (item_id == 0) return;
   char url[256];
-  std::snprintf(url, sizeof(url), "%s/index.php?page=itemdb&itemid=%u",
-                SiteBaseUrl(), item_id);
+  std::snprintf(url, sizeof(url), "%s/objets/%u", SiteApiUrl(), item_id);
   ShellExecuteA(nullptr, "open", url, nullptr, nullptr, SW_SHOWNORMAL);
 }
 
