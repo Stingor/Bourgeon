@@ -112,7 +112,7 @@ jobs:
               timestamp: .timestamp,
               author: .author.name
             }')
-            curl -fsSL -X POST "https://moonlight-destiny.fr/changelog_api.php" \
+            curl -fsSL -X POST "https://site.moonlight-destiny.fr/api/changelog" \
               -H "Authorization: Bearer ${{ secrets.CHANGELOG_TOKEN }}" \
               -H "Content-Type: application/json" \
               -d "$body"
