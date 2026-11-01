@@ -67,6 +67,13 @@ float FormWidth() {
 // `moonlight_auth:` ne sert qu'à SURCHARGER (dev/local, ou désactiver).
 constexpr const char* kDefaultBaseUrl = "https://moonlight-destiny.fr";
 
+// Origine « usine » de l'API de connexion (game_login + Discord). 🔴 PAS celle
+// du forum : l'endpoint a été repris par le nouveau site (dépôt moonlight-web),
+// même contrat, servi sur son sous-domaine. Les liens de PAGE (bestiaire, DB
+// d'objets, avatar, fusion de comptes) restent sur `kDefaultBaseUrl` tant que
+// le forum les porte.
+constexpr const char* kDefaultApiUrl = "https://site.moonlight-destiny.fr";
+
 // L'adresse RETENUE, publiée par LoadConfig pour `SiteBaseUrl` (cf. l'en-tête).
 // Vide tant que la config n'a pas été lue : l'accesseur retombe alors sur
 // l'adresse d'usine ci-dessus.
@@ -523,9 +530,9 @@ MoonlightAuth::MoonlightAuth(AutoLogin* auto_login) : auto_login_(auto_login) {
   ResolveServer();
   state_ = enabled_ ? State::kWebLogin : State::kDisabled;
   // Un plugin inerte = login web indisponible : c'est une anomalie de config
-  // (base_url manquant dans le fichier de démarrage), pas un fonctionnement normal.
+  // (base_url/api_url vide dans le fichier de démarrage), pas un fonctionnement normal.
   if (!enabled_)
-    LogDiag("[MoonlightAuth] inerte (base_url manquant/enabled=false) — login web "
+    LogDiag("[MoonlightAuth] inerte (api_url vide/enabled=false) — login web "
             "indisponible");
 }
 
@@ -535,12 +542,17 @@ void MoonlightAuth::LoadConfig() {
   // Valeurs usine : activé pour tous, URL du serveur intégrée au build. Le yaml
   // est OPTIONNEL et ne fait que surcharger (dev/local, ou enabled:false).
   base_url_ = kDefaultBaseUrl;
+  api_url_ = kDefaultApiUrl;
   enabled_ = true;
   try {
     // Réglage d'AVANT le jeu : fichier de démarrage, ancien yaml en secours.
     const YAML::Node ma = startup::Section("moonlight_auth");
     if (ma) {
       base_url_ = ma["base_url"].as<std::string>(base_url_);
+      // Sans `api_url` explicite, un `base_url` surchargé emmène l'API avec lui :
+      // une config de dev qui pointait TOUT sur une instance locale continue de
+      // le faire, et `base_url: ""` désactive toujours le login web.
+      api_url_ = ma["api_url"].as<std::string>(ma["base_url"] ? base_url_ : api_url_);
       endpoint_ = ma["endpoint"].as<std::string>(endpoint_);
       save_id_ = ma["save_id"].as<bool>(save_id_);
       remember_ = ma["remember"].as<bool>(remember_);
@@ -550,9 +562,10 @@ void MoonlightAuth::LoadConfig() {
   } catch (const std::exception& e) {
     LogError("[MoonlightAuth] config illisible: {}", e.what());
   }
-  if (base_url_.empty()) enabled_ = false;
-  // Retire un éventuel '/' final du base_url pour concaténer proprement.
+  if (api_url_.empty()) enabled_ = false;
+  // Retire un éventuel '/' final pour concaténer proprement.
   while (!base_url_.empty() && base_url_.back() == '/') base_url_.pop_back();
+  while (!api_url_.empty() && api_url_.back() == '/') api_url_.pop_back();
 
   // 🔴 Publiée pour les liens de PAGE (bestiaire, DB d'objets, avatar), qui
   // vivent hors de ce module. Posée même quand `enabled_` est faux : effacer
@@ -647,7 +660,7 @@ void MoonlightAuth::StartPost(const std::string& form_body) {
   JoinWorker();
   ready_.store(false);
   busy_.store(true);
-  const std::string url = base_url_ + endpoint_;
+  const std::string url = api_url_ + endpoint_;
   const bool verify_tls = verify_tls_;
   worker_ = std::thread([this, url, form_body, verify_tls]() {
     HttpResult r = DoPost(url, form_body, verify_tls);
@@ -1278,8 +1291,8 @@ void MoonlightAuth::DrawWebLogin() {
   }
 
   // Plusieurs comptes Moonlight à regrouper ? Lien vers le service de fusion de
-  // comptes du site (ouvre le navigateur). URL bâtie sur base_url_ (même origine
-  // que les appels API) — pas d'hôte hardcodé.
+  // comptes du site (ouvre le navigateur). URL bâtie sur base_url_ : la fusion vit
+  // encore sur le forum, PAS sur l'origine de l'API — pas d'hôte hardcodé.
   ImGui::Spacing();
   ImGui::TextDisabled("%s", i18n::Tr("Plusieurs comptes à regrouper ?"));
   ImGui::SameLine();
@@ -1628,9 +1641,9 @@ void MoonlightAuth::HandleDiscordStartResponse(const HttpResult& r) {
       return;
     }
     game_session_ = j.value("game_session", std::string());
-    // Le serveur renvoie un chemin RELATIF (oauth_discord.php est à la racine du
-    // domaine, PAS sous le board phpBB /forum/). On préfixe avec notre base_url_
-    // (l'origine exacte de nos appels API) = source de vérité unique de l'hôte.
+    // Le serveur renvoie un chemin RELATIF (`/connexion/discord/jeu?game=…`),
+    // valable sur SON origine. On préfixe avec notre api_url_ (l'origine exacte
+    // de nos appels API) = source de vérité unique de l'hôte.
     const std::string path = j.value("authorize_path", std::string());
     if (game_session_.empty() || path.empty()) {
       error_msg_ = i18n::Tr("Réponse incomplète du serveur.");
@@ -1638,7 +1651,7 @@ void MoonlightAuth::HandleDiscordStartResponse(const HttpResult& r) {
       return;
     }
     discord_authorize_url_ =
-        base_url_ + (path[0] == '/' ? path : ("/" + path));
+        api_url_ + (path[0] == '/' ? path : ("/" + path));
     const int interval = j.value("poll_interval", 2);
     const int ttl = j.value("ttl", 180);
     discord_poll_interval_ms_ = static_cast<unsigned long>((interval > 0 ? interval : 2) * 1000);

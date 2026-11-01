@@ -35,7 +35,9 @@ class AutoLogin;
 // synthétiques avant les champs natifs.
 //
 // Configuration (bourgeon_settings.yaml, section `moonlight_auth:`) :
-//   base_url:   https://…            (REQUIS ; vide => plugin inerte, login natif)
+//   base_url:   https://…            (site/forum ; vide => plugin inerte, login natif)
+//   api_url:    https://…            (origine de l'API ; défaut : base_url s'il est
+//                                     surchargé, sinon https://site.moonlight-destiny.fr)
 //   endpoint:   /api/game_login.php  (défaut)
 //   enabled:    true                 (défaut si base_url présent)
 //   save_id:    false                (état de la case « Save ID » native)
@@ -228,7 +230,8 @@ class MoonlightAuth : public Plugin {
   bool remember_ = true;      // mémoriser l'identifiant web
   bool remember_pw_ = false;  // mémoriser le mot de passe web (DPAPI, opt-in)
   bool verify_tls_ = true;  // dev : `verify_tls: false` ignore la validation cert
-  std::string base_url_;
+  std::string base_url_;  // site / forum : liens de page
+  std::string api_url_;   // origine de l'API de connexion (game_login, Discord)
   std::string endpoint_ = "/api/game_login.php";
 
   // Saisie du formulaire (buffers ImGui).
