@@ -183,11 +183,16 @@ constexpr uint16_t kSurvivorsService    = 0x0F53;
 // l'administrateur pose son corps sous la caméra. Le serveur seul l'entend.
 constexpr uint16_t kFreeFlight          = 0x0F54;
 
+// 0x0F55 à 0x0F68 : formes que le serveur réserve à moonclient (voix, arène et
+// coop du mode survivors, couleurs étendues du personnage, joueurs en ligne du
+// staff). Aucune n'arrive à ce client ; la plage est sautée pour ne pas être
+// reprise. Leur détail est tenu par src/map/packets_struct.hpp du serveur.
+
 // --- PROCHAIN OPCODE LIBRE : la valeur de kNextFree ci-dessous ---------------
 // Pour ajouter un opcode custom : prendre la valeur ci-dessous, l'incrémenter,
 // déclarer la constante ici (préfixe CZ/ZC), puis la mirrorer côté serveur.
 // Aucune vérification de collision nécessaire : toute la plage 0x0F00..0x0FFF
 // est hors de la table du client (garantie flag=-1 = variable). Champ libre.
 // (0x0F00/0x0F01 libérés — anciennes valeurs tech data avant regroupement.)
-constexpr uint16_t kNextFree    = 0x0F55;
+constexpr uint16_t kNextFree    = 0x0F69;
 }  // namespace bopcodes
