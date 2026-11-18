@@ -32,7 +32,7 @@
 #include "features/windows/inventory_viewer.h"  // PointOverViewer (retrait par glisser vers le viewer inventaire)
 #include "features/windows/cart_viewer.h"       // PointOverViewer (dépôt par glisser vers le viewer cart)
 #include "features/windows/item_desc_window.h"  // itemdesc::RenderSimpleDesc (aperçu au survol)
-#include "features/moonlight_ui/moonlight_ui.h"      // HelpMarker (tooltip) + DrawSortModeCombo (tri serveur)
+#include "features/moonlight_ui/moonlight_ui.h"      // HelpMarker (tooltip)
 #include "features/windows/vending_window.h"    // IsComposing (shop en cours -> transferts figés)
 #include "ui/qty_prompt.h"             // ro::QuantityPrompt (dialogue « combien ? »)
 #include "ui/ro_imgui.h"               // BeginRoWindow / RoButton (skin RO)
@@ -1001,21 +1001,6 @@ bool StorageWindow::DrawSettings() {
   if (ro::RoButton(i18n::Tr("Remettre l'ordre d'origine"), 190.0f, 20.0f))
     reset_col_order_ = true;
 
-  ImGui::EndDisabled();
-
-  // ── Tri serveur (mêmes combos que « Commands Settings ») ────────────────────
-  // HORS du BeginDisabled ci-dessus : ce n'est pas un réglage du viewer mais un
-  // réglage SERVEUR (@tri_storage / @tri_gstorage), qui vaut aussi pour la
-  // fenêtre native. Il s'applique à la PROCHAINE ouverture du storage (le
-  // serveur trie au moment où il envoie la liste).
-  // Pas de `changed` : l'état vit dans MoonlightUi et le serveur en est la source
-  // (aucun réglage yaml de CE plugin n'a bougé).
-  SeparatorText(i18n::Tr("Tri serveur"));
-  ImGui::BeginDisabled(imgui_enabled_);
-  if (auto* mu = Bourgeon::Instance().moonlight_ui()) {
-    mu->DrawSortModeCombo(MoonlightUi::kSortStorage);
-    mu->DrawSortModeCombo(MoonlightUi::kSortGuildStorage);
-  }
   ImGui::EndDisabled();
 
   return changed;

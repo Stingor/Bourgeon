@@ -26,9 +26,9 @@
 // le viewer marche fenêtre native cachée.
 //
 // ORDRE D'AFFICHAGE : celui de la liste, sans tri — c'est ce que fait la native
-// (UICartWnd_OnMsg case 23 parcourt 0..count-1 sans trier), donc le tri serveur
-// (@tri_cart / réglage « Tri Cart ») est reflété dès que le serveur renvoie la
-// liste. Même leçon que l'inventaire, cf. project_inventory_viewer_wip.
+// (UICartWnd_OnMsg case 23 parcourt 0..count-1 sans trier), donc l'ordre du
+// serveur est reflété dès qu'il renvoie la liste. Même leçon que l'inventaire,
+// cf. project_inventory_viewer_wip.
 //
 // Transferts (dispatcher CMode, RE UICartWnd_OnRButtonDown 0x0094faa0 et
 // UICartWnd_OnMsg case 38) : cart -> inventaire 0x4d, cart -> storage 0x4f,

@@ -203,17 +203,6 @@ class MoonlightUi : public Plugin {
   // (« 10 Green Live ») et qui a besoin de l'id pour l'icône et la description.
   uint32_t ItemIdByName(const char* name) const;
 
-  // ── Tri serveur (e_sort_mode 0-6) ───────────────────────────────────────────
-  // Les combos « Tri … » de « Commands Settings » pilotent un réglage SERVEUR
-  // (settings 19-22 -> sort_inventory_items / sort_storage_items côté moonlight),
-  // pas un tri de vue. Ils sont exposés ici pour que les panneaux des fenêtres
-  // concernées (inventaire/cart, storage/guilde) affichent LE MÊME combo :
-  // même état, même envoi, aucune copie locale à resynchroniser.
-  enum SortTarget { kSortInventory = 0, kSortCart, kSortStorage, kSortGuildStorage };
-  // Dessine le combo (skin RO) + son point d'aide, et envoie le réglage au serveur
-  // si la sélection change. Renvoie true dans ce cas.
-  bool DrawSortModeCombo(SortTarget target);
-
   // ── Accès direct à une section de config ────────────────────────────────────
   // Sections de l'en-tête « Interface de jeu ». Les LIBELLÉS vivent dans la table
   // kIfaceSections du .cc, où chaque ligne porte explicitement son identifiant :
@@ -293,10 +282,7 @@ class MoonlightUi : public Plugin {
   static constexpr uint16_t kSettingWings                = 16;
   static constexpr uint16_t kSettingAlootMvp             = 17;
   static constexpr uint16_t kSettingAlootMvpRwd          = 18;
-  static constexpr uint16_t kSettingSortModeInventory    = 19;  // e_sort_mode 0-6
-  static constexpr uint16_t kSettingSortModeCart         = 20;
-  static constexpr uint16_t kSettingSortModeStorage      = 21;
-  static constexpr uint16_t kSettingSortModeGuildStorage = 22;
+  // 19 à 22 : les anciens tris serveur, retirés du serveur ; numéros réservés.
   static constexpr uint16_t kSettingAlootId       = 23;  // add item ID to autolootid list (0=clear)
   static constexpr uint16_t kSettingAlootIdRemove = 24;  // remove item ID from list
   // ⚠ Ce n'est PAS un booléen « est staff » : la valeur est le NIVEAU de groupe
@@ -387,10 +373,6 @@ class MoonlightUi : public Plugin {
   int  walk_speed_                = 150;    // ms par cellule ; 150 = la vitesse normale
   bool aloot_mvp_       = false;
   bool aloot_mvp_rwd_   = false;
-  int  sort_mode_inventory_    = 0;  // ⚠ énumérés : e_sort_mode 0-6, pas des booléens
-  int  sort_mode_cart_         = 0;
-  int  sort_mode_storage_      = 0;
-  int  sort_mode_guild_storage_ = 0;
 
   std::vector<uint32_t> aloot_ids_;        // client-tracked autolootid list (max 50)
   std::vector<uint32_t> alootid_saved_ids_; // snapshot at last preset load/save

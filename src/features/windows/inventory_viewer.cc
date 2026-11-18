@@ -26,7 +26,7 @@
 #include "features/windows/rodex_window.h"  // « Joindre au courrier » (AttachItem / composing)
 #include "features/systems/bourgeon_opcodes.h"  // bopcodes::kReqCompatCards / kCompatCards (sertissage rapide)
 #include "features/windows/item_desc_window.h"  // itemdesc::RenderSimpleDesc (aperçu au survol)
-#include "features/moonlight_ui/moonlight_ui.h"  // API alootid (IsAlootId/AddAlootId/RemoveAlootId) + DrawSortModeCombo
+#include "features/moonlight_ui/moonlight_ui.h"  // API alootid (IsAlootId/AddAlootId/RemoveAlootId)
 #include "features/windows/storage_window.h"  // PointOverViewer (dépôt par glisser vers le viewer storage)
 #include "features/windows/card_album_window.h"  // OfferFromInventory (« Vers l'album », glisser sur le classeur)
 #include "features/windows/cart_viewer.h"     // PointOverViewer (dépôt par glisser vers le viewer cart)
@@ -1250,19 +1250,6 @@ bool InventoryViewer::DrawSettings() {
 
   ImGui::EndDisabled();
 
-  // ── Tri serveur (mêmes combos que « Commands Settings ») ────────────────────
-  // HORS du BeginDisabled ci-dessus : ce n'est pas un réglage du viewer mais un
-  // réglage SERVEUR (@tri_inventaire / @tri_cart), qui vaut aussi pour les
-  // fenêtres natives. Le serveur retrie et renvoie la liste ; le viewer comme le
-  // natif l'affichent dans l'ordre reçu.
-  // Pas de `changed` : l'état vit dans MoonlightUi et le serveur en est la source
-  // (aucun réglage yaml de CE plugin n'a bougé).
-  SeparatorText(i18n::Tr("Tri serveur"));
-  ImGui::BeginDisabled(free_layout() && lock_size()); // placement libre = tri ImGui, pas serveur
-  if (auto* mu = Bourgeon::Instance().moonlight_ui())
-    mu->DrawSortModeCombo(MoonlightUi::kSortInventory);
-  ImGui::EndDisabled();
-
   return changed;
 }
 
@@ -1425,10 +1412,9 @@ void InventoryViewer::OnRenderUI() {
   // parcourt la liste 0..count-1 via Inventory_CopyItemAt et ne la trie QUE si
   // g_inv_sortEnabled). Cet ordre est celui d'arrivée des paquets : le serveur
   // moonlight vide la liste (ZC_INVENTORY_START type 0 -> 0x00cd8d10) puis la
-  // renvoie triée à chaque @tri_inventaire / changement du réglage « Tri
-  // Inventaire ». Re-trier par index d'inventaire, comme on le faisait, écrasait
-  // ce tri (les non-empilables arrivent APRÈS les empilables, donc index croissant
-  // != ordre serveur) et l'inventaire moderne semblait ignorer le réglage.
+  // renvoie dans son ordre. Re-trier par index d'inventaire écraserait cet ordre
+  // (les non-empilables arrivent APRÈS les empilables, donc index croissant
+  // != ordre serveur).
   auto in_tab = [](int tab, const Item& it) -> bool {
     const Cat& c = kCats[tab];
     if (c.fav) return it.favorite != 0;   // onglet Favoris : uniquement les favoris

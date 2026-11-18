@@ -425,8 +425,8 @@ void CartViewer::OnRenderUI() {
 
   // ── Vue filtrée (onglet courant + recherche) ──
   // AUCUN tri : on garde l'ordre de la liste session, comme la fenêtre native
-  // (UICartWnd_OnMsg case 23 ne trie pas) -> le tri serveur « Tri Cart » /
-  // @tri_cart est reflété tel quel.
+  // (UICartWnd_OnMsg case 23 ne trie pas) -> l'ordre du serveur est reflété
+  // tel quel.
   auto in_tab = [](int tab, const Item& it) -> bool {
     const Cat& c = kCats[tab];
     if (!c.types) return true;  // Tout
@@ -732,14 +732,6 @@ bool CartViewer::DrawSettings() {
 
 
   ImGui::EndDisabled();
-
-  // ── Tri serveur (même combo que « Commands Settings ») ──────────────────────
-  // HORS du BeginDisabled : réglage SERVEUR (@tri_cart), valable aussi pour la
-  // fenêtre native. Le serveur trie et renvoie la liste ; le viewer l'affiche dans
-  // l'ordre reçu. Pas de `changed` : l'état vit dans MoonlightUi.
-  SeparatorText(i18n::Tr("Tri serveur"));
-  if (auto* mu = Bourgeon::Instance().moonlight_ui())
-    mu->DrawSortModeCombo(MoonlightUi::kSortCart);
 
   return changed;
 }

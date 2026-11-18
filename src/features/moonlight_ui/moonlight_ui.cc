@@ -2915,22 +2915,6 @@ void MoonlightUi::HandlePacket(uint16_t opcode, const uint8_t* data, uint16_t le
         aloot_mvp_rwd_ = (setting_value != 0);
         // LogInfo("[MoonlightUi] aloot_mvp_rwd={}", aloot_mvp_rwd_);
         break;
-      case kSettingSortModeInventory:
-        sort_mode_inventory_ = static_cast<int>(setting_value);
-        // LogInfo("[MoonlightUi] tri_inv={}", sort_mode_inventory_);
-        break;
-      case kSettingSortModeCart:
-        sort_mode_cart_ = static_cast<int>(setting_value);
-        // LogInfo("[MoonlightUi] tri_cart={}", sort_mode_cart_);
-        break;
-      case kSettingSortModeStorage:
-        sort_mode_storage_ = static_cast<int>(setting_value);
-        // LogInfo("[MoonlightUi] tri_storage={}", sort_mode_storage_);
-        break;
-      case kSettingSortModeGuildStorage:
-        sort_mode_guild_storage_ = static_cast<int>(setting_value);
-        // LogInfo("[MoonlightUi] tri_gstorage={}", sort_mode_guild_storage_);
-        break;
       case kSettingAlootId:
         if (setting_value == 0) {
           aloot_ids_.clear();
